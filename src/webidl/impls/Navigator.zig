@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -385,15 +386,23 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initInterned("en-US");
 }
 
-/// Getter for languages
-/// Per HTML Standard: Returns a frozen array of preferred languages.
-/// Note: For WPT tests, we return a pointer to a static array structure.
-/// The V8 binding layer should convert this to a JS array.
+/// The member a navigator keeps its languages array in (engine.traceValue).
+const languages_slot: engine.TracedSlot = .{ .name = "languages" };
+
+/// Getter for languages (HTML 8.9.1.4): "a frozen array of valid BCP 47
+/// language tags ... ordered by preference with the most preferred language
+/// first" - navigator.language, the one preference Crane has - and "the same
+/// object must be returned until the user agent needs to return different
+/// values": made on the first read, kept by an edge from the navigator.
+/// (No WebDriver BiDi emulated language: step 2 never applies.)
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // TODO: Return proper frozen array of strings when V8 array creation is available
-    // For now, return undefined - the spec requires returning a frozen array of strings
-    return runtime.JSValue.jsUndefined;
+    if (engine.tracedValue(instance, languages_slot)) |kept| return kept.take();
+    var language = try get_language(instance);
+    defer language.deinit(instance.ctx.allocator);
+    const values = [_]runtime.JSValue{.{ .string = .{ .data = language.asSlice(), .owned = false } }};
+    const array = try engine.createFrozenArray(instance.ctx, &values);
+    engine.traceValue(instance, array.value, languages_slot);
+    return array.take();
 }
 
 /// Getter for onLine

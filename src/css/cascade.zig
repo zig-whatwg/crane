@@ -537,12 +537,40 @@ fn highlightStyle(ctx: Context) Allocator.Error!*ComputedStyle {
     return style;
 }
 
+/// CSS Pseudo 4 §3.1.2: "Only a limited set of properties can be used on
+/// the ::marker pseudo-element": "all font properties", "the white-space
+/// property", "color", "text-combine-upright, unicode-bidi, direction",
+/// "content", "all animation and transition properties", and, as all
+/// three browsers apply them, line-height (a longhand of font), quotes,
+/// cursor and the inherited text and text-decoration properties
+/// (css/css-pseudo/parsing/marker-supported-properties.html: Chrome,
+/// Firefox and Safari apply each of these and none of display, position,
+/// float or list-style-*; Blink's css_properties.json5 valid_for_marker).
+const marker_longhands: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initMany(&.{
+        .line_height,            .white_space_collapse,     .text_wrap_mode,      .color,
+        .text_combine_upright,   .unicode_bidi,             .direction,           .content,
+        .quotes,                 .hyphens,                  .letter_spacing,      .line_break,
+        .overflow_wrap,          .tab_size,                 .text_transform,      .word_break,
+        .word_spacing,           .text_decoration_skip_ink, .text_emphasis_style, .text_emphasis_color,
+        .text_emphasis_position, .text_shadow,              .cursor,
+    });
+    for (0..Longhand.count) |i| {
+        const l: Longhand = @fromBackingInt(@intCast(i));
+        const name = @tagName(l);
+        if (std.mem.startsWith(u8, name, "font_") or std.mem.startsWith(u8, name, "animation_") or std.mem.startsWith(u8, name, "transition_")) set.insert(l);
+    }
+    break :blk set;
+};
+
 /// The longhands that may apply to `pseudo`, or null when every one does.
-/// Only ::first-letter and ::first-line filter, so only they pay.
+/// Only ::first-letter, ::first-line and ::marker filter, so only they pay.
 fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
     const name = pseudo orelse return null;
     if (std.mem.eql(u8, name, "first-letter")) return &first_letter_longhands;
     if (std.mem.eql(u8, name, "first-line")) return &first_line_longhands;
+    if (std.mem.eql(u8, name, "marker")) return &marker_longhands;
     return null;
 }
 

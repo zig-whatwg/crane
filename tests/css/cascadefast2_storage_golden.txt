@@ -1449,8 +1449,6 @@ font-weight: 700
 caret-color: rgb(255, 0, 0)
 outline-color: rgb(255, 0, 0)
 letter-spacing: 1px
-margin-inline-start: 4px
-margin-top: 4px
 text-transform: uppercase
 writing-mode: vertical-rl
 text-decoration-color: rgb(255, 0, 0)
