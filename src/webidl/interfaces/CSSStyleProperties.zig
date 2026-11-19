@@ -65,9 +65,6 @@ pub const CSSStyleProperties = struct {
         /// property handlers from this table (webidl.SpecialOperations).
         pub const special_operations: webidl.SpecialOperations = .{
             .indexed_getter = .{ .function = "call_item" },
-            .named_getter = .{ .function = "call_namedItem" },
-            .named_setter = .{ .function = "call_setNamedItem" },
-            .crane_css_properties = true,
         };
     };
 
@@ -83,9 +80,6 @@ pub const CSSStyleProperties = struct {
         .get_cssFloat = &get_cssFloat,
 
         .set_cssFloat = &set_cssFloat,
-
-        .call_namedItem = &call_namedItem,
-        .call_setNamedItem = &call_setNamedItem,
 
         .deinit = &deinit,
     };
@@ -209,23 +203,18 @@ pub const CSSStyleProperties = struct {
 
     pub const get_length = CSSStyleDeclaration.get_length;
 
-    /// Named property getter for CSS property access
-    /// Maps style.color, style.backgroundColor to getPropertyValue()
-    /// Per CSS OM spec §6.6.1
-    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
-        return CSSStylePropertiesImpl.call_namedItem(instance, name);
+    /// CSSOM 6.6.2: the CSS property attributes (camel-cased, webkit-cased,
+    /// dashed), in the order the binding defines them on the prototype.
+    pub const css_property_attributes = CSSStylePropertiesImpl.css_property_attributes;
+
+    /// The getter of the CSS property attribute at `index`.
+    pub fn getCssPropertyAttribute(instance: *runtime.Instance, index: usize) anyerror!runtime.DOMString {
+        return CSSStylePropertiesImpl.getCssPropertyAttribute(instance, index);
     }
 
-    /// Named property setter for CSS property access
-    /// Maps style.color = "red" to setProperty()
-    /// Per CSS OM spec §6.6.1
-    pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-        return CSSStylePropertiesImpl.call_setNamedItem(instance, name, value);
-    }
-
-    /// Get supported property names for CSS property enumeration
-    /// Returns CSS property names that have been set on this declaration
-    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-        return CSSStylePropertiesImpl.getSupportedPropertyNames(instance, allocator);
+    /// The setter of the CSS property attribute at `index` ([CEReactions],
+    /// [LegacyNullToEmptyString]: the binding converted the value).
+    pub fn setCssPropertyAttribute(instance: *runtime.Instance, index: usize, value: runtime.DOMString) anyerror!void {
+        return CSSStylePropertiesImpl.setCssPropertyAttribute(instance, index, value);
     }
 };
