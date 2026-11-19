@@ -126,8 +126,8 @@ test "the highlight's currentColor bit costs a style no bytes: the sub-word fiel
     // the pointers; a ninth byte would pad every style by a whole word
     // (264 -> 272 B on 64-bit targets).
     var narrow: usize = 0;
-    inline for (@typeInfo(Style).@"struct".fields) |field| {
-        if (@sizeOf(field.type) < 8) narrow += @sizeOf(field.type);
+    inline for (@typeInfo(Style).@"struct".field_types) |T| {
+        if (@sizeOf(T) < 8) narrow += @sizeOf(T);
     }
     std.debug.print("CSS1_STYLE_NARROW_FIELDS {d} B, ComputedStyle {d} B\n", .{ narrow, @sizeOf(Style) });
     try testing.expect(narrow <= 8);
