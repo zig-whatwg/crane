@@ -70,6 +70,13 @@ WebSockets, fetch() calls, XHR fetches, classic-script fetches and style loads a
 `runtime.ContextData`'s (a script or style fetch is listed under its element's realm); a tab's input
 modality and pending user edits are its top-level BrowsingContext's. No class A, R, T or X state is
 left in lint-global-state's baseline.
+Tabs' session storage (2026-11-19, lane inst2): each traversable's storage shed
+(`storage.TraversableStorageSheds`) is the Browser's navigables', window-thread state, and ends with
+its top-level BrowsingContext's record (`BrowsingContext.deinit`, after the last Window that showed it),
+as its session history does - not with the Browser. The registries tabs share (BroadcastChannel,
+shared workers, Web Locks, service worker registrations and clients, permissions, cookies, storage,
+blob URLs) are each a BrowserScope supplement; tests/html/inst2_tabs_sharing_test.zig shows the
+tabs of one Browser sharing them, and inst2_instances_registries_test.zig two Browsers sharing none.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
@@ -80,7 +87,7 @@ the part every lane needs to know before it adds state.
 |---|---|---|
 | **Process** (`crane.Process`) | everything that is the same for every instance and never changes after start-up | the V8 platform and snapshot, curl's global init, immutable tables, every src/dom hook (installed once by `Process.init`, before any instance) |
 | **Browser** | one Crane instance: one thread for its window agent (isolate) and event loop, plus one thread per worker - a WebDriver BiDi "user context" | the web's shared state a browser profile holds: the storage shed (localStorage, IndexedDB, Cache API, buckets), the cookie jar, the HTTP cache and network, the blob URL store, BroadcastChannel delivery, SharedWorker instances, Web Locks, service worker registrations and clients, permissions, the browsing context groups and the tabs; and its runtime allocators and engine registries |
-| **Tab** | one top-level traversable | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener), the frame clock, visibility and system focus, its frames |
+| **Tab** | one top-level traversable - its top-level BrowsingContext's record, which ends after the last Window that showed it | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener, ended with the record), the frame clock, visibility and system focus, its frames |
 | **Agent** (event loop) | the window agent, or a worker's - each worker agent on its own thread | the custom element reactions stack, mutation observer state, the timer nesting level, the execution context stack, the nesting of its script-queue drains (`AgentHost.script_drain`), the [[HostDefined]] records of its classic scripts (`AgentHost.classic_scripts`) |
 | **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers, animation frame callbacks, module map, fetch group |
 
