@@ -51,6 +51,9 @@ const ignored_content_cases = [_]harness.Case{
     .{ .input = "abc[]<meter>def</meter>ghi", .commands = &.{.{ "forwarddelete", "" }}, .expected = "abcghi" },
     // Chrome and Firefox.
     .{ .input = "abc[]<audio controls>def</audio>ghi", .commands = &.{.{ "forwarddelete", "" }}, .expected = "abcghi" },
+    // An object with no data shows its fallback content: editing reaches it.
+    .{ .input = "<object>abc</object>[]def", .commands = &.{.{ "delete", "" }}, .expected = "<object>ab</object>def" },
+    .{ .input = "abc[]<object>def</object>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "abc<object>ef</object>" },
 };
 
 fn atomCases() !void {
@@ -86,11 +89,20 @@ const caret_cases = [_]harness.Case{
     .{ .input = "<span style=\"color:rgb(0, 0, 255)\">foo<br></span><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span>" },
 };
 
+/// The caret never goes into a link, and commands that replace the
+/// selection keep the spec's caret at the join (typing-around-link-element-
+/// after-joining-paragraphs.html, insertimage.html; all three).
+const caret_limit_cases = [_]harness.Case{
+    .{ .input = "<p><a href=\"about:blank\">foo</a></p><p>[]bar</p>", .commands = &.{ .{ "delete", "" }, .{ "insertText", "XY" } }, .expected = "<p><a href=\"about:blank\">foo</a>XYbar</p>" },
+    .{ .input = "<p><b>foo[bar</b><p>baz]quz", .commands = &.{.{ "insertimage", "/img/lion.svg" }}, .expected = "<p><b>foo</b><img src=\"/img/lion.svg\">quz</p>" },
+};
+
 fn caretCases() !void {
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(harness.setup_script);
     try harness.runCases(page, &caret_cases);
+    try harness.runCases(page, &caret_limit_cases);
     // The queries read the start line's font.
     try page.run("setupHost('<p><font color=blue>foo</font><p><font color=brown>[]bar</font>'); document.execCommand('styleWithCSS', false, 'false'); document.execCommand('delete');");
     try harness.expectEval(page, "document.queryCommandValue('foreColor')", "rgb(0, 0, 255)");

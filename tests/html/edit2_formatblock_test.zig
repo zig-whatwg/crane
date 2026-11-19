@@ -49,6 +49,9 @@ const value_cases = [_]ValueCase{
     .{ .input = "<listing>[foobar]</listing>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "|div|<div><listing>foobar</listing></div>" },
     // A line in a p inside a blockquote is wrapped.
     .{ .input = "<blockquote><p>[foo]<p>bar</blockquote><p>extra", .commands = "[[\"formatblock\",\"<blockquote>\"]]", .expected = "p|blockquote|<blockquote><blockquote>foo</blockquote><p>bar</p></blockquote><p>extra</p>" },
+    // A container already of the name is rewrapped as one (the spec).
+    .{ .input = "<div>[foobar]</div>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "div|div|<div>foobar</div>" },
+    .{ .input = "<p>[foo<p>bar]", .commands = "[[\"formatblock\",\"<p>\"]]", .expected = "||<p>foo</p><p>bar</p>" },
     // Several blocks: "" (Chrome and Safari).
     .{ .input = "<p>[foo<p>bar]<p>baz", .commands = "[]", .expected = "||<p>foo</p><p>bar</p><p>baz</p>" },
 };
