@@ -1932,3 +1932,53 @@ firefox.result  = wpt.fyi run 4877168468033536: 8/12 (Firefox 160, 2358bd4835; t
 safari.result   = wpt.fyi run 6479119966273536: 8/12 (Safari 27.2, 2358bd4835; the 4 h2 variants TIMEOUT)
 matches         = chrome, firefox, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+# follows-majority (lane blk5, 2026-11-20; main's rulings 1:10 PM ET): generation 233 (sweep-ace97d9c1e) and main
+# 88b12b151's frozen production runner on server1, each subtest's status and failing assertion compared with the
+# aligned stable runs at 2358bd4835 (tmp/plans/blk5-evidence/compare.out, msgs.out).
+
+[websockets/unload-a-document/002.html]
+kind            = follows-majority
+why             = after its WebSocket closes the popup navigates away and history.back() returns; Crane, Chrome and Firefox load the page again instead of restoring it from the back/forward cache, so each variant fails "assert_unreached: document was discarded" in all three (the ?wpt_flags=h2 variant too since lane net3's WebSockets over HTTP/2); Safari restores it
+chrome.result   = wpt.fyi run 4786307730243584: 0/3 (Chrome 157, 2358bd4835; default, wss and h2 variants)
+firefox.result  = wpt.fyi run 4877168468033536: 0/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 3/3 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome or Firefox changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/interaction/focus/document-level-focus-apis/document-has-system-focus.html]
+kind            = follows-majority
+why             = opening a popup does not blur the opener's document: with no host signal every tab has system focus, as in headless Chrome, so Crane and Chrome fail "assert_true: Document received blur event when popup opened expected true got false"; Firefox times out, Safari passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; TIMEOUT)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = chrome
+ruling          = the user's ruling 2026-11-19 ~5:55 PM ET, "Host decides, headless default": with no host signal every tab has system focus (headless Chrome); a host that renders narrows it to its active tab through the protocol (inst2 T1(c))
+revisit         = when Chrome changes its result on a newer aligned wpt.fyi run, or a host reports window focus through the protocol, or Crane's result moves
+
+[html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-nav-link-click-fragment.html]
+kind            = follows-majority
+why             = the link click navigates the lazy iframe's initial about:blank to about:blank#fragment, which cancels the lazy load (HTML navigate step 11, wpt e916af8e22) and is a fragment navigation, which fires no load event, so the test's onload wait never ends: Crane and Chrome time out (the one subtest NOTRUN); Firefox fires load and passes; Safari does not cancel the lazy load and fails at the URL (blank.htm?src)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835; TIMEOUT)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome
+ruling          = golden rule 2, no-majority case (main, 2026-11-20 1:10 PM ET): three different results; mechanism 1 (navigate cancels the lazy load) is Chrome's and Firefox's and the spec's; mechanism 2 (a fragment navigation of the initial about:blank fires load) is Firefox's alone - Chrome follows the spec, Safari's is not observable - so the spec decides, and its result is Chrome's
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[navigation-api/navigate-event/intercepted-navigation-after-bfcache-restore.html]
+kind            = follows-majority
+why             = navigating the page away from its cross-site iframe sets the page's ongoing navigation, and HTML's "set the ongoing navigation" informs the navigation API about aborting the pending intercepted navigation, so its finished promise rejects: Crane and Safari fail "navigation.navigate() should finish expected "success" but got "error: AbortError""; Chrome keeps the navigation across the bfcache (the test came with a Chromium crash fix, wpt b8dcaf3778, crrev 8479895); Firefox times out
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; TIMEOUT)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = golden rule 2, no-majority case (main, 2026-11-20 1:10 PM ET): Chrome passes, Firefox times out, Safari fails - no majority, so the spec decides ("set the ongoing navigation" step 2 aborts it), and its result is Safari's
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or HTML changes the abort, or Crane's result moves
+
+# needs-renderer (lane blk5, 2026-11-20; main's OK 1:10 PM ET): generation 233's message, the same on main 88b12b151.
+
+[shadow-dom/leaktests/selection.html]
+kind      = needs-renderer
+why       = the test drags the pointer across a closed shadow root's text to select it, and a drag selects by hit-testing laid-out text (a caret from a point: Blink SelectionController / PositionForPoint); with no renderer Crane's press places a caret only where no geometry is needed (src/html/selection_focus.zig caretAtHit), so the drag selects nothing and anchorNode stays null - the mouseup reaches the host as in the browsers
+assertion = assert_equals: getSelection().anchorNode should return the host of the shadow expected Element node <div id="container"><div></div></div> but got null
