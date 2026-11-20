@@ -12,8 +12,9 @@ const kit = @import("kit_curl_share");
 const ng = kit.nghttp2;
 const h2 = kit.websocket_h2;
 
-/// Whether this build's libcurl carries nghttp2 (-Dhttp2, the default).
-const http2 = fetch.network.curl_backend.http2_enabled;
+/// Whether the platform was built with HTTP/2 (-Dhttp2, the default): its
+/// nghttp2 is the one libcurl links, so only then are its symbols there.
+const http2 = @import("platform_options").http2;
 
 /// The server end: an nghttp2 server session that records the request and
 /// answers it from the test.
@@ -236,7 +237,7 @@ test "a refused CONNECT ends with its status and no tunnel" {
     try testing.expect(client.closed);
 }
 
-test "garbage from the server is a protocol error" {
+test "garbage from the server ends the session" {
     if (comptime !http2) return error.SkipZigTest;
     const client = try h2.Session.init(testing.allocator);
     defer client.deinit();
@@ -244,7 +245,14 @@ test "garbage from the server is a protocol error" {
     defer wire.deinit(testing.allocator);
     try client.output(&wire, 1 << 20);
     try testing.expect(std.mem.startsWith(u8, wire.items, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
-    try testing.expectError(error.ProtocolError, client.receive("HTTP/1.1 200 OK\r\n\r\n"));
+    try testing.expect(!client.terminated());
+    // nghttp2 answers a connection error with a GOAWAY (RFC 9113 5.4.1),
+    // not a failed call; after it the session wants nothing more.
+    try client.receive("HTTP/1.1 200 OK\r\n\r\n");
+    wire.clearRetainingCapacity();
+    try client.output(&wire, 1 << 20);
+    try testing.expect(client.terminated());
+    try testing.expect(!client.settings_seen);
 }
 
 test "a session that runs out of memory part-way frees what it made" {

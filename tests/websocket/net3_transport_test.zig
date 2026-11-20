@@ -129,7 +129,7 @@ test "the opening handshake request is RFC 6455 4.1's, with the caller's fields"
     defer transport.deinit();
     // The server answers no subprotocol, so the handshake itself fails above
     // the platform (WebSockets 2.2 step 11.2); the request is what is checked.
-    _ = connect(transport) catch {};
+    connect(transport) catch {};
     var waited: usize = 0;
     while (server.request_len.load(.acquire) == 0 and waited < 400) : (waited += 1) std.Io.sleep(io, .fromMilliseconds(5), .awake) catch {};
     const request = server.request[0..server.request_len.load(.acquire)];

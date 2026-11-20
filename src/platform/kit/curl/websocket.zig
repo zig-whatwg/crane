@@ -476,7 +476,7 @@ fn pump(socket: *Socket) PumpError!void {
             if (code != c.CURLE_OK and code != c.CURLE_AGAIN) return error.NetworkError;
             if (code == c.CURLE_OK) socket.out_start += sent;
         }
-        if (session.remote_ended or session.closed) socket.eof = true;
+        if (session.remote_ended or session.closed or session.terminated()) socket.eof = true;
     };
 }
 

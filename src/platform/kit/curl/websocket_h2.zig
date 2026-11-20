@@ -128,6 +128,12 @@ pub const Session = struct {
         }
     }
 
+    /// The session is over: nghttp2 wants neither to read nor to write (it
+    /// sent or received a GOAWAY for a connection error, RFC 9113 5.4.1).
+    pub fn terminated(self: *Session) bool {
+        return ng.nghttp2_session_want_read(self.session) == 0 and ng.nghttp2_session_want_write(self.session) == 0;
+    }
+
     /// Whether the server allows an extended CONNECT: the value of its
     /// SETTINGS_ENABLE_CONNECT_PROTOCOL, once its SETTINGS has arrived.
     pub fn extendedConnectAllowed(self: *Session) bool {
