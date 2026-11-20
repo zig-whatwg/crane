@@ -722,6 +722,9 @@ pub const DeclarationBlock = struct {
                     }
                     var wrote_shorthand = false;
                     for (preferred_shorthands) |s| {
+                        // `all` needs every one of its longhands in the
+                        // block: a shorter block skips its long scan.
+                        if (s == .all and self.entries.items.len < all_longhand_count) continue;
                         if (!containsLonghand(s.longhands(), d.longhand)) continue;
                         if (try self.serializeAsShorthand(s, done, out, &first)) {
                             wrote_shorthand = true;
@@ -972,6 +975,8 @@ fn appendDeclaration(comptime name_encoding: enum { raw, identifier }, out: *std
     try out.append(allocator, ';');
 }
 
+const all_longhand_count = Shorthand.all.longhands().len;
+
 fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
     for (ls) |x| if (x == l) return true;
     return false;
@@ -979,7 +984,10 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
 
 /// CSSOM "preferred order" steps 1, 3-5: more longhands first, then
 /// unprefixed names, -webkit- names, other prefixed names, and name order.
-/// `all` is never chosen to serialize a block (browsers write the longhands).
+/// `all` is one of them, first by its count: a block holding every longhand
+/// of it with one CSS-wide keyword writes `all: <keyword>` (Chrome 157,
+/// Firefox 160 and Safari 27.2, wpt.fyi 2358bd4835:
+/// css/cssom/cssstyledeclaration-csstext-all-shorthand.html).
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
@@ -996,7 +1004,7 @@ const preferred_shorthands = blk: {
         // Legacy one-member aliases are emitted with their canonical longhand.
         // color-adjust (Color Adjustment 1 §3.1) is one too: cssText keeps
         // print-color-adjust, as Firefox and Safari serialize it.
-        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s == .color_adjust or s.isLegacyShorthand()) continue;
+        if (s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s == .color_adjust or s.isLegacyShorthand()) continue;
         out[n] = s;
         n += 1;
     }
