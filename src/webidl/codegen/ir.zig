@@ -286,6 +286,8 @@ pub const IR = struct {
         // declares is stale - the snapshot update that dropped the member
         // drops the entry too.
         for (member_removals.table) |entry| {
+            // Sources without the interface (a test's own IDL) say nothing.
+            if (!self.occurrences.contains(entry.interface)) continue;
             if (self.declares(entry.interface, entry.member)) continue;
             // Printed, not logged: the caller reports the error.
             std.debug.print("  error: member_removals.zig lists {s}.{s}, which the IDL no longer declares: delete the entry\n", .{ entry.interface, entry.member });
