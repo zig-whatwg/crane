@@ -2729,6 +2729,13 @@ fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, curr
                 .redirect_count = if (response.has_cross_origin_redirects) 0 else @intCast(@min(r.response.url_list.items.len -| 1, std.math.maxInt(u16))),
                 .response_status = r.response.status,
                 .content_encoding = r.response.body_info.content_encoding,
+                // Navigation Timing's transferSize reads it: a response the
+                // HTTP cache served (a <link rel=prefetch>'s) is "local".
+                .cache_state = switch (r.response.cache_state) {
+                    .empty => "",
+                    .local => "local",
+                    .validated => "validated",
+                },
             };
             r.timing_info = fetch_mod.internal.FetchTimingInfo.init(r.timing_info.allocator);
         }
@@ -4537,7 +4544,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 .timing_info = &timing.timing_info,
                 .url = final_url,
                 .initiator_type = .other,
-                .cache_state = "",
+                .cache_state = timing.cache_state,
                 .body_info = .{
                     .encoded_size = if (response.body) |b| b.len else 0,
                     .decoded_size = if (response.body) |b| b.len else 0,
