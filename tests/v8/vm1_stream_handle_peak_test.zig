@@ -34,6 +34,21 @@
 //! promises and the wrapper cache's handles as traced members, Blink's
 //! shape).
 //!
+//! The burst is 5,000 streams, not 20,000 (lane flk2, 2026-11-20): a burst
+//! must run no full collection, or what it measures is the host's load. The
+//! capacity V8 reports is its global handles' AND its traced handles' (V8
+//! main, read 2026-11-20: src/heap/heap.cc Heap::TotalGlobalHandlesSize),
+//! and a traced handle destroyed while incremental or concurrent marking
+//! runs keeps its node until that collection's atomic pause
+//! (src/handles/traced-handles.cc TracedHandles::Destroy: "The node will be
+//! reclaimed on the next cycle") - so how many such nodes pile up is how
+//! long the background markers take.
+//! 20,000 streams ran two full collections and grew the table by 3,223,912,
+//! 3,228,080 or 3,236,416 B on server1 (the last over the bound: 161.8 B a
+//! stream, under a gate's load) and by 3,218,408 or 3,223,520 B on chat2.
+//! 1,000, 2,000 and 5,000 ran none and grew 163,840, 319,488 and 802,816 B
+//! in every run, at rest and beside 24 spinning shells (server1, x3 each).
+//!
 //! The four at rest: the wrapper cache's weak handle for each of the three
 //! wrappers, which the binding's traced edges changed (wrapper_cache.zig,
 //! `heldByWeakHandle`), and the reader's settled closed promise
@@ -53,9 +68,11 @@ const ffi = @import("v8").ffi;
 
 const reader_of_closed_stream = "new ReadableStream({ start(c) { c.close(); } }).getReader()";
 
-/// The streams of one burst: enough that the table grows by hundreds of
-/// blocks, so a block more or less is under a percent.
-const burst = 20_000;
+/// The streams of one burst: enough that the table grows by about a hundred
+/// blocks, so a block more or less is about a percent, and few enough that no
+/// full collection runs during the script (the module comment says why; the
+/// test checks it).
+const burst = 5_000;
 
 /// One global handle's node in V8's table.
 const handle = 32;
@@ -70,8 +87,8 @@ const burst_limit = 5 * handle;
 
 /// What a burst may add beyond `burst_limit` a stream: the realm's own
 /// handles for the script, and the table's rounding to whole blocks.
-/// Measured 18,408 B on both trees (2.25 blocks); four blocks allowed, a
-/// twentieth of what one more handle a stream would add.
+/// Measured 2,816 B for 5,000 streams (server1, every run); four blocks
+/// allowed, a fifth of what one more handle a stream would add (160,000 B).
 const burst_slack = 4 * 256 * handle;
 
 /// The adapter's counter named `name` (protocol.diagnosticCounters).
@@ -145,9 +162,17 @@ test "a burst of streams grows V8's global handle table by at most five handles 
     protocol.notifyMemoryPressure(page.agent, .critical);
     protocol.notifyMemoryPressure(page.agent, .critical);
 
+    const full_collections = try counter("full_gc_count");
     const before = ffi.v8_Isolate_GetGlobalHandleCapacityBytes(isolate);
     try rounds_lib.expectEval(page.realm, "for (let i = 0; i < " ++ std.fmt.comptimePrint("{d}", .{burst}) ++ "; i++) void " ++ reader_of_closed_stream ++ "; 'ok'", "ok");
     const after = ffi.v8_Isolate_GetGlobalHandleCapacityBytes(isolate);
+    // The measurement's precondition: no full collection ran during the
+    // burst, so no traced handle's node waited for an atomic pause.
+    const ran = try counter("full_gc_count") - full_collections;
+    if (ran != 0) {
+        std.debug.print("{d} full collection(s) ran during a burst of {d} streams: the table's growth is the markers' timing, not the streams' handles - make the burst smaller\n", .{ ran, burst });
+        return error.BurstRanAFullCollection;
+    }
     for (0..4) |_| try protocol.performMicrotaskCheckpoint(page.agent);
     protocol.notifyMemoryPressure(page.agent, .critical);
     protocol.notifyMemoryPressure(page.agent, .critical);
