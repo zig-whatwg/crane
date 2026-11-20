@@ -252,6 +252,7 @@ test "a destroyed frame's WindowProxy, read from its parent" {
     var pair = try Pair.open(&host, &scope);
     defer pair.close();
     try expectEval(pair.page, "globalThis.getSelf = Object.getOwnPropertyDescriptor(w, 'self').get; 'ok'", "ok");
+    const frame_window = pair.frameWindow();
     pair.destroyFrame();
     const reads =
         \\[() => w.self === w, () => w.window === w, () => w.frames === w, () => getSelf.call(w) === w, () => getSelf.call(undefined) === w]
@@ -260,10 +261,15 @@ test "a destroyed frame's WindowProxy, read from its parent" {
     // The frame's realm ended with its global still attached: its getters
     // still answer it (self-et-al.window.js), with no Window to look up.
     try expectEval(pair.page, reads, "true,true,true,true,true");
-    // While the Browser monitors access, too: the ended realm has no Window
-    // to report a use of.
+    // While the Browser monitors access, too. The destroyed navigable's
+    // realm is detached, not ended (protocol_realms.detach: its Window stays
+    // for as long as script holds its WindowProxy, Blink's
+    // DisposeContext(kFrameIsDetached)), so each use is still put to the
+    // host, from the page, for the frame's Window - the host's check decides
+    // (dom.coop_reporting: a Window with no browsing context reports
+    // nothing). Pinned against 7efdbf620: the general path asked the same.
     host.calls.clearRetainingCapacity();
     scope.window_access_monitored.store(true, .monotonic);
     try expectEval(pair.page, reads, "true,true,true,true,true");
-    try testing.expectEqual(@as(usize, 0), host.calls.items.len);
+    try expectReported(&host, pair.page, frame_window, "self,window,frames,self,self");
 }
