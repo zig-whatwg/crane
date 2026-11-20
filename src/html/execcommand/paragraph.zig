@@ -31,8 +31,7 @@ fn isBr(node: *Instance) !bool {
 /// Range.insertNode(node) on the active range.
 fn insertNodeAtActiveRange(edit: *Edit, node: *Instance) !void {
     const range = (try edit.activeRange()) orelse return error.NoActiveRange;
-    try interfaces.Range.call_insertNode(range, node);
-    edit.modified = true;
+    try edit.insertNode(range, node);
 }
 
 /// The shared steps that keep insertNode off a Text node's edges: at its
@@ -347,8 +346,7 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     var offset = range_start.offset;
     // Step 4.
     if (common.isText(node) and offset != 0 and offset != try common.nodeLength(node)) {
-        _ = try interfaces.Text.call_splitText(node, offset);
-        edit.modified = true;
+        _ = try edit.splitText(node, offset);
     }
     // Step 5.
     if (common.isText(node) and offset == try common.nodeLength(node)) {
@@ -581,13 +579,9 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         var walk = try block.ContainedWalk.init(line);
         while (try walk.next()) |contained| try contained_nodes.append(edit.allocator, contained);
     }
-    // Step 27: extractContents() on a range over the new line.
-    const range = try interfaces.Document.call_createRange(edit.document);
-    const range_generation = runtime.SlabAllocator.generationOf(range);
-    defer range.releaseIfUnwrapped(range_generation);
-    try interfaces.Range.call_setStart(range, line.start.node, line.start.offset);
-    try interfaces.Range.call_setEnd(range, line.end.node, line.end.offset);
-    const frag = try interfaces.Range.call_extractContents(range);
+    // Step 27: extractContents() on a range over the new line - the DOM's
+    // extract, recorded for undo (Edit.extractContents).
+    const frag = try edit.extractContents(line.start, line.end);
     const frag_generation = runtime.SlabAllocator.generationOf(frag);
     defer @import("dom").node_creation.releaseIfUnwrapped(frag, frag_generation);
     edit.modified = true;

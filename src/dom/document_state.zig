@@ -557,6 +557,9 @@ pub const InternalState = struct {
     /// pause: reads only, creates no state.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
         const self = Registry.get(instance) orelse return;
+        // Its editing undo history's nodes (Blink's Editor traces its
+        // UndoStack; dom.editor_states).
+        if (self.editor_state) |editor_state| @import("editor_states.zig").trace(editor_state, tracer);
         if (self.active_parser) |parser| parser.traceHeldNodes(tracer);
         var on_stack = self.parsers_on_stack;
         while (on_stack) |parser| : (on_stack = parser.next_on_stack) {

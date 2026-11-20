@@ -170,8 +170,7 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
         // Steps 14.2-14.3: a new Text node at the active range.
         const text = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned(value));
         const range = (try edit.activeRange()) orelse return true;
-        try interfaces.Range.call_insertNode(range, text);
-        edit.modified = true;
+        try edit.insertNode(range, text);
         // Steps 14.4-14.5: select it.
         try edit.collapse(text, 0);
         try edit.extend(text, length);

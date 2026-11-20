@@ -158,9 +158,7 @@ pub fn isAllowedChildOfName(node: *Instance, parent_name: []const u8) !bool {
 }
 
 fn splitText(edit: *Edit, node: *Instance, offset: u32) !*Instance {
-    const result = try interfaces.Text.call_splitText(node, offset);
-    edit.modified = true;
-    return result;
+    return try edit.splitText(node, offset);
 }
 
 // ============================================================================

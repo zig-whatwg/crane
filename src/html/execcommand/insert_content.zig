@@ -106,8 +106,7 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     if (phrasing) try avoidStyledInlineAncestors(edit);
     // Step 9: "Call insertNode(frag) on the active range."
     const range = (try edit.activeRange()) orelse return true;
-    try interfaces.Range.call_insertNode(range, fragment);
-    edit.modified = true;
+    try edit.insertNode(range, fragment);
     // Step 10: a block start node left with nothing visible gets a br.
     if (try edit.rangeStart()) |after| {
         if (common.isBlockNode(after.node) and !try hasVisibleChild(after.node)) {
@@ -220,7 +219,7 @@ fn avoidStyledInlineAncestors(edit: *Edit) !void {
         // A point inside a Text node splits it: the insertion point is the
         // start of its second part.
         if (common.isText(point.node) and point.offset > 0 and point.offset < try common.nodeLength(point.node)) {
-            const tail = try interfaces.Text.call_splitText(point.node, point.offset);
+            const tail = try edit.splitText(point.node, point.offset);
             point = .{ .node = tail, .offset = 0 };
         }
         if (point.node != stop) {
@@ -568,8 +567,7 @@ fn splitInlinesForInsertion(edit: *Edit) !void {
         } else if (point.offset == length) {
             point = .{ .node = p, .offset = index + 1 };
         } else {
-            _ = try interfaces.Text.call_splitText(point.node, point.offset);
-            edit.modified = true;
+            _ = try edit.splitText(point.node, point.offset);
             point = .{ .node = p, .offset = index + 1 };
         }
     }
@@ -631,8 +629,7 @@ fn insertImageSteps(edit: *Edit, value: []const u8) anyerror!bool {
     const img = try edit.createElement("img");
     try common.setAttribute(img, "src", value);
     // Step 8: "Run insertNode(img) on range."
-    try interfaces.Range.call_insertNode(range, img);
-    edit.modified = true;
+    try edit.insertNode(range, img);
     // Steps 9-10: the caret just after img.
     if (try common.parent(img)) |p| {
         const index = try common.indexOf(img);

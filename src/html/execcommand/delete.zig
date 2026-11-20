@@ -1149,8 +1149,7 @@ fn splitAtLineFeed(edit: *Edit, text: *Instance) !?LineFeedSplit {
     const units = common.utf16Length(data.asSlice()[0..lf]);
     // Text.splitText keeps the first part in place and inserts the rest
     // after it; the line feed starts the rest.
-    const rest = if (units == 0) text else try interfaces.Text.call_splitText(text, units);
-    if (rest != text) edit.modified = true;
+    const rest = if (units == 0) text else try edit.splitText(text, units);
     try edit.deleteData(rest, 0, 1);
     var after: ?*Instance = rest;
     if ((try common.nodeLength(rest)) == 0) {
