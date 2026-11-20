@@ -27,6 +27,7 @@ const dom = h.dom;
 const runtime = h.runtime;
 const engine = h.engine;
 const interfaces = @import("interfaces");
+const clock = @import("clock");
 
 const DeferredTeardown = runtime.gc.DeferredTeardown;
 const ExternalMemory = runtime.gc.ExternalMemory;
@@ -46,6 +47,23 @@ fn queueOf(page: h.Page) *DeferredTeardown {
 /// One event loop turn: the deferred teardown's slices run between tasks.
 fn turn(page: h.Page) !void {
     _ = try page.browser.runEventLoopBlocking(20);
+}
+
+/// Turns of the event loop - at least one - until the deferred teardown's
+/// queue is empty: every queued tree freed. A turn is 20 ms of real time,
+/// and its slices are a share of it (event_loop.zig runDeferredTeardown), so
+/// HOW MANY turns that takes is the host's load: two fixed turns freed the
+/// 2,101-node tree's five slices in 0.8-1.7 s at rest and left some unrun
+/// once beside a gate on chat2 (21.7 s, 2026-11-19). The wait is on the
+/// queue; the deadline only stops a test whose queue never empties.
+fn turnUntilFreed(page: h.Page) !void {
+    const queue = queueOf(page);
+    const deadline = clock.monotonicMillis() + 60 * std.time.ms_per_s;
+    try turn(page);
+    while (!queue.isEmpty()) {
+        if (clock.monotonicMillis() >= deadline) return error.TestConditionNeverCame;
+        try turn(page);
+    }
 }
 
 /// A detached tree of 2,101 nodes that only a native hold keeps: a section
@@ -79,8 +97,7 @@ const HeldTree = struct {
         errdefer dom.refcount.holderDeref(held);
         try page.run("host.innerHTML = '';");
         try page.collect();
-        try turn(page);
-        try turn(page);
+        try turnUntilFreed(page);
         try testing.expect(!root.rc_flags.garbage);
         try testing.expect(root.parent_node == null);
         try testing.expect(queueOf(page).isEmpty());
@@ -191,8 +208,7 @@ fn aTreeQueuedTwiceIsCountedOnce() !void {
     try testing.expectEqual(alive - measure.bytes, memory.live);
     try testing.expectEqual(alive, memory.held());
 
-    try turn(page);
-    try turn(page);
+    try turnUntilFreed(page);
     try testing.expect(tree.freed());
     try testing.expectEqual(@as(usize, 0), memory.dying);
     try testing.expectEqual(alive - measure.bytes, memory.live);
@@ -266,8 +282,7 @@ fn aTreeRescuedAfterSomeSlicesKeepsWhatIsLeft() !void {
     try testing.expectEqual(left.bytes, memory.dying);
     try testing.expectEqual(left.nodes, queue.pendingNodes());
     try testing.expectEqual(alive - measure.bytes, memory.live);
-    try turn(page);
-    try turn(page);
+    try turnUntilFreed(page);
     try testing.expect(tree.freed());
     try testing.expectEqual(@as(usize, 0), memory.dying);
     try testing.expectEqual(alive - measure.bytes, memory.live);
@@ -343,8 +358,7 @@ fn theEngineIsToldAtTheNextSafePoint() !void {
     try testing.expect(fell + 2 * ExternalMemory.report_step >= measure.bytes);
 
     // Its slices free it: the engine is told nothing more.
-    try turn(page);
-    try turn(page);
+    try turnUntilFreed(page);
     try testing.expect(tree.freed());
     try page.run("void document.body;");
     const told_freed = engine.heapStatistics(agent).external;
@@ -391,7 +405,7 @@ fn theFigureHoldsNoQueuedTreeInOneTask() !void {
         const per_div = dom.tree_teardown.measureUpTo(try page.node("one"), DeferredTeardown.high_water).bytes;
         try testing.expect(per_div >= runtime.SlabAllocator.slot_bytes + @sizeOf(dom.NodeBase));
         try page.collect();
-        try turn(page);
+        try turnUntilFreed(page);
         try testing.expect(queue.isEmpty());
         try testing.expectEqual(@as(usize, 0), memory.dying);
 
