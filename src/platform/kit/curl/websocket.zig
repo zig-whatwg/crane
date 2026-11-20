@@ -24,6 +24,7 @@ const share = @import("kit_curl_share");
 const options = share.options;
 const frames = share.websocket_frames;
 const handshake = share.websocket_handshake;
+const deflate = share.websocket_deflate;
 // curl/curl.h, websockets.h and header.h, translated by build.zig (addCImport).
 const c = @import("curl_c");
 
@@ -42,6 +43,14 @@ const max_buffered = 64 * 1024;
 
 /// One read from the connection.
 const read_size = 16 * 1024;
+
+/// permessage-deflate is offered where zlib is in the link: the bundled
+/// libcurl's (trust.enabled is "bundled").
+const deflate_available = share.trust.enabled;
+
+/// The largest message a compressed one may inflate to: Firefox's
+/// network.websocket.max-message-size default (2^31 - 1).
+const max_inflated_message = (1 << 31) - 1;
 
 const Phase = enum {
     /// curl is connecting (and, for wss:, handshaking TLS).
@@ -103,6 +112,19 @@ const Socket = struct {
     /// The connection ended (curl_easy_recv read 0 bytes, or the HTTP/2
     /// stream ended).
     eof: bool = false,
+    /// permessage-deflate in use (RFC 7692): the compressor (null while
+    /// messages go out uncompressed - 6.1 allows that - including when the
+    /// server limits the client to an 8-bit window, which zlib's raw deflate
+    /// does not make) and the decompressor.
+    deflater: ?*deflate.Deflater = null,
+    inflater: ?*deflate.Inflater = null,
+    /// A compressed message's payload so far (6.2 step 1).
+    compressed_in: std.ArrayList(u8) = .empty,
+    /// The last compressed message, inflated, handed over from `inflated_at`.
+    inflated: std.ArrayList(u8) = .empty,
+    inflated_at: usize = 0,
+    inflated_kind: frames.Kind = .binary,
+    inflated_pending: bool = false,
 
     const Control = struct {
         bytes: [frames.max_control_payload]u8 = undefined,
@@ -407,7 +429,15 @@ fn connected(socket: *Socket) platform.HttpError!void {
         socket.phase = .h2_settings;
         return;
     }
-    handshake.writeRequest(socket.allocator, &socket.out, .{ .host = socket.host, .port = socket.port, .resource = socket.resource }, &socket.key, socket.network.user_agent, socket.authorization, socket.fields) catch return error.OutOfMemory;
+    var fields: std.ArrayList(handshake.Field) = .empty;
+    defer fields.deinit(socket.allocator);
+    try fields.ensureTotalCapacity(socket.allocator, socket.fields.len + 1);
+    fields.appendSliceAssumeCapacity(socket.fields);
+    // WebSockets 2.2, establish a WebSocket connection: "Let permessageDeflate
+    // be a user-agent defined "permessage-deflate" extension header value";
+    // append (`Sec-WebSocket-Extensions`, permessageDeflate).
+    if (deflate_available) fields.appendAssumeCapacity(.{ .name = "Sec-WebSocket-Extensions", .value = deflate.offer });
+    handshake.writeRequest(socket.allocator, &socket.out, .{ .host = socket.host, .port = socket.port, .resource = socket.resource }, &socket.key, socket.network.user_agent, socket.authorization, fields.items) catch return error.OutOfMemory;
     socket.phase = .h1_handshake;
 }
 
@@ -519,10 +549,39 @@ fn readH1Response(socket: *Socket) platform.HttpError!void {
     try socket.response_headers.ensureTotalCapacity(socket.allocator, head.fields.items.len);
     for (head.fields.items) |field| socket.response_headers.appendAssumeCapacity(.{ .name = .from(field.name), .value = .from(field.value) });
     socket.phase = .done;
+    const extensions_ok = handshake.accepts(&head, &socket.key) and try agreeExtensions(socket, socket.response_headers.items);
     socket.result = .{
         .head = .{ .status = head.status, .version = .http1_1, .headers = .from(socket.response_headers.items) },
-        .verified = handshake.accepts(&head, &socket.key),
+        .verified = extensions_ok,
     };
+}
+
+/// RFC 6455 4.1 step 5 with RFC 7692 5 and 7: the response's
+/// Sec-WebSocket-Extensions names nothing, or the permessage-deflate offered
+/// with valid parameters - which are then put to use. False: fail the
+/// WebSocket connection.
+fn agreeExtensions(socket: *Socket, fields: []const platform.Header) platform.HttpError!bool {
+    var values: std.ArrayList([]const u8) = .empty;
+    defer values.deinit(socket.allocator);
+    for (fields) |field| {
+        if (std.ascii.eqlIgnoreCase(field.name.slice(), "Sec-WebSocket-Extensions")) try values.append(socket.allocator, field.value.slice());
+    }
+    const agreed = deflate.agree(values.items) catch return false;
+    const params = switch (agreed) {
+        .none => return true,
+        // Accepting what was not offered fails the connection (RFC 7692 5).
+        .deflate => |p| if (deflate_available) p else return false,
+    };
+    // 7.2.1: the client may use no window larger than client_max_window_bits.
+    const window_bits = params.client_max_window_bits orelse 15;
+    if (window_bits >= 9) socket.deflater = deflate.Deflater.create(socket.allocator, window_bits, params.client_no_context_takeover) catch |err| return mapDeflate(err);
+    socket.inflater = deflate.Inflater.create(socket.allocator, params.server_no_context_takeover) catch |err| return mapDeflate(err);
+    socket.decoder.rsv1_allowed = true;
+    return true;
+}
+
+fn mapDeflate(err: deflate.Error) platform.HttpError {
+    return if (err == error.OutOfMemory) error.OutOfMemory else error.NetworkError;
 }
 
 fn h2Handshake(socket: *Socket) platform.HttpError!void {
@@ -550,8 +609,9 @@ fn h2Handshake(socket: *Socket) platform.HttpError!void {
             std.fmt.bufPrint(&authority_buffer, "{s}", .{socket.host})) catch return error.InvalidRequest;
         var fields: std.ArrayList(h2.Field) = .empty;
         defer fields.deinit(socket.allocator);
-        try fields.ensureTotalCapacity(socket.allocator, socket.fields.len + 2);
+        try fields.ensureTotalCapacity(socket.allocator, socket.fields.len + 3);
         if (socket.network.user_agent) |value| fields.appendAssumeCapacity(.{ .name = "user-agent", .value = value });
+        if (deflate_available) fields.appendAssumeCapacity(.{ .name = "sec-websocket-extensions", .value = deflate.offer });
         var has_authorization = false;
         for (socket.fields) |field| {
             if (std.ascii.eqlIgnoreCase(field.name, "Authorization")) has_authorization = true;
@@ -576,15 +636,11 @@ fn h2Handshake(socket: *Socket) platform.HttpError!void {
     for (session.fields.items) |field| socket.response_headers.appendAssumeCapacity(.{ .name = .from(field.name), .value = .from(field.value) });
     socket.phase = .done;
     // RFC 8441 section 5: a 2xx response opens the tunnel; there is no
-    // Sec-WebSocket-Accept to check. An extension the server names was not
-    // offered (RFC 6455 4.1 step 5).
-    var extension = false;
-    for (session.fields.items) |field| {
-        if (std.ascii.eqlIgnoreCase(field.name, "sec-websocket-extensions") and field.value.len > 0) extension = true;
-    }
+    // Sec-WebSocket-Accept to check, and the extensions are as on HTTP/1.1.
+    const ok = session.status >= 200 and session.status < 300 and try agreeExtensions(socket, socket.response_headers.items);
     socket.result = .{
         .head = .{ .status = session.status, .version = .http2, .headers = .from(socket.response_headers.items) },
-        .verified = session.status >= 200 and session.status < 300 and !extension,
+        .verified = ok,
     };
 }
 
@@ -614,6 +670,30 @@ fn writeFrame(socket: *Socket, kind: frames.Kind, payload: []const u8, budget: u
     return socket.encoder.write(socket.allocator, &socket.out, kind, payload, budget, randomKey);
 }
 
+/// Queue frame bytes already made for the network.
+fn queueBytes(socket: *Socket, bytes: []const u8) !void {
+    if (http2) if (socket.session) |session| return session.queue(bytes);
+    try socket.out.appendSlice(socket.allocator, bytes);
+}
+
+/// A whole message as one compressed frame (RFC 7692 6.1 and 7.2.1): the
+/// payload deflated, RSV1 set, masked. All of `payload` is taken.
+fn writeCompressed(socket: *Socket, deflater: *deflate.Deflater, kind: frames.Kind, payload: []const u8) !void {
+    var frame: std.ArrayList(u8) = .empty;
+    defer frame.deinit(socket.allocator);
+    try frame.appendNTimes(socket.allocator, 0, frames.max_header_len);
+    try deflater.compress(payload, &frame);
+    const compressed = frame.items[frames.max_header_len..];
+    var key: [4]u8 = undefined;
+    randomKey(&key);
+    frames.mask(compressed, key, 0);
+    var header: [frames.max_header_len]u8 = undefined;
+    const n = frames.encodeCompressedHeader(&header, frames.Opcode.of(kind), compressed.len, key);
+    const start = frames.max_header_len - n;
+    @memcpy(frame.items[start..frames.max_header_len], header[0..n]);
+    try queueBytes(socket, frame.items[start..]);
+}
+
 /// A Ping waiting for its Pong goes out once no frame is part-way.
 fn answerPing(socket: *Socket) !void {
     const pong = socket.pong orelse return;
@@ -632,7 +712,19 @@ pub fn send(handle: *platform.WebSocket, kind: platform.WebSocketFrameKind, byte
         budget = max_buffered -| buffered(socket);
         if (budget == 0) return error.WouldBlock;
     }
-    const taken = writeFrame(socket, @fromBackingInt(@intCast(@backingInt(kind))), payload, budget) catch |err| switch (err) {
+    const frame_kind: frames.Kind = @fromBackingInt(@intCast(@backingInt(kind)));
+    // A data message starting now goes out compressed when permessage-deflate
+    // is in use (RFC 7692 6.1); control frames never are.
+    if (socket.deflater) |deflater| if (!socket.encoder.busy() and (frame_kind == .text or frame_kind == .binary)) {
+        writeCompressed(socket, deflater, frame_kind, payload) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.NetworkError,
+        };
+        answerPing(socket) catch return error.OutOfMemory;
+        pump(socket) catch |err| return mapPump(err);
+        return payload.len;
+    };
+    const taken = writeFrame(socket, frame_kind, payload, budget) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         // The caller changed kind part-way through a frame.
         error.FrameKindChanged => return error.InvalidRequest,
@@ -656,6 +748,7 @@ pub fn receive(handle: *platform.WebSocket, buffer: []u8) platform.WebSocketErro
     if (!connectedOpen(socket)) return error.NetworkError;
     std.debug.assert(buffer.len >= frames.max_control_payload);
     while (true) {
+        if (socket.inflated_pending) return deliverInflated(socket, buffer);
         const input = pendingInput(socket);
         if (input.len > 0 or socket.decoder.frame != null) {
             const result = socket.decoder.decode(input, buffer) catch return error.NetworkError;
@@ -667,6 +760,24 @@ pub fn receive(handle: *platform.WebSocket, buffer: []u8) platform.WebSocketErro
                     socket.pong = pong;
                     answerPing(socket) catch return error.OutOfMemory;
                     pump(socket) catch {};
+                }
+                if (chunk.compressed) {
+                    // 6.2: the frames' payloads are gathered, then the
+                    // message is decompressed whole and handed over.
+                    socket.compressed_in.appendSlice(socket.allocator, buffer[0..chunk.len]) catch return error.OutOfMemory;
+                    if (chunk.bytes_left > 0 or chunk.more_fragments) continue;
+                    socket.inflated.clearRetainingCapacity();
+                    socket.inflated_at = 0;
+                    const inflater = socket.inflater orelse return error.NetworkError;
+                    inflater.decompress(socket.compressed_in.items, &socket.inflated, max_inflated_message) catch |err| return switch (err) {
+                        error.OutOfMemory => error.OutOfMemory,
+                        // Not DEFLATE: fail the connection.
+                        else => error.NetworkError,
+                    };
+                    socket.compressed_in.clearRetainingCapacity();
+                    socket.inflated_kind = chunk.kind;
+                    socket.inflated_pending = true;
+                    return deliverInflated(socket, buffer);
                 }
                 return .{
                     .bytes = .from(buffer[0..chunk.len]),
@@ -686,6 +797,23 @@ pub fn receive(handle: *platform.WebSocket, buffer: []u8) platform.WebSocketErro
         };
         if (pendingInput(socket).len == before and !socket.eof) return error.WouldBlock;
     }
+}
+
+/// The next part of the last decompressed message: `bytes_left` counts what
+/// remains of it, and it is never fragmented.
+fn deliverInflated(socket: *Socket, buffer: []u8) platform.WebSocketChunk {
+    const rest = socket.inflated.items[socket.inflated_at..];
+    const n = @min(rest.len, buffer.len);
+    @memcpy(buffer[0..n], rest[0..n]);
+    socket.inflated_at += n;
+    const left = rest.len - n;
+    if (left == 0) socket.inflated_pending = false;
+    return .{
+        .bytes = .from(buffer[0..n]),
+        .kind = @fromBackingInt(@intCast(@backingInt(socket.inflated_kind))),
+        .bytes_left = left,
+        .more_fragments = false,
+    };
 }
 
 fn pendingInput(socket: *const Socket) []const u8 {
@@ -723,6 +851,10 @@ pub fn release(handle: *platform.WebSocket) void {
         }
     };
     dropConnection(socket);
+    if (socket.deflater) |deflater| deflater.destroy();
+    if (socket.inflater) |inflater| inflater.destroy();
+    socket.compressed_in.deinit(allocator);
+    socket.inflated.deinit(allocator);
     _ = c.curl_multi_cleanup(socket.multi);
     socket.out.deinit(allocator);
     socket.in.deinit(allocator);

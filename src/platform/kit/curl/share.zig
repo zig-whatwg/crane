@@ -39,6 +39,9 @@ pub const websocket_frames = @import("websocket_frames.zig");
 /// request, the response head read as browsers read it, and its checks.
 pub const websocket_handshake = @import("websocket_handshake.zig");
 
+/// permessage-deflate (RFC 7692) for the WebSocket transport, on zlib.
+pub const websocket_deflate = @import("websocket_deflate.zig");
+
 /// A WebSocket over HTTP/2 (RFC 8441), the client side, on nghttp2 - the
 /// library libcurl's HTTP/2 is built on, declared in nghttp2.zig. Reached only
 /// from a platform built with HTTP/2 (platform_options.http2).

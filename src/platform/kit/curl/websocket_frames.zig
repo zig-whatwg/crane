@@ -30,7 +30,7 @@ pub const Opcode = enum(u4) {
     pong = 0xA,
     _,
 
-    fn of(kind: Kind) Opcode {
+    pub fn of(kind: Kind) Opcode {
         return switch (kind) {
             .text => .text,
             .binary => .binary,
@@ -70,6 +70,14 @@ pub fn encodeHeader(out: *[max_header_len]u8, opcode: Opcode, fin: bool, payload
     }
     @memcpy(out[n..][0..4], &mask_key);
     return n + 4;
+}
+
+/// A compressed message's frame header (RFC 7692 6: RSV1, the "Per-Message
+/// Compressed" bit, set on its first frame).
+pub fn encodeCompressedHeader(out: *[max_header_len]u8, opcode: Opcode, payload_len: u64, mask_key: [4]u8) usize {
+    const n = encodeHeader(out, opcode, true, payload_len, mask_key);
+    out[0] |= 0x40;
+    return n;
 }
 
 /// 5.3: XOR `bytes` - the payload bytes from `offset` on - with the mask key,
@@ -149,11 +157,17 @@ pub const Decoder = struct {
     /// A control frame's payload, gathered whole.
     control: [max_control_payload]u8 = undefined,
     control_len: usize = 0,
+    /// permessage-deflate is in use (RFC 7692): RSV1 is its "Per-Message
+    /// Compressed" bit, allowed on the first frame of a data message.
+    rsv1_allowed: bool = false,
+    /// The data message in progress is compressed (RSV1 on its first frame).
+    message_compressed: bool = false,
 
     const Frame = struct {
         kind: Kind,
         fin: bool,
         remaining: u64,
+        compressed: bool,
     };
 
     pub const Chunk = struct {
@@ -165,6 +179,9 @@ pub const Decoder = struct {
         /// Whether more frames of this message follow (a data frame without
         /// FIN).
         more_fragments: bool,
+        /// The bytes are a compressed message's (RFC 7692 6: RSV1 was set
+        /// on its first frame), to be decompressed whole.
+        compressed: bool = false,
     };
 
     pub const Result = struct {
@@ -212,6 +229,7 @@ pub const Decoder = struct {
             .len = take,
             .bytes_left = frame.remaining,
             .more_fragments = !frame.fin,
+            .compressed = frame.compressed,
         };
         if (frame.remaining == 0) {
             if (frame.fin) self.message = null;
@@ -258,8 +276,10 @@ pub const Decoder = struct {
         const b0 = self.header[0];
         const b1 = self.header[1];
         const fin = b0 & 0x80 != 0;
-        // 5.2: RSV1-3 "MUST be 0 unless an extension is negotiated".
-        if (b0 & 0x70 != 0) return error.ProtocolError;
+        // 5.2: RSV1-3 "MUST be 0 unless an extension is negotiated"; RSV1 is
+        // permessage-deflate's, checked below. RSV2 and RSV3 are no one's.
+        if (b0 & 0x30 != 0) return error.ProtocolError;
+        const rsv1 = b0 & 0x40 != 0;
         // 5.1: "A client MUST close a connection if it detects a masked frame."
         if (b1 & 0x80 != 0) return error.ProtocolError;
         const len7 = b1 & 0x7F;
@@ -274,6 +294,11 @@ pub const Decoder = struct {
             else => len7,
         };
         const opcode: Opcode = @fromBackingInt(@intCast(@as(u4, @truncate(b0))));
+        // RFC 7692 6: "An endpoint MUST NOT set the "Per-Message Compressed"
+        // bit of control frames and non-first fragments of a data message";
+        // receiving one fails the connection, as does RSV1 with no
+        // permessage-deflate in use.
+        if (rsv1 and (!self.rsv1_allowed or opcode == .continuation or opcode.isControl())) return error.ProtocolError;
         const kind: Kind = switch (opcode) {
             .continuation => self.message orelse return error.ProtocolError,
             .text, .binary => blk: {
@@ -281,6 +306,7 @@ pub const Decoder = struct {
                 if (self.message != null) return error.ProtocolError;
                 const kind: Kind = if (opcode == .text) .text else .binary;
                 if (!fin) self.message = kind;
+                self.message_compressed = rsv1;
                 break :blk kind;
             },
             .close => .close,
@@ -291,6 +317,6 @@ pub const Decoder = struct {
             _ => return error.ProtocolError,
         };
         if (opcode.isControl() and (!fin or len > max_control_payload)) return error.ProtocolError;
-        self.frame = .{ .kind = kind, .fin = fin, .remaining = len };
+        self.frame = .{ .kind = kind, .fin = fin, .remaining = len, .compressed = !opcode.isControl() and self.message_compressed };
     }
 };

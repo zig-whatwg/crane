@@ -188,9 +188,10 @@ fn trimCr(line: []const u8) []const u8 {
 }
 
 /// RFC 6455 4.1's checks of a response whose status is 101 (the client's
-/// steps 2-5; step 6, the subprotocol, is above the platform): Upgrade is
-/// "websocket", Connection has the token "Upgrade", Sec-WebSocket-Accept is
-/// `key`'s, and no extension is in use - none was offered.
+/// steps 2-4; step 5, the extensions, is websocket_deflate.zig's `agree`, as
+/// the transport offered them; step 6, the subprotocol, is above the
+/// platform): Upgrade is "websocket", Connection has the token "Upgrade", and
+/// Sec-WebSocket-Accept is `key`'s.
 pub fn accepts(head: *const Head, key: []const u8) bool {
     if (head.status != 101) return false;
     const upgrade = head.single("Upgrade") orelse return false;
@@ -205,9 +206,5 @@ pub fn accepts(head: *const Head, key: []const u8) bool {
     }
     if (!has_upgrade_token) return false;
     const accept = head.single("Sec-WebSocket-Accept") orelse return false;
-    if (!std.mem.eql(u8, accept, &acceptFor(key))) return false;
-    for (head.fields.items) |field| {
-        if (std.ascii.eqlIgnoreCase(field.name, "Sec-WebSocket-Extensions") and field.value.len > 0) return false;
-    }
-    return true;
+    return std.mem.eql(u8, accept, &acceptFor(key));
 }

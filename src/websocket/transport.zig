@@ -73,6 +73,11 @@ pub const WebSocketTransport = struct {
     /// Negotiated protocol from server.
     negotiated_protocol: ?[]const u8 = null,
 
+    /// The extensions in use (RFC 6455 4.1: the value of the response's
+    /// Sec-WebSocket-Extensions, which the transport checked against what it
+    /// offered), or null when it named none. OWNED.
+    negotiated_extensions: ?[]const u8 = null,
+
     /// The user agent's cookie jar (BORROWED): the handshake is a request
     /// whose credentials mode is "include", so it sends the jar's cookies
     /// for the URL and stores its response's `Set-Cookie`. Null: none.
@@ -183,6 +188,7 @@ pub const WebSocketTransport = struct {
         if (self.negotiated_protocol) |p| {
             self.allocator.free(p);
         }
+        if (self.negotiated_extensions) |e| self.allocator.free(e);
 
         if (self.protocols) |p| {
             self.allocator.free(p);
@@ -255,6 +261,7 @@ pub const WebSocketTransport = struct {
         if (!result.verified or !acceptsHandshake(result.head.version == .http2, result.head.status)) return error.HandshakeFailed;
         const selected = try selectSubprotocol(self.protocols, responseHeader(result.head.headers.slice(), "Sec-WebSocket-Protocol"));
         if (selected) |value| self.negotiated_protocol = try self.allocator.dupe(u8, value);
+        self.negotiated_extensions = try extensionsInUse(self.allocator, result.head.headers.slice());
         self.connected = true;
         return true;
     }
@@ -299,6 +306,23 @@ pub const WebSocketTransport = struct {
                 log.warn("handshake Set-Cookie not stored: {s}", .{@errorName(err)});
             };
         }
+    }
+
+    /// RFC 6455 4.1's _Extensions In Use_: the response's
+    /// Sec-WebSocket-Extensions value - its occurrences joined as one list
+    /// (RFC 9110 5.3) - or null when there is none. OWNED.
+    fn extensionsInUse(allocator: std.mem.Allocator, headers: []const platform.Header) !?[]const u8 {
+        var joined: std.ArrayList(u8) = .empty;
+        errdefer joined.deinit(allocator);
+        for (headers) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name.slice(), "Sec-WebSocket-Extensions")) continue;
+            const value = std.mem.trim(u8, header.value.slice(), " \t");
+            if (value.len == 0) continue;
+            if (joined.items.len > 0) try joined.appendSlice(allocator, ", ");
+            try joined.appendSlice(allocator, value);
+        }
+        if (joined.items.len == 0) return null;
+        return try joined.toOwnedSlice(allocator);
     }
 
     /// A repeated protocol field is a list, never the one offered token.
@@ -367,6 +391,11 @@ pub const WebSocketTransport = struct {
     /// Get the negotiated protocol (if any).
     pub fn getProtocol(self: *const Self) ?[]const u8 {
         return self.negotiated_protocol;
+    }
+
+    /// The extensions in use (if any).
+    pub fn getExtensions(self: *const Self) ?[]const u8 {
+        return self.negotiated_extensions;
     }
 
     /// Check if the connection is established.
