@@ -20,6 +20,8 @@ const Scripted = struct {
     listener: LoopbackListener = undefined,
     thread: ?std.Thread = null,
     right_accept: bool = true,
+    /// A Sec-WebSocket-Extensions field for the 101, if any.
+    extensions: ?[]const u8 = null,
     after: []const []const u8 = &.{},
     want: usize = 0,
     request: [4096]u8 = undefined,
@@ -72,7 +74,9 @@ const Scripted = struct {
         const accept = std.base64.standard.Encoder.encode(&encoded, &digest);
         var output: [0]u8 = .{};
         var writer = stream.writer(io, &output);
-        try writer.interface.print("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {s}\r\n\r\n", .{accept});
+        try writer.interface.print("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {s}\r\n", .{accept});
+        if (self.extensions) |value| try writer.interface.print("Sec-WebSocket-Extensions: {s}\r\n", .{value});
+        try writer.interface.writeAll("\r\n");
         try writer.interface.flush();
         for (self.after) |piece| {
             try writer.interface.writeAll(piece);
@@ -204,4 +208,67 @@ test "frames are decoded from any split of the reads, and a Ping is answered wit
     var payload: [3]u8 = pong[6..9].*;
     for (&payload, 0..) |*byte, i| byte.* ^= pong[2 + i % 4];
     try testing.expectEqualStrings("abc", &payload);
+}
+
+test "permessage-deflate is offered and, when accepted, messages are compressed both ways (RFC 7692)" {
+    var server: Scripted = .{
+        .extensions = "permessage-deflate",
+        // "Hello" compressed, as RFC 7692 7.2.3.1's frame: FIN, RSV1, text.
+        .after = &.{&.{ 0xc1, 0x07, 0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 }},
+        // The client's "Hello": two header bytes, the mask key, 7 bytes.
+        .want = 2 + 4 + 7,
+    };
+    try server.start();
+    defer server.stop();
+    var url: [64]u8 = undefined;
+    const transport = try Transport.init(testing.allocator, try server.url(&url), null);
+    defer transport.deinit();
+    try connect(transport);
+    // WebSockets: the offer is the request's Sec-WebSocket-Extensions, and
+    // what the server answered is the extensions in use.
+    const request = server.request[0..server.request_len.load(.acquire)];
+    try testing.expect(std.mem.indexOf(u8, request, "\r\nSec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n") != null);
+    try testing.expectEqualStrings("permessage-deflate", transport.getExtensions().?);
+
+    var buffer: [256]u8 = undefined;
+    const chunk = try next(transport, &buffer);
+    try testing.expectEqual(websocket.transport.FrameKind.text, chunk.kind);
+    try testing.expectEqualStrings("Hello", chunk.data);
+    try testing.expectEqual(@as(u64, 0), chunk.bytes_left);
+    try testing.expect(!chunk.more_fragments);
+
+    try testing.expectEqual(@as(usize, 5), try transport.sendPart("Hello", .text));
+    var waited: usize = 0;
+    while (server.client_len.load(.acquire) == 0 and waited < 400) : (waited += 1) std.Io.sleep(io, .fromMilliseconds(5), .awake) catch {};
+    const frame = server.client[0..server.client_len.load(.acquire)];
+    try testing.expectEqual(@as(usize, 13), frame.len);
+    try testing.expectEqual(@as(u8, 0xC1), frame[0]); // FIN, RSV1, text
+    try testing.expectEqual(@as(u8, 0x80 | 7), frame[1]);
+    var payload: [7]u8 = frame[6..13].*;
+    for (&payload, 0..) |*byte, i| byte.* ^= frame[2 + i % 4];
+    try testing.expectEqualSlices(u8, &.{ 0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00 }, &payload);
+}
+
+test "a server that accepts an extension the client did not offer fails the handshake" {
+    for ([_][]const u8{ "x-webkit-deflate-frame", "permessage-deflate; unknown_parameter" }) |extensions| {
+        var server: Scripted = .{ .extensions = extensions };
+        try server.start();
+        defer server.stop();
+        var url: [64]u8 = undefined;
+        const transport = try Transport.init(testing.allocator, try server.url(&url), null);
+        defer transport.deinit();
+        try testing.expectError(error.HandshakeFailed, connect(transport));
+    }
+}
+
+test "RSV1 on a message with no permessage-deflate in use fails the connection" {
+    var server: Scripted = .{ .after = &.{&.{ 0xc1, 0x01, 'x' }} };
+    try server.start();
+    defer server.stop();
+    var url: [64]u8 = undefined;
+    const transport = try Transport.init(testing.allocator, try server.url(&url), null);
+    defer transport.deinit();
+    try connect(transport);
+    var buffer: [256]u8 = undefined;
+    try testing.expectError(error.NetworkError, next(transport, &buffer));
 }

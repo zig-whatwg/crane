@@ -2,7 +2,7 @@
 //! makes and checks it (lane net3; RFC 6455 4.1): the request carries the
 //! fields libcurl's upgrade sent, the response head is read as the browsers
 //! read an HTTP/1 head, and a 101 is accepted only with Upgrade, Connection
-//! and the right Sec-WebSocket-Accept, and no extension (libcurl checked
+//! and the right Sec-WebSocket-Accept (the extensions are websocket_deflate.zig's; libcurl checked
 //! none of these: lib/ws.c Curl_ws_accept only comments on them).
 const std = @import("std");
 const testing = std.testing;
@@ -90,7 +90,6 @@ test "a 101 is accepted only as RFC 6455 4.1 says" {
         "HTTP/1.1 101 OK\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: xxxxLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n",
         "HTTP/1.1 101 OK\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n",
         "HTTP/1.1 101 OK\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n",
-        "HTTP/1.1 101 OK\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n",
     }) |bad| {
         var head = try parse(bad, &folded);
         defer head.deinit(testing.allocator);
