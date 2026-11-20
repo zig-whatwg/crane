@@ -2046,3 +2046,13 @@ safari.result     = wpt.fyi run 6479119966273536: 1/2 (Safari 27.2, 2358bd4835; 
 matches           = chrome, firefox
 renderer-subtests = Navigation API intercept() focus reset should work if navigation was user-initiated :: test_driver.click(iframe) clicks the frame's centre, where an absolutely positioned <a href="#nav"> (inset: 0) covers its viewport; finding it there is a hit test on laid-out content, and with no renderer the click lands on the frame's document root, so the navigation the subtest waits for never starts
 revisit           = when Chrome or Firefox changes its result on a newer aligned wpt.fyi run, or a renderer answers hit tests, or Crane's result moves
+
+[referrer-policy/generic/multiple-headers-one-invalid.html]
+kind              = follows-majority
+why               = the document's two headers, "origin" and "origin no-referrer", parse to the policy "origin" (Referrer Policy 8.1: the last valid token; "origin no-referrer" is none), so a same-origin image request is sent the origin, as in Firefox and Safari ("expected <the page URL> but got <its origin>"); Chrome discards the header and sends the full URL. Crane sends the origin (Crane test crane/blk5-referrer-multiple-headers.html), but its one subtest stops earlier, at the image read-back
+chrome.result     = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result    = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result     = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches           = firefox, safari
+renderer-subtests = Referrer policy header parsing fails if one header is invalid :: common/security-features' requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight); with no renderer img.clientWidth is 0, so getImageData throws IndexSizeError before the referrer is compared (as in the 130 needs-renderer referrer-policy files); with a renderer the subtest would fail at the referrer, as Firefox and Safari do
+revisit           = when Firefox or Safari changes its result on a newer aligned wpt.fyi run, or a renderer answers geometry, or Crane's result moves
