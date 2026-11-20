@@ -1455,6 +1455,68 @@ test "exemptions: a follows-majority exempt file counts as exempt, never as bloc
     try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .timed_out = 1 }).exempted());
 }
 
+// Two follows-majority forms (lane blk5, main's GO 2026-11-20 1:37 PM ET), on the fixture
+// tools/wpt_progress.py --self-test reads too, so the two readers agree: matches = none, with a ruling
+// that names its golden rule 2 case - Crane's result is the spec's and equals no browser's - and
+// renderer-subtests, the subtests that fail in Crane only for want of a renderer, each "<name> :: <why>".
+const fixture_shared = @embedFile("exemption_fixture.txt");
+
+test "exemptions: matches = none with a ruling naming its case, and renderer-subtests, parse as tools/wpt_progress.py reads them" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_shared, &diag);
+    try testing.expectEqual(@as(usize, 2), list.len);
+    const alone = list[0];
+    try testing.expectEqualStrings("html/x/spec-alone.html", alone.path);
+    try testing.expectEqual(ExemptionKind.follows_majority, alone.kind);
+    try testing.expectEqual([3]bool{ false, false, false }, alone.matches);
+    try testing.expect(std.mem.startsWith(u8, alone.ruling, "golden rule 2, the spec where all three differ"));
+    try testing.expectEqual(@as(usize, 0), alone.rendererSubtestCount());
+    const part = list[1];
+    try testing.expectEqual([3]bool{ true, true, false }, part.matches);
+    try testing.expectEqual(@as(usize, 2), part.rendererSubtestCount());
+    var it = part.rendererSubtests();
+    const first = it.next().?;
+    try testing.expectEqualStrings("the second subtest", first.name);
+    try testing.expectEqualStrings("its click lands on an absolutely positioned link", first.why);
+    const second = it.next().?;
+    try testing.expectEqualStrings("the third subtest", second.name);
+    try testing.expectEqualStrings("it reads a box's size", second.why);
+    try testing.expect(it.next() == null);
+    // Each of the three cases makes a ruling for none.
+    for ([_][]const u8{ "all three differ", "newer spec", "timing-bound" }) |case| {
+        const text = try std.mem.replaceOwned(u8, arena.allocator(), fixture_shared, "the spec where all three differ", case);
+        _ = try parseExemptions(arena.allocator(), text, &diag);
+    }
+}
+
+test "exemptions: matches = none without a ruling naming its case, a malformed renderer-subtests, or one on another kind, is invalid" {
+    const a = testing.allocator;
+    const rule = "ruling            = golden rule 2, the spec where all three differ: the main session, 2026-11-20\n";
+    try testing.expect(std.mem.indexOf(u8, fixture_shared, rule) != null);
+    const cases = "needs a ruling that names its golden rule 2 case";
+    const no_rule = try std.mem.replaceOwned(u8, a, fixture_shared, rule, "");
+    defer a.free(no_rule);
+    try expectInvalid(no_rule, cases);
+    const vague = try std.mem.replaceOwned(u8, a, fixture_shared, rule, "ruling            = the main session, 2026-11-20\n");
+    defer a.free(vague);
+    try expectInvalid(vague, cases);
+    const mixed = try std.mem.replaceOwned(u8, a, fixture_shared, "matches           = none", "matches           = none, chrome");
+    defer a.free(mixed);
+    try expectInvalid(mixed, "or read none");
+    const whole = "renderer-subtests = the second subtest :: its click lands on an absolutely positioned link || the third subtest :: it reads a box's size";
+    try testing.expect(std.mem.indexOf(u8, fixture_shared, whole) != null);
+    for ([_][]const u8{ "renderer-subtests = the second subtest", "renderer-subtests = :: a reason", "renderer-subtests = a name :: " }) |bad| {
+        const text = try std.mem.replaceOwned(u8, a, fixture_shared, whole, bad);
+        defer a.free(text);
+        try expectInvalid(text, "renderer-subtests must give");
+    }
+    const other = try std.mem.replaceOwned(u8, a, fixture_needs_renderer, "why = ", "renderer-subtests = a :: b\nwhy = ");
+    defer a.free(other);
+    try expectInvalid(other, "\"renderer-subtests\" is not a key of a needs-renderer exemption");
+}
+
 // The fifth kind (the user, 2026-11-18 2:53 PM ET): like needs-renderer, a file
 // that fails ONLY because the platform WPT runs on has no decoder for its media.
 // Its keys: kind, why, media (the media file(s) and their type) and the failing
