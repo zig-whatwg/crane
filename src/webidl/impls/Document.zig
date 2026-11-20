@@ -724,6 +724,11 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     // DOM clone step 3.1 also copies "allow declarative shadow roots"
     // (dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots).
     target.allow_declarative_shadow_roots = source.allow_declarative_shadow_roots or source.default_view != null;
+    // Step 2: "Set copy's base URL override to the result of running node's
+    // get the base URL" - HTML's document base URL (Node.baseURI's).
+    const base = try interfaces.Node.get_baseURI(node);
+    defer node.ctx.allocator.free(base);
+    try @import("dom").document_internals.setBaseURLOverride(copy, base);
 }
 
 /// Get Document's internal state from the registry

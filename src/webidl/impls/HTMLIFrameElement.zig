@@ -844,6 +844,10 @@ const fetch_mod = @import("fetch");
 pub const NavigateOptions = struct {
     /// "sourceDocument": the document whose script (or element) navigates.
     source_document: ?*runtime.Instance = null,
+    /// With no source document: the document the request's referrer is, as
+    /// "client" resolves it, with its referrer policy - a declarative
+    /// refresh's reload (traverseNavigable's `refresh`).
+    referrer_document: ?*runtime.Instance = null,
     history_behavior: navigate_steps.HistoryBehavior = .auto,
     /// "documentResource" as a string: an iframe srcdoc document's markup.
     srcdoc: ?[]const u8 = null,
@@ -1755,6 +1759,19 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // document, as Fetch resolves it.
     if (options.source_document) |source| record.referrer = requestReferrerOf(source, allocator);
     record.referrer_policy = options.referrer_policy;
+    // A declarative refresh's reload: the refreshing document is the
+    // referrer, with its policy container's referrer policy - Blink's
+    // NavigationScheduler navigates with a FrameLoadRequest whose origin
+    // document is the refreshing one (load type reload for the same URL),
+    // Gecko's nsDocShell::ForceRefreshURI gives the load the document's
+    // ReferrerInfo; attr-meta-http-equiv-refresh/parsing.html "referrer is
+    // previous page": Chrome 157, Firefox 160 and Safari 27.2.
+    if (options.source_document == null) if (options.referrer_document) |referrer_document| {
+        record.referrer = requestReferrerOf(referrer_document, allocator);
+        if (record.referrer_policy == .empty) {
+            if (dom_module.policy_containers.of(referrer_document)) |container| record.referrer_policy = container.referrer_policy;
+        }
+    };
     // Step 4: "Let sourceSnapshotParams be the result of snapshotting source
     // snapshot params given sourceDocument" - its source policy container a
     // clone of sourceDocument's policy container.
@@ -5047,7 +5064,7 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// navigable to the entry it traverses to - from its document state's
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
-fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?dom_module.navigables.TraversalWaiter, refresh: bool) bool {
     const traversed: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
     // The Browser's list outlives the navigation: what traversalInFlight
     // checks the integration against once the navigation may have ended it.
@@ -5064,15 +5081,18 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // the container's current one is used instead.
         // The host page's entry an embedder's load made keeps the
         // embedder's markup: re-created from it at the entry's URL.
+        // A declarative refresh's reload: the refreshing document - still the
+        // navigable's active one - is its request's referrer.
+        const referrer_document: ?*runtime.Instance = if (refresh) activeDocumentOf(integration) else null;
         if (integration.host_realms != null) {
-            navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter });
+            navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter, .referrer_document = referrer_document });
             return traversalInFlight(list, integration, waiter);
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk nodeDocumentOf(element);
         } else null;
-        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
+        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter, .referrer_document = referrer_document });
         return traversalInFlight(list, integration, waiter);
     }
     return false;
