@@ -58,8 +58,10 @@ pub fn registerExternalReferences() void {
     }
 }
 
-/// Define each factory on `context`'s global - in a realm that exposes its
-/// interface (a worker's global has no HTMLImageElement, so no Image).
+/// Define each factory on `context`'s global, eagerly - in a realm that
+/// exposes its interface (a worker's global has no HTMLImageElement, so no
+/// Image). A Window realm has them as lazy constructs instead
+/// (interface_bindings.constructs, `make`).
 pub fn install(isolate: *v8.Isolate, context: *v8.Context) void {
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
@@ -68,28 +70,43 @@ pub fn install(isolate: *v8.Isolate, context: *v8.Context) void {
 }
 
 fn installOne(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object, comptime factory: Factory) void {
-    // The interface prototype object, from the interface object.
     const iface_key = v8.v8_String_NewFromUtf8(isolate, factory.interface.ptr, @intCast(factory.interface.len)) orelse return;
     defer v8.v8_String_Dispose(iface_key);
     const iface_value = v8.v8_Object_Get(global, context, @ptrCast(iface_key)) orelse return;
     defer v8.v8_Value_Dispose(iface_value);
     if (!v8.v8_Value_IsObject(iface_value)) return;
-    const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return;
-    defer v8.v8_String_Dispose(proto_key);
-    const proto = v8.v8_Object_Get(@ptrCast(iface_value), context, @ptrCast(proto_key)) orelse return;
-    defer v8.v8_Value_Dispose(proto);
-
-    const template = v8.v8_FunctionTemplate_New(isolate, Callback(factory).callback, null) orelse return;
-    defer v8.v8_FunctionTemplate_Dispose(template);
+    const function = make(factory.name, isolate, context, @ptrCast(iface_value)) orelse return;
+    defer v8.v8_Function_Dispose(function);
     const name = v8.v8_String_NewFromUtf8(isolate, factory.name.ptr, @intCast(factory.name.len)) orelse return;
     defer v8.v8_String_Dispose(name);
-    v8.v8_FunctionTemplate_SetClassName(template, name);
+    _ = v8.v8_Object_DefineProperty(global, context, @ptrCast(name), @ptrCast(function), true, false, true);
+}
+
+/// The [LegacyFactoryFunction] `name` (Image, Audio or Option) made in
+/// `context`, whose `prototype` is `interface_object`'s - its interface's
+/// interface prototype object (WebIDL 3.7.2: the legacy factory function's
+/// "prototype" property, { [[Writable]]: false, [[Enumerable]]: false,
+/// [[Configurable]]: false }). OWNED, or null for another name or when it
+/// could not be made. The interface object is BORROWED.
+pub fn make(comptime name: []const u8, isolate: *v8.Isolate, context: *v8.Context, interface_object: *v8.Function) ?*v8.Function {
+    const factory = comptime for (factories) |f| {
+        if (std.mem.eql(u8, f.name, name)) break f;
+    } else @compileError("no legacy factory function " ++ name);
+    const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return null;
+    defer v8.v8_String_Dispose(proto_key);
+    const proto = v8.v8_Object_Get(@ptrCast(interface_object), context, @ptrCast(proto_key)) orelse return null;
+    defer v8.v8_Value_Dispose(proto);
+
+    const template = v8.v8_FunctionTemplate_New(isolate, Callback(factory).callback, null) orelse return null;
+    defer v8.v8_FunctionTemplate_Dispose(template);
+    const name_v8 = v8.v8_String_NewFromUtf8(isolate, factory.name.ptr, @intCast(factory.name.len)) orelse return null;
+    defer v8.v8_String_Dispose(name_v8);
+    v8.v8_FunctionTemplate_SetClassName(template, name_v8);
     v8.v8_FunctionTemplate_SetLength(template, 0);
 
-    const function = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return;
-    defer v8.v8_Function_Dispose(function);
+    const function = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
     _ = v8.v8_Object_DefineProperty(@ptrCast(function), context, @ptrCast(proto_key), proto, false, false, false);
-    _ = v8.v8_Object_DefineProperty(global, context, @ptrCast(name), @ptrCast(function), true, false, true);
+    return function;
 }
 
 fn Callback(comptime factory: Factory) type {

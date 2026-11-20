@@ -301,6 +301,9 @@ pub fn registerAllExternalReferences() void {
 
     // Register the legacy factory functions (Image, Audio, Option)
     @import("legacy_factory_functions.zig").registerExternalReferences();
+    // The exposed constructs' lazy getter: the snapshot's Window template
+    // carries one lazy data property per construct (lane tmpl1).
+    @import("global_constructor_handler.zig").registerExternalReferences();
 
     // Register all interface callbacks in deterministic order
     registerAllInterfaceCallbacks();

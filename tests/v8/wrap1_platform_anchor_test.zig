@@ -791,7 +791,9 @@ test "the cache's rule for a weak handle is V8's own answer, template by templat
             // the cache's.
             const sampled = (changed and !proxied) or (!changed and index % 16 == 0);
             if (sampled and !std.mem.eql(u8, name, "Window")) {
-                if (v8.template_registry.getTemplateForIsolate(name, page.isolate())) |template| {
+                // The isolate's template, made now if no realm has needed it
+                // yet: every template is made on first use (lane tmpl1).
+                if (v8.interface_bindings.getOrCreateTemplateByName(name, page.isolate())) |template| {
                     const outcome = ffi.v8_test_NodeTemplateWrapperDroppable(page.isolate(), context, template, null, false, null);
                     if (outcome < 0) {
                         inconclusive += 1;
