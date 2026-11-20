@@ -268,7 +268,8 @@ const NewListContext = struct {
 /// The container of an empty line the caret is in, which toggle lists gives
 /// a new list inside (see toggleListsAction): a collapsed selection in an
 /// empty editing host (nothing to wrap), or in a div - an editable one or
-/// the host - whose only child is a br (the node list is that br).
+/// the host - whose only child is a br (the node list is that div, or its
+/// br).
 fn emptyLineContainer(edit: *Edit, node_list: []const *Instance) !?*Instance {
     if (!try edit.rangeCollapsed()) return null;
     const caret = (try edit.rangeStart()) orelse return null;
@@ -278,12 +279,15 @@ fn emptyLineContainer(edit: *Edit, node_list: []const *Instance) !?*Instance {
         return caret.node;
     }
     if (node_list.len != 1) return null;
-    const br = node_list[0];
-    if (!try common.isHtmlElementNamed(br, "br")) return null;
-    const container = (try common.parent(br)) orelse return null;
+    // The node list holds the div itself (its block-extended range contains
+    // it), or - the host being the div - its br.
+    const member = node_list[0];
+    const container = if (try common.isHtmlElementNamed(member, "br")) (try common.parent(member)) orelse return null else member;
     if (!try common.isHtmlElementNamed(container, "div")) return null;
     if (!(try common.isEditable(container)) and !try common.isEditingHost(container)) return null;
     if ((try common.childCount(container)) != 1) return null;
+    const br = (try common.firstChild(container)).?;
+    if (!try common.isHtmlElementNamed(br, "br")) return null;
     if (caret.node != container and caret.node != br) return null;
     return container;
 }
