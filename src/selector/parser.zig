@@ -1964,10 +1964,10 @@ pub const Parser = struct {
                 if (!self.support_check and token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) {
                     // ... and serialize lowercase, as any pseudo-element
                     // name (css/selectors/webkit-pseudo-element.html in all
-                    // three browsers).
-                    const lowered = try self.lowercase(token.value);
-                    try self.serializeAs(token.start, token.end, lowered);
-                    break :blk lowered;
+                    // three browsers): the source text lowercased, so an
+                    // escape stays an escape.
+                    try self.serializeAs(token.start, token.end, try self.lowercase(self.tokenizer.input[token.start..token.end]));
+                    break :blk try self.lowercase(token.value);
                 }
                 return error.InvalidSelector;
             },
