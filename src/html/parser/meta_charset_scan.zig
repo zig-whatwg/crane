@@ -133,6 +133,9 @@ pub const Scanner = struct {
                 .end_tag => |*tag| {
                     if (!mayBeInHead(tag.getTagName(), true)) self.in_head_section = false;
                 },
+                // The end of the input in any state but data: the tokenizer
+                // emits an end-of-file token, and again at every call after.
+                .eof => return .need_more,
                 else => {},
             }
             if (!self.in_head_section and self.charactersConsumed() >= characters_to_check_unconditionally) return .none;
