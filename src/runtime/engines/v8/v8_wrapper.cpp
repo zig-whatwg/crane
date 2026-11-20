@@ -19987,8 +19987,11 @@ struct CrossOriginDispatch {
     /// the current realm's Crane id (v8_Context_GetRawAddress) and the
     /// platform object (a Window or a Location).
     bool (*same_origin)(Isolate* isolate, void* current_realm, void* object);
-    /// Throw a SecurityError DOMException in the current realm.
-    void (*throw_security_error)(Isolate* isolate);
+    /// Throw a SecurityError DOMException in the current realm, for the
+    /// access `access` (kCrossOriginAccess*) of the property `name` (UTF-8;
+    /// an index in decimal; empty when there is none) of a `kind` object
+    /// (kCrossOriginWindow / kCrossOriginLocation) - its message says which.
+    void (*throw_security_error)(Isolate* isolate, int32_t kind, int32_t access, const char* name, size_t name_len);
     /// The WindowProxy of W's document-tree child navigable `index`, as the
     /// Window's indexed getter answers it into `info`; kNo when there is none.
     Intercepted (*child_at)(uint32_t index, const PropertyCallbackInfo<Value>* info);
@@ -20024,13 +20027,43 @@ int32_t CrossOriginKindOf(Local<Value> data) {
     return kCrossOriginWindow;
 }
 
-void ThrowCrossOriginSecurityError(Isolate* isolate) {
+/// Which access a cross-origin SecurityError refused (cross_origin.zig
+/// `Access`): the groups of v8::ExceptionContext a message names.
+constexpr int32_t kCrossOriginAccessUnknown = 0;
+constexpr int32_t kCrossOriginAccessNamedGet = 1;     // getter, descriptor, query
+constexpr int32_t kCrossOriginAccessNamedSet = 2;     // setter, definer
+constexpr int32_t kCrossOriginAccessNamedDelete = 3;
+constexpr int32_t kCrossOriginAccessIndexedGet = 4;   // getter, descriptor, query
+constexpr int32_t kCrossOriginAccessIndexedSet = 5;   // setter, definer
+constexpr int32_t kCrossOriginAccessIndexedDelete = 6;
+
+void ThrowCrossOriginSecurityError(Isolate* isolate, int32_t kind = kCrossOriginWindow, int32_t access = kCrossOriginAccessUnknown, const char* name = "", size_t name_len = 0) {
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (dispatch && dispatch->throw_security_error) {
-        dispatch->throw_security_error(isolate);
+        dispatch->throw_security_error(isolate, kind, access, name, name_len);
         if (isolate->HasPendingException()) return;
     }
     isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(isolate, "SecurityError: blocked a cross-origin access")));
+}
+
+/// A SecurityError for a named property: its name when it is a string (a
+/// symbol has none to show).
+void ThrowCrossOriginNamedSecurityError(Isolate* isolate, int32_t kind, int32_t access, Local<Name> name) {
+    if (!name.IsEmpty() && name->IsString()) {
+        String::Utf8Value utf8(isolate, name);
+        if (*utf8) {
+            ThrowCrossOriginSecurityError(isolate, kind, access, *utf8, static_cast<size_t>(utf8.length()));
+            return;
+        }
+    }
+    ThrowCrossOriginSecurityError(isolate, kind, access);
+}
+
+/// A SecurityError for an array index, given in decimal.
+void ThrowCrossOriginIndexedSecurityError(Isolate* isolate, int32_t kind, int32_t access, uint32_t index) {
+    char digits[16];
+    int written = snprintf(digits, sizeof digits, "%u", index);
+    ThrowCrossOriginSecurityError(isolate, kind, access, digits, written > 0 ? static_cast<size_t>(written) : 0);
 }
 
 /// The platform object behind a WindowProxy (internal field 0) or a Location
@@ -20230,7 +20263,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
         }
         // Step 6: no getter (Location's href) - a SecurityError.
         if (!member->getter) {
-            ThrowCrossOriginSecurityError(isolate);
+            ThrowCrossOriginNamedSecurityError(isolate, kind, kCrossOriginAccessNamedGet, name);
             return Intercepted::kYes;
         }
         // Step 7: Call(getter, Receiver).
@@ -20256,7 +20289,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
         info.GetReturnValue().SetUndefined();
         return Intercepted::kYes;
     }
-    ThrowCrossOriginSecurityError(isolate);
+    ThrowCrossOriginNamedSecurityError(isolate, kind, kCrossOriginAccessNamedGet, name);
     return Intercepted::kYes;
 }
 
@@ -20307,7 +20340,7 @@ Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const P
     size_t index = 0;
     const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index);
     if (!member || !member->setter) {
-        ThrowCrossOriginSecurityError(isolate);
+        ThrowCrossOriginNamedSecurityError(isolate, kind, kCrossOriginAccessNamedSet, name);
         return Intercepted::kYes;
     }
     Local<Function> setter;
@@ -20336,7 +20369,7 @@ Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<I
         info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly));
         return Intercepted::kYes;
     }
-    ThrowCrossOriginSecurityError(isolate);
+    ThrowCrossOriginNamedSecurityError(isolate, kind, kCrossOriginAccessNamedGet, name);
     return Intercepted::kYes;
 }
 
@@ -20390,22 +20423,20 @@ Intercepted CrossOriginNamedDescriptor(Local<Name> name, const PropertyCallbackI
         info.GetReturnValue().Set(DataDescriptor(isolate, current, Undefined(isolate), false));
         return Intercepted::kYes;
     }
-    ThrowCrossOriginSecurityError(isolate);
+    ThrowCrossOriginNamedSecurityError(isolate, kind, kCrossOriginAccessNamedGet, name);
     return Intercepted::kYes;
 }
 
 /// [[Delete]] (7.2.3.9 step 3, 7.2.4.9 step 2): a SecurityError.
 Intercepted CrossOriginNamedDeleter(Local<Name> name, const PropertyCallbackInfo<Boolean>& info) {
-    (void)name;
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginNamedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessNamedDelete, name);
     return Intercepted::kYes;
 }
 
 /// [[DefineOwnProperty]] (7.2.3.6 step 3, 7.2.4.6 step 2): a SecurityError.
 Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
-    (void)name;
     (void)desc;
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginNamedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessNamedSet, name);
     return Intercepted::kYes;
 }
 
@@ -20443,7 +20474,7 @@ Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<
         if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
         if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
     }
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginIndexedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedGet, index);
     return Intercepted::kYes;
 }
 
@@ -20461,7 +20492,7 @@ Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackI
         }
         if (isolate->HasPendingException()) return Intercepted::kYes;
     }
-    ThrowCrossOriginSecurityError(isolate);
+    ThrowCrossOriginIndexedSecurityError(isolate, CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedGet, index);
     return Intercepted::kYes;
 }
 
@@ -20475,29 +20506,26 @@ Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<I
             return Intercepted::kYes;
         }
     }
-    ThrowCrossOriginSecurityError(isolate);
+    ThrowCrossOriginIndexedSecurityError(isolate, CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedGet, index);
     return Intercepted::kYes;
 }
 
 /// [[Set]] of an array index: CrossOriginSet finds no setter - a
 /// SecurityError, as are [[Delete]] and [[DefineOwnProperty]].
 Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
-    (void)index;
     (void)value;
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginIndexedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedSet, index);
     return Intercepted::kYes;
 }
 
 Intercepted CrossOriginIndexedDeleter(uint32_t index, const PropertyCallbackInfo<Boolean>& info) {
-    (void)index;
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginIndexedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedDelete, index);
     return Intercepted::kYes;
 }
 
 Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
-    (void)index;
     (void)desc;
-    ThrowCrossOriginSecurityError(info.GetIsolate());
+    ThrowCrossOriginIndexedSecurityError(info.GetIsolate(), CrossOriginKindOf(info.DataV2().As<Value>()), kCrossOriginAccessIndexedSet, index);
     return Intercepted::kYes;
 }
 
@@ -20630,7 +20658,9 @@ static void LocationDefineProperty(const FunctionCallbackInfo<Value>& info) {
     Local<Context> context = isolate->GetCurrentContext();
     Local<Object> target = locationTarget(info);
     if (!locationSameOrigin(isolate, target)) {
-        ThrowCrossOriginSecurityError(isolate);
+        // [[DefineOwnProperty]] of a cross-origin Location: Blink's named
+        // definer context ("Failed to set a named property").
+        ThrowCrossOriginNamedSecurityError(isolate, kCrossOriginLocation, kCrossOriginAccessNamedSet, info[1].As<Name>());
         return;
     }
     // V8 supplies FromPropertyDescriptor's fresh ordinary object. Read only

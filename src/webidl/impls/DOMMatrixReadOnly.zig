@@ -12,8 +12,8 @@
 //! algorithms are css.geometry's.
 //!
 //! Not yet: the transform methods (translate, scale, rotate, skew, multiply,
-//! flip, inverse) and a DOMString `init`, which needs a CSS transform-list
-//! parser.
+//! flip, inverse). A DOMString `init` is parsed by css.geometry's
+//! parseTransformList (6.2).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -155,15 +155,12 @@ fn matrixFromInit(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) 
     // 1. If current global object is not a Window object, then throw a
     //    TypeError exception.
     if (!ctx.isWindow()) return error.TypeError;
-    // 2. Parse init into an abstract matrix (6.2): step 1 makes the empty
-    //    string "matrix(1, 0, 0, 1, 0, 0)", and the keyword none is the
-    //    identity matrix (step 3).
-    if (text.len == 0 or std.ascii.eqlIgnoreCase(std.mem.trim(u8, text, " \t\n\r\x0c"), "none")) return geometry.Matrix.identity;
-    // TODO(geometry): parse a CSS <transform-list> (6.2 steps 2-6). Crane has
-    // no transform-function parser yet; until it does, every other string
-    // is reported as NotSupportedError rather than misread as invalid
-    // (whose answer would be a SyntaxError).
-    return error.NotSupportedError;
+    // 2. Parse init into an abstract matrix (6.2); failure is a
+    //    "SyntaxError" DOMException.
+    const parsed = (try geometry.parseTransformList(ctx.allocator, text)) orelse return error.SyntaxError;
+    // 3. 2dTransform true: a 2d matrix of m11, m12, m21, m22, m41 and m42;
+    //    otherwise a 3d matrix of all sixteen (parseTransformList's result).
+    return parsed;
 }
 
 /// Geometry 6.3, the DOMMatrixReadOnly(init) constructor.

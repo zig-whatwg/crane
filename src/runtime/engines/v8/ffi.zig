@@ -4266,7 +4266,7 @@ pub const CrossOriginMember = extern struct {
 /// v8_wrapper.cpp's CrossOriginDispatch declares it.
 pub const CrossOriginDispatch = extern struct {
     same_origin: *const fn (isolate: *Isolate, current_realm: ?*anyopaque, object: ?*anyopaque) callconv(.c) bool,
-    throw_security_error: *const fn (isolate: *Isolate) callconv(.c) void,
+    throw_security_error: *const fn (isolate: *Isolate, kind: i32, access: i32, name: [*]const u8, name_len: usize) callconv(.c) void,
     child_at: *const fn (index: u32, info: *const PropertyCallbackInfo) callconv(.c) Intercepted,
     child_count: *const fn (window: ?*anyopaque) callconv(.c) u32,
     child_named: *const fn (isolate: *Isolate, window: ?*anyopaque, name: [*]const u8, name_len: usize) callconv(.c) ?*Value,

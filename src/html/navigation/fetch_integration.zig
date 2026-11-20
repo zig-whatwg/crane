@@ -94,6 +94,11 @@ pub const NavigationFetchResult = struct {
         response_status: u16,
         /// The response body info's content encoding (static).
         content_encoding: []const u8 = "",
+        /// The response's cache state, as Resource Timing names it: "",
+        /// "local" or "validated" (static). A navigation served from the
+        /// HTTP cache - a prefetched document - reports a transferSize of 0
+        /// ("local") or 300 ("validated").
+        cache_state: []const u8 = "",
         /// The previous document's unload event start and end times (the
         /// unsafe shared current time, ms; 0 for none): HTML "unload a
         /// document" steps 11/13, kept when it was same origin.

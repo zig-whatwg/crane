@@ -2359,6 +2359,45 @@ test "site: a follows-majority exemption is its own group, with the browsers Cra
     try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
 }
 
+test "site: a follows-majority entry with matches = none says the spec, and lists its renderer subtests" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // c.any.js (NONE-PASSED): Crane's result is the spec's; b.html (TIMEOUT): one subtest needs a renderer.
+    const text = "[dom/nodes/c.any.js]\n" ++
+        \\kind = follows-majority
+        \\why = Crane follows the spec, and the three browsers each fail differently
+        \\chrome.result = wpt.fyi run 4786307730243584: 0/2
+        \\firefox.result = wpt.fyi run 4877168468033536: 0/2
+        \\safari.result = wpt.fyi run 6479119966273536: 1/2
+        \\matches = none
+        \\ruling = golden rule 2, the spec where all three differ
+        \\revisit = when Chrome, Firefox or Safari changes its result
+        \\
+        \\[dom/b.html]
+        \\kind = follows-majority
+        \\why = subtest 1 fails as in Chrome and Firefox; subtest 2 clicks a laid-out link
+        \\chrome.result = wpt.fyi run 4786307730243584: 1/2
+        \\firefox.result = wpt.fyi run 4877168468033536: 1/2
+        \\safari.result = wpt.fyi run 6479119966273536: 2/2
+        \\matches = chrome, firefox
+        \\renderer-subtests = the second subtest :: its click lands on an absolutely positioned link
+        \\revisit = when Chrome or Firefox changes its result
+        \\
+    ;
+    _ = try runFixtureExempt(gpa, &f, "majority-forms", text, &diag);
+    const index = try readOut(gpa, &f, "majority-forms/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-follows-majority\"").?;
+    const group = index[at..std.mem.indexOf(u8, index, "id=\"contents\"").?];
+    try expectHas(group, "<dt>Crane matches</dt><dd>none - the spec (see the ruling)</dd>");
+    try expectHas(group, "<dt>Ruling</dt><dd>golden rule 2, the spec where all three differ</dd>");
+    try expectHas(group, "<dt>Crane matches</dt><dd>Chrome, Firefox</dd>");
+    try expectHas(group, "<dt>Needs a renderer</dt><dd>the second subtest &mdash; its click lands on an absolutely positioned link</dd>");
+}
+
 test "site: follows-majority exemptions alone write only their own group; no ruling, no Ruling row" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
