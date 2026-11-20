@@ -83,8 +83,8 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
         const p = (try common.parent(start.node)) orelse return true;
         if (!try common.isAllowedChild(.{ .name = "br" }, p)) return true;
     }
-    // A plaintext-only editing host whose white-space keeps newlines takes
-    // a preformatted linefeed instead of the br (see insertLinefeed).
+    // Where the white-space keeps newlines, a preformatted linefeed instead
+    // of the br (see prefersLinefeed and insertLinefeed).
     if (try prefersLinefeed(edit, start)) return try insertLinefeed(edit, start);
     // Steps 5-6.
     try moveOffTextEdges(edit);
@@ -110,25 +110,43 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
     return true;
 }
 
-/// Whether a line break at `point` is a preformatted linefeed: the point's
-/// editing host is in the plaintext-only state (outside design mode) and
-/// the white-space around the point keeps newlines (pre, pre-wrap,
-/// pre-line, break-spaces). Gecko: HTMLEditUtils::
-/// ShouldInsertLinefeedCharacter, "If in contenteditable=plaintext-only, we
-/// should use linefeed when it's preformatted" (editor/libeditor/
-/// HTMLEditUtils.cpp, gecko-dev 5836a062726f). Where the host is
-/// contenteditable=true the spec's br stays (editing/run/insertlinebreak
-/// .html).
+/// Whether a line break at `point` is a preformatted linefeed:
+/// - in an editing host in the plaintext-only state (outside design mode),
+///   where the white-space around the point keeps newlines (pre, pre-wrap,
+///   pre-line, break-spaces) - Gecko: HTMLEditUtils::ShouldInsertLinefeed-
+///   Character, "If in contenteditable=plaintext-only, we should use
+///   linefeed when it's preformatted" (editor/libeditor/HTMLEditUtils.cpp,
+///   gecko-dev 5836a062726f); Blink too;
+/// - in richly editable content, where the style keeps newlines and no
+///   <pre> element encloses the point: Blink's InsertLineBreakCommand::
+///   ShouldUseBreakElement ("Use <br> for <pre> elements to align with other
+///   browsers", else a "\n" where the style does not collapse breaks;
+///   third_party/blink/renderer/core/editing/commands/insert_line_break_
+///   command.cc, chromium main 2026-11), as Safari does: a `<span>` in a
+///   `display:flex; white-space:pre` container takes `a\nbc`, where a
+///   `<pre>` keeps the br (editing/run/insertlinebreak.html: Chrome 157 and
+///   Safari 27.2 pass both, Firefox 160 - a br everywhere outside
+///   plaintext-only - only the <pre> rows; wpt.fyi 2358bd4835). Golden rule
+///   2, no newer spec: the two-browser majority.
 fn prefersLinefeed(edit: *Edit, point: Point) !bool {
+    if (!(try common.whiteSpaceAround(point.node)).preservesNewlines()) return false;
     var mode = try interfaces.Document.get_designMode(edit.document);
     defer mode.deinit(edit.document.ctx.allocator);
-    if (std.mem.eql(u8, mode.asSlice(), "on")) return false;
-    const host = (try common.editingHostOf(point.node)) orelse return false;
-    if (!try common.isHtmlElement(host)) return false;
-    var state = try interfaces.HTMLElement.get_contentEditable(host);
-    defer state.deinit(host.ctx.allocator);
-    if (!std.mem.eql(u8, state.asSlice(), "plaintext-only")) return false;
-    return (try common.whiteSpaceAround(point.node)).preservesNewlines();
+    const design_mode = std.mem.eql(u8, mode.asSlice(), "on");
+    if (!design_mode) {
+        const host = (try common.editingHostOf(point.node)) orelse return false;
+        if (try common.isHtmlElement(host)) {
+            var state = try interfaces.HTMLElement.get_contentEditable(host);
+            defer state.deinit(host.ctx.allocator);
+            if (std.mem.eql(u8, state.asSlice(), "plaintext-only")) return true;
+        }
+    }
+    // Richly editable: a br inside a <pre>, a linefeed elsewhere.
+    var current: ?*Instance = point.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try common.isHtmlElementNamed(c, "pre")) return false;
+    }
+    return true;
 }
 
 /// insertLineBreak's steps 5-11 for a preformatted linefeed: a "\n" into
