@@ -830,6 +830,9 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit != 0) return;
     const first = pointer.buttons == 0;
+    // HTML 6.11.5: what the press would drag, found before its listeners run
+    // (html/drag_and_drop.zig candidateAt).
+    const drag_candidate: ?*Instance = if (button == 0 and first and pointer.pointer_type != .touch) drag_and_drop.candidateAt(hit) else null;
     pointer.buttons |= bit;
     // Pointer Events: the pointer is in the active buttons state, and its
     // active document is the target's (3.1.3, set before the event fires,
@@ -873,7 +876,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     mousedownDefaults(pointer, down_target, button, modifiers, pointer);
     // HTML 6.11.5: a primary press neither pointerdown nor mousedown
     // canceled may begin a drag of what it went down on.
-    if (button == 0 and pointer.pointer_type != .touch) if (pointer.currentTarget()) |pressed| drag_and_drop.pressed(pointer, pressed);
+    if (button == 0 and pointer.pointer_type != .touch) drag_and_drop.pressed(pointer, drag_candidate);
 }
 
 /// The element a mouse event of `pointer` goes to now: its capture target,

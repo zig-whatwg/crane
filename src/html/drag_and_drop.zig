@@ -129,10 +129,22 @@ pub const DragOperation = struct {
 // The pointer's side: press, moves, release
 // ============================================================================
 
-/// A primary press whose pointerdown and mousedown were not canceled, at
-/// `target`: the node the user may go on to drag.
-pub fn pressed(pointer: *Pointer, target: *Instance) void {
-    pointer.drag_press = Weak.of(target);
+/// What a press on `hit` would drag (step 1), found as the press is made,
+/// before its pointerdown and mousedown listeners run: the browsers find the
+/// draggable node from the press point (Blink MouseEventManager::HandleDrag
+/// hit-tests mouse_down_pos), and with no layout the point is `hit` as it
+/// was then - a listener that moves the pressed element elsewhere does not
+/// change what lies under the press point
+/// (html/editing/dnd/platform/mousedown-move-inner-when-dragging-1.html and
+/// -2.html, all three browsers).
+pub fn candidateAt(hit: *Instance) ?*Instance {
+    return draggableAncestor(hit);
+}
+
+/// A primary press whose pointerdown and mousedown were not canceled, whose
+/// draggable candidate is `candidate` (`candidateAt`).
+pub fn pressed(pointer: *Pointer, candidate: ?*Instance) void {
+    pointer.drag_press = if (candidate) |c| Weak.of(c) else null;
     pointer.press_position = pointer.position;
 }
 
@@ -154,8 +166,8 @@ pub fn moved(pointer: *Pointer, hit: *Instance, modifiers: Modifiers) bool {
     }
     if (!thresholdExceeded(pointer, hit)) return false;
     pointer.drag_press = null;
-    const pressed_node = press.get() orelse return false;
-    return start(pointer, pressed_node, hit, modifiers);
+    const candidate = press.get() orelse return false;
+    return start(pointer, candidate, hit, modifiers);
 }
 
 /// The pointer's `button` went up. True when it ended a drag: the drop (or
@@ -195,12 +207,16 @@ fn thresholdExceeded(pointer: *Pointer, hit: *Instance) bool {
 // Beginning a drag (6.11.5, "When the user attempts to begin a drag")
 // ============================================================================
 
-fn start(pointer: *Pointer, pressed_node: *Instance, hit: *Instance, modifiers: Modifiers) bool {
+fn start(pointer: *Pointer, candidate: *Instance, hit: *Instance, modifiers: Modifiers) bool {
     // 1. "It is the first element, going up the ancestor chain, starting at
     // the node that the user tried to drag, that has the IDL attribute
     // draggable set to true. If there is no such element, then nothing is
-    // being dragged; return."
-    const source = draggableAncestor(pressed_node) orelse return false;
+    // being dragged; return." Found at the press (`candidateAt`); a
+    // listener may have made it undraggable since.
+    if (candidate.stateAs(interfaces.HTMLElement.State) == null) return false;
+    if (!(interfaces.HTMLElement.get_draggable(candidate) catch false)) return false;
+    if (liveTarget(Weak.of(candidate)) == null) return false;
+    const source = candidate;
     const realm = source.ctx;
     // 2. "Create a drag data store": the anchor DataTransfer's, emptied to a
     // drag data store's defaults - an empty item list, protected mode.
@@ -239,8 +255,10 @@ fn start(pointer: *Pointer, pressed_node: *Instance, hit: *Instance, modifiers: 
         free(operation);
         return false;
     }
-    // A dragstart listener may have taken the source's document away.
-    if (!isReachable(source)) {
+    // A dragstart listener may have taken the source's document away; one
+    // that only removed the source from it leaves the drag going, its events
+    // still fired at the source (html/editing/dnd/remove/*.html: Chrome).
+    if (liveTarget(operation.source) == null) {
         free(operation);
         return false;
     }
@@ -266,13 +284,13 @@ fn pointer_allocator(pointer: *Pointer, realm: runtime.Context) std.mem.Allocato
     return realm.allocator;
 }
 
-/// Step 1: the element itself or the first ancestor (crossing shadow roots
-/// to their hosts, the flat tree's way, as Blink's DragController::
-/// DraggableNode walks it) whose draggable IDL attribute is true. Only an
-/// HTML element has the attribute.
+/// Step 1: the element itself or the first ancestor in the flat tree (its
+/// assigned slot, a shadow root's host: Blink's DragController::
+/// DraggableNode walks FlatTreeTraversal::Parent) whose draggable IDL
+/// attribute is true. Only an HTML element has the attribute.
 fn draggableAncestor(node: *Instance) ?*Instance {
     var current: ?*Instance = node;
-    while (current) |n| : (current = parentOf(n)) {
+    while (current) |n| : (current = flatParentOf(n)) {
         if (n.stateAs(interfaces.HTMLElement.State) == null) continue;
         if (interfaces.HTMLElement.get_draggable(n) catch false) return n;
     }
@@ -613,6 +631,17 @@ fn dropEffectFor(operation: *DragOperation, comptime event_type: []const u8) []c
 
 fn nodeDocument(node: *Instance) ?*Instance {
     return interfaces.Node.get_ownerDocument(node) catch null;
+}
+
+/// The flat tree parent element of `node`: its assigned slot, else its
+/// parent element, else its shadow root's host.
+fn flatParentOf(node: *Instance) ?*Instance {
+    const base = dom.instance_bridge.getNodeBase(node) orelse return null;
+    if (dom.slot_helpers.slottable(base)) |s| if (s.state.assignedSlot()) |slot| {
+        const ptr = dom.instance_bridge.getInstance(slot) orelse return null;
+        return @ptrCast(@alignCast(ptr));
+    };
+    return parentOf(node);
 }
 
 fn parentOf(node: *Instance) ?*Instance {
