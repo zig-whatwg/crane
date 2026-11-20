@@ -1465,8 +1465,8 @@ pub fn httpNetworkFetchFinish(
     // firstInterimResponseStart, which Chrome, Firefox and Safari report:
     // resource-timing/interim-response-times.html at wpt.fyi 2358bd4835);
     // 0 when none came.
-    if (network_response.first_interim_response_ms) |interim| {
-        params.timing_info.first_interim_network_response_start_time = transfer_start + interim;
+    if (network_response.first_interim_response_us != 0) {
+        params.timing_info.first_interim_network_response_start_time = transfer_start + @as(f64, @floatFromInt(network_response.first_interim_response_us)) / std.time.us_per_ms;
     }
     params.timing_info.end_time = end_time;
 
