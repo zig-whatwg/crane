@@ -8,6 +8,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const RTCPeerConnection = interfaces.RTCPeerConnection;
 
 pub const State = RTCPeerConnection.State;
@@ -30,6 +31,9 @@ pub const InternalState = struct {
     ice_connection_state: enums.RTCIceConnectionState = ._new_,
     /// [[ConnectionState]], initially "new".
     connection_state: enums.RTCPeerConnectionState = ._new_,
+    /// The engine's pending-activity hold the constructor took (`keepWhileOpen`),
+    /// not yet ended: true from the constructor until the connection is closed.
+    kept_alive: bool = false,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -56,6 +60,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // It is no longer one of its Browser's peer connections.
     forgetConnection(instance);
+    releaseWhenClosed(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         state.own._internal = null;
@@ -139,6 +144,7 @@ pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(dictiona
     if (ctx.browserScope()) |scope| {
         if (scope.of(LiveConnections) catch null) |live| live.add(instance);
     }
+    keepWhileOpen(instance);
     // TODO: Implement constructor logic with parameters
 
     return instance;
@@ -510,6 +516,38 @@ fn closeTheConnection(connection: *runtime.Instance) void {
     // A closed connection no longer keeps its page out of the back/forward
     // cache (blocksBfcache).
     forgetConnection(connection);
+    // Nor is it kept from the collector any longer (`keepWhileOpen`).
+    releaseWhenClosed(connection);
+}
+
+/// WebRTC 1.0 4.4.1 "Garbage collection": "An RTCPeerConnection object MUST
+/// not be garbage collected as long as any event can cause an event handler
+/// to be triggered on the object. When the object's [[IsClosed]] internal
+/// slot is true, no such event handler can be triggered and it is therefore
+/// safe to garbage collect the object." Blink's RTCPeerConnection is an
+/// ActiveScriptWrappable whose HasPendingActivity() holds until it is closed
+/// (third_party/blink/renderer/modules/peerconnection/
+/// rtc_peer_connection.cc); this is the engine's pending-activity hold, taken
+/// before the binding wraps the connection (WebSocket's constructor does the
+/// same) and ended once, when [[IsClosed]] turns true or the connection is
+/// torn down with its realm. Without it a page that made a connection and
+/// dropped it was kept out of the back/forward cache, or not, by the
+/// collector's timing (performance-timeline/not-restored-reasons/
+/// {same,cross}-origin-bfcache.window.js; crane/tmpl1-rtc-peer-connection-
+/// kept-while-open.html).
+fn keepWhileOpen(connection: *runtime.Instance) void {
+    const internal = getInternal(connection) orelse return;
+    if (internal.is_closed or internal.kept_alive) return;
+    engine.keepPlatformObjectAlive(connection);
+    internal.kept_alive = true;
+}
+
+/// End `keepWhileOpen`'s hold, once.
+fn releaseWhenClosed(connection: *runtime.Instance) void {
+    const internal = getInternal(connection) orelse return;
+    if (!internal.kept_alive) return;
+    internal.kept_alive = false;
+    engine.releasePlatformObject(connection);
 }
 
 /// Operation: getTransceivers
