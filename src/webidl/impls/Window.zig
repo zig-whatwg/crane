@@ -3508,6 +3508,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // Step 2: "Let sourceDocument be the entry global object's associated
     // Document".
     const source_document = try get_document(instance);
+    // Its transient activation now, before step 13's choosing a navigable
+    // consumes it: the new popup's navigation request carries it as its
+    // user-activation (Sec-Fetch-User), as Chrome's and Firefox's do.
+    const source_activated = @import("html").user_activation.hasTransientActivation(instance);
 
     // Steps 3-4: "Set urlRecord to the result of encoding-parsing a URL given
     // url, relative to sourceDocument"; failure throws a "SyntaxError".
@@ -3665,7 +3669,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
                 if (!@import("dom").history_traversal.isInstalled()) _ = get_history(created.window) catch {};
                 @import("dom").history_traversal.urlAndHistoryUpdate(created.window, u, null, .replace);
             }
-        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
+        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy, .has_transient_activation = source_activated });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no

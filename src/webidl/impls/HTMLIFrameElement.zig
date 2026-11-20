@@ -835,6 +835,10 @@ const fetch_mod = @import("fetch");
 pub const NavigateOptions = struct {
     /// "sourceDocument": the document whose script (or element) navigates.
     source_document: ?*runtime.Instance = null,
+    /// The source document's transient activation, snapshotted by a caller
+    /// before a step of its own consumed it (NavigateRequest's); null
+    /// snapshots it at navigate step 4.
+    has_transient_activation: ?bool = null,
     /// With no source document: the document the request's referrer is, as
     /// "client" resolves it, with its referrer policy - a declarative
     /// refresh's reload (traverseNavigable's `refresh`).
@@ -1805,8 +1809,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // violation of the request is (CSP 2.4.2).
         record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
         // ... and its has transient activation: "true if sourceDocument's
-        // relevant global object has transient activation".
-        if (interfaces.Document.get_defaultView(source) catch null) |source_window| {
+        // relevant global object has transient activation" - or what the
+        // caller saw before a step of its own consumed it: window.open()'s
+        // choosing a navigable consumes the activation (step 8.1) before it
+        // navigates, yet Chrome and Firefox send Sec-Fetch-User: ?1 for a
+        // popup opened from a click (fetch/metadata/window-open.https.sub.html
+        // "user-activated: sec-fetch-user"; golden rule 2, the majority).
+        if (options.has_transient_activation) |activated| {
+            record.has_transient_activation = activated;
+        } else if (interfaces.Document.get_defaultView(source) catch null) |source_window| {
             record.has_transient_activation = @import("html").user_activation.hasTransientActivation(source_window);
         }
         // Step 4's fetch client: snapshot Mixed Content 4.3 while the
@@ -6387,6 +6398,7 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
         .history_behavior = request.history_behavior,
         .referrer_policy = request.referrer_policy,
         .user_involvement = if (request.browser_ui) .browser_ui else .none,
+        .has_transient_activation = request.has_transient_activation,
     });
 }
 
