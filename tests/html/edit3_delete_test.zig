@@ -55,3 +55,20 @@ fn listOutdent() !void {
 test "Backspace outdents the first item of a nested list at the editing host's start" {
     try helpers.onFreshThread(listOutdent);
 }
+
+fn rootEmptiedByExecCommand() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // editing/run/delete.html (all three): execCommand("delete") empties a
+    // root editable element with one caret position, as Backspace does.
+    const Case = harness.Case;
+    try harness.runCases(page, &[_]Case{
+        .{ .input = "<div><div>{}<br></div></div>", .commands = &.{.{ "delete", "" }}, .expected = "<br>" },
+        .{ .input = "<div><div contenteditable=false><div contenteditable><div>{}<br></div></div></div></div>", .commands = &.{.{ "delete", "" }}, .expected = "<div><div contenteditable=\"false\"><div contenteditable=\"\"><br></div></div></div>" },
+    });
+}
+
+test "execCommand delete empties a root editable element with one caret position" {
+    try helpers.onFreshThread(rootEmptiedByExecCommand);
+}

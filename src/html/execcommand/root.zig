@@ -341,7 +341,11 @@ fn affectedEditingHost(edit: *Edit) !?*Instance {
 
 fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
     return switch (command) {
-        .delete => try delete.deleteAction(edit),
+        // Blink runs execCommand("delete") as the Backspace key's
+        // TypingCommand::DeleteKeyPressed, which empties a root editable
+        // element with one caret position before anything else (see
+        // makeEditableRootEmpty).
+        .delete => (try makeEditableRootEmpty(edit)) or try delete.deleteAction(edit),
         .forward_delete => try delete.forwardDeleteAction(edit),
         .back_color, .bold, .create_link, .font_name, .font_size, .fore_color, .hilite_color, .italic, .remove_format, .strikethrough, .subscript, .superscript, .underline, .unlink => try inline_formatting.action(edit, command.inlineCommand().?, value),
         .insert_text => try insert_text.action(edit, value, insertParagraphAction),
@@ -530,15 +534,6 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // selection.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
-    if (command == .delete) {
-        const recording = undo.begin(&edit, true, affected);
-        const emptied = makeEditableRootEmpty(&edit) catch false;
-        if (recording) |r| undo.end(&edit, r, affected);
-        if (emptied) {
-            if (isConnected(affected)) _ = fireInputEvent(affected, "input", command.inputType(), null);
-            return;
-        }
-    }
     const result = runRecorded(&edit, command, "", affected) catch |err| {
         log.debug("{s} by key: {}", .{ @tagName(command), err });
         return;
@@ -557,9 +552,11 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
 /// action here). editing/other/fire-selection-change-on-deleting-empty-
 /// element.html: Chrome 157 and Firefox 160 pass (one selectionchange
 /// after "<h1><br></h1>" goes), Safari 27.2 fires none. The Editing
-/// spec's delete action does nothing at the root's start; Backspace is the
-/// browsers' key behaviour (golden rule 2: two of three), and
-/// execCommand("delete") keeps the spec's action. Whether it ran.
+/// spec's delete action does nothing at the root's start; the browsers do
+/// this for the key and for execCommand("delete") alike - Blink's
+/// ExecuteDelete is DeleteKeyPressed too, and all three give `<div><div>{}
+/// <br></div></div>` + delete -> `<br>` (editing/run/delete.html, PPP at
+/// wpt.fyi 2358bd4835). Golden rule 2. Whether it ran.
 fn makeEditableRootEmpty(edit: *Edit) !bool {
     if (!try edit.rangeCollapsed()) return false;
     const caret = (try edit.rangeStart()) orelse return false;
