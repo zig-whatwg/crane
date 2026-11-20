@@ -128,3 +128,14 @@ test "the sniffing algorithm: a meta found by the scan is tentative; a BOM or th
     try testing.expectEqualStrings("Big5", sniffing.canonicalName(transport.encoding));
     try testing.expectEqual(sniffing.Confidence.certain, transport.confidence);
 }
+
+test "the end of the bytes inside a tag, a comment or an element's text ends the scan" {
+    // The tokenizer emits an end-of-file token in every state but data - and
+    // again at each call after it: the scan stops at the first.
+    try expectScan("<head><meta char", null);
+    try expectScan("<head><script>" ++ meta, null);
+    try expectScan("<head><title>" ++ meta, null);
+    try expectScan("<head><!--" ++ meta, null);
+    try expectScan("<head><meta charset=\"windows-1251", null);
+    try expectScan("<!DOCTYPE html", null);
+}
