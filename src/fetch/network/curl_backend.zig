@@ -27,6 +27,7 @@ const curl = @import("curl_ffi.zig");
 const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
+const platform = @import("platform");
 const kit_curl = @import("kit_curl_share");
 const content_coding = @import("../content_coding/root.zig");
 
@@ -218,7 +219,7 @@ pub const LibcurlBackend = struct {
         /// same block).
         final_block_start: ?usize = null,
         final_block_scans: u32 = 0,
-        /// When the attempt began on the monotonic clock (`prepareAttempt`,
+        /// The monotonic clock since the attempt began (`prepareAttempt`,
         /// just before curl starts its own timers), and how long after it
         /// the status line of the first 1xx interim response and of the
         /// final response arrived, in ns: Fetch's first interim and final
@@ -226,7 +227,7 @@ pub const LibcurlBackend = struct {
         /// "While true" steps 1 and 5.1; Resource Timing's firstInterimResponseStart and
         /// finalResponseHeadersStart). curl's STARTTRANSFER_TIME is one time
         /// for both, so a transfer with an interim response is timed here.
-        attempt_start_ns: i128 = 0,
+        attempt_clock: platform.Stopwatch = .{ .start_ns = 0 },
         first_interim_ns: ?u64 = null,
         final_status_ns: ?u64 = null,
 
@@ -728,7 +729,7 @@ pub const Transfer = struct {
         self.ctx.final_block_start = null;
         self.ctx.encoded_bytes = 0;
         self.ctx.decode_failed = false;
-        self.ctx.attempt_start_ns = clock.monotonicNanos();
+        self.ctx.attempt_clock = platform.Stopwatch.start();
         self.ctx.first_interim_ns = null;
         self.ctx.final_status_ns = null;
     }
@@ -1158,7 +1159,7 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
 fn noteStatusLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
     if (ctx.head_end != null) return;
     const status = statusOfBlock(line) orelse return;
-    const elapsed: u64 = @intCast(std.math.clamp(clock.monotonicNanos() - ctx.attempt_start_ns, 0, std.math.maxInt(u64)));
+    const elapsed = ctx.attempt_clock.read();
     if (status >= 100 and status < 200) {
         if (ctx.first_interim_ns == null) ctx.first_interim_ns = elapsed;
     } else {
