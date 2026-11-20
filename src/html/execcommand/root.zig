@@ -628,6 +628,20 @@ pub fn typeByKey(target: *Instance, text: []const u8) void {
     commandByKey(target, .insert_text, text);
 }
 
+/// The undo (`redo` false) or redo binding pressed in an editing host:
+/// when there is a step to replay (the command is enabled - Blink's
+/// EditorCommand::Execute asks before it dispatches anything), a cancelable
+/// beforeinput with inputType historyUndo / historyRedo and no target ranges
+/// (Input Events 2) at the focused editing host, then the command
+/// (undo.zig), which fires its own input.
+pub fn historyByKey(target: *Instance, redo: bool) void {
+    const document = nodeDocument(target) orelse return;
+    if (!(if (redo) undo.canRedo(document) else undo.canUndo(document))) return;
+    const host = (common.editingHostOf(target) catch null) orelse return;
+    if (!fireInputEvent(host, "beforeinput", if (redo) "historyRedo" else "historyUndo", null)) return;
+    _ = if (redo) undo.redo(document, fireHistoryInput) else undo.undo(document, fireHistoryInput);
+}
+
 /// The user's Enter (insertParagraph) or Shift+Enter (insertLineBreak) in
 /// an editing host ("Additional requirements"), by command name (their
 /// actions are lane editing4's, blocks.zig).

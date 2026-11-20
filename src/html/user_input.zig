@@ -1834,6 +1834,19 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             return;
         }
     }
+    // Undo and redo in an editing host: the platform's bindings - Meta+Z and
+    // Meta+Shift+Z where navigator.platform names a Mac, else Ctrl+Z, Ctrl+Y
+    // and Ctrl+Shift+Z (Blink editing_behavior.cc's key table: "Undo",
+    // "Redo") - run the undo and redo commands, announced by a cancelable
+    // beforeinput (historyUndo / historyRedo) at the editing host
+    // (execcommand/root.zig historyByKey).
+    if (historyShortcut(target, key, modifiers)) |redo| {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            execcommand.historyByKey(target, redo);
+            return;
+        }
+    }
     // Home and End in an editing host: the caret moves (Shift: the
     // selection extends) to the start or end of its line - Blink's key
     // bindings MoveToBeginningOfLine / MoveToEndOfLine and their
@@ -2098,6 +2111,44 @@ fn editingShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?EditingSh
     defer platform.deinit(target.ctx.allocator);
     if (!isCommandModifier(platform.asSlice(), modifiers)) return null;
     return shortcut;
+}
+
+/// Whether `key` with `modifiers` is the platform's undo (false) or redo
+/// (true) binding, or neither (null): Meta+Z / Meta+Shift+Z where
+/// navigator.platform names a Mac, else Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z.
+fn historyShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?bool {
+    if (!modifiers.ctrl and !modifiers.meta) return null;
+    if (modifiers.alt or (modifiers.ctrl and modifiers.meta)) return null;
+    if (key.key.len != 1) return null;
+    const letter = std.ascii.toLower(key.key[0]);
+    if (letter != 'z' and letter != 'y') return null;
+    const window = viewOf(target) orelse return null;
+    const navigator = interfaces.Window.get_navigator(window) catch return null;
+    var platform = interfaces.Navigator.get_platform(navigator) catch return null;
+    defer platform.deinit(target.ctx.allocator);
+    return historyBinding(platform.asSlice(), letter, modifiers);
+}
+
+fn historyBinding(platform: []const u8, letter: u8, modifiers: Modifiers) ?bool {
+    const mac = std.mem.indexOf(u8, platform, "Mac") != null;
+    if (mac) {
+        if (!modifiers.meta or letter != 'z') return null;
+        return modifiers.shift;
+    }
+    if (!modifiers.ctrl) return null;
+    if (letter == 'y') return if (modifiers.shift) null else true;
+    return modifiers.shift;
+}
+
+test "undo and redo bindings follow navigator platform" {
+    try std.testing.expectEqual(@as(?bool, false), historyBinding("MacIntel", 'z', .{ .meta = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("MacIntel", 'z', .{ .meta = true, .shift = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("MacIntel", 'y', .{ .meta = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("MacIntel", 'z', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, false), historyBinding("Linux x86_64", 'z', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("Win32", 'y', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("Win32", 'z', .{ .ctrl = true, .shift = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("Win32", 'z', .{ .meta = true }));
 }
 
 /// Whether `modifiers` is exactly the platform's command modifier: Meta

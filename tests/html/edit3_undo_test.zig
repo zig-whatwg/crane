@@ -243,3 +243,38 @@ fn destroyedDocumentLetsGo() !void {
 test "a destroyed document's undo history lets go of the nodes it held, and an empty editor state of none" {
     try helpers.onFreshThread(destroyedDocumentLetsGo);
 }
+
+fn historyKeys() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    const mac_answer = try page.evaluate("String(navigator.platform.includes('Mac'))");
+    defer std.testing.allocator.free(mac_answer);
+    const mac = std.mem.eql(u8, mac_answer, "true");
+    const command: html.user_input.Modifiers = if (mac) .{ .meta = true } else .{ .ctrl = true };
+    const redo_modifiers: html.user_input.Modifiers = if (mac) .{ .meta = true, .shift = true } else .{ .ctrl = true, .shift = true };
+    const z: html.user_input.Key = .{ .key = "z", .code = "KeyZ", .key_code = 90 };
+    try page.run(
+        \\globalThis.seen = [];
+        \\host.addEventListener('beforeinput', (e) => seen.push('before:' + e.inputType + ':' + e.cancelable + ':' + e.getTargetRanges().length));
+        \\host.addEventListener('input', (e) => seen.push('input:' + e.inputType));
+        \\setupHost('<p>abc[]def</p>').focus();
+        \\document.execCommand('insertParagraph');
+        \\seen.length = 0;
+    );
+    // The undo binding: beforeinput historyUndo (cancelable, no target
+    // ranges), the undo, input historyUndo; the redo binding likewise.
+    pressKey(page, z, command);
+    try harness.expectEval(page, "hostHTML() + '|' + seen.join(',')", "<p>abcdef</p>|before:historyUndo:true:0,input:historyUndo");
+    try page.run("seen.length = 0;");
+    pressKey(page, z, redo_modifiers);
+    try harness.expectEval(page, "hostHTML() + '|' + seen.join(',')", "<p>abc</p><p>def</p>|before:historyRedo:true:0,input:historyRedo");
+    // A cancelled beforeinput: nothing replayed.
+    try page.run("seen.length = 0; host.addEventListener('beforeinput', (e) => e.preventDefault(), { once: true });");
+    pressKey(page, z, command);
+    try harness.expectEval(page, "hostHTML() + '|' + seen.join(',')", "<p>abc</p><p>def</p>|before:historyUndo:true:0");
+}
+
+test "the undo and redo bindings replay the history, announced by beforeinput" {
+    try helpers.onFreshThread(historyKeys);
+}
