@@ -1047,6 +1047,45 @@ EXCLUDE = [
     # and Firefox 160 pass 3/3, Safari 27.2 0/3); the transferable-streams files that need no Web Audio stay.
     ('streams/transferable/audioworklet.https.html',
      'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
+    # The integrator's rulings on lane blk5's 0.1-gate triage (2026-11-20, 1:10 PM ET), each under the scope
+    # line. Web Audio moved to 0.2 (the user, 2026-11-20): the AudioWorklet files and a service worker file
+    # whose subject is an <audio> element fed through AudioContext.createMediaElementSource into a
+    # ScriptProcessorNode (Chrome 157 and Firefox 160 pass 1/1, Safari 27.2 times out).
+    ('fetch/metadata/generated/audioworklet.https.sub.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('hr-time/audioworklet.https.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('webidl/ecmascript-binding/es-exceptions/DOMException-audioworklet.https.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('service-workers/service-worker/fetch-audio-tainting.https.html',
+     'AudioContext.createMediaElementSource + ScriptProcessorNode: Web Audio is 0.2 (the integrator, lane blk5)'),
+    # - MediaSource Extensions, 0.2 media: a blob: URL made from a MediaSource.
+    ('fetch/api/basic/mediasource.window.js',
+     'needs a MediaSource (MSE): 0.2 media (the integrator, 2026-11-20, lane blk5)'),
+    # - XSLT is out of scope (as dom/xslt/): an <?xml-stylesheet?> transform's base URL.
+    ('service-workers/service-worker/xsl-base-url.https.html',
+     'XSLT is out of scope (as dom/xslt/; the integrator, 2026-11-20, lane blk5)'),
+    # - Compression Dictionary Transport (fetch/compression-dictionary/ is not in the worklist; only Chrome
+    #   ships it: Chrome 157 2/2, Firefox 160 and Safari 27.2 0/2).
+    ('resource-timing/encoded-body-size-cached.https.html',
+     'Compression Dictionary Transport: its directory is outside the worklist, 0.2 (the integrator, 2026-11-20, lane blk5)'),
+    # - Media Capture: canvas.captureStream() and a MediaStreamTrack transferred to a service worker
+    #   (transferable tracks are mediacapture-extensions, Safari only; Chrome 157 and Firefox 160 throw
+    #   DataCloneError). mediacapture-* is not in the worklist.
+    ('service-workers/service-worker/ServiceWorkerGlobalScope/error-message-event.https.html',
+     'needs canvas.captureStream() and a transferable MediaStreamTrack: Media Capture is 0.2 (the integrator, 2026-11-20, lane blk5)'),
+    # - CSS Forms 1's appearance: base for <input> ships in no stable browser (Chrome only behind a flag:
+    #   Chrome 157, Firefox 160 and Safari 27.2 fail both at the first base-appearance assertion), and the
+    #   expectations differ from the ED's Appendix A (lane css2's upstream draft).
+    ('css/css-forms/input-file-base-appearance-computed.html',
+     'appearance: base for <input>: shipped by no stable browser (the integrator, 2026-11-20, lane blk5)'),
+    ('css/css-forms/input-text-base-appearance-computed-style.html',
+     'appearance: base for <input>: shipped by no stable browser (the integrator, 2026-11-20, lane blk5)'),
+    # - Behaviour removed from HTML in 2018: document.open() no longer unloads the document (whatwg/html's
+    #   document.open() simplification), and every browser dropped it, so no conforming engine reaches the
+    #   expected "ABCDEFGHIJKLMN" (Chrome 157 "ABGLMN", Firefox 160 "ABGHIJKLMN" = Crane, Safari 27.2 TIMEOUT).
+    ('html/browsers/browsing-the-web/unloading-documents/004.html',
+     'tests document.open() unloading the document, removed from HTML in 2018 (the integrator, 2026-11-20, lane blk5)'),
     # - filesystem: URLs: the File API: Directories and System, a W3C Working Group Note (2014) that was
     #   never ratified; only Chrome ships webkitRequestFileSystem (Firefox 160 and Safari 27.2 fail both
     #   files as Crane does).
