@@ -55,18 +55,7 @@ fn moveToInsertionPoint(edit: *Edit, end_link: ?*Instance) !void {
         }
     }
     if (try overrides.hasOverrides(edit)) return;
-    // The downstream point lies past an empty inline element the deletion
-    // left, which draws nothing: `abc[<s></s><b><i>de]f</i></b>ghi` +
-    // "d", "e" types into the i as `abc[<b><i>de]f...` does (editing/run/
-    // inserttext.html, PPP at wpt.fyi 2358bd4835; Blink's MostForwardCaret-
-    // Position skips nodes with no rendered content).
-    var downstream = try common.lastEquivalentPoint(caret);
-    while (!common.isText(downstream.node)) {
-        const child = (try common.childAt(downstream.node, downstream.offset)) orelse break;
-        if (!common.isInlineNode(child) or common.isText(child) or !try common.isEditable(child)) break;
-        if (try common.isVisible(child)) break;
-        downstream = try common.lastEquivalentPoint(.{ .node = downstream.node, .offset = downstream.offset + 1 });
-    }
+    const downstream = try common.lastEquivalentPoint(caret);
     if (downstream.eql(caret) or !common.isText(downstream.node)) return;
     if ((try common.parent(downstream.node)) == (try common.parent(caret.node))) return;
     try edit.collapse(downstream.node, downstream.offset);
