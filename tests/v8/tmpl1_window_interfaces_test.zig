@@ -81,6 +81,24 @@ fn expectEval(r: runtime.Context, source: []const u8, want: []const u8) !void {
     try testing.expectEqualStrings(want, got);
 }
 
+/// [SecureContext] on `T` or on an interface it inherits from (WebIDL
+/// 3.3.13 forbids the one without the other; six WebXR IDL interfaces
+/// break the rule - interface_bindings.isSecureContextOnly).
+fn isSecureContextOnly(comptime T: type) bool {
+    comptime {
+        var Cur = T;
+        var depth: usize = 0;
+        while (depth < 32) : (depth += 1) {
+            if (hasExtendedAttribute(Cur, "SecureContext")) return true;
+            if (!@hasDecl(Cur.Meta, "ParentInterface")) return false;
+            const Parent = Cur.Meta.ParentInterface;
+            if (@TypeOf(Parent) != type or @typeInfo(Parent) != .@"struct" or !@hasDecl(Parent, "Meta")) return false;
+            Cur = Parent;
+        }
+        return false;
+    }
+}
+
 fn hasExtendedAttribute(comptime T: type, comptime attribute: []const u8) bool {
     comptime {
         if (!@hasDecl(T.Meta, "extended_attributes")) return false;
@@ -113,7 +131,7 @@ const interface_table = blk: {
         else
             "null";
         out = out ++ "['" ++ name ++ "'," ++ parent ++ "," ++ (if (callback) "1" else "0") ++ "," ++
-            (if (hasExtendedAttribute(T, "SecureContext")) "1" else "0") ++ "," ++
+            (if (isSecureContextOnly(T)) "1" else "0") ++ "," ++
             (if (helpers.isExposedIn(T, .Window)) "1" else "0") ++ "," ++
             (if (helpers.isExposedIn(T, .DedicatedWorker)) "1" else "0") ++ "],";
     }

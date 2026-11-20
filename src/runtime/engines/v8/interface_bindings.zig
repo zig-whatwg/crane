@@ -410,6 +410,32 @@ fn hasInterfaceObject(comptime name: []const u8) bool {
     }
 }
 
+/// Whether `T` is exposed only in a secure context: [SecureContext] on it or
+/// on an interface it inherits from. WebIDL 3.3.13: "an interface without the
+/// [SecureContext] extended attribute must not inherit from another interface
+/// that does specify [SecureContext]" - six WebXR interfaces' IDL does
+/// (XRJointSpace, XRBodySpace, XRCompositionLayer, XRJointPose,
+/// XRGPUDepthInformation, XRWebGLDepthInformation: their parents are
+/// [SecureContext], they are not); Chromium declares XRJointSpace,
+/// XRJointPose, XRCompositionLayer and XRWebGLDepthInformation
+/// [SecureContext] (third_party/blink/renderer/modules/xr/*.idl, main
+/// 2026-11-19) and has no XRBodySpace or XRGPUDepthInformation. An insecure
+/// realm exposed them without their parent interface objects.
+fn isSecureContextOnly(comptime T: type) bool {
+    comptime {
+        var Cur = T;
+        var depth: usize = 0;
+        while (depth < 32) : (depth += 1) {
+            if (hasExtendedAttribute(Cur, "SecureContext")) return true;
+            if (!@hasDecl(Cur.Meta, "ParentInterface")) return false;
+            const Parent = Cur.Meta.ParentInterface;
+            if (@TypeOf(Parent) != type or @typeInfo(Parent) != .@"struct" or !@hasDecl(Parent, "Meta")) return false;
+            Cur = Parent;
+        }
+        return false;
+    }
+}
+
 fn exposureOf(comptime T: type) std.EnumSet(helpers.GlobalScope) {
     comptime {
         var set = std.EnumSet(helpers.GlobalScope).empty;
@@ -454,7 +480,7 @@ pub const constructs = blk: {
         buf[n] = .{
             .name = name,
             .exposure = exposureOf(T),
-            .secure = hasExtendedAttribute(T, "SecureContext"),
+            .secure = isSecureContextOnly(T),
             .make = interfaceObjectMaker(T),
         };
         n += 1;
@@ -467,7 +493,7 @@ pub const constructs = blk: {
         buf[n] = .{
             .name = factory[0],
             .exposure = exposureOf(T),
-            .secure = hasExtendedAttribute(T, "SecureContext"),
+            .secure = isSecureContextOnly(T),
             .make = factoryMaker(factory[0], T),
         };
         n += 1;
@@ -497,7 +523,7 @@ pub const constructs = blk: {
             buf[n] = .{
                 .name = attr.value.identifier,
                 .exposure = exposure,
-                .secure = hasExtendedAttribute(T, "SecureContext"),
+                .secure = isSecureContextOnly(T),
                 .make = interfaceObjectMaker(T),
             };
             n += 1;
