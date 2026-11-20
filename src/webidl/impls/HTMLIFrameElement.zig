@@ -2219,6 +2219,83 @@ fn abortActiveDocumentTask(context: ?*anyopaque) void {
     }
 }
 
+/// The document resource of a cross-document navigation to about:srcdoc
+/// that has none - set by location or a link, not by the srcdoc attribute -
+/// OWNED by the record's allocator, or null to leave it to the fetch, whose
+/// answer for about:srcdoc is a network error.
+///
+/// HTML fetches such a navigation, and gets a network error. Golden rule 2:
+/// Chrome and Safari load the frame's srcdoc content for an initiator of
+/// the parent's origin (grandparent_location_aboutsrcdoc.sub.window.js's
+/// "same-origin grandparent sets location to about:srcdoc": Chrome 157
+/// passes; Safari 27.2 loads it, cross-origin initiators too; Firefox 160
+/// times out), the majority; for an initiator of another origin Chrome
+/// refuses (an error page, as the spec) and Safari loads - no majority,
+/// so the spec's network error. Together that is Chromium's
+/// NavigationRequest::CheckAboutSrcDoc (content/browser/renderer_host/
+/// navigation_request.cc, at 671d6af90da4; reproduced, not copied), whose
+/// allowed cases are: a navigation no document initiated; an about:srcdoc
+/// document's reload by an initiator of its own origin; an initiator of the
+/// parent's origin. The content is the container's srcdoc attribute value
+/// then, "" with none (its srcdoc_value).
+fn aboutSrcdocResource(record: *Navigation) !?[]u8 {
+    const element_ptr = record.integration.iframe_element orelse return null;
+    const element: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
+    const allowed = allowed: {
+        // The initiator: navigate step 4's initiator origin snapshot - its
+        // serialization (`request_origin`, which every fetched navigation
+        // has) with its record when the navigation kept one.
+        const serialized: []const u8 = record.request_origin orelse
+            (if (record.initiator_origin) |o| o.serialized else null) orelse break :allowed true;
+        const initiator_origin: dom_module.origin_record.Origin = .{ .serialized = serialized, .record = record.initiator_origin };
+        // An about:srcdoc document reloaded by its own origin.
+        if (activeDocumentOf(record.integration)) |current| {
+            const current_url = documentUrlOf(current, record.allocator) catch break :allowed false;
+            defer record.allocator.free(current_url);
+            if (navigate_steps.matchesAboutSrcdoc(current_url)) {
+                if (documentOrigin(current)) |origin| {
+                    defer origin.deinit();
+                    if (dom_module.origin_record.sameOrigin(initiator_origin, origin.view())) break :allowed true;
+                }
+            }
+        }
+        // The parent's origin.
+        const parent = nodeDocumentOf(element) orelse break :allowed false;
+        const origin = documentOrigin(parent) orelse break :allowed false;
+        defer origin.deinit();
+        break :allowed dom_module.origin_record.sameOrigin(initiator_origin, origin.view());
+    };
+    if (!allowed) return null;
+    const value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) orelse
+        return try record.allocator.dupe(u8, "");
+    var owned = value;
+    defer owned.deinit(element.ctx.allocator);
+    return try record.allocator.dupe(u8, owned.asSlice());
+}
+
+/// A document's origin as a security check reads it: its window's
+/// serialization and record. OWNED serialization (`deinit`).
+const DocumentOrigin = struct {
+    window: *runtime.Instance,
+    serialized: []const u8,
+    record: ?*const OriginRecord,
+
+    fn view(self: DocumentOrigin) dom_module.origin_record.Origin {
+        return .{ .serialized = self.serialized, .record = self.record };
+    }
+
+    fn deinit(self: DocumentOrigin) void {
+        self.window.ctx.allocator.free(self.serialized);
+    }
+};
+
+fn documentOrigin(document: *runtime.Instance) ?DocumentOrigin {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    const settings = dom_module.global_settings.of(window) orelse return null;
+    const serialized = settings.origin(window) catch return null;
+    return .{ .window = window, .serialized = serialized, .record = dom_module.global_settings.originRecordOf(window) };
+}
+
 /// Step 23.9: "attempt to populate the history entry's document" - its fetch.
 /// about:blank, srcdoc, data: and file: are answered without the network and
 /// committed by a task; http(s) goes to the network through the event loop.
@@ -2232,6 +2309,13 @@ fn startFetch(record: *Navigation) void {
     if (navigationBlockedByCSP(record, url, 0)) {
         record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
+
+    // A cross-document navigation to about:srcdoc with no srcdoc resource
+    // (location = "about:srcdoc"): its container's srcdoc content, when
+    // `aboutSrcdocResource` allows it; else the fetch below - a network error.
+    if (record.srcdoc == null and navigate_steps.matchesAboutSrcdoc(url)) {
+        record.srcdoc = aboutSrcdocResource(record) catch null;
     }
 
     if (record.srcdoc) |html| {
