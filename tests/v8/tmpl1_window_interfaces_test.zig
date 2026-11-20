@@ -93,7 +93,7 @@ fn hasExtendedAttribute(comptime T: type, comptime attribute: []const u8) bool {
 
 /// Every interface the generated bindings define, as the JS array literal
 /// `[[name, parent name or null, is a callback interface, is [SecureContext],
-/// is exposed on Window], ...]`.
+/// is exposed on Window, is exposed in a dedicated worker], ...]`.
 const interface_table = blk: {
     @setEvalBranchQuota(50_000_000);
     var out: []const u8 = "[";
@@ -114,7 +114,8 @@ const interface_table = blk: {
             "null";
         out = out ++ "['" ++ name ++ "'," ++ parent ++ "," ++ (if (callback) "1" else "0") ++ "," ++
             (if (hasExtendedAttribute(T, "SecureContext")) "1" else "0") ++ "," ++
-            (if (helpers.isExposedIn(T, .Window)) "1" else "0") ++ "],";
+            (if (helpers.isExposedIn(T, .Window)) "1" else "0") ++ "," ++
+            (if (helpers.isExposedIn(T, .DedicatedWorker)) "1" else "0") ++ "],";
     }
     break :blk out ++ "]";
 };
@@ -126,7 +127,7 @@ fn interfaceCheck(comptime secure: bool) []const u8 {
         \\(() => {
         \\  const bad = [];
         \\  let exposed = 0;
-        \\  for (const [n, p, cb, sec, win] of table) {
+        \\  for (const [n, p, cb, sec, win, dw] of table) {
         \\    const has = Object.prototype.hasOwnProperty.call(globalThis, n);
         \\    if (!win || (sec && !SECURE)) { if (has) bad.push('present, not exposed: ' + n); continue; }
         \\    if (!has) { bad.push('missing ' + n); continue; }
@@ -156,6 +157,39 @@ fn interfaceCheck(comptime secure: bool) []const u8 {
         \\  const made = new Document().implementation.createHTMLDocument('t');
         \\  if (Object.getPrototypeOf(made.body) !== HTMLBodyElement.prototype) bad.push('a wrapper of a new document');
         \\  if (exposed < 700) bad.push('only ' + exposed + ' exposed');
+        \\  return bad.slice(0, 12).join('; ') || 'ok';
+        \\})()
+    ;
+}
+
+/// The same check in a dedicated worker's realm (`secure` or not).
+fn workerInterfaceCheck(comptime secure: bool) []const u8 {
+    return "const table = " ++ interface_table ++ ";\nconst SECURE = " ++ (if (secure) "true" else "false") ++ ";\n" ++
+        \\(() => {
+        \\  const bad = [];
+        \\  let exposed = 0;
+        \\  for (const [n, p, cb, sec, win, dw] of table) {
+        \\    const has = Object.prototype.hasOwnProperty.call(globalThis, n);
+        \\    if (!dw || (sec && !SECURE)) { if (has) bad.push('present, not exposed: ' + n); continue; }
+        \\    if (!has) { bad.push('missing ' + n); continue; }
+        \\    exposed++;
+        \\    const d = Object.getOwnPropertyDescriptor(globalThis, n);
+        \\    if (!('value' in d) || !d.writable || d.enumerable || !d.configurable) bad.push('descriptor ' + n);
+        \\    const f = globalThis[n];
+        \\    if (typeof f !== 'function') { bad.push('no interface object ' + n); continue; }
+        \\    if (cb) continue;
+        \\    if (typeof f.prototype !== 'object' || f.prototype === null) { bad.push('no prototype ' + n); continue; }
+        \\    if (p !== null) {
+        \\      const parent = globalThis[p];
+        \\      if (typeof parent !== 'function') { bad.push('no parent ' + p + ' of ' + n); continue; }
+        \\      if (Object.getPrototypeOf(f) !== parent) bad.push('interface object [[Prototype]] ' + n);
+        \\      if (Object.getPrototypeOf(f.prototype) !== parent.prototype) bad.push('prototype [[Prototype]] ' + n);
+        \\    }
+        \\  }
+        \\  if (!(globalThis instanceof DedicatedWorkerGlobalScope)) bad.push('the global is no DedicatedWorkerGlobalScope');
+        \\  if (!(globalThis instanceof WorkerGlobalScope)) bad.push('the global is no WorkerGlobalScope');
+        \\  for (const n of ['Window', 'Document', 'HTMLDocument', 'Image', 'webkitURL']) if (n in globalThis) bad.push('present on a worker: ' + n);
+        \\  if (exposed < 200) bad.push('only ' + exposed + ' exposed');
         \\  return bad.slice(0, 12).join('; ') || 'ok';
         \\})()
     ;
@@ -355,4 +389,30 @@ test "an isolate made without the snapshot makes an interface's template when a 
     try testing.expect(v8.template_registry.getTemplateForIsolate("DOMParser", @ptrCast(@alignCast(agent))) == null);
     try expectEval(page, "typeof new DOMParser().parseFromString", "function");
     try testing.expect(v8.template_registry.getTemplateForIsolate("DOMParser", @ptrCast(@alignCast(agent))) != null);
+}
+
+// A dedicated worker's agent (never restored from the snapshot: html/
+// worker_host.zig) makes the templates of what its realm reads and wraps,
+// not of every interface exposed to it: installForScope made all 369 and
+// built every interface object (2.8 ms and 1.5 MB per worker,
+// tmp/plans/tmpl1-measure.md). Its global has exactly the constructs a
+// dedicated worker exposes, as lazy data properties of its global scope
+// template; a secure realm has the [SecureContext] ones, an insecure one not.
+test "a dedicated worker's realm has the interface objects a dedicated worker exposes, and its isolate makes a template when the realm first needs it" {
+    test_process.start();
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+    {
+        const made = try protocol.createWorkerRealm(agent, &.{ .global = .dedicated, .url = "https://tmpl1.test/worker.js", .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+        defer protocol.destroyWorkerRealm(made.realm, null, null);
+        const count = templateCount(agent);
+        if (count >= 60) std.debug.print("{d} templates after a worker realm that read nothing\n", .{count});
+        try testing.expect(count < 60);
+        try testing.expect(v8.template_registry.getTemplateForIsolate("TextDecoder", @ptrCast(@alignCast(agent))) == null);
+        try expectEval(made.realm, workerInterfaceCheck(true), "ok");
+        try testing.expect(v8.template_registry.getTemplateForIsolate("TextDecoder", @ptrCast(@alignCast(agent))) != null);
+    }
+    const insecure = try protocol.createWorkerRealm(agent, &.{ .global = .dedicated, .url = "http://tmpl1.test/worker.js", .secure_context = false, .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+    defer protocol.destroyWorkerRealm(insecure.realm, null, null);
+    try expectEval(insecure.realm, workerInterfaceCheck(false), "ok");
 }
