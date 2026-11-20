@@ -354,6 +354,19 @@ pub fn V8Namespace(comptime Namespace: type) type {
         ) ?*v8.Object {
             const object = v8.v8_Object_New(isolate) orelse return null;
 
+            // Console Standard §1: "For historical web-compatibility reasons,
+            // the namespace object for console must have as its [[Prototype]]
+            // an empty object, created as if by
+            // OrdinaryObjectCreate(%Object.prototype%), instead of
+            // %Object.prototype%" (Chrome, Firefox and Safari:
+            // console/console-is-a-namespace.any.js).
+            if (comptime std.mem.eql(u8, namespace_name, "console")) {
+                if (v8.v8_Object_New(isolate)) |prototype| {
+                    defer v8.v8_Object_Dispose(prototype);
+                    _ = v8.v8_Object_SetPrototype(object, context, @ptrCast(prototype));
+                }
+            }
+
             // Register all methods at compile time
             inline for (all_methods) |method| {
                 if (comptime !@hasDecl(Namespace, "Meta") or !@hasDecl(Namespace.Meta, "exposed_members")) {
