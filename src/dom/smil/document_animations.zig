@@ -219,6 +219,13 @@ pub const AnimatedStyle = struct {
     block: css.declarations.DeclarationBlock,
 };
 
+/// When an outermost svg element's timeline began, for one that has no
+/// timeline yet. The link tells a reused address from the element.
+pub const LateBegin = struct {
+    svg: Link,
+    at: Time,
+};
+
 /// A document's SVG animation state, in its rare data: the outermost svg
 /// elements with a timeline, and the animated values computed last.
 pub const DocumentState = struct {
@@ -229,8 +236,20 @@ pub const DocumentState = struct {
     /// re-keys the document's cached styles.
     style_signature: u64 = 0,
     values_dirty: bool = false,
+    /// The time the document's timelines began at its load: the begin of
+    /// every outermost svg element connected then that has no timeline yet.
+    loaded_at: ?Time = null,
+    /// The outermost svg elements inserted after the load that have no
+    /// timeline yet, with the time each was inserted - the time its
+    /// timeline began (Blink SVGSVGElement::InsertedInto, Gecko
+    /// SVGSVGElement::BindToTree, WebKit SVGSVGElement::insertedIntoAncestor
+    /// start the time container then, animations or not). Only the time is
+    /// kept until an animation or a timeline method needs the timeline;
+    /// an entry goes with its element's removal.
+    late_begins: std.AutoHashMapUnmanaged(*runtime.Instance, LateBegin) = .empty,
 
     pub fn deinit(self: *DocumentState, allocator: Allocator) void {
+        self.late_begins.deinit(allocator);
         self.timelines.deinit(allocator);
         for (self.values.items) |*value| value.deinit(allocator);
         self.values.deinit(allocator);
@@ -299,7 +318,7 @@ fn isOutermost(svg: *runtime.Instance) bool {
 /// The timeline `svg` (an outermost svg element) defines, listed in its
 /// document.
 fn registeredTimeline(svg: *runtime.Instance) ?*Timeline {
-    const timeline = timelineOf(svg, true) orelse return null;
+    const timeline = ensureTimeline(svg) orelse return null;
     const document = documentOf(svg) orelse return timeline;
     const state = documentState(document, true) orelse return timeline;
     for (state.timelines.items) |link| {
@@ -309,8 +328,56 @@ fn registeredTimeline(svg: *runtime.Instance) ?*Timeline {
     return timeline;
 }
 
+/// `svg`'s timeline, made if it has none. A connected outermost svg
+/// element's timeline began at the load or at its insertion after it, so
+/// one made later starts at that time, not now: an animation added to it
+/// is on the timeline the element has had since (Blink
+/// SMILTimeContainer::Start from SVGSVGElement::InsertedInto, for every
+/// outermost svg element).
+fn ensureTimeline(svg: *runtime.Instance) ?*Timeline {
+    if (timelineOf(svg, false)) |timeline| return timeline;
+    const timeline = timelineOf(svg, true) orelse return null;
+    if (!isConnected(svg) or !isOutermost(svg)) return timeline;
+    const document = documentOf(svg) orelse return timeline;
+    if (!canStart(document)) return timeline; // startAnimations starts it
+    const state = documentState(document, false);
+    const began = if (state) |s| takeBegin(s, svg) else null;
+    timeline.container.start(began orelse documentNow(document).?);
+    return timeline;
+}
+
+/// When `svg`'s timeline began, for an svg element with none yet: its
+/// insertion after the load, else the load. Null when neither is known.
+fn beganAt(state: *DocumentState, svg: *runtime.Instance) ?Time {
+    if (state.late_begins.get(svg)) |late| {
+        if (late.svg.instance == svg and late.svg.isLive()) return late.at;
+    }
+    return state.loaded_at;
+}
+
+/// `beganAt`, and the entry goes: the timeline holds the time from now on.
+fn takeBegin(state: *DocumentState, svg: *runtime.Instance) ?Time {
+    const began = beganAt(state, svg);
+    _ = state.late_begins.remove(svg);
+    return began;
+}
+
+/// An outermost svg element with no timeline became connected: a loaded
+/// document's keeps the time it began, for the timeline an animation or a
+/// timeline method makes later; before the load, the document is told to
+/// keep the load's time.
+fn noteBegin(svg: *runtime.Instance, document: *runtime.Instance) void {
+    // A document that is not fully active (DOMParser's, an inert one) has
+    // no animation time, and its timelines do not begin.
+    const now = documentNow(document) orelse return;
+    const state = documentState(document, true) orelse return;
+    if (!document_lifecycle.isCompletelyLoaded(document)) return;
+    state.late_begins.put(document.ctx.allocator, svg, .{ .svg = Link.to(svg), .at = now }) catch return;
+}
+
 fn unregisterTimeline(svg: *runtime.Instance, document: *runtime.Instance) void {
     const state = documentState(document, false) orelse return;
+    if (state.late_begins.count() != 0) _ = state.late_begins.remove(svg);
     var kept: usize = 0;
     for (state.timelines.items) |link| {
         if (!link.isLive() or link.instance == svg) continue;
@@ -373,11 +440,11 @@ fn instanceOf(node: *NodeBase) ?*runtime.Instance {
 /// An outermost svg element became connected: its timeline is listed, and
 /// begins at once in a document that has loaded.
 fn svgInserted(svg: *runtime.Instance) void {
-    // Only an svg element an animation gave a timeline has one: most never
-    // do, and pay nothing here.
-    if (timelineOf(svg, false) == null) return;
-    const timeline = registeredTimeline(svg) orelse return;
     const document = documentOf(svg) orelse return;
+    // Only an svg element an animation or a timeline method gave a timeline
+    // has one: most never do, and keep only the time theirs began.
+    if (timelineOf(svg, false) == null) return noteBegin(svg, document);
+    const timeline = registeredTimeline(svg) orelse return;
     if (!timeline.container.started and canStart(document)) {
         timeline.container.start(documentNow(document).?);
         dispatchQueued(&timeline.container);
@@ -591,6 +658,9 @@ pub fn serviceAnimations(document: *runtime.Instance) void {
 pub fn startAnimations(document: *runtime.Instance) void {
     const state = documentState(document, false) orelse return;
     const now = documentNow(document) orelse return;
+    // Every outermost svg element connected now begins here, those with no
+    // timeline yet too (svgInserted made the state for them).
+    state.loaded_at = now;
     var index: usize = 0;
     while (index < state.timelines.items.len) : (index += 1) {
         const link = state.timelines.items[index];
@@ -724,7 +794,8 @@ pub fn targetElement(state: *AnimationState) ?*runtime.Instance {
 /// outermost svg element, then return").
 fn ownTimeline(svg: *runtime.Instance) ?*Timeline {
     if (!isOutermost(svg)) return null;
-    return timelineOf(svg, true);
+    if (isConnected(svg)) return registeredTimeline(svg);
+    return ensureTimeline(svg);
 }
 
 pub fn pauseAnimations(svg: *runtime.Instance) void {
@@ -749,8 +820,17 @@ pub fn animationsPaused(svg: *runtime.Instance) bool {
 /// getCurrentTime(): 0 before the timeline began, else its time in seconds.
 pub fn svgCurrentTime(svg: *runtime.Instance) f32 {
     const outermost = outermostSvgElement(svg) orelse svg;
-    const timeline = timelineOf(outermost, false) orelse return 0;
-    return @floatCast(timeline.container.elapsed(nowOf(svg)).seconds());
+    if (timelineOf(outermost, false)) |timeline| {
+        return @floatCast(timeline.container.elapsed(nowOf(svg)).seconds());
+    }
+    // No timeline made yet: the time since the one it has began.
+    if (!isConnected(outermost)) return 0;
+    const document = documentOf(outermost) orelse return 0;
+    if (!canStart(document)) return 0;
+    const state = documentState(document, false) orelse return 0;
+    const began = beganAt(state, outermost) orelse return 0;
+    const now = documentNow(document).?;
+    return @floatCast(Time.max(now.sub(began), .zero).seconds());
 }
 
 /// setCurrentTime(seconds): seek a timeline that began; record the time for
@@ -911,9 +991,11 @@ fn buildStyles(document: *runtime.Instance, state: *DocumentState, candidates: [
     var hasher = std.hash.Wyhash.init(0x534d_494c);
     var assignments: std.ArrayList(css.properties.Assignment) = .empty;
     defer assignments.deinit(allocator);
+    var hashed = false;
     for (candidates) |candidate| {
         const target_name = svgName(candidate.target) orelse continue;
         const property = css.svg_presentation.lookup(svg_namespace, target_name, candidate.property) orelse continue;
+        hashed = true;
         const address: usize = @intFromPtr(candidate.target);
         hasher.update(std.mem.asBytes(&address));
         hasher.update(candidate.property);
@@ -942,7 +1024,9 @@ fn buildStyles(document: *runtime.Instance, state: *DocumentState, candidates: [
         if (!parsed) continue;
         _ = state.styles.items[index].block.setValidatedProperty(property, assignments.items) catch {};
     }
-    const signature = hasher.final();
+    // No override style is 0, the signature a document starts with: a
+    // timeline that sets no CSS property never re-keys the cached styles.
+    const signature: u64 = if (hashed) hasher.final() else 0;
     if (signature == state.style_signature) return;
     state.style_signature = signature;
     if (style_hooks.engineOf(document)) |engine| engine.animatedOverrideStyleChanged();
