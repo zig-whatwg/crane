@@ -175,8 +175,9 @@ pub const Listener = enum {
 };
 
 /// WPT's manifest joins filename flags with the decoded `wpt_flags` query
-/// values (tools/manifest/item.py, URLManifestItem._flags and .https).
-fn hasHttpsQueryFlag(variant: []const u8) bool {
+/// values (tools/manifest/item.py, URLManifestItem._flags, .https and .h2):
+/// whether `variant`'s query carries `wpt_flags=<flag>`.
+fn hasQueryFlag(variant: []const u8, flag: []const u8) bool {
     const before_fragment = variant[0 .. std.mem.indexOfScalar(u8, variant, '#') orelse variant.len];
     const query_start = std.mem.indexOfScalar(u8, before_fragment, '?') orelse return false;
     var fields = std.mem.splitScalar(u8, before_fragment[query_start + 1 ..], '&');
@@ -185,11 +186,12 @@ fn hasHttpsQueryFlag(variant: []const u8) bool {
         var key_buffer: ["wpt_flags".len]u8 = undefined;
         const key = (std.Uri.Component{ .percent_encoded = field[0..equals] }).toRaw(&key_buffer) catch continue;
         if (!std.mem.eql(u8, key, "wpt_flags")) continue;
+        // Big enough for every flag asked about; a longer value matches none.
         var value_buffer: ["https".len]u8 = undefined;
         const value = (std.Uri.Component{ .percent_encoded = field[equals + 1 ..] }).toRaw(&value_buffer) catch continue;
-        // Form decoding also maps '+' to space; neither target contains a
-        // space, so a '+' cannot match either target even without that step.
-        if (std.mem.eql(u8, value, "https")) return true;
+        // Form decoding also maps '+' to space; no flag contains a space, so
+        // a '+' cannot match one even without that step.
+        if (std.mem.eql(u8, value, flag)) return true;
     }
     return false;
 }
@@ -710,7 +712,14 @@ pub const WptServer = struct {
             .serviceworker, .serviceworker_module => if (Listener.of(test_path) == .h2) .h2 else .https,
             else => Listener.of(test_path),
         };
-        if (listener == .http and hasHttpsQueryFlag(variant)) listener = .https;
+        // wptrunner's server_protocol (tools/wptrunner/wptrunner/wpttest.py)
+        // asks the manifest's h2 flag before its https flag, and a variant's
+        // `wpt_flags=h2` sets the h2 flag as `.h2.` in the filename does:
+        // websockets/*.any.js's h2 variants are served by the HTTP/2
+        // listener, and their WebSockets go to its port.
+        if (listener != .h2 and hasQueryFlag(variant, "h2")) {
+            listener = .h2;
+        } else if (listener == .http and hasQueryFlag(variant, "https")) listener = .https;
         return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
             listener.scheme(),
             WPT_HOST,
@@ -1408,6 +1417,38 @@ test "HTTPS query flags select the TLS listener without matching other parameter
     const h2_url = try server.buildTestUrl(allocator, "example.h2.html", .window, "?wpt_flags=https");
     defer allocator.free(h2_url);
     try std.testing.expectEqualStrings("https://web-platform.test:9000/example.h2.html?wpt_flags=https", h2_url);
+}
+
+test "a wpt_flags=h2 variant is fetched from the HTTP/2 listener, ahead of wpt_flags=https" {
+    const allocator = std.testing.allocator;
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+    server.port = 8001;
+    server.https_port = 8444;
+
+    const cases = [_]struct {
+        path: []const u8 = "websockets/Close-1000-reason.any.js",
+        context: test_parser.GlobalType = .window,
+        variant: []const u8,
+        url: []const u8,
+    }{
+        .{ .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt_flags=h2" },
+        .{ .context = .worker, .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.worker.html?wpt_flags=h2" },
+        .{ .variant = "?wpt_flags=https&wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt_flags=https&wpt_flags=h2" },
+        .{ .variant = "?wpt%5Fflags=h%32", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt%5Fflags=h%32" },
+        .{ .path = "websockets/x.https.any.js", .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/x.https.any.html?wpt_flags=h2" },
+        .{ .path = "service-workers/x.https.any.js", .context = .serviceworker, .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/service-workers/x.https.any.serviceworker.html?wpt_flags=h2" },
+        .{ .variant = "?wss", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wss" },
+        .{ .variant = "?wpt_flags=h2x", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wpt_flags=h2x" },
+        .{ .variant = "?wpt_flags=H2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wpt_flags=H2" },
+        .{ .variant = "?other=wpt_flags%3Dh2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?other=wpt_flags%3Dh2" },
+        .{ .variant = "#wpt_flags=h2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html#wpt_flags=h2" },
+    };
+    for (cases) |case| {
+        const built = try server.buildTestUrl(allocator, case.path, case.context, case.variant);
+        defer allocator.free(built);
+        try std.testing.expectEqualStrings(case.url, built);
+    }
 }
 
 test "a .h2. test is fetched from the HTTP/2 listener, and every URL builder agrees" {

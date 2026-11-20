@@ -1923,3 +1923,12 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = chrome, firefox, safari
 ruling          = golden rule 2, the browsers agreeing with no newer spec: the integrator, 2026-11-19 9:50 AM ET (lane blk4), superseding the 2026-10-28 line that kept location.reload() on the spec's queue
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[websockets/send-many-64K-messages-with-backpressure.any.js]
+kind            = follows-majority
+why             = its 4 ?wpt_flags=h2 variants (window, worker, sharedworker, serviceworker) time out exactly as in Chrome, Firefox and Safari, while every default and wss variant passes in Crane as in all three: wpt serve's HTTP/2 server never calls h2's acknowledge_received_data, so no WINDOW_UPDATE reopens the 65,535-byte connection window, and the test's handler (receive-many-with-backpressure_wsh.py) turns permessage-deflate off, so 50 x 64 KiB cannot get through (lane net3, 2026-11-20; evidence tmp/plans/net3-evidence/send-many-64K-h2-browsers.txt)
+chrome.result   = wpt.fyi run 4786307730243584: 8/12 (Chrome 157, 2358bd4835; the 4 h2 variants TIMEOUT)
+firefox.result  = wpt.fyi run 4877168468033536: 8/12 (Firefox 160, 2358bd4835; the 4 h2 variants TIMEOUT)
+safari.result   = wpt.fyi run 6479119966273536: 8/12 (Safari 27.2, 2358bd4835; the 4 h2 variants TIMEOUT)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves

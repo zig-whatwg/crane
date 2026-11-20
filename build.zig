@@ -4137,6 +4137,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "fetch", .module = testing_graph.fetch },
             // kit/curl's share, options and trust store, as fetch reaches them.
             .{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? },
+            // What the platform was built with: its HTTP/2 parts' tests run
+            // only where it has HTTP/2 (`http2`), as the platform's code does.
+            .{ .name = "platform_options", .module = testing_graph.platform_options },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
