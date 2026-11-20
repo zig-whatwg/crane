@@ -22,9 +22,6 @@
 const std = @import("std");
 
 const log = std.log.scoped(.script_execution);
-
-/// Infra's ASCII whitespace: TAB, LF, FF, CR and SPACE.
-const ascii_whitespace = [_]u8{ '\t', '\n', 0x0C, '\r', ' ' };
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
@@ -403,19 +400,7 @@ fn prepareScriptElementFor(
 
         // Step 33.3: If src is the empty string, queue an element task to fire
         // error at el, and return.
-        //
-        // Deviation, stated (golden rule 2, browser majority): a src of only
-        // ASCII whitespace counts as empty. The spec tests for "" alone, so
-        // "   " encoding-parses (step 33.5 strips the spaces) to the node
-        // document's own URL and fetches it as a script; Chrome (Blink
-        // ScriptLoader::PrepareScript: StripLeadingAndTrailingHTMLSpaces, then
-        // IsEmpty) and Safari (WebKit ScriptElement::prepareScript, the same
-        // strip) fire error instead, Firefox fetches. wpt.fyi at 2358bd4835,
-        // processing-model-2/unhandled-promise-rejections/promise-resolution-
-        // order.html: Chrome 157 1/1 (run 4786307730243584), Safari 27.2
-        // fires both error events (run 6479119966273536), Firefox 160 TIMEOUT
-        // (run 4877168468033536). Crane test crane/blk5-script-src-whitespace.
-        if (std.mem.trim(u8, src, &ascii_whitespace).len == 0) {
+        if (src.len == 0) {
             queueErrorEventTask(script_element);
             return false;
         }
