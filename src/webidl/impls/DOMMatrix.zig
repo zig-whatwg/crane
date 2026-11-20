@@ -11,8 +11,8 @@
 //! written once. DOMMatrix's own State slots (codegen gives each `inherit
 //! attribute` one) are not used.
 //!
-//! Not yet: the mutable transform methods (multiplySelf, translateSelf, ...)
-//! and setMatrixValue, which needs a CSS transform-list parser.
+//! Not yet: the mutable transform methods (multiplySelf, translateSelf, ...).
+//! setMatrixValue parses through css.geometry's parseTransformList.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -348,10 +348,17 @@ pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64)
     return error.NotImplemented;
 }
 
+/// Geometry 6.5, setMatrixValue(transformList).
 pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = transformList;
-    return error.NotImplemented;
+    // 1. Parse transformList into an abstract matrix, and let matrix and
+    //    2dTransform be the result. If the result is failure, then throw a
+    //    "SyntaxError" DOMException.
+    const parsed = (try geometry.parseTransformList(instance.ctx.allocator, transformList.asSlice())) orelse return error.SyntaxError;
+    // 2. Set is 2D to the value of 2dTransform, and m11 element through m44
+    //    element to the element values of matrix in column-major order.
+    try geometry_storage.setMatrix(instance, parsed);
+    // 3. Return the current matrix.
+    return instance;
 }
 
 pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
