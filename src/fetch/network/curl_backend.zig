@@ -226,7 +226,7 @@ pub const LibcurlBackend = struct {
         /// "While true" steps 1 and 5.1; Resource Timing's firstInterimResponseStart and
         /// finalResponseHeadersStart). curl's STARTTRANSFER_TIME is one time
         /// for both, so a transfer with an interim response is timed here.
-        attempt_start_ns: u64 = 0,
+        attempt_start_ns: i128 = 0,
         first_interim_ns: ?u64 = null,
         final_status_ns: ?u64 = null,
 
@@ -1158,7 +1158,7 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
 fn noteStatusLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
     if (ctx.head_end != null) return;
     const status = statusOfBlock(line) orelse return;
-    const elapsed = clock.monotonicNanos() -| ctx.attempt_start_ns;
+    const elapsed: u64 = @intCast(std.math.clamp(clock.monotonicNanos() - ctx.attempt_start_ns, 0, std.math.maxInt(u64)));
     if (status >= 100 and status < 200) {
         if (ctx.first_interim_ns == null) ctx.first_interim_ns = elapsed;
     } else {
