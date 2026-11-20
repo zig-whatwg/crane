@@ -265,6 +265,29 @@ const NewListContext = struct {
     }
 };
 
+/// The container of an empty line the caret is in, which toggle lists gives
+/// a new list inside (see toggleListsAction): a collapsed selection in an
+/// empty editing host (nothing to wrap), or in a div - an editable one or
+/// the host - whose only child is a br (the node list is that br).
+fn emptyLineContainer(edit: *Edit, node_list: []const *Instance) !?*Instance {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (node_list.len == 0) {
+        if (!try common.isEditingHost(caret.node)) return null;
+        if ((try common.firstChild(caret.node)) != null) return null;
+        return caret.node;
+    }
+    if (node_list.len != 1) return null;
+    const br = node_list[0];
+    if (!try common.isHtmlElementNamed(br, "br")) return null;
+    const container = (try common.parent(br)) orelse return null;
+    if (!try common.isHtmlElementNamed(container, "div")) return null;
+    if (!(try common.isEditable(container)) and !try common.isEditingHost(container)) return null;
+    if ((try common.childCount(container)) != 1) return null;
+    if (caret.node != container and caret.node != br) return null;
+    return container;
+}
+
 /// Remove and return the first member of `list`.
 fn shift(list: *std.ArrayList(*Instance)) *Instance {
     return list.orderedRemove(0);
@@ -321,6 +344,32 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
             const kind = (try isList(node)) or (try parentIsList(node)) or try block.isAllowedChildOfName(.{ .node = node }, "li");
             if (!kind) continue;
             try node_list.append(edit.allocator, node);
+        }
+    }
+    // An empty line with nothing to wrap - an empty editing host, or a div
+    // holding only its padding br - gets a new list with one empty item at
+    // the caret, inside its container: all three browsers turn `{}` and
+    // `<div>{}<br></div>` + insertOrderedList + "abc" into `<ol><li>abc</li>
+    // </ol>` and `<div><ol><li>abc</li></ol></div>` (editing/run/
+    // insertorderedlist.html, insertunorderedlist.html: PPP at wpt.fyi
+    // 2358bd4835; Blink InsertListCommand::DoApplyForSingleParagraph puts the
+    // list in the empty paragraph, Gecko keeps a div as a container), where
+    // the spec's node list is empty or replaces the div. A p keeps the spec's
+    // replacement (Firefox and the data; Chrome and Safari nest the list in
+    // the p - following them would trade passing subtests).
+    if (!mode_disable) {
+        if (try emptyLineContainer(edit, node_list.items)) |container| {
+            const list = try edit.createElement(tag_name);
+            const item = try edit.createElement("li");
+            try edit.appendChild(list, item);
+            if (try common.firstChild(container)) |br| {
+                try edit.appendChild(item, br);
+            } else {
+                try edit.appendChild(item, try edit.createElement("br"));
+            }
+            try edit.appendChild(container, list);
+            try edit.collapse(item, 0);
+            return true;
         }
     }
     // Step 9: enabling leaves top-level lists alone.
