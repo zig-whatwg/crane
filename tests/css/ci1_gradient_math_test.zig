@@ -105,12 +105,12 @@ test "gradient pair math forwards real tree and random dependencies after declar
     try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "conic-gradient(at random(fixed 0.5, 2px, 4px) center, red, blue)", false, false });
 }
 
-test "opaque URL-modifier fallback retains background math rejection and other-property acceptance" {
-    // Q81/Q82's old whole-function fallback stays opaque until its owner
-    // delivers request modifiers. Q138 must not loosen its background veto.
+test "an unknown URL modifier is invalid in every image property" {
+    // Q81/Q82's opaque whole-function fallback is gone with the request URL
+    // modifiers row (lane maj1): an unknown <url-modifier> makes the value
+    // invalid, as in Chrome, Firefox and Safari (css/css-values/urls/
+    // url-request-modifiers-invalid.sub.html), math inside it or not.
     const input = "image-set(url('a' junk(calc(1px + 2px))), url('b'))";
-    for ([_][]const u8{ "background-image", "background" }) |name|
+    for ([_][]const u8{ "background-image", "background", "list-style-image", "content" }) |name|
         try testing.checkAllAllocationFailures(testing.allocator, accepts, .{ name, input, false });
-    for ([_][]const u8{ "list-style-image", "content" }) |name|
-        try testing.checkAllAllocationFailures(testing.allocator, accepts, .{ name, input, true });
 }

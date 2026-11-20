@@ -127,6 +127,9 @@ pub const Resource = struct {
         request.mode = self.key.mode;
         request.credentials_mode = self.key.credentials;
         request.referrer_policy = self.key.referrer_policy;
+        // CSS Values 4 §4.5.4 step 5: an integrity() modifier's metadata
+        // (CSS Values 5 §4.1.1, resource_loading.applyModifiers).
+        try request.setIntegrityMetadata(self.key.integrity);
         request.initiator_type = if (self.key.origin_clean) .other else null;
         const window = (try interfaces.Document.get_defaultView(self.owner)) orelse return error.InvalidState;
         var client = try @import("../global_settings.zig").requestClient(window);

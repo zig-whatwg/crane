@@ -34,6 +34,8 @@ pub const RgbaColor = color_mod.Color;
 pub const Content = @import("generated_content.zig").Content;
 pub const ResourceSource = resources.ResourceSource;
 pub const ResourceUrl = resources.ResourceUrl;
+pub const RequestModifiers = resources.RequestModifiers;
+pub const SkippingTokenizer = resources.SkippingTokenizer;
 
 // ============================================================================
 // Keywords
@@ -481,6 +483,24 @@ pub const Keyword = enum(u16) {
     grid_rows,
     grid_columns,
     grid_order,
+    // Lane maj1: Fill and Stroke 3 / SVG 2 stroke-linecap, stroke-linejoin,
+    // shape-rendering (crispEdges, lowercase as all three serialize it),
+    // vector-effect, buffered-rendering and paint-order (round, square,
+    // bevel, fill, stroke and the text-rendering keywords are shared).
+    butt,
+    miter,
+    crispedges,
+    non_scaling_stroke,
+    dynamic,
+    markers,
+    // MathML Core §3: math-shift, math-style and math-depth.
+    compact,
+    auto_add,
+    // Pointer Events touch-action.
+    manipulation,
+    pan_x,
+    pan_y,
+    pinch_zoom,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {

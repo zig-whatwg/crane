@@ -36,13 +36,45 @@ const tokenizer = @import("tokenizer.zig");
 const Tokenizer = tokenizer.Tokenizer;
 const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
+const resources = @import("resource_values.zig");
+const RequestModifiers = resources.RequestModifiers;
+
+/// An @import's request: its URL (escapes decoded) and the url()'s
+/// CSS Values 5 §4.1.1 request modifiers, both owned.
+pub const ImportRequest = struct {
+    url: []u8,
+    modifiers: RequestModifiers = .{},
+
+    pub fn deinit(self: *ImportRequest, allocator: Allocator) void {
+        allocator.free(self.url);
+        self.modifiers.deinitOwned(allocator);
+    }
+};
 
 /// The URL of every valid @import rule at the start of `sheet`, in order.
 /// Owned by the caller: free with `freeUrls`.
 pub fn importUrls(allocator: Allocator, sheet: []const u8) Allocator.Error![][]u8 {
-    var urls: std.ArrayList([]u8) = .empty;
+    const requests = try importRequests(allocator, sheet);
+    defer allocator.free(requests);
+    const urls = allocator.alloc([]u8, requests.len) catch |err| {
+        for (requests) |*request| request.deinit(allocator);
+        return err;
+    };
+    for (requests, urls) |*request, *url| {
+        url.* = request.url;
+        request.modifiers.deinitOwned(allocator);
+    }
+    return urls;
+}
+
+/// Every valid @import rule's request at the start of `sheet`, in order -
+/// the rules dom/style/rules.zig's buildImport keeps, so the index of each
+/// is the one the fetched sheet is delivered by. Owned by the caller: free
+/// with `freeRequests`.
+pub fn importRequests(allocator: Allocator, sheet: []const u8) Allocator.Error![]ImportRequest {
+    var urls: std.ArrayList(ImportRequest) = .empty;
     errdefer {
-        for (urls.items) |url| allocator.free(url);
+        for (urls.items) |*url| url.deinit(allocator);
         urls.deinit(allocator);
     }
     var tokens = Tokenizer.init(sheet);
@@ -64,9 +96,9 @@ pub fn importUrls(allocator: Allocator, sheet: []const u8) Allocator.Error![][]u
                     // no URL. Neither ends the imports: an invalid rule is
                     // dropped as if it were not there.
                     if (!imports_allowed or rule.has_block) continue;
-                    const url = try importUrl(allocator, sheet, rule.prelude) orelse continue;
+                    var url = try importUrl(allocator, sheet, rule.prelude) orelse continue;
                     urls.append(allocator, url) catch |err| {
-                        allocator.free(url);
+                        url.deinit(allocator);
                         return err;
                     };
                 } else if (tokenizer.nameEql(token.value, "charset")) {
@@ -91,6 +123,12 @@ pub fn importUrls(allocator: Allocator, sheet: []const u8) Allocator.Error![][]u
 pub fn freeUrls(allocator: Allocator, urls: [][]u8) void {
     for (urls) |url| allocator.free(url);
     allocator.free(urls);
+}
+
+/// Free what `importRequests` returned.
+pub fn freeRequests(allocator: Allocator, requests: []ImportRequest) void {
+    for (requests) |*request| request.deinit(allocator);
+    allocator.free(requests);
 }
 
 /// A byte range of the sheet.
@@ -180,23 +218,25 @@ fn consumeBlockContents(allocator: Allocator, tokens: *Tokenizer, close: TokenTy
 }
 
 /// The URL an @import rule's prelude starts with, as the spec's value
-/// (escapes decoded); null when it starts with none: `[ <url> | <string> ]`,
-/// where <url> is a <url-token> or url( <string> ).
-fn importUrl(allocator: Allocator, sheet: []const u8, prelude: Span) Allocator.Error!?[]u8 {
+/// (escapes decoded), and its request modifiers; null when it starts with
+/// none: `[ <url> | <string> ]`, where <url> is a <url-token> or
+/// url( <string> <url-modifier>* ) - Values 5 §4.1.1's request modifiers
+/// only, each once (as buildImport).
+fn importUrl(allocator: Allocator, sheet: []const u8, prelude: Span) Allocator.Error!?ImportRequest {
     var tokens = Tokenizer.init(sheet[0..prelude.end]);
     tokens.pos = prelude.start;
     const first = nextNonWhitespace(&tokens);
     switch (first.token_type) {
-        .url => return try tokenizer.decode(allocator, first.value),
-        .string => return try tokenizer.decode(allocator, first.stringContents()),
+        .url => return .{ .url = try tokenizer.decode(allocator, first.value) },
+        .string => return .{ .url = try tokenizer.decode(allocator, first.stringContents()) },
         .function => {
             if (!tokenizer.nameEql(first.value, "url")) return null;
             if (tokens.next().token_type != .left_paren) return null;
             const argument = nextNonWhitespace(&tokens);
             if (argument.token_type != .string) return null;
-            const close = nextNonWhitespace(&tokens);
-            if (close.token_type != .right_paren and close.token_type != .eof) return null;
-            return try tokenizer.decode(allocator, argument.stringContents());
+            var modifiers = (try RequestModifiers.consume(allocator, resources.SkippingTokenizer{ .tok = &tokens })) orelse return null;
+            errdefer modifiers.deinitOwned(allocator);
+            return .{ .url = try tokenizer.decode(allocator, argument.stringContents()), .modifiers = modifiers };
         },
         else => return null,
     }
