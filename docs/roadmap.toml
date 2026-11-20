@@ -203,6 +203,9 @@ progress = [
   "066da9ed2 - asynchronous XHR on the same scheduler, XHR handlers on EventTarget's map, fetch() abort steps (increment 2); worker fetch() async through the bound operation (9ec30ea8f)",
   "64e40148e - response bodies stream: headers first, a body pipe each clone reads, response.body filled by the network, XHR progress as bytes arrive (increment 3)",
   "a93d2b413 - subresources on the same path: link and style style sheets with their @imports fire load/error and delay the document's load, link preload fetches; 2f89c234e hyperlink auditing pings (networking lane)",
+  "3fb0fa0ab3b - HTTP/2 through nghttp2 built from source: fetch offers h2 by ALPN (CURL_HTTP_VERSION_2TLS), a stream-bodied request goes out on h2 only (networking lane)",
+  "f52f9be092b - libcurl is the zig-whatwg/curl fork (crane/8.18.0): CURLOPT_HTTP_LENIENT reads an HTTP/1 response as the browsers do (a header line with no colon skipped, a non-numeric Content-Length absent), and a CONNECT_ONLY connection stays raw on h2; ea95c6b3682 the WPT runner loads wpt_flags=h2 variants from the h2 server (net3 lane)",
+  "16840694724 - WebSockets speak the protocol themselves on curl's connection: RFC 6455 handshake checks and framing in kit/curl, and RFC 8441 WebSockets over HTTP/2 (extended CONNECT through nghttp2) when ALPN chooses h2 and the server enables it, else a fresh HTTP/1.1 connection - Firefox's model (net3 lane)",
 ]
 
   [[infra.items]]
@@ -219,7 +222,7 @@ progress = [
 
   [[infra.items]]
   name = "HTTP/2 over ALPN, with nghttp2 built by build.zig (never a system library: it would break the static aarch64-ios link)"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "0.2 (the user, 2026-11-19): HTTP/3 through Alt-Svc: ngtcp2 + nghttp3 built by build.zig, on a QUIC-capable TLS backend (ngtcp2 cannot use mbedTLS - BoringSSL or OpenSSL 3.5+, chosen by measurement); WPT tests it only through webtransport/, so fetch over HTTP/3 needs crane tests; then WebTransport"
