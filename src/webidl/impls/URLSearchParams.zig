@@ -185,11 +185,10 @@ pub fn initWithString(
         .allocator = allocator,
     };
 
-    // Remove leading ? if present
-    const query_string = if (std.mem.startsWith(u8, query, "?"))
-        query[1..]
-    else
-        query;
+    // "Initialize" step 3 parses the string as it is: the constructor's step
+    // 1 has already removed ONE leading "?" ("??a=b" is "%3Fa=b": Chrome,
+    // Firefox and Safari, url/urlsearchparams-constructor.any.js).
+    const query_string = query;
 
     // Parse the query string
     if (query_string.len > 0) {
@@ -359,9 +358,11 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: 
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Determine if we should match value or just name
+    // "If value is given, remove all tuples whose name is name and value is
+    // value" - the empty string included; "otherwise, remove all tuples
+    // whose name is name".
     const value_slice = if (value.was_passed) value.value else "";
-    const should_match_value = value_slice.len > 0; // If empty string, only match name
+    const should_match_value = value.was_passed;
 
     var i: usize = 0;
     while (i < internal.list.len) {
@@ -439,8 +440,11 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: web
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    // "If value is given, return true if there is a tuple whose name is name
+    // and value is value" - an empty string is a value too ("e=" has the
+    // value ""): url/urlsearchparams-has.any.js in all three browsers.
     const value_slice = if (value.was_passed) value.value else "";
-    const should_match_value = value_slice.len > 0;
+    const should_match_value = value.was_passed;
 
     for (0..internal.list.len) |i| {
         const tuple = internal.list.get(i).?;
