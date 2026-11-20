@@ -1620,8 +1620,14 @@ fn rootOf(node: *Instance) *Instance {
 
 /// "removeFormat candidate".
 fn isRemoveFormatCandidate(node: *Instance) !bool {
-    if (!try isNamedIn(node, &.{ "abbr", "acronym", "b", "bdi", "bdo", "big", "blink", "cite", "code", "dfn", "em", "font", "i", "ins", "kbd", "mark", "nobr", "q", "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "tt", "u", "var" })) return false;
+    if (!try isRemoveFormatCandidateName(node)) return false;
     return try common.isEditable(node);
+}
+
+/// Whether `node` is an element whose name makes it a removeFormat
+/// candidate when editable.
+fn isRemoveFormatCandidateName(node: *Instance) !bool {
+    return try isNamedIn(node, &.{ "abbr", "acronym", "b", "bdi", "bdo", "big", "blink", "cite", "code", "dfn", "em", "font", "i", "ins", "kbd", "mark", "nobr", "q", "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "tt", "u", "var" });
 }
 
 /// The removeFormat action.
@@ -1659,9 +1665,21 @@ fn removeFormat(edit: *Edit) !bool {
         for (nodes) |node| {
             while (true) {
                 const p = (try common.parent(node)) orelse break;
-                if (!try isRemoveFormatCandidate(p)) break;
-                if (!try common.inSameEditingHost(p, node)) break;
-                try split_parent.splitParent(edit, &.{node});
+                // A candidate element that is a contenteditable host nested
+                // in richly editable content is split out as content of the
+                // outer host, as all three browsers change it (golden rule 2
+                // mechanism by mechanism, the integrator's ruling of
+                // 2026-11-20 3:56 PM ET: "not a host of its own" has all
+                // three; what then happens to the span has no majority, so
+                // the spec's split - Firefox's unwrap; common.
+                // isNestedRichEditingHost).
+                const nested_host = (try isRemoveFormatCandidateName(p)) and try common.isNestedRichEditingHost(p);
+                if (!nested_host) {
+                    if (!try isRemoveFormatCandidate(p)) break;
+                    if (!try common.inSameEditingHost(p, node)) break;
+                }
+                try split_parent.splitParentOf(edit, &.{node}, nested_host);
+                if (nested_host and (try common.parent(node)) == p) break;
             }
         }
     }

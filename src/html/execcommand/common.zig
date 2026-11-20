@@ -884,29 +884,13 @@ pub fn isSingleLineContainer(node: *Instance) !bool {
 
 /// HTML "editing host": an HTML element whose contenteditable is in the
 /// true or plaintext-only state, or an HTML element child of a document
-/// whose design mode is on - except, for the editing commands, an element in
-/// the true state inside richly editable content: Chrome, Firefox and Safari
-/// all edit it as content of the outer host, not as a host of its own
-/// (Blink's RootEditableElement is the highest editable ancestor; Gecko's
-/// editing host the outermost). editing/other/shadow_root_iteration_in_
-/// block_style.html's `<div contenteditable>hello<span contenteditable
-/// style="color:red">[world]</span></div>` + removeFormat: Chrome leaves
-/// style="", Safari drops the attribute, Firefox unwraps the span - all three
-/// change the span, which Crane, taking it for a host, left alone (wpt.fyi
-/// 2358bd4835). Golden rule 2 mechanism by mechanism (the integrator's
-/// ruling, 2026-11-20 3:56 PM ET): "not a host of its own" has all three;
-/// what removeFormat then does to the span has no majority, so the spec
-/// decides - unwrap it, Firefox's result. A plaintext-only element stays a
-/// host (Chrome and Safari refuse style edits in one nested in a true host:
-/// root.zig isPlaintextOnly), and so does a true element inside a
-/// plaintext-only one.
+/// whose design mode is on.
 pub fn isEditingHost(node: *Instance) !bool {
     if (!try isHtmlElement(node)) return false;
     var state = try interfaces.HTMLElement.get_contentEditable(node);
     defer state.deinit(node.ctx.allocator);
     const value = state.asSlice();
-    if (std.mem.eql(u8, value, "plaintext-only")) return true;
-    if (std.mem.eql(u8, value, "true")) return !try insideRichlyEditableContent(node);
+    if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "plaintext-only")) return true;
     const p = (try parent(node)) orelse return false;
     if (!isDocument(p)) return false;
     var mode = try interfaces.Document.get_designMode(p);
@@ -914,11 +898,30 @@ pub fn isEditingHost(node: *Instance) !bool {
     return std.mem.eql(u8, mode.asSlice(), "on");
 }
 
+/// Whether `node` is an editing host in the true state nested in richly
+/// editable content: Chrome, Firefox and Safari all edit such an element as
+/// content of the outer host where removeFormat meets it (editing/other/
+/// shadow_root_iteration_in_block_style.html's `<div contenteditable>hello
+/// <span contenteditable style="color:red">[world]</span></div>`: Chrome
+/// leaves style="", Safari drops the attribute, Firefox unwraps the span -
+/// all three change it; wpt.fyi 2358bd4835), where the spec, taking it for
+/// a host, leaves it alone. Only removeFormat asks (inline.zig): the block
+/// commands keep such an element as the root of what they change (all three
+/// keep `<div contenteditable=true>` when insertOrderedList wraps a table in
+/// it, editing/run/insert-list-items-in-table-cell.html).
+pub fn isNestedRichEditingHost(node: *Instance) !bool {
+    if (!try isHtmlElement(node)) return false;
+    var state = try interfaces.HTMLElement.get_contentEditable(node);
+    defer state.deinit(node.ctx.allocator);
+    if (!std.mem.eql(u8, state.asSlice(), "true")) return false;
+    return try insideRichlyEditableContent(node);
+}
+
 /// Whether `node`'s parent is richly editable content: the nearest ancestor
 /// element whose contenteditable is not inherit is in the true state, or -
 /// none is - the root element is a design-mode document's child. A
 /// plaintext-only or false ancestor first, or no editable ancestor at all,
-/// is not (see isEditingHost).
+/// is not (see isNestedRichEditingHost).
 fn insideRichlyEditableContent(node: *Instance) !bool {
     var current = (try parent(node)) orelse return false;
     if (isDocument(current)) return false;
