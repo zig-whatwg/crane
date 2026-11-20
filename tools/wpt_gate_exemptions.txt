@@ -1992,3 +1992,57 @@ revisit         = when Chrome, Firefox or Safari changes its result on a newer a
 kind      = needs-renderer
 why       = the test drags the pointer across a closed shadow root's text to select it, and a drag selects by hit-testing laid-out text (a caret from a point: Blink SelectionController / PositionForPoint); with no renderer Crane's press places a caret only where no geometry is needed (src/html/selection_focus.zig caretAtHit), so the drag selects nothing and anchorNode stays null - the mouseup reaches the host as in the browsers
 assertion = assert_equals: getSelection().anchorNode should return the host of the shadow expected Element node <div id="container"><div></div></div> but got null
+
+# follows-majority (lane blk5, 2026-11-20; main's rulings 1:37 PM ET and its GO for matches = none and
+# renderer-subtests): generation 233 and main 88b12b151's frozen production runner, compared with the aligned
+# stable runs at 2358bd4835 (tmp/plans/blk5-evidence/compare.out, msgs.out).
+
+[performance-timeline/not-restored-reasons/same-origin-bfcache.window.js]
+kind            = follows-majority
+why             = a child iframe with no name attribute reports name null, as Chromium does; Crane and Chrome fail "reasons.children[0].name expected (string) "" but got (object) null"; Firefox and Safari ship no NotRestoredReasons and fail elsewhere; the worklist's iframes-without-attributes.window.js expects null for the same case (Crane and Chrome pass it)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; no NotRestoredReasons)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; no NotRestoredReasons)
+matches         = chrome
+ruling          = golden rule 2 (main, 2026-11-20 1:37 PM ET): Chrome is the only shipper and its null is deliberate (wpt 94caab7038 "Report null when iframes' attributes are null", 2024-04-01, re-blessed non-tentative b1a29e6562 2026-11-06); whatwg/html#10916 (2025-01-21) made it "" claiming "Matches Chromium" and lists no Chromium bug - the shipper intentionally does otherwise, so Crane does what the browser does
+revisit         = when Chrome changes its result on a newer aligned wpt.fyi run, or either NotRestoredReasons test changes upstream, or Crane's result moves
+
+[service-workers/service-worker/unregister-immediately-during-extendable-events.https.html]
+kind            = follows-majority
+why             = Crane follows the spec - Clear-Site-Data unregisters the worker and the frame's pending fetch rejects with the frame's TypeError - and fails only at the test's own bug, promise_rejects_js(test, TypeError, frame.contentWindow.fetch(...)), which compares the frame's TypeError with the top window's ("threw object TypeError ... expected instance of function TypeError"); Chrome and Firefox time out, Safari resolves the fetch ("Should have rejected")
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835; TIMEOUT)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; TIMEOUT)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = none
+ruling          = golden rule 2, the spec where all three differ (main, 2026-11-20 1:37 PM ET): each browser fails at another step; the upstream test-bug draft is tmp/plans/blk5-upstream-drafts/ (filing needs the user's OK)
+revisit         = when the test compares the frame's TypeError upstream, or Chrome, Firefox or Safari changes its result, or Crane's result moves
+
+[fetch/fetch-later/quota/same-origin-iframe/multiple-iframes.https.window.js]
+kind            = follows-majority
+why             = Crane gives fetchLater's QuotaExceededError its quota and requested (whatwg/fetch#1904, merged 2026-01-13; Crane passes the updated quota/max-payload and accumulated-oversized-payload files, which Chrome 157 fails), and this file - not updated since 89966dffac - still expects null for both ("property "requested" is equal to 65536, expected null"); Chrome lags #1904 and passes it; Firefox and Safari ship no fetchLater
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835; before #1904)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; no fetchLater)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; no fetchLater)
+matches         = none
+ruling          = golden rule 2, a newer spec the browsers have not caught up with (main, 2026-11-20 1:37 PM ET): #1904 lists Chromium bug 473585680, Chrome 157 still fails the updated sibling files, and WPT updated those files; the stale-file draft is in tmp/plans/blk5-upstream-drafts/ (filing needs the user's OK)
+revisit         = when the file is updated upstream, or Chrome ships #1904, or Crane's result moves
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+kind            = follows-majority
+why             = the test compares marks of two clocks (the frame's and the worker's performance.now() + timeOrigin) with strict greater-than; in Crane the worker's activation end or fetch-event time and the frame's fetchStart land in the same coarsened tick and compare equal, at assertion 2 or 3 by run; Chrome fails assertion 1, Firefox assertion 3, Safari assertion 2
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = none
+ruling          = golden rule 2, timing-bound (main, 2026-11-20 1:37 PM ET): the order the test asserts is Crane's (fetchStart is marked before the fetch event is dispatched); the strict comparison between coarsened marks fails on a sub-tick gap (lane flakes2's upstream draft)
+revisit         = when the test compares coarsened marks with >= upstream, or Chrome, Firefox or Safari passes, or Crane's result moves
+
+[navigation-api/navigate-event/intercept-cross-origin-focus-without-user-activation.html]
+kind              = follows-majority
+why               = subtest 1: the cross-origin iframe's intercept() focus reset takes focus from the top-level input in Crane, Chrome and Firefox ("Top-level document should not lose focus to the cross-origin iframe without user interaction"); Safari keeps it. Subtest 2 times out in Crane only for want of a renderer
+chrome.result     = wpt.fyi run 4786307730243584: 1/2 (Chrome 157, 2358bd4835)
+firefox.result    = wpt.fyi run 4877168468033536: 1/2 (Firefox 160, 2358bd4835)
+safari.result     = wpt.fyi run 6479119966273536: 1/2 (Safari 27.2, 2358bd4835; passes subtest 1, fails subtest 2)
+matches           = chrome, firefox
+renderer-subtests = Navigation API intercept() focus reset should work if navigation was user-initiated :: test_driver.click(iframe) clicks the frame's centre, where an absolutely positioned <a href="#nav"> (inset: 0) covers its viewport; finding it there is a hit test on laid-out content, and with no renderer the click lands on the frame's document root, so the navigation the subtest waits for never starts
+revisit           = when Chrome or Firefox changes its result on a newer aligned wpt.fyi run, or a renderer answers hit tests, or Crane's result moves
