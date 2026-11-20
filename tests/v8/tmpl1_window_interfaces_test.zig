@@ -345,6 +345,51 @@ test "every kind of Window realm made without the snapshot has the interface obj
     try checkEveryRealmKind(agent, false);
 }
 
+// A wrap asks its realm whether the interface's object is built yet
+// (template_registry.ensureInterfaceObjectBuilt) on every wrapper it makes:
+// the answer is one bit, at the index the isolate gave the interface when it
+// registered it - its registration order, kept through a re-registration -
+// read with the template the wrap looks up anyway. A hash of the template on
+// every wrap cost dom.create-element 3.2% (the cost window of 2026-11-20).
+test "an isolate gives each interface it registers its registration order as an index, kept through a re-registration" {
+    test_process.start();
+    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+    defer {
+        v8.template_registry.forgetIsolateForTest(isolate);
+        ffi.v8_Isolate_Dispose(isolate);
+    }
+    const registry = v8.template_registry;
+    registry.register("Element", @ptrFromInt(0x1110), isolate);
+    registry.register("Text", @ptrFromInt(0x2220), isolate);
+    registry.register("Element", @ptrFromInt(0x3330), isolate);
+    registry.register("Comment", @ptrFromInt(0x4440), isolate);
+    const element = registry.getRegisteredForIsolate("Element", isolate).?;
+    try testing.expectEqual(@as(u16, 0), element.index);
+    try testing.expectEqual(@as(usize, 0x3330), @intFromPtr(element.template));
+    try testing.expectEqual(@as(u16, 1), registry.getRegisteredForIsolate("Text", isolate).?.index);
+    try testing.expectEqual(@as(u16, 2), registry.getRegisteredForIsolate("Comment", isolate).?.index);
+    try testing.expect(registry.getRegisteredForIsolate("Attr", isolate) == null);
+}
+
+// A realm's record of the interface objects it has built: one bit per
+// registered interface, grown to the highest index marked, from the realm's
+// own allocator.
+test "a realm's record of built interface objects is a bit per registered interface, grown on demand" {
+    var objects: v8.context_manager.InterfaceObjects = .{};
+    defer objects.deinit(testing.allocator);
+    try testing.expect(!objects.isBuilt(0));
+    try testing.expect(!objects.isBuilt(700));
+    objects.markBuilt(testing.allocator, 5);
+    try testing.expect(objects.isBuilt(5));
+    try testing.expect(!objects.isBuilt(4));
+    try testing.expect(!objects.isBuilt(6));
+    objects.markBuilt(testing.allocator, 1300);
+    try testing.expect(objects.isBuilt(1300));
+    try testing.expect(objects.isBuilt(5));
+    try testing.expect(!objects.isBuilt(1299));
+    try testing.expect(!objects.isBuilt(1301));
+}
+
 /// How many interface templates `agent`'s isolate has made or taken.
 fn templateCount(agent: *protocol.Agent) usize {
     return v8.template_registry.registeredCount(@ptrCast(@alignCast(agent)));
