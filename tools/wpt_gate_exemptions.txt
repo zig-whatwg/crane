@@ -124,6 +124,16 @@
 #   ruling          = OPTIONAL: the user's ruling (with its date) or the golden-rule-2 case that decides
 #                     the entry; required when matches names only one browser
 #   revisit         = when <what ends the exemption>, e.g. when Chrome, Firefox or Safari changes its result
+#   renderer-subtests = OPTIONAL: the subtests that fail in Crane only for want of a renderer, each with
+#                     its geometry reason, "<subtest name> :: <why>", several separated by " || " - with a
+#                     renderer they would have the matched browsers' results, so each may leave Crane one
+#                     pass short of them (lane blk5, main's GO 2026-11-20 1:37 PM ET)
+#
+#   matches = none (the same GO): Crane's result equals no browser's because it is the spec's - allowed
+#   only with a ruling that names its golden rule 2 case: "all three differ" (the browsers each do
+#   otherwise and the spec decides), "newer spec" (a newer spec the browsers have not caught up with) or
+#   "timing-bound" (the result hinges on a sub-tick gap no engine controls). Nothing is compared then.
+#   Both readers test these forms on one fixture, tools/wpt_site/exemption_fixture.txt.
 #
 #   The results are the aligned stable runs at Crane's own WPT revision (tests/wpt's
 #   .crane-upstream-revision), so the browsers ran the file Crane runs.
