@@ -59,7 +59,7 @@ fn insertionPastEmptyInline() !void {
     // ghi`, the text goes into the i, past the empty s (all three; the data
     // accepts the s kept or gone).
     for ([_][]const u8{ "abc[<s></s><b><i>de]f</i></b>ghi", "abc{<s></s><b><i>de]f</i></b>ghi" }) |markup| {
-        const source = try std.fmt.allocPrint(std.testing.allocator, "(() => {{ runCommands('{s}', [['inserttext','d'],['inserttext','e']]); const h = hostHTML(); return String(h === 'abc<b><i>def</i></b>ghi' || h === 'abc<s></s><b><i>def</i></b>ghi') + ' ' + h; }})()", .{markup});
+        const source = try std.fmt.allocPrint(std.testing.allocator, "runCommands('{s}', [['inserttext','d'],['inserttext','e']]); const h = hostHTML(); String(h === 'abc<b><i>def</i></b>ghi' || h === 'abc<s></s><b><i>def</i></b>ghi') + ' ' + h", .{markup});
         defer std.testing.allocator.free(source);
         const actual = try page.evaluate(source);
         defer std.testing.allocator.free(actual);
