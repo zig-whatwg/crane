@@ -941,6 +941,12 @@ pub fn readOnlyHeapOrigin(blob: ?[]const u8) ReadOnlyHeapOrigin {
 pub extern fn v8_Process_LiveIsolates() usize;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
+/// Isolate::GetDataFromSnapshotOnce<FunctionTemplate>(index): the template
+/// the snapshot generator attached at `index`
+/// (`v8_SnapshotCreator_AddFunctionTemplate`), OWNED - or null when the blob
+/// has none there, or it was taken already (V8 forgets it once taken). On
+/// the isolate's thread; enters the isolate itself.
+pub extern fn v8_Isolate_TakeFunctionTemplateFromSnapshot(isolate: *Isolate, index: usize) ?*FunctionTemplate;
 /// The bytes V8 restores `isolate` from (its StartupData's data) and their
 /// size; null, size 0, for an isolate made afresh. For tests.
 pub extern fn v8_Isolate_SnapshotBlob(isolate: *Isolate, out_size: *usize) ?[*]const u8;
@@ -1747,6 +1753,40 @@ pub extern fn v8_Object_SetLazyDataProperty(
     getter: AccessorNameGetterCallback,
     data: ?*Value,
 ) void;
+
+/// `name` (UTF-8, internalized) as a lazy data property of every object V8
+/// makes from `template` - a context's global, made from Window's instance
+/// template: its first read calls `getter`, whose result replaces it as an
+/// ordinary data property; writable, configurable, not enumerable (WebIDL
+/// 3.7's interface object property). `index` is the property's data, read
+/// back with `v8_PropertyCallbackInfo_DataInt32`. Blink installs every
+/// exposed construct of a global this way, once per isolate
+/// (IDLMemberInstaller::InstallExposedConstructs, Chromium
+/// platform/bindings/idl_member_installer.cc). On the isolate's thread, the
+/// isolate entered.
+pub extern fn v8_ObjectTemplate_SetLazyDataPropertyIndexed(
+    template: *ObjectTemplate,
+    name: [*]const u8,
+    name_len: c_int,
+    getter: AccessorNameGetterCallback,
+    index: i32,
+) void;
+
+/// The same on one object - a global made already (the per-realm
+/// overload: a construct only some realms expose). False when V8 refused it.
+pub extern fn v8_Object_SetLazyDataPropertyIndexed(
+    object: *Object,
+    context: *Context,
+    name: [*]const u8,
+    name_len: c_int,
+    getter: AccessorNameGetterCallback,
+    index: i32,
+) bool;
+
+/// The int32 a lazy data property's getter was given as its data
+/// (`v8_ObjectTemplate_SetLazyDataPropertyIndexed`), or `fallback` when its
+/// data is not one. No handle is made.
+pub extern fn v8_PropertyCallbackInfo_DataInt32(info: *const PropertyCallbackInfo, fallback: i32) i32;
 
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
@@ -3409,6 +3449,15 @@ pub extern fn v8_SnapshotCreator_CreateAndAddContext(creator: *SnapshotCreator) 
 /// @param context - Global handle to the context to snapshot
 /// @return The index at which the context was added (0-based), or maxInt on error
 pub extern fn v8_SnapshotCreator_AddContext(creator: *SnapshotCreator, context: *Context) usize;
+
+/// SnapshotCreator::AddData(template): the isolate snapshot keeps
+/// `template`, and an isolate restored from the blob takes it back - the same
+/// TemplateInfo, which the snapshot's contexts were made from - with
+/// `v8_Isolate_TakeFunctionTemplateFromSnapshot(index)` (Blink:
+/// V8ContextSnapshotImpl's TakeSnapshotForWorld AddData and
+/// InstallInterfaceTemplates GetDataFromSnapshotOnce,
+/// bindings/modules/v8/v8_context_snapshot_impl.cc). The index, or maxInt.
+pub extern fn v8_SnapshotCreator_AddFunctionTemplate(creator: *SnapshotCreator, template: *FunctionTemplate) usize;
 
 /// FunctionCodeHandling for snapshot creation
 pub const FunctionCodeHandling = enum(c_int) {

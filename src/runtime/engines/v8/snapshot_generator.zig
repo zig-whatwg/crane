@@ -1,47 +1,43 @@
-//! V8 Snapshot Generator with WebIDL Interface Registration
+//! V8 Snapshot Generator: Crane's startup snapshot (whatwg_snapshot.bin).
 //!
-//! This build-time tool creates a V8 heap snapshot containing V8 builtins
-//! AND all WebIDL interfaces pre-registered on the global object.
+//! A build-time tool. The blob holds V8's builtins, a PLAIN default context,
+//! and one Window context (index 0) made from Window's instance template -
+//! with no interface object built. Blink's model (V8ContextSnapshotImpl,
+//! Chromium bindings/modules/v8/v8_context_snapshot_impl.cc, BSD; lane
+//! tmpl1):
 //!
-//! ## How It Works
+//! 1. A SnapshotCreator with the external references (every callback the
+//!    snapshot holds is one: the same table, in the same order, at load).
+//! 2. EventTarget's and Window's templates; Window's instance template is the
+//!    global's: two internal fields, an immutable [[Prototype]], the
+//!    WindowProxy's indexed handlers (`frames[i]`), and every exposed
+//!    construct a Window realm always has as a LAZY DATA PROPERTY
+//!    (interface_bindings.installExposedConstructs) - built when a realm's
+//!    script first reads it.
+//! 3. The default context (the base of every Context::New in a restored
+//!    isolate): plain.
+//! 4. The Window context, at index 0: Crane's Intl and the built-ins'
+//!    toLocaleString (installSnapshotIntrinsics), Window's function
+//!    instantiated.
+//! 5. The two templates attached to the isolate snapshot (AddData), which a
+//!    restored isolate takes back once (interface_bindings.
+//!    takeSnapshotTemplates): its one copy of them. Every other template is
+//!    made on first use.
+//! 6. The blob, then its build stamp (the external-reference count).
 //!
-//! 1. Creates a SnapshotCreator with external references (required for callbacks)
-//! 2. Gets the isolate from SnapshotCreator
-//! 3. Creates a global ObjectTemplate with proper configuration:
-//!    - 2 internal fields (for Window impl pointer + destructor type)
-//!    - Immutable prototype (per WebIDL spec §3.8)
-//!    - Indexed property handlers (for frames[index] access)
-//! 4. Creates contexts with ALL WebIDL interfaces registered
-//! 5. Creates the snapshot blob
-//! 6. Writes the blob to a file (whatwg_snapshot.bin)
-//!
-//! ## What's In The Snapshot
-//!
-//! - V8 JavaScript builtins (Object, Array, Promise, Map, Set, etc.)
-//! - ALL WebIDL interfaces (EventTarget, Node, Element, Document, etc.)
-//! - Constructor inheritance chains (Element.__proto__ = Node, etc.)
-//! - Pre-compiled bytecode for faster startup
-//! - Global template with proper internal fields for Window binding
-//!
-//! ## External References
-//!
-//! External references are C++ callback function pointers that V8 needs to
-//! resolve when loading the snapshot. The SAME external references array
-//! (in the SAME order) MUST be provided at both snapshot creation and loading.
+//! What it no longer holds - every interface object, in both contexts - cost
+//! every restored isolate 1.42 MB and every restored realm ~860 KB it never
+//! used (tmp/plans/tmpl1-measure.md).
 //!
 //! ## Usage
 //!
-//! Build and run:
 //! ```bash
 //! zig build snapshot
 //! ```
 //!
-//! The output file is loaded at runtime:
-//! ```zig
-//! const isolate = v8.v8_Isolate_NewFromSnapshot(data, size, ext_refs);
-//! const context = v8.v8_Context_NewFromSnapshot(isolate);  // Interfaces already registered!
-//! // No need to call initializeBindings() - interfaces are in snapshot!
-//! ```
+//! Loaded at run time by snapshot_loader / protocol_agents.createAgent
+//! (v8_Isolate_NewFromSnapshot), the Window context by
+//! protocol_realms.createWindowRealm (v8_Context_NewFromSnapshot).
 
 const std = @import("std");
 const v8 = @import("v8");
@@ -158,10 +154,8 @@ pub fn main(init: std.process.Init) !void {
     const window_template = interface_bindings.Window.createTemplate(isolate);
     log(allocator, io, "  Window FunctionTemplate created (inherits from EventTarget)\\n", .{});
 
-    // CRITICAL: Register Window template in template_registry BEFORE initializeBindings
-    // This ensures that when initializeBindings calls registerGlobalFast for Window,
-    // it reuses this SAME template instead of creating a new one. Otherwise we'd have
-    // TWO Window templates with different prototypes, breaking `window instanceof Window`.
+    // Registered, as EventTarget's is: Step 5d attaches the registered
+    // templates to the isolate snapshot.
     v8.template_registry.register("Window", window_template, isolate);
     log(allocator, io, "  Window template registered in template_registry\\n", .{});
 
@@ -194,74 +188,84 @@ pub fn main(init: std.process.Init) !void {
     // ran on every global identifier lookup. Named elements and child
     // navigable names are both WindowProperties' job.
 
-    // Step 5b: Create default context with global template
-    log(allocator, io, "  5b: Creating default context with global template...\\n", .{});
-    const default_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
-        log(allocator, io, "  ERROR: Failed to create default context\\n", .{});
+    // Every Window realm's exposed constructs (WebIDL 3.7): lazy data
+    // properties of the global's template, so the snapshot's context - and
+    // every context restored from it - has them and builds none of them
+    // (Blink: IDLMemberInstaller::InstallExposedConstructs on Window's
+    // instance template). The snapshot holds no interface object: until lane
+    // tmpl1 both of its contexts held all of them, and every realm restored
+    // from it deserialized and replaced them - keeping both - while the
+    // isolate kept the templates twice (tmp/plans/tmpl1-measure.md).
+    interface_bindings.installExposedConstructs(.Window, global_template);
+    log(allocator, io, "  Window's exposed constructs: lazy data properties of its instance template\n", .{});
+
+    // Step 5b: the DEFAULT context - the one every Context::New in a restored
+    // isolate starts from (a worker or worklet realm's, a plain utility
+    // global's) - plain, with nothing of the Window's: Blink's
+    // V8ContextSnapshotImpl::TakeSnapshot, "SetDefaultContext(
+    // v8::Context::New(isolate))". It held every interface object, and every
+    // such Context::New deserialized it and copied them onto its global.
+    log(allocator, io, "  5b: Creating the plain default context...\n", .{});
+    const default_context = v8.ffi.v8_Context_New(isolate) orelse {
+        log(allocator, io, "  ERROR: Failed to create default context\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
         return error.ContextFailed;
     };
-
-    // Enter context and register all interfaces
-    log(allocator, io, "  5c: Entering default context and registering interfaces...\\n", .{});
-    v8.ffi.v8_Context_Enter(default_context);
-
-    // Register ALL WebIDL interfaces in this context
-    interface_bindings.initializeBindings(isolate, default_context);
-    log(allocator, io, "  5d: WebIDL interfaces registered in default context\\n", .{});
-
-    // CRITICAL: Set global's prototype to Window.prototype for `window instanceof Window`
-    // This must be done AFTER initializeBindings registers Window constructor but BEFORE
-    // the context is serialized into the snapshot. The global was created from Window's
-    // InstanceTemplate, but ObjectTemplate doesn't automatically inherit FunctionTemplate's
-    // prototype chain. We must set it manually here during snapshot creation.
-    setGlobalPrototypeToWindow(isolate, default_context, allocator, io);
-
-    // Exit context before adding to snapshot
-    v8.ffi.v8_Context_Exit(default_context);
-
-    // Set as default context for snapshot
     v8.ffi.v8_SnapshotCreator_SetDefaultContext(creator, default_context);
-    log(allocator, io, "  Default context with interfaces set\\n", .{});
+    log(allocator, io, "  Default context set\n", .{});
 
-    // Step 5e: Create indexed context (at index 0) with the same global template
-    // This is the context that will be restored via Context::FromSnapshot(isolate, 0)
-    log(allocator, io, "  5e: Creating indexed context with global template...\\n", .{});
+    // Step 5c: the Window context (index 0, what Context::FromSnapshot(isolate,
+    // 0) restores): its global an instance of Window's instance template.
+    log(allocator, io, "  5c: Creating the Window context (index 0)...\n", .{});
     const indexed_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
-        log(allocator, io, "  ERROR: Failed to create indexed context\\n", .{});
+        log(allocator, io, "  ERROR: Failed to create indexed context\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
         return error.ContextFailed;
     };
-
-    // Enter context and register all interfaces
-    log(allocator, io, "  5f: Entering indexed context and registering interfaces...\\n", .{});
     v8.ffi.v8_Context_Enter(indexed_context);
-
-    // Register ALL WebIDL interfaces in this context too
-    interface_bindings.initializeBindings(isolate, indexed_context);
-    log(allocator, io, "  5g: WebIDL interfaces registered in indexed context\\n", .{});
-
-    // CRITICAL: Set global's prototype to Window.prototype for `window instanceof Window`
-    setGlobalPrototypeToWindow(isolate, indexed_context, allocator, io);
-
-    // Exit context before adding to snapshot
+    // What a Window realm's context has beside its template's: Crane's Intl
+    // and the built-ins' toLocaleString.
+    interface_bindings.installSnapshotIntrinsics(isolate, indexed_context);
+    // Window's function instantiated in the context, so the context's
+    // template instantiation cache carries it: a restored realm's lazily
+    // built Window interface object is then this one, whose prototype the
+    // global's chain has. Instantiated only - not set up as an interface
+    // object (that is each realm's, as it is first read: its [SecureContext]
+    // members depend on the realm).
+    if (v8.ffi.v8_FunctionTemplate_GetFunction(window_template, indexed_context)) |window_function| v8.ffi.v8_Function_Dispose(window_function);
     v8.ffi.v8_Context_Exit(indexed_context);
 
-    // Add indexed context at index 0 - this is what Context::FromSnapshot(isolate, 0) retrieves
     const context_index = v8.ffi.v8_SnapshotCreator_AddContext(creator, indexed_context);
-    if (context_index == std.math.maxInt(usize)) {
-        log(allocator, io, "  ERROR: Failed to add indexed context\\n", .{});
+    if (context_index != 0) {
+        log(allocator, io, "  ERROR: the Window context went to index {d}, not 0\n", .{context_index});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
         return error.ContextFailed;
     }
-    log(allocator, io, "  Indexed context with interfaces added at index {d}\\n\\n", .{context_index});
+    log(allocator, io, "  Window context added at index 0\n", .{});
 
-    // Note: ShadowRealm contexts use index 0 as well. V8's ShadowRealm implementation
-    // correctly filters out host objects (document, window, etc.) from the global scope.
-    // Per TC39 spec, ShadowRealm only exposes JavaScript built-ins, not Web APIs.
+    // Step 5d: the templates that context was made from, attached to the
+    // isolate snapshot for a restored isolate to take back once
+    // (interface_bindings.snapshot_templates, takeSnapshotTemplates; Blink:
+    // TakeSnapshotForWorld's AddData) - its one copy of them.
+    for (interface_bindings.snapshot_templates, 0..) |name, expected_index| {
+        const template = v8.template_registry.getTemplateForIsolate(name, isolate) orelse {
+            log(allocator, io, "  ERROR: no {s} template to attach\n", .{name});
+            v8.ffi.v8_Isolate_Exit(isolate);
+            v8.ffi.v8_SnapshotCreator_Dispose(creator);
+            return error.ContextFailed;
+        };
+        const data_index = v8.ffi.v8_SnapshotCreator_AddFunctionTemplate(creator, template);
+        if (data_index != expected_index) {
+            log(allocator, io, "  ERROR: {s}'s template went to data index {d}, not {d}\n", .{ name, data_index, expected_index });
+            v8.ffi.v8_Isolate_Exit(isolate);
+            v8.ffi.v8_SnapshotCreator_Dispose(creator);
+            return error.ContextFailed;
+        }
+    }
+    log(allocator, io, "  {d} templates attached to the isolate snapshot\n\n", .{interface_bindings.snapshot_templates.len});
 
     // Step 6: Create the snapshot blob
     log(allocator, io, "Step 6: Creating snapshot blob...\\n", .{});
@@ -336,64 +340,5 @@ pub fn main(init: std.process.Init) !void {
         blob_size,
         @as(f64, @floatFromInt(blob_size)) / 1024.0,
     });
-    log(allocator, io, "\\nThis snapshot contains V8 builtins AND WebIDL interfaces!\\n", .{});
-    log(allocator, io, "All interfaces are pre-registered - no runtime registration needed.\\n", .{});
-    log(allocator, io, "\\nTo use this snapshot at runtime:\\n", .{});
-    log(allocator, io, "  1. Load the blob from file\\n", .{});
-    log(allocator, io, "  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, ext_refs)\\n", .{});
-    log(allocator, io, "  3. Restore context with v8_Context_NewFromSnapshot(isolate)\\n", .{});
-    log(allocator, io, "  4. Interfaces are already available - no initializeBindings() needed!\\n", .{});
-}
-
-/// Set global's prototype to Window.prototype for `window instanceof Window`
-///
-/// This is called during snapshot creation AFTER initializeBindings registers the Window
-/// constructor. The global object was created from an ObjectTemplate, which doesn't
-/// automatically inherit the FunctionTemplate's prototype chain. We must set
-/// global.__proto__ = Window.prototype manually.
-///
-/// This must be done BEFORE the snapshot is finalized because:
-/// 1. After snapshot, the global's prototype is immutable (SetImmutableProto)
-/// 2. SetPrototypeV2 will fail at runtime on the restored context
-fn setGlobalPrototypeToWindow(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, allocator: std.mem.Allocator, io: std.Io) void {
-    log(allocator, io, "  Setting global's prototype to Window.prototype...\\n", .{});
-
-    const global = v8.ffi.v8_Context_Global(context) orelse {
-        log(allocator, io, "  ERROR: Failed to get global object\\n", .{});
-        return;
-    };
-
-    // Get Window constructor from global
-    const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Window", 6);
-    if (window_key == null) {
-        log(allocator, io, "  ERROR: Failed to create 'Window' string\\n", .{});
-        return;
-    }
-
-    const window_ctor = v8.ffi.v8_Object_Get(global, context, @ptrCast(window_key)) orelse {
-        log(allocator, io, "  ERROR: Window constructor not found on global\\n", .{});
-        return;
-    };
-
-    // Get Window.prototype
-    const proto_key = v8.ffi.v8_String_NewFromUtf8(isolate, "prototype", 9);
-    if (proto_key == null) {
-        log(allocator, io, "  ERROR: Failed to create 'prototype' string\\n", .{});
-        return;
-    }
-
-    const window_proto = v8.ffi.v8_Object_Get(@ptrCast(window_ctor), context, @ptrCast(proto_key)) orelse {
-        log(allocator, io, "  ERROR: Window.prototype not found\\n", .{});
-        return;
-    };
-
-    // Set global's prototype to Window.prototype: Object.setPrototypeOf on
-    // the global proxy (V8 >= 14's SetPrototype; the V1 call that once
-    // reached the hidden global object is gone, crbug.com/333672197, so the
-    // "old API" retry this had is the same call - design 2.7).
-    if (v8.ffi.v8_Object_SetPrototypeV2(global, context, window_proto)) {
-        log(allocator, io, "  SUCCESS: global.__proto__ = Window.prototype\\n", .{});
-    } else {
-        log(allocator, io, "  ERROR: SetPrototype on the global proxy failed\\n", .{});
-    }
+    log(allocator, io, "  Holds: V8's builtins, a plain default context, the Window context (exposed constructs lazy), {d} templates\n", .{interface_bindings.snapshot_templates.len});
 }

@@ -238,7 +238,9 @@ test "an isolate makes CSSStyleProperties' template only when a realm first need
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
     const template_registry = @import("v8").template_registry;
 
-    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleDeclaration", isolate) != null);
+    // Every template is made on first use (lane tmpl1): neither
+    // CSSStyleDeclaration's nor CSSStyleProperties' exists yet.
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleDeclaration", isolate) == null);
     try testing.expect(template_registry.getTemplateForIsolate("CSSStyleProperties", isolate) == null);
 
     // A realm that touches no style declaration makes none.

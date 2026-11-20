@@ -1234,6 +1234,28 @@ test "frame document identities reject replacement and slab reuse of the same ad
     if (failure) |err| return err;
 }
 
+/// For the autofocus tests: the condition a rendering opportunity meets once
+/// it has run the queued work - no request left and no frame armed. A test
+/// waits for it through the event loop (Browser.spinEventLoopUntil), never for
+/// a fixed wall-clock budget: a 50 ms budget failed on a loaded host
+/// (lane tmpl1, 2026-11-20). The cap is a failure guard only.
+const RenderedGoal = struct {
+    frames: *Frames,
+
+    const cap_ms: u64 = 10_000;
+
+    fn met(context: *anyopaque) bool {
+        const self: *RenderedGoal = @ptrCast(@alignCast(context));
+        return self.frames.requests.items.len == 0 and self.frames.timer_id == null;
+    }
+
+    fn waitFor(browser: *@import("Browser.zig").Browser, frames: *Frames) !void {
+        var goal: RenderedGoal = .{ .frames = frames };
+        const outcome = try browser.spinEventLoopUntil(.{ .context = &goal, .met = met }, cap_ms);
+        try std.testing.expectEqual(@import("Browser.zig").Browser.SpinOutcome.met, outcome);
+    }
+};
+
 test "native autofocus rendering retires replaced and destroyed documents and exhausted queues" {
     const Exercise = struct {
         failure: ?anyerror = null,
@@ -1266,7 +1288,20 @@ test "native autofocus rendering retires replaced and destroyed documents and ex
             try std.testing.expect(context.document_instance.? != old_document);
             try std.testing.expect(!request.document.current());
             retireRequests(frames);
-            try std.testing.expectEqual(@as(usize, 0), frames.requests.items.len);
+            // The old document's request is gone: none is left that names it.
+            // The replacement may hold one of its own - HTML "update the
+            // rendering" step 6 reveals each document at its first rendering
+            // opportunity, which it asks for once it has completely finished
+            // loading (Document's has_been_revealed) - and the load's turns
+            // reach that point on some runs and not on others: the load waits
+            // only for "interactive" (Context.loadByNavigating). A count of 0
+            // failed whenever they did (lane tmpl1, 2026-11-20: 3 runs in 150
+            // on a loaded host, this check 74 ms into the test).
+            for (frames.requests.items) |remaining| {
+                try std.testing.expect(remaining.document.document != old_document);
+                try std.testing.expect(remaining.document.document == context.document_instance.?);
+                try std.testing.expect(remaining.document.current());
+            }
 
             try context.runScript("document.body.innerHTML = '<input autofocus>'");
             try std.testing.expect(frames.requests.items.len == 1);
@@ -1276,7 +1311,7 @@ test "native autofocus rendering retires replaced and destroyed documents and ex
             requestFrame(context.document_instance.?);
             try std.testing.expect(frames.requests.items.len == 1);
             html_mod.autofocus.flush(context.document_instance.?);
-            _ = try browser.runEventLoopBlocking(50);
+            try RenderedGoal.waitFor(browser, frames);
             try std.testing.expectEqual(@as(usize, 0), frames.requests.items.len);
             try std.testing.expect(frames.timer_id == null);
         }
@@ -1323,7 +1358,7 @@ test "reactivation restores pending native autofocus rendering without an idle t
             try std.testing.expectEqual(@as(usize, 1), frames.requests.items.len);
             try std.testing.expect(frames.timer_id != null);
             html_mod.autofocus.flush(document);
-            _ = try browser.runEventLoopBlocking(50);
+            try RenderedGoal.waitFor(browser, frames);
             windowResumed(realm);
             try std.testing.expectEqual(@as(usize, 0), frames.requests.items.len);
             try std.testing.expect(frames.timer_id == null);
