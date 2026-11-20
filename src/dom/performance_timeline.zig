@@ -1310,8 +1310,9 @@ pub const GuardedTimingReporter = struct {
 
 /// HTML "iframe load event steps" step 4: an iframe's navigation whose
 /// response did not pass the timing allow check (or that fetched nothing)
-/// is marked with a fallback timing info - start time `start_time`, the
-/// iframe's pending resource-timing start time, response end time now -
+/// is marked with a fallback timing info - start time (and post-redirect
+/// start time) `start_time`, the iframe's pending resource-timing start
+/// time, response end time now -
 /// for `url`, initiator type "iframe", cache mode "", a new response body
 /// info and status 0, in `realm`'s global.
 pub fn markIframeFallbackTiming(realm: runtime.Context, url: []const u8, start_time: f64) !void {
@@ -1339,7 +1340,12 @@ pub fn markIframeFallbackTiming(realm: runtime.Context, url: []const u8, start_t
         .worker_start = 0,
         .redirect_start = 0,
         .redirect_end = 0,
-        .fetch_start = 0,
+        // The fallback timing info is an opaque one: Fetch's "create an
+        // opaque timing info" gives it a post-redirect start time equal to
+        // its start time, so fetchStart is startTime (resource-timing
+        // entry-invariants' TAO-failure and redirected-from-cross-origin
+        // checks; Chrome 157 passes them, the one browser with the fallback).
+        .fetch_start = start_time,
         .domain_lookup_start = 0,
         .domain_lookup_end = 0,
         .connect_start = 0,
