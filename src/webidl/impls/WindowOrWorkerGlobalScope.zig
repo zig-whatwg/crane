@@ -152,22 +152,11 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
 /// Operation: setInterval
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
 ///
-/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
-/// if handler.function is a JavaScript callback. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. For handler.function variant, create Global handle
-/// 2. Store in interval registry with Global handle
-/// 3. Dispose Global handle when interval is cleared via clearInterval
-/// 4. Handle repeating invocation pattern
+/// "The setInterval(handler, timeout, ...arguments) method steps are to
+/// return the result of running the timer initialization steps given this,
+/// handler, timeout, arguments, and true." (`setTimer`)
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return setTimer(instance, handler, timeout, arguments, true);
 }
 
 /// Operation: atob
@@ -411,10 +400,12 @@ const BitmapTask = struct {
 };
 
 /// Operation: clearInterval
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval
+///
+/// "The clearTimeout(id) and clearInterval(id) method steps are to remove
+/// this's map of setTimeout and setInterval IDs[id]." (`clearTimer`)
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return clearTimer(instance, id);
 }
 
 /// Operation: queueMicrotask
@@ -532,29 +523,51 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
 /// Operation: setTimeout
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
 ///
-/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
-/// if handler.function is a JavaScript callback. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. For handler.function variant, create Global handle
-/// 2. Store in timer registry with Global handle
-/// 3. Dispose Global handle when timer fires or is cleared via clearTimeout
-/// 4. Handle one-shot invocation (unlike setInterval)
+/// "The setTimeout(handler, timeout, ...arguments) method steps are to
+/// return the result of running the timer initialization steps given this,
+/// handler, timeout, arguments, and false." (`setTimer`)
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return setTimer(instance, handler, timeout, arguments, false);
 }
 
 /// Operation: clearTimeout
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return clearTimer(instance, id);
+}
+
+/// HTML 8.6's timer initialization steps for `instance`, run by its kind of
+/// global (dom.global_settings `set_timer`): its map of setTimeout and
+/// setInterval IDs, its event loop and its realm are the global's own. A
+/// WorkerGlobalScope's reach here - the members are its prototype's,
+/// WindowOrWorkerGlobalScope being a mixin it includes (WebIDL 3.7.3) - and
+/// a Window's are its own operations ([Global]: page_realm's window
+/// operations), which answer first.
+fn setTimer(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 {
+    // The binding hands a Function over: take it before anything can fail.
+    const converted: global_settings.TimerHandler = switch (handler) {
+        .function => |function| .{ .function = engine.takeCallbackFunction(@ptrCast(function)) },
+        .trusted_script => |trusted| .{ .trusted_script = trusted },
+        .domstring => |text| .{ .string = text.asSlice() },
+    };
+    const settings = global_settings.of(instance) orelse {
+        converted.release();
+        return error.NotImplemented;
+    };
+    const set = settings.set_timer orelse {
+        converted.release();
+        return error.NotImplemented;
+    };
+    // `optional long timeout = 0`.
+    return set(instance, converted, timeout.getOrDefault(0), arguments, repeat);
+}
+
+/// clearTimeout() and clearInterval(): `optional long id = 0`; an id no timer
+/// of this global has names nothing.
+fn clearTimer(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+    const settings = global_settings.of(instance) orelse return error.NotImplemented;
+    const clear = settings.clear_timer orelse return error.NotImplemented;
+    clear(instance, id.getOrDefault(0));
 }
 
 // One call, from the moment the fetch starts until it is entirely over:

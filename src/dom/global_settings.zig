@@ -2,7 +2,10 @@
 //! settings object": a global's origin, whether it is a secure context and
 //! cross-origin isolated, and the objects it hands out once per global
 //! (IndexedDB's factory, CacheStorage, Performance), the cookie jar it
-//! reaches, and - `requestClient` - all of that as a fetch request's client.
+//! reaches, and - `requestClient` - all of that as a fetch request's client;
+//! and the timer initialization steps its kind runs for the mixin's
+//! setTimeout() and setInterval() (HTML 8.6), whose map of setTimeout and
+//! setInterval IDs is the global's own.
 //!
 //! HTML gives every global an environment settings object, and each kind of
 //! global - a Window, a WorkerGlobalScope - defines how its settings answer.
@@ -18,11 +21,33 @@
 const std = @import("std");
 const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
 const storage = @import("storage");
 const origin_record = @import("origin_record.zig");
 const OriginRecord = origin_record.OriginRecord;
+
+/// setTimeout()'s and setInterval()'s `handler` as the binding converted it
+/// (WebIDL 3.2.24, the TimerHandler union - TrustedScript, Function or
+/// DOMString - in the union algorithm's order), for `Settings.set_timer`.
+pub const TimerHandler = union(enum) {
+    /// The Function, its callback context the incumbent realm of the call.
+    /// OWNED, handed over: the timer keeps it, or releases it.
+    function: engine.CallbackFunction,
+    /// A TrustedScript. BORROWED for the call.
+    trusted_script: *runtime.Instance,
+    /// What ToString made of any other value. BORROWED for the call.
+    string: []const u8,
+
+    /// Release what the handler owns (a Function), when no timer took it.
+    pub fn release(self: TimerHandler) void {
+        switch (self) {
+            .function => |function| function.release(),
+            .trusted_script, .string => {},
+        }
+    }
+};
 
 /// One kind of global's answers. Each getter is handed a global `owns`
 /// accepted.
@@ -96,6 +121,17 @@ pub const Settings = struct {
     /// keeps its document (a Window) or lives (a worker). Null where this
     /// kind of global keeps none.
     storage_key: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]const u8 = null,
+    /// HTML 8.6, setTimeout() (`repeat` false) and setInterval(): the timer
+    /// initialization steps with this global, `handler`, `timeout`,
+    /// `arguments` and `repeat`, and no previousId - the handle, or 0 when
+    /// no timer was armed. `handler` is handed over (`TimerHandler.release`
+    /// on every path that keeps no timer); `arguments` are BORROWED. Null
+    /// where this kind's timers are not the mixin's operations - a Window's
+    /// are its own ([Global]: page_realm's window operations).
+    set_timer: ?*const fn (global: *runtime.Instance, handler: TimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 = null,
+    /// clearTimeout() and clearInterval(): "remove this's map of setTimeout
+    /// and setInterval IDs[id]" - one map for both.
+    clear_timer: ?*const fn (global: *runtime.Instance, id: i32) void = null,
 };
 
 /// `global`'s settings object's storage key for non-storage purposes,
