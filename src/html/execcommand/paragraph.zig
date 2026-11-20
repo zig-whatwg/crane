@@ -752,6 +752,18 @@ const Edge = enum { start, end };
 
 /// Whether a split half holds nothing visible but, at most, one br as its
 /// last leaf - the empty line Enter leaves behind.
+/// An element whose box is its own content - embedded content and the
+/// replaced form controls - which a split's half that holds it is not
+/// empty of, and which takes no padding br inside it: insertParagraph in
+/// `<div><iframe srcdoc="abc"></iframe></div>` gives `<div><br></div><div>
+/// <iframe srcdoc="abc"></iframe></div>` in all three browsers (editing/
+/// other/insertparagraph-in-non-splittable-element.html, wpt.fyi
+/// 2358bd4835); the spec's "visible" counts only img and br among elements
+/// with no visible descendant.
+fn isEmbeddedContent(node: *Instance) !bool {
+    return try common.isHtmlElementIn(node, &.{ "iframe", "video", "audio", "canvas", "object", "embed", "select", "textarea", "button", "meter", "progress", "input" });
+}
+
 fn isEmptyLine(container: *Instance) !bool {
     var brs: usize = 0;
     var last_leaf: ?*Instance = null;
@@ -766,6 +778,7 @@ fn isEmptyLine(container: *Instance) !bool {
             continue;
         }
         if (try common.isVisible(n)) return false;
+        if (try isEmbeddedContent(n)) return false;
     }
     if (brs == 0) return true;
     return brs == 1 and last_leaf == last_br;
@@ -782,6 +795,7 @@ fn pruneEdgeInlines(edit: *Edit, container: *Instance, edge: Edge, empty_line: b
     while (true) {
         const child = (if (edge == .end) try common.lastChild(current) else try common.firstChild(current)) orelse break;
         if (!common.isElement(child) or !common.isInlineNode(child) or (try isBr(child)) or !try common.isEditable(child)) break;
+        if (try isEmbeddedContent(child)) break;
         try chain.append(edit.allocator, child);
         current = child;
     }
@@ -819,6 +833,7 @@ fn deepestTrailingInline(node: *Instance) !*Instance {
     while (try common.lastChild(target)) |last| {
         if (!common.isElement(last) or !common.isInlineNode(last)) break;
         if (try common.isHtmlElementIn(last, &.{ "br", "img", "hr", "input", "wbr" })) break;
+        if (try isEmbeddedContent(last)) break;
         if (!try common.isEditable(last)) break;
         target = last;
     }

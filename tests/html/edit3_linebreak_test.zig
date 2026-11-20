@@ -27,3 +27,24 @@ fn linefeeds() !void {
 test "insertLineBreak takes a line feed where the style keeps newlines, a br in a pre" {
     try helpers.onFreshThread(linefeeds);
 }
+
+fn embeddedSplit() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // editing/other/insertparagraph-in-non-splittable-element.html: the new
+    // paragraph goes before the iframe, and the iframe takes no br (all
+    // three).
+    try harness.expectEval(page,
+        \\(() => {
+        \\  host.innerHTML = '<div><iframe srcdoc="abc"></iframe></div>';
+        \\  getSelection().collapse(host.querySelector('iframe'), 0);
+        \\  document.execCommand('insertParagraph');
+        \\  return host.innerHTML;
+        \\})()
+    , "<div><br></div><div><iframe srcdoc=\"abc\"></iframe></div>");
+}
+
+test "insertParagraph before an iframe leaves the iframe without a br" {
+    try helpers.onFreshThread(embeddedSplit);
+}
