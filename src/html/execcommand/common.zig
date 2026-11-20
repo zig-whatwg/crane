@@ -884,18 +884,61 @@ pub fn isSingleLineContainer(node: *Instance) !bool {
 
 /// HTML "editing host": an HTML element whose contenteditable is in the
 /// true or plaintext-only state, or an HTML element child of a document
-/// whose design mode is on.
+/// whose design mode is on - except, for the editing commands, an element in
+/// the true state inside richly editable content: Chrome, Firefox and Safari
+/// all edit it as content of the outer host, not as a host of its own
+/// (Blink's RootEditableElement is the highest editable ancestor; Gecko's
+/// editing host the outermost). editing/other/shadow_root_iteration_in_
+/// block_style.html's `<div contenteditable>hello<span contenteditable
+/// style="color:red">[world]</span></div>` + removeFormat: Chrome leaves
+/// style="", Safari drops the attribute, Firefox unwraps the span - all three
+/// change the span, which Crane, taking it for a host, left alone (wpt.fyi
+/// 2358bd4835). Golden rule 2 mechanism by mechanism (the integrator's
+/// ruling, 2026-11-20 3:56 PM ET): "not a host of its own" has all three;
+/// what removeFormat then does to the span has no majority, so the spec
+/// decides - unwrap it, Firefox's result. A plaintext-only element stays a
+/// host (Chrome and Safari refuse style edits in one nested in a true host:
+/// root.zig isPlaintextOnly), and so does a true element inside a
+/// plaintext-only one.
 pub fn isEditingHost(node: *Instance) !bool {
     if (!try isHtmlElement(node)) return false;
     var state = try interfaces.HTMLElement.get_contentEditable(node);
     defer state.deinit(node.ctx.allocator);
     const value = state.asSlice();
-    if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "plaintext-only")) return true;
+    if (std.mem.eql(u8, value, "plaintext-only")) return true;
+    if (std.mem.eql(u8, value, "true")) return !try insideRichlyEditableContent(node);
     const p = (try parent(node)) orelse return false;
     if (!isDocument(p)) return false;
     var mode = try interfaces.Document.get_designMode(p);
     defer mode.deinit(p.ctx.allocator);
     return std.mem.eql(u8, mode.asSlice(), "on");
+}
+
+/// Whether `node`'s parent is richly editable content: the nearest ancestor
+/// element whose contenteditable is not inherit is in the true state, or -
+/// none is - the root element is a design-mode document's child. A
+/// plaintext-only or false ancestor first, or no editable ancestor at all,
+/// is not (see isEditingHost).
+fn insideRichlyEditableContent(node: *Instance) !bool {
+    var current = (try parent(node)) orelse return false;
+    if (isDocument(current)) return false;
+    while (true) {
+        if (try isHtmlElement(current)) {
+            var state = try interfaces.HTMLElement.get_contentEditable(current);
+            defer state.deinit(current.ctx.allocator);
+            const value = state.asSlice();
+            if (std.mem.eql(u8, value, "true")) return true;
+            if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "plaintext-only")) return false;
+        }
+        const next = (try parent(current)) orelse return false;
+        if (isDocument(next)) {
+            if (!try isHtmlElement(current)) return false;
+            var mode = try interfaces.Document.get_designMode(next);
+            defer mode.deinit(next.ctx.allocator);
+            return std.mem.eql(u8, mode.asSlice(), "on");
+        }
+        current = next;
+    }
 }
 
 /// Whether an element's contenteditable attribute is in the false state.
