@@ -77,11 +77,11 @@ test "caret colors retain two specified values and resolve automatic colors" {
     try check("caret-color", "auto", "auto", "rgb(0, 0, 255)");
     try check("caret-color", "currentColor", "currentcolor", "rgb(0, 0, 255)");
     try check("caret-color", "red auto", "red auto", "rgb(255, 0, 0)");
-    try check("caret-color", "auto auto", "auto auto", "rgb(0, 0, 255)");
-    try check("caret-color", "auto red", "auto red", "rgb(0, 0, 255) rgb(255, 0, 0)");
     try check("caret-color", "currentColor currentColor", "currentcolor currentcolor", "rgb(0, 0, 255) rgb(0, 0, 255)");
     try check("caret-color", "red transparent", "red transparent", "rgb(255, 0, 0) rgba(0, 0, 0, 0)");
-    for ([_][]const u8{ "none", "red blue green", "red, blue", "1px" }) |bad| try check("caret-color", bad, "", null);
+    // UI 4 §5.2.1 `auto | <color> [auto | <color>]?`: the two-value form
+    // begins with a color (lane maj5; css/css-ui/parsing/caret-color-invalid.html).
+    for ([_][]const u8{ "none", "red blue green", "red, blue", "1px", "auto auto", "auto red", "auto currentcolor" }) |bad| try check("caret-color", bad, "", null);
     try check("accent-color", "auto", "auto", "auto");
     try check("accent-color", "currentColor", "currentcolor", "rgb(0, 0, 255)");
     try check("accent-color", "red", "red", "rgb(255, 0, 0)");
@@ -113,7 +113,7 @@ test "UI inherited values and noninherited controls use the property definitions
 test "caret auto and currentcolor remain symbolic through inheritance" {
     // UI 4 §5.2.1 / Color 4 §6.4; Q59 distinguishes internal computed
     // values from the resolved strings returned by getComputedStyle.
-    for ([_][]const u8{ "auto", "currentcolor", "auto currentcolor", "currentcolor auto" }) |input| {
+    for ([_][]const u8{ "auto", "currentcolor", "currentcolor currentcolor", "currentcolor auto" }) |input| {
         var parent_block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "color:blue");
         defer parent_block.deinit();
         _ = try parent_block.setProperty(.{ .allocator = testing.allocator }, "caret-color", input, "");
@@ -130,7 +130,7 @@ test "caret auto and currentcolor remain symbolic through inheritance" {
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(testing.allocator);
         try child.serializeResolved(property.longhand, &text, testing.allocator);
-        try testing.expectEqualStrings(if (std.mem.eql(u8, input, "auto currentcolor")) "rgb(255, 0, 0) rgb(255, 0, 0)" else "rgb(255, 0, 0)", text.items);
+        try testing.expectEqualStrings(if (std.mem.eql(u8, input, "currentcolor currentcolor")) "rgb(255, 0, 0) rgb(255, 0, 0)" else "rgb(255, 0, 0)", text.items);
     }
 }
 
