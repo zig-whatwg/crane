@@ -425,6 +425,9 @@ pub const NavigationFetchOptions = struct {
     /// container - the navigation's initiator's. BORROWED; the request takes
     /// a clone. Null leaves it "client".
     policy_container: ?*const fetch.internal.PolicyContainer = null,
+    /// "Create navigation params by fetching" step 9: the source snapshot
+    /// params' has transient activation, as the request's user-activation.
+    user_activation: bool = false,
 
     pub const Destination = enum {
         document,
@@ -635,6 +638,7 @@ pub fn navigationRequest(
     // Its referrer policy, and the initiator's policy container main fetch
     // step 8 falls back to.
     internal_request.referrer_policy = options.referrer_policy;
+    internal_request.user_activation = options.user_activation;
     if (options.policy_container) |container| {
         internal_request.setPolicyContainer(container.clone(allocator) catch return NavigationFetchError.OutOfMemory);
     }
