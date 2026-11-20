@@ -23,6 +23,7 @@
    4. The working directory.
 
    Its wait message names the mirror it found and the source. `crane-measure.sh mirror <runner>` prints both.
-4. Lanes: `crane-pool.sh queue <host> <mirror> <ab|cost|sweep|short> --est <min> --note '...' '<cmd>'`, then ONE background `crane-pool.sh queue-wait <host> <mirror>`, which exits with the window's exit status (docs/agents/working-on-crane.md, "Timed windows: the window queue").
+4. Back-to-back windows must not starve builds. On its first morning, window after window on chat.local left a pinned console build (maj4-c) waiting. A keeper cannot see the build jobs waiting on the Mac, so the Mac tells it. `pool_place_build` records the hosts each waiting job could take (`pool/build-want/<ticket>`), and the relay passes each host its count and oldest ticket. Before every drain, the keeper keeps the host open (a BUILD GAP) while jobs that waited before the gap remain, for at most `WQ_BUILD_GAP_MAX_MIN` (15), and then drains. On first use the gap opened at the end of tmpl1-c's window, and maj4-c's build had its slot about 20 s later.
+5. Lanes: `crane-pool.sh queue <host> <mirror> <ab|cost|sweep|short> --est <min> --note '...' '<cmd>'`, then ONE background `crane-pool.sh queue-wait <host> <mirror>`, which exits with the window's exit status (docs/agents/working-on-crane.md, "Timed windows: the window queue").
 
 **Takeaway**: **Never hand-schedule a timed window or trust a window that has merely started: enqueue it, and let the keeper on the host hand the host on and check every 10 minutes that the window is moving.**

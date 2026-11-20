@@ -117,6 +117,11 @@ tmp/remote/crane-pool.sh queue-wait server1 maj1-l   # follows the log; exits wi
   held-files.md shows it in place of the command.
 - **The command runs in the foreground until its work is done**, so never use `&` without `wait`. The window
   ends when the command exits.
+- **Builds are not starved between windows.** Before each drain, the keeper opens a BUILD GAP when build jobs
+  were already waiting for that host (`crane-remote.sh` records which hosts each waiting job could take). The
+  host stays open until those jobs have their slots, for at most 15 minutes (`WQ_BUILD_GAP_MAX_MIN`). Then the
+  drain starts and waits for them to finish. A build you ask for after the gap began waits for the next
+  handoff.
 - **A window that is not moving is reported.** Ten minutes after the window starts, and every ten minutes after
   that, the keeper looks for CPU use in the window's process tree, or a changed file under your mirror's
   `tmp/`, `wpt-results/` or `-bins/`. If it finds neither, it writes `ALERT <time> <host> <mirror>: window
