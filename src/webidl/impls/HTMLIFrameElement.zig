@@ -7181,7 +7181,9 @@ fn attachNavigableContext(
     // answer - the parent's for a frame, the opener's for a popup (`parent`
     // is the opener's realm then) - as html.secure_context.ofDocument has it.
     const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, parent.secure_context, allocator) orelse return null;
-    makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, parent, allocator);
+    // A document with no creator (a noopener popup's) has no creator's realm
+    // either: its window client takes no active service worker from one.
+    makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, if (creator != null) parent else null, allocator);
     return realm;
 }
 
@@ -8453,12 +8455,16 @@ fn popupWindowEnded(scope: *runtime.BrowserScope, browsing_context_ptr: *anyopaq
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
 /// browsing context opened by `opener_bc_ptr`, whose context, Window and
 /// initial about:blank document are made exactly as an iframe's are, minus
-/// the container. The integration is the caller's to deinit and destroy.
+/// the container. With `noopener`, a new top-level traversable "given null"
+/// opener ("the rules for choosing a navigable" step 8.7): its initial
+/// about:blank document has no creator. The integration is the caller's to
+/// deinit and destroy.
 fn createAuxiliaryNavigable(
     allocator: std.mem.Allocator,
     opener_bc_ptr: *anyopaque,
     is_popup: bool,
     popup_sandboxing_flags: SandboxingFlagSet,
+    noopener: bool,
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
     // The entry global's realm, whose script called open(), is the new
@@ -8475,19 +8481,37 @@ fn createAuxiliaryNavigable(
     // container's, so a popup's initial about:blank got an origin that was
     // not its opener's, its first navigation to the opener's origin made a
     // new Window, and the onload set on the one open() returned never fired.
-    const creator: *runtime.Instance = @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
-    const creator_record = (dom_module.document_origin.shareable(creator) catch null) orelse return null;
+    //
+    // With noopener there is no creator: "create a new top-level traversable"
+    // given a null opener makes its document by "create a new top-level
+    // browsing context and document", which runs "create a new browsing
+    // context and document" given a null creator - so step 5's creatorOrigin
+    // stays null and step 7's origin is a new opaque one, and step 19 (the
+    // creator's referrer, policy container and opener policy) does not run:
+    // the document's opener policy is a new one, "unsafe-none". Its first
+    // navigation's opener policy enforcement then compares the response's
+    // policy with "unsafe-none", so a "same-origin-plus-COEP" response
+    // switches to a cross-origin isolated browsing context group (HTML
+    // "obtain a browsing context to use for a navigation response" step 13).
+    // Taking the opener's document as the creator made the two policies
+    // match - no switch, so the popup was never cross-origin isolated
+    // (html/cross-origin-opener-policy/noopener-popup-cross-origin-
+    // isolation.https.html "Same-origin popup with COOP and COEP": C157 and
+    // F160 pass, S27.2 passes).
+    const creator: ?*runtime.Instance = if (noopener) null else @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
+    const creator_record: ?*OriginRecord = if (creator) |document| ((dom_module.document_origin.shareable(document) catch null) orelse return null) else null;
 
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
     // The integration's own copy of the creator origin: the creator document
-    // may go first.
-    integration.setCreatorOrigin(creator_record.serialized orelse "null") catch {
+    // may go first. With no creator, the integration keeps its opaque
+    // container origin.
+    if (creator_record) |record| integration.setCreatorOrigin(record.serialized orelse "null") catch {
         integration.deinit();
         allocator.destroy(integration);
         return null;
     };
-    const opener_origin = integration.creator_origin.?;
+    const opener_origin: ?[]const u8 = integration.creator_origin;
     const browsing_context = html_core.BrowsingContext.initAuxiliary(allocator, opener_bc, is_popup) catch {
         integration.deinit();
         allocator.destroy(integration);
@@ -8522,7 +8546,7 @@ fn createAuxiliaryNavigable(
     // The spec gives the initial document only its creation flags; a later
     // navigation's flags follow the spec (its policy container's
     // CSP-derived flags).
-    const inherited_csp_flags = if (dom_module.policy_containers.of(creator)) |container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else SandboxingFlagSet.empty;
+    const inherited_csp_flags = if (creator) |document| (if (dom_module.policy_containers.of(document)) |container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else SandboxingFlagSet.empty) else SandboxingFlagSet.empty;
     const creation_flags = sandboxing.creationSandboxingFlags(.{ .popup = popup_sandboxing_flags }).unionWith(inherited_csp_flags);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the
