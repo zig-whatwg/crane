@@ -61,6 +61,103 @@ fn moveToInsertionPoint(edit: *Edit, end_link: ?*Instance) !void {
     try edit.collapse(downstream.node, downstream.offset);
 }
 
+/// A line break that holds an empty line open: a br, or a preserved line
+/// feed (white-space pre, pre-wrap, pre-line), at the end of its block.
+const Padding = union(enum) {
+    br: *Instance,
+    line_feed: common.Point,
+};
+
+/// The line break at `caret` that only holds the caret's line open: the
+/// caret starts its line (after a forced break or at its block's start, with
+/// nothing visible between) and the next thing is a line break with nothing
+/// visible after it in its block. Typed text fills the line, so the line
+/// break becomes unnecessary and goes once the text is in: Blink's
+/// InsertTextCommand removes it (ComputePlaceholderToRemove: a line break at
+/// the caret's downstream position when the caret is at the start of its
+/// paragraph and the end of its block, then RemovePlaceholderAt - a br, or
+/// the "\n" of a Text that preserves newlines), and Gecko its padding line
+/// break for an empty last line. `<div style="white-space:pre">[]\n</div>` +
+/// "X" gives `X`, and typing into the empty line insertLineBreak made in
+/// `<p><b>AB[]</b></p>` gives `AB\na` (editing/plaintext-only/
+/// insertText.html, editing/run/inserttext.html, editing/other/inserttext-
+/// before-unnecessary-linebreak.html: PPP at wpt.fyi 2358bd4835); the spec
+/// removes only a collapsed br that is the node's sole child (step 14.1).
+/// Golden rule 2, no newer spec. A line break after text on its line stays
+/// (`<p>abc[]<br></p>` + "x" keeps it, all three).
+fn paddingLineBreakAt(caret: common.Point) !?Padding {
+    if (!try startsLine(caret)) return null;
+    const down = try common.lastEquivalentPoint(caret);
+    if (common.isText(down.node)) {
+        var data = try common.textData(down.node);
+        defer data.deinit(down.node.ctx.allocator);
+        const length = try common.nodeLength(down.node);
+        if (down.offset < length) {
+            // A preserved line feed, the Text's last character, with nothing
+            // visible after it in its block.
+            if ((common.codeUnitAt(data.asSlice(), down.offset) orelse return null) != '\n') return null;
+            if (down.offset + 1 != length) return null;
+            if (!(try common.whiteSpaceAround(down.node)).preservesNewlines()) return null;
+            if (!try common.precedesLineBreak(down.node)) return null;
+            return .{ .line_feed = down };
+        }
+        const next = (try common.nextSibling(down.node)) orelse return null;
+        return try brPadding(next);
+    }
+    const after = (try common.childAt(down.node, down.offset)) orelse return null;
+    return try brPadding(after);
+}
+
+/// `node` as a padding br: a br followed by a block boundary.
+fn brPadding(node: *Instance) !?Padding {
+    if (!try common.isHtmlElementNamed(node, "br")) return null;
+    if (!try common.isEditable(node)) return null;
+    if (!try common.isCollapsedLineBreak(node)) return null;
+    return .{ .br = node };
+}
+
+/// Whether `point` starts its line: after a forced break (a br, a preserved
+/// line feed) or at its block's start, with nothing visible between.
+fn startsLine(point: common.Point) !bool {
+    if (common.isText(point.node)) {
+        if (point.offset > 0) {
+            var data = try common.textData(point.node);
+            defer data.deinit(point.node.ctx.allocator);
+            if ((common.codeUnitAt(data.asSlice(), point.offset - 1) orelse return false) != '\n') return false;
+            return (try common.whiteSpaceAround(point.node)).preservesNewlines();
+        }
+        return try common.followsLineBreak(point.node);
+    }
+    if (try common.childBefore(point.node, point.offset)) |before| {
+        if (try common.isHtmlElementNamed(before, "br")) return true;
+        if (common.isBlockNode(before)) return true;
+        return false;
+    }
+    if (try common.childAt(point.node, point.offset)) |at| return try common.followsLineBreak(at);
+    return try common.isBlockBoundaryPoint(point);
+}
+
+/// Remove the padding line break once the text is in (`into`, `at`: where
+/// `length` code units were inserted).
+fn removePadding(edit: *Edit, padding: Padding, into: *Instance, at: u32, length: u32) !void {
+    switch (padding) {
+        .br => |br| {
+            if ((try common.parent(br)) == null) return;
+            if (!try common.isEditable(br)) return;
+            try edit.removeNode(br);
+        },
+        .line_feed => |point| {
+            var offset = point.offset;
+            if (point.node == into and at <= offset) offset += length;
+            if (offset >= try common.nodeLength(point.node)) return;
+            var data = try common.textData(point.node);
+            defer data.deinit(point.node.ctx.allocator);
+            if ((common.codeUnitAt(data.asSlice(), offset) orelse return) != '\n') return;
+            try edit.deleteData(point.node, offset, 1);
+        },
+    }
+}
+
 /// The insertText action with `value`.
 pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction) anyerror!bool {
     // Step 1: "Delete the selection, with strip wrappers false." Run only
@@ -126,6 +223,9 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
         }
     }
     const caret = (try edit.rangeStart()) orelse return true;
+    // The line break that only holds the caret's empty line open, which the
+    // text makes unnecessary (see paddingLineBreakAt).
+    const padding = try paddingLineBreakAt(caret);
     // Step 6.
     var node = caret.node;
     var offset = caret.offset;
@@ -160,6 +260,7 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
         try edit.insertData(node, offset, value);
         try edit.collapse(node, offset);
         try edit.extend(node, offset + length);
+        if (padding) |p| try removePadding(edit, p, node, offset, length);
     } else {
         // Step 14.1: "If node has only one child, which is a collapsed line
         // break, remove its child from it."
@@ -174,6 +275,7 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
         // Steps 14.4-14.5: select it.
         try edit.collapse(text, 0);
         try edit.extend(text, length);
+        if (padding) |p| try removePadding(edit, p, text, 0, length);
     }
     // Step 15: "Restore states and values from overrides."
     try overrides.restoreStatesAndValues(edit, recorded);
