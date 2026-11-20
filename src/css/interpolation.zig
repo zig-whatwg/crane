@@ -580,6 +580,8 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
                 .opacity => std.math.clamp(n, 0, 1),
                 .font_weight => std.math.clamp(n, 1, 1000),
                 .flex_factor, .line_height, .text_value => @max(n, 0),
+                // Fill and Stroke 3 §6.5: stroke-miterlimit is <number [0,∞]>.
+                .miterlimit => @max(n, 0),
                 else => n,
             };
             return .{ .number = clamped };
@@ -592,7 +594,9 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
             },
         },
         .length => |len| {
-            if (nonNegativeLengths(grammar) and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
+            // SVG 2 §10.4: r, rx and ry are <length-percentage [0,∞]>.
+            const nonnegative = nonNegativeLengths(grammar) or l == .r or l == .rx or l == .ry;
+            if (nonnegative and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
             return v;
         },
         // A legacy color carried out of range (or between bytes) by the

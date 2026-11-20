@@ -1378,7 +1378,7 @@ firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = safari
 ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the violation's location is captured when update the image data queues its microtask, as Firefox and Safari do; its column is the JavaScript engine's own (V8 11, JavaScriptCore 6, SpiderMonkey 5 = the test's), so no change in Crane's code gives SpiderMonkey's
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves, or when V8 ships a public statement-position API for a running frame (crbug 587981566, filed 2026-11-20 at the user's OK; the user ruled 2026-11-19: keep exempt + file it)
 
 [content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image-from-script.sub.html]
 kind            = follows-majority
@@ -1388,7 +1388,7 @@ firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = safari
 ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the [line, column] is the JavaScript engine's own
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves, or when V8 ships a public statement-position API for a running frame (crbug 587981566, filed 2026-11-20 at the user's OK; the user ruled 2026-11-19: keep exempt + file it)
 
 [content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image.sub.html]
 kind            = follows-majority
@@ -1398,7 +1398,7 @@ firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = safari
 ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the column is the JavaScript engine's own
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves, or when V8 ships a public statement-position API for a running frame (crbug 587981566, filed 2026-11-20 at the user's OK; the user ruled 2026-11-19: keep exempt + file it)
 
 [content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image-from-script.sub.html]
 kind            = follows-majority
@@ -1408,7 +1408,7 @@ firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = safari
 ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the [line, column] is the JavaScript engine's own
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves, or when V8 ships a public statement-position API for a running frame (crbug 587981566, filed 2026-11-20 at the user's OK; the user ruled 2026-11-19: keep exempt + file it)
 
 [upgrade-insecure-requests/gen/iframe-blank-inherit.meta/unset/iframe-tag.https.html]
 kind            = follows-majority

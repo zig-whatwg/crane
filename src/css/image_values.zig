@@ -830,7 +830,6 @@ fn parseResolution(stream: *properties.Stream) ?Resolution {
 }
 
 fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy: Policy, depth: usize) Allocator.Error!?Value {
-    const original = stream.*;
     if (!beginFunction(stream)) return null;
     const allocator = options.allocator;
     var candidates: std.ArrayList(Candidate) = .empty;
@@ -844,7 +843,6 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
     }
     while (true) {
         const token = stream.peek();
-        const argument_start = stream.*;
         const image = if (token.token_type == .string) blk: {
             const begin = stream.peeked_offset;
             _ = stream.next();
@@ -852,16 +850,7 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
             const decoded = try tokenizer.decode(allocator, token.stringContents());
             defer allocator.free(decoded);
             break :blk try properties.urlValue(options, decoded);
-        } else (try parseAtDepth(options, stream, .{ .generated = policy.generated, .image_set = false }, depth)) orelse {
-            // Q81 interim: preserve the old opaque whole-function value only
-            // for a quoted URL with a tail. The queued CSS URL REQUEST
-            // MODIFIERS row replaces this with typed parsing and request data.
-            if (quotedUrlHasTail(argument_start)) {
-                stream.* = original;
-                return properties.parseImageLeaf(options, stream);
-            }
-            return null;
-        };
+        } else (try parseAtDepth(options, stream, .{ .generated = policy.generated, .image_set = false }, depth)) orelse return null;
         var candidate = Candidate{ .image = image };
         var transferred = false;
         defer if (!transferred) {
@@ -897,15 +886,6 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
         }
     }
     return .{ .image = try Image.create(allocator, .{ .image_set = .{ .candidates = candidates.items } }) };
-}
-
-fn quotedUrlHasTail(original: properties.Stream) bool {
-    var probe = original;
-    const token = probe.next();
-    if (token.token_type != .function or !isUrl(token)) return false;
-    if (probe.next().token_type != .left_paren or probe.next().token_type != .string) return false;
-    const after_string = probe.next().token_type;
-    return after_string != .right_paren and after_string != .eof;
 }
 
 fn parseLightDark(options: properties.ParseOptions, stream: *properties.Stream, policy: Policy, depth: usize) Allocator.Error!?Value {

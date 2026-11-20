@@ -1034,6 +1034,7 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .overscroll_behavior_x, .overscroll_behavior_y => return .overscroll,
         .contain_intrinsic_width, .contain_intrinsic_height => return .contain_intrinsic,
         .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape => return .corner_shape,
+        .border_top_left_radius, .border_top_right_radius, .border_bottom_right_radius, .border_bottom_left_radius => return .border_radius,
         else => {},
     }
     const sides = [_]PhysicalSides{
