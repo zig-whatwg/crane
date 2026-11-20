@@ -36,11 +36,15 @@ pub const Trace = *const fn (state: *anyopaque, tracer: *Tracer) void;
 /// Let go of every node an editor state holds; the state itself stays.
 pub const ReleaseNodes = *const fn (state: *anyopaque) void;
 
+/// Whether an editor state holds any node now.
+pub const HoldsNodes = *const fn (state: *anyopaque) bool;
+
 /// The editing subsystem's steps.
 pub const Steps = struct {
     free: Free,
     trace: Trace,
     release_nodes: ReleaseNodes,
+    holds_nodes: HoldsNodes,
 };
 
 // Written once at process start (process_start.zig) and only read
@@ -70,4 +74,13 @@ pub fn trace(state: *anyopaque, tracer: *Tracer) void {
 pub fn releaseNodes(state: *anyopaque) void {
     const installed = steps.get() orelse return;
     installed.release_nodes(state);
+}
+
+/// Whether a Document's editor state holds nodes now - a non-empty undo
+/// history - so its destruction has references of its own to end
+/// (dom.refcount_teardown's holdsOwnReferences). Most editor states hold
+/// none.
+pub fn holdsNodes(state: *anyopaque) bool {
+    const installed = steps.get() orelse return false;
+    return installed.holds_nodes(state);
 }

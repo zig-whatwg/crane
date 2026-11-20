@@ -225,11 +225,21 @@ fn destroyedDocumentLetsGo() !void {
         \\globalThis.frameHTML = host.innerHTML;
     );
     try harness.expectEval(page, "frameHTML", "<p>abc</p><p>def</p>");
-    try page.run("frame.remove(); frame = null; collectNow();");
+    // And a frame whose editor state holds nothing: a configuration command
+    // made it, and no command changed the tree.
+    try page.run(
+        \\globalThis.emptyFrame = document.createElement('iframe');
+        \\document.body.appendChild(emptyFrame);
+        \\emptyFrame.contentDocument.execCommand('styleWithCSS', false, 'true');
+        \\emptyFrame.contentDocument.body.innerHTML = '<div contenteditable>abc</div>';
+        \\emptyFrame.contentDocument.getSelection().collapse(emptyFrame.contentDocument.querySelector('div').firstChild, 0);
+        \\emptyFrame.contentDocument.execCommand('justifyLeft');
+    );
+    try page.run("frame.remove(); frame = null; emptyFrame.remove(); emptyFrame = null; collectNow();");
     try page.turn();
     try page.run("collectNow();");
 }
 
-test "a destroyed document's undo history lets go of the nodes it held" {
+test "a destroyed document's undo history lets go of the nodes it held, and an empty editor state of none" {
     try helpers.onFreshThread(destroyedDocumentLetsGo);
 }

@@ -317,11 +317,18 @@ fn releaseEditorStateNodes(state_ptr: *anyopaque) void {
     editor_state.undo_stack.clear();
 }
 
+/// dom.editor_states: whether a Document's editor state holds nodes now - a
+/// step on its undo or redo list.
+fn editorStateHoldsNodes(state_ptr: *anyopaque) bool {
+    const editor_state: *const EditorState = @ptrCast(@alignCast(state_ptr));
+    return editor_state.undo_stack.canUndo() or editor_state.undo_stack.canRedo();
+}
+
 /// The editing subsystem's steps in a Document's tracing, destruction and
 /// teardown, installed once at process start by Document's installHooks (the
 /// owner of the editing commands).
 pub fn installHooks() void {
-    dom.editor_states.install(.{ .free = &freeEditorState, .trace = &traceEditorState, .release_nodes = &releaseEditorStateNodes });
+    dom.editor_states.install(.{ .free = &freeEditorState, .trace = &traceEditorState, .release_nodes = &releaseEditorStateNodes, .holds_nodes = &editorStateHoldsNodes });
 }
 
 // =============================================================================
