@@ -90,6 +90,9 @@ const Socket = struct {
     /// CURLINFO_TLS_SSL_PTR then has no TLS session to report.
     alpn_h2: bool = false,
     key: handshake.Key,
+    /// HTTP/2: what one read takes from the connection before nghttp2 has
+    /// it (HTTP/1.1 reads straight into `in`). Made on the first read.
+    read_buf: ?[]u8 = null,
     /// Bytes for the connection, from `out_start` on.
     out: std.ArrayList(u8) = .empty,
     out_start: usize = 0,
@@ -474,9 +477,15 @@ const mbedtls = struct {
 
 const PumpError = error{ OutOfMemory, ConnectionLost, NetworkError, ProtocolError };
 
-/// Move bytes without waiting: what is queued goes out, what has arrived
-/// comes in (into `in`, or through the HTTP/2 session).
+/// Move bytes without waiting: what is queued goes out, and - unless
+/// `read` is false (a send: what arrived is read when the WebSocket asks
+/// for it) - what has arrived comes in (into `in`, or through the HTTP/2
+/// session).
 fn pump(socket: *Socket) PumpError!void {
+    return pumpWith(socket, true);
+}
+
+fn pumpWith(socket: *Socket, read: bool) PumpError!void {
     const easy = socket.easy orelse return;
     if (socket.phase == .connecting) return;
     if (http2) if (socket.session) |session| try session.output(&socket.out, max_buffered);
@@ -494,26 +503,40 @@ fn pump(socket: *Socket) PumpError!void {
         socket.out.clearRetainingCapacity();
         socket.out_start = 0;
     }
-    // Read.
-    var buffer: [read_size]u8 = undefined;
-    while (!socket.eof) {
+    // Read: into `in`'s own room on HTTP/1.1 - no copy, and no stack buffer
+    // that a safe build would fill with `undefined` on every call.
+    while (read and !socket.eof) {
         var got: usize = 0;
-        const code = c.curl_easy_recv(easy, &buffer, buffer.len, &got);
+        var room: []u8 = undefined;
+        var h2_read = false;
+        if (http2) h2_read = socket.session != null;
+        if (h2_read) {
+            room = socket.read_buf orelse blk: {
+                const made = try socket.allocator.alloc(u8, read_size);
+                socket.read_buf = made;
+                break :blk made;
+            };
+        } else {
+            if (socket.in_start > 0 and socket.in_start == socket.in.items.len) {
+                socket.in.clearRetainingCapacity();
+                socket.in_start = 0;
+            }
+            try socket.in.ensureUnusedCapacity(socket.allocator, read_size);
+            room = socket.in.unusedCapacitySlice();
+        }
+        const code = c.curl_easy_recv(easy, room.ptr, room.len, &got);
         if (code == c.CURLE_AGAIN) break;
         if (code != c.CURLE_OK) return error.ConnectionLost;
         if (got == 0) {
             socket.eof = true;
             break;
         }
-        if (http2) if (socket.session) |session| {
-            session.receive(buffer[0..got]) catch |err| return err;
-            continue;
-        };
-        if (socket.in_start > 0 and socket.in_start == socket.in.items.len) {
-            socket.in.clearRetainingCapacity();
-            socket.in_start = 0;
-        }
-        try socket.in.appendSlice(socket.allocator, buffer[0..got]);
+        if (h2_read) {
+            if (http2) try socket.session.?.receive(room[0..got]);
+        } else socket.in.items.len += got;
+        // A short read took what the connection had: the next poll reads
+        // what comes after it, without a call that can only say "again".
+        if (got < room.len) break;
         if (socket.in.items.len - socket.in_start >= max_buffered) break;
     }
     if (http2) if (socket.session) |session| {
@@ -708,7 +731,7 @@ pub fn send(handle: *platform.WebSocket, kind: platform.WebSocketFrameKind, byte
     const payload = bytes.slice();
     var budget = max_buffered -| buffered(socket);
     if (budget == 0 and payload.len > 0) {
-        pump(socket) catch |err| return mapPump(err);
+        pumpWith(socket, false) catch |err| return mapPump(err);
         budget = max_buffered -| buffered(socket);
         if (budget == 0) return error.WouldBlock;
     }
@@ -721,7 +744,7 @@ pub fn send(handle: *platform.WebSocket, kind: platform.WebSocketFrameKind, byte
             else => error.NetworkError,
         };
         answerPing(socket) catch return error.OutOfMemory;
-        pump(socket) catch |err| return mapPump(err);
+        pumpWith(socket, false) catch |err| return mapPump(err);
         return payload.len;
     };
     const taken = writeFrame(socket, frame_kind, payload, budget) catch |err| switch (err) {
@@ -731,7 +754,7 @@ pub fn send(handle: *platform.WebSocket, kind: platform.WebSocketFrameKind, byte
         else => return error.NetworkError,
     };
     answerPing(socket) catch return error.OutOfMemory;
-    pump(socket) catch |err| return mapPump(err);
+    pumpWith(socket, false) catch |err| return mapPump(err);
     return taken;
 }
 
@@ -855,6 +878,7 @@ pub fn release(handle: *platform.WebSocket) void {
     if (socket.inflater) |inflater| inflater.destroy();
     socket.compressed_in.deinit(allocator);
     socket.inflated.deinit(allocator);
+    if (socket.read_buf) |buf| allocator.free(buf);
     _ = c.curl_multi_cleanup(socket.multi);
     socket.out.deinit(allocator);
     socket.in.deinit(allocator);
