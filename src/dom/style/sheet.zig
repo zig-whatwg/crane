@@ -721,9 +721,14 @@ const Compiler = struct {
                 const a = self.contents.allocator;
                 const index: u32 = @intCast(self.contents.conditions.items.len);
                 try self.contents.conditions.ensureUnusedCapacity(a, 1);
-                const compiled = try a.create(css.container_queries.Compiled);
-                errdefer a.destroy(compiled);
-                compiled.* = try css.container_queries.compile(a, &c.conditions);
+                // Ours until the condition list holds it - then Contents.destroy
+                // frees it, so this block's errdefer must end before that.
+                const compiled = held: {
+                    const made = try a.create(css.container_queries.Compiled);
+                    errdefer a.destroy(made);
+                    made.* = try css.container_queries.compile(a, &c.conditions);
+                    break :held made;
+                };
                 self.contents.conditions.appendAssumeCapacity(.{ .container = compiled, .parent = condition });
                 try self.ruleList(c.children.items, index, layer);
             },
