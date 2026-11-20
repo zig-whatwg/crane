@@ -68,6 +68,7 @@ const fire_event = @import("../fire_event.zig");
 const reflected_with_fallback = @import("../reflected_with_fallback.zig");
 const event_handlers = @import("../event_handlers.zig");
 const css = @import("css");
+const infra = @import("infra");
 const resource_loading = @import("../style/resource_loading.zig");
 const style_hooks = @import("../style/hooks.zig");
 const csp_violations = @import("../csp_violations.zig");
@@ -247,6 +248,9 @@ pub const DocumentState = struct {
     /// kept until an animation or a timeline method needs the timeline;
     /// an entry goes with its element's removal.
     late_begins: std.AutoHashMapUnmanaged(*runtime.Instance, LateBegin) = .empty,
+    /// An svg element moved in and out of a loaded document puts and
+    /// removes its entry each time (infra.tombstones).
+    late_begins_guard: infra.tombstones.TombstoneGuard = .{},
 
     pub fn deinit(self: *DocumentState, allocator: Allocator) void {
         self.late_begins.deinit(allocator);
@@ -358,8 +362,13 @@ fn beganAt(state: *DocumentState, svg: *runtime.Instance) ?Time {
 /// `beganAt`, and the entry goes: the timeline holds the time from now on.
 fn takeBegin(state: *DocumentState, svg: *runtime.Instance) ?Time {
     const began = beganAt(state, svg);
-    _ = state.late_begins.remove(svg);
+    forgetBegin(state, svg);
     return began;
+}
+
+fn forgetBegin(state: *DocumentState, svg: *runtime.Instance) void {
+    if (state.late_begins.count() == 0) return;
+    if (state.late_begins.remove(svg)) state.late_begins_guard.noteRemoval(&state.late_begins);
 }
 
 /// An outermost svg element with no timeline became connected: a loaded
@@ -372,12 +381,13 @@ fn noteBegin(svg: *runtime.Instance, document: *runtime.Instance) void {
     const now = documentNow(document) orelse return;
     const state = documentState(document, true) orelse return;
     if (!document_lifecycle.isCompletelyLoaded(document)) return;
+    state.late_begins_guard.beforeInsert(&state.late_begins);
     state.late_begins.put(document.ctx.allocator, svg, .{ .svg = Link.to(svg), .at = now }) catch return;
 }
 
 fn unregisterTimeline(svg: *runtime.Instance, document: *runtime.Instance) void {
     const state = documentState(document, false) orelse return;
-    if (state.late_begins.count() != 0) _ = state.late_begins.remove(svg);
+    forgetBegin(state, svg);
     var kept: usize = 0;
     for (state.timelines.items) |link| {
         if (!link.isLive() or link.instance == svg) continue;
