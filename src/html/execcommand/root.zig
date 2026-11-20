@@ -695,6 +695,35 @@ pub fn insertFromPaste(document: *Instance, markup: ?[]const u8, text: ?[]const 
     return true;
 }
 
+/// HTML 6.11.5 step 4's drop default action in an editing host: "Insert
+/// the actual data of the first item in the drag data store item list to
+/// have a drag data item type string of "text/plain" ... into the ...
+/// editing host" - the insertText action at the selection the caller placed
+/// (html/drag_and_drop.zig: the end of the host, the spec's "at the end of
+/// the field"; where the pointer is would need layout), announced as user
+/// input: a cancelable beforeinput and then input, inputType insertFromDrop,
+/// data null and dataTransfer the drop's (Input Events 2). Blink's
+/// DragController::ConcludeEditDrag replaces the selection the same way.
+/// Whether there was an editable selection to drop into.
+pub fn insertFromDrop(document: *Instance, text: []const u8, data_transfer: ?*Instance) bool {
+    var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+    defer arena.deinit();
+    var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+    if (!(isEnabledIn(&edit, .insert_text) catch false)) return false;
+    const host = (affectedEditingHost(&edit) catch null) orelse return false;
+    if (!fireInputEventWith(host, "beforeinput", "insertFromDrop", null, data_transfer)) return true;
+    if (!isConnected(host)) return true;
+    // A beforeinput listener may have moved or removed the selection.
+    if (!(isEnabledIn(&edit, .insert_text) catch false)) return true;
+    const affected = (affectedEditingHost(&edit) catch null) orelse return true;
+    const result = runAction(&edit, .insert_text, text) catch |err| {
+        log.debug("drop: {}", .{err});
+        return true;
+    };
+    if (result and edit.modified and isConnected(affected)) _ = fireInputEventWith(affected, "input", "insertFromDrop", null, data_transfer);
+    return true;
+}
+
 /// The cut action's step 3.1.2 in an editing host (Clipboard API 8.2):
 /// "Remove the contents of the selection from the document and collapse
 /// the selection" - the delete command's action on the selection, as user
