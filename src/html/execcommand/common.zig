@@ -295,7 +295,7 @@ pub const Edit = struct {
         if (isInclusiveDescendantOf(end.node, start.node)) first_partial = null;
         if (isInclusiveDescendantOf(start.node, end.node)) last_partial = null;
         // Step 11.
-        for (contained.items) |c| if ((try interfaces.Node.get_nodeType(c)) == 10) return error.HierarchyRequestError;
+        for (contained.items) |c| if (isDocumentType(c)) return error.HierarchyRequestError;
         // Steps 12-15 set the caller's range; see extractContents.
         // Step 16.
         if (first_partial) |partial| {
@@ -548,14 +548,8 @@ pub fn isDocument(node: *Instance) bool {
 
 /// Whether `node` is a Comment or a ProcessingInstruction.
 fn isCommentOrProcessingInstruction(node: *Instance) bool {
-    const node_type = interfaces.Node.get_nodeType(node) catch return false;
-    return node_type == 8 or node_type == 7;
-}
-
-/// Whether `node` is a Text, Comment or ProcessingInstruction node.
-fn isCharacterData(node: *Instance) bool {
-    const node_type = interfaces.Node.get_nodeType(node) catch return false;
-    return node_type == 3 or node_type == 4 or node_type == 7 or node_type == 8;
+    const t = nodeType(node) catch return false;
+    return t == interfaces.Node.get_COMMENT_NODE() or t == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE();
 }
 
 /// DOM "clone part of a CharacterData node" given `node`, `offset` and
