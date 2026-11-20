@@ -277,7 +277,9 @@ pub const MLContext = struct {
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
     pub const promise_returning = .{
+        "get_lost",
         "call_createConstantTensor",
         "call_createTensor",
         "call_createExportableTensor",

@@ -549,9 +549,9 @@ test "the initial insertion mode sets the document's mode from the DOCTYPE, by t
     // A line break between the identifiers (document-compatmode-02.html).
     try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">", false, .limited_quirks);
     try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">", false, .limited_quirks);
-    // "A system identifier whose value is the empty string is not considered
-    // missing."
-    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \"\">", false, .limited_quirks);
+    // The HTML 4.01 entries read "The system identifier is missing or the
+    // empty string" (whatwg/html#12023; Chrome and Safari ship it): quirks.
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \"\">", false, .quirks);
 }
 
 test "an iframe srcdoc document is never put in quirks mode by the parser" {

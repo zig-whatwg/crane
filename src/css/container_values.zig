@@ -89,6 +89,25 @@ pub fn sizeType(value: Value) ?SizeType {
     return null;
 }
 
+/// Whether a computed container-type names scroll-state (a scroll-state
+/// container, Conditional 5 5.1).
+pub fn hasScrollState(value: Value) bool {
+    if (value != .text) return false;
+    var words = std.mem.tokenizeScalar(u8, value.text.bytes, ' ');
+    while (words.next()) |word| if (std.mem.eql(u8, word, "scroll-state")) return true;
+    return false;
+}
+
+/// Whether a computed container-name lists `name` (a <container-name> as
+/// container_queries serialized it): the element's query container names
+/// (5.2), compared as the identifiers they serialize to.
+pub fn namesContain(value: Value, name: []const u8) bool {
+    if (value != .text) return false;
+    var names = std.mem.tokenizeScalar(u8, value.text.bytes, ' ');
+    while (names.next()) |candidate| if (std.mem.eql(u8, candidate, name)) return true;
+    return false;
+}
+
 pub fn consume(options: properties.ParseOptions, longhand: properties.Longhand, stream: *Stream) Allocator.Error!?Value {
     return switch (longhand) {
         .container_name => consumeName(options, stream),

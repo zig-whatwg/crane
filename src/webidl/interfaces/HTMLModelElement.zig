@@ -415,4 +415,12 @@ pub const HTMLModelElement = struct {
     pub const interface_arguments = .{
         .{ "set_entityTransform", 0, "DOMMatrixReadOnly" },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_ready",
+        "get_environmentMapReady",
+    };
 };

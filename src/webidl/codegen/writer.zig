@@ -4859,22 +4859,40 @@ pub fn writeMemberDefaults(w: anytype, members: []const types.DictionaryMember, 
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
 /// type is a promise runs its steps - the brand check, argument conversion and
 /// the operation - with an exception handler, and an exception becomes a
-/// promise rejected with it. The binding needs to know which operations:
+/// promise rejected with it. The attribute getter does the same for an
+/// attribute whose type is a promise (3.7.6, "attribute getter": "If
+/// attribute's type is a promise type, then return ! Call(%Promise.reject%,
+/// %Promise%, «E»)"): a read on a wrong receiver rejects. The binding needs to
+/// know which operations and getters:
 ///
-///     pub const promise_returning = .{ "call_json", "call_static_any" };
+///     pub const promise_returning = .{ "get_closed", "call_json", "call_static_any" };
 ///
 /// Keyed like `legacy_null_to_empty`, by the Zig function the binding installs.
-pub fn writePromiseReturning(writer: anytype, overload_ops: []const types.Operation) !void {
+pub fn writePromiseReturning(writer: anytype, attributes: []const types.Attribute, overload_ops: []const types.Operation) !void {
     const allocator = std.heap.page_allocator;
     var any = false;
+    var any_attribute = false;
+    for (attributes) |attr| {
+        if (isPromiseType(attr.idlType)) any_attribute = true;
+    }
     for (overload_ops) |op| {
         if (isPromiseType(op.idlType)) any = true;
     }
-    if (!any) return;
+    if (!any and !any_attribute) return;
 
     try writer.writeAll("    /// WebIDL: operations whose return type is a promise - an exception in\n");
     try writer.writeAll("    /// their steps becomes a rejected promise.\n");
+    // The getters of promise-typed attributes, likewise (3.7.6 "attribute
+    // getter"): said only where there are some, so the other tables read
+    // as they did.
+    if (any_attribute) try writer.writeAll("    /// So does a promise-typed attribute's getter.\n");
     try writer.writeAll("    pub const promise_returning = .{\n");
+    for (attributes) |attr| {
+        if (!isPromiseType(attr.idlType)) continue;
+        const sanitized = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized, attr.name)) allocator.free(sanitized);
+        try writer.print("        \"{s}{s}\",\n", .{ getterPrefix(attr), sanitized });
+    }
     const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
     defer overload.freeOverloadSets(allocator, overload_sets);
     for (overload_sets) |set| {
@@ -5729,7 +5747,7 @@ pub fn writeDelegateFunctions(
     // Which integer arguments and attribute values take [EnforceRange]'s or
     // [Clamp]'s conversion.
     try writeIntegerConversions(writer, own_attributes, overload_ops);
-    try writePromiseReturning(writer, overload_ops);
+    try writePromiseReturning(writer, own_attributes, overload_ops);
     // Which functions run a [CEReactions] bracket: the binding dispatches
     // them in a catch scope.
     try writeCEReactionsTable(writer, &ce_functions);

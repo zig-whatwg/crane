@@ -105,12 +105,18 @@ fn containers(allocator: std.mem.Allocator) !void {
     try std.testing.expectEqual(@as(usize, 1), rule.children().?.items.len);
     try std.testing.expectEqualStrings("Name (width >= 10px), style(--flag)", rule.prelude);
     const compiled = try record.contentsOf(.{ .allocator = allocator });
-    // Preservation pin: no layout-backed container evaluator is installed.
-    // Parsing the rule must not make its conditional children unconditional.
-    try std.testing.expectEqual(@as(usize, 0), compiled.rules.items.len);
+    // CSS Conditional 5 5.4 (lane maj3): the rule's children compile under
+    // the @container condition, never unconditionally - each element's query
+    // container answers it when its rules are matched
+    // (Contents.conditionHoldsFor) - and the condition list is compiled once,
+    // both <container-condition>s of it.
+    try std.testing.expectEqual(@as(usize, 1), compiled.rules.items.len);
+    const condition = compiled.rules.items[0].condition orelse return error.TestUnexpectedResult;
+    const container = compiled.conditions.items[condition].container orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 2), container.conditions.len);
 }
 
-test "container rules preserve conditions and keep unevaluated children inert" {
+test "container rules preserve conditions and compile their children under them" {
     try containers(a);
 }
 

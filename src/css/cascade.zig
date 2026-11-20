@@ -305,8 +305,10 @@ const Candidate = struct {
 };
 
 /// Two token texts equal token by token, whitespace runs (and the comments
-/// in them) normalized away at either end and to one between tokens.
-fn tokensEqual(a: []const u8, b: []const u8) bool {
+/// in them) normalized away at either end and to one between tokens - how a
+/// style feature compares an unregistered custom property's computed value
+/// (if()'s, and an @container query's against its container).
+pub fn tokensEqual(a: []const u8, b: []const u8) bool {
     const tokenizer = @import("tokenizer.zig");
     var x = tokenizer.Tokenizer.init(a);
     var y = tokenizer.Tokenizer.init(b);
@@ -331,6 +333,51 @@ fn tokensEqual(a: []const u8, b: []const u8) bool {
         if (s.token_type == .eof) return true;
         if (!std.mem.eql(u8, s.value, t.value)) return false;
     }
+}
+
+/// One numeric value of `text` - a number, percentage or dimension token, or
+/// a math function - computed with the shared math in `context` and
+/// converted to canonical units (px, deg, s, Hz, dppx): a style range's
+/// operand (CSS Conditional 5 6.2, steps 3-4), for if() in the element's own
+/// context and for an @container query in its container's. Null when it is
+/// no single numeric value.
+pub fn numericOperand(allocator: Allocator, text: []const u8, context: @import("math_values.zig").Context) Allocator.Error!?substitution.Numeric {
+    const math = @import("math_values.zig");
+    var stream = properties.Stream.init(text);
+    const token = stream.peek();
+    const literal: ?math.Numeric = switch (token.token_type) {
+        .number => .{ .value = token.numeric_value orelse return null, .unit = .number },
+        .percentage => .{ .value = token.numeric_value orelse return null, .unit = .percent },
+        .dimension => .{ .value = token.numeric_value orelse return null, .unit = math.Unit.parse(token.unit orelse return null) orelse return null },
+        else => null,
+    };
+    const value: math.Numeric = if (literal) |n| blk: {
+        _ = stream.next();
+        if (!stream.atEnd()) return null;
+        break :blk context.resolve(n);
+    } else blk: {
+        for ([_]math.Kind{ .number, .percentage, .length, .angle, .time, .resolution }) |kind| {
+            var attempt = properties.Stream.init(text);
+            const parsed = (try properties.mathValue(.{ .allocator = allocator }, &attempt, .{ .kind = kind })) orelse continue;
+            defer parsed.release();
+            if (!attempt.atEnd()) continue;
+            const computed = try parsed.calculation.compute(allocator, context);
+            defer computed.unref();
+            const known = computed.knownNumber() orelse return null;
+            break :blk context.resolve(known);
+        }
+        return null;
+    };
+    const dimension: substitution.Numeric.Dimension = switch (value.unit.base() orelse return .{ .value = value.value, .dimension = .number }) {
+        .percent => .percentage,
+        .length => if (value.unit == .px) .length else return null,
+        .angle => .angle,
+        .time => .time,
+        .frequency => .frequency,
+        .resolution => .resolution,
+        .flex => return null,
+    };
+    return .{ .value = value.value, .dimension = dimension };
 }
 
 /// Cascade 5 6.1's priority of a declaration from `source`.
@@ -1570,43 +1617,7 @@ const Builder = struct {
     /// or a math function - computed with the shared math in this element's
     /// context and converted to canonical units.
     fn numeric(self: *Builder, allocator: Allocator, text: []const u8) Allocator.Error!?substitution.Numeric {
-        const math = @import("math_values.zig");
-        const context = self.mathContext(.width);
-        var stream = properties.Stream.init(text);
-        const token = stream.peek();
-        const literal: ?math.Numeric = switch (token.token_type) {
-            .number => .{ .value = token.numeric_value orelse return null, .unit = .number },
-            .percentage => .{ .value = token.numeric_value orelse return null, .unit = .percent },
-            .dimension => .{ .value = token.numeric_value orelse return null, .unit = math.Unit.parse(token.unit orelse return null) orelse return null },
-            else => null,
-        };
-        const value: math.Numeric = if (literal) |n| blk: {
-            _ = stream.next();
-            if (!stream.atEnd()) return null;
-            break :blk context.resolve(n);
-        } else blk: {
-            for ([_]math.Kind{ .number, .percentage, .length, .angle, .time, .resolution }) |kind| {
-                var attempt = properties.Stream.init(text);
-                const parsed = (try properties.mathValue(.{ .allocator = allocator }, &attempt, .{ .kind = kind })) orelse continue;
-                defer parsed.release();
-                if (!attempt.atEnd()) continue;
-                const computed = try parsed.calculation.compute(allocator, context);
-                defer computed.unref();
-                const known = computed.knownNumber() orelse return null;
-                break :blk context.resolve(known);
-            }
-            return null;
-        };
-        const dimension: substitution.Numeric.Dimension = switch (value.unit.base() orelse return .{ .value = value.value, .dimension = .number }) {
-            .percent => .percentage,
-            .length => if (value.unit == .px) .length else return null,
-            .angle => .angle,
-            .time => .time,
-            .frequency => .frequency,
-            .resolution => .resolution,
-            .flex => return null,
-        };
-        return .{ .value = value.value, .dimension = dimension };
+        return numericOperand(allocator, text, self.mathContext(.width));
     }
 
     /// attr() (Codex row 122): the element's attribute through the DOM's
