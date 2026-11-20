@@ -11,6 +11,7 @@ const runtime = @import("runtime");
 const fetch = @import("fetch");
 const interfaces = @import("interfaces");
 const css = @import("css");
+const platform = @import("platform");
 const hooks = @import("hooks.zig");
 const window_documents = @import("../window_documents.zig");
 const document_activity = @import("../document_activity.zig");
@@ -710,10 +711,14 @@ pub fn backgroundImageText(value: css.style_values.Value) ?[]const u8 {
 }
 
 fn selectStyleResources(state: *State, style: *const css.computed_style.ComputedStyle) Allocator.Error!void {
-    const background = style.get(.background_image);
-    if (backgroundImageText(background)) |text| for (background.resourceUrls()) |occurrence| {
-        if (isSimpleImageOccurrence(text, occurrence.range)) try fetchImage(state, occurrence);
-    };
+    try fetchStyleImage(state, style.get(.background_image), .no_cors, .include);
+    // CSS Shapes 1 §6.1 shape-outside: an <image> is fetched "potentially
+    // CORS-enabled", in the Anonymous state - mode "cors", credentials
+    // "same-origin" (HTML's CORS settings attribute mapping). Chrome 157,
+    // Firefox 160 and Safari 27.2 fetch it whether or not the element floats
+    // (service-workers/service-worker/fetch-request-css-images.https.html,
+    // wpt.fyi at 2358bd4835: 4/4 each).
+    try fetchStyleImage(state, style.get(.shape_outside), .cors, .same_origin);
     const content = style.get(.content);
     if (content == .content) {
         // Content 3: the optional slash-delimited alternative is text for
@@ -810,6 +815,52 @@ fn fetchSvgDocument(state: *State, occurrence: css.style_values.ResourceUrl) All
 
 fn fetchImage(state: *State, occurrence: css.style_values.ResourceUrl) Allocator.Error!void {
     return fetchImageWith(state, occurrence, .no_cors, .include);
+}
+
+/// The images an <image> value (or a layer list of them) names, each
+/// fetched in `mode` with `credentials`: a url() standing alone, and the
+/// chosen candidate of each image-set() (`fetchChosenCandidates`).
+fn fetchStyleImage(state: *State, value: css.style_values.Value, mode: fetch.internal.RequestMode, credentials: fetch.internal.CredentialsMode) Allocator.Error!void {
+    if (backgroundImageText(value)) |text| for (value.resourceUrls()) |occurrence| {
+        if (isSimpleImageOccurrence(text, occurrence.range)) try fetchImageWith(state, occurrence, mode, credentials);
+    };
+    try fetchChosenCandidates(state, value, mode, credentials);
+}
+
+/// CSS Images 4 §2.4: an image-set() "represents" the one image its
+/// selection steps choose - for the document's device pixel ratio
+/// (Media Queries' resolution), skipping a type() the platform cannot
+/// decode - so that candidate alone is fetched, never every candidate
+/// (css.image_values.select: Blink's and WebKit's scale choice). A chosen
+/// candidate that is itself an image-set() selects again.
+fn fetchChosenCandidates(state: *State, value: css.style_values.Value, mode: fetch.internal.RequestMode, credentials: fetch.internal.CredentialsMode) Allocator.Error!void {
+    switch (value) {
+        .layers => |layers| for (layers.items) |item| try fetchChosenCandidates(state, item, mode, credentials),
+        .image => |image| switch (image.data) {
+            .image_set => |set| {
+                const scale = hooks.mediaValues(state.document).resolution;
+                if (!(std.math.isFinite(scale) and scale > 0)) return;
+                const chosen = css.image_values.select(set.candidates, scale, platform_image_types) orelse return;
+                try fetchStyleImage(state, set.candidates[chosen].image, mode, credentials);
+            },
+            else => {},
+        },
+        else => {},
+    }
+}
+
+/// CSS Images 4 §2.4 step 1: a candidate whose type() names a format the
+/// platform cannot decode is skipped - the platform's own answer, as
+/// HTML's <source type> check (HTMLImageElement's sourceTypeSupported).
+const platform_image_types: css.image_values.TypeSupport = .{ .context = &platform_image_types_tag, .supports = platformSupportsImageType };
+const platform_image_types_tag: u8 = 0;
+
+fn platformSupportsImageType(_: *const anyopaque, mime: []const u8) bool {
+    if (comptime platform.capabilities.image_decoding == .unsupported) return false;
+    const essence = std.mem.trim(u8, mime[0 .. std.mem.indexOfScalar(u8, mime, ';') orelse mime.len], " \t\n\r\x0c");
+    var lower_buffer: [128]u8 = undefined;
+    if (essence.len == 0 or essence.len > lower_buffer.len) return false;
+    return platform.imageMimeTypeSupported(.from(std.ascii.lowerString(&lower_buffer, essence)));
 }
 
 /// CSS Values 4 §4.5.4 "fetch a style resource" for an image, in `mode`

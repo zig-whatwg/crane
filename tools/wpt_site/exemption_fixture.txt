@@ -1,0 +1,27 @@
+# The shared fixture of two follows-majority forms (lane blk5, 2026-11-20; main's GO 1:37 PM ET), read by both
+# readers of tools/wpt_gate_exemptions.txt - tools/wpt_site/model.zig's tests (@embedFile) and
+# tools/wpt_progress.py --self-test - so they agree on it:
+#   - matches = none, with a ruling that names its golden rule 2 case ("all three differ", "newer spec" or
+#     "timing-bound"): Crane's result is the spec's and equals no browser's;
+#   - renderer-subtests: the subtests that fail in Crane only for want of a renderer, each "<name> :: <why>",
+#     several separated by " || "; with a renderer they would have the matched browsers' results.
+
+[html/x/spec-alone.html]
+kind              = follows-majority
+why               = Crane follows the spec, and Chrome, Firefox and Safari each fail differently
+chrome.result     = wpt.fyi run 4786307730243584: 0/1
+firefox.result    = wpt.fyi run 4877168468033536: 0/1
+safari.result     = wpt.fyi run 6479119966273536: 0/1
+matches           = none
+ruling            = golden rule 2, the spec where all three differ: the main session, 2026-11-20
+revisit           = when Chrome, Firefox or Safari changes its result
+
+[html/x/renderer-part.html]
+kind              = follows-majority
+why               = subtest 1 fails in Crane as in Chrome and Firefox; subtests 2 and 3 click laid-out content
+chrome.result     = wpt.fyi run 4786307730243584: 2/3
+firefox.result    = wpt.fyi run 4877168468033536: 2/3
+safari.result     = wpt.fyi run 6479119966273536: 3/3
+matches           = chrome, firefox
+renderer-subtests = the second subtest :: its click lands on an absolutely positioned link || the third subtest :: it reads a box's size
+revisit           = when Chrome or Firefox changes its result

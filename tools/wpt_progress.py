@@ -188,7 +188,14 @@ NEEDS_RENDERER_KEYS = ('kind', 'why', 'assertion')
 # that decides the entry - optional, but required when matches names one browser;
 # `revisit`: when the entry comes off ("when ...").
 FOLLOWS_MAJORITY_KEYS = ('kind', 'why', 'chrome.result', 'firefox.result', 'safari.result', 'matches',
-                         'ruling', 'revisit')
+                         'ruling', 'revisit', 'renderer-subtests')
+# `matches = none` (lane blk5, main's GO 2026-11-20 1:37 PM ET): Crane's result equals no browser's, because it is
+# the spec's - only with a ruling that names its golden rule 2 case, one of these.
+NONE_RULING_CASES = ('all three differ', 'newer spec', 'timing-bound')
+# `renderer-subtests` (the same GO): the subtests that fail in Crane only for want of a renderer, each
+# "<name> :: <why>", several separated by " || " - with a renderer they would have the matched browsers' results.
+RENDERER_SUBTEST_SEP = ' || '
+RENDERER_REASON_SEP = ' :: '
 # `why`: why the test needs a decoder (the wait that never settles, or the <source>
 # skipped); `media`: the media file(s) it plays and their type; `assertion`: the
 # failing wait or assertion, as the run reports it.
@@ -197,7 +204,7 @@ KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEY
              'needs-renderer': NEEDS_RENDERER_KEYS, 'follows-majority': FOLLOWS_MAJORITY_KEYS,
              'needs-decoder': NEEDS_DECODER_KEYS}
 # The keys of a kind an entry may leave out.
-KIND_OPTIONAL = {'intentional': ('kind',), 'follows-majority': ('ruling',)}
+KIND_OPTIONAL = {'intentional': ('kind',), 'follows-majority': ('ruling', 'renderer-subtests')}
 # What an entry of each kind is missing without one of its keys.
 KIND_NEEDS = {
     'intentional': "an exemption needs the spec and every browser's evidence",
@@ -224,13 +231,37 @@ class ExemptionError(Exception):
 
 
 def matched_browsers(entry):
-    """A follows-majority entry's `matches`, as browser keys in Chrome, Firefox, Safari order."""
+    """A follows-majority entry's `matches`, as browser keys in Chrome, Firefox, Safari order ([] for none)."""
     named = {b.strip() for b in entry.get('matches', '').split(',')}
     return [b for b, _ in BROWSERS if b in named]
 
 
+def renderer_subtests(entry):
+    """A follows-majority entry's `renderer-subtests`, as (name, why) pairs ([] without the key)."""
+    value = entry.get('renderer-subtests')
+    if not value:
+        return []
+    return [tuple(x.strip() for x in item.split(RENDERER_REASON_SEP, 1)) for item in value.split(RENDERER_SUBTEST_SEP)]
+
+
+def _parse_renderer_subtests(value):
+    """`renderer-subtests` -> (name, why) pairs, or None unless each item reads "<name> :: <why>", both non-empty."""
+    out = []
+    for item in value.split(RENDERER_SUBTEST_SEP):
+        if RENDERER_REASON_SEP not in item:
+            return None
+        name, why = (x.strip() for x in item.split(RENDERER_REASON_SEP, 1))
+        if not name or not why:
+            return None
+        out.append((name, why))
+    return out
+
+
 def _parse_matches(value):
-    """`matches` -> its browser keys, or None unless it names Chrome, Firefox or Safari, each once."""
+    """`matches` -> its browser keys ([] for "none"), or None unless it names Chrome, Firefox or Safari, each
+    once, or reads none."""
+    if value.strip() == 'none':
+        return []
     items = [b.strip() for b in value.split(',')]
     keys = [b for b, _ in BROWSERS]
     if not items or any(b not in keys for b in items) or len(set(items)) != len(items):
@@ -272,6 +303,10 @@ def parse_exemptions(text, worklist):
                 raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
                                      '"when <what ends the exemption>"')
             matched = matched_browsers(vals)
+            # matches = none: the spec's result, which no browser has - with a ruling that names its case.
+            if not matched and not any(case in vals.get('ruling', '') for case in NONE_RULING_CASES):
+                raise ExemptionError(f"line {lines['matches']}: [{entry['path']}]: matches = none needs a ruling that "
+                                     "names its golden rule 2 case: " + ', '.join(f'"{c}"' for c in NONE_RULING_CASES))
             # The user's 2026-11-18 ruling: the browser majority - or a recorded ruling.
             if len(matched) < 2 and 'ruling' not in vals:
                 raise ExemptionError(f"line {lines['matches']}: [{entry['path']}]: a follows-majority exemption needs at "
@@ -321,7 +356,10 @@ def parse_exemptions(text, worklist):
                                  'request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)')
         if key == 'matches' and _parse_matches(value) is None:
             raise ExemptionError(f'line {n}: [{cur["path"]}]: matches must name chrome, firefox or safari, '
-                                 'comma-separated, each once')
+                                 'comma-separated, each once, or read none')
+        if key == 'renderer-subtests' and _parse_renderer_subtests(value) is None:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: renderer-subtests must give each subtest its name and '
+                                 'its geometry reason ("<name> :: <why>", several separated by " || ")')
         cur['values'][key] = value
         cur['lines'][key] = n
     if cur:
@@ -445,15 +483,18 @@ def render_exempt(records, worklist):
             ev = ''.join(f'<li>{label}: {html.escape(e[key + ".result"])}</li>' for key, label in BROWSERS)
             ruling = f'<li>ruling: {html.escape(e["ruling"])}</li>' if 'ruling' in e else ''
             now = crane_counts(rec)
-            want = _COUNTS.match(e[matched[0] + '.result']).group(1)
-            review = '' if now is None or now == want else (
+            want = _COUNTS.match(e[matched[0] + '.result']).group(1) if matched else None
+            review = '' if not follows_majority_moved(e, now) else (
                 f' - no longer the matched browsers\' {html.escape(want)}: <b>review this entry</b>')
             crane = f'<li>Crane now: {html.escape(now or "not run")}{review}</li>'
+            names = ", ".join(label for key, label in BROWSERS if key in matched) or 'none - the spec (see the ruling)'
+            renderer = ''.join(f'<li>needs a renderer: {html.escape(name)} - {html.escape(why)}</li>'
+                               for name, why in renderer_subtests(e))
             items.append(
                 f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
                 f'<div>{html.escape(e["why"])}</div>'
-                f'<ul class="samples"><li>Crane matches: {", ".join(label for key, label in BROWSERS if key in matched)}</li>'
-                f'{crane}{ev}{ruling}<li>revisit: {html.escape(e["revisit"])}</li></ul></li>')
+                f'<ul class="samples"><li>Crane matches: {names}</li>'
+                f'{crane}{ev}{ruling}{renderer}<li>revisit: {html.escape(e["revisit"])}</li></ul></li>')
         n = sum(1 for p, _ in follows_majority if status_of(records.get(p), p) == EXEMPT)
         out += f"""
 <div class="panel">
@@ -476,6 +517,24 @@ def crane_counts(rec):
     return f"{rec.get('passed', 0)}/{total}"
 
 
+def follows_majority_moved(entry, now):
+    """Whether Crane's '<passes>/<total>' `now` is no longer the matched browsers' result. With matches = none
+    nothing is compared; each renderer subtest may be one pass short of the matched browsers' (it fails in
+    Crane only for want of a renderer, and with one would have their result)."""
+    matched = matched_browsers(entry)
+    if now is None or not matched:
+        return False
+    want = _COUNTS.match(entry[matched[0] + '.result']).group(1)
+    if now == want:
+        return False
+    renderer = len(renderer_subtests(entry))
+    if not renderer:
+        return True
+    now_pass, now_total = (int(x) for x in now.split('/'))
+    want_pass, want_total = (int(x) for x in want.split('/'))
+    return not (now_total == want_total and want_pass - renderer <= now_pass <= want_pass)
+
+
 def stale_follows_majority(records):
     """follows-majority entries whose Crane result no longer has the matched browsers' passes/total."""
     out = []
@@ -483,8 +542,8 @@ def stale_follows_majority(records):
         if e['kind'] != 'follows-majority':
             continue
         now = crane_counts(records.get(path))
-        want = _COUNTS.match(e[matched_browsers(e)[0] + '.result']).group(1)
-        if now is not None and now != want:
+        if follows_majority_moved(e, now):
+            want = _COUNTS.match(e[matched_browsers(e)[0] + '.result']).group(1)
             out.append(f'{path} (Crane {now}, matched {want})')
     return out
 
@@ -3974,6 +4033,58 @@ revisit = when Chrome, Firefox or Safari changes its result
 """
 
 
+SHARED_EXEMPTION_FIXTURE = os.path.join(REPO, 'tools', 'wpt_site', 'exemption_fixture.txt')
+
+
+def _check_follows_majority_extensions():
+    """matches = none and renderer-subtests (lane blk5, main's GO 2026-11-20 1:37 PM ET), on the fixture
+    tools/wpt_site/model.zig's tests read too (tools/wpt_site/exemption_fixture.txt): none needs a ruling that
+    names its golden rule 2 case and compares nothing; renderer-subtests belongs to follows-majority alone, each
+    subtest with its geometry reason, and lets Crane be one pass short of the matched browsers per subtest."""
+    wl = ['html/x/spec-alone.html', 'html/x/renderer-part.html']
+    fixture = open(SHARED_EXEMPTION_FIXTURE).read()
+    parsed = parse_exemptions(fixture, wl)
+    alone = parsed['html/x/spec-alone.html']
+    assert alone['matches'] == 'none' and matched_browsers(alone) == [], alone
+    assert alone['ruling'].startswith('golden rule 2, the spec where all three differ'), alone
+    assert renderer_subtests(alone) == []
+    part = parsed['html/x/renderer-part.html']
+    assert matched_browsers(part) == ['chrome', 'firefox'], part
+    assert renderer_subtests(part) == [('the second subtest', 'its click lands on an absolutely positioned link'),
+                                       ('the third subtest', "it reads a box's size")], part
+    # The review: none compares nothing; each renderer subtest may be one pass short, never more, never over.
+    assert not follows_majority_moved(alone, '1/1') and not follows_majority_moved(alone, '0/1')
+    assert not follows_majority_moved(part, '2/3') and not follows_majority_moved(part, '0/3')
+    assert not follows_majority_moved(part, '1/3')
+    assert follows_majority_moved(part, '3/3') and follows_majority_moved(part, '0/4')
+    plain = parse_exemptions(_FOLLOWS_MAJORITY_FIXTURE, ['html/x/majority.html'])['html/x/majority.html']
+    assert not follows_majority_moved(plain, '0/4') and follows_majority_moved(plain, '1/4')
+
+    def invalid(text, needle):
+        try:
+            parse_exemptions(text, wl + ['html/x/majority.html', 'html/x/decodes-image-data.html'])
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    rule = 'ruling            = golden rule 2, the spec where all three differ: the main session, 2026-11-20\n'
+    assert rule in fixture
+    cases = 'needs a ruling that names its golden rule 2 case'
+    invalid(fixture.replace(rule, ''), cases)
+    invalid(fixture.replace(rule, 'ruling            = the main session, 2026-11-20\n'), cases)
+    for case in NONE_RULING_CASES:
+        parse_exemptions(fixture.replace('the spec where all three differ', case), wl)
+    invalid(fixture.replace('matches           = none', 'matches           = none, chrome'), 'or read none')
+    sub = 'renderer-subtests = the second subtest :: its click lands on an absolutely positioned link || '
+    assert sub in fixture
+    for bad in ('renderer-subtests = the second subtest', 'renderer-subtests = :: a reason',
+                'renderer-subtests = a name :: '):
+        invalid(fixture.replace(sub + "the third subtest :: it reads a box's size", bad), 'renderer-subtests must give')
+    invalid(_NEEDS_RENDERER_FIXTURE.replace('why = ', 'renderer-subtests = a :: b\nwhy = '),
+            '"renderer-subtests" is not a key of a needs-renderer exemption')
+
+
 def _check_follows_majority_kind():
     """The fourth exemption kind (the user, 2026-11-18 2:36 PM ET, "Add the
     exemption kind"): a file that blocks although Crane's result is the one golden
@@ -5349,6 +5460,7 @@ if __name__ == '__main__':
         _check_exemption_kinds()
         _check_needs_renderer_kind()
         _check_follows_majority_kind()
+        _check_follows_majority_extensions()
         _check_needs_decoder_kind()
         _check_revision_high_water()
         _check_subtest_losses()

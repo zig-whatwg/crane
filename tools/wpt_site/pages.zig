@@ -1184,7 +1184,17 @@ fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
                     first = false;
                 }
             }
+            // matches = none: Crane's result is the spec's, which no browser has.
+            if (first) try w.writeAll("none - the spec (see the ruling)");
             try w.writeAll("</dd></div>");
+            var renderer = e.rendererSubtests();
+            while (renderer.next()) |subtest| {
+                try w.writeAll("<div><dt>Needs a renderer</dt><dd>");
+                try html.text(w, subtest.name);
+                try w.writeAll(" &mdash; ");
+                try html.text(w, subtest.why);
+                try w.writeAll("</dd></div>");
+            }
             inline for (comptime std.enums.values(model.Browser)) |b| {
                 try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
                 try html.text(w, e.result[@backingInt(b)]);
