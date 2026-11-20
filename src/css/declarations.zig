@@ -1300,6 +1300,8 @@ test "CSS-wide keywords serialize, and a shorthand of one keyword is that keywor
 
 test "page-break repair preserves every preferred shorthand in its original order" {
     const expected = [_][]const u8{
+        // `all` first: the most longhands (lane maj5).
+        "all",
         "font",
         "border",
         "mask",
