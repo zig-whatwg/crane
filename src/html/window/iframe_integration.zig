@@ -1604,7 +1604,6 @@ pub const IFrameIntegration = struct {
         const json = document_type.isJson(computed_type);
         const encoding = if (json) encoding_sniffing.utf_8 else encoding_sniffing.sniff(bytes, .{
             .transport = if (content_type) |ct| encoding_sniffing.transportEncoding(self.allocator, ct) else null,
-            .prescan = false,
         }).encoding;
         const text = (if (json)
             encoding_sniffing.utf8Decode(self.allocator, bytes)

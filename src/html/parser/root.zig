@@ -43,6 +43,8 @@ pub const InputCharacter = @import("input_stream.zig").InputCharacter;
 // Determining the character encoding (HTML §13.2.3.2) and decoding the
 // input byte stream
 pub const encoding_sniffing = @import("html_encoding_sniffing");
+// The browsers' tokenizer-based meta scan, the prescan's place in sniffing
+pub const meta_charset_scan = @import("meta_charset_scan.zig");
 
 // Tokenizer
 pub const Tokenizer = @import("tokenizer.zig").Tokenizer;

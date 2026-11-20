@@ -1,20 +1,23 @@
 //! HTML §13.2.3.2 "determining the character encoding": the encoding sniffing
-//! algorithm, the prescan of a byte stream, "get an XML encoding", the
-//! algorithm for extracting a character encoding from a meta element, the
-//! transport layer's charset, §13.2.3.4 "change the encoding" steps 1-4, and
-//! the decode that feeds the input stream.
+//! algorithm, the prescan of a byte stream (the browsers' meta scan, html_core
+//! parser/meta_charset_scan.zig - tests/html/maj4_meta_charset_scan_test.zig
+//! has the cases where it differs from the spec's byte scan), "get an XML
+//! encoding", the algorithm for extracting a character encoding from a meta
+//! element, the transport layer's charset, and the decode that feeds the
+//! input stream.
 //! Spec: https://html.spec.whatwg.org/multipage/parsing.html#determining-the-character-encoding
 
 const std = @import("std");
 const testing = std.testing;
 const sniffing = @import("html_core").parser.encoding_sniffing;
+const meta_charset_scan = @import("html_core").parser.meta_charset_scan;
 
 fn nameOf(result: ?sniffing.Encoding) []const u8 {
     return if (result) |e| sniffing.canonicalName(e) else "(failure)";
 }
 
 fn expectPrescan(bytes: []const u8, expected: ?[]const u8) !void {
-    const got = sniffing.prescan(bytes);
+    const got = try meta_charset_scan.prescan(testing.allocator, bytes);
     if (expected) |name| {
         testing.expectEqualStrings(name, nameOf(got)) catch |err| {
             std.debug.print("prescan of \"{s}\"\n", .{bytes});
@@ -81,13 +84,19 @@ test "prescan: attribute value syntax" {
     try expectPrescan("<meta charset=big5 foo>", "Big5");
 }
 
-test "prescan: stops at 1024 bytes, then tries an XML declaration" {
+test "prescan: stops at 1024 bytes after a tag not allowed in a head" {
+    // Only whitespace before it: the head section has not ended, and the
+    // browsers' scan goes on past 1024 bytes (Blink's in_head_section_; the
+    // spec's byte scan stopped here).
     var buf: [1100]u8 = undefined;
     @memset(&buf, ' ');
     const tail = "<meta charset=gbk>";
     @memcpy(buf[buf.len - tail.len ..], tail);
+    try expectPrescan(&buf, "GBK");
+    // After a <p>, 1024 characters end it.
+    @memcpy(buf[0..3], "<p>");
     try expectPrescan(&buf, null);
-    // A meta that starts before 1024 and ends after it also runs out.
+    // A meta cut off by the end of the bytes declares nothing.
     var cut: [1024]u8 = undefined;
     @memset(&cut, ' ');
     @memcpy(cut[1024 - 10 ..], "<meta char");
@@ -143,7 +152,7 @@ test "the transport layer's charset comes from the MIME type's charset parameter
 // --- the encoding sniffing algorithm -------------------------------------
 
 test "sniff: a BOM is certain and beats everything" {
-    const r = sniffing.sniff("\xEF\xBB\xBF<meta charset=gbk>", .{ .transport = sniffing.lookup("big5") });
+    const r = try meta_charset_scan.sniff(testing.allocator, "\xEF\xBB\xBF<meta charset=gbk>", .{ .transport = sniffing.lookup("big5") });
     try testing.expectEqualStrings("UTF-8", sniffing.canonicalName(r.encoding));
     try testing.expectEqual(sniffing.Confidence.certain, r.confidence);
     const le = sniffing.sniff("\xFF\xFEa\x00", .{});
@@ -151,13 +160,13 @@ test "sniff: a BOM is certain and beats everything" {
 }
 
 test "sniff: the transport layer is certain and beats the prescan" {
-    const r = sniffing.sniff("<meta charset=utf-8>", .{ .transport = sniffing.lookup("gbk") });
+    const r = try meta_charset_scan.sniff(testing.allocator, "<meta charset=utf-8>", .{ .transport = sniffing.lookup("gbk") });
     try testing.expectEqualStrings("GBK", sniffing.canonicalName(r.encoding));
     try testing.expectEqual(sniffing.Confidence.certain, r.confidence);
 }
 
 test "sniff: the prescan is tentative, then the parent's, then the default" {
-    const pre = sniffing.sniff("<meta charset=big5>", .{ .parent = sniffing.lookup("gbk") });
+    const pre = try meta_charset_scan.sniff(testing.allocator, "<meta charset=big5>", .{ .parent = sniffing.lookup("gbk") });
     try testing.expectEqualStrings("Big5", sniffing.canonicalName(pre.encoding));
     try testing.expectEqual(sniffing.Confidence.tentative, pre.confidence);
 
@@ -174,23 +183,6 @@ test "sniff: the prescan is tentative, then the parent's, then the default" {
     const default = sniffing.sniff("<p>\xC3\xA9", .{});
     try testing.expectEqualStrings("windows-1252", sniffing.canonicalName(default.encoding));
     try testing.expectEqual(sniffing.Confidence.tentative, default.confidence);
-}
-
-// --- change the encoding ---------------------------------------------------
-
-test "change the encoding, steps 1-4" {
-    const utf16 = sniffing.lookup("utf-16le").?;
-    const gbk = sniffing.lookup("gbk").?;
-    const w1252 = sniffing.lookup("windows-1252").?;
-    // Step 1: already UTF-16 - ignored.
-    try testing.expect(sniffing.encodingToChangeTo(utf16, gbk) == null);
-    // Step 2: UTF-16 becomes UTF-8.
-    try testing.expectEqualStrings("UTF-8", sniffing.canonicalName(sniffing.encodingToChangeTo(w1252, utf16).?));
-    // Step 3: x-user-defined becomes windows-1252 - which is the current one.
-    try testing.expect(sniffing.encodingToChangeTo(w1252, sniffing.lookup("x-user-defined").?) == null);
-    // Step 4: identical.
-    try testing.expect(sniffing.encodingToChangeTo(gbk, gbk) == null);
-    try testing.expectEqualStrings("GBK", sniffing.canonicalName(sniffing.encodingToChangeTo(w1252, gbk).?));
 }
 
 // --- decoding ----------------------------------------------------------------
