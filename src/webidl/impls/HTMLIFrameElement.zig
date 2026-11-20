@@ -108,6 +108,15 @@ pub const InternalState = struct {
     /// HTML 4.8.5 "current navigation was lazy loaded": an iframe whose
     /// boolean is true does not potentially delay the load event.
     current_navigation_was_lazy_loaded: bool = false,
+    /// HTML 4.8.5 "pending resource-timing start time": set by "navigate an
+    /// iframe or frame" step 3.1 (relative to the node document's relevant
+    /// global's time origin), cleared by "create navigation params by
+    /// fetching" step 26 for a response that passed the timing allow check,
+    /// and taken by the iframe load event steps' step 4. Null: unset.
+    pending_resource_timing_start: ?f64 = null,
+    /// "Pending resource-timing URL" (step 3.2), serialized. Owned; null
+    /// while unset.
+    pending_resource_timing_url: ?[]const u8 = null,
 
     /// A new state, its integration from `arena` - its element's Browser's
     /// (runtime.arenaOf). The state's own block is the registry's
@@ -1096,6 +1105,8 @@ const Navigation = struct {
         // Terminating a fetch runs neither `done` nor `gone`: its client's
         // ticket goes here (terminateFetch).
         if (self.fetch) |f| terminateFetch(f);
+        // A report no decision took (the navigation ended first) goes.
+        if (self.timing_reporter) |*reporter| reporter.deinit();
         dom_module.service_worker_clients.release(self.reserved_client);
         if (self.reserved_url) |u| self.allocator.free(u);
         if (self.response) |*r| r.deinit();
@@ -2380,7 +2391,7 @@ fn startFetch(record: *Navigation) void {
             if (record.integration.iframe_element) |element_ptr| {
                 const container: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
                 if (container.ctx == source_global.ctx) {
-                    record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forGlobal(source_global);
+                    record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forNavigation(source_global);
                     // Step 10.3: "set request's initiator type to navigable's
                     // container's local name".
                     request.initiator_type = switch (container_kind orelse .iframe) {
@@ -2722,6 +2733,10 @@ fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, curr
             r.timing_info = fetch_mod.internal.FetchTimingInfo.init(r.timing_info.allocator);
         }
     }
+    // Whether the container document's resource timing entry is this
+    // fetch's report (`decideNavigationTiming`) - decided before the body
+    // and its fetch move on, as the reporter is copied with them.
+    decideNavigationTiming(record, result);
     // The body still arriving moves to the response, and the fetch with it:
     // from here the body's holder - the navigation, then the document's
     // parser - decides how long the fetch goes on. Out of memory, the
@@ -2817,7 +2832,11 @@ const KeptTimingReporter = struct {
 
     fn create(allocator: std.mem.Allocator, reporter: dom_module.performance_timeline.GuardedTimingReporter) !*KeptTimingReporter {
         const self = try allocator.create(KeptTimingReporter);
-        self.* = .{ .allocator = allocator, .reporter = reporter };
+        // Decided before the body moved (`respond`): the record's reporter
+        // holds no report, and the copy owns none.
+        var copy = reporter;
+        copy.held = null;
+        self.* = .{ .allocator = allocator, .reporter = copy };
         return self;
     }
 
@@ -6004,8 +6023,7 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     const had_engine = realm.hasEngine();
     const generation = runtime.SlabAllocator.generationOf(element);
     // Step 2: "Let childDocument be element's content navigable's active
-    // document." (Step 1 asserts there is a content navigable; step 4,
-    // resource timing, is not modelled.)
+    // document." (Step 1 asserts there is a content navigable.)
     const child_document = activeDocumentOf(internal.integration);
     // Step 3: "If childDocument has its mute iframe load flag set, then
     // return." The document was opened during an earlier load event at this
@@ -6013,6 +6031,12 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     // delays the container document's, below.
     const muted = if (child_document) |child| document_lifecycle.isIframeLoadMuted(child) else false;
     if (!muted) {
+        // Step 4: the pending resource-timing start time is still set - the
+        // navigation's response did not pass the timing allow check (step
+        // 26 of "create navigation params by fetching" clears it for one
+        // that did) - so its entry is the fallback: from the pending start
+        // time to now, for the pending URL (steps 4.1-4.6).
+        reportPendingResourceTiming(element, internal);
         // Step 5: "Set childDocument's iframe load in progress flag."
         const child_generation = if (child_document) |child| runtime.SlabAllocator.generationOf(child) else 0;
         const child_realm = if (child_document) |child| child.ctx else null;
@@ -6713,6 +6737,10 @@ fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration
     // The referrerPolicy "process the iframe attributes" step 2.4 read, or
     // else the current state of element's referrerpolicy content attribute.
     const referrer_policy = given_referrer_policy orelse referrerPolicyOf(element);
+    // Step 3: "If element is an iframe": its pending resource-timing start
+    // time, the current high resolution time given its node document's
+    // relevant global object, and its pending resource-timing URL, url.
+    if (getInternal(element)) |internal| setPendingResourceTiming(element, internal, url);
     // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
         .source_document = container_document,
@@ -6722,6 +6750,70 @@ fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration
         .referrer_policy = referrer_policy,
     });
     if (load_for_fragment) queueIframeLoadEventSteps(element);
+}
+
+/// The iframe load event steps' step 4, for an iframe whose pending
+/// resource-timing start time is set: mark resource timing with the
+/// fallback timing info in its node document's relevant global, then unset
+/// the pending start time and URL. Only an HTTP(S) URL is marked - Fetch's
+/// "finalize and report timing" step 1 returns for any other scheme, and no
+/// browser has an entry for an about:srcdoc or about:blank frame.
+fn reportPendingResourceTiming(element: *runtime.Instance, internal: *InternalState) void {
+    const start = internal.pending_resource_timing_start orelse return;
+    const url = internal.pending_resource_timing_url orelse return clearPendingResourceTiming(internal);
+    defer clearPendingResourceTiming(internal);
+    if (!std.mem.startsWith(u8, url, "http:") and !std.mem.startsWith(u8, url, "https:")) return;
+    if (!element.ctx.hasEngine()) return;
+    dom_module.performance_timeline.markIframeFallbackTiming(element.ctx, url, start) catch {};
+}
+
+/// "Navigate an iframe or frame" steps 3.1-3.2 for an iframe. Out of
+/// memory, or with no Performance, the pending timing stays unset: the
+/// navigation's own report is then all there is.
+fn setPendingResourceTiming(element: *runtime.Instance, internal: *InternalState, url: []const u8) void {
+    clearPendingResourceTiming(internal);
+    const start = dom_module.performance_timeline.now(element.ctx) orelse return;
+    internal.pending_resource_timing_url = internal.allocator.dupe(u8, url) catch return;
+    internal.pending_resource_timing_start = start;
+}
+
+fn clearPendingResourceTiming(internal: *InternalState) void {
+    internal.pending_resource_timing_start = null;
+    if (internal.pending_resource_timing_url) |u| internal.allocator.free(u);
+    internal.pending_resource_timing_url = null;
+}
+
+/// "Create navigation params by fetching" step 26 and the report a
+/// container-initiated navigation's fetch makes (its timing reporter waits
+/// for this): an iframe whose response passed the timing allow check
+/// reports normally, its pending resource-timing start time set to null;
+/// one whose response failed it keeps the pending start time, and its load
+/// event steps report the fallback instead. Every container's report is
+/// marked only for a response that makes a document: a download, a 204 or
+/// a 205 is reported by no browser (resource-timing/iframe-with-download
+/// .html: Chrome 157, Firefox 160 and Safari 27.2 pass, wpt.fyi at
+/// 2358bd4835) - Fetch's report timing steps run, in the spec, only through
+/// the navigation's own reporting, which a response that makes no document
+/// never reaches. An <object>'s or a <frame>'s response that failed the
+/// check is reported normally (its opaque timing at the fetch's end), as
+/// Firefox and Safari do: HTML gives the fallback to iframes alone, and
+/// nested-nav-fallback-timing.html's object case fails in both at the
+/// same assertion (Chrome reports the load time for both).
+fn decideNavigationTiming(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult) void {
+    const reporter = if (record.timing_reporter) |*r| r else return;
+    const response = if (record.response) |*r| r else return reporter.decide(false);
+    const timing_allow_passed = if (result) |r| r.response.timing_allow_passed else false;
+    var fallback = false;
+    if (record.integration.iframe_element) |element_ptr| {
+        if (getInternal(@ptrCast(@alignCast(element_ptr)))) |internal| {
+            if (timing_allow_passed) {
+                clearPendingResourceTiming(internal);
+            } else if (internal.pending_resource_timing_start != null) {
+                fallback = true;
+            }
+        }
+    }
+    reporter.decide(!fallback and record.integration.responseMakesDocument(response));
 }
 
 /// Whether navigating `integration`'s navigable to `url` from its container
