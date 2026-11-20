@@ -7,6 +7,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const HeaderList = @import("header_list.zig").HeaderList;
+const parsing = @import("parsing.zig");
 
 // =============================================================================
 // Header Name Validation
@@ -221,52 +222,14 @@ fn extractMimeEssence(value: []const u8) []const u8 {
     return value[0..end];
 }
 
-/// Check if a Range header value is a "simple range" (bytes=N-M where N is provided).
-/// Spec requires that rangeValue[0] is not null (i.e., start is specified).
+/// The `range` case of "CORS-safelisted request-header": "1. Let
+/// rangeValue be the result of parsing a single range header value given
+/// value and false. 2. If rangeValue is failure, then return false. 3. If
+/// rangeValue[0] is null, then return false." (Browsers have historically
+/// not emitted `bytes=-500`, so it is not safelisted.)
 fn isSimpleRangeHeader(value: []const u8) bool {
-    // Must start with "bytes="
-    const prefix = "bytes=";
-    if (value.len < prefix.len) return false;
-
-    if (!std.ascii.eqlIgnoreCase(value[0..prefix.len], prefix)) {
-        return false;
-    }
-
-    const range_spec = value[prefix.len..];
-
-    // Find the hyphen
-    var hyphen_pos: ?usize = null;
-    for (range_spec, 0..) |byte, i| {
-        if (byte == '-') {
-            hyphen_pos = i;
-            break;
-        }
-    }
-
-    const dash = hyphen_pos orelse return false;
-
-    // The part before the dash must have at least one digit (not be empty)
-    // This ensures rangeValue[0] is not null
-    if (dash == 0) {
-        return false; // bytes=-500 is not safelisted
-    }
-
-    // Validate that the start is all digits
-    for (range_spec[0..dash]) |byte| {
-        if (byte < '0' or byte > '9') {
-            return false;
-        }
-    }
-
-    // The end part (after dash) can be empty or digits
-    const end_part = range_spec[dash + 1 ..];
-    for (end_part) |byte| {
-        if (byte < '0' or byte > '9') {
-            return false;
-        }
-    }
-
-    return true;
+    const range = parsing.parseSingleRangeHeaderValue(value, false) orelse return false; // 1-2.
+    return range.start != null; // 3.
 }
 
 // =============================================================================
