@@ -115,6 +115,11 @@ pub const DocumentRareData = struct {
     /// with no lazy element.
     lazy_load_targets: @import("lazy_load_observer.zig").Targets = .empty,
 
+    /// SVG Animations 2: the document's outermost svg elements with a
+    /// timeline, and its animated values (dom.smil.document_animations).
+    /// Empty for a document with no SVG animation.
+    smil: @import("smil/document_animations.zig").DocumentState = .{},
+
     fn init(allocator: std.mem.Allocator) DocumentRareData {
         return .{
             .import_map_imports = .init(allocator),
@@ -158,6 +163,7 @@ pub const DocumentRareData = struct {
         if (self.pragma_language) |language| allocator.free(language);
         self.parser_form_associations.deinit(allocator);
         self.lazy_load_targets.deinit(allocator);
+        self.smil.deinit(allocator);
         if (self.counted_in) |memory| memory.sub(@sizeOf(DocumentRareData));
         allocator.destroy(self);
     }

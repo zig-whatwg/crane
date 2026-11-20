@@ -74,6 +74,7 @@ const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
 const svg_hints = @import("svg_hints.zig");
+const smil_animations = @import("../smil/document_animations.zig");
 pub const available_images = @import("available_images.zig");
 const matched_properties_cache = @import("matched_properties_cache.zig");
 
@@ -692,6 +693,13 @@ pub const StyleEngine = struct {
     pub fn sheetsChanged(self: *StyleEngine) void {
         self.sheets_version +%= 1;
         if (self.resourceState()) |resources| resources.invalidate();
+    }
+
+    /// An SVG animation's override style changed as its timeline moved
+    /// (dom.smil.document_animations): no DOM mutation moved the tree
+    /// version, so every cached style is keyed again on the generation.
+    pub fn animatedOverrideStyleChanged(self: *StyleEngine) void {
+        self.generation +%= 1;
     }
 
     /// The active sheets, rebuilt first if anything they depend on moved.
@@ -2580,6 +2588,15 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
             }
         }
     }
+    // SVG Animations 2 2.6: an animation of a CSS property sets the
+    // property's override style - element-attached, after the style
+    // attribute, normal (Blink StyleResolver::MatchAllRules adds an SVG
+    // element's AnimatedSMILStyleProperties after its inline style; Gecko's
+    // cascade level SMILOverride follows StyleAttrNormal).
+    if (svg_eligible) if (smil_animations.animatedStyleBlock(res.document, element)) |block| {
+        try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .per_element = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
+        res.own_blocks = true;
+    };
 }
 
 /// Reuse the existing document-local shadow identity, never a new counter.

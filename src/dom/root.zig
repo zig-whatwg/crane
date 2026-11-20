@@ -100,6 +100,8 @@ pub const document_rendering = @import("document_rendering.zig");
 pub const update_the_rendering = @import("update_the_rendering.zig");
 /// Web Animations: the timing model, its objects' models, and update animations and send events (lane rendering2).
 pub const animations = @import("animations/root.zig");
+/// SVG animation elements' timing model (SVG Animations 2, SMIL Animation; lane dnd1).
+pub const smil = @import("smil/root.zig");
 pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
