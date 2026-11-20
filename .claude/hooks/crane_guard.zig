@@ -268,6 +268,8 @@ fn checkForcePush(command: []const u8) Verdict {
                 (a.text.len > 1 and a.text[0] == '+'))
             {
                 other_force = true;
+            } else if (std.mem.indexOfAny(u8, a.text, "<>") != null) {
+                // a redirection (2>&1, >log) is not an argument of the push
             } else if (a.text.len > 0 and a.text[0] != '-') {
                 positional += 1;
                 if (positional > 1 and !std.mem.eql(u8, a.text, "gh-pages")) refspecs_gh_pages_only = false;
@@ -839,6 +841,7 @@ test "gh-pages alone may be replaced with a lease (the user, 2026-11-20); nothin
     // gh-pages and only gh-pages.
     try expectAllowed("git push --force-with-lease=gh-pages:5ce54d18ea8 origin gh-pages", null);
     try expectAllowed("git push --force-with-lease=gh-pages:$old origin gh-pages", null);
+    try expectAllowed("git push --force-with-lease=gh-pages:$old origin gh-pages 2>&1 | tail -2", null);
     // A bare lease, -f, --force or a +refspec stays refused, even for gh-pages.
     try expectDenied("git push --force-with-lease origin gh-pages", null);
     try expectDenied("git push --force origin gh-pages", null);
