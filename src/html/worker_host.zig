@@ -777,8 +777,7 @@ pub const WorkerHost = struct {
     /// Whether the worker's agent cluster has a cross-origin isolation mode
     /// other than "none", decided on the owner's thread
     /// (`workerAgentClusterIsolated`): HTML "create a new realm" step 5 reads
-    /// it as the worker's realm is made (setupWorkerGlobalScope). False for a
-    /// service worker, whose agent cluster Service Workers gives no mode.
+    /// it as the worker's realm is made (setupWorkerGlobalScope).
     agent_cluster_cross_origin_isolated: bool = false,
 
     /// The owner's top-level site, for a dedicated worker
@@ -1048,7 +1047,15 @@ pub const WorkerHost = struct {
             // the registration's top-level site and cross-site-ancestor bit.
             .storage_top_level_site = if (start.top_level_site) |named| allocator.dupe(u8, named) catch null else null,
             .has_cross_site_ancestor = start.has_cross_site_ancestor,
+            // Its agent cluster's mode ("concrete" when its embedder policy
+            // allows: serviceWorkerAgentClusterIsolated) and so its global
+            // scope's capability, as "run a worker" step 7 gives a worker's:
+            // a service worker has no owner and no permissions policy to
+            // take it away (steps 8-9).
+            .agent_cluster_cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
+            .cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
         };
+        self.agent_host.agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
         const agent = try engine.createAgent(.{
             .can_block = false,
@@ -2925,26 +2932,49 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
 }
 
 /// Whether the agent cluster of the worker `start` starts has a cross-origin
-/// isolation mode other than "none", read on its owner's thread:
+/// isolation mode other than "none" when its realm is made (HTML "create a
+/// new realm" step 5), read on its owner's thread:
 ///
-/// - a shared worker's agent starts a cluster of its own (isTopLevel), whose
-///   mode "run a worker" onComplete step 5 sets - "concrete", as for its
-///   capability (`workerCrossOriginIsolated`) - when its embedder policy is
-///   compatible with cross-origin isolation. HTML makes the realm before that
-///   step (its note: "This really ought to be set when the agent cluster is
-///   created"); Crane makes it after the response, so the mode the response
-///   gives is the one its realm is made with, as Blink decides a worker
-///   context's SharedArrayBuffer when the context is made with its COEP
-///   known;
+/// - a shared worker's agent starts a cluster of its own (isTopLevel), made
+///   with the mode "none"; "run a worker" makes the realm (step 7) before
+///   onComplete step 5 sets the mode from the embedder policy ("This really
+///   ought to be set when the agent cluster is created"), so the realm is
+///   made with "none" whatever its policy - and the browsers agree: Chrome
+///   157 and Firefox 160 make no shared worker cross-origin isolated even
+///   with COOP and COEP (html/cross-origin-embedder-policy/cross-origin-
+///   isolated-permission-worker.https.window.html "shared_worker
+///   (withCoopCoep: true)": C FAIL, F FAIL, S PASS, wpt.fyi 2358bd4835), so
+///   neither exposes SharedArrayBuffer there. Its capability stays the
+///   spec's (`workerCrossOriginIsolated`, steps 5-7);
 /// - a dedicated worker's agent is in its owner's cluster ("obtain a
 ///   worker/worklet agent" step 3), whose mode it shares - a data: URL's too:
 ///   step 9 takes only its capability away.
 fn workerAgentClusterIsolated(start: *const WorkerStart) bool {
-    if (start.shared != null) {
-        const container = if (start.policy_container) |*c| c else return false;
-        return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
-    }
+    if (start.shared != null) return false;
     return agent_clusters.crossOriginIsolationMode(start.owner_realm);
+}
+
+/// Whether a service worker's agent cluster is cross-origin isolated: its
+/// script's embedder policy is compatible with cross-origin isolation.
+///
+/// Service Workers sets no mode for the cluster "obtain a service worker
+/// agent" makes, and gives the global scope no cross-origin isolated
+/// capability of its own; the browsers do not leave it there (golden rule 2,
+/// no newer spec): Chrome 157 and Safari 27.2 make a service worker whose
+/// script has COOP and COEP cross-origin isolated, Firefox 160 does not
+/// (html/cross-origin-embedder-policy/cross-origin-isolated-permission-
+/// worker.https.window.js "service_worker (withCoopCoep: true)": C PASS,
+/// F FAIL, S PASS; withCoopCoep false: all three not isolated; wpt.fyi
+/// 2358bd4835). Chrome's is "concrete" - its capability and its
+/// SharedArrayBuffer (Blink's SharedArrayBufferConstructorEnabledCallback
+/// reads the worker's SharedArrayBufferTransferAllowed) - as "run a worker"
+/// step 7 gives a shared worker's. Without COOP and COEP no service worker
+/// has the global in any of the three (html/infrastructure/safe-passing-of-
+/// structured-data/shared-array-buffers/no-coop-coep.https.any.
+/// serviceworker.html: C, F and S PASS).
+fn serviceWorkerAgentClusterIsolated(start: *const ServiceThreadHost.Start) bool {
+    const container = if (start.policy_container) |*c| c else return false;
+    return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
 }
 
 /// A worker creator's mixed-content answer, read only on its own thread.

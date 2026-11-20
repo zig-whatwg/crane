@@ -394,8 +394,11 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   (no default: every caller decides): whether the agent cluster of the agent
   the realm is made in has a cross-origin isolation mode other than "none" -
   a Window's from its browsing context group, a dedicated worker's or a
-  worklet's from its owner's cluster, a shared or service worker's from its
-  own embedder policy (`html.agent_clusters.crossOriginIsolationMode`). With
+  worklet's from its owner's cluster (`html.agent_clusters.
+  crossOriginIsolationMode`), a shared worker's "none" (HTML makes its realm
+  before "run a worker" onComplete step 5 sets the mode; Chrome and Firefox
+  never isolate one), a service worker's from its script's embedder policy
+  (Chrome and Safari isolate one with COOP and COEP). With
   false the engine performs HTML "create a new realm" step 5 once the global
   object exists: `! global.[[Delete]]("SharedArrayBuffer")`, which succeeds.
   The V8 adapter does it in `shared_array_buffer_exposure.zig`; the

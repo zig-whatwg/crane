@@ -327,12 +327,12 @@ pub const WorkerRealmOptions = struct {
     secure_context: bool = true,
     /// HTML "create a new realm" step 5 (engine.WindowRealmOptions has the
     /// same field): whether the worker agent's agent cluster has a
-    /// cross-origin isolation mode other than "none" - a dedicated worker's
-    /// cluster is its owner's ("obtain a worker/worklet agent" step 3), a
-    /// shared or service worker's its own, whose mode "run a worker"
-    /// onComplete step 5 sets from its embedder policy. False: the engine
-    /// deletes the global's SharedArrayBuffer property once the global object
-    /// exists. No default: every caller decides.
+    /// cross-origin isolation mode other than "none" as the realm is made -
+    /// a dedicated worker's cluster is its owner's ("obtain a worker/worklet
+    /// agent" step 3); a shared or service worker's is its own, as the host
+    /// decides it (html.worker_host). False: the engine deletes the global's
+    /// SharedArrayBuffer property once the global object exists. No default:
+    /// every caller decides.
     agent_cluster_cross_origin_isolated: bool,
 };
 
