@@ -2064,3 +2064,16 @@ revisit           = when Firefox or Safari changes its result on a newer aligned
 kind      = needs-renderer
 why       = the animation accumulates onto the underlying transform translateX(10%), a percentage of the element's reference box (its border box, 50px wide, so 5px); with no renderer there is no box to resolve it against, so Crane combines the keyframes discretely (src/css/transform_interpolation.zig: a list whose matrix needs the reference box cannot be decomposed without layout) and the computed transform at 5s is the end keyframe's translation, 25px, where Firefox and Safari interpolate to 15px and add the 5px
 assertion = assert_equals: X translation expected 20 but got 25
+
+# follows-majority (lane blk5; the integrator's ruling 2026-11-20 4:25 PM ET): generation 234 (sweep-838c54a8f8)
+# and the aligned stable runs at 2358bd4835.
+
+[html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-resolution-order.html]
+kind            = follows-majority
+why             = its scripts' src is "   ", which HTML encoding-parses to the document's base URL and fetches (only the empty string fires error), so the error events the test waits for never come and it times out in Crane and Firefox ("Promise rejection ordering": TIMEOUT); Chrome 157 and Safari 27.2 stable treat the src as empty and fire error (Chrome passes, Safari fires them in another order)
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; TIMEOUT)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox
+ruling          = WebKit adopted the spec in d0627f4a50 (2026-10-09); Safari 27.2 stable lags; spec + Firefox (the integrator, 2026-11-20 4:25 PM ET); whitespace-with-base.html and -module.html, which Firefox passes, pin the same rule
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
