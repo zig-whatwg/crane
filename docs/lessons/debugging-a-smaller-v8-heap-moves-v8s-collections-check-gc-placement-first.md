@@ -16,6 +16,6 @@
 2. Align V8's timestamps with the page. V8's stdout is buffered, so the order of output lines means nothing. Record `performance.now()` marks in the page, end with `TestUtils.gc()`, and use that collection's trace line to get the offset between the two clocks.
 3. Count instructions per phase without perf_bench: `/usr/bin/time -l <console> <url>` prints "instructions retired". Run the sequence prefix by prefix (A, A+B, A+B+C) and take the differences.
 4. Test the hypothesis on its own: replace the suspect values (flat copies of the strings), or move the collections (a preamble that allocates). If the slow side flips, the row measures placement.
-5. Bring the evidence for a ruling. Crane builds V8 unpatched, so a V8 cause is a bug report (filed by the user), not a patch.
+5. Bring the evidence for a ruling. Crane builds V8 unpatched, so a V8 cause is a bug report (filed by the user), not a patch: the JSON one is https://issues.chromium.org/issues/587998049 (2026-11-20).
 
 **Takeaway**: **A cost row that moves after a memory win may be measuring where V8 now collects. Trace both sides' collections against page marks before changing Crane code, and prove it by flipping the slow side.**
