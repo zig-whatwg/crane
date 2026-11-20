@@ -1290,7 +1290,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [test_driver.click on an option is WebDriver's legacy selection, not a click](testing-test-driver-click-on-an-option-is-webdrivers-legacy-selection-not-a-click.md) - **Before "fixing" a picker that does not close after `test_driver.click(option)`, log where the events land: at the select with no pointer events means WebDriver's option shortcut, a test bug, not an engine bug.**
 - [A test that waits one turn races a step that went parallel](testing-a-test-that-waits-one-turn-races-a-step-that-went-parallel.md) - **A change that moves a step off the inserting call (parallel fetch, a queued task) must grep the native tests that wait a fixed number of turns for it, and make each wait for the condition it asserts, not for a turn.**
 - [A Crane test red on both sides of every window is a bug with an owner](testing-a-crane-test-red-on-both-sides-of-every-window-is-a-bug-with-an-owner.md) - **"Same on base" is a reason to look, not to skip: the first window that lists a Crane test red on both sides files it with an owner, and the first question is whether the test's expectation is still true.**
-
 - [A testdriver command must start as a task, not in the same turn](testing-a-testdriver-command-must-start-as-a-task-not-in-the-same-turn.md) - **When a WPT result hinges on ordering between page tasks and a test_driver command, check the runner's scheduling first: a command must never run ahead of tasks the page queued before calling it.**
 
 ### Debugging
