@@ -2056,3 +2056,11 @@ safari.result     = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches           = firefox, safari
 renderer-subtests = Referrer policy header parsing fails if one header is invalid :: common/security-features' requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight); with no renderer img.clientWidth is 0, so getImageData throws IndexSizeError before the referrer is compared (as in the 130 needs-renderer referrer-policy files); with a renderer the subtest would fail at the referrer, as Firefox and Safari do
 revisit           = when Firefox or Safari changes its result on a newer aligned wpt.fyi run, or a renderer answers geometry, or Crane's result moves
+
+# needs-renderer (lane blk5, 2026-11-20): after DOMMatrix(string) (bf1054b90), the lane runner's message
+# (q-d06a83da61f, server1, production).
+
+[css/css-viewport/zoom/translate-matrix-zoom-anim-accumulated-computed.html]
+kind      = needs-renderer
+why       = the animation accumulates onto the underlying transform translateX(10%), a percentage of the element's reference box (its border box, 50px wide, so 5px); with no renderer there is no box to resolve it against, so Crane combines the keyframes discretely (src/css/transform_interpolation.zig: a list whose matrix needs the reference box cannot be decomposed without layout) and the computed transform at 5s is the end keyframe's translation, 25px, where Firefox and Safari interpolate to 15px and add the 5px
+assertion = assert_equals: X translation expected 20 but got 25
