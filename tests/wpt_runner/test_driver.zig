@@ -22,9 +22,11 @@
 //!                                 WebDriver BiDi session.subscribe for log.entryAdded
 //!   bidi_log_unsubscribe(id)      WebDriver BiDi session.unsubscribe
 //!
-//! Each returns a promise and runs as tasks: the command's steps run from a
-//! timer on the page's event loop, a tick of actions per timer, each tick
-//! waiting its duration before the next, and the promise settles after the
+//! Each returns a promise and runs as tasks: the command's first step is a
+//! task queued on the page's event loop - a command reaches the page from
+//! outside it, after the tasks the page queued before it asked - and its
+//! later steps run from a timer, a tick of actions per timer, each tick
+//! waiting its duration before the next; the promise settles after the
 //! last tick's events were dispatched. The events themselves - and every
 //! default action they have - are the engine's (src/html/user_input.zig,
 //! focus.zig, user_activation.zig): the remote end decides which input a
@@ -648,6 +650,31 @@ const Failure = struct {
 // Commands
 // ============================================================================
 
+/// A command's queued first step. It never owns the command: `endTest` and
+/// the command's own end clear `command` (Command.cancelStart), and the task
+/// frees only itself - when it runs, or when its loop drops it unrun. So a
+/// command freed with its test, or a driver destroyed, leaves nothing the
+/// task could reach.
+const StartTask = struct {
+    allocator: std.mem.Allocator,
+    command: ?*Command,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *StartTask = @ptrCast(@alignCast(context.?));
+        const command = self.command;
+        self.allocator.destroy(self);
+        const owner = command orelse return;
+        owner.start = null;
+        Command.fire(owner);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *StartTask = @ptrCast(@alignCast(context.?));
+        if (self.command) |owner| owner.start = null;
+        self.allocator.destroy(self);
+    }
+};
+
 const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission, computed_role, computed_label };
 
 const Command = struct {
@@ -678,6 +705,34 @@ const Command = struct {
     permission_descriptor: ?permissions.PermissionDescriptor = null,
     permission_state: permissions.PermissionState = .prompt,
     permission_batch: ?*permissions.ChangeBatch = null,
+    /// The queued task of the command's first step, until it runs.
+    start: ?*StartTask = null,
+
+    /// Queue the command's first step as a task on its realm's event loop.
+    /// A WebDriver command reaches the page from outside it: wptrunner's
+    /// testdriver posts it to the harness window, whose WebDriver client
+    /// sends it to the remote end (testdriver-extra.js, the executor's
+    /// message loop), so every task the page queued before it asked has run
+    /// when the command's steps start - a native timer of the same turn ran
+    /// ahead of them (permissions/permissions-garbage-collect.https.html:
+    /// its query task made the status after the override, so the status
+    /// heard no change). With no event loop, a timer as before.
+    fn queueStart(self: *Command) bool {
+        const loop = self.realm.getOptionalEventLoop() orelse return self.arm(0);
+        const task = self.driver.allocator.create(StartTask) catch return false;
+        task.* = .{ .allocator = self.driver.allocator, .command = self };
+        self.start = task;
+        loop.queueTask(.{ .callback = StartTask.run, .context = task, .drop = StartTask.drop });
+        return true;
+    }
+
+    /// Forget the queued first step: the task, when it runs or is dropped,
+    /// finds no command and frees itself.
+    fn cancelStart(self: *Command) void {
+        const task = self.start orelse return;
+        self.start = null;
+        task.command = null;
+    }
 
     /// Arm the command's next step after `delay_ms`.
     fn arm(self: *Command, delay_ms: f64) bool {
@@ -687,8 +742,9 @@ const Command = struct {
         return true;
     }
 
-    /// Cancel the armed step, if any.
+    /// Cancel the armed or queued step, if any.
     fn cancel(self: *Command) void {
+        self.cancelStart();
         const id = self.timer_id orelse return;
         self.timer_id = null;
         if (self.timer) |timer| _ = timer.clearTimeout(id);
@@ -698,6 +754,7 @@ const Command = struct {
     /// not armed (it fired, or `cancel` ran).
     fn free(self: *Command) void {
         const allocator = self.driver.allocator;
+        self.cancelStart();
         self.releasePermissionBatch();
         engine.releasePromiseCapability(&self.capability);
         if (self.pending_element) |element| element.release();
@@ -743,7 +800,8 @@ const Command = struct {
         self.free();
     }
 
-    /// The timer's callback: the command's next step, as a task.
+    /// The timer's callback (and the first step's task): the command's next
+    /// step, as a task.
     fn fire(user_data: ?*anyopaque) void {
         const self: *Command = @ptrCast(@alignCast(user_data orelse return));
         self.timer_id = null;
@@ -1660,7 +1718,7 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
     };
     if (failure) |f| {
         command.reject(f);
-    } else if (!command.arm(0)) {
+    } else if (!command.queueStart()) {
         command.reject(.{ .code = "unknown error", .message = "the realm has no timers" });
     }
     return promise.take();
