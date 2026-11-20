@@ -245,6 +245,28 @@ pub const SymbolValues = struct {
     values: [@typeInfo(Symbol).@"enum".field_names.len]f64 = @splat(0),
 };
 
+/// Values 4 §5: "If an <angle> must be converted due to exceeding the
+/// implementation-defined range of supported values, it must be clamped to
+/// the nearest supported multiple of 360deg." Crane's angles range over
+/// ±max_angle_degrees, an integer below 2^53 (so exact) that is a multiple
+/// of 360 and whose radians' sine is close to 0: an infinite rotation is a
+/// whole number of turns (the largest double, Crane's clamp before, is no
+/// multiple of 360). The constant is Blink's kApproxDoubleInfinityAngle
+/// (chromium third_party/blink/renderer/core/css/
+/// css_value_clamping_utils.cc, CSSValueClampingUtils::ClampAngle, BSD-3):
+/// "the biggest multiple of 360 that a double can accurately represent, and
+/// after converting to rads, the sin() value is close enough to 0". Chrome,
+/// Firefox and Safari all read rotate(calc(±infinity * 1deg)) as
+/// rotate(0deg) (wpt.fyi css/css-values/calc-infinity-nan-computed.html).
+pub const max_angle_degrees: f64 = 2867080569122160;
+
+/// A computed angle (canonical degrees) clamped to Crane's range; any other
+/// numeric is returned as it is.
+pub fn clampAngle(number: Numeric) Numeric {
+    if (number.unit != .deg) return number;
+    return .{ .value = std.math.clamp(number.value, -max_angle_degrees, max_angle_degrees), .unit = .deg };
+}
+
 pub const Grammar = struct {
     kind: Kind,
     minimum: f64 = -std.math.floatMax(f64),
@@ -715,6 +737,8 @@ pub const Expression = struct {
             result.unit = .number;
         }
         result.value = std.math.clamp(result.value, self.grammar.minimum, self.grammar.maximum);
+        // §5: an angle past the range is the nearest supported multiple of 360deg.
+        result = clampAngle(result);
         if (self.grammar.kind == .integer) result.value = @floor(result.value + 0.5);
         if (result.value == 0) result.value = 0;
         return result;
