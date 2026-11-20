@@ -412,7 +412,7 @@ fn hasInterfaceObject(comptime name: []const u8) bool {
 
 fn exposureOf(comptime T: type) std.EnumSet(helpers.GlobalScope) {
     comptime {
-        var set = std.EnumSet(helpers.GlobalScope).initEmpty();
+        var set = std.EnumSet(helpers.GlobalScope).empty;
         for (std.enums.values(helpers.GlobalScope)) |scope| {
             if (helpers.isExposedIn(T, scope)) set.insert(scope);
         }
