@@ -664,13 +664,13 @@ const StartTask = struct {
         const command = self.command;
         self.allocator.destroy(self);
         const owner = command orelse return;
-        owner.start = null;
+        owner.start_task = null;
         Command.fire(owner);
     }
 
     fn drop(context: ?*anyopaque) void {
         const self: *StartTask = @ptrCast(@alignCast(context.?));
-        if (self.command) |owner| owner.start = null;
+        if (self.command) |owner| owner.start_task = null;
         self.allocator.destroy(self);
     }
 };
@@ -706,7 +706,7 @@ const Command = struct {
     permission_state: permissions.PermissionState = .prompt,
     permission_batch: ?*permissions.ChangeBatch = null,
     /// The queued task of the command's first step, until it runs.
-    start: ?*StartTask = null,
+    start_task: ?*StartTask = null,
 
     /// Queue the command's first step as a task on its realm's event loop.
     /// A WebDriver command reaches the page from outside it: wptrunner's
@@ -721,7 +721,7 @@ const Command = struct {
         const loop = self.realm.getOptionalEventLoop() orelse return self.arm(0);
         const task = self.driver.allocator.create(StartTask) catch return false;
         task.* = .{ .allocator = self.driver.allocator, .command = self };
-        self.start = task;
+        self.start_task = task;
         loop.queueTask(.{ .callback = StartTask.run, .context = task, .drop = StartTask.drop });
         return true;
     }
@@ -729,8 +729,8 @@ const Command = struct {
     /// Forget the queued first step: the task, when it runs or is dropped,
     /// finds no command and frees itself.
     fn cancelStart(self: *Command) void {
-        const task = self.start orelse return;
-        self.start = null;
+        const task = self.start_task orelse return;
+        self.start_task = null;
         task.command = null;
     }
 
