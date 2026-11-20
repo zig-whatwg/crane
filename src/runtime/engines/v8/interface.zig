@@ -2741,9 +2741,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Global left behind is a strong root: one per interface per realm
         /// kept every iframe's realm alive for the life of the process.
         ///
-        /// Called once per interface per realm - eagerly for the main context,
-        /// and by the lazy data property on a child realm's global the first time
-        /// script reads it (global_constructor_handler.lazyConstructorGetter).
+        /// Called once per interface per realm: by the global's lazy data
+        /// property the first time script reads it (global_constructor_handler.
+        /// lazyConstructGetter), or before the realm's first wrapper of the
+        /// interface (template_registry.ensureInterfaceObjectBuilt) - or eagerly,
+        /// by registerAllInterfaces, for a context a test sets up by hand.
         pub fn materializeInterfaceObject(
             isolate: *v8.Isolate,
             context: *v8.Context,
@@ -2780,11 +2782,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // object is linked here, as Blink's V8PerContextData::
             // ConstructorForTypeSlowCase builds the parent's interface object
             // first and creates the child's over it. Every path that makes
-            // an interface object comes through here - a snapshot-restored
-            // page's registerGlobalFast, a frame's lazy getter, a worker's
-            // installForScope - and setupConstructorInheritance ran on none
-            // of them: Object.getPrototypeOf(IDBRequest) was
-            // %Function.prototype%, for 616 interfaces of a window.
+            // an interface object comes through here - a global's lazy
+            // construct getter, a wrap's ensureInterfaceObjectBuilt, a test's
+            // registerAllInterfaces - and the old setupConstructorInheritance
+            // pass ran on none of the realm paths: Object.getPrototypeOf(
+            // IDBRequest) was %Function.prototype%, for 616 interfaces of a
+            // window.
             if (comptime InheritedInterface) |Parent| {
                 if (V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name)) |parent_object| {
                     defer v8.v8_Function_Dispose(parent_object);

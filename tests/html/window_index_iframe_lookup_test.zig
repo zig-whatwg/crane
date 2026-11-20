@@ -36,6 +36,17 @@ fn browserHandleBytes() !i64 {
     return counterValue("global_handle_bytes");
 }
 
+/// The Browser's global handle bytes once its garbage is collected: a dead
+/// wrapper's weak handle is counted until a collection takes it, and when
+/// one runs is the collector's schedule, not the lookup's - a realm made
+/// cheap (lane tmpl1: no interface object deserialized and replaced per
+/// realm) let 20 frames pass with no collection, and the lookup phase read
+/// 7.5 handles of garbage more than the control.
+fn collectedHandleBytes(page: h.Page) !i64 {
+    try page.run("TestUtils.gc(); TestUtils.gc();");
+    return browserHandleBytes();
+}
+
 /// One global handle's bytes in the Browser's isolate - and that the bytes
 /// are the Browser's, shown rather than assumed: a value of its page held
 /// raises them by one handle, and its release lowers them back.
@@ -67,7 +78,7 @@ fn globalsAfterFrames(page: h.Page, control: bool) !i64 {
         \\}
     ;
     try page.run(if (control) after_content_window else by_lookup);
-    return browserHandleBytes();
+    return collectedHandleBytes(page);
 }
 
 fn lookupLetsItsListGo() !void {
@@ -77,7 +88,7 @@ fn lookupLetsItsListGo() !void {
     const document = try page.node("doc");
     const before = h.dom.refcount.count(document);
     const handle = try handleBytes(page);
-    const start = try browserHandleBytes();
+    const start = try collectedHandleBytes(page);
     const after_control = try globalsAfterFrames(page, true);
     const after_lookup = try globalsAfterFrames(page, false);
     try h.expectCount(before, document, "the document, after 40 indexed lookups");

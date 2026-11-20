@@ -707,6 +707,13 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
             log.warn("ShadowRealm support was not installed: {}", .{err});
             break :blk null;
         };
+        // An isolate restored from the snapshot takes the snapshot's
+        // templates back into its registry, once - the templates its
+        // restored contexts were made from, and its only copy of them; every
+        // other template is made the first time a realm needs it (Blink:
+        // V8ContextSnapshotImpl::InstallInterfaceTemplates; lane tmpl1).
+        if (record.from_snapshot and !@import("interface_bindings.zig").takeSnapshotTemplates(isolate))
+            log.warn("the snapshot holds no templates for this build to take back: its Window realms make their own", .{});
     }
     return @ptrCast(isolate);
 }
@@ -968,9 +975,10 @@ pub fn oweNavigationCollection(isolate: *ffi.Isolate) void {
 /// navigation_collection.zig, IF and WHAT: at the agent's engine-task step
 /// (worker_realm.zig `runEngineTasks`) - the event loop's own turn, no DOM
 /// algorithm on the stack. When a navigation's collection is owed and V8's
-/// heap holds at least the agent's threshold (v8::HeapStatistics
-/// used_heap_size + external_memory), one critical memory-pressure notice
-/// (`notifyMemoryPressure`), as Blink sends
+/// heap and the DOM the agent reports hold at least the agent's threshold
+/// (v8::HeapStatistics used_heap_size + external_memory, + what V8 was last
+/// told of the host's figure, external_memory.zig), one critical
+/// memory-pressure notice (`notifyMemoryPressure`), as Blink sends
 /// at a main frame's context disposal when the page being left used much
 /// memory (v8_gc_for_context_dispose.cc:69-87, Chromium 157.0.8103.50).
 /// Below the threshold, or with none, what was owed is forgotten: V8 was
@@ -984,7 +992,10 @@ pub fn payNavigationCollection(agent: *Agent) void {
     var used: usize = 0;
     var external: usize = 0;
     ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, &external);
-    if (used + external < threshold) return;
+    // The DOM the agent reports: V8 counts it toward its own limit, and
+    // HeapStatistics does not show it (navigation_collection.zig, IF).
+    const dom = @import("external_memory.zig").reportedOn(isolate);
+    if (used + external + dom < threshold) return;
     record.navigation_collections += 1;
     notifyMemoryPressure(agent, .critical);
 }
