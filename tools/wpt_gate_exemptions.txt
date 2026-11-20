@@ -2078,6 +2078,20 @@ matches         = firefox
 ruling          = WebKit adopted the spec in d0627f4a50 (2026-10-09); Safari 27.2 stable lags; spec + Firefox (the integrator, 2026-11-20 4:25 PM ET); whitespace-with-base.html and -module.html, which Firefox passes, pin the same rule
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
+# follows-majority (lane blk5; the user's ruling 2026-11-20 5:01 PM ET): about:srcdoc navigated to by the parent's
+# origin loads the iframe's srcdoc content (3ae3dcaba; Chromium navigation_request.cc CheckAboutSrcDoc, reproduced).
+# The browsers' results are the aligned stable runs at 2358bd4835, read from wptd storage 2026-11-20 by 5:02 PM ET (clock).
+
+[html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-navigation-blocked.window.js]
+kind            = follows-majority
+why             = a navigation to about:srcdoc whose initiator has the parent's origin (window.location, window.open(), and about:srcdoc?query from inside a srcdoc document) loads the iframe's srcdoc content as Chrome and Safari do, so "srcdoc ready" arrives and all three subtests fail with Chrome's and Safari's assertion ('Received message "srcdoc ready" but expected to receive no message'); Firefox blocks the navigation and passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/3 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 3/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = The user, 2026-11-20 5:01 PM ET: 'Accept' (keep about:srcdoc-by-parent loading srcdoc content, Chrome + Safari; +6 grandparent / -3 this file)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
 # follows-majority (lane flk2, 2026-11-20; the integrator's OK 12:00 PM ET): the test races a rendering opportunity
 # against a postMessage chain. Crane fails it as Chrome and Safari do, and passes only when the chain is delayed past
 # the next 60 Hz grid moment (tools/wpt_build_differences.txt, its timing-bound line, has the measurements).
