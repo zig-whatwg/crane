@@ -1947,19 +1947,16 @@ matches         = chrome, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 # needs-renderer (lane dnd1, 2026-11-20; the integrator's ruling 3:51 PM ET, superseding lane blk5's follows-majority
-# candidate): the two files are byte-identical. The drag starts from pointerMove(0, 0, {origin: host}), whose point
-# Chrome hit-tests into the host's closed shadow child (#doNotExposeThisNode, draggable, 100x100 over the host); with
-# no renderer the element at an element origin's in-view centre is the origin itself (tests/wpt_runner/test_driver.zig
-# moveTarget, user_input.hitTest; the headless platform's hitTest is empty), so the press lands on the host, which
-# is not draggable and has no draggable ancestor, and HTML 6.11.5 step 1 starts no drag ("nothing is being dragged;
+# candidate): the drag starts from pointerMove(0, 0, {origin: host}), whose point Chrome hit-tests into the host's
+# closed shadow child (#doNotExposeThisNode, draggable, 100x100 over the host); with no renderer the element at an
+# element origin's in-view centre is the origin itself (tests/wpt_runner/test_driver.zig moveTarget,
+# user_input.hitTest; the headless platform's hitTest is empty), so the press lands on the host, which is not
+# draggable and has no draggable ancestor, and HTML 6.11.5 step 1 starts no drag ("nothing is being dragged;
 # return"). Chrome 157 1/1; Firefox 160 and Safari 27.2 0/1 (their WebDrivers synthesize no drag from Actions).
+# Its sibling shadow-dom/dragleave-related-target.html drags a light-tree source and passes since lane dnd1's
+# drag and drop (1/1, as Chrome): it is not here.
 
 [shadow-dom/dragenter-related-target.html]
-kind      = needs-renderer
-why       = the drag source is whatever lies under the closed shadow host's centre (Chrome: the draggable shadow child covering it); with no renderer the element-origin hit is the host itself, which is not draggable, so HTML 6.11.5 step 1 starts no drag and no dragenter reaches target1
-assertion = assert_true: dragenter should have fired on target1 expected true got false
-
-[shadow-dom/dragleave-related-target.html]
 kind      = needs-renderer
 why       = the drag source is whatever lies under the closed shadow host's centre (Chrome: the draggable shadow child covering it); with no renderer the element-origin hit is the host itself, which is not draggable, so HTML 6.11.5 step 1 starts no drag and no dragenter reaches target1
 assertion = assert_true: dragenter should have fired on target1 expected true got false
