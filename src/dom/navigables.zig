@@ -100,7 +100,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter, refresh: bool) bool,
     /// The .push_replace apply's step-12 job for `browsing_context` (lane
     /// nav2 F1): the rest of the cross-document navigation `navigation_id`
     /// whose finalize the traversable's queue runs - the entry listed, the
@@ -198,9 +198,14 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 /// by these IDs. True when a population started that will report; false
 /// when none did (nothing to fetch, or a document shown again from the
 /// back/forward cache, which is done when this returns).
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
+///
+/// `refresh`: the reload a declarative refresh to the document's own URL
+/// stands in for (Document.refreshComesDue) - its request's referrer is the
+/// navigable's active document, the one that refreshed, as the navigation
+/// the refresh steps make "using document" would have it.
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter, refresh: bool) bool {
     const impl = implementation.get() orelse return false;
-    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
+    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter, refresh);
 }
 
 /// The .push_replace apply's step-12 job: the commit of the cross-document
@@ -959,7 +964,7 @@ test "without an installed implementation nothing navigates" {
     followHyperlink(&element, .activation);
     downloadHyperlink(&element, .activation);
     // No population starts.
-    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
+    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }, false));
     // No commit continues.
     try std.testing.expect(!commitNavigation(@ptrCast(&element), 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);
