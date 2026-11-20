@@ -35,7 +35,7 @@ fn areaEligibility() !void {
         const area = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("a"))).?;
         try std.testing.expectEqual(case.focusable, html.focus.isFocusableArea(area));
         if (case.focusable) {
-            html.focus.focusMethod(area);
+            html.focus.focusMethod(area, null);
             try std.testing.expect((try interfaces.Document.get_activeElement(document)) == area);
             // Focus fixup must use the image's rendering, not area's own box.
             try std.testing.expect(html.focus.focusedAreaOf(document) == area);
