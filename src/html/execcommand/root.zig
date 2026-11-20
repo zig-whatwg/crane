@@ -524,7 +524,7 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // fire no beforeinput.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", command.inputType(), null)) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     // Step 4.4: a beforeinput listener may have moved or removed the
     // selection.
@@ -604,7 +604,7 @@ pub fn deleteWordByKey(target: *Instance, forward: bool) void {
         // No word in that direction: nothing to delete.
         if (edit.rangeCollapsed() catch true) return;
     }
-    if (!fireInputEvent(host, "beforeinput", input_type, null)) {
+    if (!fireInputEventWith(host, "beforeinput", input_type, null, null, selectionTargetRange(&edit))) {
         if (was_collapsed) edit.collapse(original.node, original.offset) catch {};
         return;
     }
@@ -725,7 +725,7 @@ pub fn insertFromPaste(document: *Instance, markup: ?[]const u8, text: ?[]const 
     const value = markup orelse text orelse "";
     if (!(isEnabledIn(&edit, command) catch false)) return false;
     const host = (affectedEditingHost(&edit) catch null) orelse return false;
-    if (!fireInputEventWith(host, "beforeinput", "insertFromPaste", null, data_transfer)) return true;
+    if (!fireInputEventWith(host, "beforeinput", "insertFromPaste", null, data_transfer, selectionTargetRange(&edit))) return true;
     if (!isConnected(host)) return true;
     // A beforeinput listener may have moved or removed the selection.
     if (!(isEnabledIn(&edit, command) catch false)) return true;
@@ -737,7 +737,7 @@ pub fn insertFromPaste(document: *Instance, markup: ?[]const u8, text: ?[]const 
         log.debug("paste: {}", .{err});
         return true;
     };
-    if (result and edit.modified and isConnected(affected)) _ = fireInputEventWith(affected, "input", "insertFromPaste", null, data_transfer);
+    if (result and edit.modified and isConnected(affected)) _ = fireInputEventWith(affected, "input", "insertFromPaste", null, data_transfer, null);
     return true;
 }
 
@@ -754,7 +754,7 @@ pub fn deleteByCut(document: *Instance) void {
     if (!(isEnabledIn(&edit, .delete) catch false)) return;
     if (edit.rangeCollapsed() catch true) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", "deleteByCut", null)) return;
+    if (!fireInputEventWith(host, "beforeinput", "deleteByCut", null, null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     if (!(isEnabledIn(&edit, .delete) catch false)) return;
     if (edit.rangeCollapsed() catch true) return;
@@ -778,7 +778,7 @@ fn commandByKey(target: *Instance, command: Command, value: []const u8) void {
     var edit = (beginEdit(document, arena.allocator()) catch return) orelse return;
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", command.inputType(), command.inputData(value))) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), command.inputData(value), null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
@@ -814,19 +814,46 @@ fn fireHistoryInput(target: *Instance, input_type: []const u8) void {
 /// whether it was not cancelled. The event is freed unless a listener kept
 /// it.
 fn fireInputEvent(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8) bool {
-    return fireInputEventWith(target, event_type, input_type, data, null);
+    return fireInputEventWith(target, event_type, input_type, data, null, null);
+}
+
+/// A beforeinput's target range (Input Events 2, "target ranges"): the
+/// content the event will modify if it is not canceled.
+const TargetRange = struct { start: common.Point, end: common.Point };
+
+/// The target range of a key's beforeinput: a selection that is not
+/// collapsed is the content its action replaces or deletes (Chrome and
+/// Firefox: editing/other/delete-without-unwrapping-first-line-of-child-
+/// block.html's getTargetRanges() rows for Backspace and typing over a
+/// selection, wpt.fyi 2358bd4835). A collapsed one gets none: what a caret's
+/// Backspace or Delete removes is the action's to compute (TODO: Blink's
+/// TypingCommand target ranges for a caret).
+fn selectionTargetRange(edit: *Edit) ?TargetRange {
+    if (edit.rangeCollapsed() catch true) return null;
+    const start = (edit.rangeStart() catch return null) orelse return null;
+    const end = (edit.rangeEnd() catch return null) orelse return null;
+    return .{ .start = start, .end = end };
 }
 
 /// fireInputEvent with a dataTransfer (Input Events 2: insertFromPaste,
-/// insertFromDrop, insertReplacementText in an editing host).
-fn fireInputEventWith(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8, data_transfer: ?*Instance) bool {
+/// insertFromDrop, insertReplacementText in an editing host) and a target
+/// range (the event's target ranges, as a StaticRange).
+fn fireInputEventWith(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8, data_transfer: ?*Instance, target_range: ?TargetRange) bool {
     const cancelable = comptime std.mem.eql(u8, event_type, "beforeinput");
+    // The StaticRange outlives the event's own release below: an event
+    // never wrapped lets its traced edge go first (InputEvent.deinit).
+    const static_range: ?*Instance = if (target_range) |r| interfaces.StaticRange.call_constructor(target.ctx, .{ .startContainer = r.start.node, .startOffset = r.start.offset, .endContainer = r.end.node, .endOffset = r.end.offset }) catch null else null;
+    const range_generation: u64 = if (static_range) |r| runtime.SlabAllocator.generationOf(r) else 0;
+    defer if (static_range) |r| r.releaseIfUnwrapped(range_generation);
+    var ranges: [1]*Instance = undefined;
+    if (static_range) |r| ranges[0] = r;
     const init: dictionaries.InputEventInit = .{
         .base = .{ .base = .{ .bubbles = true, .cancelable = cancelable, .composed = true }, .view = viewOf(target) },
         .data = if (data) |d| runtime.DOMString.initInterned(d) else null,
         .isComposing = false,
         .inputType = runtime.DOMString.initInterned(input_type),
         .dataTransfer = data_transfer,
+        .targetRanges = if (static_range != null) ranges[0..1] else null,
     };
     const event = interfaces.InputEvent.call_constructor(target.ctx, runtime.DOMString.initInterned(event_type), webidl.Opt(dictionaries.InputEventInit).passed(init)) catch |err| {
         log.debug("{s} not fired: {}", .{ event_type, err });

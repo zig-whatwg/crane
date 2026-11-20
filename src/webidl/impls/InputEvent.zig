@@ -24,8 +24,12 @@
 //! the teardown net. The paste action gives its beforeinput and input in an
 //! editing host one (Input Events 2, insertFromPaste: "dataTransfer" holds
 //! what is inserted; src/html/execcommand/clipboard.zig).
-//! Stated: targetRanges are not kept - nothing fires beforeinput with ranges
-//! yet - so getTargetRanges() is an empty sequence.
+//! Its target ranges (Input Events 2, specs/w3c/input-events.md "target
+//! ranges"): the StaticRanges of InputEventInit's targetRanges, kept as
+//! dataTransfer is - a traced edge each (Blink's InputEvent::Trace visits
+//! ranges_), a link and its realm as the teardown net - and returned by
+//! getTargetRanges(). The editing key paths give their trusted beforeinput
+//! the range the action will change (src/html/execcommand/root.zig).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -55,12 +59,27 @@ pub const InternalState = struct {
     is_composing: bool = false,
     data_transfer: ?dom.same_object.Link = null,
     data_transfer_realm: ?runtime.Context = null,
+    /// The target ranges, in order; each traced in its own slot.
+    target_ranges: std.ArrayList(TargetRange) = .empty,
 
     fn clear(self: *InternalState) void {
         if (self.data) |d| self.allocator.free(d);
         self.data = null;
         self.allocator.free(self.input_type);
         self.input_type = &.{};
+    }
+};
+
+/// One target range: the StaticRange, its realm (the teardown net), and the
+/// name of the traced slot that keeps it.
+const TargetRange = struct {
+    link: dom.same_object.Link,
+    realm: runtime.Context,
+    slot_name: [24]u8 = undefined,
+    slot_len: usize = 0,
+
+    fn slot(self: *const TargetRange) engine.TracedSlot {
+        return .{ .name = self.slot_name[0..self.slot_len] };
     }
 };
 
@@ -91,6 +110,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // A native event can die before its wrapper exists: end the edge
         // waiting for that wrapper (SubmitEvent's submitter likewise).
         if (internal.data_transfer != null) engine.forgetTracedChild(instance, .{ .name = "dataTransfer" });
+        for (internal.target_ranges.items) |*range| engine.forgetTracedChild(instance, range.slot());
+        internal.target_ranges.deinit(internal.allocator);
         internal.clear();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -120,6 +141,22 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         internal.data_transfer = dom.same_object.Link.to(data_transfer);
         internal.data_transfer_realm = data_transfer.ctx;
         engine.traceChild(instance, data_transfer, .{ .name = "dataTransfer" });
+    }
+    // "When an InputEvent object is created, its target ranges are set to
+    // the value of the targetRanges attribute of the InputEventInit
+    // dictionary, or to an empty sequence if that attribute was not given."
+    if (dict.targetRanges) |ranges| {
+        try internal.target_ranges.ensureTotalCapacity(allocator, ranges.len);
+        for (ranges, 0..) |range, i| {
+            var entry: TargetRange = .{ .link = dom.same_object.Link.to(range), .realm = range.ctx };
+            const name = std.fmt.bufPrint(&entry.slot_name, "targetRanges[{d}]", .{i}) catch unreachable;
+            entry.slot_len = name.len;
+            // The slot names the entry's own bytes: traced from where the
+            // list keeps it (its capacity was reserved, so it never moves).
+            internal.target_ranges.appendAssumeCapacity(entry);
+            const stored = &internal.target_ranges.items[internal.target_ranges.items.len - 1];
+            engine.traceChild(instance, range, stored.slot());
+        }
     }
     return instance;
 }
@@ -156,8 +193,16 @@ pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!?*runtime.Instance
     return link.instance;
 }
 
-/// Operation: getTargetRanges - an empty sequence (stated above).
+/// Operation: getTargetRanges() - "returns the target ranges of the
+/// InputEvent object": a new sequence of the StaticRanges it keeps.
 pub fn call_getTargetRanges(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const realm = engine.currentRealm() orelse instance.ctx;
-    return (try engine.createSequenceOfPlatformObjects(realm, &.{})).take();
+    const internal = getInternal(instance) orelse return (try engine.createSequenceOfPlatformObjects(realm, &.{})).take();
+    var live: std.ArrayList(*runtime.Instance) = .empty;
+    defer live.deinit(instance.ctx.allocator);
+    for (internal.target_ranges.items) |*range| {
+        if (!range.realm.hasEngine() or !range.link.isLive()) continue;
+        try live.append(instance.ctx.allocator, range.link.instance);
+    }
+    return (try engine.createSequenceOfPlatformObjects(realm, live.items)).take();
 }
