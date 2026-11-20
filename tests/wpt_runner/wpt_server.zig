@@ -1410,6 +1410,38 @@ test "HTTPS query flags select the TLS listener without matching other parameter
     try std.testing.expectEqualStrings("https://web-platform.test:9000/example.h2.html?wpt_flags=https", h2_url);
 }
 
+test "a wpt_flags=h2 variant is fetched from the HTTP/2 listener, ahead of wpt_flags=https" {
+    const allocator = std.testing.allocator;
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+    server.port = 8001;
+    server.https_port = 8444;
+
+    const cases = [_]struct {
+        path: []const u8 = "websockets/Close-1000-reason.any.js",
+        context: test_parser.GlobalType = .window,
+        variant: []const u8,
+        url: []const u8,
+    }{
+        .{ .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt_flags=h2" },
+        .{ .context = .worker, .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.worker.html?wpt_flags=h2" },
+        .{ .variant = "?wpt_flags=https&wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt_flags=https&wpt_flags=h2" },
+        .{ .variant = "?wpt%5Fflags=h%32", .url = "https://web-platform.test:9000/websockets/Close-1000-reason.any.html?wpt%5Fflags=h%32" },
+        .{ .path = "websockets/x.https.any.js", .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/x.https.any.html?wpt_flags=h2" },
+        .{ .path = "service-workers/x.https.any.js", .context = .serviceworker, .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/service-workers/x.https.any.serviceworker.html?wpt_flags=h2" },
+        .{ .variant = "?wss", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wss" },
+        .{ .variant = "?wpt_flags=h2x", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wpt_flags=h2x" },
+        .{ .variant = "?wpt_flags=H2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?wpt_flags=H2" },
+        .{ .variant = "?other=wpt_flags%3Dh2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html?other=wpt_flags%3Dh2" },
+        .{ .variant = "#wpt_flags=h2", .url = "http://web-platform.test:8001/websockets/Close-1000-reason.any.html#wpt_flags=h2" },
+    };
+    for (cases) |case| {
+        const built = try server.buildTestUrl(allocator, case.path, case.context, case.variant);
+        defer allocator.free(built);
+        try std.testing.expectEqualStrings(case.url, built);
+    }
+}
+
 test "a .h2. test is fetched from the HTTP/2 listener, and every URL builder agrees" {
     const allocator = std.testing.allocator;
 
