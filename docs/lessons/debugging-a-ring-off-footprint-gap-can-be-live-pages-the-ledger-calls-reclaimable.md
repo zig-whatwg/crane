@@ -1,0 +1,12 @@
+# Debugging: A ring-off footprint gap can be live pages the kernel's ledger calls reclaimable
+
+**Date**: 2026-11-20
+**Lesson**: When two builds hold the same live malloc memory but their `MallocLargeCache=0` footprints differ, check whether the LOWER side is under-counting. Compare `footprint -w`'s "Reclaimable" for Malloc Small with vmmap's free space for the zone (its MALLOC ZONE table: DIRTY minus ALLOCATED, the FRAG SIZE column). If reclaimable is larger than the free space, live, written blocks sit on pages the kernel's ledger does not charge, and the higher figure is the honest one.
+
+**Why**: With the large-entry cache off, libmalloc releases a small-zone block's pages at free time (madvise `MADV_FREE_REUSABLE`), which takes them out of `phys_footprint`. It does not call `MADV_FREE_REUSE` when it hands those pages out again. So a block allocated where a freed one was, and written (a ReleaseSafe `alloc` writes all of it: `@memset(undefined)`), stays counted as reclaimable. Which build "wins" then depends on what transient frees came before, not on what it holds.
+
+**What Happened**: Lane net3's WebSocket cost rows read +7.5 MB in the ring-off pass (1.19-1.25), constant across rows, while the ring-on pass read 1.000. `heap -z` showed identical live malloc on both sides: 12,096 vs 12,097 nodes, 20,778 KB, the same size bins, including 266 live 64 KB blocks. vmmap's zone dirty was 22.2M vs 22.1M. `footprint -w` put the whole gap in Malloc Small: main read dirty 13 MB + reclaimable 9,232 KB, the tip dirty 21 MB + reclaimable 1,216 KB. Main's reclaimable was more than its 1,974K of free dirty space. Main went through libcurl's lib/ws.c, which allocates and frees 64 KiB receive chunks, and each socket's 64 KiB receive scratch reused those pages. The tip had no ws.c, so the same scratch was charged. Four leave-one-out variants of the tip's input buffer changed nothing; the footprint categories found it in one window.
+
+**Fix**: The real retention was the same on both sides: WebSocket.zig's 64 KiB receive scratch lived until a collection ended the socket, so 260 closed sockets held 16.6 MB. It is now freed when the connection reaches CLOSED (tests/websocket/net3_receive_scratch_test.zig counts the live 64 KiB blocks through the Browser's allocator).
+
+**Takeaway**: **Before chasing an allocation behind a ring-off gap, read footprint by category on both sides: identical live heap plus reclaimable greater than free means accounting, not retention. Then look at what BOTH sides hold that they need not; that is the fix worth making.**

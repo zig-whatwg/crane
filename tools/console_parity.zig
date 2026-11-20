@@ -79,8 +79,8 @@ fn listenerOf(path: []const u8) enum { http, https, h2 } {
     return .http;
 }
 
-/// wpt_server.zig `hasHttpsQueryFlag`: a variant's `wpt_flags=https`.
-fn hasHttpsQueryFlag(variant: []const u8) bool {
+/// wpt_server.zig `hasQueryFlag`: a variant's `wpt_flags=<flag>`.
+fn hasQueryFlag(variant: []const u8, flag: []const u8) bool {
     const before_fragment = variant[0 .. std.mem.indexOfScalar(u8, variant, '#') orelse variant.len];
     const query_start = std.mem.indexOfScalar(u8, before_fragment, '?') orelse return false;
     var fields = std.mem.splitScalar(u8, before_fragment[query_start + 1 ..], '&');
@@ -91,7 +91,7 @@ fn hasHttpsQueryFlag(variant: []const u8) bool {
         if (!std.mem.eql(u8, key, "wpt_flags")) continue;
         var value_buffer: ["https".len]u8 = undefined;
         const value = (std.Uri.Component{ .percent_encoded = field[equals + 1 ..] }).toRaw(&value_buffer) catch continue;
-        if (std.mem.eql(u8, value, "https")) return true;
+        if (std.mem.eql(u8, value, flag)) return true;
     }
     return false;
 }
@@ -126,7 +126,11 @@ pub fn testUrl(allocator: std.mem.Allocator, path: []const u8, context: test_par
         },
         else => {},
     }
-    if (listener == .http and hasHttpsQueryFlag(variant)) listener = .https;
+    // wpt_server.zig: wpt_flags=h2 before wpt_flags=https (wptrunner's
+    // server_protocol).
+    if (listener != .h2 and hasQueryFlag(variant, "h2")) {
+        listener = .h2;
+    } else if (listener == .http and hasQueryFlag(variant, "https")) listener = .https;
     const scheme: []const u8 = if (listener == .http) "http" else "https";
     const port: u16 = switch (listener) {
         .http => 8000,
@@ -146,6 +150,8 @@ test "testUrl builds the runner's URLs" {
         .{ .path = "dom/nodes/Element-matches.html", .context = .window, .variant = "", .url = "http://web-platform.test:8000/dom/nodes/Element-matches.html" },
         .{ .path = "encoding/single-byte-decoder.html", .context = .window, .variant = "?windows-1252", .url = "http://web-platform.test:8000/encoding/single-byte-decoder.html?windows-1252" },
         .{ .path = "fetch/x.h2.any.js", .context = .window, .variant = "", .url = "https://web-platform.test:9000/fetch/x.h2.any.html" },
+        .{ .path = "websockets/x.any.js", .context = .worker, .variant = "?wpt_flags=h2", .url = "https://web-platform.test:9000/websockets/x.any.worker.html?wpt_flags=h2" },
+        .{ .path = "websockets/x.any.js", .context = .window, .variant = "?wss", .url = "http://web-platform.test:8000/websockets/x.any.html?wss" },
     };
     for (cases) |case| {
         const url = try testUrl(a, case.path, case.context, case.variant);
