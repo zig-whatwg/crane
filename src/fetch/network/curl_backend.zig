@@ -25,6 +25,12 @@ const NetworkError = backend.NetworkError;
 const HttpVersion = backend.HttpVersion;
 const curl = @import("curl_ffi.zig");
 const curl_options = @import("curl_options");
+
+/// Whether this build's libcurl speaks HTTP/2 (-Dhttp2, through the nghttp2
+/// build.zig compiles): what tests of kit/curl's nghttp2 parts
+/// (tests/fetch/net3_websocket_h2_test.zig) are gated on, as the platform's
+/// own code is on platform_options.http2.
+pub const http2_enabled = curl_options.http2;
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
 const kit_curl = @import("kit_curl_share");
