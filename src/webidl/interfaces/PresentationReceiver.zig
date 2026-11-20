@@ -155,4 +155,11 @@ pub const PresentationReceiver = struct {
     pub fn get_connectionList(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PresentationReceiverImpl.get_connectionList(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_connectionList",
+    };
 };

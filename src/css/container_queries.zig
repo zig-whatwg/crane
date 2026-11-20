@@ -451,3 +451,307 @@ fn appendSource(a: Allocator, out: *Out, text: []const u8) Allocator.Error!void 
         }
     }
 }
+
+// ============================================================================
+// Evaluation (CSS Conditional 5 5.4, 6): a serialized <container-query>
+// against the query container its element selected.
+// ============================================================================
+
+/// Three-valued, as media queries and if() conditions are (Media Queries 4
+/// 3.2; Conditional 5 5.4: "As with media queries, <general-enclosed>
+/// evaluates to unknown").
+pub const Truth = @import("if_function.zig").Truth;
+
+/// What a query asks of its query container (5.4: the container "is
+/// selected from among the element's ancestor query containers that are
+/// established as a valid query container for all the container features in
+/// the <container-query>").
+pub const Needs = struct {
+    /// A size feature: a size container (container-type size or
+    /// inline-size, 5.1).
+    size: bool = false,
+    /// A scroll-state() query: a scroll-state container.
+    scroll_state: bool = false,
+    /// An unknown or unsupported feature, <general-enclosed> included: "no
+    /// query container will be selected for that <container-condition>".
+    unknown: bool = false,
+};
+
+/// `needs` for a <container-query> as `parse` serialized it (`Condition.query`).
+pub fn needsOf(a: Allocator, text: []const u8) Allocator.Error!Needs {
+    var needs: Needs = .{};
+    const items = try components(a, text) orelse return .{ .unknown = true };
+    defer a.free(items);
+    try collectNeeds(a, text, items, &needs, 0);
+    return needs;
+}
+
+fn collectNeeds(a: Allocator, text: []const u8, items: []const Component, needs: *Needs, depth: u32) Allocator.Error!void {
+    if (depth >= max_nesting) {
+        needs.unknown = true;
+        return;
+    }
+    for (items) |item| {
+        if (item.token.token_type == .ident) continue; // not, and, or
+        const span = item.inner orelse {
+            needs.unknown = true;
+            continue;
+        };
+        const body = text[span.start..span.end];
+        if (item.token.token_type == .function) {
+            if (tokenizer.nameEql(item.token.value, "style")) continue;
+            if (tokenizer.nameEql(item.token.value, "scroll-state")) {
+                needs.scroll_state = true;
+                continue;
+            }
+            needs.unknown = true;
+            continue;
+        }
+        if (item.token.token_type != .left_paren) {
+            needs.unknown = true;
+            continue;
+        }
+        const nested = try components(a, body) orelse {
+            needs.unknown = true;
+            continue;
+        };
+        defer a.free(nested);
+        if (isNestedQuery(nested)) {
+            try collectNeeds(a, body, nested, needs, depth + 1);
+            continue;
+        }
+        var scratch: Out = .empty;
+        defer scratch.deinit(a);
+        if (try feature(a, body, nested, .size, &scratch)) {
+            needs.size = true;
+        } else needs.unknown = true;
+    }
+}
+
+/// `( <container-query> )` rather than `( <size-feature> )` or
+/// <general-enclosed>: its first component is `not` or a parenthesized or
+/// functional block.
+fn isNestedQuery(items: []const Component) bool {
+    if (items.len == 0) return false;
+    if (items[0].is("not")) return true;
+    return items[0].token.token_type == .left_paren or items[0].token.token_type == .function;
+}
+
+/// A <container-query> as a tree, parsed once from `parse`'s serialization
+/// (Compiled): its style() leaves are parsed style queries (6.2) the query
+/// container answers; a size feature and a scroll-state() query are unknown
+/// - their answers are the container's layout and scroll state, which no
+/// renderer gives Crane yet (6.1, 6.3) - and so is <general-enclosed> (5.4).
+pub const Node = union(enum) {
+    unknown,
+    not: *const Node,
+    all: []const *const Node,
+    any: []const *const Node,
+    style: *const @import("if_function.zig").StyleQuery,
+};
+
+/// One <container-condition>, compiled.
+pub const CompiledCondition = struct {
+    /// Its <container-name> ("" for none), borrowed from the List.
+    name: []const u8,
+    needs: Needs,
+    /// Its <container-query>; null when the condition has none.
+    query: ?*const Node,
+};
+
+/// An @container rule's conditions compiled for evaluation: parsed once,
+/// when the style sheet is compiled, not again for every element its rules
+/// are matched against. Borrows the List's text: keep the List alive.
+pub const Compiled = struct {
+    allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
+    conditions: []const CompiledCondition,
+    /// The parsed style queries, each with its own arena.
+    style_queries: []*@import("if_function.zig").StyleQuery,
+
+    pub fn deinit(self: *Compiled) void {
+        for (self.style_queries) |style_query| {
+            style_query.deinit();
+            self.allocator.destroy(style_query);
+        }
+        self.arena.deinit();
+        self.* = undefined;
+    }
+
+    /// A compiled query against `context`'s query container:
+    /// `context.styleQuery(*const StyleQuery) !Truth` answers its style()
+    /// leaves.
+    pub fn evaluate(node: *const Node, context: anytype) anyerror!Truth {
+        return switch (node.*) {
+            .unknown => .unknown,
+            .style => |style_query| try context.styleQuery(style_query),
+            .not => |operand| negate(try evaluate(operand, context)),
+            .all => |operands| blk: {
+                var result: Truth = .true;
+                for (operands) |operand| result = conjunction(result, try evaluate(operand, context));
+                break :blk result;
+            },
+            .any => |operands| blk: {
+                var result: Truth = .false;
+                for (operands) |operand| result = disjunction(result, try evaluate(operand, context));
+                break :blk result;
+            },
+        };
+    }
+};
+
+/// Compile `list` (Compiled). Owned: `deinit` it.
+pub fn compile(allocator: Allocator, list: *const List) Allocator.Error!Compiled {
+    var builder: Builder = .{ .arena = std.heap.ArenaAllocator.init(allocator), .allocator = allocator };
+    errdefer {
+        for (builder.style_queries.items) |style_query| {
+            style_query.deinit();
+            allocator.destroy(style_query);
+        }
+        builder.style_queries.deinit(allocator);
+        builder.arena.deinit();
+    }
+    const arena = builder.arena.allocator();
+    const conditions = try arena.alloc(CompiledCondition, list.conditions.len);
+    for (list.conditions, conditions) |condition, *out| {
+        out.* = .{ .name = condition.name, .needs = .{}, .query = null };
+        if (condition.query.len == 0) continue;
+        out.needs = try needsOf(allocator, condition.query);
+        out.query = try builder.parseQuery(condition.query, 0);
+    }
+    const style_queries = try arena.dupe(*@import("if_function.zig").StyleQuery, builder.style_queries.items);
+    builder.style_queries.deinit(allocator);
+    return .{ .allocator = allocator, .arena = builder.arena, .conditions = conditions, .style_queries = style_queries };
+}
+
+const Builder = struct {
+    arena: std.heap.ArenaAllocator,
+    allocator: Allocator,
+    style_queries: std.ArrayList(*@import("if_function.zig").StyleQuery) = .empty,
+
+    fn make(self: *Builder, node: Node) Allocator.Error!*const Node {
+        const out = try self.arena.allocator().create(Node);
+        out.* = node;
+        return out;
+    }
+
+    fn parseQuery(self: *Builder, text: []const u8, depth: u32) Allocator.Error!*const Node {
+        const items = try components(self.allocator, text) orelse return self.make(.unknown);
+        defer self.allocator.free(items);
+        return self.queryItems(text, items, depth);
+    }
+
+    fn queryItems(self: *Builder, text: []const u8, items: []const Component, depth: u32) Allocator.Error!*const Node {
+        if (items.len == 0 or depth >= max_nesting) return self.make(.unknown);
+        if (items[0].is("not")) {
+            if (items.len != 2) return self.make(.unknown);
+            return self.make(.{ .not = try self.inParens(text, items[1], depth) });
+        }
+        if (items.len == 1) return self.inParens(text, items[0], depth);
+        const and_op = items[1].is("and");
+        var operands: std.ArrayList(*const Node) = .empty;
+        var i: usize = 0;
+        while (i < items.len) : (i += 2) {
+            if (i != 0 and !items[i - 1].is(if (and_op) "and" else "or")) return self.make(.unknown);
+            try operands.append(self.arena.allocator(), try self.inParens(text, items[i], depth));
+        }
+        if (items.len % 2 == 0) return self.make(.unknown);
+        const list = try operands.toOwnedSlice(self.arena.allocator());
+        return self.make(if (and_op) .{ .all = list } else .{ .any = list });
+    }
+
+    fn inParens(self: *Builder, text: []const u8, item: Component, depth: u32) Allocator.Error!*const Node {
+        const span = item.inner orelse return self.make(.unknown);
+        const body = text[span.start..span.end];
+        if (item.token.token_type == .function) {
+            if (!tokenizer.nameEql(item.token.value, "style")) return self.make(.unknown);
+            var parsed = (try @import("if_function.zig").parseStyleQuery(self.allocator, body)) orelse return self.make(.unknown);
+            const held = self.allocator.create(@import("if_function.zig").StyleQuery) catch |err| {
+                parsed.deinit();
+                return err;
+            };
+            held.* = parsed;
+            self.style_queries.append(self.allocator, held) catch |err| {
+                held.deinit();
+                self.allocator.destroy(held);
+                return err;
+            };
+            return self.make(.{ .style = held });
+        }
+        if (item.token.token_type != .left_paren) return self.make(.unknown);
+        const nested = try components(self.allocator, body) orelse return self.make(.unknown);
+        defer self.allocator.free(nested);
+        if (isNestedQuery(nested)) return self.queryItems(body, nested, depth + 1);
+        return self.make(.unknown);
+    }
+};
+
+fn negate(value: Truth) Truth {
+    return switch (value) {
+        .true => .false,
+        .false => .true,
+        .unknown => .unknown,
+    };
+}
+
+fn conjunction(x: Truth, y: Truth) Truth {
+    if (x == .false or y == .false) return .false;
+    if (x == .unknown or y == .unknown) return .unknown;
+    return .true;
+}
+
+fn disjunction(x: Truth, y: Truth) Truth {
+    if (x == .true or y == .true) return .true;
+    if (x == .unknown or y == .unknown) return .unknown;
+    return .false;
+}
+
+const EvaluationTest = struct {
+    fn styleQuery(self: *const EvaluationTest, style_query: *const @import("if_function.zig").StyleQuery) anyerror!Truth {
+        _ = self;
+        return style_query.evaluate(Feature{});
+    }
+
+    const Feature = struct {
+        pub fn evaluate(self: Feature, leaf: @import("if_function.zig").StyleFeature) anyerror!Truth {
+            _ = self;
+            const name = switch (leaf) {
+                .boolean => |n| n,
+                else => return .unknown,
+            };
+            if (std.mem.eql(u8, name, "--yes")) return .true;
+            if (std.mem.eql(u8, name, "--no")) return .false;
+            return .unknown;
+        }
+    };
+};
+
+fn expectCompiled(text: []const u8, expected: Truth) !void {
+    const a = std.testing.allocator;
+    var list = (try parse(a, text)) orelse return error.TestUnexpectedResult;
+    defer list.deinit();
+    var compiled = try compile(a, &list);
+    defer compiled.deinit();
+    const context: EvaluationTest = .{};
+    try std.testing.expectEqual(expected, try Compiled.evaluate(compiled.conditions[0].query.?, &context));
+}
+
+test "a compiled container query's style() leaves are the query container's; size features and general-enclosed are unknown" {
+    try expectCompiled("style(--yes)", .true);
+    try expectCompiled("not style(--yes)", .false);
+    try expectCompiled("(style(--no)) or (not (style(--no)))", .true);
+    try expectCompiled("style(--yes) and style(--no)", .false);
+    try expectCompiled("(width > 100px)", .unknown);
+    try expectCompiled("(foo(bar)) or (not (foo(bar)))", .unknown);
+    try expectCompiled("style(--yes) or (width > 100px)", .true);
+    try expectCompiled("card style(--yes)", .true);
+}
+
+test "what a container query needs of its container" {
+    const a = std.testing.allocator;
+    try std.testing.expectEqual(Needs{}, try needsOf(a, "style(--x: y)"));
+    try std.testing.expectEqual(Needs{ .size = true }, try needsOf(a, "(width > 100px) and style(--x)"));
+    try std.testing.expectEqual(Needs{ .scroll_state = true }, try needsOf(a, "scroll-state(stuck: top)"));
+    try std.testing.expectEqual(Needs{ .unknown = true }, try needsOf(a, "(foo(bar)) or (not (foo(bar)))"));
+    try std.testing.expectEqual(Needs{}, try needsOf(a, "not ((style(--a)) or (style(--b)))"));
+}
