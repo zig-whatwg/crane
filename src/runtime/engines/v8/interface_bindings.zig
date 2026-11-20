@@ -651,135 +651,23 @@ pub fn takeSnapshotTemplates(isolate: *v8.Isolate) bool {
     return true;
 }
 
-/// Whether interface `T` is declared [SecureContext] (its own definition's
-/// extended attribute - a partial's scopes its members instead).
-fn isSecureContextInterface(comptime T: type) bool {
-    comptime {
-        if (!@hasDecl(T, "Meta") or !@hasDecl(T.Meta, "extended_attributes")) return false;
-        for (T.Meta.extended_attributes) |attr| {
-            if (std.mem.eql(u8, attr.name, "SecureContext")) return true;
-        }
-        return false;
-    }
-}
-
-/// WebIDL 3.3.13 and "exposed": in a realm whose settings object is not a
-/// secure context (ContextData.secure_context false), a [SecureContext]
-/// interface has no interface object. The interface objects are installed
-/// for every realm alike - by the snapshot, eagerly, or as lazy data
-/// properties - so a realm that is not a secure context deletes the global's
-/// property of every [SecureContext] interface (LockManager, Lock,
-/// SubtleCrypto, CookieStore, ...). Their members on other interfaces go as each interface
-/// object is made (V8Interface.materializeInterfaceObject), and a [Global]
-/// interface's own as its global is bound (hideSecureContextMembers).
-pub fn hideSecureContextInterfaceObjects(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    comptime scope: helpers.GlobalScope,
-) void {
-    @setEvalBranchQuota(400_000);
-    // Every [SecureContext] interface the global may have, exposed in
-    // `scope` or not: a window realm installs some it does not expose.
-    _ = scope;
-    if (interface_mod.realmIsSecureContext(context)) return;
-    const global = v8.v8_Context_Global(context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
-    inline for (iface_decls) |decl| {
-        if (comptime shouldSkipInterface(decl.name)) continue;
-        const InterfaceType = @field(interfaces, decl.name);
-        if (comptime @typeInfo(InterfaceType) == .@"struct" and isSecureContextInterface(InterfaceType)) {
-            interface_mod.hideNames(isolate, context, global, .{decl.name});
-        }
-    }
-}
-
-/// Install interfaces filtered by scope exposure
-///
-/// This function registers only the interfaces that are exposed in the given
-/// GlobalScopeKind. Uses the [Exposed] WebIDL extended attribute to determine
-/// which interfaces should be available in each scope.
-///
-/// For example:
-/// - Window scope: Document, HTMLElement, etc.
-/// - Worker scope: WorkerGlobalScope, MessagePort, etc.
-/// - ServiceWorker scope: ServiceWorkerGlobalScope, Cache, etc.
-///
-/// This is the exposure-driven interface installation from BSCOPE-03.
+/// A worker's or a worklet's realm, as it is made: the realm's exposure scope
+/// recorded (member-level [Exposed] reads it as interface objects are built),
+/// and its conditional constructs installed - the [SecureContext] ones, in a
+/// secure realm. The constructs every realm of `scope` has are lazy data
+/// properties of its global's template (worker_realm.globalScopeTemplate,
+/// installExposedConstructs): built when script first reads them. Before lane
+/// tmpl1 this built every exposed interface object of the scope - 369 of a
+/// dedicated worker's, 2.8 ms and 1.5 MB - and deleted the ones a restored
+/// isolate's default context had copied on (that context is plain now).
 pub fn installForScope(
     isolate: *v8.Isolate,
     context: *v8.Context,
     comptime scope: helpers.GlobalScope,
 ) void {
-    @setEvalBranchQuota(200_000);
+    _ = isolate;
     if (@import("context_manager.zig").getEntry(context)) |entry| entry.exposure_scope = scope;
-    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
-    const global = v8.v8_Context_Global(context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-    // V8 13.1 Genesis copies the default snapshot global's properties even
-    // when Context::New receives a different global template (see
-    // v8_wrapper.cpp, NewPlainGlobalContext). A worker must not retain the
-    // Window interface objects copied that way. Delete removes only own,
-    // configurable properties; it never changes the shared templates.
-    const from_snapshot = v8.v8_Isolate_IsFromSnapshot(isolate);
-
-    inline for (iface_decls) |decl| {
-        if (comptime shouldSkipInterface(decl.name)) continue;
-
-        const InterfaceType = @field(interfaces, decl.name);
-
-        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-            const is_mixin = comptime blk: {
-                const Meta = InterfaceType.Meta;
-                if (@hasDecl(Meta, "is_mixin")) {
-                    break :blk Meta.is_mixin;
-                }
-                break :blk false;
-            };
-            if (is_mixin) continue;
-
-            const has_legacy_namespace = comptime blk: {
-                const Meta = InterfaceType.Meta;
-                if (@hasDecl(Meta, "extended_attributes")) {
-                    const ext_attrs = Meta.extended_attributes;
-                    for (ext_attrs) |attr| {
-                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                            break :blk true;
-                        }
-                    }
-                }
-                break :blk false;
-            };
-            if (has_legacy_namespace) continue;
-
-            if (comptime helpers.isExposedIn(InterfaceType, scope)) {
-                const Binding = V8Interface(InterfaceType);
-                Binding.registerGlobalFast(isolate, context, global, decl.name);
-            } else if (from_snapshot) {
-                interface_mod.hideNames(isolate, context, global, .{decl.name});
-            }
-
-            // WebIDL's legacy Window names are properties of Window globals,
-            // including an alias whose interface is also exposed to workers.
-            if (comptime scope != .Window and @hasDecl(InterfaceType.Meta, "extended_attributes")) {
-                if (from_snapshot) {
-                    inline for (InterfaceType.Meta.extended_attributes) |attr| {
-                        if (comptime std.mem.eql(u8, attr.name, "LegacyWindowAlias") or
-                            std.mem.eql(u8, attr.name, "LegacyFactoryFunction"))
-                        {
-                            if (comptime @hasField(@TypeOf(attr.value), "identifier")) {
-                                interface_mod.hideNames(isolate, context, global, .{attr.value.identifier});
-                            } else if (comptime @hasField(@TypeOf(attr.value), "identifier_list")) {
-                                interface_mod.hideNames(isolate, context, global, attr.value.identifier_list);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // HTML's historical Document alias is defined in prose, not IDL.
-    if (scope != .Window and from_snapshot) interface_mod.hideNames(isolate, context, global, .{"HTMLDocument"});
+    installConditionalConstructs(scope, context);
 }
 
 /// Initialize ALL V8 interface bindings

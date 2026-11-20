@@ -114,7 +114,7 @@ fn createWorkletRealmOf(comptime Kind: type, agent: *runtime.Agent, options: run
     // The global object is a platform object of the worklet global scope
     // interface: the context is made from that interface's template (Blink's
     // WorkerOrWorkletScriptController::Initialize, as for a worker).
-    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, worker_realm.globalScopeTemplate(Kind.Interface, isolate)) orelse
+    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, worker_realm.globalScopeTemplate(Kind.Interface, Kind.scope, isolate)) orelse
         return EngineError.OperationFailed;
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
