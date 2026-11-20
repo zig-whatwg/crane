@@ -75,6 +75,11 @@ const Socket = struct {
     /// ALPN may offer h2 (a wss: URL, a platform with HTTP/2, and no
     /// fallback to HTTP/1.1 yet).
     offer_h2: bool,
+    /// ALPN chose h2: read in curl's pre-request callback (alpnChosen),
+    /// while the transfer still has its connection - a CONNECT_ONLY transfer
+    /// that is done keeps the connection only for curl_easy_send/recv, and
+    /// CURLINFO_TLS_SSL_PTR then has no TLS session to report.
+    alpn_h2: bool = false,
     key: handshake.Key,
     /// Bytes for the connection, from `out_start` on.
     out: std.ArrayList(u8) = .empty,
@@ -335,6 +340,11 @@ fn startConnection(socket: *Socket) platform.HttpError!void {
         c.curl_easy_setopt(easy, c.CURLOPT_HTTP_VERSION, version) != c.CURLE_OK or
         c.curl_easy_setopt(easy, c.CURLOPT_HTTPPROXYTUNNEL, @as(c_long, 1)) != c.CURLE_OK)
         return error.NetworkError;
+    socket.alpn_h2 = false;
+    if (socket.offer_h2 and
+        (c.curl_easy_setopt(easy, c.CURLOPT_PREREQFUNCTION, alpnChosen) != c.CURLE_OK or
+            c.curl_easy_setopt(easy, c.CURLOPT_PREREQDATA, @as(*anyopaque, @ptrCast(socket))) != c.CURLE_OK))
+        return error.NetworkError;
     try options.apply(easy, socket.allocator, socket.network.handleOptions());
     if (c.curl_multi_add_handle(socket.multi, easy) != c.CURLM_OK) return error.NetworkError;
     socket.easy = easy;
@@ -392,7 +402,7 @@ pub fn pollHandshake(handle: *platform.WebSocket) platform.HttpError!?platform.W
 
 /// The connection is up: start the handshake ALPN chose.
 fn connected(socket: *Socket) platform.HttpError!void {
-    if (http2 and socket.offer_h2 and negotiatedH2(socket.easy.?)) {
+    if (http2 and socket.offer_h2 and socket.alpn_h2) {
         socket.session = h2.Session.init(socket.allocator) catch |err| return mapH2(err);
         socket.phase = .h2_settings;
         return;
@@ -403,6 +413,16 @@ fn connected(socket: *Socket) platform.HttpError!void {
 
 fn mapH2(err: anyerror) platform.HttpError {
     return if (err == error.OutOfMemory) error.OutOfMemory else error.NetworkError;
+}
+
+/// CURLOPT_PREREQFUNCTION: curl calls it once the connection (and its TLS
+/// handshake) is up, before it would send a request - for a CONNECT_ONLY
+/// transfer too - while the transfer still holds its connection. `clientp`
+/// is the Socket.
+fn alpnChosen(clientp: ?*anyopaque, _: [*c]u8, _: [*c]u8, _: c_int, _: c_int) callconv(.c) c_int {
+    const socket: *Socket = @ptrCast(@alignCast(clientp orelse return c.CURL_PREREQFUNC_OK));
+    if (socket.easy) |easy| socket.alpn_h2 = negotiatedH2(easy);
+    return c.CURL_PREREQFUNC_OK;
 }
 
 /// Whether ALPN chose "h2" (curl's own answer is its HTTP/2 layer, which a
