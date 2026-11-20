@@ -169,92 +169,8 @@ pub const ByteStream = struct {
 };
 
 const encoding_sniffing = html_core.parser.encoding_sniffing;
+const meta_charset_scan = html_core.parser.meta_charset_scan;
 const log = std.log.scoped(.scripted_parser);
-
-/// A byte stream's decoding while it is parsed: the encoding, its
-/// confidence, and what "change the encoding" needs to switch it.
-const ByteStreamDecoding = struct {
-    allocator: Allocator,
-    /// The byte stream's bytes received so far - the parser's - which a
-    /// change of encoding decodes again from where the tokenizer is.
-    raw: *const std.ArrayListUnmanaged(u8),
-    /// The decoder of a body still arriving, which the next bytes go
-    /// through; null once every byte is decoded (complete input).
-    stream: ?encoding_sniffing.StreamDecoder = null,
-    encoding: encoding_sniffing.Encoding,
-    confidence: encoding_sniffing.Confidence,
-    document: *runtime.Instance,
-    input_stream: *InputStreamManager,
-    /// The length of the decoded input as decoded: a longer buffer has had
-    /// document.write() insert into it, and its offsets are no longer the
-    /// decoded bytes'.
-    decoded_len: usize,
-
-    /// HTML §13.2.3.4 "change the encoding", which the tree builder runs for
-    /// a meta element that declares `requested`.
-    fn change(context: *anyopaque, requested: encoding_sniffing.Encoding) void {
-        const self: *ByteStreamDecoding = @ptrCast(@alignCast(context));
-        // The meta steps: only "if the confidence is currently tentative".
-        if (self.confidence != .tentative) return;
-        // Steps 1-4: nothing to change - the confidence becomes certain.
-        const new = encoding_sniffing.encodingToChangeTo(self.encoding, requested) orelse {
-            self.confidence = .certain;
-            return;
-        };
-        // Step 5: every byte converted so far - up to the tokenizer's next
-        // input character - means the same in both encodings, so the rest
-        // of the stream is decoded with the new one in place.
-        const tokenizer = self.input_stream.tokenizer;
-        const consumed = if (tokenizer) |t| t.nextInputPosition() else self.input_stream.buffer.items.len;
-        const bytes = self.raw.items;
-        if (self.input_stream.buffer.items.len == self.decoded_len and consumed <= bytes.len and
-            encoding_sniffing.sameInterpretation(bytes[0..consumed], self.encoding, new))
-        {
-            const switched = blk: {
-                self.switchAt(consumed, new) catch |err| {
-                    log.warn("change the encoding: {}", .{err});
-                    break :blk false;
-                };
-                break :blk true;
-            };
-            if (switched) {
-                self.confidence = .certain;
-                return;
-            }
-        }
-        // Step 6 says to navigate to the document again (replace) with the
-        // new encoding. Deviation, stated: Crane ignores the new encoding
-        // and makes the confidence certain, as Blink does - its decoder
-        // switches codecs only for bytes not yet decoded
-        // (TextResourceDecoder::Decode -> FinalizeMetaCharsetCheck ->
-        // SetEncoding(..., kEncodingFromMetaTag), text_resource_decoder.cc)
-        // and nothing in Blink re-decodes or reloads for a meta found later.
-        // Re-running a navigation after its scripts ran is not something
-        // Crane's synchronous parse can do.
-        log.debug("change the encoding to {s} ignored: the bytes already parsed decode differently", .{encoding_sniffing.canonicalName(new)});
-        self.confidence = .certain;
-    }
-
-    /// Decode the bytes from `at` on with `new` and put them in place of the
-    /// input stream's characters from `at` on (whose offsets are the bytes'),
-    /// then make `new` the document's encoding.
-    fn switchAt(self: *ByteStreamDecoding, at: usize, new: encoding_sniffing.Encoding) !void {
-        // A body still arriving goes on through the new decoder, which has
-        // read every byte received so far; complete input ends here.
-        var decoder = encoding_sniffing.StreamDecoder.init(new);
-        var tail: std.ArrayListUnmanaged(u8) = .empty;
-        defer tail.deinit(self.allocator);
-        try decoder.decodeInto(self.allocator, &tail, self.raw.items[at..], self.stream == null);
-        const stream = self.input_stream;
-        stream.buffer.shrinkRetainingCapacity(at);
-        try stream.buffer.appendSlice(stream.allocator, tail.items);
-        stream.sync();
-        self.decoded_len = stream.buffer.items.len;
-        self.encoding = new;
-        if (self.stream != null) self.stream = decoder;
-        try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(new));
-    }
-};
 
 /// A document's active parser. Its tokenizer, tree construction state and
 /// DOM adapter have stable addresses across a stylesheet wait or a write.
@@ -275,10 +191,9 @@ pub const DocumentParser = struct {
     adapter: DomTreeAdapter,
     script_context: ParserScriptContext,
     base_url: []u8,
-    /// The byte stream's bytes, kept while a change of encoding may decode
-    /// them again (`ByteStreamDecoding.raw`).
+    /// A navigation body's first bytes, kept until the encoding sniffing
+    /// algorithm has decided their encoding (`NetworkInput.sniffed`).
     raw_bytes: std.ArrayListUnmanaged(u8) = .empty,
-    byte_stream_decoding: ?ByteStreamDecoding = null,
     /// The response body this navigation parser reads as it arrives, or null
     /// for input given whole (`ParseOptions.body_stream`).
     network: ?NetworkInput = null,
@@ -336,37 +251,22 @@ pub const DocumentParser = struct {
         return createWithInput(allocator, ctx, document, "", .{ .scripting_enabled = scripting_enabled }, true, on_finished);
     }
 
-    /// Copies all input retained beyond initiation, including original bytes
-    /// needed by a meta encoding change after a parser-blocking stylesheet.
+    /// Copies all input retained beyond initiation. A byte stream is decoded
+    /// whole with the encoding the sniffing algorithm decides: no meta the
+    /// tree builder meets later changes it (encoding_sniffing.zig, the
+    /// browser deviation).
     pub fn createComplete(allocator: Allocator, ctx: runtime.Context, document: *runtime.Instance, html: []const u8, options: ParseOptions) !*DocumentParser {
         var decoded: ?[]u8 = null;
         defer if (decoded) |input| allocator.free(input);
-        var sniffed: ?encoding_sniffing.Result = null;
         if (options.byte_stream) |stream| {
-            const result = encoding_sniffing.sniff(html, .{
+            const result = try meta_charset_scan.sniff(allocator, html, .{
                 .transport = if (stream.content_type) |ct| encoding_sniffing.transportEncoding(allocator, ct) else null,
                 .parent = if (stream.parent_encoding) |name| encoding_sniffing.lookup(name) else null,
             });
-            sniffed = result;
             try document_internals.setEncoding(document, encoding_sniffing.canonicalName(result.encoding));
             decoded = try encoding_sniffing.decode(allocator, html, result.encoding);
         }
-        const self = try createWithInput(allocator, ctx, document, decoded orelse html, options, false, &navigationFinished);
-        errdefer self.release();
-        if (sniffed) |result| {
-            try self.raw_bytes.appendSlice(allocator, html);
-            self.byte_stream_decoding = .{
-                .allocator = allocator,
-                .raw = &self.raw_bytes,
-                .encoding = result.encoding,
-                .confidence = result.confidence,
-                .document = document,
-                .input_stream = &self.input_stream,
-                .decoded_len = self.input_stream.buffer.items.len,
-            };
-            self.tree_builder.change_the_encoding = .{ .context = @ptrCast(&self.byte_stream_decoding.?), .change = &ByteStreamDecoding.change };
-        }
-        return self;
+        return createWithInput(allocator, ctx, document, decoded orelse html, options, false, &navigationFinished);
     }
 
     /// A navigation parser that reads its input from `options.body_stream`
@@ -395,16 +295,6 @@ pub const DocumentParser = struct {
         const self = try createWithInput(allocator, ctx, document, "", options, false, &navigationFinished);
         errdefer self.release();
         self.input_stream.complete = false;
-        self.byte_stream_decoding = .{
-            .allocator = allocator,
-            .raw = &self.raw_bytes,
-            .stream = null,
-            .encoding = encoding_sniffing.default_encoding,
-            .confidence = .tentative,
-            .document = document,
-            .input_stream = &self.input_stream,
-            .decoded_len = 0,
-        };
         self.network = .{ .body = body, .transport = transport, .parent = parent };
         body_owned = false;
         body.handTo(.{ .context = self, .alive = &NetworkInput.holds });
@@ -673,6 +563,7 @@ pub const DocumentParser = struct {
         self.tokenizer.deinit();
         if (self.owned_loader) |*loader| loader.deinit();
         self.releaseNetworkInput();
+        if (self.network) |*input| input.releaseScanner();
         self.raw_bytes.deinit(self.allocator);
         self.allocator.free(self.base_url);
         self.allocator.destroy(self);
@@ -950,44 +841,38 @@ pub const DocumentParser = struct {
 
     /// The byte stream's next `bytes` (`last`: its end), decoded into the
     /// input stream - after the encoding sniffing algorithm has decided the
-    /// encoding from enough of the stream's first bytes.
+    /// encoding from enough of the stream's first bytes. No meta the tree
+    /// builder meets later changes it (encoding_sniffing.zig, the browser
+    /// deviation), so the bytes are not kept once decoded.
     fn receiveBytes(self: *DocumentParser, bytes: []const u8, last: bool) !void {
         const input = &self.network.?;
-        const decoding = &self.byte_stream_decoding.?;
         var chars: std.ArrayListUnmanaged(u8) = .empty;
         defer chars.deinit(self.allocator);
         if (!input.sniffed) {
             try self.raw_bytes.appendSlice(self.allocator, bytes);
-            if (!last and !input.enoughToSniff(self.raw_bytes.items)) return;
+            const prescanned = switch (try input.prescan(self.allocator, self.raw_bytes.items, last)) {
+                .wait => return,
+                .ready => |found| found,
+            };
             input.sniffed = true;
+            input.releaseScanner();
             // HTML 13.2.3.2, over the bytes the wait collected.
-            const result = encoding_sniffing.sniff(self.raw_bytes.items, .{ .transport = input.transport, .parent = input.parent });
+            const result = encoding_sniffing.sniff(self.raw_bytes.items, .{ .transport = input.transport, .parent = input.parent, .prescanned = prescanned });
             try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(result.encoding));
-            decoding.encoding = result.encoding;
-            decoding.confidence = result.confidence;
-            decoding.stream = encoding_sniffing.StreamDecoder.init(result.encoding);
+            input.decoder = encoding_sniffing.StreamDecoder.init(result.encoding);
             // Encoding "decode" steps 1-2: a BOM is not part of the text.
             const bom_len = encoding_sniffing.bomLength(self.raw_bytes.items);
-            try decoding.stream.?.decodeInto(self.allocator, &chars, self.raw_bytes.items[bom_len..], last);
-            if (result.confidence == .certain) {
-                // No change of encoding can come: the bytes are not needed.
-                self.raw_bytes.clearAndFree(self.allocator);
-            } else {
-                self.tree_builder.change_the_encoding = .{ .context = @ptrCast(decoding), .change = &ByteStreamDecoding.change };
-            }
+            try input.decoder.?.decodeInto(self.allocator, &chars, self.raw_bytes.items[bom_len..], last);
+            self.raw_bytes.clearAndFree(self.allocator);
         } else {
-            if (decoding.confidence == .tentative) try self.raw_bytes.appendSlice(self.allocator, bytes);
-            try decoding.stream.?.decodeInto(self.allocator, &chars, bytes, last);
+            try input.decoder.?.decodeInto(self.allocator, &chars, bytes, last);
         }
-        if (decoding.confidence == .certain and self.raw_bytes.items.len != 0) self.raw_bytes.clearAndFree(self.allocator);
-        if (last) decoding.stream = null;
+        if (last) input.decoder = null;
         if (chars.items.len == 0) return;
         // Appended at the END of the input stream, past any insertion point:
         // the network's characters follow whatever script wrote.
         const stream = &self.input_stream;
-        const aligned = decoding.decoded_len == stream.buffer.items.len;
         try stream.buffer.appendSlice(stream.allocator, chars.items);
-        if (aligned) decoding.decoded_len = stream.buffer.items.len;
         stream.sync();
     }
 
@@ -1018,27 +903,51 @@ const NetworkInput = struct {
     /// A networking task to read the body is queued.
     read_queued: bool = false,
     /// The encoding sniffing algorithm has run: the bytes since go straight
-    /// through the decoder.
+    /// through `decoder`.
     sniffed: bool = false,
+    /// The decoder of the body's bytes once the encoding is decided; null
+    /// before, and once every byte is decoded.
+    decoder: ?encoding_sniffing.StreamDecoder = null,
+    /// The meta scan of the body's first bytes while it has not decided
+    /// (step 5, `prescan`), and how many of them it has read.
+    scanner: ?*meta_charset_scan.Scanner = null,
+    scanned: usize = 0,
     /// The body's bytes received so far.
     received: u64 = 0,
 
-    /// The prescan reads at most this many bytes (HTML 13.2.3.2 step 3:
-    /// the user agent may wait for them).
-    const prescan_window: usize = 1024;
+    const Prescan = union(enum) {
+        /// The stream's first bytes are not yet enough to decide.
+        wait,
+        /// Step 5's result (null: none, or the algorithm decides before it).
+        ready: ?encoding_sniffing.Encoding,
+    };
 
-    /// Whether `bytes`, the stream's first, are enough for the encoding
-    /// sniffing algorithm. A BOM needs its three bytes; the transport
-    /// layer's encoding needs nothing more; otherwise the prescan's 1,024
-    /// bytes, or the end. Stated: HTML 13.2.3.2 step 3 also suggests giving
-    /// up waiting after 500 ms; Crane does not time the wait, as Blink's
-    /// TextResourceDecoder::CheckForMetaCharset buffers until its check has
-    /// seen enough, with no timer.
-    fn enoughToSniff(self: *const NetworkInput, bytes: []const u8) bool {
-        if (encoding_sniffing.mayStartBom(bytes)) return false;
-        if (encoding_sniffing.bomLength(bytes) != 0) return true;
-        if (self.transport != null) return true;
-        return bytes.len >= prescan_window;
+    /// Whether `bytes`, the stream's first (all of them when `last`), are
+    /// enough for the encoding sniffing algorithm, and step 5's prescan of
+    /// them. A BOM needs its three bytes; the transport layer's encoding
+    /// needs nothing more; otherwise the meta scan decides when it has seen
+    /// enough - as Blink's TextResourceDecoder buffers until
+    /// HTMLMetaCharsetParser::CheckForMetaCharset is done - or at the end.
+    /// Stated: HTML 13.2.3.2 step 3 also suggests giving up waiting after
+    /// 500 ms; Crane does not time the wait, as Blink does not.
+    fn prescan(self: *NetworkInput, allocator: Allocator, bytes: []const u8, last: bool) !Prescan {
+        if (!last and encoding_sniffing.mayStartBom(bytes)) return .wait;
+        if (encoding_sniffing.bomLength(bytes) != 0 or self.transport != null) return .{ .ready = null };
+        const scanner = self.scanner orelse blk: {
+            const created = try meta_charset_scan.Scanner.create(allocator);
+            self.scanner = created;
+            break :blk created;
+        };
+        const outcome = try scanner.feed(bytes[self.scanned..], last);
+        self.scanned = bytes.len;
+        if (outcome == .need_more) return .wait;
+        return .{ .ready = meta_charset_scan.prescanResult(bytes, outcome) };
+    }
+
+    fn releaseScanner(self: *NetworkInput) void {
+        const scanner = self.scanner orelse return;
+        self.scanner = null;
+        scanner.destroy();
     }
 
     /// Whether the parser still reads the body (its fetch's holder): not

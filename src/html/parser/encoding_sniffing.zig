@@ -6,19 +6,24 @@
 //! - `sniff`: the encoding sniffing algorithm (§13.2.3.2) - BOM, the
 //!   transport layer, the prescan, a same-origin parent's encoding, the
 //!   default - with its confidence.
-//! - `prescan`: "prescan a byte stream to determine its encoding" with "get an
-//!   attribute" and "get an XML encoding".
+//! - `MetaAttributes`: the prescan's steps for a meta element's attributes
+//!   (the "<meta" branch, steps 6-16), `utf16XmlDeclaration` (the prescan's
+//!   step 2) and `getXmlEncoding` ("get an XML encoding").
 //! - `extractFromMetaContent`: the algorithm for extracting a character
 //!   encoding from a meta element (HTML §2.5.x, urls-and-fetching).
 //! - `transportEncoding`: the charset parameter of a Content-Type, through the
 //!   MIME Sniffing parser.
-//! - `encodingToChangeTo`: §13.2.3.4 "change the encoding" steps 1-4; the
-//!   parser driver runs steps 5-6, since only it holds the input stream.
 //! - `decode`: Encoding "decode" to the UTF-8 the input stream holds.
 //!
-//! Crane has a response's whole body before parsing starts, so the
-//! algorithm's "bytes available so far" are all of them, and the prescan's
-//! end condition is the 1024 bytes the spec encourages.
+//! Browser deviation, stated (golden rule 2): the prescan's byte scan is the
+//! one Chrome, Firefox and Safari share instead - a tokenizer-based scan for
+//! meta elements while the head section lasts or until 1024 characters
+//! (src/html/parser/meta_charset_scan.zig, in html_core, which holds the
+//! tokenizer this module does not); its result reaches `sniff` as
+//! `Inputs.prescanned`. And no meta the tree builder meets later changes the
+//! encoding ("change the encoding", §13.2.3.4): Blink and WebKit have no such
+//! path, and html/syntax/charset/after-head-after-1kb.html is a mismatch in
+//! all three (whatwg/html#6962, open, describes the shared behaviour).
 
 const std = @import("std");
 const encoding_mod = @import("encoding");
@@ -48,10 +53,12 @@ pub const Inputs = struct {
     /// child navigable whose container document is same origin with it. The
     /// caller checks the origins; this step excludes UTF-16BE/LE.
     parent: ?Encoding = null,
-    /// Step 5 runs: false for a text document, whose bytes are text, not
-    /// markup to prescan ("loading a text document" leaves the conversion to
-    /// the type's own rules: a BOM, its charset, the default).
-    prescan: bool = true,
+    /// Step 5: what the prescan found - the browsers' meta scan
+    /// (meta_charset_scan.zig), which the caller runs over the bytes - or
+    /// null. Null too for a text document, whose bytes are text, not markup
+    /// to prescan ("loading a text document" leaves the conversion to the
+    /// type's own rules: a BOM, its charset, the default).
+    prescanned: ?Encoding = null,
 };
 
 /// Step 9: the implementation-defined default - windows-1252, the table's
@@ -62,9 +69,10 @@ pub const default_encoding: Encoding = &enc.WINDOWS_1252;
 /// UTF-8, the encoding of a document nothing else set one for.
 pub const utf_8: Encoding = &enc.UTF_8;
 
-/// The prescan's end condition: "User agents are encouraged to only prescan
-/// the first 1024 bytes."
-pub const prescan_limit = 1024;
+/// windows-1252, the encoding the meta scan reads the bytes with before any
+/// is known (Blink's HTMLMetaCharsetParser decodes with Latin1Encoding(),
+/// which is windows-1252): one character a byte.
+pub const windows_1252: Encoding = &enc.WINDOWS_1252;
 
 /// Encoding "get an encoding": the encoding `label` names, or null.
 pub fn lookup(label: []const u8) ?Encoding {
@@ -128,9 +136,7 @@ pub fn sniff(bytes: []const u8, inputs: Inputs) Result {
     // Step 4: the transport layer's encoding - certain.
     if (inputs.transport) |transport| return .{ .encoding = transport, .confidence = .certain };
     // Step 5: the prescan - tentative.
-    if (inputs.prescan) {
-        if (prescan(bytes)) |found| return .{ .encoding = found, .confidence = .tentative };
-    }
+    if (inputs.prescanned) |found| return .{ .encoding = found, .confidence = .tentative };
     // Step 6: a same-origin container document's encoding, unless UTF-16.
     if (inputs.parent) |parent| {
         if (!isUtf16(parent)) return .{ .encoding = parent, .confidence = .tentative };
@@ -166,259 +172,84 @@ pub fn transportEncoding(allocator: std.mem.Allocator, content_type: []const u8)
 }
 
 // =============================================================================
-// Prescan a byte stream to determine its encoding
+// Prescan a byte stream to determine its encoding: the meta element's steps
 // =============================================================================
 
-/// "Prescan a byte stream to determine its encoding", with the end condition
-/// at `prescan_limit` bytes. Running out of bytes (or reaching the end
-/// condition) aborts it with "get an XML encoding" of the same bytes.
-pub fn prescan(bytes: []const u8) ?Encoding {
-    const window = bytes[0..@min(bytes.len, prescan_limit)];
-    return prescanWindow(window) catch getXmlEncoding(window);
+/// The prescan's step 2: bytes that start like an XML declaration in UTF-16
+/// ("<?x" in UTF-16LE or BE) are that encoding.
+pub fn utf16XmlDeclaration(bytes: []const u8) ?Encoding {
+    if (std.mem.startsWith(u8, bytes, "\x3C\x00\x3F\x00\x78\x00")) return &enc.UTF_16LE;
+    if (std.mem.startsWith(u8, bytes, "\x00\x3C\x00\x3F\x00\x78")) return &enc.UTF_16BE;
+    return null;
 }
 
-const OutOfBytes = error{OutOfBytes};
-
-fn at(bytes: []const u8, position: usize) OutOfBytes!u8 {
-    if (position >= bytes.len) return error.OutOfBytes;
-    return bytes[position];
-}
-
-fn isSpace(b: u8) bool {
-    return b == 0x09 or b == 0x0A or b == 0x0C or b == 0x0D or b == 0x20;
-}
-
-fn isAsciiAlpha(b: u8) bool {
-    return (b >= 'A' and b <= 'Z') or (b >= 'a' and b <= 'z');
-}
-
-fn startsWithAt(bytes: []const u8, position: usize, prefix: []const u8) bool {
-    return position + prefix.len <= bytes.len and std.mem.eql(u8, bytes[position..][0..prefix.len], prefix);
-}
-
-fn prescanWindow(bytes: []const u8) OutOfBytes!?Encoding {
-    // Step 1.
-    var position: usize = 0;
-    // Step 2: UTF-16 XML declarations.
-    if (startsWithAt(bytes, 0, "\x3C\x00\x3F\x00\x78\x00")) return &enc.UTF_16LE;
-    if (startsWithAt(bytes, 0, "\x00\x3C\x00\x3F\x00\x78")) return &enc.UTF_16BE;
-
-    // Step 3: Loop. Running out of bytes here is the end of the loop.
-    while (position < bytes.len) : (position += 1) { // Step 4: next byte.
-        if (bytes[position] != '<') continue; // "Any other byte"
-
-        if (startsWithAt(bytes, position, "<!--")) {
-            // The first ">" preceded by two "-" after the "<"; the dashes
-            // may be those of "<!--".
-            const end = std.mem.indexOfPos(u8, bytes, position + 2, "-->") orelse return error.OutOfBytes;
-            position = end + 2;
-            continue;
-        }
-
-        switch (matchMeta(bytes, position)) {
-            .yes => {
-                if (try prescanMeta(bytes, &position)) |found| return found;
-                continue;
-            },
-            // Whether this is the meta case depends on bytes not there.
-            .need_more => return error.OutOfBytes,
-            .no => {},
-        }
-
-        // "<", optionally "/", then an ASCII letter: a tag.
-        const name_start = position + 1 + @as(usize, if (position + 1 < bytes.len and bytes[position + 1] == '/') 1 else 0);
-        if (name_start < bytes.len and isAsciiAlpha(bytes[name_start])) {
-            // 1. Advance to the next whitespace or ">" byte.
-            position = name_start;
-            while (true) {
-                const b = try at(bytes, position);
-                if (isSpace(b) or b == '>') break;
-                position += 1;
-            }
-            // 2. Get attributes until none is found, then next byte.
-            while (try getAttribute(bytes, &position)) |_| {}
-            continue;
-        }
-
-        // "<!", "</", "<?": advance to the first ">" after the "<".
-        if (position + 1 < bytes.len and (bytes[position + 1] == '!' or bytes[position + 1] == '/' or bytes[position + 1] == '?')) {
-            position = std.mem.indexOfScalarPos(u8, bytes, position + 1, '>') orelse return error.OutOfBytes;
-            continue;
-        }
-        // A "<" with nothing after it: out of bytes. Otherwise a "<" like
-        // any other byte.
-        if (position + 1 >= bytes.len) return error.OutOfBytes;
-    }
-    return error.OutOfBytes;
-}
-
-const Match = enum { yes, no, need_more };
-
-/// Whether the bytes at `position` are "<meta" (ASCII case-insensitively)
-/// followed by a space or slash.
-fn matchMeta(bytes: []const u8, position: usize) Match {
-    const pattern = "<meta";
-    var i: usize = 0;
-    while (i < pattern.len) : (i += 1) {
-        if (position + i >= bytes.len) return .need_more;
-        if (lower(bytes[position + i]) != pattern[i]) return .no;
-    }
-    if (position + pattern.len >= bytes.len) return .need_more;
-    const after = bytes[position + pattern.len];
-    return if (isSpace(after) or after == '/') .yes else .no;
-}
-
-/// The "<meta" branch of the prescan's loop, from `position.*` at the "<".
-/// The encoding it returns, or null to go on at the next byte.
-fn prescanMeta(bytes: []const u8, position: *usize) OutOfBytes!?Encoding {
-    // 1. Advance to the space or slash after "<meta".
-    position.* += 5;
+/// The prescan's "<meta" branch, steps 2-16, over one meta element's
+/// attributes as `add` is given them in order: the encoding the element
+/// declares, or null (the prescan then goes on to the next element).
+///
+/// The meta scan (meta_charset_scan.zig) hands over the tokenizer's
+/// attributes - names lowercased, character references decoded, a repeated
+/// name already dropped - where the spec's byte scan collected its own.
+pub const MetaAttributes = struct {
     // 2-5. Of the attribute list, only whether it holds the three names
     // step 9 acts on matters: a repeat of any other name does nothing.
-    var seen_http_equiv = false;
-    var seen_content = false;
-    var seen_charset = false;
-    var got_pragma = false;
-    var need_pragma: ?bool = null;
-    var charset_set = false;
-    var charset: ?Encoding = null; // null while set: failure
+    seen_http_equiv: bool = false,
+    seen_content: bool = false,
+    seen_charset: bool = false,
+    got_pragma: bool = false,
+    need_pragma: ?bool = null,
+    charset_set: bool = false,
+    /// Null while set: failure.
+    charset: ?Encoding = null,
 
-    // 6. Attributes.
-    while (try getAttribute(bytes, position)) |attribute| {
-        const name = attribute.name.slice();
-        const value = attribute.value.slice();
+    /// Steps 6-10 for the attribute `name` (lowercase) with `value`.
+    pub fn add(self: *MetaAttributes, name: []const u8, value: []const u8) void {
         // 7-9. A name already in the list is skipped; otherwise it is added
         // and its step runs.
         if (std.mem.eql(u8, name, "http-equiv")) {
-            if (seen_http_equiv) continue;
-            seen_http_equiv = true;
-            if (std.mem.eql(u8, value, "content-type")) got_pragma = true;
+            if (self.seen_http_equiv) return;
+            self.seen_http_equiv = true;
+            if (std.ascii.eqlIgnoreCase(value, "content-type")) self.got_pragma = true;
         } else if (std.mem.eql(u8, name, "content")) {
-            if (seen_content) continue;
-            seen_content = true;
+            if (self.seen_content) return;
+            self.seen_content = true;
             if (extractFromMetaContent(value)) |found| {
-                if (!charset_set) {
-                    charset_set = true;
-                    charset = found;
-                    need_pragma = true;
+                if (!self.charset_set) {
+                    self.charset_set = true;
+                    self.charset = found;
+                    self.need_pragma = true;
                 }
             }
         } else if (std.mem.eql(u8, name, "charset")) {
-            if (seen_charset) continue;
-            seen_charset = true;
-            charset_set = true;
-            charset = lookup(value);
-            need_pragma = false;
+            if (self.seen_charset) return;
+            self.seen_charset = true;
+            self.charset_set = true;
+            self.charset = lookup(value);
+            self.need_pragma = false;
         }
         // 10. Back to attributes.
     }
-    // 11. Processing.
-    const need = need_pragma orelse return null;
-    // 12.
-    if (need and !got_pragma) return null;
-    // 13.
-    const found = charset orelse return null;
-    // 14-16.
-    if (isUtf16(found)) return &enc.UTF_8;
-    if (found == &enc.X_USER_DEFINED) return &enc.WINDOWS_1252;
-    return found;
-}
 
-/// "Get an attribute" collects the WHOLE lowercased value: content can have
-/// a long MIME parameter before charset, and labels can have whitespace.
-/// The caller bounds the whole prescan at 1024 bytes, not each attribute.
-const SniffedString = struct {
-    buf: [prescan_limit]u8 = undefined,
-    len: usize = 0,
-    overflow: bool = false,
-
-    fn append(self: *SniffedString, b: u8) void {
-        if (self.len < self.buf.len) {
-            self.buf[self.len] = b;
-            self.len += 1;
-        } else self.overflow = true;
-    }
-
-    fn slice(self: *const SniffedString) []const u8 {
-        // An overlong string must match nothing: give back a string no name
-        // or label equals.
-        if (self.overflow) return "\x00overflow";
-        return self.buf[0..self.len];
+    /// Steps 11-16, once the attributes are done.
+    pub fn encoding(self: *const MetaAttributes) ?Encoding {
+        // 11. Processing.
+        const need = self.need_pragma orelse return null;
+        // 12.
+        if (need and !self.got_pragma) return null;
+        // 13.
+        const found = self.charset orelse return null;
+        // 14-16.
+        if (isUtf16(found)) return &enc.UTF_8;
+        if (found == &enc.X_USER_DEFINED) return &enc.WINDOWS_1252;
+        return found;
     }
 };
 
-const Attribute = struct {
-    name: SniffedString = .{},
-    value: SniffedString = .{},
-};
-
-fn lower(b: u8) u8 {
-    return if (b >= 'A' and b <= 'Z') b + 0x20 else b;
-}
-
-/// "Get an attribute" from `position.*`: the attribute, or null when there
-/// is none (a ">" was reached; `position.*` stays on it).
-fn getAttribute(bytes: []const u8, position: *usize) OutOfBytes!?Attribute {
-    // 1. Skip whitespace and "/".
-    while (true) {
-        const b = try at(bytes, position.*);
-        if (isSpace(b) or b == '/') position.* += 1 else break;
-    }
-    // 2. ">": there is none.
-    if (try at(bytes, position.*) == '>') return null;
-    // 3.
-    var attribute = Attribute{};
-    // 4-5. The name.
-    while (true) {
-        const b = try at(bytes, position.*);
-        if (b == '=' and attribute.name.len > 0) {
-            position.* += 1;
-            return try attributeValue(bytes, position, &attribute);
-        }
-        if (isSpace(b)) break; // to "spaces"
-        if (b == '/' or b == '>') return attribute;
-        attribute.name.append(lower(b));
-        position.* += 1;
-    }
-    // 6. Spaces.
-    while (isSpace(try at(bytes, position.*))) position.* += 1;
-    // 7.
-    if (try at(bytes, position.*) != '=') return attribute;
-    // 8.
-    position.* += 1;
-    return try attributeValue(bytes, position, &attribute);
-}
-
-/// "Get an attribute" steps 9-12, from `position.*` just past the "=".
-fn attributeValue(bytes: []const u8, position: *usize, attribute: *Attribute) OutOfBytes!Attribute {
-    // 9. Skip whitespace.
-    while (isSpace(try at(bytes, position.*))) position.* += 1;
-    // 10.
-    const first = try at(bytes, position.*);
-    if (first == '"' or first == '\'') {
-        while (true) {
-            position.* += 1;
-            const b = try at(bytes, position.*);
-            if (b == first) {
-                position.* += 1;
-                return attribute.*;
-            }
-            attribute.value.append(lower(b));
-        }
-    }
-    if (first == '>') return attribute.*;
-    attribute.value.append(lower(first));
-    position.* += 1;
-    // 11-12.
-    while (true) {
-        const b = try at(bytes, position.*);
-        if (isSpace(b) or b == '>') return attribute.*;
-        attribute.value.append(lower(b));
-        position.* += 1;
-    }
-}
-
-/// "Get an XML encoding" over `bytes`.
+/// "Get an XML encoding" over `bytes`: every byte the caller has, not only
+/// the prescan's first 1024 - Chrome, Firefox and Safari honour a
+/// declaration whose ">" is the 1025th byte (html/syntax/xmldecl/xmldecl-2.html
+/// kilobyte-plus-one-*.htm, wpt.fyi at 2358bd4835: all three pass; Blink's
+/// TextResourceDecoder::CheckForXMLCharset waits for the ">" however far).
 pub fn getXmlEncoding(bytes: []const u8) ?Encoding {
     // 1-2.
     if (!std.mem.startsWith(u8, bytes, "<?xml")) return null;
@@ -496,44 +327,6 @@ fn indexOfIgnoreCase(haystack: []const u8, start: usize, needle: []const u8) ?us
         if (std.ascii.eqlIgnoreCase(haystack[i..][0..needle.len], needle)) return i;
     }
     return null;
-}
-
-// =============================================================================
-// Change the encoding
-// =============================================================================
-
-/// HTML §13.2.3.4 "change the encoding" steps 1-4, for a parser decoding
-/// with `current` that met `requested` in a meta element: the encoding to
-/// change to, or null when the confidence just becomes certain and nothing
-/// changes. Steps 5-6 are the parser driver's.
-pub fn encodingToChangeTo(current: Encoding, requested: Encoding) ?Encoding {
-    // 1. Decoding UTF-16: the new encoding is ignored.
-    if (isUtf16(current)) return null;
-    var new = requested;
-    // 2.
-    if (isUtf16(new)) new = &enc.UTF_8;
-    // 3.
-    if (new == &enc.X_USER_DEFINED) new = &enc.WINDOWS_1252;
-    // 4. Identical (every encoding is its own table here).
-    if (new == current) return null;
-    return new;
-}
-
-/// Whether `bytes` decode to themselves - the same Unicode interpretation -
-/// in both `a` and `b`: true when they are ASCII other than ESC (which
-/// ISO-2022-JP reads as an escape) and neither encoding is UTF-16 or
-/// replacement. A conservative form of change the encoding step 5's "all the
-/// bytes up to the last byte converted by the current decoder have the same
-/// Unicode interpretations in both the current encoding and the new
-/// encoding".
-pub fn sameInterpretation(bytes: []const u8, a: Encoding, b: Encoding) bool {
-    for ([_]Encoding{ a, b }) |e| {
-        if (isUtf16(e) or e == &enc.REPLACEMENT) return false;
-    }
-    for (bytes) |byte| {
-        if (byte >= 0x80 or byte == 0x1B) return false;
-    }
-    return true;
 }
 
 // =============================================================================

@@ -12,12 +12,16 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-/// The default `User-Agent` value: implementation-defined, per platform.
+/// Crane's product token in the `User-Agent` value (the user, 2026-11-20).
+pub const product_token = "Crane/0.1";
+
+/// The default `User-Agent` value: implementation-defined, per platform -
+/// the platform's part, then Crane's product token.
 pub const default_user_agent = switch (builtin.os.tag) {
-    .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) WhatWG-Zig/1.0",
-    .linux => "Mozilla/5.0 (X11; Linux x86_64) WhatWG-Zig/1.0",
-    .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WhatWG-Zig/1.0",
-    else => "Mozilla/5.0 WhatWG-Zig/1.0",
+    .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) " ++ product_token,
+    .linux => "Mozilla/5.0 (X11; Linux x86_64) " ++ product_token,
+    .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " ++ product_token,
+    else => "Mozilla/5.0 " ++ product_token,
 };
 
 /// HTML's navigator.appVersion in the Chrome/WebKit compatibility mode (the

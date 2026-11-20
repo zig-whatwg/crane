@@ -85,7 +85,7 @@ const Instance = runtime.Instance;
 pub const Point = editing.Point;
 
 /// Blink's PositionAnchorType.
-const AnchorType = enum { offset_in_anchor, before_anchor, after_anchor, after_children };
+pub const AnchorType = enum { offset_in_anchor, before_anchor, after_anchor, after_children };
 
 /// Blink's Position (position.h): an anchor node, and an offset in it or a
 /// side of it.
@@ -1810,31 +1810,88 @@ fn unitsToWtf8(allocator: std.mem.Allocator, units: []const u16) ?[]const u8 {
 
 pub const Granularity = enum { character, word };
 
+/// How the Position a modify moved the focus to relates to the DOM boundary
+/// point the selection then holds - its parent-anchored equivalent. Blink's
+/// selection keeps the Position itself (SelectionInDOMTree holds its anchor
+/// node and anchor type; DomSelection exposes the parent-anchored
+/// equivalent), and the next modify starts from it: after a table the caret
+/// is Position::AfterNode(table), whose DOM point (parent, index + 1) is,
+/// as a point, canonically the start of what follows the table - from
+/// which a backward step lands after the table again, for ever
+/// (selection/selection-modify-across-*table*.html).
+pub const FocusForm = union(enum) {
+    /// The boundary point itself.
+    point,
+    /// A Position at the start of the child just after the point, of this
+    /// anchor type (offset 0 when in the anchor).
+    child_start: AnchorType,
+    /// A Position at the end of the child just before the point, of this
+    /// anchor type (its child count when in the anchor).
+    child_end: AnchorType,
+};
+
 /// What Selection.modify knows of the selection it moves.
 pub const Selection = struct {
     focus: Point,
+    /// The form of the Position the previous modify left the focus at,
+    /// while the selection has not changed since (the caller checks).
+    focus_form: FocusForm = .point,
     /// The range's start and end when it is not collapsed.
     range: ?struct { start: Point, end: Point } = null,
 };
+
+/// Where Selection.modify moved the focus: the DOM boundary point and the
+/// form of the Position it is the parent-anchored equivalent of.
+pub const Modified = struct {
+    point: Point,
+    form: FocusForm,
+};
+
+/// The focus as the Position the previous modify made, when it made one of
+/// another form; otherwise the boundary point.
+fn focusPosition(selection: Selection) Position {
+    const focus = selection.focus;
+    switch (selection.focus_form) {
+        .point => {},
+        .child_start => |anchor_type| if (childAt(focus.node, focus.offset)) |child| {
+            return .{ .anchor = child, .type = anchor_type };
+        },
+        .child_end => |anchor_type| if (focus.offset > 0) if (childAt(focus.node, focus.offset - 1)) |child| {
+            return .{ .anchor = child, .type = anchor_type, .offset = if (anchor_type == .offset_in_anchor) lastOffsetForEditing(child) else 0 };
+        },
+    }
+    return Position.at(focus.node, focus.offset);
+}
+
+/// The form of `p` relative to `point`, its parent-anchored equivalent.
+fn formOf(p: Position, point: Position) FocusForm {
+    const anchor = p.anchor orelse return .point;
+    if (point.anchor == anchor) return .point;
+    if (parentOf(anchor) != point.anchor) return .point;
+    if (point.offset == indexOf(anchor)) return .{ .child_start = p.type };
+    if (point.offset == indexOf(anchor) + 1) return .{ .child_end = p.type };
+    return .point;
+}
 
 /// SelectionModifier::ComputeModifyPosition for the character and word
 /// granularities: the DOM boundary point the focus moves to (the caret,
 /// for "move"), or null where Blink's modify returns false and the
 /// selection stays. "forward" and "right" move forward, "backward" and
 /// "left" backward (an LTR block; see the file comment for bidi).
-pub fn modifyPosition(allocator: std.mem.Allocator, selection: Selection, extend: bool, forward: bool, granularity: Granularity) ?Point {
+pub fn modifyPosition(allocator: std.mem.Allocator, selection: Selection, extend: bool, forward: bool, granularity: Granularity) ?Modified {
     var ctx = Context.init(allocator);
     defer ctx.deinit();
     const result = computeModifyPosition(&ctx, selection, extend, forward, granularity);
     if (result.isNull()) return null;
     const dom_position = parentAnchoredEquivalent(result);
     const node = dom_position.anchor orelse return null;
-    return .{ .node = node, .offset = dom_position.offset };
+    return .{ .point = .{ .node = node, .offset = dom_position.offset }, .form = formOf(result, dom_position) };
 }
 
 fn computeModifyPosition(ctx: *Context, selection: Selection, extend: bool, forward: bool, granularity: Granularity) Position {
-    // ComputeVisibleFocus: the canonical form of the focus.
-    const focus = canonicalPosition(ctx, Position.at(selection.focus.node, selection.focus.offset));
+    // ComputeVisibleFocus: the canonical form of the focus - the Position
+    // the previous modify made, as Blink's selection keeps it.
+    const focus = canonicalPosition(ctx, focusPosition(selection));
     switch (granularity) {
         .character => {
             // ModifyMovingForward / Backward: a range collapses to its end

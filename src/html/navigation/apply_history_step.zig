@@ -834,7 +834,10 @@ const JobTask = struct {
         // queued). "Not started" is an end.
         // Its navigation takes over the "traversal" step 8.4 set (its id is
         // the ongoing traversal's); one that commits at once has ended it.
-        return dom.navigables.traverseNavigable(@ptrCast(navigable), entry.id, entry.url, entry.resource, c.from_entry, .{ .traversable_id = top_id, .token = self.token });
+        // A declarative refresh's reload of this navigable: its request's
+        // referrer is the refreshing document (Document.refreshComesDue).
+        const refresh = item.kind == .reload and item.reload_aborts_document and item.reload_navigable == navigable.id;
+        return dom.navigables.traverseNavigable(@ptrCast(navigable), entry.id, entry.url, entry.resource, c.from_entry, .{ .traversable_id = top_id, .token = self.token }, refresh);
     }
 };
 

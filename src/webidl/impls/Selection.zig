@@ -98,6 +98,14 @@ pub const InternalState = struct {
     /// Selection owns it; input/textarea flags belong to those controls.
     selectionchange_scheduled: bool = false,
 
+    /// The form of the Position the last modify() left the focus at
+    /// (visible_position.FocusForm), with the selection as that modify left
+    /// it: the next modify starts from that Position while the selection is
+    /// still the same - Blink's selection keeps a Position, not only its
+    /// DOM boundary point (SelectionInDOMTree). Compared, never followed:
+    /// the snapshot's nodes are only told apart from the live ones.
+    modify_focus: ?struct { selection: Snapshot, form: @import("html").execcommand.visible_position.FocusForm } = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -567,21 +575,28 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
         // (src/html/execcommand/visible_position.zig). Null: Blink's modify
         // returns false and the selection stays.
         const vp = @import("html").execcommand.visible_position;
+        const internal = getInternal(instance) orelse return;
         var selection: vp.Selection = .{ .focus = .{ .node = focus_node, .offset = focus_offset } };
+        // The Position the previous modify made, while the selection is the
+        // one it left.
+        if (internal.modify_focus) |kept| {
+            if (std.meta.eql(kept.selection, snapshot(internal))) selection.focus_form = kept.form;
+        }
         if (!try get_isCollapsed(instance)) {
-            const internal = getInternal(instance) orelse return;
             const bounds = visibleBoundaries(internal) orelse return;
             selection.range = .{
                 .start = .{ .node = bounds.start_container, .offset = bounds.start_offset },
                 .end = .{ .node = bounds.end_container, .offset = bounds.end_offset },
             };
         }
-        const target = vp.modifyPosition(instance.ctx.allocator, selection, is_extend, is_forward, if (is_character) .character else .word) orelse return;
+        const modified = vp.modifyPosition(instance.ctx.allocator, selection, is_extend, is_forward, if (is_character) .character else .word) orelse return;
+        const target = modified.point;
         if (is_extend) {
             try call_extend(instance, target.node, .passed(target.offset));
         } else {
             try call_collapse(instance, target.node, .passed(target.offset));
         }
+        internal.modify_focus = .{ .selection = snapshot(internal), .form = modified.form };
         return;
     }
 
