@@ -175,7 +175,9 @@ fn aliasCases() !void {
     const computed = try interfaces.Window.call_getComputedStyle(page.window, page.target, .notPassed());
     defer interfaces.CSSStyleProperties.deinit(computed);
     try testing.expectError(error.NoModificationAllowedError, interfaces.CSSStyleDeclaration.call_setProperty(computed, .initInterned("-webkit-transition"), .initInterned(""), .notPassed()));
-    try expectValue(computed, "-webkit-filter", "grayscale(20%)");
+    // The alias reads the computed filter too (a percentage computes to a
+    // number: Filter Effects §6.2).
+    try expectValue(computed, "-webkit-filter", "grayscale(0.2)");
 }
 
 test "-webkit-filter and -webkit-transition are legacy name aliases" {
