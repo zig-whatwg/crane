@@ -8,6 +8,7 @@ const log = std.log.scoped(.ir);
 const types = @import("types.zig");
 const duplicates = @import("duplicates.zig");
 const member_overrides = @import("member_overrides.zig");
+const member_removals = @import("member_removals.zig");
 const type_registry_mod = @import("type_registry.zig");
 
 // Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
@@ -281,6 +282,15 @@ pub const IR = struct {
             };
         }
         if (failed) return error.DuplicateDefinition;
+        // member_removals.zig: an entry whose member the IDL no longer
+        // declares is stale - the snapshot update that dropped the member
+        // drops the entry too.
+        for (member_removals.table) |entry| {
+            if (self.declares(entry.interface, entry.member)) continue;
+            // Printed, not logged: the caller reports the error.
+            std.debug.print("  error: member_removals.zig lists {s}.{s}, which the IDL no longer declares: delete the entry\n", .{ entry.interface, entry.member });
+            return error.StaleMemberRemoval;
+        }
         // A setlike declaration stays a declaration: its members are the
         // binding's, never operations (setlike.zig).
     }
@@ -340,6 +350,42 @@ pub const IR = struct {
         trimmed.members = try withMemberScopedExtAttrs(arena, rest.items, partial.extAttrs);
         trimmed.extAttrs = try withoutMemberScopedExtAttrs(arena, partial.extAttrs);
         try merged.mergePartial(self.allocator, trimmed);
+    }
+
+    /// Removed members: the attributes and named operations
+    /// member_removals.zig lists for interface `name`, taken out of `merged`
+    /// once every partial is in (every overload of an operation). `finish`
+    /// fails on an entry the IDL no longer declares.
+    fn removeListedMembers(merged: *Interface, name: []const u8) void {
+        for (member_removals.table) |entry| {
+            if (!std.mem.eql(u8, entry.interface, name)) continue;
+            var i: usize = 0;
+            while (i < merged.members.items.len) {
+                const member_name = replaceableName(merged.members.items[i]) orelse {
+                    i += 1;
+                    continue;
+                };
+                if (std.mem.eql(u8, member_name, entry.member)) {
+                    _ = merged.members.orderedRemove(i);
+                    continue;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    /// Whether some definition or partial of interface `interface` declares
+    /// the attribute or named operation `member`.
+    fn declares(self: *const IR, interface: []const u8, member: []const u8) bool {
+        const list = self.occurrences.get(interface) orelse return false;
+        for (list.items) |occurrence| {
+            if (occurrence.definition != .interface) continue;
+            for (occurrence.definition.interface.members) |candidate| {
+                const candidate_name = replaceableName(candidate) orelse continue;
+                if (std.mem.eql(u8, candidate_name, member)) return true;
+            }
+        }
+        return false;
     }
 
     /// The name member_overrides.zig and the duplicate rule know `member`
@@ -440,6 +486,7 @@ pub const IR = struct {
                     if (i == first or !occurrence.definition.isPartial()) continue;
                     try self.mergeInterfacePartial(&merged, occurrence.definition.interface, key, occurrence.file, &from_supplementary);
                 }
+                removeListedMembers(&merged, key);
                 const def = occurrences[first].definition.interface;
                 const type_kind: TypeKind = if (def.callback) .callback_interface else if (def.mixin) .mixin else .interface;
                 try self.interfaces.put(key, merged);

@@ -315,7 +315,8 @@ pub const End = struct {
     }
 
     /// HTML "disentangle", from this end: the channel is no longer entangled,
-    /// and the other end's owner hears `close` from a task of its own loop.
+    /// and the other end's owner is told so from a task of its own loop (its
+    /// `closed` hook; no `close` event since whatwg/html#13016).
     /// Messages already queued stay where they are.
     pub fn disentangle(self: *End) void {
         const channel = self.channel;
