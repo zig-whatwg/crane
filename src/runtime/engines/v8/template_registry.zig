@@ -132,9 +132,15 @@ pub fn register(
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
         return;
     };
-    storage.registered.put(storage.allocator, interface_name, template) catch {
+    // A new name takes the next registration index (isolate_templates.
+    // Registered); a re-registration keeps its own. Nothing is ever removed,
+    // so the indices of an isolate are 0 to its count - 1.
+    const slot = storage.registered.getOrPut(storage.allocator, interface_name) catch {
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
+        return;
     };
+    if (!slot.found_existing) slot.value_ptr.index = @intCast(storage.registered.count() - 1);
+    slot.value_ptr.template = template;
 }
 
 /// Get a registered FunctionTemplate by interface name for the current isolate
@@ -156,6 +162,16 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
     // If no isolate provided, can't match
     const key = isolate orelse return null;
     const storage = isolate_templates.getTemplateStorage(key) orelse return null;
+    const registered = storage.registered.get(interface_name) orelse return null;
+    return registered.template;
+}
+
+/// The registry's entry for `interface_name` in `isolate`: its template and
+/// its registration index (isolate_templates.Registered), or null when the
+/// isolate registered none under that name.
+pub fn getRegisteredForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) ?isolate_templates.Registered {
+    const key = isolate orelse return null;
+    const storage = isolate_templates.getTemplateStorage(key) orelse return null;
     return storage.registered.get(interface_name);
 }
 
@@ -164,23 +180,36 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
 /// before the realm's first wrapper of it - the lazy global's getter does
 /// the same work (global_constructor_handler.lazyConstructGetter), and a
 /// built one is found marked and handed back as it is. Once per interface
-/// per realm: the template is recorded after, built or not, so an interface
-/// that has no interface object to build (none is registered under its
-/// name) costs the search once. Out of memory to record it, the next wrap
-/// searches again - the same answer.
-fn ensureInterfaceObjectBuilt(
+/// per realm: the interface's registration index is recorded after, built or
+/// not, so an interface that has no interface object to build (none is
+/// registered under its name) costs the search once. Out of memory to record
+/// it, the next wrap searches again - the same answer. The check is a bit at
+/// that index (context_manager.InterfaceObjects): it runs on every wrap.
+inline fn ensureInterfaceObjectBuilt(
     entry: *@import("context_manager.zig").ContextEntry,
-    template: *v8.FunctionTemplate,
+    index: u16,
     interface_name: []const u8,
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    const objects = &entry.interface_objects;
-    if (objects.built.contains(template)) return;
+    if (entry.interface_objects.isBuilt(index)) return;
+    buildInterfaceObject(entry, index, interface_name, isolate, context);
+}
+
+/// The first wrap of an interface in a realm: build its interface object, or
+/// find it built, and record the interface's index.
+fn buildInterfaceObject(
+    entry: *@import("context_manager.zig").ContextEntry,
+    index: u16,
+    interface_name: []const u8,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @branchHint(.cold);
     if (@import("interface_bindings.zig").materializeInterfaceObjectByName(interface_name, isolate, context)) |constructor| {
         v8.v8_Function_Dispose(constructor);
     }
-    objects.built.put(entry.allocator, template, {}) catch {};
+    entry.interface_objects.markBuilt(entry.allocator, index);
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
@@ -310,17 +339,21 @@ pub fn wrapInstanceAsV8Object(
     // Look up the FunctionTemplate for this interface
     // First try the template registry (for templates already registered for this isolate)
     // Then fall back to on-demand creation for interfaces not yet registered
-    const template = getTemplate(interface_name) orelse blk: {
+    // The registry's entry carries the interface's registration index, which
+    // the realm's built-interface-object check below reads (no hash).
+    const current_isolate = v8.v8_Isolate_GetCurrent();
+    const registered = getRegisteredForIsolate(interface_name, current_isolate) orelse blk: {
         // Template not registered for this isolate - try on-demand creation
         // This handles multi-isolate scenarios (Workers) where templates are isolate-specific
         const interface_bindings = @import("interface_bindings.zig");
-        const created_template = interface_bindings.createTemplateOnDemandByName(interface_name, isolate);
-        if (created_template) |t| {
-            break :blk t;
+        if (interface_bindings.createTemplateOnDemandByName(interface_name, isolate) != null) {
+            // It registered what it made, under this name, in `isolate`.
+            if (getRegisteredForIsolate(interface_name, isolate)) |made| break :blk made;
         }
         // Template still not found - interface not implemented or not registered
         return error.TemplateNotRegistered;
     };
+    const template = registered.template;
 
     // The wrapper: a new instance of the interface's instance template in
     // this realm's context (InstanceTemplate()->NewInstance(), never
@@ -337,7 +370,7 @@ pub fn wrapInstanceAsV8Object(
     // first reads them (interface_bindings.installExposedConstructs): it
     // builds this one first, so the prototype has everything WebIDL puts on
     // it whether or not script read the global.
-    ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
+    ensureInterfaceObjectBuilt(entry, registered.index, interface_name, isolate, context);
     const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context) orelse {
         return error.ObjectCreationFailed;
     };

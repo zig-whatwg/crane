@@ -144,11 +144,39 @@ pub const ContextEntry = struct {
 /// ConstructorForType, Chromium 157.0.8103.51: an interface object is built on
 /// the first wrap or the first read, whichever comes first). Written and read
 /// on the agent's thread, as the entry is.
+///
+/// One bit per interface the isolate registered, at its registration index
+/// (isolate_templates.Registered.index), which the wrap reads with the
+/// template it looks up anyway: the question is asked on every wrapper a
+/// realm makes, and a hash of the template there cost dom.create-element
+/// 3.2% (the cost window of 2026-11-20). Blink asks its per-context
+/// wrapper boilerplate map instead (V8PerContextData::CreateWrapperFromCache,
+/// a hash keyed by WrapperTypeInfo) - Crane's wrap makes the instance from
+/// the template, so a bit is all it needs.
 pub const InterfaceObjects = struct {
-    /// The templates whose interface object a wrap has built, or found
-    /// built. From the entry's allocator; freed when the entry is retired
-    /// (`deinit`).
-    built: std.AutoHashMapUnmanaged(*v8.FunctionTemplate, void) = .empty,
+    /// Set for each registration index whose interface object a wrap has
+    /// built, or found built. Grown to the highest index marked, from the
+    /// entry's allocator; freed when the entry is retired (`deinit`).
+    built: std.DynamicBitSetUnmanaged = .{},
+
+    /// Whether the interface at `index` has its interface object built in
+    /// this realm. An index past the set was never marked.
+    pub inline fn isBuilt(self: *const InterfaceObjects, index: u16) bool {
+        return index < self.built.bit_length and self.built.isSet(index);
+    }
+
+    /// Record the interface at `index` as built. Out of memory to grow the
+    /// set, nothing is recorded: the next wrap builds it again - finds it
+    /// built - and tries again.
+    pub fn markBuilt(self: *InterfaceObjects, allocator: std.mem.Allocator, index: u16) void {
+        if (index >= self.built.bit_length) {
+            // Room for the interfaces a realm commonly wraps at the first
+            // growth, then to the index asked for.
+            const len = @max(@as(usize, index) + 1, 256);
+            self.built.resize(allocator, len, false) catch return;
+        }
+        self.built.set(index);
+    }
 
     pub fn deinit(self: *InterfaceObjects, allocator: std.mem.Allocator) void {
         self.built.deinit(allocator);
