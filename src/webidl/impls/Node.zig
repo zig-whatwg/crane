@@ -582,8 +582,15 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     if (@import("dom").document_internals.getFrozenBaseURL(document)) |frozen| {
         return allocator.dupe(u8, frozen);
     }
-    // Step 2 TODO(DOM clone owner): the base URL override set by DOM's
-    // "clone a single node" Document step 2 has no producer yet.
+    // Step 2: "If document's base URL override is non-null, then return
+    // document's base URL override" - set when the document was cloned
+    // (DOM "clone a single node", Document step 2; whatwg/dom#454:
+    // Firefox 160 and Safari 27.2 pass dom/nodes/Document-cloneNode-*base-url*
+    // at wpt.fyi 2358bd4835, Chrome 157 does not - golden rule 2, the
+    // majority, which is also the spec).
+    if (@import("dom").document_internals.getBaseURLOverride(document)) |override| {
+        return allocator.dupe(u8, override);
+    }
     // Step 3: return the fallback.
 
     // The fallback base URL: step 1, an about:blank or iframe srcdoc

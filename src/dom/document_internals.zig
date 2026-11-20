@@ -118,6 +118,23 @@ pub fn getFrozenBaseURL(instance: *runtime.Instance) ?[]const u8 {
     return rare.frozen_base_url;
 }
 
+/// DOM "clone a single node", Document step 2: set the copy's base URL
+/// override - a copy owned until the document's end.
+pub fn setBaseURLOverride(instance: *runtime.Instance, url: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const rare = try internal.ensureRareData(instance);
+    const copy = try internal.allocator.dupe(u8, url);
+    if (rare.base_url_override) |old| internal.allocator.free(old);
+    rare.base_url_override = copy;
+}
+
+/// The document's base URL override, or null. Borrowed.
+pub fn getBaseURLOverride(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    const rare = internal.rareData() orelse return null;
+    return rare.base_url_override;
+}
+
 /// Set the content type (e.g., "text/html", "application/xml")
 /// Used during document creation and initialization.
 pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {

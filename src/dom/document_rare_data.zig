@@ -55,6 +55,10 @@ pub const DocumentRareData = struct {
     /// bytes, independent of later changes to the document's URL. Null
     /// leaves the live fallback effective (including a rejected base).
     frozen_base_url: ?[]u8 = null,
+    /// DOM "base URL override": the source's document base URL, set when
+    /// this document was made by cloning one ("clone a single node",
+    /// Document step 2). Owned; null for any other document.
+    base_url_override: ?[]u8 = null,
     /// HTML 4.2.5.3: owned pragma-set default language, null before any
     /// content-language pragma. Removing its meta does not clear it.
     pragma_language: ?[]const u8 = null,
@@ -150,6 +154,7 @@ pub const DocumentRareData = struct {
             self.prefetch_hints.deinit();
         }
         if (self.frozen_base_url) |url| allocator.free(url);
+        if (self.base_url_override) |url| allocator.free(url);
         if (self.pragma_language) |language| allocator.free(language);
         self.parser_form_associations.deinit(allocator);
         self.lazy_load_targets.deinit(allocator);
