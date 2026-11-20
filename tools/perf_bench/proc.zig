@@ -231,6 +231,31 @@ fn startedBeforeNow(pid: i32) !void {
     }
 }
 
+/// This process's CPU time by its own CPU clock (the kernel's, nanoseconds
+/// on every host).
+fn processCpuNs(io: std.Io) u64 {
+    return @intCast(std.Io.Clock.cpu_process.now(io).nanoseconds);
+}
+
+/// Spends `ns` of this process's CPU. The work is reading the process's CPU
+/// clock until it has moved `ns`: an optimizer can drop none of it. An
+/// arithmetic loop it can - this tool's tests build ReleaseSafe, and LLVM
+/// computed the old burn's 20,000,000 iterations in closed form, 1-5 us of
+/// CPU (lane flk2, 2026-11-20), so on Linux, whose reading moves in 10 ms
+/// ticks, "burn until the reading moves" spent only its own /proc reads.
+fn burnCpu(io: std.Io, ns: u64) void {
+    const start = processCpuNs(io);
+    while (processCpuNs(io) -| start < ns) {}
+}
+
+test "a CPU burn spends the CPU it is asked for, by the process's own clock" {
+    if (!supported) return error.SkipZigTest;
+    const io = testing.io;
+    const before = processCpuNs(io);
+    burnCpu(io, 20 * std.time.ns_per_ms);
+    try testing.expect(processCpuNs(io) - before >= 20 * std.time.ns_per_ms);
+}
+
 test "this process reads: CPU and a footprint, and instructions where the host counts them" {
     if (!supported) return error.SkipZigTest;
     const me: i32 = @intCast(std.c.getpid());
@@ -238,14 +263,16 @@ test "this process reads: CPU and a footprint, and instructions where the host c
     try testing.expect(a.footprint > 0);
     try testing.expect(a.resident > 0);
     try testing.expectEqual(counts_instructions, a.instructions > 0);
-    // Burn CPU until the reading moves forward: at once on macOS, within a
-    // clock tick or two (10 ms each) on Linux.
-    var x: u64 = 0;
+    // Burn CPU, a millisecond at a time, until the reading moves forward: at
+    // once on macOS, within a clock tick or two (10 ms each) on Linux. The
+    // wait is on the reading; two seconds of CPU - 200 Linux ticks - with
+    // it not moved is only the failure guard.
+    const io = testing.io;
     var b = a;
-    var rounds: u32 = 0;
-    while (b.cpu_ns <= a.cpu_ns and rounds < 2000) : (rounds += 1) {
-        for (0..20_000_000) |i| x +%= i *% 2654435761;
-        std.mem.doNotOptimizeAway(x);
+    var burnt: u64 = 0;
+    while (b.cpu_ns <= a.cpu_ns) : (burnt += std.time.ns_per_ms) {
+        if (burnt >= 2 * std.time.ns_per_s) return error.TestUnexpectedResult;
+        burnCpu(io, std.time.ns_per_ms);
         b = usageOf(me) orelse return error.TestUnexpectedResult;
     }
     try testing.expect(b.cpu_ns > a.cpu_ns);
