@@ -88,6 +88,55 @@ ReleaseSafe runner build about 12, and a sweep over an hour. Never pay those for
 - **Merge current main into your branch before you report.** If your gated tip's tree is the tree the
   integrator would merge, your gates stand and the merge needs no re-run.
 
+## Timed windows: the window queue (2026-11-20)
+
+A timed window needs a quiet host, with no build and no other window running beside it. Timed windows are a
+FULL A/B with its bug-finding, rerun and verify steps, a cost window, and a generation sweep. Do not ask the
+integrator for a window any more: **send READY = enqueue your window**, then wait for it with ONE background
+command.
+
+```bash
+tmp/remote/crane-pool.sh queue server1 maj1-l ab --est 90 \
+  --note 'FULL A/B tip-b738e997e62 vs gen 233 + bug + rerun + verify' \
+  'TIP=$HOME/crane-work/maj1-l-bins/tip-b738e997e62 G=$HOME/crane-frozen/main-ace97d9c1e bash .maj1/window.sh'
+tmp/remote/crane-pool.sh queue-wait server1 maj1-l   # follows the log; exits with the window's rc
+```
+
+- **The keeper runs your window when its turn comes.** Each host runs a keeper (`~/crane-wq.sh`). It closes
+  the host to new jobs and waits until the running builds and WPT runs have ended and the 1-minute load is
+  under the host's gate (server1 6, chat.local 3). Then it closes the host for your mirror and runs your
+  command in `~/crane-work/<mirror>` exactly as `crane-pool.sh wpt` does:
+  - the command runs detached;
+  - its log is `~/crane-work/<mirror>/tmp/crane-pool-run-<id>.log`, with the exit status in `<log>.rc`;
+  - `CRANE_POOL_MIRROR` and the host's `CRANE_POOL_PAIR` are exported;
+  - an `ab` or `sweep` window starts on a fresh wpt serve.
+
+  When the window ends, the host opens, or the next window takes it.
+- **Kinds:** `ab` is a FULL A/B and its steps (server1). `sweep` is a generation sweep. `cost` is a perf_bench
+  pair and runs on macOS only (chat.local). `short` is anything else. Give `--est` in minutes. Give a `--note`:
+  held-files.md shows it in place of the command.
+- **The command runs in the foreground until its work is done**, so never use `&` without `wait`. The window
+  ends when the command exits.
+- **A window that is not moving is reported.** Ten minutes after the window starts, and every ten minutes after
+  that, the keeper looks for CPU use in the window's process tree, or a changed file under your mirror's
+  `tmp/`, `wpt-results/` or `-bins/`. If it finds neither, it writes `ALERT <time> <host> <mirror>: window
+  not moving (<evidence>)` to held-files.md. A window that runs past twice its `--est` gets an ALERT too.
+  Windows closed by hand get the same check.
+- **The keeper writes the window lines itself:** QUEUED, DRAIN, WINDOW START, WINDOW END, HANDOFF and OPEN go to
+  held-files.md. Your own END line carries the results.
+- **To see or change your window:** `crane-pool.sh queue-list <host>` shows the queue, the window running now
+  and its last movement check. `queue-drop <host> <mirror>` withdraws your window, and `--cancel` stops it while
+  it runs. `--after <mirror>` holds your window until that mirror's window ends.
+- **The integrator's controls:**
+  - `queue-order` sets the order; the default is first come, first served.
+  - `queue-pause` / `queue-resume` keep a host open for builds.
+  - A `crane-pool.sh close` by hand always wins over the queue until `open`.
+- **A window script started any other way (plain ssh) exports `CRANE_POOL_MIRROR=<its mirror>` before it
+  sweeps.** Without it, `crane-measure.sh` takes the mirror from the runner's path, then from the working
+  directory. The shared WPT tree's path names "main", so a FULL sweep there waits for its own window (lesson
+  workflow-timed-windows-go-through-the-window-queue.md). `crane-measure.sh mirror <runner>` tells you which
+  mirror a sweep will read as.
+
 ## Generated files go in `tmp/`
 
 Everything you generate that isn't source or a committed doc goes in `tmp/`
