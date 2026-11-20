@@ -665,8 +665,11 @@ const Builder = struct {
         const body = text[span.start..span.end];
         if (item.token.token_type == .function) {
             if (!tokenizer.nameEql(item.token.value, "style")) return self.make(.unknown);
-            const parsed = (try @import("if_function.zig").parseStyleQuery(self.allocator, body)) orelse return self.make(.unknown);
-            const held = try self.allocator.create(@import("if_function.zig").StyleQuery);
+            var parsed = (try @import("if_function.zig").parseStyleQuery(self.allocator, body)) orelse return self.make(.unknown);
+            const held = self.allocator.create(@import("if_function.zig").StyleQuery) catch |err| {
+                parsed.deinit();
+                return err;
+            };
             held.* = parsed;
             self.style_queries.append(self.allocator, held) catch |err| {
                 held.deinit();
