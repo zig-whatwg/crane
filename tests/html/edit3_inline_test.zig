@@ -78,10 +78,12 @@ const css_push_down_cases = [_]Case{
     .{ .input = "<strike>foo[bar]baz</strike>", .commands = "[" ++ css ++ ",[\"strikethrough\",\"\"]]", .expected = "<strike>foo</strike>bar<strike>baz</strike>" },
     .{ .input = "<u>foo[bar]baz</u>", .commands = "[" ++ css ++ ",[\"underline\",\"\"]]", .expected = "<u>foo</u>bar<u>baz</u>" },
     .{ .input = "foo[<u>b]ar</u>baz", .commands = "[" ++ css ++ ",[\"underline\",\"\"]]", .expected = "foob<u>ar</u>baz" },
-    // A styled span and a styled u: the parts around the node keep the
-    // element as it was, the node's part loses the value (Firefox and Safari;
-    // Chrome writes text-decoration-line on the middle part).
-    .{ .input = "foo<u style=\"text-decoration: line-through\">b[a]r</u>baz", .commands = "[" ++ css ++ ",[\"strikethrough\",\"\"]]", .expected = "foo<u style=\"text-decoration:line-through\">b</u><u>a</u><u style=\"text-decoration:line-through\">r</u>baz" },
+    // A styled u and a styled span: the parts around the node keep the
+    // element as it was, the node's part loses the value. The u is a simple
+    // modifiable element, so clearing removes its middle part (Chrome;
+    // Firefox and Safari keep a plain <u> there); the span keeps its
+    // underline (Firefox and Safari; Chrome writes text-decoration-line).
+    .{ .input = "foo<u style=\"text-decoration: line-through\">b[a]r</u>baz", .commands = "[" ++ css ++ ",[\"strikethrough\",\"\"]]", .expected = "foo<u style=\"text-decoration:line-through\">b</u>a<u style=\"text-decoration:line-through\">r</u>baz" },
     .{ .input = "foo<span style=\"text-decoration: underline line-through\">b[a]r</span>baz", .commands = "[" ++ css ++ ",[\"strikethrough\",\"\"]]", .expected = "foo<span style=\"text-decoration:underline line-through\">b</span><span style=\"text-decoration:underline\">a</span><span style=\"text-decoration:underline line-through\">r</span>baz" },
     // PPP rows Crane fails today (strikethrough.html ?2001-last,
     // underline.html ?1001-2000).
