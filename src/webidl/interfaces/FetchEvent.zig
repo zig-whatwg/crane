@@ -244,4 +244,12 @@ pub const FetchEvent = struct {
     pub fn call_respondWith(instance: *runtime.Instance, r: runtime.JSValue) anyerror!void {
         return try FetchEventImpl.call_respondWith(instance, r);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_preloadResponse",
+        "get_handled",
+    };
 };

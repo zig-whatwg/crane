@@ -458,6 +458,14 @@ pub const Animation = struct {
         .{ "set_trigger", 0, "AnimationTrigger" },
     };
 
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_ready",
+        "get_finished",
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

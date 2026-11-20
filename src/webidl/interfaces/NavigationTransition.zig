@@ -189,4 +189,12 @@ pub const NavigationTransition = struct {
     pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigationTransitionImpl.get_finished(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_committed",
+        "get_finished",
+    };
 };

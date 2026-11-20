@@ -923,6 +923,39 @@ pub const Getter = struct {
     };
 };
 
+/// The getter function of an attribute whose type is a promise (WebIDL 3.7.6,
+/// "attribute getter"): its steps - the security check, the receiver check
+/// and the getter steps - run in a "try", and "if an exception E was thrown:
+/// if attribute's type is a promise type, then return ! Call(%Promise.reject%,
+/// %Promise%, «E»)" (`rejectOnThrow`, as an operation returning a promise
+/// does). So `Object.getOwnPropertyDescriptor(ReadableStreamDefaultReader.
+/// prototype, "closed").get.call({})` returns a rejected promise; Chrome,
+/// Firefox and Safari all do (streams/idlharness.any.html and the other
+/// idlharness files at wpt.fyi 2358bd4835). The attribute's callback picks
+/// this function at comptime (interface.zig `PropertyGetterCallback`), so
+/// `attributeGetter`, which every other getter runs, is unchanged. The DOM
+/// algorithm brackets the whole call, the rejected promise's creation
+/// included, as `operation`'s does; `attributeGetter`'s own bracket nests in
+/// it (DeferredTeardown.enterAlgorithm counts depth, and only the outermost
+/// exit runs what is owed).
+pub fn promiseAttributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter) void {
+    const algorithm = dom_algorithm.enter(info.getIsolate());
+    defer dom_algorithm.leaveToScript(algorithm);
+    var call: GetterCall = .{ .info = info, .getter = self };
+    rejectOnThrow(info, &call, GetterCall.steps);
+}
+
+/// One read of a promise-typed attribute, as the data a catching run hands
+/// back to it.
+const GetterCall = struct {
+    info: *const v8.FunctionCallbackInfo,
+    getter: *const Getter,
+
+    fn steps(call: *GetterCall) void {
+        attributeGetter(call.info, call.getter);
+    }
+};
+
 /// An attribute getter function's steps (the generic
 /// PropertyGetterCallback's callback), for the attribute `self` describes.
 pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter) void {
