@@ -108,8 +108,13 @@ test "a realm's end gives back every global handle its streams and iterators kep
     // tmpl1; Blink's V8PerIsolateData::FindV8Template) - ReadableStream's,
     // its reader's and its async iterator's would otherwise be made inside
     // the measured realm and read as its leftovers. The measured realm's own
-    // release stays strict: not one handle may outlive it.
+    // release stays strict: not one handle may outlive it. The warm-up's
+    // own stream and iterator are let go as the measured realm's are at the
+    // end (checkpoints, then collections), so neither reading counts them.
     try rounds_lib.expectEval(page.realm, "new ReadableStream({ start(c) { c.close(); } }).values(); 'ok'", "ok");
+    for (0..4) |_| try protocol.performMicrotaskCheckpoint(page.agent);
+    protocol.notifyMemoryPressure(page.agent, .critical);
+    protocol.notifyMemoryPressure(page.agent, .critical);
     protocol.notifyMemoryPressure(page.agent, .critical);
     const start_bytes: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
     const second = try page.newRealm("https://iterators-second.test");
