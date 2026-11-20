@@ -631,6 +631,27 @@ pub fn ElementTask(comptime Payload: type) type {
             return null;
         }
 
+        /// Each task of this kind still queued whose element is in `realm`:
+        /// `f(context, payload, holds)` sees it, then it is cancelled (its
+        /// holds go now; the loop's run or drop frees the record). For a
+        /// document's teardown that must settle what its tasks carry while
+        /// the realm still runs (html.fullscreen's unloading cleanup). `f`
+        /// must queue no task of this kind.
+        pub fn cancelEachIn(realm: runtime.Context, context: anytype, comptime f: fn (@TypeOf(context), *Payload, []const TaskHold) void) void {
+            const tasks = ElementTasks.existingOf(realm) orelse return;
+            var current = tasks.first;
+            while (current) |entry| {
+                current = entry.next;
+                if (!std.mem.eql(u8, entry.kind, kind)) continue;
+                const self: *Self = @fieldParentPtr("entry", entry);
+                if (self.cancelled) continue;
+                const element = self.holds[0].get() orelse continue;
+                if (element.ctx != realm) continue;
+                f(context, &self.payload, &self.holds);
+                self.cancel();
+            }
+        }
+
         /// HTML "remove the task from its task queue": the task will not
         /// run, so what it holds goes now. The loop still has the record;
         /// its run or drop frees it.
