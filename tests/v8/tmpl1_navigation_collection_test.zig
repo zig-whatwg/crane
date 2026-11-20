@@ -7,10 +7,10 @@
 //! reads the process's private footprint, Chromium 157.0.8103.50
 //! third_party/blink/renderer/controller/oom_intervention_impl.cc) - its DOM
 //! is on V8's C++ heap. Without the DOM, a page heavy in DOM and light in
-//! script was left uncollected while the same page with a bigger heap was
-//! collected: lane tmpl1's realms hold less heap, and four chain rows of the
-//! cost window of 2026-11-20 kept 10 to 32% more (load.docs, load.app,
-//! memory.page-growth).
+//! script could be left uncollected while the same page with a bigger heap
+//! was collected: lane tmpl1's realms hold less heap, and four chain figures
+//! of the cost window of 2026-11-20 read 10 to 32% higher at the chain's end
+//! (load.docs, load.app, memory.page-growth).
 //!
 //! Each test makes its own agent and its own figure, moved by hand: what the
 //! adapter reads is the figure, whoever moves it (dom.instance_bridge does,
