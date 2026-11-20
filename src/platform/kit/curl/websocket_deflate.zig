@@ -239,6 +239,15 @@ pub const Deflater = struct {
     /// stored block - Z_SYNC_FLUSH - whose 00 00 ff ff is dropped) to `out`.
     pub fn compress(self: *Deflater, message: []const u8, out: *std.ArrayList(u8)) Error!void {
         const allocator = self.memory.allocator;
+        if (message.len == 0) {
+            // 7.2.3.6: an empty message is one empty stored block, its tail
+            // dropped - the octet 0x00. zlib makes nothing for a flush with
+            // no new input after a flush (deflate answers Z_BUF_ERROR), so it
+            // is written here; the stream is byte-aligned after any flush.
+            try out.append(allocator, 0x00);
+            if (self.no_context_takeover) _ = deflateReset(&self.stream);
+            return;
+        }
         const start = out.items.len;
         self.stream.next_in = message.ptr;
         self.stream.avail_in = @intCast(message.len);
