@@ -196,15 +196,20 @@ fn commandStartsAfterQueuedTasks() !void {
     const driver = try driver_mod.TestDriver.create(testing.allocator);
     defer driver.destroy();
     driver.defineNatives(browser.getRealm() orelse return error.NoRealm);
+    // Both calls from inside a task (a timer's), as a test's code runs: the
+    // query's resolution is queued for a later turn, and the command must
+    // not overtake it.
     try page.runScript(
         \\globalThis.result = 'pending';
         \\const order = [];
-        \\navigator.permissions.query({ name: 'geolocation' }).then(status => {
-        \\  order.push('query:' + status.state);
-        \\  status.onchange = () => { order.push('change:' + status.state); result = order.join(' '); };
-        \\});
-        \\__crane_test_driver_set_permission({ descriptor: { name: 'geolocation' }, state: 'granted' })
-        \\  .then(() => order.push('set'), error => { result = 'rejected:' + error; });
+        \\setTimeout(() => {
+        \\  navigator.permissions.query({ name: 'geolocation' }).then(status => {
+        \\    order.push('query:' + status.state);
+        \\    status.onchange = () => { order.push('change:' + status.state); result = order.join(' '); };
+        \\  });
+        \\  __crane_test_driver_set_permission({ descriptor: { name: 'geolocation' }, state: 'granted' })
+        \\    .then(() => order.push('set'), error => { result = 'rejected:' + error; });
+        \\}, 0);
     );
     try runUntilSettled(browser);
     try page.runScript(
