@@ -89,9 +89,9 @@ test "a WebSocket gives its receive scratch back when it reaches CLOSED, while s
     var url: [128]u8 = undefined;
     var script: [512]u8 = undefined;
     try run(browser, try std.fmt.bufPrint(&script,
-        \\globalThis.echoes=[]; globalThis.closed=false;
+        \\globalThis.echoes=[]; globalThis.closeFired=false;
         \\globalThis.socket=new WebSocket('{s}');
-        \\socket.onmessage=e=>echoes.push(e.data); socket.onclose=()=>closed=true;
+        \\socket.onmessage=e=>echoes.push(e.data); socket.onclose=()=>closeFired=true;
     , .{try server.url(&url)}));
     try waitFor(browser, "socket.readyState===WebSocket.OPEN");
     try run(browser, "socket.send('net3')");
@@ -99,8 +99,9 @@ test "a WebSocket gives its receive scratch back when it reaches CLOSED, while s
     // The pump received through its scratch: one more live 64 KiB block.
     try std.testing.expectEqual(before + 1, counting.live.load(.acquire));
 
+    // (Not `closed`: that is Window's own read-only attribute.)
     try run(browser, "socket.close(1000)");
-    try waitFor(browser, "closed && socket.readyState===WebSocket.CLOSED");
+    try waitFor(browser, "closeFired && socket.readyState===WebSocket.CLOSED");
     // `globalThis.socket` keeps the wrapper (and its state) alive: the scratch
     // must be gone all the same.
     try std.testing.expectEqual(before, counting.live.load(.acquire));
