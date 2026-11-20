@@ -2269,3 +2269,17 @@ why = Its first recorded flake disposition, though it has repeated under sweep l
 pair.1 = base 10/10; tip 10/10
 pair.2 = base 10/10; tip 10/10
 pair.3 = base 10/10; tip 10/10
+
+[cookies/name/name-ctl.html]
+generation = 234
+kind = user-ruling
+why = 65 -> 64: the subtest "Cookie with %xa in name is rejected or modified (HTTP)". Lane net3 (merge a5d83b1b9) made Crane parse HTTP/1 response headers leniently, as browsers do (zig-whatwg/curl fork CURLOPT_HTTP_LENIENT, pinned 8300fa889e5e). The old pass came from libcurl rejecting the whole response; now Crane stores the cookie "test10" exactly as Chrome 157 does, and Chrome 157, Firefox 160 and Safari 27.2 all fail this subtest on the aligned wpt.fyi runs at 2358bd4835. net3's FULL A/B vs generation 233 listed it as one of its 2 losses (+154 / -2).
+date = 2026-11-19
+decision = The user, 2026-11-19 7:46 PM ET: "Accept" (asked whether net3 may merge with its 2 cookie %xa losses, Crane = Chrome, all three browsers fail).
+
+[cookies/value/value-ctl.html]
+generation = 234
+kind = user-ruling
+why = 65 -> 64: the subtest "Cookie with %xa in value is rejected or modified (HTTP)". Lane net3 (merge a5d83b1b9) made Crane parse HTTP/1 response headers leniently, as browsers do (zig-whatwg/curl fork CURLOPT_HTTP_LENIENT, pinned 8300fa889e5e). The old pass came from libcurl rejecting the whole response; now Crane stores the cookie "test10" exactly as Chrome 157 does, and Chrome 157, Firefox 160 and Safari 27.2 all fail this subtest on the aligned wpt.fyi runs at 2358bd4835. net3's FULL A/B vs generation 233 listed it as one of its 2 losses (+154 / -2).
+date = 2026-11-19
+decision = The user, 2026-11-19 7:46 PM ET: "Accept" (asked whether net3 may merge with its 2 cookie %xa losses, Crane = Chrome, all three browsers fail).

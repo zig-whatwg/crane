@@ -2077,3 +2077,16 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = firefox
 ruling          = WebKit adopted the spec in d0627f4a50 (2026-10-09); Safari 27.2 stable lags; spec + Firefox (the integrator, 2026-11-20 4:25 PM ET); whitespace-with-base.html and -module.html, which Firefox passes, pin the same rule
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+# follows-majority (lane flk2, 2026-11-20; the integrator's OK 12:00 PM ET): the test races a rendering opportunity
+# against a postMessage chain. Crane fails it as Chrome and Safari do, and passes only when the chain is delayed past
+# the next 60 Hz grid moment (tools/wpt_build_differences.txt, its timing-bound line, has the measurements).
+
+[fullscreen/api/element-request-fullscreen-cross-origin.sub.html]
+kind            = follows-majority
+why             = iframe D's requestFullscreen() promise resolves (Fullscreen step 15) before the ancestors' fullscreenchange events fire at their next "update the rendering" (step 12), and the test asks B for its report through a postMessage chain (D -> top -> A -> B) that takes 0.0-0.13 ms in Crane against 1.9-12 ms to the next 60 Hz rendering opportunity (chat.local x10, lane flk2), so B reports 0 events - the spec allows either order, and Chrome and Safari report 0 for an intermediate frame as Crane does ("Expected report for iframe ... to have 1 events" in both); Firefox, whose ancestor processes apply fullscreen before the requesting document's promise resolves, passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: iframe "C" got 0 events; Chrome 158 at a3830cd8f7, run 4913958805569536: iframe "B" got 0, Crane's message)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: iframe "B" got 0 events, Crane's message)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
