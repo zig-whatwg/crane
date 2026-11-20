@@ -1269,7 +1269,7 @@ pub fn deleteAction(edit: *Edit) !bool {
     {
         const caret = (try edit.rangeStart()) orelse return true;
         const host = (try common.editingHostOf(caret.node)) orelse return true;
-        if (!try hasVisibleContentBefore(caret, host)) return true;
+        if (!try hasVisibleContentBefore(caret, host) and !try outdentsListItem(caret.node, host)) return true;
     }
     // Step 2.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return true, true);
@@ -1789,6 +1789,25 @@ fn isContentOnTheLine(node: *Instance) !bool {
 }
 
 /// Whether anything visible lies between `host`'s start and `point`.
+/// Whether the caret in `node` is in the first list item of a list that is
+/// not the editing host itself - one step 7 outdents out of its list. At the
+/// editing host's start the browsers still do that: Backspace in `<ol
+/// contenteditable><ul><li>{}</li></ul></ol>` leaves `<li><br></li>` in the
+/// host list (editing/other/delete-in-last-list-item-when-parent-list-is-
+/// editing-host.html: Chrome 157, Firefox 160 and Safari 27.2 pass; wpt.fyi
+/// 2358bd4835), where an item of the host list itself stays.
+fn outdentsListItem(node: *Instance, host: *Instance) !bool {
+    var current: ?*Instance = node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (c == host) return false;
+        if (!try common.isHtmlElementIn(c, &list_item_names)) continue;
+        const list = (try common.parent(c)) orelse return false;
+        if (list == host or !try common.isEditable(list)) return false;
+        return (try common.firstChild(list)) == c;
+    }
+    return false;
+}
+
 fn hasVisibleContentBefore(point: Point, host: *Instance) !bool {
     if (common.isText(point.node)) {
         if (point.offset > 0 and !try common.textIsCollapsibleWhitespace(point.node, 0, point.offset)) return true;
