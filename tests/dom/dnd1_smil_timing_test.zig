@@ -105,7 +105,9 @@ const Fixture = struct {
     }
 
     fn deinit(self: *Fixture) void {
+        self.element.detach();
         self.element.deinit();
+        self.container.detachAll();
         self.container.deinit();
     }
 
@@ -303,10 +305,13 @@ test "beginElementAt and endElementAt: script instance times" {
 test "syncbase: B begins when A's interval ends, and moves with it" {
     var container = TimeContainer.init(testing.allocator);
     defer container.deinit();
+    defer container.detachAll();
     var a = TimedElement.init(testing.allocator);
     defer a.deinit();
+    defer a.detach();
     var b = TimedElement.init(testing.allocator);
     defer b.deinit();
+    defer b.detach();
     var la = try a.setBeginOrEnd(.begin, "1s");
     la.deinit(testing.allocator);
     a.setDur("2s");
@@ -355,6 +360,7 @@ test "a seek raises the net change only, and rewinding starts again from 0" {
 test "pause and unpause hold the timeline's time" {
     var container = TimeContainer.init(testing.allocator);
     defer container.deinit();
+    defer container.detachAll();
     container.start(secs(10));
     try testing.expectEqual(secs(2).us, container.elapsed(secs(12)).us);
     container.pause(secs(12));
@@ -364,6 +370,7 @@ test "pause and unpause hold the timeline's time" {
     // setCurrentTime before the timeline begins is kept for its start.
     var later = TimeContainer.init(testing.allocator);
     defer later.deinit();
+    defer later.detachAll();
     later.setElapsed(.zero, secs(7));
     try testing.expectEqual(@as(i64, 0), later.elapsed(secs(1)).us);
     later.start(secs(1));
@@ -375,16 +382,33 @@ test "freed in either order: element and container detach each other" {
         var container = TimeContainer.init(testing.allocator);
         var element = TimedElement.init(testing.allocator);
         try container.schedule(&element, .zero);
+        element.detach();
         element.deinit();
         try testing.expectEqual(@as(usize, 0), container.elements.items.len);
+        container.detachAll();
         container.deinit();
     }
     {
         var container = TimeContainer.init(testing.allocator);
         var element = TimedElement.init(testing.allocator);
         try container.schedule(&element, .zero);
+        container.detachAll();
         container.deinit();
         try testing.expect(element.container == null);
+        element.detach();
         element.deinit();
+    }
+    {
+        // A syncbase and its dependent, the base going first.
+        var base = TimedElement.init(testing.allocator);
+        var dependent = TimedElement.init(testing.allocator);
+        var list = try dependent.setBeginOrEnd(.begin, "b.end");
+        list.deinit(testing.allocator);
+        try dependent.connectSyncBase(0, &base);
+        base.detach();
+        base.deinit();
+        try testing.expect(dependent.sync_conditions.items[0].base == null);
+        dependent.detach();
+        dependent.deinit();
     }
 }

@@ -20,47 +20,38 @@ pub const ImplError = error{
 
 /// What an svg element keeps: the timeline of the SVG document fragment it
 /// is the outermost svg element of (SVG Animations 2 4.1), made the first
-/// time anything needs it.
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-    timeline: ?*smil.Timeline = null,
-};
+/// time an animation or a timeline method needs it - most svg elements
+/// never do.
+pub const InternalState = smil.Timeline;
 
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.stateAs(State) orelse return null;
-    return state.own._internal;
-}
+/// The state's two exits (dom.orphan_states): this element's deinit, and the
+/// sweep at its Browser's end for an orphan no deinit reaches.
+const States = dom.orphan_states.Swept(.svg_svg_element, InternalState);
 
 /// dom.smil.document_animations: `svg`'s timeline, made when `create` is
 /// set.
 fn timelineOf(svg: *runtime.Instance, create: bool) ?*smil.Timeline {
     const state = svg.stateAs(State) orelse return null;
-    const internal = state.own._internal orelse blk: {
-        if (!create) return null;
-        const allocator = svg.ctx.allocator;
-        const made = allocator.create(InternalState) catch return null;
-        made.* = .{ .allocator = allocator };
-        state.own._internal = made;
-        break :blk made;
-    };
-    if (internal.timeline) |timeline| return timeline;
+    if (state.own._internal) |timeline| return timeline;
     if (!create) return null;
-    internal.timeline = smil.Timeline.create(internal.allocator) catch return null;
-    return internal.timeline;
+    const made = States.create(svg, smil.Timeline.init(svg.ctx.allocator)) catch return null;
+    state.own._internal = made;
+    return made;
 }
 
 /// The timeline goes with the element: its animation elements are left on
-/// none (TimeContainer.deinit detaches them).
+/// none first, then what it owns.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
+    internal.detach();
     state.own._internal = null;
-    if (internal.timeline) |timeline| timeline.destroy();
-    internal.allocator.destroy(internal);
+    States.destroy(instance);
 }
 
 /// The hooks this type owns, installed once, at process start.
 pub fn installHooks() void {
+    States.installSweep();
     smil.installSvgElement(.{ .timeline_of = &timelineOf });
 }
 

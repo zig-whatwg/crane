@@ -18,7 +18,8 @@
 //! timeline's time is `presentation_time + (now - reference_time)`.
 //!
 //! Plain data: the elements are borrowed, each detaching itself before it
-//! goes (TimedElement.deinit), and `deinit` detaches the ones still here.
+//! goes (TimedElement.detach), and `detachAll` leaves the ones still here
+//! on no container.
 const std = @import("std");
 const time_mod = @import("time.zig");
 const timed = @import("timed_element.zig");
@@ -65,8 +66,16 @@ pub const TimeContainer = struct {
         return .{ .allocator = allocator };
     }
 
-    pub fn deinit(self: *TimeContainer) void {
+    /// Leave every element scheduled here on no container (the owner's
+    /// deinit, before `deinit`; an orphan sweep does not).
+    pub fn detachAll(self: *TimeContainer) void {
         for (self.elements.items) |element| element.container = null;
+        self.elements.clearRetainingCapacity();
+        self.dispatches.clearRetainingCapacity();
+    }
+
+    /// Free what the container owns, and nothing it points at.
+    pub fn deinit(self: *TimeContainer) void {
         self.elements.deinit(self.allocator);
         self.dispatches.deinit(self.allocator);
         self.* = undefined;

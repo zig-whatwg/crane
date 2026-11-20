@@ -52,7 +52,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
-const Hook = @import("../hook.zig").Hook;
+const Hook = @import("process").hook.Hook;
 const element_data = @import("../element_data.zig");
 const element_references = @import("../element_references.zig");
 const instance_bridge = @import("../instance_bridge.zig");
@@ -101,8 +101,10 @@ pub fn kindOf(local_name: []const u8) ?Kind {
 }
 
 /// An animation element's state: its timed element, its target, and the
-/// timeline it is on. OWNED by the SVGAnimationElement impl (`create` in its
-/// construction, `destroy` in its teardown).
+/// timeline it is on. OWNED by the SVGAnimationElement impl, a block of its
+/// Browser's arena in a side table (dom.orphan_states.Swept): `detach` then
+/// `deinit` in the element's own teardown, `deinit` alone in an orphan's
+/// sweep. Never moved once made: the timed element is pointed at.
 pub const AnimationState = struct {
     allocator: Allocator,
     timed: TimedElement,
@@ -114,16 +116,18 @@ pub const AnimationState = struct {
     /// The outermost svg element whose timeline schedules `timed`.
     timeline_svg: ?Link = null,
 
-    pub fn create(allocator: Allocator, element: *runtime.Instance) Allocator.Error!*AnimationState {
-        const self = try allocator.create(AnimationState);
-        self.* = .{ .allocator = allocator, .timed = TimedElement.init(allocator), .element = element };
-        return self;
+    pub fn init(allocator: Allocator, element: *runtime.Instance) AnimationState {
+        return .{ .allocator = allocator, .timed = TimedElement.init(allocator), .element = element };
     }
 
-    /// Detach from the timeline and the syncbases, then free.
-    pub fn destroy(self: *AnimationState) void {
+    /// Off the timeline and the syncbases (the element's own teardown).
+    pub fn detach(self: *AnimationState) void {
+        self.timed.detach();
+    }
+
+    /// What the state owns (dom.orphan_states: no instance is read).
+    pub fn deinit(self: *AnimationState) void {
         self.timed.deinit();
-        self.allocator.destroy(self);
     }
 
     fn fromTimed(timed_element: *TimedElement) *AnimationState {
@@ -131,21 +135,25 @@ pub const AnimationState = struct {
     }
 };
 
-/// An outermost svg element's timeline. OWNED by the SVGSVGElement impl
-/// (made on first use, `destroy` in its teardown).
+/// An outermost svg element's timeline. OWNED by the SVGSVGElement impl,
+/// made the first time an animation needs it, a block of its Browser's arena
+/// in a side table (dom.orphan_states.Swept): `detach` then `deinit` in the
+/// svg element's own teardown, `deinit` alone in an orphan's sweep.
 pub const Timeline = struct {
-    allocator: Allocator,
     container: TimeContainer,
 
-    pub fn create(allocator: Allocator) Allocator.Error!*Timeline {
-        const self = try allocator.create(Timeline);
-        self.* = .{ .allocator = allocator, .container = TimeContainer.init(allocator) };
-        return self;
+    pub fn init(allocator: Allocator) Timeline {
+        return .{ .container = TimeContainer.init(allocator) };
     }
 
-    pub fn destroy(self: *Timeline) void {
+    /// Leave the animations on no timeline (the svg element's teardown).
+    pub fn detach(self: *Timeline) void {
+        self.container.detachAll();
+    }
+
+    /// What the timeline owns (dom.orphan_states: no instance is read).
+    pub fn deinit(self: *Timeline) void {
         self.container.deinit();
-        self.allocator.destroy(self);
     }
 };
 
@@ -365,6 +373,9 @@ fn instanceOf(node: *NodeBase) ?*runtime.Instance {
 /// An outermost svg element became connected: its timeline is listed, and
 /// begins at once in a document that has loaded.
 fn svgInserted(svg: *runtime.Instance) void {
+    // Only an svg element an animation gave a timeline has one: most never
+    // do, and pay nothing here.
+    if (timelineOf(svg, false) == null) return;
     const timeline = registeredTimeline(svg) orelse return;
     const document = documentOf(svg) orelse return;
     if (!timeline.container.started and canStart(document)) {

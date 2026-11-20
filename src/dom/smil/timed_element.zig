@@ -21,10 +21,10 @@
 //!
 //! Ownership: a timed element and its time container point at each other
 //! while it is scheduled, and each detaches the other before it goes
-//! (`TimeContainer.unschedule`, `TimeContainer.deinit`); a syncbase
-//! condition and its syncbase element likewise (`disconnectSyncBases`,
-//! `deinit`). Whichever is freed first, the other is left pointing at
-//! nothing.
+//! (`detach`, `TimeContainer.detachAll`); a syncbase condition and its
+//! syncbase element likewise. Whichever is freed first, the other is left
+//! pointing at nothing. `deinit` frees only what the element owns, for the
+//! orphan sweep at a Browser's end, which detaches nothing.
 const std = @import("std");
 const time_mod = @import("time.zig");
 const parse = @import("parse.zig");
@@ -203,8 +203,11 @@ pub const TimedElement = struct {
         return .{ .allocator = allocator };
     }
 
-    /// Detach from everything that points here, then free the lists.
-    pub fn deinit(self: *TimedElement) void {
+    /// Detach from everything that points here: the time container, the
+    /// syncbases, the dependents. The element's own deinit runs this first;
+    /// an orphan's sweep at its Browser's end does not (every timed element
+    /// left then goes at once, and none is read again).
+    pub fn detach(self: *TimedElement) void {
         if (self.container) |container| container.unschedule(self);
         self.disconnectSyncBases();
         for (self.dependents.items) |dependent| {
@@ -212,6 +215,11 @@ pub const TimedElement = struct {
                 if (condition.base == self) condition.base = null;
             }
         }
+        self.dependents.clearRetainingCapacity();
+    }
+
+    /// Free the lists - what the element owns, and nothing it points at.
+    pub fn deinit(self: *TimedElement) void {
         self.dependents.deinit(self.allocator);
         for (self.sync_conditions.items) |condition| self.allocator.free(condition.base_id);
         self.sync_conditions.deinit(self.allocator);

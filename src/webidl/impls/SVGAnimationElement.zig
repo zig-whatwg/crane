@@ -29,29 +29,33 @@ pub const ImplError = error{
 
 pub const InternalState = animations.AnimationState;
 
+/// The state's two exits (dom.orphan_states): this element's deinit, and the
+/// sweep at its Browser's end for an orphan no deinit reaches.
+const States = dom.orphan_states.Swept(.svg_animation_element, InternalState);
+
+/// The element's timing state, made the first time anything asks for it
+/// (its insertion, a timing attribute's change, a timing method).
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.stateAs(State) orelse return null;
-    return state.own._internal;
-}
-
-/// The construction chain's own step: the element's timing state.
-pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
-    _ = StateType;
-    _ = args;
-    instance.getState(State).own._internal = try InternalState.create(allocator, instance);
+    if (state.own._internal) |internal| return internal;
+    const made = States.create(instance, InternalState.init(instance.ctx.allocator, instance)) catch return null;
+    state.own._internal = made;
+    return made;
 }
 
 /// The timing state goes with the element: off its timeline and its
-/// syncbases first (AnimationState.destroy).
+/// syncbases first, then what it owns.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
+    internal.detach();
     state.own._internal = null;
-    internal.destroy();
+    States.destroy(instance);
 }
 
 /// The hooks this type owns, installed once, at process start.
 pub fn installHooks() void {
+    States.installSweep();
     animations.installAnimationElement(.{ .state_of = &getInternal });
     dom.mutation.registerInsertionStepsCallback(&animations.insertionSteps) catch @panic("SMIL insertion steps allocation");
     dom.mutation.registerRemovingStepsCallback(&animations.removingSteps) catch @panic("SMIL removing steps allocation");
