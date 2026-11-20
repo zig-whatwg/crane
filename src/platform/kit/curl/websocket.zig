@@ -172,10 +172,13 @@ const Network = struct {
 };
 
 // frames.Kind is platform.WebSocketFrameKind, value for value: chunks and
-// sends convert between them with @enumFromInt.
+// sends convert between them by backing integer.
 comptime {
-    for (@typeInfo(platform.WebSocketFrameKind).@"enum".fields, @typeInfo(frames.Kind).@"enum".fields) |a, b| {
-        if (!std.mem.eql(u8, a.name, b.name) or a.value != b.value) @compileError("frames.Kind and platform.WebSocketFrameKind differ");
+    const names = std.meta.fieldNames(platform.WebSocketFrameKind);
+    if (names.len != std.meta.fieldNames(frames.Kind).len) @compileError("frames.Kind and platform.WebSocketFrameKind differ");
+    for (names, std.meta.fieldNames(frames.Kind)) |a, b| {
+        if (!std.mem.eql(u8, a, b) or @backingInt(@field(platform.WebSocketFrameKind, a)) != @backingInt(@field(frames.Kind, b)))
+            @compileError("frames.Kind and platform.WebSocketFrameKind differ");
     }
 }
 

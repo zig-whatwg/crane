@@ -45,9 +45,9 @@ const Server = struct {
 
     fn deinit(self: *Server) void {
         ng.nghttp2_session_del(self.session);
-        for (self.request.items) |field| {
-            testing.allocator.free(field[0]);
-            testing.allocator.free(field[1]);
+        for (self.request.items) |entry| {
+            testing.allocator.free(entry[0]);
+            testing.allocator.free(entry[1]);
         }
         self.request.deinit(testing.allocator);
         self.received.deinit(testing.allocator);
