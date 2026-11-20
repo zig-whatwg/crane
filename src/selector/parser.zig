@@ -2042,10 +2042,29 @@ pub const Parser = struct {
             const identifier = try singleToken(args, .ident);
             if (!std.ascii.eqlIgnoreCase(identifier.value, "select")) return error.InvalidSelector;
             try self.serializeAs(identifier.start, identifier.end, "select");
+        } else if (std.mem.eql(u8, name, "scroll-button")) {
+            // CSS Overflow 5 §3.2: ::scroll-button( '*' |
+            // <scroll-button-direction> ) - one argument; anything else
+            // (a string, a number, two directions, an unknown word) is an
+            // invalid selector, as in Chrome, the browser that ships it
+            // (css/css-overflow/parsing/scroll-buttons-invalid.html). The
+            // keyword serializes lowercase, as ::picker()'s does.
+            const token = stream.peek();
+            stream.advance();
+            _ = stream.skipWhitespace();
+            if (!stream.atEnd()) return error.InvalidSelector;
+            if (token.tag == .delim and token.delim == '*') return;
+            if (token.tag != .ident) return error.InvalidSelector;
+            const direction = knownPseudoElement(token.value, &scroll_button_directions) orelse return error.InvalidSelector;
+            try self.serializeAs(token.start, token.end, direction);
         } else if (isNamedViewTransitionName(name)) {
             try self.parseViewTransitionArgument(&stream, pseudo);
         }
     }
+
+    /// CSS Overflow 5 §3.2 <scroll-button-direction>: the physical and
+    /// flow-relative directions, and prev / next.
+    const scroll_button_directions = [_][]const u8{ "up", "down", "left", "right", "block-start", "block-end", "inline-start", "inline-end", "prev", "next" };
 
     /// View Transitions 2 §10.4: <pt-name-and-class-selector> =
     /// <pt-name-selector> <pt-class-selector>? | <pt-class-selector>, with
