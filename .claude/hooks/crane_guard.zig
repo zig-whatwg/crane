@@ -241,22 +241,40 @@ fn checkGitStash(command: []const u8) Verdict {
     return null;
 }
 
-/// Never force-push.
+/// Never force-push - with one exception the user made (2026-11-20, choice (a)): the
+/// published results site keeps one commit per publish, so `gh-pages` alone may be
+/// replaced, and only with a lease naming it (`--force-with-lease=gh-pages:<expected>`)
+/// in a push whose only refspec is `gh-pages`. A bare lease, -f, --force or a +refspec
+/// stays refused for every branch.
 fn checkForcePush(command: []const u8) Verdict {
+    const refused = "never force-push (the user's rule): push a fast-forward, or ask the user";
     var toks = Tokens.init(command);
     while (toks.next()) |t| {
         if (!std.mem.eql(u8, t.text, "push")) continue;
         if (!precededBy(command, t.start, "git")) continue;
         var cur = t;
+        var gh_pages_lease = false;
+        var other_force = false;
+        var positional: usize = 0; // the remote, then each refspec
+        var refspecs_gh_pages_only = true;
         while (toks.peekSameSegment(cur)) |a| {
             _ = toks.next();
             cur = a;
-            if (std.mem.eql(u8, a.text, "-f") or std.mem.eql(u8, a.text, "--force") or
+            if (std.mem.startsWith(u8, a.text, "--force-with-lease=gh-pages:")) {
+                gh_pages_lease = true;
+            } else if (std.mem.eql(u8, a.text, "-f") or std.mem.eql(u8, a.text, "--force") or
                 std.mem.startsWith(u8, a.text, "--force-with-lease") or
                 std.mem.startsWith(u8, a.text, "--force-if-includes") or
                 (a.text.len > 1 and a.text[0] == '+'))
-                return "never force-push (the user's rule): push a fast-forward, or ask the user";
+            {
+                other_force = true;
+            } else if (a.text.len > 0 and a.text[0] != '-') {
+                positional += 1;
+                if (positional > 1 and !std.mem.eql(u8, a.text, "gh-pages")) refspecs_gh_pages_only = false;
+            }
         }
+        if (other_force) return refused;
+        if (gh_pages_lease and !(positional == 2 and refspecs_gh_pages_only)) return refused;
     }
     return null;
 }
@@ -813,6 +831,23 @@ test "force-push is refused; a normal push is not" {
     try expectDenied("git -C tests/wpt push --force-with-lease origin main", null);
     try expectAllowed("git push origin main gh-pages", null);
     try expectAllowed("git push origin main && git log -1", null);
+}
+
+test "gh-pages alone may be replaced with a lease (the user, 2026-11-20); nothing else may" {
+    // The published results site keeps one commit per publish: the user chose (a), each
+    // generation replaces the previous commit, which needs a lease-guarded force-push of
+    // gh-pages and only gh-pages.
+    try expectAllowed("git push --force-with-lease=gh-pages:5ce54d18ea8 origin gh-pages", null);
+    try expectAllowed("git push --force-with-lease=gh-pages:$old origin gh-pages", null);
+    // A bare lease, -f, --force or a +refspec stays refused, even for gh-pages.
+    try expectDenied("git push --force-with-lease origin gh-pages", null);
+    try expectDenied("git push --force origin gh-pages", null);
+    try expectDenied("git push -f origin gh-pages", null);
+    try expectDenied("git push origin +gh-pages", null);
+    // A lease that names gh-pages but pushes anything else as well is refused.
+    try expectDenied("git push --force-with-lease=gh-pages:abc origin gh-pages main", null);
+    try expectDenied("git push --force-with-lease=main:abc origin main", null);
+    try expectDenied("git push --force-with-lease=gh-pages:abc origin main", null);
 }
 
 test "pkill and killall are refused; exact pids are not" {
