@@ -123,32 +123,31 @@ pub const ContextEntry = struct {
     /// so the flag stays readable for the manager's lifetime.
     destroying: bool = false,
 
-    /// Whether a wrap in this realm must build its interface's interface
-    /// object first, and which it has (`InterfaceObjects`).
+    /// The interface objects a wrap in this realm has built, or found built
+    /// (`InterfaceObjects`).
     interface_objects: InterfaceObjects = .{},
 };
 
 /// [interface_prototypes] A wrapper's [[Prototype]] is the realm's interface
 /// prototype object as V8 instantiates the interface's template in the
 /// realm's context (v8_wrapper.cpp v8_FunctionTemplate_NewWrapper) - the same
-/// object as the realm's interface object's `prototype`. In a realm that
-/// built every interface object when it was made, that object already has
-/// everything WebIDL puts on it. A realm that builds them when script first
-/// reads them (`lazy`: interface_bindings.registerAllTemplatesOnly's
-/// .lazy_follows - a frame's realm, a hydrated worker's) builds one for a
-/// wrap too, the first time it wraps an object of the interface: script that
-/// never read the global - or replaced it before reading it - still gets the
-/// whole prototype. Blink's per-context constructor map is the same record
-/// (V8PerContextData::constructor_map_, ConstructorForType, Chromium
-/// 157.0.8103.51: an interface object is built on the first wrap or the
-/// first read, whichever comes first). Written and read on the agent's
-/// thread, as the entry is.
+/// object as the realm's interface object's `prototype`, which has everything
+/// WebIDL puts on it only once the realm has built that interface object. A
+/// realm builds its interface objects when script first reads them (every
+/// Window realm's exposed constructs are lazy data properties -
+/// interface_bindings.installExposedConstructs; a ShadowRealm's restored
+/// global has the same) - and for a wrap too, the first time it wraps an
+/// object of the interface: script that never read the global - or replaced
+/// it before reading it - still gets the whole prototype. A realm that built
+/// it already (a worker's, eagerly) finds it marked. Blink's per-context
+/// constructor map is the same record (V8PerContextData::constructor_map_,
+/// ConstructorForType, Chromium 157.0.8103.51: an interface object is built on
+/// the first wrap or the first read, whichever comes first). Written and read
+/// on the agent's thread, as the entry is.
 pub const InterfaceObjects = struct {
-    /// The realm builds its interface objects on first read.
-    lazy: bool = false,
-    /// In a lazy realm: the templates whose interface object a wrap has
-    /// built, or found built. From the entry's allocator; freed when the
-    /// entry is retired (`deinit`).
+    /// The templates whose interface object a wrap has built, or found
+    /// built. From the entry's allocator; freed when the entry is retired
+    /// (`deinit`).
     built: std.AutoHashMapUnmanaged(*v8.FunctionTemplate, void) = .empty,
 
     pub fn deinit(self: *InterfaceObjects, allocator: std.mem.Allocator) void {
@@ -616,50 +615,6 @@ pub fn getByKey(key: usize) ?runtime.Context {
 pub fn isContextAddressAlive(raw_addr: usize) bool {
     const state = currentRealms() orelse return false;
     return state.contexts.contains(raw_addr);
-}
-
-/// Hydrate a V8 context restored from snapshot with the appropriate interfaces for the given scope
-///
-/// This function installs only the interfaces that are exposed in the given scope,
-/// using the exposure metadata from WebIDL [Exposed] attributes.
-///
-/// On the agent's own thread (the current isolate's realms).
-///
-/// Arguments:
-/// - isolate: V8 isolate pointer
-/// - v8_ctx: V8 context pointer (restored from snapshot)
-/// - scope: The global scope kind to install interfaces for
-pub fn hydrateContextFromSnapshot(
-    isolate: *v8.Isolate,
-    v8_ctx: *v8.Context,
-    scope: helpers.GlobalScope,
-) void {
-    log.debug("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
-
-    // Use inline for to convert runtime scope to comptime for installForScope
-    inline for (comptime std.meta.fieldNames(helpers.GlobalScope)) |field_name| {
-        if (scope == @field(helpers.GlobalScope, field_name)) {
-            // NOTE: Do NOT call installLazyConstructorsOnGlobal here!
-            // The snapshot already contains all WebIDL constructors registered via initializeBindings().
-            // Installing lazy getters would OVERWRITE the snapshot's constructors with fresh ones,
-            // breaking prototype chain identity (instanceof checks would fail because the prototype
-            // objects would be different from those in the snapshot).
-
-            // Register legacy interface aliases (e.g., webkitURL = URL)
-            // V8 snapshots don't preserve object property sets on the global,
-            // so we must re-register these aliases at runtime after loading from snapshot.
-            const interface_bindings = @import("interface_bindings.zig");
-            interface_bindings.registerLegacyInterfaceAliases(isolate, v8_ctx);
-
-            // NOTE: Do NOT call setupConstructorInheritance here!
-            // The snapshot already contains properly configured prototype chains set up during
-            // snapshot creation via FunctionTemplate::Inherit(). Re-calling this would create
-            // new templates and potentially break the prototype chain identity.
-
-            log.debug("[HYDRATE-SNAPSHOT] Context hydrated with legacy aliases, scope={s}\n", .{@tagName(scope)});
-            return;
-        }
-    }
 }
 
 /// Remove a runtime context for a V8 context
@@ -1477,113 +1432,6 @@ pub fn registerExternalReferences() void {
 //
 // This eliminates duplication between Context.zig and worker_v8_context.zig.
 // ============================================================================
-
-/// Context type for hydration
-pub const HydrationContextType = enum {
-    /// Window context (for HTML pages) - gets document, location, navigator
-    window,
-    /// Worker context - gets self, postMessage (NO document, location)
-    worker,
-};
-
-/// Options for hydrating a context
-pub const HydrationOptions = struct {
-    /// V8 isolate
-    isolate: *v8.Isolate,
-    /// V8 context to hydrate
-    context: *v8.Context,
-    /// Allocator for runtime objects
-    allocator: std.mem.Allocator,
-    /// Timer interface for setTimeout/setInterval
-    timer_interface: ?runtime.TimerInterface = null,
-    /// Event loop interface (streams EventLoop interface)
-    event_loop_interface: ?@import("event_loop").EventLoop = null,
-    /// Network manager for async fetch (Window only)
-    network_manager: ?*anyopaque = null,
-};
-
-/// Hydration result for worker contexts
-pub const WorkerHydrationResult = struct {
-    /// Runtime context for the V8 context
-    runtime_ctx: runtime.Context,
-    /// Whether hydration succeeded
-    success: bool = true,
-};
-
-/// Hydrate a V8 context as a Worker context (from snapshot)
-///
-/// This function performs all post-snapshot hydration steps for Worker contexts:
-/// 1. Populates Zig-side template registry (wrapInstanceAsV8Object support)
-/// 2. Reinstalls accessor callbacks on prototypes (stale after snapshot load)
-/// 3. Sets up basic worker globals (self, globalThis)
-/// 4. Registers context with context manager
-///
-/// ## Worker-specific behavior
-///
-/// Workers do NOT get:
-/// - document, location, navigator (DOM-specific)
-/// - Window instance (workers use DedicatedWorkerGlobalScope)
-///
-/// Workers DO get:
-/// - self (reference to global)
-/// - postMessage (registered separately by worker setup)
-/// - console (registered separately)
-///
-/// ## Usage
-///
-/// ```zig
-/// const result = try context_manager.hydrateWorkerContext(.{
-///     .isolate = isolate,
-///     .context = v8_ctx,
-///     .allocator = allocator,
-/// });
-/// ```
-pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
-    const interface_bindings = @import("interface_bindings.zig");
-
-    const isolate = options.isolate;
-    const v8_ctx = options.context;
-    const allocator = options.allocator;
-
-    log.debug("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
-
-    // 1. The context manager is the current agent's: nothing to make.
-
-    // 2. Register context with context manager
-    const runtime_ctx = try getOrCreate(v8_ctx, allocator);
-
-    // 3. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
-    log.debug("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
-    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx, .lazy_follows);
-
-    // NOTE: Accessor callback reinstallation is NO LONGER NEEDED after whatwg-41la6.
-    // The Chromium pattern fix (calling GetFunction before NewInstance) ensures
-    // prototype chains are materialized correctly during snapshot creation.
-
-    log.debug("[HYDRATE-WORKER] hydrateWorkerContext complete\n", .{});
-
-    // 6. Set up basic worker globals
-    const global_obj = v8.v8_Context_Global(v8_ctx) orelse {
-        return error.NoGlobal;
-    };
-
-    // 'self' = globalThis (reference to global object)
-    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse {
-        return error.StringCreationFailed;
-    };
-    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(self_key), @ptrCast(global_obj));
-
-    // 'globalThis' = global object
-    const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse {
-        return error.StringCreationFailed;
-    };
-    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(global_this_key), @ptrCast(global_obj));
-
-    return WorkerHydrationResult{
-        .runtime_ctx = runtime_ctx,
-        .success = true,
-    };
-}
 
 /// Check if a context has Window-specific globals
 ///

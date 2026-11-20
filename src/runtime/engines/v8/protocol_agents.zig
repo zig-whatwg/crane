@@ -707,6 +707,13 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
             log.warn("ShadowRealm support was not installed: {}", .{err});
             break :blk null;
         };
+        // An isolate restored from the snapshot takes the snapshot's
+        // templates back into its registry, once - the templates its
+        // restored contexts were made from, and its only copy of them; every
+        // other template is made the first time a realm needs it (Blink:
+        // V8ContextSnapshotImpl::InstallInterfaceTemplates; lane tmpl1).
+        if (record.from_snapshot and !@import("interface_bindings.zig").takeSnapshotTemplates(isolate))
+            log.warn("the snapshot holds no templates for this build to take back: its Window realms make their own", .{});
     }
     return @ptrCast(isolate);
 }

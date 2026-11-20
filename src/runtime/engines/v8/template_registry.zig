@@ -159,10 +159,10 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
     return storage.registered.get(interface_name);
 }
 
-/// [interface_prototypes] In a realm that builds its interface objects on
-/// first read (context_manager.InterfaceObjects): build `interface_name`'s
+/// [interface_prototypes] A realm builds its interface objects on first read
+/// (context_manager.InterfaceObjects): build `interface_name`'s
 /// before the realm's first wrapper of it - the lazy global's getter does
-/// the same work (global_constructor_handler.lazyConstructorGetter), and a
+/// the same work (global_constructor_handler.lazyConstructGetter), and a
 /// built one is found marked and handed back as it is. Once per interface
 /// per realm: the template is recorded after, built or not, so an interface
 /// that has no interface object to build (none is registered under its
@@ -333,13 +333,11 @@ pub fn wrapInstanceAsV8Object(
     // v8_FunctionTemplate_NewWrapper says how). ONE call, whose one Global is
     // the wrapper's.
     //
-    // [interface_prototypes] A realm that builds its interface objects when
-    // script first reads them builds this one first, so the prototype has
-    // everything WebIDL puts on it whether or not script read the global.
-    // An interface the isolate makes on first use has a lazy interface
-    // object in every realm (interface_bindings.madeOnFirstUse).
-    if (entry.interface_objects.lazy or @import("interface_bindings.zig").madeOnFirstUse(interface_name))
-        ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
+    // [interface_prototypes] A realm builds its interface objects when script
+    // first reads them (interface_bindings.installExposedConstructs): it
+    // builds this one first, so the prototype has everything WebIDL puts on
+    // it whether or not script read the global.
+    ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
     const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context) orelse {
         return error.ObjectCreationFailed;
     };

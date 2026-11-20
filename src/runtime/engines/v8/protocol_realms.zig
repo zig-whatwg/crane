@@ -381,22 +381,26 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // [SecureContext] construct (WebIDL 3.3.13).
     realm.secure_context = options.secure_context;
 
-    if (restored) {
-        // The snapshot has the interfaces; the adapter's template registry
-        // still has to learn them, or a wrapped Document gets the wrong
-        // prototype. A frame's realm builds only the interface objects its
-        // script reads (.lazy_follows, as context_manager's child contexts
-        // did): every one of ~1,260 costs a frame ~25 ms and ~2.8 MB, and a
-        // frame-heavy page makes dozens.
-        interface_bindings.registerAllTemplatesOnly(isolate, context, if (options.parent != null) .lazy_follows else .eager);
-    } else {
-        interface_bindings.initializeBindingsWithGlobalTemplate(isolate, context);
-    }
+    // WebIDL 3.7: the global's exposed constructs. Those every Window
+    // realm has are lazy data properties of Window's instance template, which
+    // this context was made from - restored from the snapshot, whose context
+    // the generator made from it, or afresh (windowTemplate): nothing to do
+    // per realm, and an interface object is built when script first reads it
+    // or a wrap first needs it (Blink: IDLMemberInstaller::
+    // InstallExposedConstructs on the instance template, V8PerContextData::
+    // ConstructorForType). Every Window realm, a page's as a frame's, takes
+    // this one path: until lane tmpl1 a restored realm deserialized every
+    // interface object of the snapshot and replaced them all - eagerly for a
+    // page - keeping both (tmp/plans/tmpl1-measure.md).
+    // A fresh context gets what the generator put in the snapshot's beside
+    // the template's: Crane's Intl and the built-ins' toLocaleString.
+    if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
+    // The constructs only some Window realms expose: the [SecureContext]
+    // ones, in a realm that is a secure context (recorded above) - decided
+    // here, as the realm is made; never installed and then hidden.
+    interface_bindings.installConditionalConstructs(.Window, context);
     // The namespaces (console, WebAssembly, CSS...) are not in the snapshot.
     interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
-    // A realm that is not a secure context: no [SecureContext] interface
-    // object, whichever way they were installed above.
-    interface_bindings.hideSecureContextInterfaceObjects(isolate, context, .Window);
 
     // Ours until the Window's wrapper-cache entry adopts it (bindWindowToGlobal),
     // which releases it at the realm's end; the host BORROWS it until then.
@@ -548,6 +552,9 @@ fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
         null,
         null,
     );
+    // Every Window realm's exposed constructs, once per isolate, as the
+    // snapshot generator puts them on the snapshot's Window template.
+    interface_bindings.installExposedConstructs(.Window, instance_template);
     return template;
 }
 

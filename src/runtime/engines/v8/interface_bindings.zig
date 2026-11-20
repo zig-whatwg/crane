@@ -330,190 +330,299 @@ pub fn registerAllInterfaces(
     }
 }
 
-/// Register ALL WebIDL interface templates AND reinstall constructors on global
-///
-/// This is used when loading from a V8 snapshot. The snapshot contains
-/// interface constructors on the global object, but their callback pointers
-/// are STALE (point to addresses from snapshot creation time, not runtime).
-///
-/// This function:
-/// - Creates fresh templates with working callbacks
-/// - Registers them in template_registry for wrapInstanceAsV8Object()
-/// - REINSTALLS constructors on the global object to replace stale snapshot versions
-///
-/// The reinstallation is critical: without it, calling `new Worker()` from JS
-/// would invoke a stale callback pointer, never reaching our Zig code.
-/// Whether an isolate makes `name`'s template only when it first needs it -
-/// when script first reads its interface object, or a realm wraps its first
-/// instance - rather than with every other at its first realm
-/// (registerAllTemplatesOnly). Blink makes every interface's template so,
-/// once per isolate on first use (V8PerIsolateData::FindV8Template, from
-/// WrapperTypeInfo::GetV8ClassTemplate); Crane keeps that for the one whose
-/// template is costly: CSSStyleProperties' ~1,000 CSS property attributes
-/// (CSSOM 6.6.2) are ~2,000 FunctionTemplates and their names - ~300 KB of
-/// V8 heap in every isolate (lane css3's diagnosis, vmmap +304K) - which a
-/// document that never touches a style declaration does not pay. Its
-/// interface object is then a lazy one in every realm, so building it is
-/// what makes the template.
-pub fn madeOnFirstUse(name: []const u8) bool {
-    return std.mem.eql(u8, name, "CSSStyleProperties");
-}
+// ============================================================================
+// Exposed constructs: lazy data properties on the global's template
+// ============================================================================
+//
+// WebIDL 3.7: "For every interface that is exposed in a given realm and that
+// is not declared with [LegacyNoInterfaceObject] or [LegacyNamespace], a
+// corresponding property exists on the realm's global object" - and its
+// [LegacyFactoryFunction]s and [LegacyWindowAlias]es too; for a construct the
+// realm does not expose ("exposed" step 1: the global implements none of its
+// exposure set; step 2: [SecureContext] in a realm that is not a secure
+// context) there is none.
+//
+// Blink's model, which this is (read 2026-11-19 at chromium main, BSD):
+// - every exposed construct of a global is a LAZY DATA PROPERTY of the
+//   global's INSTANCE TEMPLATE, put there once per isolate
+//   (IDLMemberInstaller::InstallExposedConstructs,
+//   platform/bindings/idl_member_installer.cc), so a context made from the
+//   template - or restored from a snapshot made from it - has them with no
+//   work of its own, and an interface object is built only when script first
+//   reads it (V8PerContextData::ConstructorForTypeSlowCase,
+//   platform/bindings/v8_per_context_data.cc);
+// - a construct only some realms of the kind expose (a [SecureContext] one)
+//   goes on the one global, as the realm is made (the per-object overload);
+// - an interface's template is made the first time an isolate needs it
+//   (WrapperTypeInfo::GetV8ClassTemplate -> V8PerIsolateData::FindV8Template /
+//   AddV8Template, platform/bindings/wrapper_type_info.cc), except the few a
+//   snapshot holds, which the isolate takes back once
+//   (V8ContextSnapshotImpl::InstallInterfaceTemplates,
+//   bindings/modules/v8/v8_context_snapshot_impl.cc).
+//
+// It replaces registerAllTemplatesOnly (lane tmpl1, measured
+// tmp/plans/tmpl1-measure.md): the snapshot held every interface object in
+// both of its contexts, every restored realm deserialized them all and
+// replaced them - keeping both, through its native context's template
+// instantiation cache (860 KB per realm) - and the isolate's first realm made
+// all 1,121 templates again beside the snapshot's (1.42 MB per isolate).
 
-/// How `registerAllTemplatesOnly` installs the interface objects.
-pub const InterfaceObjects = enum {
-    /// Materialize every interface object on the global now.
-    eager,
-    /// Make every one but the core few a lazy data property
-    /// (global_constructor_handler), built on first read. A realm then builds
-    /// only the interface objects its script reads: an iframe paid for all
-    /// ~1,260 of them, ~25 ms and ~2.8 MB each time, and kept them.
-    lazy_follows,
+/// One exposed construct: a property of a global whose value is a function
+/// made in the realm - an interface object, a legacy factory function, or an
+/// alias of an interface object.
+pub const Construct = struct {
+    /// The global's property.
+    name: [:0]const u8,
+    /// The globals that expose it ([Exposed]).
+    exposure: std.EnumSet(helpers.GlobalScope),
+    /// [SecureContext]: only a realm whose settings object is a secure
+    /// context exposes it (WebIDL 3.3.13; "exposed" step 2).
+    secure: bool,
+    /// Builds it in `context` (once per realm: a second call answers the
+    /// same function): OWNED, or null.
+    make: *const fn (isolate: *v8.Isolate, context: *v8.Context) ?*v8.Function,
 };
 
-pub fn registerAllTemplatesOnly(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    objects: InterfaceObjects,
-) void {
-    @setEvalBranchQuota(200_000);
-    const template_registry = @import("template_registry.zig");
-    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
-
-    // [interface_prototypes] A wrap in a lazy realm builds its interface's
-    // interface object first (context_manager.InterfaceObjects).
-    if (objects == .lazy_follows) {
-        if (@import("context_manager.zig").getEntry(context)) |entry| entry.interface_objects.lazy = true;
-    }
-
-    // Get global object for reinstalling constructors
-    const global = v8.v8_Context_Global(context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-
-    inline for (iface_decls) |decl| {
-        // Skip problematic interfaces using centralized skip list
-        if (comptime shouldSkipInterface(decl.name)) continue;
-
-        const InterfaceType = @field(interfaces, decl.name);
-
-        // Only bind types that have Meta (actual interfaces)
-        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-            // Skip mixin interfaces - they don't need templates
-            const is_mixin = comptime blk: {
-                const Meta = InterfaceType.Meta;
-                if (@hasDecl(Meta, "is_mixin")) {
-                    break :blk Meta.is_mixin;
-                }
-                break :blk false;
-            };
-            if (is_mixin) continue;
-
-            // Skip LegacyNamespace interfaces (they're namespaced, not on global)
-            const has_legacy_namespace = comptime blk: {
-                const Meta = InterfaceType.Meta;
-                if (@hasDecl(Meta, "extended_attributes")) {
-                    const ext_attrs = Meta.extended_attributes;
-                    for (ext_attrs) |attr| {
-                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                            break :blk true;
-                        }
-                    }
-                }
-                break :blk false;
-            };
-            if (has_legacy_namespace) continue;
-
-            // CRITICAL: Skip Window interface - do NOT reinstall it from snapshot!
-            // The global object's prototype chain already points to Window.prototype from
-            // the snapshot. If we create a new Window template and reinstall the constructor,
-            // the new Window.prototype won't match the global's prototype chain, breaking
-            // `window instanceof Window`.
-            //
-            // The Window constructor from the snapshot already has correct callbacks via
-            // external references, so it doesn't need reinstallation.
-            const is_window = comptime std.mem.eql(u8, decl.name, "Window");
-            if (is_window) {
-                log.debug("[registerAllTemplatesOnly] SKIPPING Window (not registering template or global)\n", .{});
-                linkSnapshotWindowInterfaceObject(isolate, context, global);
-                continue;
-            }
-
-            // NOTE: EventTarget is NO LONGER skipped here.
-            // Even though Window inherits from EventTarget, we must still refresh
-            // EventTarget's constructor with valid callbacks after snapshot restore.
-            // Without this, `new EventTarget()` would use stale callback pointers.
-            const is_event_target = comptime std.mem.eql(u8, decl.name, "EventTarget");
-            if (is_event_target) {
-                log.debug("[registerAllTemplatesOnly] Processing: EventTarget\n", .{});
-                // Continue to normal registration - don't skip
-            }
-
-            // Debug: print when we're about to process an interface
-            if (comptime std.mem.eql(u8, decl.name, "Node") or
-                std.mem.eql(u8, decl.name, "Element") or
-                std.mem.eql(u8, decl.name, "Document"))
-            {
-                log.debug("[registerAllTemplatesOnly] Processing: {s}\n", .{decl.name});
-            }
-
-            // CRITICAL: Check if template already exists before creating.
-            // Parent templates may have been created during a child's createTemplate() call.
-            // If we create a new template unconditionally, we'd break prototype chain identity:
-            // - HTMLDivElement.createTemplate() creates and registers HTMLElement template
-            // - Later, when processing HTMLElement, we'd create a DIFFERENT template
-            // - globalThis.HTMLElement.prototype would differ from HTMLDivElement's parent prototype
-            // - This breaks `div instanceof HTMLElement`
-            // An interface the isolate makes on first use (madeOnFirstUse): no
-            // template now, and its interface object a lazy one in every
-            // realm, the page's too - built when script first reads it, or
-            // before the realm's first wrapper of one (template_registry).
-            if (comptime madeOnFirstUse(decl.name)) {
-                global_constructor_handler.installLazy(isolate, context, global, decl.name);
-                continue;
-            }
-
-            const Binding = V8Interface(InterfaceType);
-            const existing = template_registry.getTemplate(decl.name);
-            if (existing == null) {
-                const template = Binding.createTemplate(isolate);
-                template_registry.register(decl.name, template, isolate);
-            }
-
-            // CRITICAL: Reinstall constructor on global to ensure fresh callbacks.
-            // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers.
-            // registerGlobalFast uses the template from the registry, so prototype identity is preserved.
-            //
-            // Or, in a child realm, leave it to a lazy data property whose getter
-            // builds the whole interface object on first read.
-            if (objects == .lazy_follows and global_constructor_handler.isLazyInstallableInterface(decl.name)) {
-                global_constructor_handler.installLazy(isolate, context, global, decl.name);
-            } else {
-                Binding.registerGlobalFast(isolate, context, global, decl.name);
-            }
+fn hasExtendedAttribute(comptime T: type, comptime attribute: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T.Meta, "extended_attributes")) return false;
+        for (T.Meta.extended_attributes) |attr| {
+            if (std.mem.eql(u8, attr.name, attribute)) return true;
         }
+        return false;
     }
-
-    // The legacy factory functions' `prototype` is the interface prototype
-    // object this realm now has; a realm restored from the snapshot would
-    // otherwise keep the snapshot's Image, whose prototype is a stale one.
-    registerLegacyFactoryFunctions(isolate, context);
-    registerLegacyInterfaceAliasesWithMode(isolate, context, objects);
 }
 
-/// The snapshot's Window interface object, which a restored realm keeps (see
-/// registerAllTemplatesOnly), inherits from THIS realm's EventTarget interface
-/// object (WebIDL 3.7.1): the snapshot linked it to the snapshot's
-/// EventTarget, which the restored realm's global no longer has - every
-/// other interface object here is made anew, EventTarget's included, so
-/// `Object.getPrototypeOf(Window) === EventTarget` was false.
-fn linkSnapshotWindowInterfaceObject(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object) void {
-    const key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return;
-    defer v8.v8_String_Dispose(key);
-    const window_value = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return;
-    defer v8.v8_Value_Dispose(window_value);
-    if (!v8.v8_Value_IsFunction(window_value)) return;
-    const event_target = EventTarget.materializeInterfaceObject(isolate, context, "EventTarget") orelse return;
-    defer v8.v8_Function_Dispose(event_target);
-    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(window_value), context, @ptrCast(event_target));
+/// Whether the generated declaration `name` is an interface with an
+/// interface object: not a mixin, not skipped, not [LegacyNamespace] (its
+/// object is its namespace's property), and - for a callback interface - one
+/// with constants (WebIDL 3.7: only a "legacy callback interface object").
+fn hasInterfaceObject(comptime name: []const u8) bool {
+    comptime {
+        if (shouldSkipInterface(name)) return false;
+        const T = @field(interfaces, name);
+        if (@TypeOf(T) != type) return false;
+        if (@typeInfo(T) != .@"struct" or !@hasDecl(T, "Meta")) return false;
+        if (@hasDecl(T.Meta, "is_mixin") and T.Meta.is_mixin) return false;
+        if (hasExtendedAttribute(T, "LegacyNamespace")) return false;
+        if (@hasDecl(T.Meta, "is_callback_interface") and T.Meta.is_callback_interface and !@hasDecl(T.Meta, "constants")) return false;
+        return true;
+    }
+}
+
+fn exposureOf(comptime T: type) std.EnumSet(helpers.GlobalScope) {
+    comptime {
+        var set = std.EnumSet(helpers.GlobalScope).initEmpty();
+        for (std.enums.values(helpers.GlobalScope)) |scope| {
+            if (helpers.isExposedIn(T, scope)) set.insert(scope);
+        }
+        return set;
+    }
+}
+
+fn interfaceObjectMaker(comptime T: type) *const fn (*v8.Isolate, *v8.Context) ?*v8.Function {
+    return struct {
+        fn make(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Function {
+            return V8Interface(T).materializeInterfaceObject(isolate, context, T.Meta.name);
+        }
+    }.make;
+}
+
+fn factoryMaker(comptime factory_name: []const u8, comptime T: type) *const fn (*v8.Isolate, *v8.Context) ?*v8.Function {
+    return struct {
+        fn make(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Function {
+            const interface_object = V8Interface(T).materializeInterfaceObject(isolate, context, T.Meta.name) orelse return null;
+            defer v8.v8_Function_Dispose(interface_object);
+            return @import("legacy_factory_functions.zig").make(factory_name, isolate, context, interface_object);
+        }
+    }.make;
+}
+
+/// Every exposed construct of every global, in the order a global gets its
+/// properties: the interface objects (declaration order), the
+/// [LegacyFactoryFunction]s, then the aliases - HTML's HTMLDocument and the
+/// [LegacyWindowAlias]es. A construct's index here is its lazy property's
+/// data.
+pub const constructs = blk: {
+    @setEvalBranchQuota(100_000_000);
+    const decl_names = @typeInfo(interfaces).@"struct".decl_names;
+    var buf: [decl_names.len + 64]Construct = undefined;
+    var n: usize = 0;
+    for (decl_names) |name| {
+        if (!hasInterfaceObject(name)) continue;
+        const T = @field(interfaces, name);
+        buf[n] = .{
+            .name = name,
+            .exposure = exposureOf(T),
+            .secure = hasExtendedAttribute(T, "SecureContext"),
+            .make = interfaceObjectMaker(T),
+        };
+        n += 1;
+    }
+    // HTML (the HTMLImageElement, HTMLAudioElement and HTMLOptionElement
+    // IDL): [LegacyFactoryFunction=Image(...)] and the others - exposed where
+    // their interface is.
+    for (.{ .{ "Image", "HTMLImageElement" }, .{ "Audio", "HTMLAudioElement" }, .{ "Option", "HTMLOptionElement" } }) |factory| {
+        const T = @field(interfaces, factory[1]);
+        buf[n] = .{
+            .name = factory[0],
+            .exposure = exposureOf(T),
+            .secure = hasExtendedAttribute(T, "SecureContext"),
+            .make = factoryMaker(factory[0], T),
+        };
+        n += 1;
+    }
+    // HTML 3.1.1: "for historical reasons, Window objects must also have a
+    // writable, configurable, non-enumerable property named HTMLDocument
+    // whose value is the Document interface object".
+    buf[n] = .{
+        .name = "HTMLDocument",
+        .exposure = std.EnumSet(helpers.GlobalScope).initOne(.Window),
+        .secure = false,
+        .make = interfaceObjectMaker(interfaces.Document),
+    };
+    n += 1;
+    // [LegacyWindowAlias=Name] (WebIDL 3.4.11): a property of a Window global
+    // whose value is the interface object. The identifier-list forms
+    // (DOMMatrix's) wait for the geometry/SVG ruling, as before.
+    for (decl_names) |name| {
+        if (!hasInterfaceObject(name)) continue;
+        const T = @field(interfaces, name);
+        if (!@hasDecl(T.Meta, "extended_attributes")) continue;
+        for (T.Meta.extended_attributes) |attr| {
+            if (!std.mem.eql(u8, attr.name, "LegacyWindowAlias")) continue;
+            if (!@hasField(@TypeOf(attr.value), "identifier")) continue;
+            var exposure = exposureOf(T);
+            exposure.setIntersection(std.EnumSet(helpers.GlobalScope).initOne(.Window));
+            buf[n] = .{
+                .name = attr.value.identifier,
+                .exposure = exposure,
+                .secure = hasExtendedAttribute(T, "SecureContext"),
+                .make = interfaceObjectMaker(T),
+            };
+            n += 1;
+        }
+    }
+    const final = buf[0..n].*;
+    break :blk final;
+};
+
+/// The index in `constructs` of the construct named `name`, by the global's
+/// property name.
+const construct_index = blk: {
+    @setEvalBranchQuota(100_000_000);
+    var entries: [constructs.len]struct { []const u8, u16 } = undefined;
+    for (constructs, 0..) |c, i| entries[i] = .{ c.name, i };
+    break :blk std.StaticStringMap(u16).initComptime(entries);
+};
+
+/// The construct `name` - a global's property - names, if any.
+pub fn constructNamed(name: []const u8) ?u16 {
+    return construct_index.get(name);
+}
+
+/// The indices of the constructs `scope` exposes unconditionally (on the
+/// global's template) and of those it exposes in a secure context only (on
+/// each secure realm's global).
+fn ScopeConstructs(comptime scope: helpers.GlobalScope) type {
+    return struct {
+        const always = select(false);
+        const secure_only = select(true);
+
+        fn select(comptime secure: bool) [count(secure)]u16 {
+            @setEvalBranchQuota(10_000_000);
+            var out: [count(secure)]u16 = undefined;
+            var n: usize = 0;
+            for (constructs, 0..) |c, i| {
+                if (c.exposure.contains(scope) and c.secure == secure) {
+                    out[n] = i;
+                    n += 1;
+                }
+            }
+            return out;
+        }
+
+        fn count(comptime secure: bool) usize {
+            @setEvalBranchQuota(10_000_000);
+            var n: usize = 0;
+            for (constructs) |c| {
+                if (c.exposure.contains(scope) and c.secure == secure) n += 1;
+            }
+            return n;
+        }
+    };
+}
+
+/// `scope`'s exposed constructs that every realm of it has, as lazy data
+/// properties of `global_template` - the template the scope's globals are
+/// made from (Window's instance template): once per isolate, when the
+/// template is made, and in the snapshot generator.
+pub fn installExposedConstructs(comptime scope: helpers.GlobalScope, global_template: *v8.ObjectTemplate) void {
+    const getter = global_constructor_handler.lazyConstructGetter;
+    for (ScopeConstructs(scope).always) |i| {
+        const c = constructs[i];
+        v8.v8_ObjectTemplate_SetLazyDataPropertyIndexed(global_template, c.name.ptr, @intCast(c.name.len), getter, i);
+    }
+}
+
+/// `scope`'s exposed constructs that only some of its realms have, on
+/// `context`'s global, as the realm is made: the [SecureContext] ones, in a
+/// realm whose settings object is a secure context (ContextData's
+/// secure_context, recorded before this). A realm that is not one never has
+/// them - nothing is installed and then hidden.
+pub fn installConditionalConstructs(comptime scope: helpers.GlobalScope, context: *v8.Context) void {
+    if (!interface_mod.realmIsSecureContext(context)) return;
+    const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
+    const getter = global_constructor_handler.lazyConstructGetter;
+    for (ScopeConstructs(scope).secure_only) |i| {
+        const c = constructs[i];
+        _ = v8.v8_Object_SetLazyDataPropertyIndexed(global, context, c.name.ptr, @intCast(c.name.len), getter, i);
+    }
+}
+
+/// The construct at `index` built in `context`: OWNED, or null for an index
+/// that names none.
+pub fn makeConstruct(index: i32, isolate: *v8.Isolate, context: *v8.Context) ?*v8.Function {
+    if (index < 0 or index >= constructs.len) return null;
+    return constructs[@intCast(index)].make(isolate, context);
+}
+
+/// What a Window realm's context has beside its template's: Crane's Intl
+/// (the pure-Zig i18n binding) and the built-ins' toLocaleString methods -
+/// put in the snapshot's context by the generator, and on a context made
+/// without it by its realm (createWindowRealm).
+pub fn installSnapshotIntrinsics(isolate: *v8.Isolate, context: *v8.Context) void {
+    const intl_binding = @import("intl_binding.zig");
+    intl_binding.registerGlobal(isolate, context);
+    intl_binding.registerToLocaleStringMethods(isolate, context);
+}
+
+/// The templates the snapshot generator attaches to the isolate snapshot
+/// (v8_SnapshotCreator_AddFunctionTemplate), in this order, and createAgent
+/// takes back into a restored isolate's registry by the same index: the
+/// templates the snapshot's Window context was made from - its global is an
+/// instance of Window's, which inherits from EventTarget's. Blink attaches
+/// those and the document's chain (V8ContextSnapshotImpl's type_info_table);
+/// Crane's snapshot holds no document wrapper, and every other template is
+/// made on first use.
+pub const snapshot_templates = [_][:0]const u8{ "EventTarget", "Window" };
+
+/// A restored isolate's snapshot templates (`snapshot_templates`), taken
+/// back once into its registry: the same templates its restored contexts
+/// were made from, so a lazily built Window or EventTarget interface object
+/// is the one its global's prototype chain already has (V8 answers
+/// GetFunction from the native context's template instantiation cache, which
+/// the snapshot carries). Blink: V8ContextSnapshotImpl::
+/// InstallInterfaceTemplates. False when one was missing: the blob was not
+/// made by this generator.
+pub fn takeSnapshotTemplates(isolate: *v8.Isolate) bool {
+    const template_registry = @import("template_registry.zig");
+    for (snapshot_templates, 0..) |name, i| {
+        const template = v8.v8_Isolate_TakeFunctionTemplateFromSnapshot(isolate, i) orelse return false;
+        template_registry.register(name, template, isolate);
+    }
+    return true;
 }
 
 /// Whether interface `T` is declared [SecureContext] (its own definition's
@@ -965,17 +1074,13 @@ fn initializeShadowRealmBindings(
 /// available on the global object. For example:
 /// - HTMLDocument is an alias for Document
 /// - webkitURL is an alias for URL (via [LegacyWindowAlias])
+///
+/// The eager form, for a context whose interface objects are all built
+/// (initializeBindings, a test's registerAllInterfaces): a Window realm gets
+/// them as lazy constructs (installExposedConstructs).
 pub fn registerLegacyInterfaceAliases(
     isolate: *v8.Isolate,
     context: *v8.Context,
-) void {
-    registerLegacyInterfaceAliasesWithMode(isolate, context, .eager);
-}
-
-fn registerLegacyInterfaceAliasesWithMode(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    objects: InterfaceObjects,
 ) void {
     @setEvalBranchQuota(200_000);
     // Every handle below is released: each points into `context`, and one
@@ -1016,16 +1121,7 @@ fn registerLegacyInterfaceAliasesWithMode(
                             break :blk "";
                         };
 
-                        if (alias_name.len > 0) {
-                            if (objects == .lazy_follows and global_constructor_handler.isLazyInstallableInterface(Meta.name)) {
-                                // A lazy data property, not a JS accessor: its
-                                // descriptor is still writable/configurable,
-                                // non-enumerable and has no get/set members.
-                                global_constructor_handler.installLazy(isolate, context, global, alias_name);
-                            } else {
-                                defineAlias(isolate, context, global, Meta.name, alias_name);
-                            }
-                        }
+                        if (alias_name.len > 0) defineAlias(isolate, context, global, Meta.name, alias_name);
                     }
                 }
             }
@@ -1668,11 +1764,16 @@ pub fn materializeInterfaceObjectByName(
     context: *v8.Context,
 ) ?*v8.Function {
     @setEvalBranchQuota(10_000_000);
+    // A global's construct by its name (an interface object or an alias of
+    // one; never asked for a factory's name): O(1).
+    if (constructNamed(interface_name)) |index| return makeConstruct(index, isolate, context);
+    // An interface with no global property - a [LegacyNamespace] one - whose
+    // wrapper still needs its interface object built.
     const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (iface_decls) |decl| {
-        // At comptime, as registerAllTemplatesOnly does: a skipped interface's
-        // binding is never analysed, and some cannot be.
+        // At comptime: a skipped interface's binding is never analysed, and
+        // some cannot be.
         if (comptime shouldSkipInterface(decl.name)) continue;
         const InterfaceType = @field(interfaces, decl.name);
         if (@typeInfo(InterfaceType) != .@"struct") continue;
