@@ -74,7 +74,7 @@ fn inRealmEnding(comptime body: fn (*engine.Agent, runtime.Context) anyerror!voi
             const hooks: engine.HostHooks = .{};
             const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
             defer engine.destroyAgent(agent);
-            const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://leaks1.test", .create_global_object = createGlobal });
+            const realm = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://leaks1.test", .create_global_object = createGlobal });
             defer if (!body_ends_realm) engine.destroyWindowRealm(realm, .global_detached);
             try body(agent, realm);
         }

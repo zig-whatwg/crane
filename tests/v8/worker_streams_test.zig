@@ -58,6 +58,7 @@ test "a TextDecoderStream made in a worker realm has live readable and writable 
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
     defer protocol.destroyAgent(agent);
     const made = try v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
@@ -110,6 +111,7 @@ test "a TextDecoderStream keeps its TransformStream through a collection" {
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
     defer protocol.destroyAgent(agent);
     const made = try v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),

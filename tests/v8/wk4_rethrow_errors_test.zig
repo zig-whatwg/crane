@@ -57,6 +57,7 @@ const WindowHost = struct {
 fn windowRealm() !runtime.Context {
     _ = try agent();
     return test_agent.windowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = test_agent.agent(),
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

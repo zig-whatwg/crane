@@ -57,7 +57,7 @@ test "a realm's end reads nothing of an instance its wrapper cache freed" {
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = testing.allocator });
     defer engine.destroyAgent(agent);
-    const page = try engine.createWindowRealm(&.{ .agent = agent, .allocator = testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
+    const page = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
     var page_live = true;
     defer if (page_live) engine.destroyWindowRealm(page, .global_detached);
 

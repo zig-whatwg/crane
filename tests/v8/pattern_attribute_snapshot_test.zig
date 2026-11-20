@@ -102,6 +102,7 @@ const SnapshotPage = struct {
         // restore - which would make these tests pass for the wrong reason).
         if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,

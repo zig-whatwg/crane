@@ -12,6 +12,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
+const shared_array_buffer_exposure = @import("shared_array_buffer_exposure.zig");
 const context_manager = @import("context_manager.zig");
 const interface_bindings = @import("interface_bindings.zig");
 const window_properties = @import("window_properties.zig");
@@ -200,9 +201,9 @@ fn realmOfOwnedContext(context: ?*ffi.Context) ?Context {
 ///    Context::FromSnapshot; the Window is bound to the global after.
 /// 2-4. The realm is the context's; V8 never leaves a realm execution context
 ///    on the stack for it.
-/// 5. Deleting SharedArrayBuffer when the agent cluster's cross-origin
-///    isolation mode is "none" is NOT performed: Crane has no agent clusters
-///    yet, and V8 exposes SharedArrayBuffer as it always has here.
+/// 5. If the agent cluster's cross-origin isolation mode is "none" (the
+///    host's `agent_cluster_cross_origin_isolated` false), the global's
+///    SharedArrayBuffer is deleted (shared_array_buffer_exposure.zig).
 ///
 /// The realm's context stays entered for the realm's life, so it is made
 /// with no script running in the agent - as HTML makes a Window's realm, from
@@ -401,6 +402,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     interface_bindings.installConditionalConstructs(.Window, context);
     // The namespaces (console, WebAssembly, CSS...) are not in the snapshot.
     interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+    // Step 5: no SharedArrayBuffer global where the agent cluster is not
+    // cross-origin isolated - decided as the realm is made, before any of
+    // its script runs.
+    shared_array_buffer_exposure.apply(isolate, context, options.agent_cluster_cross_origin_isolated);
 
     // Ours until the Window's wrapper-cache entry adopts it (bindWindowToGlobal),
     // which releases it at the realm's end; the host BORROWS it until then.

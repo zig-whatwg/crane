@@ -71,6 +71,7 @@ const Page = struct {
 
     fn realmOptions(agent: *engine.Agent, from_snapshot: bool) engine.WindowRealmOptions {
         return .{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = from_snapshot,

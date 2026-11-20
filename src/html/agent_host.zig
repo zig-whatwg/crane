@@ -31,6 +31,12 @@ pub const AgentHost = struct {
     /// the owner's thread); 0 when none is known. Read by
     /// html.agent_clusters.agentClusterOf.
     agent_cluster: u64 = 0,
+    /// Whether that agent cluster - a dedicated worker's (its owner's), or a
+    /// shared or service worker's own - has a cross-origin isolation mode
+    /// other than "none", as the worker host records it when it obtains the
+    /// agent (html.agent_clusters.crossOriginIsolationMode on the owner's
+    /// thread). Read for the realm of a dedicated worker this worker owns.
+    agent_cluster_cross_origin_isolated: bool = false,
     /// The agent's fetches on its event loop - its network scheduler and
     /// every fetch in flight (fetch.algorithms.AgentFetches): pumped by the
     /// agent's loop, on its thread only; reached from a realm through its

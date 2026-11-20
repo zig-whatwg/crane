@@ -1564,6 +1564,14 @@ pub const Context = struct {
             // keeps this creation answer; the Window's isSecureContext asks
             // its document each time.
             .secure_context = html_mod.secure_context.ofDocument(self.allocator, .{ .url = document_url, .parent = null, .creator = null }) catch false,
+            // HTML "create a new realm" step 5: the agent cluster's
+            // cross-origin isolation mode, its browsing context group's
+            // ("obtain a similar-origin window agent" step 6.2). The page's
+            // first realm is its new group's: "none" (HTML "create a new
+            // browsing context group"). A later one's is the group its
+            // navigation committed in - a switch to a "same-origin-plus-COEP"
+            // response sets the mode before this realm is made.
+            .agent_cluster_cross_origin_isolated = if (self.browsing_context) |bc| bc.groupIsCrossOriginIsolated() else false,
         };
     }
 

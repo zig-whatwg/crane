@@ -57,12 +57,14 @@ const Kind = enum { dedicated, shared, service };
 fn workerRealm(agent: *runtime.Agent, kind: Kind) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, switch (kind) {
         .dedicated => .{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "http://web-platform.test:8000/fetch/w.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
             .allocator = std.heap.c_allocator,
         },
         .shared => .{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "http://web-platform.test:8000/fetch/shared.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
@@ -70,6 +72,7 @@ fn workerRealm(agent: *runtime.Agent, kind: Kind) !runtime.WorkerRealm {
             .allocator = std.heap.c_allocator,
         },
         .service => .{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "https://web-platform.test:8443/fetch/sw.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),

@@ -107,6 +107,7 @@ test "a worker realm: an async iterator's prototype inherits from the worker rea
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
     defer protocol.destroyAgent(agent);
     const made = try v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "https://iterators.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
@@ -162,6 +163,7 @@ test "realms restored from the snapshot, and a ShadowRealm inside one: each iter
     defer protocol.destroyAgent(agent);
     if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = true,
@@ -179,6 +181,7 @@ test "realms restored from the snapshot, and a ShadowRealm inside one: each iter
     // A second realm restored from the SAME snapshot context is another
     // realm: its iterators inherit from its intrinsic, not the first's.
     const second = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = true,

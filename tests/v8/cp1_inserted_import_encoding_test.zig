@@ -19,6 +19,7 @@ fn checkInsertedImport() !void {
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer engine.destroyAgent(agent);
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = a,
         .from_snapshot = false,

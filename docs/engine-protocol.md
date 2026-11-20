@@ -389,6 +389,17 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   [Global] object of the realm. The answer is the realm's creation answer: a
   Window realm reused across in-page loads keeps it. The JavaScriptCore and
   QuickJS adapters must hide the same constructs once linked.
+- **Shared memory exposure:** `WindowRealmOptions`, `WorkerRealmOptions` and
+  `WorkletRealmOptions` each require `agent_cluster_cross_origin_isolated`
+  (no default: every caller decides): whether the agent cluster of the agent
+  the realm is made in has a cross-origin isolation mode other than "none" -
+  a Window's from its browsing context group, a dedicated worker's or a
+  worklet's from its owner's cluster, a shared or service worker's from its
+  own embedder policy (`html.agent_clusters.crossOriginIsolationMode`). With
+  false the engine performs HTML "create a new realm" step 5 once the global
+  object exists: `! global.[[Delete]]("SharedArrayBuffer")`, which succeeds.
+  The V8 adapter does it in `shared_array_buffer_exposure.zig`; the
+  JavaScriptCore and QuickJS adapters must do the same once linked.
 - **Threads:** an agent is used only on the thread that made it - every
   operation that takes the agent, or a realm or value of it, runs there. The
   one exception is `abortRunningScript`, which may be called from any thread

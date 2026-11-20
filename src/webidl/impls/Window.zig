@@ -3788,11 +3788,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     if (getInternal(created.window)) |created_internal| created_internal.creator_is_secure_context = secureContext(window, 0);
     // Steps 8.7-8.8: its opener is this window, unless noopener - which makes
     // it a new top-level traversable "given null" opener, in a browsing
-    // context group of its own.
+    // context group of its own (made so by the machinery, before its initial
+    // about:blank document's realm).
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
         if (integration.browsing_context) |bc| {
-            bc.startOwnGroup();
             // Deviation, stated (golden rule 2): step 8.8.2's one permitted
             // sandboxed navigator is set in the opener branch only, so a
             // sandboxed document's noopener popup could not be navigated by

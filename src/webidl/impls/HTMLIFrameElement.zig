@@ -7416,6 +7416,13 @@ fn attachRealm(
         // caller's answer for the document the realm is made for. A realm
         // reused for a later same-origin document keeps it.
         .secure_context = secure_context,
+        // HTML "create a new realm" step 5: the agent cluster's cross-origin
+        // isolation mode is the browsing context group's ("obtain a
+        // similar-origin window agent" step 6.2) - a frame's its parent's
+        // (BrowsingContext.initChild), a popup's its opener's or, with
+        // noopener, its own group's "none", and a navigation's after its
+        // group switch (runCommit switches before the realm is made).
+        .agent_cluster_cross_origin_isolated = browsing_context.groupIsCrossOriginIsolated(),
     }) catch |err| {
         log.debug("a frame's realm was not made: {}", .{err});
         return null;
@@ -8519,6 +8526,12 @@ fn createAuxiliaryNavigable(
     };
     // From here the integration owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
+    // A noopener popup is "created given null" opener: "create a new
+    // top-level browsing context and document" step 1 makes it in a new
+    // browsing context group, whose cross-origin isolation mode is "none" -
+    // before its initial about:blank document's realm is made in that
+    // group's agent cluster.
+    if (noopener) browsing_context.startOwnGroup();
     // A new top-level context, but the same user agent: the opener's cookie
     // jar (it has no parent to reach one through).
     browsing_context.cookie_jar = opener_bc.cookieJar();

@@ -39,6 +39,7 @@ fn newAgent() !*protocol.Agent {
 
 fn windowRealmIn(agent: *protocol.Agent) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -50,6 +51,7 @@ fn windowRealmIn(agent: *protocol.Agent) !runtime.Context {
 
 fn workerRealmIn(agent: *protocol.Agent) !runtime.Context {
     const made = try protocol.createWorkerRealm(agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),

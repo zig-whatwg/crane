@@ -44,6 +44,7 @@ fn oneAgent(from_snapshot: bool) !void {
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = from_snapshot, .hooks = &no_hooks });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,

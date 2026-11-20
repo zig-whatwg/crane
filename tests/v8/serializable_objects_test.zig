@@ -61,6 +61,7 @@ fn window() !runtime.Context {
     if (test_window) |w| return w;
     _ = try agent();
     const w = try test_agent.windowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = test_agent.agent(),
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

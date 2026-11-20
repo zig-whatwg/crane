@@ -285,6 +285,9 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // ones - built when script first reads them.
     interface_bindings.installForScope(isolate, context, Kind.scope);
     interface_bindings.registerNamespacesGeneric(@import("namespaces"), isolate, context);
+    // HTML "create a new realm" step 5: no SharedArrayBuffer global where the
+    // worker's agent cluster is not cross-origin isolated.
+    @import("shared_array_buffer_exposure.zig").apply(isolate, context, options.agent_cluster_cross_origin_isolated);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.

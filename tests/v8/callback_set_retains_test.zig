@@ -93,6 +93,7 @@ fn setEmptiesWithoutChurn() !void {
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null, .allocator = counting.allocator() });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

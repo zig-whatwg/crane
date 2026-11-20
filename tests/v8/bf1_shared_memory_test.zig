@@ -30,7 +30,7 @@ fn createGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*ru
 }
 
 fn realmOf(agent: *engine.Agent, scope: *runtime.BrowserScope) !runtime.Context {
-    return engine.createWindowRealm(&.{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://bf1.test", .create_global_object = createGlobal, .browser_scope = scope });
+    return engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://bf1.test", .create_global_object = createGlobal, .browser_scope = scope });
 }
 
 fn report(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}

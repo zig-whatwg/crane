@@ -85,6 +85,7 @@ test "import() with an attribute key other than type rejects with a TypeError an
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .host = &host });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
