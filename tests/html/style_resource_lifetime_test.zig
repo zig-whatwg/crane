@@ -357,9 +357,19 @@ fn nativeSvgAbort() !void {
         try dom.element_attributes.set(entry[0], "href", "http://127.0.0.1:65533/cr1-native.svg#target", .{});
         _ = try interfaces.Node.call_appendChild(body, entry[0]);
     }
+    // The image's fetch starts in a microtask (SVGImageElement queueUpdate,
+    // as img's "update the image data" does): a script's end runs it.
+    try microtaskCheckpoint(browser);
     try std.testing.expectEqual(@as(usize, 2), browser.agent_host.fetches.inFlight());
     try std.testing.expect(dom.document_fetches.abort(document));
     try std.testing.expectEqual(@as(usize, 0), browser.agent_host.fetches.inFlight());
+}
+
+/// A microtask checkpoint the way a page gets one: a script runs, and its
+/// end performs the checkpoint (HTML "clean up after running script").
+fn microtaskCheckpoint(browser: *browser_mod.Browser) !void {
+    const done = try browser.evaluateScript("true");
+    done.release();
 }
 
 test "generated SVG resource owners cancel their real requests without factory dispatch" {
@@ -383,9 +393,13 @@ fn nativeEmptySvgReplacement() !void {
     try dom.node_creation.setElementNames(image, "http://www.w3.org/2000/svg", "image");
     try dom.node_document.set(image, document);
     for ([_][]const u8{ "", " \t\n", "http://[" }) |invalid| {
+        // Each change's fetch (or its cancellation) runs in the microtask it
+        // queued; a script's end runs it.
         try dom.element_attributes.set(image, "href", "http://127.0.0.1:65533/cr1-native-empty", .{});
+        try microtaskCheckpoint(browser);
         try std.testing.expectEqual(@as(usize, 1), browser.agent_host.fetches.inFlight());
         try dom.element_attributes.set(image, "href", invalid, .{});
+        try microtaskCheckpoint(browser);
         try std.testing.expectEqual(@as(usize, 0), browser.agent_host.fetches.inFlight());
     }
 }
