@@ -218,6 +218,17 @@ pub const LibcurlBackend = struct {
         /// same block).
         final_block_start: ?usize = null,
         final_block_scans: u32 = 0,
+        /// When the attempt began on the monotonic clock (`prepareAttempt`,
+        /// just before curl starts its own timers), and how long after it
+        /// the status line of the first 1xx interim response and of the
+        /// final response arrived, in ns: Fetch's first interim and final
+        /// network-response start times (HTTP-network fetch's response loop,
+        /// "While true" steps 1 and 5.1; Resource Timing's firstInterimResponseStart and
+        /// finalResponseHeadersStart). curl's STARTTRANSFER_TIME is one time
+        /// for both, so a transfer with an interim response is timed here.
+        attempt_start_ns: u64 = 0,
+        first_interim_ns: ?u64 = null,
+        final_status_ns: ?u64 = null,
 
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
@@ -251,6 +262,16 @@ pub const LibcurlBackend = struct {
             if (self.url_z) |url| self.allocator.free(url);
             if (self.method_z) |method| self.allocator.free(method);
             if (self.header_list) |list| curl.slist_free_all(list);
+        }
+
+        /// The final network-response start time (ms after the transfer
+        /// started) and the first interim one, or null when no interim
+        /// response came: curl's time to the first byte then is the final
+        /// response's (`starttransfer_ms`).
+        fn responseStarts(self: *const CallbackContext, starttransfer_ms: f64) struct { final_ms: f64, first_interim_ms: ?f64 } {
+            const interim = self.first_interim_ns orelse return .{ .final_ms = starttransfer_ms, .first_interim_ms = null };
+            const final = self.final_status_ns orelse return .{ .final_ms = starttransfer_ms, .first_interim_ms = null };
+            return .{ .final_ms = nsToMs(final), .first_interim_ms = nsToMs(interim) };
         }
 
         /// The final response's header block (`finalBlock`), scanned for
@@ -707,6 +728,9 @@ pub const Transfer = struct {
         self.ctx.final_block_start = null;
         self.ctx.encoded_bytes = 0;
         self.ctx.decode_failed = false;
+        self.ctx.attempt_start_ns = clock.monotonicNanos();
+        self.ctx.first_interim_ns = null;
+        self.ctx.final_status_ns = null;
     }
 
     /// How many attempts a transfer gets when its connection fails.
@@ -801,6 +825,7 @@ pub const Transfer = struct {
         // headers are in: its measurements are all known now, and HTTP-network
         // fetch records them from this head (a navigation is streamed).
         const connection = ConnectionMeasures.of(self);
+        const starts = self.ctx.responseStarts(starttransfer_time * 1000);
 
         const status_message = try ownedReason(allocator, block);
         errdefer if (status_message.len > 0) allocator.free(status_message);
@@ -822,7 +847,8 @@ pub const Transfer = struct {
             else
                 null,
             .total_time_ms = 0,
-            .time_to_first_byte_ms = starttransfer_time * 1000,
+            .time_to_first_byte_ms = starts.final_ms,
+            .first_interim_response_ms = starts.first_interim_ms,
             .redirect_count = 0,
             .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
@@ -947,6 +973,7 @@ pub const Transfer = struct {
 
         var starttransfer_time: f64 = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
+        const starts = ctx.responseStarts(starttransfer_time * 1000);
 
         var redirect_count: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_COUNT, &redirect_count);
@@ -1025,7 +1052,8 @@ pub const Transfer = struct {
             .encoded_body_size = ctx.encoded_bytes,
             .final_url = final_url,
             .total_time_ms = @intFromFloat(total_time * 1000),
-            .time_to_first_byte_ms = starttransfer_time * 1000,
+            .time_to_first_byte_ms = starts.final_ms,
+            .first_interim_response_ms = starts.first_interim_ms,
             .redirect_count = @intCast(redirect_count),
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
@@ -1112,11 +1140,34 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
     }
 
     const total_size = size * nmemb;
+    const starts_block = ctx.raw_headers.items.len == ctx.block_start;
     ctx.raw_headers.appendSlice(ctx.allocator, data[0..total_size]) catch {
         return 0; // Signal error
     };
+    if (starts_block) noteStatusLine(ctx, data[0..total_size]);
     noteHeaderLine(ctx, data[0..total_size]);
     return total_size;
+}
+
+/// A header block's first line has arrived: when it is the status line of
+/// the first 1xx interim response, or of the final response, note how long
+/// after the attempt began (HTTP-network fetch's response loop: step 1 sets
+/// the final network-response start time at each response's first byte, and
+/// step 5.1, for a status in the range 100 to 199, the first interim one
+/// when it is still 0 - so the final one is the last response's).
+fn noteStatusLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
+    if (ctx.head_end != null) return;
+    const status = statusOfBlock(line) orelse return;
+    const elapsed = clock.monotonicNanos() -| ctx.attempt_start_ns;
+    if (status >= 100 and status < 200) {
+        if (ctx.first_interim_ns == null) ctx.first_interim_ns = elapsed;
+    } else {
+        ctx.final_status_ns = elapsed;
+    }
+}
+
+fn nsToMs(ns: u64) f64 {
+    return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
 }
 
 /// Keep track of where header blocks end. curl hands every block it reads -

@@ -1459,6 +1459,15 @@ pub fn httpNetworkFetchFinish(
     params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, transfer_start, params.timing_info.post_redirect_start_time);
     params.timing_info.final_network_request_start_time = transfer_start + network_response.pretransfer_time_ms;
     params.timing_info.final_network_response_start_time = transfer_start + network_response.time_to_first_byte_ms;
+    // HTTP-network fetch's response loop ("While true" steps 1 and 5.1): the
+    // first 1xx interim response's arrival is the first interim
+    // network-response start time (Resource Timing's
+    // firstInterimResponseStart, which Chrome, Firefox and Safari report:
+    // resource-timing/interim-response-times.html at wpt.fyi 2358bd4835);
+    // 0 when none came.
+    if (network_response.first_interim_response_ms) |interim| {
+        params.timing_info.first_interim_network_response_start_time = transfer_start + interim;
+    }
     params.timing_info.end_time = end_time;
 
     return response;

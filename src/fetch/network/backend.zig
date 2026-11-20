@@ -158,6 +158,11 @@ pub const NetworkResponse = struct {
     /// Time to first byte, in milliseconds after the transfer started, with
     /// its fraction (curl measures to the microsecond).
     time_to_first_byte_ms: f64,
+    /// When the status line of the first 1xx interim response (100 Continue,
+    /// 103 Early Hints) arrived, in milliseconds after the transfer started;
+    /// null when none came. `time_to_first_byte_ms` is then the final
+    /// response's status line, measured the same way.
+    first_interim_response_ms: ?f64 = null,
     /// Number of redirects followed
     redirect_count: u32,
     /// Remote IP address
