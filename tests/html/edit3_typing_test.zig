@@ -50,3 +50,26 @@ fn paddingCases() !void {
 test "typed text removes the line break that only held its empty line open" {
     try helpers.onFreshThread(paddingCases);
 }
+
+fn insertionPastEmptyInline() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // editing/run/inserttext.html: typed over `abc[<s></s><b><i>de]f</i></b>
+    // ghi`, the text goes into the i, past the empty s (all three; the data
+    // accepts the s kept or gone).
+    for ([_][]const u8{ "abc[<s></s><b><i>de]f</i></b>ghi", "abc{<s></s><b><i>de]f</i></b>ghi" }) |markup| {
+        const source = try std.fmt.allocPrint(std.testing.allocator, "runCommands('{s}', [['inserttext','d'],['inserttext','e']]); const h = hostHTML(); String(h === 'abc<b><i>def</i></b>ghi' || h === 'abc<s></s><b><i>def</i></b>ghi') + ' ' + h", .{markup});
+        defer std.testing.allocator.free(source);
+        const actual = try page.evaluate(source);
+        defer std.testing.allocator.free(actual);
+        if (!std.mem.startsWith(u8, actual, "true")) {
+            std.debug.print("{s}: got {s}\n", .{ markup, actual });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+test "typed text goes past an empty inline element the deletion left" {
+    try helpers.onFreshThread(insertionPastEmptyInline);
+}
