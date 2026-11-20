@@ -70,8 +70,8 @@ const Padding = union(enum) {
 
 /// The line break at `caret` that only holds the caret's line open: the
 /// caret starts its line (after a forced break or at its block's start, with
-/// nothing visible between) and the next thing is a line break with nothing
-/// visible after it in its block. Typed text fills the line, so the line
+/// nothing visible between) and the next thing is a line break that ends
+/// its block (endsItsBlock). Typed text fills the line, so the line
 /// break becomes unnecessary and goes once the text is in: Blink's
 /// InsertTextCommand removes it (ComputePlaceholderToRemove: a line break at
 /// the caret's downstream position when the caret is at the start of its
@@ -98,7 +98,7 @@ fn paddingLineBreakAt(caret: common.Point) !?Padding {
             if ((common.codeUnitAt(data.asSlice(), down.offset) orelse return null) != '\n') return null;
             if (down.offset + 1 != length) return null;
             if (!(try common.whiteSpaceAround(down.node)).preservesNewlines()) return null;
-            if (!try common.precedesLineBreak(down.node)) return null;
+            if (!try endsItsBlock(down.node)) return null;
             return .{ .line_feed = down };
         }
         const next = (try common.nextSibling(down.node)) orelse return null;
@@ -108,12 +108,31 @@ fn paddingLineBreakAt(caret: common.Point) !?Padding {
     return try brPadding(after);
 }
 
-/// `node` as a padding br: a br followed by a block boundary.
+/// `node` as a padding br: a br at the end of its block.
 fn brPadding(node: *Instance) !?Padding {
     if (!try common.isHtmlElementNamed(node, "br")) return null;
     if (!try common.isEditable(node)) return null;
-    if (!try common.isCollapsedLineBreak(node)) return null;
+    if (!try endsItsBlock(node)) return null;
     return .{ .br = node };
+}
+
+/// Whether nothing visible and no block follows `node` before the end of
+/// the block that holds it - Blink's IsEndOfBlock for the placeholder: a br
+/// before a child block stays (`<div>{}<br><p>p</p></div>` + "x" keeps it,
+/// Chrome and Safari; editing/other/inserttext-before-unnecessary-
+/// linebreak.html, Firefox alone removes it).
+fn endsItsBlock(node: *Instance) !bool {
+    var current = node;
+    while (true) {
+        var next = try common.nextSibling(current);
+        while (next) |n| : (next = try common.nextSibling(n)) {
+            if (common.isBlockNode(n)) return false;
+            if (try common.isVisible(n)) return false;
+        }
+        const p = (try common.parent(current)) orelse return true;
+        if (common.isBlockNode(p) or try common.isEditingHost(p)) return true;
+        current = p;
+    }
 }
 
 /// Whether `point` starts its line: after a forced break (a br, a preserved

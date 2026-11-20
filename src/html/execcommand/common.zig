@@ -309,6 +309,10 @@ pub const Edit = struct {
                 const clone = try cloneNode(partial, false);
                 try self.appendChild(fragment, clone);
                 const subfragment = try interfaces.Document.call_createDocumentFragment((try interfaces.Node.get_ownerDocument(partial)).?);
+                // The creator's reference ends here; an undo step that names
+                // the emptied fragment holds its own.
+                const subfragment_generation = runtime.SlabAllocator.generationOf(subfragment);
+                defer dom.node_creation.releaseIfUnwrapped(subfragment, subfragment_generation);
                 try self.extractInto(subfragment, start, .{ .node = partial, .offset = try nodeLength(partial) });
                 try self.appendChild(clone, subfragment);
             }
@@ -326,6 +330,10 @@ pub const Edit = struct {
                 const clone = try cloneNode(partial, false);
                 try self.appendChild(fragment, clone);
                 const subfragment = try interfaces.Document.call_createDocumentFragment((try interfaces.Node.get_ownerDocument(partial)).?);
+                // The creator's reference ends here; an undo step that names
+                // the emptied fragment holds its own.
+                const subfragment_generation = runtime.SlabAllocator.generationOf(subfragment);
+                defer dom.node_creation.releaseIfUnwrapped(subfragment, subfragment_generation);
                 try self.extractInto(subfragment, .{ .node = partial, .offset = 0 }, end);
                 try self.appendChild(clone, subfragment);
             }
