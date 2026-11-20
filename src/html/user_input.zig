@@ -1838,8 +1838,10 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
     // selection extends) to the start or end of its line - Blink's key
     // bindings MoveToBeginningOfLine / MoveToEndOfLine and their
     // AndModifySelection forms, Selection.modify(..., "lineboundary").
-    // Where a line ends is a read on the renderer (soft wraps); with none,
-    // Selection.modify leaves the caret (TODO(renderer)).
+    // That answers a line that ends at a forced break, a block edge or the
+    // host's edge before any soft wrap could; where a soft wrap could come
+    // first, the line's end is a read on the renderer and the caret stays
+    // (execcommand/visible_position.zig logicalLineBoundary, TODO(renderer)).
     if ((isKey(key, "Home") or isKey(key, "End")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
         const execcommand = @import("execcommand/root.zig");
         if (execcommand.isEditableTarget(target)) {
