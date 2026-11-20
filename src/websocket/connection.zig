@@ -480,6 +480,12 @@ pub const WebSocketConnection = struct {
         if (backend.getProtocol()) |proto| {
             self.protocol = try self.allocator.dupe(u8, proto);
         }
+        // WebSockets, when the WebSocket connection is established: "Change
+        // the extensions attribute's value to the extensions in use, if it is
+        // not the null value."
+        if (backend.getExtensions()) |extensions| {
+            self.extensions = try self.allocator.dupe(u8, extensions);
+        }
         self.state = .OPEN;
         return true;
     }

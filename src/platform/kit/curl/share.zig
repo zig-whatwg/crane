@@ -30,6 +30,24 @@ pub const options = @import("options.zig");
 /// parsed once per process, with a Browser's extra anchors (trust.zig).
 pub const trust = @import("trust.zig");
 
+/// RFC 6455 framing for the WebSocket transport (websocket.zig): the
+/// transport, not libcurl, speaks the WebSocket Protocol, over HTTP/1.1 and
+/// over an HTTP/2 extended CONNECT stream alike.
+pub const websocket_frames = @import("websocket_frames.zig");
+
+/// The WebSocket opening handshake over HTTP/1.1 (RFC 6455 4.1): the
+/// request, the response head read as browsers read it, and its checks.
+pub const websocket_handshake = @import("websocket_handshake.zig");
+
+/// permessage-deflate (RFC 7692) for the WebSocket transport, on zlib.
+pub const websocket_deflate = @import("websocket_deflate.zig");
+
+/// A WebSocket over HTTP/2 (RFC 8441), the client side, on nghttp2 - the
+/// library libcurl's HTTP/2 is built on, declared in nghttp2.zig. Reached only
+/// from a platform built with HTTP/2 (platform_options.http2).
+pub const websocket_h2 = @import("websocket_h2.zig");
+pub const nghttp2 = @import("nghttp2.zig");
+
 /// curl.h's CURLSH (`typedef void CURLSH`).
 const CURLSH = anyopaque;
 
