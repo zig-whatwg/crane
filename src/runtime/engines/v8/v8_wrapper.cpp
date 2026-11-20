@@ -12584,6 +12584,61 @@ void v8_Object_SetLazyDataProperty(
     );
 }
 
+// A global's exposed constructs (WebIDL 3.7: an interface object, a legacy
+// factory function, an alias), as Blink installs them: lazy data properties
+// on the global's TEMPLATE, once per isolate, so that every global made from
+// it - or restored from a snapshot made from it - has them with no work of
+// its own, and an interface object is built only when script first reads it
+// (IDLMemberInstaller::InstallExposedConstructs, Chromium
+// platform/bindings/idl_member_installer.cc: SetLazyDataProperty, DontEnum,
+// kHasNoSideEffect). The data is the construct's index, a Smi: the getter
+// reads it back without a handle (v8_PropertyCallbackInfo_DataInt32).
+void v8_ObjectTemplate_SetLazyDataPropertyIndexed(
+    Global<ObjectTemplate>* tmpl,
+    const char* name,
+    int name_len,
+    AccessorNameGetterCallback getter,
+    int32_t index
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<String> key;
+    if (!String::NewFromUtf8(isolate, name, NewStringType::kInternalized, name_len).ToLocal(&key)) return;
+    tmpl->Get(isolate)->SetLazyDataProperty(key, getter, Integer::New(isolate, index),
+                                            static_cast<PropertyAttribute>(v8::DontEnum),
+                                            SideEffectType::kHasNoSideEffect);
+}
+
+// The same on one object: a construct only some realms of a kind expose (a
+// [SecureContext] one, in a secure context), put on that realm's global when
+// it is made (IDLMemberInstaller::InstallExposedConstructs' per-object
+// overload, which Blink's conditional features use).
+bool v8_Object_SetLazyDataPropertyIndexed(
+    Global<Object>* object,
+    Global<Context>* context,
+    const char* name,
+    int name_len,
+    AccessorNameGetterCallback getter,
+    int32_t index
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<String> key;
+    if (!String::NewFromUtf8(isolate, name, NewStringType::kInternalized, name_len).ToLocal(&key)) return false;
+    return object->Get(isolate)
+        ->SetLazyDataProperty(context->Get(isolate), key, getter, Integer::New(isolate, index),
+                              static_cast<PropertyAttribute>(v8::DontEnum), SideEffectType::kHasNoSideEffect)
+        .FromMaybe(false);
+}
+
+// A lazy data property's data as the int32 it was given; `fallback` when it
+// is not one. No handle: the getter runs on every first read of a construct.
+int32_t v8_PropertyCallbackInfo_DataInt32(const PropertyCallbackInfo<Value>* info, int32_t fallback) {
+    Local<Value> data = info->Data();
+    if (data.IsEmpty() || !data->IsInt32()) return fallback;
+    return data.As<Int32>()->Value();
+}
+
 // ============================================================================
 // Object Extensibility Functions
 // ============================================================================
@@ -14330,6 +14385,33 @@ size_t v8_SnapshotCreator_AddContext(void* creator, Global<Context>* context) {
     size_t index = sc->AddContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
     fprintf(stderr, "[v8_SnapshotCreator_AddContext] Context added at index %zu\n", index);
     return index;
+}
+
+/// SnapshotCreator::AddData of a FunctionTemplate: kept in the isolate
+/// snapshot, and taken back - the same TemplateInfo the snapshot's contexts
+/// were made from - by v8_Isolate_TakeFunctionTemplateFromSnapshot (Blink:
+/// V8ContextSnapshotImpl::TakeSnapshotForWorld adds Window's, EventTarget's
+/// and four more templates; InstallInterfaceTemplates takes them back once per
+/// isolate). SIZE_MAX on failure.
+size_t v8_SnapshotCreator_AddFunctionTemplate(void* creator, Global<FunctionTemplate>* tmpl) {
+    if (!creator || !tmpl) return SIZE_MAX;
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    Isolate* isolate = sc->GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local = tmpl->Get(isolate);
+    if (local.IsEmpty()) return SIZE_MAX;
+    return sc->AddData(local);
+}
+
+/// Isolate::GetDataFromSnapshotOnce<FunctionTemplate>(index), as a Global
+/// the caller owns; null when the blob has nothing there or it was taken
+/// already (V8 forgets the reference on the first take).
+Global<FunctionTemplate>* v8_Isolate_TakeFunctionTemplateFromSnapshot(Isolate* isolate, size_t index) {
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> tmpl;
+    if (!isolate->GetDataFromSnapshotOnce<FunctionTemplate>(index).ToLocal(&tmpl)) return nullptr;
+    return trackHandle(new Global<FunctionTemplate>(isolate, tmpl));
 }
 
 /// Create the snapshot blob

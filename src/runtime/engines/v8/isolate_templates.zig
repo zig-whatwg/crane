@@ -34,6 +34,17 @@ const v8 = @import("ffi.zig");
 // All four of V8's isolate data slots are taken: 0 isolate_allocator.zig, 1 this storage (which also carries the agent's deferred teardown queue for dom_algorithm.zig), 2 v8_wrapper.cpp kIsolateDataSlot, 3 v8_wrapper.cpp kBindingCatchScopeSlot - add a field here, never a slot.
 pub const TEMPLATE_SLOT: c_int = 1;
 
+/// A registered interface: the template its objects are made from, and its
+/// place in the isolate's registration order - 0 for the first interface
+/// registered, kept when the interface registers again. A wrap reads it with
+/// the template and asks its realm one bit for it
+/// (context_manager.InterfaceObjects): has this realm built the interface
+/// object yet?
+pub const Registered = struct {
+    template: *v8.FunctionTemplate,
+    index: u16,
+};
+
 /// Per-isolate template storage
 pub const IsolateTemplates = struct {
     allocator: std.mem.Allocator,
@@ -45,10 +56,11 @@ pub const IsolateTemplates = struct {
     /// an interface made for a namespace object - are this map's alone.
     templates: std.StringHashMap(*v8.FunctionTemplate),
     /// The template registry (template_registry.register): the template each
-    /// interface's objects of this isolate are made from, by interface name.
+    /// interface's objects of this isolate are made from, by interface name,
+    /// with the interface's registration index (`Registered`).
     /// The names are BORROWED (the generated interfaces' comptime names); the
     /// templates are disposed with the storage.
-    registered: std.StringHashMapUnmanaged(*v8.FunctionTemplate) = .empty,
+    registered: std.StringHashMapUnmanaged(Registered) = .empty,
     /// The agent's deferred teardown queue (engine.AgentOptions.
     /// deferred_teardown), BORROWED from createAgent to the agent's end, for
     /// the "DOM algorithm active" depth every binding entry and callback
@@ -100,11 +112,11 @@ pub const IsolateTemplates = struct {
         distinct.ensureTotalCapacity(self.allocator, self.registered.count() + self.templates.count()) catch {
             // Out of memory: the registered ones at least, as before.
             var registered = self.registered.valueIterator();
-            while (registered.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
+            while (registered.next()) |entry| v8.v8_FunctionTemplate_Dispose(entry.template);
             return;
         };
         var registered = self.registered.valueIterator();
-        while (registered.next()) |template| distinct.putAssumeCapacity(template.*, {});
+        while (registered.next()) |entry| distinct.putAssumeCapacity(entry.template, {});
         var cached = self.templates.valueIterator();
         while (cached.next()) |template| distinct.putAssumeCapacity(template.*, {});
         var each = distinct.keyIterator();
