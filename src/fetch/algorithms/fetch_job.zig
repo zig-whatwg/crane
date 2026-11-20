@@ -953,7 +953,16 @@ pub const FetchJob = struct {
             // for iframes having cross origin redirects" Crane lost once a
             // streamed response had its content encoding (lane loadpath1).
             if (!navigation_status_visible) facts.body_info.content_encoding = "";
-            if (!opaque_response) {
+            // 4.2.7.2-4.2.7.3: the minimized content type - hidden with the
+            // status, as Chromium hides it (allow_response_details, above):
+            // resource-timing/content-type.html's cross-origin iframe and
+            // "... iframes having cross origin redirects" / "... any
+            // non-same-origin redirect": Chrome 157 and Firefox 160 pass,
+            // Safari 27.2 does not (wpt.fyi 2358bd4835) - golden rule 2, the
+            // majority; Fetch's own condition is the redirect taint, which
+            // Crane's response does not carry (response.redirect_taint,
+            // above).
+            if (!opaque_response and navigation_status_visible) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
                     defer parsed.deinit();

@@ -35,14 +35,6 @@ const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 const document_write = @import("document_write.zig");
 const InputStreamManager = document_write.InputStreamManager;
-const encoding_sniffing = @import("html_encoding_sniffing");
-
-/// A parser driver's "change the encoding" (HTML §13.2.3.4), which the tree
-/// builder runs for a meta element that declares `requested`.
-pub const ChangeTheEncoding = struct {
-    context: *anyopaque,
-    change: *const fn (context: *anyopaque, requested: encoding_sniffing.Encoding) void,
-};
 
 /// The 21 insertion modes defined in HTML Standard §13.2.6.4. The current
 /// parser has no "in select" or "in select in table" mode: a select's
@@ -887,13 +879,6 @@ pub const TreeBuilder = struct {
     /// The parser set the document's mode (`quirks_mode`): the Document the
     /// DOM adapter builds takes it. Called with `dom_adapter_context`.
     dom_adapter_on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void = null,
-
-    /// The parser's "change the encoding" (HTML §13.2.3.4), which a meta
-    /// element runs while the confidence is tentative. Set by a driver
-    /// decoding a byte stream, which holds the confidence and the input
-    /// stream; null when the input was never bytes (document.write(),
-    /// fragments, DOMParser), which have no encoding to change.
-    change_the_encoding: ?ChangeTheEncoding = null,
 
     /// The "text" insertion mode popped an element other than a script off
     /// the stack of open elements - a style element's end tag, or EOF - its
@@ -2276,14 +2261,16 @@ pub const TreeBuilder = struct {
                     // Acknowledge self-closing flag
                 } else if (std.mem.eql(u8, name, "meta")) {
                     try self.insertVoidHtmlElement(tag);
-
-                    // "If the active speculative HTML parser is null" -
-                    // Crane has none - the encoding the element declares
-                    // changes the encoding (the driver checks that the
-                    // confidence is tentative).
-                    if (self.change_the_encoding) |hook| {
-                        if (metaDeclaredEncoding(tag)) |requested| hook.change(hook.context, requested);
-                    }
+                    // Browser deviation, stated: HTML's next step - "change
+                    // the encoding" to the one the element declares while the
+                    // confidence is tentative - is not taken. The encoding is
+                    // the one the meta scan decided before parsing
+                    // (parser/meta_charset_scan.zig); Blink and WebKit have no
+                    // later path, and a meta the scan does not reach changes
+                    // nothing in Chrome, Firefox or Safari
+                    // (html/syntax/charset/after-head-after-1kb.html: mismatch
+                    // in all three at wpt.fyi 2358bd4835; whatwg/html#6962,
+                    // open, describes the shared behaviour).
                 } else if (std.mem.eql(u8, name, "title")) {
                     try self.parseGenericRCDATA(tag);
                 } else if (std.mem.eql(u8, name, "noscript") and self.scripting_enabled) {
@@ -6430,24 +6417,6 @@ fn isVoidElement(name: []const u8) bool {
         if (std.mem.eql(u8, name, v)) return true;
     }
     return false;
-}
-
-/// The encoding a meta start tag declares, per the "in head" insertion
-/// mode's meta steps: 1. its charset attribute, when getting an encoding from
-/// the value gives one; 2. otherwise, with an http-equiv attribute that is an
-/// ASCII case-insensitive match for "Content-Type", the encoding its content
-/// attribute gives the algorithm for extracting a character encoding from a
-/// meta element. Null when it declares none.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
-fn metaDeclaredEncoding(tag: anytype) ?encoding_sniffing.Encoding {
-    if (tag.getAttribute("charset")) |charset| {
-        if (encoding_sniffing.lookup(charset.getValue())) |found| return found;
-    }
-    const http_equiv = tag.getAttribute("http-equiv") orelse return null;
-    if (!std.ascii.eqlIgnoreCase(http_equiv.getValue(), "Content-Type")) return null;
-    const content = tag.getAttribute("content") orelse return null;
-    return encoding_sniffing.extractFromMetaContent(content.getValue());
 }
 
 // =========================================================================

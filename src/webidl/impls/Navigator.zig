@@ -353,10 +353,15 @@ pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for vendor
-/// Per HTML Standard: Returns the vendor name.
+/// HTML "vendor" getter steps: "return the appropriate string from the
+/// following list: If the navigator compatibility mode is Chrome: the string
+/// "Google Inc."; Gecko: the empty string; WebKit: "Apple Computer, Inc."".
+/// Crane's navigator compatibility mode is Chrome - the mode its productSub
+/// ("20030107") and appVersion already follow - by the user's ruling of
+/// 2026-11-20. ([Exposed=Window]: a WorkerNavigator has no vendor.)
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return runtime.DOMString.initInterned("WhatWG-Zig");
+    return runtime.DOMString.initInterned("Google Inc.");
 }
 
 /// Getter for vendorSub
