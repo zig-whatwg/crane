@@ -19,8 +19,10 @@ name: Test Suite
 # ubuntu-latest and windows-latest matrix legs cannot succeed even once V8 is
 # provisioned.
 #
-# On a machine that DOES have the archives, the suite is GREEN as of the Zig
-# 0.16 migration: 260/260 steps succeeded; 3768/3772 tests passed (4 skipped).
+# On a machine that DOES have the archives, the suite is GREEN on the pinned
+# Zig 0.17 (lane z17f's gate, 2026-11-21, macOS on chat2: 135 test suites,
+# 15,855 tests passed, 34 skipped, 0 failed; Linux on server1 the same 135,
+# 15,860 passed, 29 skipped).
 # So a failure here is either the missing-V8 provisioning above, or a real
 # regression - it is no longer expected noise.
 #

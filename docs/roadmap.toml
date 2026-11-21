@@ -620,6 +620,7 @@ progress = [
   "a17c622af26 (lane zigprep1) - the 0.16-compatible prep: @cImport -> translate-c modules, renames, `**` -> @splat, the iOS lib-full build fixed",
   "0aa6c6c8cfa (merge 4fa2978755a) - validated: a quiet side-by-side A/B against generation 197's 0.16 runner (worklist 1,883,696 -> 1,883,705, blocking 649 = 649, Crane tests 0 lost), timers x3 16/16, published as generation 198; still open for this item: an aarch64-ios LINK (needs a matching ios-arm64 V8 prebuilt or the JavaScriptCore adapter) and retiring 0.16 from the hosts",
   "2c684d65b7c (lanes zig017port + zig017mem) - the port: build.zig under 0.17 (refuses 0.17.0), useBuildableMacosSdk retired, @typeInfo codemod, regenerated WebIDL layers, one 0.17 zig fmt; the runner's debug-info allocator; gates green, snapshot byte-identical",
+  "lane z17f (2026-11-21) - 0.16 RETIRED: build.zig refuses any Zig but 0.17.1+ by name (tools/zig_toolchain.zig; asdf 0.16.0 now gets the refusal as its first build.zig error); the pool shim runs the pin everywhere (it fell back to 0.16 outside a 0.17 tree) and no script names 0.16; asdf 0.16.0 removed from chat2 by the integrator (chat.local after blk7's cost window; server1 never had it); no SDK-workaround trace left. Verified on 0.17 alone (0.16 off PATH, the 0.17-only shim): zig build test (codegen-check, check-configure-cache), wpt-runner and the release console green on macOS (chat2: 135 suites, 15,855 passed, 0 failed) and Linux (server1: 15,860 passed, 0 failed). CI fetches the pin from the toolchain release toolchain-zig-0.17.1-dev.77c319a0f0 (user ruling 2026-11-21: Linux x86_64 + a macOS 14 rebuild), SHA-256 pinned (.github/actions/setup-zig-pinned). The full sweep A/B and timers x3 are 0aa6c6c8cfa's (generation 198). The aarch64-ios LINK moves to the JavaScriptCore adapter: iOS builds are paused until it exists (the user, 2026-11-10), and V8 never runs on iOS",
 ]
 
   [[infra.items]]
@@ -632,7 +633,7 @@ progress = [
 
   [[infra.items]]
   name = "Verify: zig build test, iOS link, full sweep A/B, timers x3; retire 0.16 and the SDK workaround"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "impls-boundary"
