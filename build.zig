@@ -5373,6 +5373,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "browser", .module = testing_graph.browser },
                 .{ .name = "console", .module = testing_graph.console },
                 .{ .name = "platform", .module = testing_graph.platform },
+                .{ .name = "devtools", .module = testing_graph.devtools },
             },
         });
         const console_test_imports = [_]std.Build.Module.Import{

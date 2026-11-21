@@ -55,6 +55,10 @@ const StubHost = struct {
         drop(ctx);
         return false;
     }
+    pub fn call(self: *StubHost, ctx: ?*anyopaque, run: RunFn) error{ BrowserGone, WrongThread }!void {
+        _ = .{ self, ctx, run };
+        return error.BrowserGone;
+    }
     pub fn isBrowserThread(self: *StubHost) bool {
         _ = self;
         return false;

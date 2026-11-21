@@ -136,6 +136,9 @@ pub const Server = struct {
             .token_high = std.mem.readInt(u64, random_bytes[0..8], .big),
         };
         errdefer self.inbox.release();
+        // Browser.getVersion's user agent: the Browser's, Crane's default
+        // when the embedder gave none.
+        if (self.options.user_agent.len == 0) self.options.user_agent = @import("fetch").internal.user_agent.default_user_agent;
 
         // The default context: the embedder's Browser.
         const default_context = try self.addContext(options.default_host, false);
