@@ -61,9 +61,14 @@ const max_entries = 32;
 /// for one (namespace, attribute) - SVG's href is a resource reference
 /// (style/svg_resources.zig) and an SVG script's URL - and each runs.
 const max_attribute_entries = 16;
+/// SVG element types with steps of their own: the four animation elements
+/// (SVG Animations 2, lane dnd1).
+const max_svg_entries = 8;
 const Tables = struct {
     elements: hook.List(Entry, max_entries) = .empty,
     attributes: hook.List(AttributeEntry, max_attribute_entries) = .empty,
+    /// Keyed by local name in the SVG namespace (`Entry.element` holds it).
+    svg_elements: hook.List(Entry, max_svg_entries) = .empty,
 };
 /// Process-wide, written once at start-up (hook.zig).
 var entries: hook.Hook(Tables) = .init(.{});
@@ -90,6 +95,37 @@ pub fn install(element: []const u8, steps: Steps) void {
         }
     }
     tables.elements.append(.{ .element = element, .steps = steps });
+}
+
+/// Install `steps` for SVG elements whose local name is `element` (a string
+/// that lives for the program): `install`'s contract, in the SVG namespace.
+pub fn installForSvgElement(element: []const u8, steps: Steps) void {
+    const tables = entries.installing();
+    for (tables.svg_elements.mutableSlice()) |*entry| {
+        if (std.mem.eql(u8, entry.element, element)) {
+            if (entry.steps != steps) entry.steps = steps;
+            return;
+        }
+    }
+    tables.svg_elements.append(.{ .element = element, .steps = steps });
+}
+
+/// Run the attribute change steps an SVG element's type installed, if any.
+/// The caller has checked that `element` is in the SVG namespace.
+pub fn runSvg(
+    element: *runtime.Instance,
+    element_local_name: []const u8,
+    local_name: []const u8,
+    old_value: ?[]const u8,
+    value: ?[]const u8,
+    namespace: ?[]const u8,
+) void {
+    for (entries.read().svg_elements.slice()) |entry| {
+        if (std.mem.eql(u8, entry.element, element_local_name)) {
+            entry.steps(element, local_name, old_value, value, namespace);
+            return;
+        }
+    }
 }
 
 /// Install once, at process start, for an ATTRIBUTE local name on every

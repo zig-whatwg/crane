@@ -5362,6 +5362,11 @@ fn completeLoading(document: *runtime.Instance) void {
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
     internal.completely_loaded = true;
+    // The SVG document fragments' timelines begin once the load event has
+    // fired (SVG Animations 2 4.1, timelinebegin "loadend"; Blink
+    // Document::DispatchLoadAndPageshowEvents -> SVGDocumentExtensions::
+    // StartAnimations, after pageshow).
+    @import("dom").smil.document_animations.startAnimations(document);
     // What the document kept for its load's reuse goes (dom.document_resources).
     if (@import("dom").document_resources.of(document)) |resources| resources.pruneLoaded();
     // This frame no longer delays its container document: the parent's own

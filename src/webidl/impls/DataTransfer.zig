@@ -63,7 +63,13 @@ const allowed_effects = [_][]const u8{ "none", "copy", "copyLink", "copyMove", "
 
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    store: *drag_data_store.Store,
+    /// The drag data store this object is associated with; null once the
+    /// association is broken (HTML 6.11.4 "fire a DND event" step 15).
+    store: ?*drag_data_store.Store,
+    /// Whether the store is this object's own (made by its constructor) or
+    /// a drag-and-drop operation's, which made this object for one event
+    /// (`makeForStore`).
+    owns_store: bool = true,
     /// The DataTransferItemList and FileList made with the store. With an
     /// engine, the edges from this object own them (their wrappers do);
     /// without one (engine-free tests), this object frees them.
@@ -98,7 +104,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     state.own._internal = null;
-    internal.store.destroy();
+    if (internal.owns_store) if (internal.store) |store| store.destroy();
     if (internal.traced) {
         engine.forgetTracedChild(instance, .{ .name = "items" });
         engine.forgetTracedChild(instance, .{ .name = "files" });
@@ -166,7 +172,8 @@ pub fn get_effectAllowed(instance: *runtime.Instance) anyerror!runtime.DOMString
 /// unchanged."
 pub fn set_effectAllowed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    if (internal.store.mode != .read_write) return;
+    const store = internal.store orelse return;
+    if (store.mode != .read_write) return;
     for (allowed_effects) |effect| {
         if (std.mem.eql(u8, effect, value.asSlice())) internal.effect_allowed = effect;
     }
@@ -194,12 +201,69 @@ pub fn get_files(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// event steps (src/html/execcommand/clipboard.zig) set the mode of, fill
 /// and read the store of a DataTransfer they made, without this impl.
 pub fn installHooks() void {
-    drag_data_store.installDataTransfer(.{ .store_of = &storeOfDataTransfer });
+    drag_data_store.installDataTransfer(.{
+        .store_of = &storeOfDataTransfer,
+        .make_for_store = &makeForStore,
+        .disassociate = &disassociate,
+        .effects_of = &effectsOf,
+        .set_effects = &setEffects,
+    });
 }
 
 fn storeOfDataTransfer(instance: *runtime.Instance) ?*drag_data_store.Store {
     const internal = getInternal(instance) orelse return null;
     return internal.store;
+}
+
+/// HTML 6.11.4 "fire a DND event" step 5: "a newly created DataTransfer
+/// object associated with the given drag data store", in `realm`. The store
+/// stays its drag-and-drop operation's; this object's `files` is the list
+/// the store rebuilds until the association ends (`disassociate`).
+fn makeForStore(realm: runtime.Context, store: *drag_data_store.Store) anyerror!*runtime.Instance {
+    const allocator = realm.allocator;
+    const instance = try init(allocator, State, &DataTransfer.vtable, realm);
+    errdefer runtime.Instance.deinit(instance);
+    const items = try drag_data_store.makeItemList(instance, store);
+    errdefer runtime.Instance.deinit(items);
+    const files = try interfaces.FileList.init(allocator, realm);
+    errdefer runtime.Instance.deinit(files);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator, .store = store, .owns_store = false, .items = items, .files = files, .traced = realm.hasEngine() };
+    instance.getState(State).own._internal = internal;
+    if (internal.traced) {
+        engine.traceChild(instance, items, .{ .name = "items" });
+        engine.traceChild(instance, files, .{ .name = "files" });
+    }
+    store.setFiles(files);
+    return instance;
+}
+
+/// Step 15: "Break the association between dataTransfer and the drag data
+/// store." Its item list and items read as disabled from now on, and its
+/// files list is empty (6.11.3: "If the DataTransfer object is no longer
+/// associated with a drag data store, the FileList is empty").
+fn disassociate(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.owns_store) return;
+    internal.store = null;
+    @import("dom").file_lists.clear(internal.files) catch {};
+}
+
+fn effectsOf(instance: *runtime.Instance) drag_data_store.Effects {
+    const internal = getInternal(instance) orelse return .{};
+    return .{ .effect_allowed = internal.effect_allowed, .drop_effect = internal.drop_effect };
+}
+
+/// Steps 6-7: the attributes a DND event's DataTransfer starts with (any
+/// value of their own lists; anything else is ignored).
+fn setEffects(instance: *runtime.Instance, effects: drag_data_store.Effects) void {
+    const internal = getInternal(instance) orelse return;
+    for (allowed_effects) |effect| {
+        if (std.mem.eql(u8, effect, effects.effect_allowed)) internal.effect_allowed = effect;
+    }
+    for (drop_effects) |effect| {
+        if (std.mem.eql(u8, effect, effects.drop_effect)) internal.drop_effect = effect;
+    }
 }
 
 /// getData, setData and clearData steps 3-4/4-5: the format converted to
@@ -223,7 +287,8 @@ fn normalizedFormat(allocator: std.mem.Allocator, format: []const u8) !struct { 
 /// (its remove(index) also lets go of the item's DataTransferItem, which
 /// then reads as disabled). The store is in read/write mode.
 fn removeText(internal: *InternalState, format: []const u8) !void {
-    const index = internal.store.textIndex(format) orelse return;
+    const store = internal.store orelse return;
+    const index = store.textIndex(format) orelse return;
     try interfaces.DataTransferItemList.call_remove(internal.items, @intCast(index));
 }
 
@@ -235,7 +300,8 @@ fn removeText(internal: *InternalState, format: []const u8) !void {
 pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const realm = engine.currentRealm() orelse instance.ctx;
     const internal = getInternal(instance) orelse return (try engine.createFrozenArray(realm, &.{})).take();
-    const store = internal.store;
+    // 1. Not associated with a drag data store: an empty list.
+    const store = internal.store orelse return (try engine.createFrozenArray(realm, &.{})).take();
     const allocator = instance.ctx.allocator;
     var values: std.ArrayList(runtime.JSValue) = .empty;
     defer values.deinit(allocator);
@@ -253,14 +319,15 @@ pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) anyerror!runtime.DOMString {
     // 1. Not associated with a drag data store: the empty string.
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    const store = internal.store orelse return runtime.DOMString.initEmpty();
     // 2. Protected mode: the empty string.
-    if (internal.store.mode == .protected) return runtime.DOMString.initEmpty();
+    if (store.mode == .protected) return runtime.DOMString.initEmpty();
     // 3-6. The format, lowercased; "text" and "url" (convert-to-URL).
     const allocator = instance.ctx.allocator;
     const normalized = try normalizedFormat(allocator, format.asSlice());
     defer allocator.free(normalized.format);
     // 7-8. The data of the text item of that type, or the empty string.
-    const data = internal.store.textData(normalized.format) orelse return runtime.DOMString.initEmpty();
+    const data = store.textData(normalized.format) orelse return runtime.DOMString.initEmpty();
     // 9. convert-to-URL: the first URL of the text/uri-list (RFC 2483: one
     //    URI per CRLF-separated line, "#" lines are comments).
     if (normalized.url) {
@@ -280,16 +347,17 @@ pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) anye
 pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DOMString)) anyerror!void {
     // 1. Not associated with a drag data store: nothing happens.
     const internal = getInternal(instance) orelse return;
+    const store = internal.store orelse return;
     // 2. Not in read/write mode: nothing happens.
-    if (internal.store.mode != .read_write) return;
+    if (store.mode != .read_write) return;
     // 3. No argument: remove every text item.
     if (!format.was_passed) {
         // Clipboard API "fire a clipboard event" step 11.1.
-        try internal.store.noteClear(null);
-        var index = internal.store.length();
+        try store.noteClear(null);
+        var index = store.length();
         while (index > 0) {
             index -= 1;
-            if (internal.store.items.items[index].kind != .text) continue;
+            if (store.items.items[index].kind != .text) continue;
             try interfaces.DataTransferItemList.call_remove(internal.items, @intCast(index));
         }
         return;
@@ -298,26 +366,31 @@ pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DO
     const allocator = instance.ctx.allocator;
     const normalized = try normalizedFormat(allocator, format.value.asSlice());
     defer allocator.free(normalized.format);
-    try internal.store.noteClear(normalized.format);
+    try store.noteClear(normalized.format);
     // 6. Remove the text item of that type, if there is one.
     try removeText(internal, normalized.format);
 }
 
-/// Operation: setDragImage
+/// Operation: setDragImage(image, x, y), HTML 6.11.3.
 pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
-    _ = instance;
-    _ = image;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
+    // 1. Not associated with a drag data store: nothing happens.
+    const internal = getInternal(instance) orelse return;
+    const store = internal.store orelse return;
+    // 2. Not in read/write mode: nothing happens.
+    if (store.mode != .read_write) return;
+    // 3-4. The drag data store bitmap: the image (an img element's), or the
+    // element's rendering - which the host draws (Crane renders nothing; it
+    // keeps the element for the host's drag feedback) - and its hot spot.
+    store.setBitmap(image, x, y);
 }
 
 /// Operation: setData(format, data), HTML 6.11.3.
 pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data: runtime.DOMString) anyerror!void {
     // 1. Not associated with a drag data store: nothing happens.
     const internal = getInternal(instance) orelse return;
+    const store = internal.store orelse return;
     // 2. Not in read/write mode: nothing happens.
-    if (internal.store.mode != .read_write) return;
+    if (store.mode != .read_write) return;
     // 3-4. The format, lowercased; "text" and "url".
     const allocator = instance.ctx.allocator;
     const normalized = try normalizedFormat(allocator, format.asSlice());
@@ -325,7 +398,7 @@ pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data
     // 5. Remove the text item of that type, if there is one.
     try removeText(internal, normalized.format);
     // 6. Add a text item of that type with the data.
-    _ = try internal.store.addText(data.asSlice(), normalized.format);
+    _ = try store.addText(data.asSlice(), normalized.format);
     // Clipboard API "fire a clipboard event" step 11.2.
-    internal.store.noteSet(normalized.format);
+    store.noteSet(normalized.format);
 }
