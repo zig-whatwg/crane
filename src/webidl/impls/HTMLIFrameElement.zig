@@ -5809,6 +5809,12 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 }
 
 fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
+    // Step 13 appends "finalize a cross-document navigation" to the traversal
+    // queue. Stated (golden rule 2, Chrome + Safari): the String's document
+    // is committed here, in the task that evaluated it - Blink's
+    // ScriptController::ExecuteJavaScriptURL and WebKit's
+    // executeJavaScriptURL replace the document on the same stack; Firefox
+    // (nsJSChannel) and the spec do it later (JointHistory.settleApply).
     // Step 13: finalized as a "replace" - in the history before the new
     // document's scripts run, as for any other document. "Evaluate a
     // javascript: URL": the new document state's origin is initiatorOrigin,

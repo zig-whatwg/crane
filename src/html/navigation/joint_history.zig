@@ -665,7 +665,17 @@ pub const JointHistory = struct {
     /// result;
     /// a commit that found no queue to append its finalize to): HTML queues
     /// "finalize a cross-document navigation" on the traversal queue, so it
-    /// never runs inside an apply (`listCrossDocument` is the queued one). A
+    /// never runs inside an apply (`listCrossDocument` is the queued one).
+    /// A javascript: URL's String result is committed in the task that
+    /// evaluated it, as Chrome and Safari do - golden rule 2, no newer spec
+    /// involved (HTML made it asynchronous before and after whatwg/html#6315),
+    /// the majority: Blink's ScriptController::ExecuteJavaScriptURL commits
+    /// it on the same stack (FrameLoader::CommitNavigation, CommitReason
+    /// kJavascriptUrl, kReplaceCurrentItem), WebKit's
+    /// ScriptController::executeJavaScriptURL calls DocumentWriter::
+    /// replaceDocumentWithResultOfExecutingJavascriptURL directly; Firefox
+    /// loads it through nsJSChannel, asynchronously, as the spec does (lane
+    /// life1, 2026-11-21). A
     /// commit made inline while an apply runs settles it first - the step moves to its target (step 20
     /// early, and the apply's own does nothing) and the views of the
     /// navigables it does not change are released (their step 18 early) -
