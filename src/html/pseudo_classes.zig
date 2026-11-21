@@ -326,33 +326,39 @@ fn computedHeadingLevel(base: u8, element: *Instance) u8 {
 fn computedHeadingOffset(element: *Instance) u64 {
     // Step 1.
     var offset: u64 = 0;
-    // Step 2.
+    // Step 2. The walk follows the tree's own links (NodeBase), as selector
+    // matching does - one NodeBase read for the element, then parent_node -
+    // and reads each ancestor's attributes by their static ids (Blink's
+    // FastHasAttribute): :heading asks this of every heading it tests.
     var inclusive_ancestor: *Instance = element;
-    // Step 3. The walk follows the tree's own links (NodeBase), as selector
-    // matching does: :heading asks it of every heading it tests.
+    var node = dom.instance_bridge.getNodeBase(element) orelse return 0;
+    // Step 3.
     while (true) {
         // "An HTML element": the name record's namespace, one compare.
         if (dom.element_data.of(inclusive_ancestor)) |attributes| if (attributes.name.isHtml()) {
             // Steps 3.1-3.3: an HTML element's headingoffset, by the rules
             // for parsing non-negative integers; an error adds 0.
-            if (attributes.indexOfQualifiedName("headingoffset")) |index| {
-                if (attributes.attributeAt(index)) |entry| {
-                    if (dom.reflection.parseNonNegativeInteger(entry.value)) |value| offset +|= @intCast(value);
+            if (attributes.indexOfLocal("headingoffset")) |index| {
+                if (attributes.valueAt(index)) |value| {
+                    if (dom.reflection.parseNonNegativeInteger(value)) |parsed| offset +|= @intCast(parsed);
                 }
             }
             // Step 3.4.
-            if (attributes.indexOfQualifiedName("headingreset") != null) return offset;
+            if (attributes.indexOfLocal("headingreset") != null) return offset;
         };
-        const node = dom.instance_bridge.getNodeBase(inclusive_ancestor) orelse break;
         const parent = node.parent_node orelse break;
         const next: *Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(parent) orelse break));
         switch (parent.node_type) {
             // Step 3.6: the parent element.
-            element_node => inclusive_ancestor = next,
+            element_node => {
+                inclusive_ancestor = next;
+                node = parent;
+            },
             // Step 3.5: a shadow root's host.
             document_fragment_node => {
                 if (next.stateAs(interfaces.ShadowRoot.State) == null) break;
                 inclusive_ancestor = (interfaces.ShadowRoot.get_host(next) catch null) orelse break;
+                node = dom.instance_bridge.getNodeBase(inclusive_ancestor) orelse break;
             },
             else => break,
         }

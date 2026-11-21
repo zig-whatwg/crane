@@ -142,6 +142,12 @@ fn headingLevels() !void {
     // A change of an ancestor's offset is a new level.
     try expectTrue(browser, "document.querySelector('section').headingOffset = 0; levelOf($('a')) === 1");
     try expectTrue(browser, "$('b').parentElement.headingReset = false; levelOf($('b')) === 3");
+    // The headingoffset and headingreset attributes are in no namespace
+    // (HTML 4.3.11.1 "has a headingoffset attribute"; Blink's
+    // FastHasAttribute(kHeadingoffsetAttr)): a namespaced attribute of that
+    // local name is neither, though its qualified name is the same.
+    try expectTrue(browser, "const f = document.createElement('div'); f.setAttributeNS('urn:x', 'headingoffset', '4'); f.appendChild(document.createElement('h1')); document.body.appendChild(f); levelOf(f.firstChild) === 1");
+    try expectTrue(browser, "const g = document.createElement('div'); g.setAttribute('headingoffset', '2'); const r = g.appendChild(document.createElement('div')); r.setAttributeNS('urn:x', 'headingreset', ''); r.appendChild(document.createElement('h1')); document.body.appendChild(g); levelOf(r.firstChild) === 3");
 }
 
 test "the :heading() level counts the heading offset of the element's ancestors" {
