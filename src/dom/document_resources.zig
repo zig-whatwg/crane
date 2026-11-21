@@ -171,14 +171,25 @@ fn reusable(request: *const InternalRequest) bool {
 }
 
 /// Whether the document keeps `request`'s response for a later fetch of the
-/// same key while it loads: a style sheet's (a link's, an @import's) - the
-/// reuse WPT observes (resource-timing/render-blocking-status-link.html
-/// re-creates every link of its head with `head.innerHTML +=`). The browsers
-/// keep every type of resource that way; Crane's images reuse the list of
-/// available images, and its scripts, fonts and other resources are fetched
-/// again (stated: their bodies would each be held a second time until the
-/// load ends). A preload's response is kept whatever its type once it is
-/// consumed (`consume`).
+/// same key while it loads - golden rule 2, the types all three browsers
+/// reuse within a loading document, each checked:
+///
+/// - style sheets (a link's, an @import's): Chrome (resource_fetcher.cc:
+///   DetermineRevalidationPolicyInternal, kUse for the document's
+///   cached_resources_map_ while !IsLoadComplete), Firefox
+///   (layout/style/Loader.cpp: MaybeCoalesceLoadAndNotifyOpen) and Safari
+///   (CachedResourceLoader's memory cache) - kept here;
+/// - fonts: Chrome's memory cache, Firefox's gfxUserFontSet::UserFontCache::
+///   GetFont, Safari's CachedFont - Crane's font loads already share one
+///   load per key (dom.style.font_loading's ResourceCache);
+/// - images: all three - Crane's list of available images
+///   (dom.style.available_images, the img element's);
+/// - scripts: Chrome and Safari only. Firefox's release fetches a script
+///   again (dom/script/SharedScriptCache.cpp serves a document only behind
+///   dom.script_loader.experimental.navigation_cache, @IS_NIGHTLY_BUILD@ in
+///   modules/libpref/init/StaticPrefList.yaml), so a script is not kept
+///   unless a preload brought it (`consume` keeps a consumed preload's
+///   response whatever its type).
 fn kept(request: *const InternalRequest) bool {
     return request.destination == .style;
 }
