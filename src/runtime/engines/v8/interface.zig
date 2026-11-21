@@ -2915,6 +2915,22 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // HTML 3.2.3 [HTMLConstructor]: the interface object is a class
+            // made over the template's function, now that its prototype
+            // object and own properties are set up - with the prototype's
+            // members defined on the class's prototype object - and the
+            // realm's filters below run on it.
+            const interface_object: *v8.Function = interface_object: {
+                if (comptime is_html_constructor) {
+                    if (htmlInterfaceObject(isolate, context, constructor)) |class_object| {
+                        markMaterializedInterfaceObject(constructor, class_object);
+                        v8.v8_Function_Dispose(constructor);
+                        break :interface_object class_object;
+                    }
+                }
+                break :interface_object constructor;
+            };
+
             // WebIDL 3.3.13 and "exposed": a [SecureContext] member exists
             // only in a realm whose settings object is a secure context. The
             // template carries every member (one template serves every realm
@@ -2924,12 +2940,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime @hasDecl(Meta, "secure_context_members") or @hasDecl(Meta, "secure_context_static_members")) {
                 if (!realmIsSecureContext(context)) {
                     if (comptime @hasDecl(Meta, "secure_context_static_members")) {
-                        hideNames(isolate, context, @ptrCast(constructor), Meta.secure_context_static_members);
+                        hideNames(isolate, context, @ptrCast(interface_object), Meta.secure_context_static_members);
                     }
                     if (comptime @hasDecl(Meta, "secure_context_members")) {
                         if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |prototype_key| {
                             defer v8.v8_String_Dispose(prototype_key);
-                            if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key))) |prototype| {
+                            if (v8.v8_Object_Get(@ptrCast(interface_object), context, @ptrCast(prototype_key))) |prototype| {
                                 defer v8.v8_Value_Dispose(prototype);
                                 if (v8.v8_Value_IsObject(prototype)) hideNames(isolate, context, @ptrCast(prototype), Meta.secure_context_members);
                             }
@@ -2940,28 +2956,18 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // These configurable members came from isolate-wide templates;
             // filter the realm's objects, never the shared template.
-            hideUnexposedMembers(Interface, true, isolate, context, @ptrCast(constructor));
+            hideUnexposedMembers(Interface, true, isolate, context, @ptrCast(interface_object));
             if (comptime @hasDecl(Meta, "exposed_members")) {
                 if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |key| {
                     defer v8.v8_String_Dispose(key);
-                    if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(key))) |prototype| {
+                    if (v8.v8_Object_Get(@ptrCast(interface_object), context, @ptrCast(key))) |prototype| {
                         defer v8.v8_Value_Dispose(prototype);
                         if (v8.v8_Value_IsObject(prototype)) hideUnexposedMembers(Interface, false, isolate, context, @ptrCast(prototype));
                     }
                 }
             }
 
-            // HTML 3.2.3 [HTMLConstructor]: the interface object is a class
-            // made over the template's function, now that its prototype
-            // object and own properties are set up.
-            if (comptime is_html_constructor) {
-                if (htmlInterfaceObject(isolate, context, constructor)) |class_object| {
-                    markMaterializedInterfaceObject(constructor, class_object);
-                    v8.v8_Function_Dispose(constructor);
-                    return class_object;
-                }
-            }
-            return constructor;
+            return interface_object;
         }
 
         /// HTML 3.2.3: an [HTMLConstructor] interface's interface object in
@@ -2970,11 +2976,15 @@ pub fn V8Interface(comptime Interface: type) type {
         /// (v8_HTMLConstructor_InterfaceObject): a derived class, so that its
         /// [[Construct]] makes no receiver and reads no NewTarget.prototype
         /// before HTML's step 10 (binding_plumbing.htmlConstructorCall), with
-        /// the template function's prototype object's properties on the
-        /// class's own prototype object - which becomes the template
-        /// function's `prototype`, so that every wrapper of the interface in
-        /// the realm inherits from it - and its other own properties
-        /// (constants, static members) on the class. Nothing script reads
+        /// the interface's prototype members defined straight on the class's
+        /// own prototype object (createTemplate's `members_key`: they are
+        /// not on the PrototypeTemplate, so no template-made object is copied
+        /// and dropped), then what the realm gave the template function's
+        /// prototype object (`constructor`, @@toStringTag, ...) - the class's
+        /// prototype object becoming the template function's `prototype`, so
+        /// that every wrapper of the interface in the realm inherits from it -
+        /// and the template function's other own properties (constants,
+        /// static members) on the class. Nothing script reads
         /// changes but that: the class's name, length, `prototype` (not
         /// writable, enumerable or configurable), own properties and
         /// Function.prototype.toString text ("function HTMLElement() {
@@ -2982,16 +2992,29 @@ pub fn V8Interface(comptime Interface: type) type {
         /// `html_constructors_extension_source`) are the template
         /// function's (tests/v8/html_constructor_shape_test.zig pins them),
         /// and neither has an own `arguments` or `caller`. OWNED; null - the
-        /// template function stays the interface object - in a context made
-        /// without the extension (the snapshot generator's, which builds no
-        /// [HTMLConstructor] interface object).
+        /// template function stays the interface object, its prototype object
+        /// given the members - in a context made without the extension (the
+        /// snapshot generator's, which builds no [HTMLConstructor] interface
+        /// object; a test's plain context).
         fn htmlInterfaceObject(isolate: *v8.Isolate, context: *v8.Context, template_function: *v8.Function) ?*v8.Function {
             const index = comptime @import("interface_bindings.zig").htmlConstructorIndex(interface_name) orelse
                 @compileError(interface_name ++ " is an [HTMLConstructor] interface missing from interface_bindings.html_constructor_names");
-            if (!v8.v8_Context_HasHTMLConstructorFactory(context)) return null;
-            const construct_function = binding_plumbing.htmlConstructorFunction(isolate, context) orelse return null;
-            defer v8.v8_Function_Dispose(construct_function);
-            return v8.v8_HTMLConstructor_InterfaceObject(isolate, context, index, template_function, construct_function);
+            if (v8.v8_Context_HasHTMLConstructorFactory(context)) made: {
+                const construct_function = binding_plumbing.htmlConstructorFunction(isolate, context) orelse break :made;
+                defer v8.v8_Function_Dispose(construct_function);
+                if (v8.v8_HTMLConstructor_InterfaceObject(isolate, context, index, template_function, construct_function)) |class_object| return class_object;
+            }
+            // No class: the template function stays the interface object,
+            // and the prototype members its PrototypeTemplate does not hold
+            // (createTemplate's `members_key`) go on its prototype object.
+            if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |key| {
+                defer v8.v8_String_Dispose(key);
+                if (v8.v8_Object_Get(@ptrCast(template_function), context, @ptrCast(key))) |prototype| {
+                    defer v8.v8_Value_Dispose(prototype);
+                    if (v8.v8_Value_IsObject(prototype)) _ = v8.v8_PrototypeMembers_InstallOn(isolate, context, index, @ptrCast(prototype));
+                }
+            }
+            return null;
         }
 
         /// Whether an interface this one inherits from is an [HTMLConstructor]
@@ -3630,6 +3653,22 @@ pub fn V8Interface(comptime Interface: type) type {
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
             defer v8.v8_ObjectTemplate_Dispose(proto_tmpl);
 
+            // HTML 3.2.3 [HTMLConstructor]: the prototype members - the
+            // attributes, constants and operations below - go to the
+            // isolate's list for the interface's class (v8_PrototypeMembers_*),
+            // not to the PrototypeTemplate: a realm defines them straight on
+            // the class's prototype object (`htmlInterfaceObject`), which a
+            // template cannot make, instead of copying them from a
+            // template-made object it would then drop. Never in the snapshot,
+            // which holds no [HTMLConstructor] interface object.
+            const members_key: ?u32 = if (comptime is_html_constructor) members: {
+                if (template_registry.snapshot_mode) break :members null;
+                const key = comptime @import("interface_bindings.zig").htmlConstructorIndex(interface_name) orelse
+                    @compileError(interface_name ++ " is an [HTMLConstructor] interface missing from interface_bindings.html_constructor_names");
+                v8.v8_PrototypeMembers_Reset(isolate, key);
+                break :members key;
+            } else null;
+
             // ========================================
             // INHERITANCE SETUP - MUST BE FIRST
             // ========================================
@@ -3704,7 +3743,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime std.mem.eql(u8, interface_name, "Location")) v8.v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(instance_tmpl);
 
             registerInheritedUnforgeables(isolate, template, instance_tmpl);
-            registerEagerProperties(isolate, instance_tmpl, proto_tmpl, false);
+            registerEagerProperties(isolate, instance_tmpl, proto_tmpl, false, members_key);
             // CSSOM 6.6.2: the CSS property attributes, on the prototype.
             if (comptime has_css_property_attributes) registerCssPropertyAttributes(proto_tmpl);
 
@@ -3730,6 +3769,14 @@ pub fn V8Interface(comptime Interface: type) type {
                         proto_const_name.ptr,
                         @intCast(proto_const_name.len),
                     );
+
+                    // An [HTMLConstructor] interface's: kept for its class's
+                    // prototype object, with the same attributes.
+                    if (members_key) |key| {
+                        if (proto_name_str) |unused| v8.v8_String_Dispose(unused);
+                        v8.v8_PrototypeMembers_AddConstant(isolate, key, proto_const_name.ptr, proto_const_name.len, @floatFromInt(proto_const_value), 5);
+                        continue;
+                    }
 
                     if (proto_name_str) |proto_const_name_v8| {
                         // ObjectTemplate::Set keeps the key and value itself.
@@ -3896,6 +3943,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     // [[Configurable]]: false }, on the instance.
                     const unforgeable = comptime isUnforgeableMember(method_name);
                     if (comptime unforgeable and hasExposureOverride(Interface, method_name, false)) continue;
+                    // An [HTMLConstructor] interface's prototype operation:
+                    // the same template, kept for its class's prototype object.
+                    if (!unforgeable) {
+                        if (members_key) |key| {
+                            v8.v8_PrototypeMembers_AddMethod(isolate, key, method_name.ptr, method_name.len, MethodCallback(zig_name).callback, arity, !(comptime engineChecksReceiver(method_name, zig_name)), v8.PropertyAttribute.None);
+                            continue;
+                        }
+                    }
                     registerMethod(zig_name, method_name, isolate, template, if (unforgeable) instance_tmpl else proto_tmpl, arity, if (unforgeable) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                 }
             }
@@ -3931,7 +3986,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (@hasDecl(Meta, "ParentInterface")) {
                 const ParentBinding = V8Interface(Meta.ParentInterface);
                 ParentBinding.registerInheritedUnforgeables(isolate, template, instance_tmpl);
-                ParentBinding.registerEagerProperties(isolate, instance_tmpl, instance_tmpl, true);
+                ParentBinding.registerEagerProperties(isolate, instance_tmpl, instance_tmpl, true, null);
                 ParentBinding.registerOwnUnforgeableMethods(isolate, template, instance_tmpl);
             }
         }
@@ -3944,7 +3999,10 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        fn registerEagerProperties(isolate: *v8.Isolate, instance_tmpl: *v8.ObjectTemplate, proto_tmpl: *v8.ObjectTemplate, comptime only_unforgeable: bool) void {
+        /// `members_key`: an [HTMLConstructor] interface's key - its
+        /// prototype's attributes go to the isolate's list for its class
+        /// (v8_PrototypeMembers_AddAccessor), not to `proto_tmpl`.
+        fn registerEagerProperties(isolate: *v8.Isolate, instance_tmpl: *v8.ObjectTemplate, proto_tmpl: *v8.ObjectTemplate, comptime only_unforgeable: bool, members_key: ?u32) void {
             // Register EAGER properties as accessors on prototype (defined upfront)
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
             // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
@@ -3988,6 +4046,25 @@ pub fn V8Interface(comptime Interface: type) type {
                 else
                     // Use setter from static store (null if read-only)
                     EagerCallbackStore.setters[prop_idx];
+
+                // An [HTMLConstructor] interface's prototype attribute: the
+                // same templates, kept for its class's prototype object.
+                if (!unforgeable) {
+                    if (members_key) |key| {
+                        v8.v8_PrototypeMembers_AddAccessor(
+                            isolate,
+                            key,
+                            prop_name.ptr,
+                            prop_name.len,
+                            getter_cb,
+                            setter_cb,
+                            comptime acceptsAnyReceiver(prop_name, .getter),
+                            comptime acceptsAnyReceiver(prop_name, .setter),
+                            v8.PropertyAttribute.None,
+                        );
+                        continue;
+                    }
+                }
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.

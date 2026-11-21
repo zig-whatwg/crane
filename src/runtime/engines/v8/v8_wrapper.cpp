@@ -3744,6 +3744,24 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
 
 class NodeWrapperRootsHandler;
 
+/// One prototype member of an [HTMLConstructor] interface (IsolateData::
+/// prototype_members): an attribute's accessor pair, an operation or a
+/// constant, as createTemplate registers it on a PrototypeTemplate - the same
+/// FunctionTemplates (names, lengths, receiver checks) and attributes. Its
+/// handles are the isolate's.
+struct CranePrototypeMember {
+    enum Kind : uint8_t { kAccessor, kMethod, kConstant };
+    Kind kind;
+    PropertyAttribute attributes;
+    Global<String> name;
+    /// The getter's (an accessor) or the operation's template.
+    Global<FunctionTemplate> first;
+    /// The setter's template (an accessor with one).
+    Global<FunctionTemplate> second;
+    /// A constant's value.
+    double number = 0;
+};
+
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -3949,6 +3967,15 @@ struct IsolateData {
     /// window's Location or History), beside the record's own traced
     /// reference, which is no root. Few. Emptied by v8_Isolate_Dispose.
     std::unordered_map<CraneWrapperCell*, Global<Object>> strong_wrappers;
+    /// An [HTMLConstructor] interface's prototype members, by its index of
+    /// interface_bindings.html_constructor_names: what its FunctionTemplate's
+    /// PrototypeTemplate would hold, kept here instead so that a realm
+    /// defines them straight on the interface's class's prototype object
+    /// (v8_HTMLConstructor_InterfaceObject) rather than on a template-made
+    /// object it would copy them from and drop (CranePrototypeMember says
+    /// why). The isolate's, made with its templates. Emptied by
+    /// v8_Isolate_Dispose.
+    std::unordered_map<uint32_t, std::vector<struct CranePrototypeMember>> prototype_members;
     void (*platform_wrappers_weak)(void* data) = nullptr;
     void (*platform_wrapper_dropped)(void* data, CraneWrapperCell* cell) = nullptr;
     /// The binding changed a wrapper an anchored record holds by a traced
@@ -6962,6 +6989,8 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             endWrappedInstances(record, isolate);
             // A wrapper cache that outlived its agent's realms left these.
             record->strong_wrappers.clear();
+            // The [HTMLConstructor] prototype members' templates and names.
+            record->prototype_members.clear();
             // Its anchors' registry, unrooted while the heap lives: the
             // heap's termination in Isolate::Dispose collects it and every
             // anchor (none holds a slot any more), and no Persistent of the
@@ -7846,6 +7875,139 @@ static bool CopyOwnProperties(Isolate* isolate, Local<Context> context, Local<Ob
 
 extern "C" {
 
+// ---- [HTMLConstructor] prototype members: defined on the class's own ----
+//
+// A template-made prototype object would be copied from and dropped: every
+// realm that builds the interface object paid for each property's descriptor
+// and for the copy, and the template-made object stayed as garbage until a
+// major collection (lane blk7's cost window: +3.7M instructions per realm
+// building 20 interfaces, load.news +2.2 MB). So createTemplate registers an
+// [HTMLConstructor] interface's prototype members here, with the
+// FunctionTemplates and attributes it gives a PrototypeTemplate, and the realm
+// defines them straight on the class's prototype object, in the order the
+// template had them. A template-made object keeps its accessor pairs' functions
+// as templates until script reads them; an object's accessor property takes
+// functions, so these are made when the interface object is built.
+
+/// The members registered so far for the [HTMLConstructor] interface at
+/// `key`, made empty: its template is being made (again) in this isolate.
+void v8_PrototypeMembers_Reset(Isolate* isolate, uint32_t key) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->prototype_members[key].clear();
+}
+
+/// An attribute's accessor pair, as v8_ObjectTemplate_SetAccessorPropertyChecked
+/// makes its templates: "get <name>" of length 0, "set <name>" of length 1 when
+/// there is a setter, each accepting any receiver or not as asked.
+void v8_PrototypeMembers_AddAccessor(Isolate* isolate, uint32_t key, const char* name, size_t name_length, FunctionCallback getter,
+                                     FunctionCallback setter, bool getter_accepts_any_receiver, bool setter_accepts_any_receiver, int attributes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !getter) return;
+    HandleScope handle_scope(isolate);
+    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
+    std::string property(name, name_length);
+    Local<FunctionTemplate> getter_tpl = FunctionTemplate::New(isolate, getter, Local<Value>());
+    getter_tpl->SetClassName(String::NewFromUtf8(isolate, ("get " + property).c_str(), NewStringType::kNormal).ToLocalChecked());
+    getter_tpl->SetLength(0);
+    getter_tpl->SetAcceptAnyReceiver(getter_accepts_any_receiver);
+    CranePrototypeMember member{};
+    member.kind = CranePrototypeMember::kAccessor;
+    member.attributes = static_cast<PropertyAttribute>(attributes);
+    member.name.Reset(isolate, key_name);
+    member.first.Reset(isolate, getter_tpl);
+    if (setter) {
+        Local<FunctionTemplate> setter_tpl = FunctionTemplate::New(isolate, setter, Local<Value>());
+        setter_tpl->SetClassName(String::NewFromUtf8(isolate, ("set " + property).c_str(), NewStringType::kNormal).ToLocalChecked());
+        setter_tpl->SetLength(1);
+        setter_tpl->SetAcceptAnyReceiver(setter_accepts_any_receiver);
+        member.second.Reset(isolate, setter_tpl);
+    }
+    record->prototype_members[key].push_back(std::move(member));
+}
+
+/// An operation, as binding_plumbing.registerMethod makes its template: of
+/// length `arity`, no `prototype`, named for itself (a template set on a
+/// PrototypeTemplate takes the property's name when V8 makes its function).
+void v8_PrototypeMembers_AddMethod(Isolate* isolate, uint32_t key, const char* name, size_t name_length, FunctionCallback callback, int arity,
+                                   bool accepts_any_receiver, int attributes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !callback) return;
+    HandleScope handle_scope(isolate);
+    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
+    Local<FunctionTemplate> method_tpl = FunctionTemplate::New(isolate, callback, Local<Value>());
+    method_tpl->SetLength(arity);
+    method_tpl->RemovePrototype();
+    method_tpl->SetAcceptAnyReceiver(accepts_any_receiver);
+    method_tpl->SetClassName(key_name);
+    CranePrototypeMember member{};
+    member.kind = CranePrototypeMember::kMethod;
+    member.attributes = static_cast<PropertyAttribute>(attributes);
+    member.name.Reset(isolate, key_name);
+    member.first.Reset(isolate, method_tpl);
+    record->prototype_members[key].push_back(std::move(member));
+}
+
+/// A constant: a Number, with `attributes`.
+void v8_PrototypeMembers_AddConstant(Isolate* isolate, uint32_t key, const char* name, size_t name_length, double value, int attributes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    HandleScope handle_scope(isolate);
+    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
+    CranePrototypeMember member{};
+    member.kind = CranePrototypeMember::kConstant;
+    member.attributes = static_cast<PropertyAttribute>(attributes);
+    member.name.Reset(isolate, key_name);
+    member.number = value;
+    record->prototype_members[key].push_back(std::move(member));
+}
+
+/// Define the members registered for `key` on `target`, in `context`
+/// (entered), in their order. False when V8 refused one.
+static bool InstallPrototypeMembers(Isolate* isolate, Local<Context> context, Local<Object> target, uint32_t key) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return true;
+    auto found = record->prototype_members.find(key);
+    if (found == record->prototype_members.end()) return true;
+    for (const CranePrototypeMember& member : found->second) {
+        Local<String> name = member.name.Get(isolate);
+        switch (member.kind) {
+            case CranePrototypeMember::kAccessor: {
+                Local<Function> getter;
+                if (!member.first.Get(isolate)->GetFunction(context).ToLocal(&getter)) return false;
+                Local<Function> setter;
+                if (!member.second.IsEmpty() && !member.second.Get(isolate)->GetFunction(context).ToLocal(&setter)) return false;
+                target->SetAccessorProperty(name, getter, setter, member.attributes);
+                break;
+            }
+            case CranePrototypeMember::kMethod: {
+                Local<Function> method;
+                if (!member.first.Get(isolate)->GetFunction(context).ToLocal(&method)) return false;
+                if (!target->DefineOwnProperty(context, name, method, member.attributes).FromMaybe(false)) return false;
+                break;
+            }
+            case CranePrototypeMember::kConstant:
+                if (!target->DefineOwnProperty(context, name, Number::New(isolate, member.number), member.attributes).FromMaybe(false)) return false;
+                break;
+        }
+    }
+    return true;
+}
+
+/// The members registered for `key` defined on `target` itself: the
+/// interface's template function stays its interface object, in a context
+/// made without the [HTMLConstructor] classes' extension. False when V8
+/// refused one.
+bool v8_PrototypeMembers_InstallOn(Isolate* isolate, Global<Context>* context, uint32_t key, Global<Object>* target) {
+    if (!isolate || !context || context->IsEmpty() || !target) return false;
+    HandleScope handle_scope(isolate);
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
+    Local<Context> realm = context->Get(isolate);
+    Context::Scope entered(realm);
+    TryCatch failure(isolate);
+    return InstallPrototypeMembers(isolate, realm, target->Get(isolate), key);
+}
+
 /// [HTMLConstructor] (HTML 3.2.3): the interface object of the interface at
 /// `index` of interface_bindings.html_constructor_names in `context`, a class
 /// made by the context's factory (v8_Context_HasHTMLConstructorFactory) with
@@ -7856,8 +8018,10 @@ extern "C" {
 ///
 /// - the class's prototype object - with only its `constructor` until now -
 ///   gets the template function's prototype object's [[Prototype]] (the
-///   parent interface's prototype object) and own properties, in their order,
-///   `constructor` the class (WebIDL 3.7.3);
+///   parent interface's prototype object), the interface's prototype members
+///   (IsolateData::prototype_members, in the template's order), then that
+///   object's own properties in their order - `constructor` the class (WebIDL
+///   3.7.3), @@toStringTag, an iterator, @@unscopables: what the realm gave it;
 /// - the class gets the template function's [[Prototype]] (the parent's
 ///   interface object) and own properties beyond length, name and prototype
 ///   (constants, static members), in their order;
@@ -7905,9 +8069,15 @@ Global<Function>* v8_HTMLConstructor_InterfaceObject(Isolate* isolate, Global<Co
     if (!interface_object->Get(realm, prototype_key).ToLocal(&class_prototype) || !class_prototype->IsObject()) return nullptr;
     Local<Object> from = template_prototype.As<Object>();
     Local<Object> to = class_prototype.As<Object>();
-    // The interface prototype object: the class's, given the template's.
+    // The interface prototype object: the class's, with the interface's
+    // members defined on it (IsolateData::prototype_members, in the
+    // template's order), then what the realm gave the template function's
+    // prototype object - its `constructor` (the class's here), @@toStringTag,
+    // an iterator, @@unscopables - in that object's order, after them, as the
+    // template-made object had them.
     if (!to->Delete(realm, constructor_key).FromMaybe(false)) return nullptr;
     if (!to->SetPrototype(realm, from->GetPrototype()).FromMaybe(false)) return nullptr;
+    if (!InstallPrototypeMembers(isolate, realm, to, index)) return nullptr;
     if (!CopyOwnProperties(isolate, realm, from, to, interface_object, {})) return nullptr;
     // The interface object: the class, given the template function's.
     if (!interface_object->SetPrototype(realm, function->GetPrototype()).FromMaybe(false)) return nullptr;

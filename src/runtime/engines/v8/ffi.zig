@@ -1764,6 +1764,27 @@ pub extern fn v8_Context_HasHTMLConstructorFactory(context: *Context) bool;
 /// (v8_Function_Dispose); null when the context has no factory or V8
 /// refused a step. Neither handle passed in is taken over.
 pub extern fn v8_HTMLConstructor_InterfaceObject(isolate: *Isolate, context: *Context, index: u32, template_function: *Function, construct: *Function) ?*Function;
+/// The [HTMLConstructor] interface at `key` (its index of
+/// interface_bindings.html_constructor_names) is having its template made in
+/// `isolate`: its prototype members registered so far are forgotten. Its
+/// members are registered with the Add functions below instead of on its
+/// PrototypeTemplate, and a realm defines them on the interface's class's
+/// prototype object (v8_HTMLConstructor_InterfaceObject) - or, made without
+/// the extension, on the template function's own (v8_PrototypeMembers_InstallOn).
+/// The isolate keeps them until it is disposed. No handle is taken over.
+pub extern fn v8_PrototypeMembers_Reset(isolate: *Isolate, key: u32) void;
+/// An attribute: its getter's and setter's FunctionTemplates made as
+/// v8_ObjectTemplate_SetAccessorPropertyChecked makes them.
+pub extern fn v8_PrototypeMembers_AddAccessor(isolate: *Isolate, key: u32, name: [*]const u8, name_length: usize, getter: FunctionCallback, setter: ?FunctionCallback, getter_accepts_any_receiver: bool, setter_accepts_any_receiver: bool, attributes: c_int) void;
+/// An operation: its FunctionTemplate made as binding_plumbing.registerMethod
+/// makes it, named for itself.
+pub extern fn v8_PrototypeMembers_AddMethod(isolate: *Isolate, key: u32, name: [*]const u8, name_length: usize, callback: FunctionCallback, arity: c_int, accepts_any_receiver: bool, attributes: c_int) void;
+/// A constant, a Number.
+pub extern fn v8_PrototypeMembers_AddConstant(isolate: *Isolate, key: u32, name: [*]const u8, name_length: usize, value: f64, attributes: c_int) void;
+/// The members registered for `key` defined on `target` (the template
+/// function's prototype object, where no class took its place). False when
+/// V8 refused one.
+pub extern fn v8_PrototypeMembers_InstallOn(isolate: *Isolate, context: *Context, key: u32, target: *Object) bool;
 /// Whether two module handles name the same module.
 pub extern fn v8_Module_Equals(a: *Module, b: *Module) bool;
 
