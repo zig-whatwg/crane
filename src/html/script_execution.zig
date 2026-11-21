@@ -413,7 +413,16 @@ fn prepareScriptElementFor(
         const base_url = documentBaseUrlAlloc(allocator, node_document, script_element) orelse
             return ScriptExecutionError.OutOfMemory;
         defer allocator.free(base_url);
-        const parsed_url = parseUrl(script_element, src, base_url) orelse {
+        // With the node document's character encoding for the query, as
+        // all three browsers encode it (html/syntax/speculative-parsing
+        // document-write/meta-charset-script-src: Chrome 157, Firefox 160 and
+        // Safari 27.2 send a windows-1252 document's U+011E as "&#286;") -
+        // and as the speculative HTML parser does, whose request the element's
+        // must equal to take it over.
+        const parsed_url = (if (node_document) |doc|
+            dom.encoding_parse.encodingParseAndSerializeAgainst(script_element.ctx.allocator, doc, src, base_url) catch null
+        else
+            parseUrl(script_element, src, base_url)) orelse {
             // Step 33.6: If url is failure, queue an element task to fire error
             // at el, and return.
             queueErrorEventTask(script_element);
@@ -3117,7 +3126,8 @@ fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instan
 /// For a UTF-8 document "encoding-parsing a URL" is the URL parser with the
 /// document base URL, which is what `URL.parse(input, base)` runs.
 ///
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
+/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - for the
+/// callers left (a script element's src encodes with its document's encoding: prepare step 33.5).
 ///
 /// Goes through the URL interface because html cannot reach the URL module's
 /// parser directly (and the impls boundary rules out the impl). The temporary
