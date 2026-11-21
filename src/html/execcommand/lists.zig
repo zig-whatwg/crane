@@ -145,11 +145,42 @@ pub fn selectionListState(edit: *Edit) !ListState {
     return listState(edit, true);
 }
 
-/// The list state, `for_query` applying the browsers' table-cell rule of
-/// the queries (below); toggle lists' own mode (its step 1) is the spec's
-/// state, so a second insertOrderedList over two cells' lists takes both
-/// out, as the browsers do.
+/// The list a caret's queries answer: the ol or ul whose editable list item
+/// is the caret's nearest li, or null (the spec's state decides). All three
+/// browsers answer from the item that holds the caret: Blink's
+/// SelectionListState, for a caret, "EnclosingElementWithTag(start,
+/// tag_name)" (third_party/blink/renderer/core/editing/commands/
+/// editor_command.cc, chromium 1f3d2bc10d1; WebKit's selectionListState the
+/// same), Gecko's ListElementSelectionState an li's parent list. The spec's
+/// block-extension climbs past a wrapper whose edges meet the list's and
+/// answers "mixed": `<div><ol><li>abc[]</li></ol></div>` - what all three
+/// browsers make of `<div>{}<br></div>` + insertOrderedList + "abc" - is
+/// queryCommandState true and queryCommandIndeterm false in Chrome 157,
+/// Firefox 160 and Safari 27.2 (editing/run/insertorderedlist.html,
+/// wpt.fyi 2358bd4835). Golden rule 2, no newer spec.
+fn caretItemList(edit: *Edit) !?ListState {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    var current: ?*Instance = caret.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (!try common.isHtmlElementNamed(c, "li")) continue;
+        if (!try common.isEditable(c)) return null;
+        const list = (try common.parent(c)) orelse return null;
+        if (try common.isHtmlElementNamed(list, "ol")) return .ol;
+        if (try common.isHtmlElementNamed(list, "ul")) return .ul;
+        return null;
+    }
+    return null;
+}
+
+/// The list state, `for_query` applying the browsers' rules of the queries
+/// (a caret's list item, caretItemList; table cells, below); toggle lists'
+/// own mode (its step 1) is the spec's state, so a second insertOrderedList
+/// over two cells' lists takes both out, as the browsers do.
 fn listState(edit: *Edit, for_query: bool) !ListState {
+    if (for_query) {
+        if (try caretItemList(edit)) |state| return state;
+    }
     // Steps 1-2 (a table cell bounds the extension, see
     // extendedActiveRange).
     const range = (try extendedActiveRange(edit)) orelse return .none;

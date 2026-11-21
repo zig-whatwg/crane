@@ -177,13 +177,54 @@ fn removePadding(edit: *Edit, padding: Padding, into: *Instance, at: u32, length
     }
 }
 
+/// Whether Blink and WebKit replace the selection in place, in the Text node
+/// that holds it, instead of deleting it first: Blink's InsertTextCommand::
+/// PerformTrivialReplace and CompositeEditCommand::ReplaceSelectedTextInNode
+/// (third_party/blink/renderer/core/editing/commands/insert_text_command.cc
+/// and composite_edit_command.cc, chromium 1f3d2bc10d1; WebKit has the same
+/// pair). Its conditions, in its order: the value is not empty; the
+/// selection is a range; the value holds no tab, space or line feed; not a
+/// one-character value over a selection that covers the whole content of
+/// the link around it; the range starts and ends in one Text node (Blink
+/// also refuses its own tab-span Text nodes, which Crane never makes). The
+/// caller has checked the range is not collapsed.
+fn isTrivialReplace(edit: *Edit, value: []const u8) !bool {
+    if (value.len == 0) return false;
+    if (std.mem.indexOfAny(u8, value, "\t \n") != null) return false;
+    const start = (try edit.rangeStart()) orelse return false;
+    const end = (try edit.rangeEnd()) orelse return false;
+    if (!common.isText(start.node) or start.node != end.node) return false;
+    if (common.utf16Length(value) <= 1) {
+        // "if the text is surrounded by a hyperlink and all the contents of
+        // the link are selected", the link goes with the selection: the
+        // whole Text selected, and nothing else in the link around it.
+        if (start.offset == 0 and end.offset == try common.nodeLength(start.node)) {
+            var current = start.node;
+            while (try common.parent(current)) |p| : (current = p) {
+                if ((try common.childCount(p)) != 1) break;
+                if (try common.isHtmlElementNamed(p, "a")) return false;
+            }
+        }
+    }
+    return true;
+}
+
 /// The insertText action with `value`.
 pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction) anyerror!bool {
+    return actionReplacing(edit, value, insert_paragraph, false);
+}
+
+/// The insertText action; `in_place`: the value replaces a selection inside
+/// one Text node, as Blink and WebKit do it (isTrivialReplace) - for each
+/// character of a longer value too.
+fn actionReplacing(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction, in_place: bool) anyerror!bool {
+    var replaced_in_place = in_place;
     // Step 1: "Delete the selection, with strip wrappers false." Run only
     // for a non-collapsed range: on a collapsed one it only canonicalizes
     // the white-space around the caret, which step 11 does anyway (lane
     // editing2's measured behaviour, editing/run/inserttext.html).
     if (!try edit.rangeCollapsed()) {
+        replaced_in_place = try isTrivialReplace(edit, value);
         // The link the selection ends in, if any (see moveToInsertionPoint).
         var end_link: ?*Instance = null;
         if (try edit.rangeEnd()) |end| {
@@ -209,7 +250,7 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     // pairs.html, all three pass).
     if ((std.unicode.utf8CountCodepoints(value) catch 1) > 1) {
         var iterator = std.unicode.Utf8Iterator{ .bytes = value, .i = 0 };
-        while (iterator.nextCodepointSlice()) |code_point| _ = try action(edit, code_point, insert_paragraph);
+        while (iterator.nextCodepointSlice()) |code_point| _ = try actionReplacing(edit, code_point, insert_paragraph, replaced_in_place);
         return true;
     }
     // Step 4: "If value is the empty string, return true."
@@ -243,8 +284,13 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     }
     const caret = (try edit.rangeStart()) orelse return true;
     // The line break that only holds the caret's empty line open, which the
-    // text makes unnecessary (see paddingLineBreakAt).
-    const padding = try paddingLineBreakAt(caret);
+    // text makes unnecessary (see paddingLineBreakAt) - except after a
+    // replacement in place, which removes no placeholder: Blink and WebKit
+    // return from PerformTrivialReplace before their placeholder step, so
+    // `<p>[abc]\n</p>` + "x" keeps its line feed (editing/other/inserttext-
+    // before-unnecessary-linebreak.html, Chrome and Safari pass, Firefox
+    // fails; golden rule 2, the majority).
+    const padding = if (replaced_in_place) null else try paddingLineBreakAt(caret);
     // Step 6.
     var node = caret.node;
     var offset = caret.offset;
