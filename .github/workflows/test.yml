@@ -19,10 +19,14 @@ name: Test Suite
 # ubuntu-latest and windows-latest matrix legs cannot succeed even once V8 is
 # provisioned.
 #
-# On a machine that DOES have the archives, the suite is GREEN as of the Zig
-# 0.16 migration: 260/260 steps succeeded; 3768/3772 tests passed (4 skipped).
+# On a machine that DOES have the archives, the suite is GREEN on the pinned
+# Zig 0.17 (lane z17f's gate, 2026-11-21, macOS on chat2: 135 test suites,
+# 15,855 tests passed, 34 skipped, 0 failed; Linux on server1 the same 135,
+# 15,860 passed, 29 skipped).
 # So a failure here is either the missing-V8 provisioning above, or a real
 # regression - it is no longer expected noise.
+#
+# The `toolchain` job is the exception: it needs no V8 and can be green.
 #
 # These jobs are deliberately left enabled. A red job that names its cause is
 # worth more than a green one that hides it. Do NOT paper this over with
@@ -35,8 +39,40 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Run on any branch by hand (once this file is on main): `gh workflow run test.yml --ref <branch>`.
+  workflow_dispatch:
 
 jobs:
+  # The toolchain itself, and nothing that needs V8: the pinned Zig fetched from the toolchain
+  # release, checked against its pinned SHA-256 (.github/actions/setup-zig-pinned), reporting the
+  # pinned version, and build.zig's refusal of every other Zig (tools/zig_toolchain.zig, std-only).
+  # Unlike the jobs below, this one can be green on a clean checkout - so a red one is the toolchain.
+  toolchain:
+    name: Pinned Zig on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
+
+      - name: zig version is the pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          got="$(zig version)"
+          echo "zig $(command -v zig): $got"
+          [ "$got" = "0.17.1-dev+77c319a0f0" ] || { echo "::error::zig version is '$got', not 0.17.1-dev+77c319a0f0"; exit 1; }
+
+      - name: build.zig's toolchain check (tools/zig_toolchain.zig)
+        run: zig test tools/zig_toolchain.zig
+
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -49,13 +85,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          # 0.16.0. The tree does not compile on 0.15.x: std.fs, std.time, std.net and
-          # std.Thread's sync primitives were all removed or moved onto std.Io.
-          # build.zig.zon's minimum_zig_version is 0.16.0 to match.
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        # The pinned 0.17.1-dev+77c319a0f0 from the toolchain release (the action says why
+        # setup-zig cannot fetch it). build.zig refuses every other Zig by name; on Windows,
+        # which the release has no build for, this step fails naming that.
+        uses: ./.github/actions/setup-zig-pinned
 
       # Advisory only - deliberately does NOT exit non-zero.
       #
@@ -96,11 +130,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          # See the version note in the `test` job above.
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Preflight - V8 archives must be present to link (see file header)
         shell: bash
