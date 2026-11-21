@@ -152,6 +152,8 @@ const CBrowser = struct {
                 out.kind = @backingInt(EventKind.frame_destroyed);
                 out.tab = frame.navigable;
             },
+            // Navigation milestones are not in the C ABI's events yet.
+            .navigation => return,
         }
         callback(self.event_context, &out);
     }

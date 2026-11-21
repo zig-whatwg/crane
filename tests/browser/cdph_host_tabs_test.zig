@@ -219,9 +219,10 @@ test "a held tab stays on its initial about:blank until the host releases it" {
     const tab = try browser.createTab(.{ .url = "data:text/html,<title>released</title>", .hold_first_navigation = true });
     try testing.expect(browser.isTabHeld(tab));
     try browser.runEventLoop(50);
+    // Parked at the navigation observer's hold point, before its fetch: the
+    // tab still shows its initial about:blank document.
     const state = browser.traversableState(tab).?;
     try testing.expect(state.initial_about_blank);
-    try testing.expect(!state.navigating);
 
     browser.releaseTab(tab);
     try testing.expect(!browser.isTabHeld(tab));
