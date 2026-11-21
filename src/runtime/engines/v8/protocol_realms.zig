@@ -483,6 +483,23 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             ffi.v8_Isolate_Exit(isolate);
             state.entered_isolate = false;
         }
+    } else if (!options.entered_for_life and !options.auxiliary) {
+        // A tab the host opened beside its first page
+        // (WindowRealmOptions.entered_for_life false): top-level and
+        // parentless like the host's page, but entered only for the calls
+        // that run in it, as a frame's and a popup's are - so that two tabs
+        // never stack entered contexts, and one can end while another lives
+        // (V8 exits contexts only in the reverse order of entering them).
+        // The isolate entry this call made for the realm goes with it; an
+        // entry it took over from a predecessor (`takes_isolate_entry`: a
+        // predecessor entered for its life, which a tab's never is) stays
+        // the new realm's.
+        ffi.v8_Context_Exit(context);
+        state.context_entered = false;
+        if (entered_isolate) {
+            ffi.v8_Isolate_Exit(isolate);
+            state.entered_isolate = takes_isolate_entry;
+        }
     }
     return realm;
 }
