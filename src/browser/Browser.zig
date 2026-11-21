@@ -230,10 +230,18 @@ pub const Browser = struct {
     /// The host's listeners: what the Browser tells its host as it happens
     /// (host_events).
     listeners: host_events.Listeners = .{},
-    /// Tabs whose first navigation waits for the host (`createTab`'s
-    /// hold_first_navigation, CDP's waitForDebuggerOnStart) until
-    /// `releaseTab` starts it. OWNED urls.
-    held_navigations: std.ArrayListUnmanaged(HeldNavigation) = .empty,
+    /// Tabs whose navigations wait before their fetch until the host
+    /// releases them (`createTab`'s hold_first_navigation, CDP's
+    /// waitForDebuggerOnStart): the navigation observer's hold point
+    /// (html.navigation.observer, N3), released by `releaseTab`.
+    paused_tabs: std.ArrayListUnmanaged(TabId) = .empty,
+    /// The open tabs the host has been told of (`tab_created`), so that
+    /// each is told gone (`tab_destroyed`) exactly once.
+    known_tabs: std.ArrayListUnmanaged(TabId) = .empty,
+    /// Every tab a page opens from now on starts paused
+    /// (`holdTabsOpenedByPages`; CDP Target.setAutoAttach
+    /// {waitForDebuggerOnStart}).
+    hold_page_tabs: bool = false,
     /// Host evaluations awaiting a promise (`evaluateInTab` with
     /// await_promise): each is told its result when the promise settles, or
     /// that the Browser ended first.
@@ -241,8 +249,6 @@ pub const Browser = struct {
 
     /// A tab: its top-level traversable's browsing context id.
     pub const TabId = host_events.TabId;
-
-    const HeldNavigation = struct { tab: TabId, url: []u8 };
 
     /// Initialize a new Browser instance
     ///
@@ -424,6 +430,13 @@ pub const Browser = struct {
             .scope = scope,
         };
 
+        // The Browser's navigation observer (html.navigation.observer): its
+        // one slot, set once to the Browser's own dispatcher, which fans each
+        // milestone out to the host's listeners (host_events) and answers
+        // the hold point for paused tabs.
+        const navigables = try scope.table(.navigables, html_mod.Navigables);
+        navigables.observer = .{ .context = browser, .notify = notifyMilestone, .hold_first_navigation = holdsNavigation };
+
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
         const initial_url = config.initial_url orelse "about:blank";
@@ -470,9 +483,10 @@ pub const Browser = struct {
             self.allocator.destroy(ctx);
         }
         self.tabs.deinit(self.allocator);
-        for (self.held_navigations.items) |held| self.allocator.free(held.url);
-        self.held_navigations.deinit(self.allocator);
+        self.paused_tabs.deinit(self.allocator);
+        // What the pages' end tells the host from here on reaches nobody.
         self.listeners.deinit(self.allocator);
+        self.listeners = .{};
         // Destroy current context if any
         if (self.current_context) |ctx| {
             // HTML "destroy a top-level traversable" step 2: "destroy a
@@ -561,6 +575,7 @@ pub const Browser = struct {
         self.scope.deinit();
         self.allocator.destroy(self.scope);
 
+        self.known_tabs.deinit(self.allocator);
         self.initialized = false;
         self.allocator.destroy(self);
     }
@@ -665,12 +680,12 @@ pub const Browser = struct {
         // navigation's error page, as a browser's tab does, and the error
         // says so (CDP's Page.navigate errorText).
         self.current_context = ctx;
-        // The host hears the old tab go and the fresh one come, before its
-        // first navigation starts.
+        // The host heard the fresh tab come from the navigation observer
+        // (navigable_created) as it was made; the old one is told gone now
+        // if its destruction did not say so.
         if (replaced_tab) |id| self.tabGone(id);
         if (ctx.browsing_context) |bc| {
             if (self.active_tab == null or self.active_tab == replaced_tab) self.active_tab = bc.id;
-            self.listeners.emit(.{ .tab_created = .{ .tab = bc.id, .made_by = .host, .url = serialized orelse url } });
         }
         if (!options.skip_load) try ctx.loadPage();
     }
@@ -1009,15 +1024,6 @@ pub const Browser = struct {
         const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
         const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
         defer self.allocator.free(serialized);
-        // A navigation of a tab still held for its host (`releaseTab`) is
-        // this one now: the hold starts it instead.
-        if (self.heldIndex(id)) |index| {
-            const held = &self.held_navigations.items[index];
-            const copy = try self.allocator.dupe(u8, serialized);
-            self.allocator.free(held.url);
-            held.url = copy;
-            return;
-        }
         if (self.hostContextOf(bc)) |ctx| return ctx.navigate(serialized);
         const integration = integrationOf(bc) orelse return error.NoSuchTraversable;
         // A "browser UI" navigation: no sourceDocument, the user's own
@@ -1246,14 +1252,12 @@ pub const Browser = struct {
         const id = bc.id;
         self.tabs.appendAssumeCapacity(ctx);
         if (!options.background or self.active_tab == null) self.active_tab = id;
-        self.listeners.emit(.{ .tab_created = .{ .tab = id, .made_by = .host, .url = serialized } });
+        // The host heard `tab_created` as the traversable was made (the
+        // navigation observer's navigable_created). A held tab's navigation
+        // parks at the observer's hold point, after beforeunload and before
+        // its fetch (N3), until `releaseTab`.
+        if (options.hold_first_navigation) try self.paused_tabs.append(self.allocator, id);
         if (std.mem.eql(u8, serialized, "about:blank")) return id;
-        if (options.hold_first_navigation) {
-            const url = try self.allocator.dupe(u8, serialized);
-            errdefer self.allocator.free(url);
-            try self.held_navigations.append(self.allocator, .{ .tab = id, .url = url });
-            return id;
-        }
         try ctx.navigate(serialized);
         return id;
     }
@@ -1291,21 +1295,28 @@ pub const Browser = struct {
         self.tabGone(tab);
     }
 
-    /// Start the first navigation of a tab made with
-    /// `hold_first_navigation` (CDP Runtime.runIfWaitingForDebugger). Nothing
-    /// for a tab not held.
+    /// Release tab `tab`'s navigations held before their fetch (CDP
+    /// Runtime.runIfWaitingForDebugger): it is no longer paused, and a
+    /// navigation parked at the hold point goes on from a task
+    /// (html.navigation.observer.release). Nothing for a tab not paused.
     pub fn releaseTab(self: *Browser, tab: TabId) void {
-        const index = self.heldIndex(tab) orelse return;
-        const held = self.held_navigations.orderedRemove(index);
-        defer self.allocator.free(held.url);
-        const bc = self.openTraversable(tab) orelse return;
-        const ctx = self.hostContextOf(bc) orelse return;
-        ctx.navigate(held.url) catch |err| log.debug("a released tab's navigation did not start: {}", .{err});
+        const index = self.pausedIndex(tab) orelse return;
+        _ = self.paused_tabs.orderedRemove(index);
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return;
+        html_mod.navigation.observer.release(navigables, tab);
     }
 
-    /// Whether tab `tab`'s first navigation still waits for `releaseTab`.
+    /// Whether tab `tab` is paused (its navigations wait for `releaseTab`).
     pub fn isTabHeld(self: *Browser, tab: TabId) bool {
-        return self.heldIndex(tab) != null;
+        return self.pausedIndex(tab) != null;
+    }
+
+    /// Every tab a page opens from now on (window.open, a link's or form's
+    /// target) starts paused until `releaseTab` - CDP's
+    /// Target.setAutoAttach {waitForDebuggerOnStart: true} - or, with
+    /// false, starts as usual.
+    pub fn holdTabsOpenedByPages(self: *Browser, hold: bool) void {
+        self.hold_page_tabs = hold;
     }
 
     /// Make tab `tab` the active one (BiDi browsingContext.activate, CDP
@@ -1644,22 +1655,71 @@ pub const Browser = struct {
         if (self.event_loop) |event_loop| _ = event_loop.drainCloseCallbacks();
     }
 
-    /// Tab `tab` is gone: its held navigation forgotten, another tab active
-    /// if it was, and the host told (`tab_destroyed`, after the close steps).
+    /// Tab `tab` is gone: no longer paused, another tab active if it was,
+    /// and the host told (`tab_destroyed`, after the close steps) unless the
+    /// navigation observer told it already.
     fn tabGone(self: *Browser, tab: TabId) void {
-        if (self.heldIndex(tab)) |index| {
-            const held = self.held_navigations.orderedRemove(index);
-            self.allocator.free(held.url);
-        }
+        if (self.pausedIndex(tab)) |index| _ = self.paused_tabs.orderedRemove(index);
         if (self.active_tab == tab) self.active_tab = null;
-        self.listeners.emit(.{ .tab_destroyed = .{ .tab = tab } });
+        if (self.forgetKnownTab(tab)) self.listeners.emit(.{ .tab_destroyed = .{ .tab = tab } });
     }
 
-    fn heldIndex(self: *Browser, tab: TabId) ?usize {
-        for (self.held_navigations.items, 0..) |held, i| {
-            if (held.tab == tab) return i;
+    fn pausedIndex(self: *Browser, tab: TabId) ?usize {
+        return std.mem.indexOfScalar(TabId, self.paused_tabs.items, tab);
+    }
+
+    /// Whether `tab` was known (and now is not).
+    fn forgetKnownTab(self: *Browser, tab: TabId) bool {
+        const index = std.mem.indexOfScalar(TabId, self.known_tabs.items, tab) orelse return false;
+        _ = self.known_tabs.swapRemove(index);
+        return true;
+    }
+
+    // ------------------------------------------------------------------------
+    // The navigation observer's dispatcher
+    // ------------------------------------------------------------------------
+
+    /// html.navigation.observer: one milestone of one of the Browser's
+    /// navigables, at its spec step. A navigable made or destroyed is told
+    /// to the host as a tab or a frame first; then every milestone is passed
+    /// on as it is. Records and fans out only: no script runs here.
+    fn notifyMilestone(context: *anyopaque, milestone: *const html_mod.navigation.observer.Milestone) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        const id = milestone.navigable_id;
+        switch (milestone.event) {
+            .navigable_created => |created| if (created.parent_id) |parent| {
+                self.listeners.emit(.{ .frame_created = .{ .navigable = id, .parent = parent } });
+            } else {
+                self.known_tabs.append(self.allocator, id) catch {};
+                // CDP's waitForDebuggerOnStart: a popup starts paused.
+                if (created.created_by == .page and self.hold_page_tabs and self.pausedIndex(id) == null) {
+                    self.paused_tabs.append(self.allocator, id) catch {};
+                }
+                self.listeners.emit(.{ .tab_created = .{
+                    .tab = id,
+                    .opener = created.opener_id,
+                    .made_by = switch (created.created_by) {
+                        .host => .host,
+                        .page => .page,
+                    },
+                } });
+            },
+            .navigable_destroyed => if (self.forgetKnownTab(id)) {
+                if (self.pausedIndex(id)) |index| _ = self.paused_tabs.orderedRemove(index);
+                self.listeners.emit(.{ .tab_destroyed = .{ .tab = id } });
+            } else {
+                self.listeners.emit(.{ .frame_destroyed = .{ .navigable = id } });
+            },
+            else => {},
         }
-        return null;
+        self.listeners.emit(.{ .navigation = milestone });
+    }
+
+    /// html.navigation.observer: whether navigable `navigable_id`'s
+    /// navigation waits before its fetch - while its tab is paused.
+    fn holdsNavigation(context: *anyopaque, navigable_id: u64) bool {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        return self.pausedIndex(navigable_id) != null;
     }
 
     // ========================================================================

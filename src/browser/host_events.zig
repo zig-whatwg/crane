@@ -11,16 +11,18 @@
 //! the step that made the event). It may add or remove listeners; one removed
 //! during a delivery is not called again.
 //!
-//! Navigation milestones (lane life1's html.navigation.observer: started,
-//! ready to commit, committed, same-document, aborted, DOMContentLoaded,
-//! load, stopped loading) join this list as `navigation` events when that
-//! observer lands - the Browser sets it once, to its own dispatcher, and fans
-//! out from here (lane cdph's agreement through main, 5:58 PM ET 2026-11-21).
-//! Until then a tab or frame that script makes is not reported: TODO(cdph,
-//! life1 observer): navigable_created/navigable_destroyed -> tab_created /
-//! frame_created / tab_destroyed / frame_destroyed for page-made ones.
+//! The source is the Browser's navigation observer (lane life1's
+//! html.navigation.observer), whose one slot the Browser sets to its own
+//! dispatcher (lane cdph's agreement through main, 5:58 PM ET 2026-11-21):
+//! every milestone is passed on as a `navigation` event, and its
+//! navigable_created / navigable_destroyed become tab_created /
+//! frame_created / tab_destroyed / frame_destroyed first - the host's own
+//! tabs and the ones script opens alike.
 
 const std = @import("std");
+
+/// A navigation milestone (html.navigation.observer.Milestone).
+pub const Milestone = @import("html").navigation.observer.Milestone;
 
 /// A tab: its top-level traversable's browsing context id (process-unique,
 /// kept for its life; the BiDi navigable id, the source of CDP's target id).
@@ -47,6 +49,9 @@ pub const Event = union(enum) {
     frame_created: struct { navigable: u64, parent: u64 },
     /// A child navigable was destroyed.
     frame_destroyed: struct { navigable: u64 },
+    /// A navigation milestone of one of the Browser's navigables, at its
+    /// spec step (html.navigation.observer: BORROWED for the call).
+    navigation: *const Milestone,
 
     pub const TabCreated = struct {
         tab: TabId,
