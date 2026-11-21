@@ -173,3 +173,64 @@ test "no permission override outlives its test: the per-file reset drops them" {
     thread.join();
     if (run.failure) |err| return err;
 }
+
+// ----------------------------------------------------------------------------
+// Lane blk5: a command starts after the tasks its page queued before it
+// ----------------------------------------------------------------------------
+
+/// A WebDriver command reaches the page from outside it: wptrunner's
+/// testdriver posts it to the harness, whose WebDriver client sends it to the
+/// remote end, so a task the page queued before it asked has run by the time
+/// the command's steps do. Its first step ran on a native timer of the same
+/// turn, ahead of such a task: permissions/permissions-garbage-collect.https
+/// .html queries a status and sets the permission in one task, and the
+/// override landed before the query's task made the status - which then read
+/// "granted" already and heard no change (TIMEOUT; Chrome 157 passes).
+fn commandStartsAfterQueuedTasks() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    // A secure origin: its statuses and overrides have a permission key.
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/permissions/permissions-garbage-collect.https.html" });
+    const driver = try driver_mod.TestDriver.create(testing.allocator);
+    defer driver.destroy();
+    driver.defineNatives(browser.getRealm() orelse return error.NoRealm);
+    // Both calls from inside a task (a timer's), as a test's code runs: the
+    // query's resolution is queued for a later turn, and the command must
+    // not overtake it.
+    try page.runScript(
+        \\globalThis.result = 'pending';
+        \\const order = [];
+        \\setTimeout(() => {
+        \\  navigator.permissions.query({ name: 'geolocation' }).then(status => {
+        \\    order.push('query:' + status.state);
+        \\    status.onchange = () => { order.push('change:' + status.state); result = order.join(' '); };
+        \\  });
+        \\  __crane_test_driver_set_permission({ descriptor: { name: 'geolocation' }, state: 'granted' })
+        \\    .then(() => order.push('set'), error => { result = 'rejected:' + error; });
+        \\}, 0);
+    );
+    try runUntilSettled(browser);
+    try page.runScript(
+        \\if (result !== 'query:prompt set change:granted' && result !== 'query:prompt change:granted')
+        \\  throw new Error('the command ran before the page\'s earlier task: ' + result);
+    );
+    driver.endTest();
+    driver_mod.TestDriver.resetPermissions(browser.scope);
+}
+
+test "a testdriver command starts after the tasks its page queued before it" {
+    const Run = struct {
+        failure: ?anyerror = null,
+        fn run(self: *@This()) void {
+            commandStartsAfterQueuedTasks() catch |err| {
+                self.failure = err;
+            };
+        }
+    };
+    var run: Run = .{};
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}

@@ -1241,21 +1241,129 @@ pub fn timingReporterFor(global: *Instance) fetch.internal.TimingReporter {
 /// holder keeps it at a fixed address while a request holds its `reporter()`.
 pub const GuardedTimingReporter = struct {
     global: Link,
+    /// Whether what the fetch reports is marked. A navigation's report waits
+    /// for its navigation to decide (`forNavigation`, `decide`): its
+    /// container document's entry exists only for a response that makes a
+    /// document - a download, a 204 or a 205 has none (resource-timing/
+    /// iframe-with-download.html: Chrome 157, Firefox 160 and Safari 27.2
+    /// report nothing, wpt.fyi at 2358bd4835) - and an iframe's response
+    /// whose timing allow check failed is reported by the iframe load event
+    /// steps' fallback instead (HTML "create navigation params by fetching"
+    /// step 26 leaves the pending resource-timing start time set).
+    decision: Decision = .report,
+    /// A report that came before the decision, set up for `global` then.
+    /// OWNED: `decide` marks or drops it, `deinit` drops it.
+    held: ?ResourceTiming = null,
+
+    pub const Decision = enum { undecided, report, drop };
 
     pub fn forGlobal(global: *Instance) GuardedTimingReporter {
         return .{ .global = Link.to(global) };
+    }
+
+    /// For a navigation request: nothing is marked until `decide`.
+    pub fn forNavigation(global: *Instance) GuardedTimingReporter {
+        return .{ .global = Link.to(global), .decision = .undecided };
     }
 
     pub fn reporter(self: *GuardedTimingReporter) fetch.internal.TimingReporter {
         return .{ .context = self, .report = &reportWhileAlive };
     }
 
+    /// The navigation decided: mark what was reported and what will be
+    /// (`report`), or neither.
+    pub fn decide(self: *GuardedTimingReporter, report: bool) void {
+        self.decision = if (report) .report else .drop;
+        var held = self.held orelse return;
+        self.held = null;
+        defer held.deinit();
+        if (!report or !self.global.isLive()) return;
+        const realm = self.global.instance.ctx;
+        if (!realm.hasEngine()) return;
+        markResourceTiming(realm, &held) catch {};
+    }
+
+    /// Drop a report no decision took.
+    pub fn deinit(self: *GuardedTimingReporter) void {
+        if (self.held) |*held| held.deinit();
+        self.held = null;
+    }
+
     fn reportWhileAlive(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
         const self: *GuardedTimingReporter = @ptrCast(@alignCast(context));
         if (!self.global.isLive()) return;
-        reportResourceTimingFor(self.global.instance, report);
+        switch (self.decision) {
+            .report => reportResourceTimingFor(self.global.instance, report),
+            .drop => {},
+            .undecided => {
+                // The latest report is the response's (a manual redirect's
+                // hop reports before its next one).
+                const global = self.global.instance;
+                if (!global.ctx.hasEngine()) return;
+                const timing = ResourceTiming.fromReport(global.ctx.allocator, report, FetchTimestampConverter{ .realm = global.ctx }) catch return;
+                if (self.held) |*old| old.deinit();
+                self.held = timing;
+            },
+        }
     }
 };
+
+/// HTML "iframe load event steps" step 4: an iframe's navigation whose
+/// response did not pass the timing allow check (or that fetched nothing)
+/// is marked with a fallback timing info - start time (and post-redirect
+/// start time) `start_time`, the iframe's pending resource-timing start
+/// time, response end time now -
+/// for `url`, initiator type "iframe", cache mode "", a new response body
+/// info and status 0, in `realm`'s global.
+pub fn markIframeFallbackTiming(realm: runtime.Context, url: []const u8, start_time: f64) !void {
+    const end_time = now(realm) orelse return;
+    const allocator = realm.allocator;
+    const owned_url = try allocator.dupe(u8, url);
+    errdefer allocator.free(owned_url);
+    const protocol = try allocator.alloc(u8, 0);
+    errdefer allocator.free(protocol);
+    const content_type = try allocator.alloc(u8, 0);
+    errdefer allocator.free(content_type);
+    const content_encoding = try allocator.alloc(u8, 0);
+    var timing: ResourceTiming = .{
+        .allocator = allocator,
+        .url = owned_url,
+        .initiator_type = "iframe",
+        .delivery_type = "",
+        .cache_mode = .none,
+        .response_status = 0,
+        .render_blocking = false,
+        // The fallback timing info is all the entry has: no TAO, no sizes.
+        .timing_allow_passed = false,
+        .start_time = start_time,
+        .end_time = end_time,
+        .worker_start = 0,
+        .redirect_start = 0,
+        .redirect_end = 0,
+        // The fallback timing info is an opaque one: Fetch's "create an
+        // opaque timing info" gives it a post-redirect start time equal to
+        // its start time, so fetchStart is startTime (resource-timing
+        // entry-invariants' TAO-failure and redirected-from-cross-origin
+        // checks; Chrome 157 passes them, the one browser with the fallback).
+        .fetch_start = start_time,
+        .domain_lookup_start = 0,
+        .domain_lookup_end = 0,
+        .connect_start = 0,
+        .connect_end = 0,
+        .secure_connection_start = 0,
+        .request_start = 0,
+        .final_response_headers_start = 0,
+        .first_interim_response_start = 0,
+        .response_end = end_time,
+        .next_hop_protocol = protocol,
+        .encoded_body_size = 0,
+        .decoded_body_size = 0,
+        .content_type = content_type,
+        .content_encoding = content_encoding,
+    };
+    defer timing.deinit();
+    try markResourceTiming(realm, &timing);
+}
 
 /// Fetch "report timing" for the request's client's `global` (the
 /// reporter's context).
