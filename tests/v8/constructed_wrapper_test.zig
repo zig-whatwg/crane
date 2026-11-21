@@ -2,8 +2,10 @@
 //! root cause, tmp/analysis/fix-list.md).
 //!
 //! The binding binds a constructed instance to the object V8 made for
-//! NewTarget - the generic constructor path, and [HTMLConstructor]'s
-//! `.created` and never-wrapped `.upgrading` answers. Two defects lived there:
+//! NewTarget on the generic constructor path; an [HTMLConstructor] interface's
+//! class (no receiver) wraps its `.created` and never-wrapped `.upgrading`
+//! answers as any wrap does and gives the wrapper NewTarget's prototype. Two
+//! defects lived there:
 //!
 //! - An instance its own construction had already wrapped (a template's
 //!   establish step traced its content from it) had that wrapper REPLACED, and
@@ -39,10 +41,19 @@ const Host = struct {
     element: ?*runtime.Instance = null,
     child: ?*runtime.Instance = null,
 
-    const hooks: protocol.HostHooks = .{ .htmlConstructor = construct };
+    const hooks: protocol.HostHooks = .{ .htmlConstructor = .{ .resolve = resolve, .finish = construct } };
 
-    fn construct(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+    /// Steps 2-8: always a definition (this host stands in for it).
+    fn resolve(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructorResolution {
+        _ = realm;
         _ = new_target;
+        _ = interface;
+        return .{ .registry = host.?, .definition = host.? };
+    }
+
+    /// Step 9.
+    fn construct(host: ?*anyopaque, realm: runtime.Context, resolution: protocol.HTMLConstructorResolution, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+        _ = resolution;
         _ = interface;
         const self: *Host = @ptrCast(@alignCast(host.?));
         const element = interfaces.HTMLElement.call_constructor(realm) catch return error.OperationFailed;
