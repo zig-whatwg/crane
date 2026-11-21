@@ -80,8 +80,27 @@ pub fn get_baseVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initDupe(instance.ctx.allocator, value);
 }
 
-/// SVG 2 4.6.7 gives animVal the same non-animated value as baseVal.
+/// SVG 2 4.6.7: animVal is the reflected attribute's current animated
+/// value - what a running SVG animation sets it to (SVG Animations 2 2.6,
+/// dom.smil.document_animations), else baseVal's value. The primary
+/// attribute applies while it is present or animated, its deprecated
+/// alternative otherwise, as Gecko's SVGAElement::Href picks the string
+/// (mStringAttributes[HREF].IsExplicitlySet(): set or animated).
 pub fn get_animVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    const internal = try internalOf(instance);
+    const element = internal.element.get() orelse return error.InvalidStateError;
+    const smil = dom.smil.document_animations;
+    if (smil.animatedAttributeValue(element, null, internal.attribute)) |animated| {
+        return runtime.DOMString.initDupe(instance.ctx.allocator, animated);
+    }
+    if (internal.deprecated_namespace) |ns| {
+        const data = dom.element_data.of(element) orelse return error.InvalidStateError;
+        if (dom.element_data.getAttributeByNamespaceAndLocalName(data, null, internal.attribute) == null) {
+            if (smil.animatedAttributeValue(element, ns, internal.attribute)) |animated| {
+                return runtime.DOMString.initDupe(instance.ctx.allocator, animated);
+            }
+        }
+    }
     return get_baseVal(instance);
 }
 

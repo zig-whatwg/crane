@@ -63,7 +63,10 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// removed from the store.
 fn representedItem(instance: *runtime.Instance) ?struct { store: *drag_data_store.Store, item: *drag_data_store.Item } {
     const internal = getInternal(instance) orelse return null;
-    _ = internal.data_transfer.get() orelse return null;
+    const data_transfer = internal.data_transfer.get() orelse return null;
+    // Its DataTransfer still associated with the store (HTML 6.11.4 step 15
+    // breaks a DND event's association; the store may have gone since).
+    if (drag_data_store.storeOf(data_transfer) != internal.store) return null;
     const item = internal.store.itemById(internal.id) orelse return null;
     return .{ .store = internal.store, .item = item };
 }
