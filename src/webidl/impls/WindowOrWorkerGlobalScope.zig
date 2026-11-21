@@ -1542,7 +1542,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 /// request from client" gave it a route to its Browser's service workers
 /// only then (service_worker_fetch.Route). Handle Fetch may still return
 /// null (no fetch event handler, a router rule), sending it to the network.
-fn offeredToServiceWorker(request: *const fetch.internal.InternalRequest) bool {
+fn offeredToServiceWorker(request: *const @import("fetch").internal.InternalRequest) bool {
     return request.service_workers_mode == .all and request.service_worker != null;
 }
 

@@ -500,14 +500,14 @@ pub const UploadPump = struct {
     /// The pipe's source, while it has a reader and the body has not ended.
     source: ?*fetch.internal.PipeSource,
     /// Told when this is gone; null once its owner let go (`cancel`).
-    owner: ?Owner,
+    owner: ?Listener,
     /// The read loop is over: closed, errored, dropped, or stopped once
     /// nobody read the pipe.
     read_over: bool = false,
     /// The task that cancels the stream is queued (`sourceGone`).
     task_queued: bool = false,
 
-    pub const Owner = struct {
+    pub const Listener = struct {
         context: *anyopaque,
         ended: *const fn (context: *anyopaque) void,
     };
@@ -522,7 +522,7 @@ pub const UploadPump = struct {
 
     /// Acquire a reader for `stream` and make the pipe its chunks go into;
     /// reading starts at `begin`, once the caller holds both.
-    pub fn start(allocator: std.mem.Allocator, realm: js.Realm, stream: *runtime.Instance, owner: Owner) !Started {
+    pub fn start(allocator: std.mem.Allocator, realm: js.Realm, stream: *runtime.Instance, owner: Listener) !Started {
         const reader = try srd.acquireDefaultReader(realm, stream);
         const self = try allocator.create(UploadPump);
         errdefer allocator.destroy(self);
