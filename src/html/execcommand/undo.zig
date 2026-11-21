@@ -105,6 +105,28 @@ pub fn recordChild(allocator: std.mem.Allocator, step: *history.Step, comptime k
 /// UTF-16 offset `offset`.
 pub fn recordText(allocator: std.mem.Allocator, step: *history.Step, comptime kind: enum { insert, delete }, node: *Instance, offset: u32, data: []const u8) !void {
     if (data.len == 0) return;
+    // A typing step keeps characters typed one after another into one Text
+    // as one insertion: the step's last change inserted into this node and
+    // ends where this one starts. Undoing the one insertion deletes what the
+    // two did, redoing it inserts it again, so the step replays the same;
+    // each typed character no longer holds a change of its own (~140 B, lane
+    // edit3's retained-page measurement). Gecko merges the same way
+    // (InsertTextTransaction::Merge into the open placeholder transaction);
+    // Blink keeps an InsertIntoTextNodeCommand per character.
+    if (kind == .insert and step.typing) {
+        if (step.records.items.len > 0) {
+            const last = &step.records.items[step.records.items.len - 1];
+            if (last.* == .insert_text) {
+                const previous = &last.insert_text;
+                if (previous.node.hold.get() == node and previous.offset + common.utf16Length(previous.data) == offset) {
+                    const old_len = previous.data.len;
+                    previous.data = try allocator.realloc(previous.data, old_len + data.len);
+                    @memcpy(previous.data[old_len..], data);
+                    return;
+                }
+            }
+        }
+    }
     var change: history.TextChange = .{ .offset = offset };
     change.data = try allocator.dupe(u8, data);
     errdefer allocator.free(change.data);
