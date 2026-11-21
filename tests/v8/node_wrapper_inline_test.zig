@@ -83,6 +83,7 @@ const Page = struct {
         });
         errdefer engine.destroyAgent(agent);
         const realm = try engine.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

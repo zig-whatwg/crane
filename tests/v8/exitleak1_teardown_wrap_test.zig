@@ -61,6 +61,7 @@ const Page = struct {
         errdefer protocol.destroyAgent(agent);
         const realm = switch (kind) {
             .window => try protocol.createWindowRealm(&.{
+                .agent_cluster_cross_origin_isolated = true,
                 .agent = agent,
                 .allocator = std.heap.c_allocator,
                 .from_snapshot = false,
@@ -69,6 +70,7 @@ const Page = struct {
                 .create_global_object = WindowHost.createGlobalObject,
             }),
             .worker => (try protocol.createWorkerRealm(agent, &.{
+                .agent_cluster_cross_origin_isolated = true,
                 .url = "https://example.test/worker.js",
                 .timer = null,
                 .event_loop = inline_task_loop.eventLoop(),

@@ -121,6 +121,7 @@ fn run(outcome: *Outcome) !void {
     var loop: CollectingLoop = .{};
     defer loop.tasks.deinit(allocator);
     const made = try engine.createWorkerRealm(agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
         .event_loop = loop.eventLoop(),
@@ -198,6 +199,7 @@ const TwoAgents = struct {
             loop.tasks.deinit(allocator);
         }
         const made = try engine.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "http://web-platform.test:8000/workers/a.js",
             .timer = null,
             .event_loop = loop.eventLoop(),

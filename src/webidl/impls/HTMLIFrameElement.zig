@@ -7209,7 +7209,9 @@ fn attachNavigableContext(
     // answer - the parent's for a frame, the opener's for a popup (`parent`
     // is the opener's realm then) - as html.secure_context.ofDocument has it.
     const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, parent.secure_context, allocator) orelse return null;
-    makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, parent, allocator);
+    // A document with no creator (a noopener popup's) has no creator's realm
+    // either: its window client takes no active service worker from one.
+    makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, if (creator != null) parent else null, allocator);
     return realm;
 }
 
@@ -7442,6 +7444,13 @@ fn attachRealm(
         // caller's answer for the document the realm is made for. A realm
         // reused for a later same-origin document keeps it.
         .secure_context = secure_context,
+        // HTML "create a new realm" step 5: the agent cluster's cross-origin
+        // isolation mode is the browsing context group's ("obtain a
+        // similar-origin window agent" step 6.2) - a frame's its parent's
+        // (BrowsingContext.initChild), a popup's its opener's or, with
+        // noopener, its own group's "none", and a navigation's after its
+        // group switch (runCommit switches before the realm is made).
+        .agent_cluster_cross_origin_isolated = browsing_context.groupIsCrossOriginIsolated(),
     }) catch |err| {
         log.debug("a frame's realm was not made: {}", .{err});
         return null;
@@ -8481,12 +8490,16 @@ fn popupWindowEnded(scope: *runtime.BrowserScope, browsing_context_ptr: *anyopaq
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
 /// browsing context opened by `opener_bc_ptr`, whose context, Window and
 /// initial about:blank document are made exactly as an iframe's are, minus
-/// the container. The integration is the caller's to deinit and destroy.
+/// the container. With `noopener`, a new top-level traversable "given null"
+/// opener ("the rules for choosing a navigable" step 8.7): its initial
+/// about:blank document has no creator. The integration is the caller's to
+/// deinit and destroy.
 fn createAuxiliaryNavigable(
     allocator: std.mem.Allocator,
     opener_bc_ptr: *anyopaque,
     is_popup: bool,
     popup_sandboxing_flags: SandboxingFlagSet,
+    noopener: bool,
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
     // The entry global's realm, whose script called open(), is the new
@@ -8503,8 +8516,31 @@ fn createAuxiliaryNavigable(
     // container's, so a popup's initial about:blank got an origin that was
     // not its opener's, its first navigation to the opener's origin made a
     // new Window, and the onload set on the one open() returned never fired.
-    const creator: *runtime.Instance = @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
-    const creator_record = (dom_module.document_origin.shareable(creator) catch null) orelse return null;
+    //
+    // With noopener the popup is a new top-level traversable "given null"
+    // opener, whose initial about:blank HTML makes with a null creator.
+    // Steps 19.1-19.3 are then not run - no referrer, and a new policy
+    // container whose opener policy is "unsafe-none" - so the popup's first
+    // navigation enforces its response's opener policy against
+    // "unsafe-none": a "same-origin-plus-COEP" response switches to a
+    // cross-origin isolated browsing context group (HTML "obtain a browsing
+    // context to use for a navigation response" step 13; html/cross-origin-
+    // opener-policy/noopener-popup-cross-origin-isolation.https.html
+    // "Same-origin popup with COOP and COEP": C157, F160, S27.2 PASS - the
+    // inherited same-origin-plus-COEP policy matched and the popup stayed
+    // unisolated). Deviation, stated (golden rule 2): its origin is still
+    // the opener's document's, where step 7 would give a null creatorOrigin
+    // a new opaque origin. All three browsers keep the popup's name through
+    // its first navigation away from that document, which "finalize a
+    // cross-document navigation" step 4 clears for a top-level navigable
+    // with no opener whose new document is not same origin with it
+    // (html/browsers/windows/clear-window-name.https.html "Window.name is not
+    // reset at the first navigation away from initial about:blank with
+    // noopener": C157, F160, S27.2 PASS; window-open-popup-behavior.html's
+    // noopener cases and named-lookup-noopener.html read the name too).
+    const creator_document: *runtime.Instance = @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
+    const creator_record = (dom_module.document_origin.shareable(creator_document) catch null) orelse return null;
+    const creator: ?*runtime.Instance = if (noopener) null else creator_document;
 
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
@@ -8523,6 +8559,12 @@ fn createAuxiliaryNavigable(
     };
     // From here the integration owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
+    // A noopener popup is "created given null" opener: "create a new
+    // top-level browsing context and document" step 1 makes it in a new
+    // browsing context group, whose cross-origin isolation mode is "none" -
+    // before its initial about:blank document's realm is made in that
+    // group's agent cluster.
+    if (noopener) browsing_context.startOwnGroup();
     // A new top-level context, but the same user agent: the opener's cookie
     // jar (it has no parent to reach one through).
     browsing_context.cookie_jar = opener_bc.cookieJar();
@@ -8550,7 +8592,7 @@ fn createAuxiliaryNavigable(
     // The spec gives the initial document only its creation flags; a later
     // navigation's flags follow the spec (its policy container's
     // CSP-derived flags).
-    const inherited_csp_flags = if (dom_module.policy_containers.of(creator)) |container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else SandboxingFlagSet.empty;
+    const inherited_csp_flags = if (creator) |document| (if (dom_module.policy_containers.of(document)) |container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else SandboxingFlagSet.empty) else SandboxingFlagSet.empty;
     const creation_flags = sandboxing.creationSandboxingFlags(.{ .popup = popup_sandboxing_flags }).unionWith(inherited_csp_flags);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the

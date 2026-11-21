@@ -869,6 +869,7 @@ fn windowRealm(host: *WindowHost, from_snapshot: bool, global_this: protocol.Glo
     _ = try realm();
     ensurePools();
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = @ptrCast(test_isolate.?),
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,
@@ -1229,6 +1230,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = @ptrCast(test_isolate.?),
             .allocator = self.allocator,
             .from_snapshot = false,
@@ -1444,6 +1446,7 @@ test "protocol: the V8 adapter reuses a WindowProxy, and a realm is no popup's u
     // The default: a realm made with a parent is a frame's, destroyed with
     // its parent's document, never adopted by a later realm.
     const options: protocol.WindowRealmOptions = .{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = undefined,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -1519,6 +1522,7 @@ test "protocol: a top-level realm a navigation replaced is collected once nothin
 fn windowRealmIn(agent: *protocol.Agent, host: *WindowHost, global_this: protocol.GlobalThis) !runtime.Context {
     ensurePools();
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

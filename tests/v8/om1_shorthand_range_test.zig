@@ -29,7 +29,7 @@ fn check(source: []const u8) !void {
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = a });
     defer engine.destroyAgent(agent);
-    const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = a, .from_snapshot = false, .timer = null, .origin = "https://om1.test", .browser_scope = &scope, .create_global_object = Host.window });
+    const realm = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = a, .from_snapshot = false, .timer = null, .origin = "https://om1.test", .browser_scope = &scope, .create_global_object = Host.window });
     defer engine.destroyWindowRealm(realm, .global_detached);
     const held_document = try engine.evaluateClassicScript(realm, .{ .utf8 = "globalThis.d = new Document().implementation.createHTMLDocument('om1'); d" }, "", null, .{ .report = Host.report, .host = null });
     defer held_document.release();

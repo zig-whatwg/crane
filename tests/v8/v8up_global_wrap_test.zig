@@ -53,6 +53,7 @@ const no_hooks: protocol.HostHooks = .{};
 
 fn windowRealm(agent: *protocol.Agent, global_this: protocol.GlobalThis) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -210,6 +211,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

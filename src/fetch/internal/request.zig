@@ -62,6 +62,7 @@ pub const TimingReporter = struct {
 /// How a request reaches its Browser's service workers (Service Workers
 /// "Handle Fetch"; service_worker_fetch.zig).
 pub const ServiceWorkerRoute = @import("service_worker_fetch.zig").Route;
+pub const DocumentResourcesRoute = @import("document_resources.zig").Route;
 
 /// SRI §3.8.3: all strings and endpoint names are BORROWED for the call.
 pub const IntegrityViolation = struct {
@@ -490,6 +491,19 @@ pub const InternalRequest = struct {
     /// outlives every fetch. Null: no service worker sees the request, and
     /// step 3 costs one check.
     service_worker: ?ServiceWorkerRoute = null,
+
+    /// Fetch step 11's way to the request's client's document's resources -
+    /// its map of preloaded resources, and what it loaded while loading
+    /// (document_resources.zig) - set by "populate request from client" for
+    /// a Window client. BORROWED, and read once, at the fetch's start
+    /// (FetchJob.start clears it), while the client is alive. Null: no
+    /// Window client.
+    document_resources: ?DocumentResourcesRoute = null,
+
+    /// HTML "preload": the request is a preload's (a `link rel=preload`'s),
+    /// whose response the document keeps in its map of preloaded resources
+    /// for a later fetch to consume.
+    link_preload: bool = false,
 
     /// SRI policy reports go to the client's global. BORROWED with the CSP
     /// reporter's lifetime: a fetch whose client is gone is terminated, or
@@ -966,6 +980,8 @@ pub const InternalRequest = struct {
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
             .service_worker = self.service_worker,
+            .document_resources = self.document_resources,
+            .link_preload = self.link_preload,
             .integrity_violation_reporter = self.integrity_violation_reporter,
             .coep_violation_reporter = self.coep_violation_reporter,
             // Cloned below: each request owns its own.

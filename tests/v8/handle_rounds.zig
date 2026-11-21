@@ -67,6 +67,7 @@ pub const Page = struct {
     /// Another Window realm in the page's agent. OWNED: destroyWindowRealm.
     pub fn newRealm(self: *Page, origin: []const u8) !runtime.Context {
         return protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

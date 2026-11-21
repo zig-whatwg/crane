@@ -937,6 +937,17 @@ pub const WindowRealmOptions = struct {
     /// interface object or member (WebIDL 3.3.13). True, the default, keeps
     /// every construct exposed, as before.
     secure_context: bool = true,
+    /// HTML "create a new realm" step 5: whether the agent cluster of the
+    /// agent the realm is made in has a cross-origin isolation mode other
+    /// than "none" ("logical" or "concrete") - a Window's: its browsing
+    /// context group's mode ("obtain a similar-origin window agent" step 6.2).
+    /// False: once the global object exists, the engine performs
+    /// ! global.[[Delete]]("SharedArrayBuffer") - which succeeds (step 5.3's
+    /// assertion) - so script reaches the constructor only through
+    /// `new WebAssembly.Memory({ shared:true, initial:0, maximum:0 }).buffer.constructor`.
+    /// True: the global keeps it. No default: every caller decides (a
+    /// default would keep the constructor wherever a caller forgot).
+    agent_cluster_cross_origin_isolated: bool,
 };
 
 /// An agent's heap, for the diagnostics tier.

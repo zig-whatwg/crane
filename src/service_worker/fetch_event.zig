@@ -590,6 +590,21 @@ pub fn fire(manager: *Manager, realm: runtime.Context, global_scope: *runtime.In
     };
 }
 
+/// The relay `request`'s body reads, as a pipe of this realm's agent: its
+/// fetches drain the relay into it each turn (AgentFetches.readRelay).
+fn takeUploadRelay(realm: runtime.Context, request: *InternalRequest) !void {
+    const b = request.body orelse return;
+    const body = switch (b) {
+        .body => |body| body,
+        .bytes => return,
+    };
+    const relay = body.upload_relay orelse return;
+    const fetches = dom.agent_fetches.of(realm) orelse return error.InvalidStateError;
+    body.pipe = try fetches.readRelay(relay);
+    // The reader's reference is the pipe's source's now.
+    body.upload_relay = null;
+}
+
 fn fireEvent(manager: *Manager, realm: runtime.Context, global_scope: *runtime.Instance, dispatch: *FetchDispatch, done: FetchDone) !void {
     // The responder answers the call from here; failures below answer it
     // with a network error (its last release).
@@ -609,7 +624,16 @@ fn fireEvent(manager: *Manager, realm: runtime.Context, global_scope: *runtime.I
     // 17.4.3. requestObject: a Request object for the request, with a new
     // AbortController's signal (dom.fetch_objects' adopt makes one), its
     // Headers immutable.
-    const request_copy = (try manager_mod.copyRequestForWorker(realm.allocator, dispatch.request)) orelse return error.OutOfMemory;
+    const request_copy = (try manager_mod.copyRequestForWorker(realm.allocator, dispatch.request, null)) orelse return error.OutOfMemory;
+    // A stream body still arriving from the fetching thread (the relay
+    // requestForServiceWorker's body reads): from here its bytes arrive
+    // through a pipe this agent's loop fills from the relay, as the request
+    // object's body stream reads them. A cancel of that stream stops the
+    // relay, and the page's side lets its branch go.
+    takeUploadRelay(realm, request_copy) catch |err| {
+        request_copy.deinit();
+        return err;
+    };
     const request_object = interfaces.Request.init(realm.allocator, realm) catch |err| {
         request_copy.deinit();
         return err;

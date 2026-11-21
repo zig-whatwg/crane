@@ -67,7 +67,7 @@ fn expectAfterSettling(setup: []const u8, check: []const u8, expected: []const u
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
     defer engine.destroyAgent(agent);
-    const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://crashes6.test", .create_global_object = createGlobal });
+    const realm = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://crashes6.test", .create_global_object = createGlobal });
     defer engine.destroyWindowRealm(realm, .global_detached);
 
     std.testing.allocator.free(try evaluate(realm, setup));

@@ -439,6 +439,7 @@ pub fn installHooks() void {
         .origin = &settingsOrigin,
         .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
+        .associated_document = &settingsAssociatedDocument,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
@@ -590,6 +591,13 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
     const internal = getInternal(instance) orelse return null;
     return &internal.reporting;
+}
+
+/// The settings object's associated Document (HTML 7.2.2.1), for Fetch step
+/// 11's map of preloaded resources.
+fn settingsAssociatedDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.document;
 }
 
 fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fetches.FetchGroup {
@@ -3754,8 +3762,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The popup's initial about:blank takes its creator's origin - the
     // opener's active DOCUMENT's ("create a new browsing context and
     // document" step 5.1), which the machinery reads from the document's
-    // origin record, not from this Window.
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags) orelse return null;
+    // origin record, not from this Window. A noopener popup's has no
+    // creator (step 8.7: "given null"): a new policy container - but its
+    // opener's origin still (HTMLIFrameElement.createAuxiliaryNavigable says
+    // why).
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags, noopener) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     const scope = window.ctx.browserScope() orelse {
         integration.deinit();
@@ -3790,11 +3801,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     if (getInternal(created.window)) |created_internal| created_internal.creator_is_secure_context = secureContext(window, 0);
     // Steps 8.7-8.8: its opener is this window, unless noopener - which makes
     // it a new top-level traversable "given null" opener, in a browsing
-    // context group of its own.
+    // context group of its own (made so by the machinery, before its initial
+    // about:blank document's realm).
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
         if (integration.browsing_context) |bc| {
-            bc.startOwnGroup();
             // Deviation, stated (golden rule 2): step 8.8.2's one permitted
             // sandboxed navigator is set in the opener branch only, so a
             // sandboxed document's noopener popup could not be navigated by

@@ -81,6 +81,7 @@ test "a platform object made with no NewTarget gets its realm's interface protot
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -150,6 +151,7 @@ const SnapshotPage = struct {
         errdefer protocol.destroyAgent(agent);
         if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,
@@ -185,6 +187,7 @@ const SnapshotFrame = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *SnapshotFrame = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,

@@ -30,6 +30,7 @@ fn exercise() !void {
     });
     defer engine.destroyAgent(agent);
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = allocator,
         .from_snapshot = false,

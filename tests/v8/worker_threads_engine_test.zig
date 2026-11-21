@@ -81,6 +81,7 @@ const Agent = struct {
         var round: usize = 0;
         while (round < rounds) : (round += 1) {
             const made = try v8.worker_realm.createWorkerRealm(agent, .{
+                .agent_cluster_cross_origin_isolated = true,
                 .url = "http://web-platform.test:8000/workers/w.js",
                 .timer = null,
                 .event_loop = inline_task_loop.eventLoop(),

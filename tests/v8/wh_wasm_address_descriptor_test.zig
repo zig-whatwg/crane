@@ -80,6 +80,7 @@ fn firstToStartV8() bool {
 
 fn windowRealm(agent: *protocol.Agent, from_snapshot: bool) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,
@@ -294,6 +295,7 @@ test "frame and worker realms: Table and Memory take address i64" {
     const worker_agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
     defer protocol.destroyAgent(worker_agent);
     const worker = try protocol.createWorkerRealm(worker_agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
@@ -334,6 +336,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

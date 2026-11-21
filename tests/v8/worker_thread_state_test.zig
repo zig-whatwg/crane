@@ -110,6 +110,7 @@ fn workerSteps() !void {
     });
     defer engine.destroyAgent(agent);
     const made = try engine.createWorkerRealm(agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),

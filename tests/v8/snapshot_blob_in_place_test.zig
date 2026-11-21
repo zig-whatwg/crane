@@ -116,6 +116,7 @@ test "agents restored from the snapshot read the engine's blob in place, and all
         // (Snapshot::NewContextFromSnapshot), long after the isolate was
         // made: a Window realm restored now still comes from those bytes.
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,

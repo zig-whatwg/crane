@@ -774,6 +774,12 @@ pub const WorkerHost = struct {
     /// on the owner's thread (`ScopeSettings.cross_origin_isolated`).
     cross_origin_isolated: bool = false,
 
+    /// Whether the worker's agent cluster has a cross-origin isolation mode
+    /// other than "none", decided on the owner's thread
+    /// (`workerAgentClusterIsolated`): HTML "create a new realm" step 5 reads
+    /// it as the worker's realm is made (setupWorkerGlobalScope).
+    agent_cluster_cross_origin_isolated: bool = false,
+
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
@@ -930,6 +936,7 @@ pub const WorkerHost = struct {
             .owner_is_secure_context = start.owner_is_secure_context,
             .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
             .cross_origin_isolated = start.cross_origin_isolated,
+            .agent_cluster_cross_origin_isolated = start.agent_cluster_cross_origin_isolated,
             .animation_frames_owner_supported = start.owner_supports_animation_frames,
         };
         // Taken, not copied: the start's allocator is this one, and a move
@@ -948,6 +955,10 @@ pub const WorkerHost = struct {
         // serializes is bound to and one it receives is checked against
         // (html.agent_clusters.agentClusterOf).
         self.agent_host.agent_cluster = start.agent_cluster;
+        // And its cross-origin isolation mode, which a dedicated worker this
+        // one starts takes as its own (html.agent_clusters.
+        // crossOriginIsolationMode).
+        self.agent_host.agent_cluster_cross_origin_isolated = start.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
         const agent = try engine.createAgent(.{
             .can_block = true,
@@ -1036,7 +1047,15 @@ pub const WorkerHost = struct {
             // the registration's top-level site and cross-site-ancestor bit.
             .storage_top_level_site = if (start.top_level_site) |named| allocator.dupe(u8, named) catch null else null,
             .has_cross_site_ancestor = start.has_cross_site_ancestor,
+            // Its agent cluster's mode ("concrete" when its embedder policy
+            // allows: serviceWorkerAgentClusterIsolated) and so its global
+            // scope's capability, as "run a worker" step 7 gives a worker's:
+            // a service worker has no owner and no permissions policy to
+            // take it away (steps 8-9).
+            .agent_cluster_cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
+            .cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
         };
+        self.agent_host.agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
         const agent = try engine.createAgent(.{
             .can_block = false,
@@ -1401,6 +1420,9 @@ pub const WorkerHost = struct {
             // owner's answer and the worker's own URL, as WorkerGlobalScope's
             // isSecureContext answers it. Out of memory: not secure.
             .secure_context = @import("secure_context.zig").ofWorker(self.allocator, self.script_url, self.owner_is_secure_context) catch false,
+            // HTML "create a new realm" step 5: the worker's agent cluster's
+            // cross-origin isolation mode, decided on its owner's thread.
+            .agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated,
         });
         self.global_scope = made.global_scope;
 
@@ -2909,6 +2931,52 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
     return agent_clusters.crossOriginIsolatedCapability(null, start.owner_realm);
 }
 
+/// Whether the agent cluster of the worker `start` starts has a cross-origin
+/// isolation mode other than "none" when its realm is made (HTML "create a
+/// new realm" step 5), read on its owner's thread:
+///
+/// - a shared worker's agent starts a cluster of its own (isTopLevel), made
+///   with the mode "none"; "run a worker" makes the realm (step 7) before
+///   onComplete step 5 sets the mode from the embedder policy ("This really
+///   ought to be set when the agent cluster is created"), so the realm is
+///   made with "none" whatever its policy - and the browsers agree: Chrome
+///   157 and Firefox 160 make no shared worker cross-origin isolated even
+///   with COOP and COEP (html/cross-origin-embedder-policy/cross-origin-
+///   isolated-permission-worker.https.window.html "shared_worker
+///   (withCoopCoep: true)": C FAIL, F FAIL, S PASS, wpt.fyi 2358bd4835), so
+///   neither exposes SharedArrayBuffer there. Its capability stays the
+///   spec's (`workerCrossOriginIsolated`, steps 5-7);
+/// - a dedicated worker's agent is in its owner's cluster ("obtain a
+///   worker/worklet agent" step 3), whose mode it shares - a data: URL's too:
+///   step 9 takes only its capability away.
+fn workerAgentClusterIsolated(start: *const WorkerStart) bool {
+    if (start.shared != null) return false;
+    return agent_clusters.crossOriginIsolationMode(start.owner_realm);
+}
+
+/// Whether a service worker's agent cluster is cross-origin isolated: its
+/// script's embedder policy is compatible with cross-origin isolation.
+///
+/// Service Workers sets no mode for the cluster "obtain a service worker
+/// agent" makes, and gives the global scope no cross-origin isolated
+/// capability of its own; the browsers do not leave it there (golden rule 2,
+/// no newer spec): Chrome 157 and Safari 27.2 make a service worker whose
+/// script has COOP and COEP cross-origin isolated, Firefox 160 does not
+/// (html/cross-origin-embedder-policy/cross-origin-isolated-permission-
+/// worker.https.window.js "service_worker (withCoopCoep: true)": C PASS,
+/// F FAIL, S PASS; withCoopCoep false: all three not isolated; wpt.fyi
+/// 2358bd4835). Chrome's is "concrete" - its capability and its
+/// SharedArrayBuffer (Blink's SharedArrayBufferConstructorEnabledCallback
+/// reads the worker's SharedArrayBufferTransferAllowed) - as "run a worker"
+/// step 7 gives a shared worker's. Without COOP and COEP no service worker
+/// has the global in any of the three (html/infrastructure/safe-passing-of-
+/// structured-data/shared-array-buffers/no-coop-coep.https.any.
+/// serviceworker.html: C, F and S PASS).
+fn serviceWorkerAgentClusterIsolated(start: *const ServiceThreadHost.Start) bool {
+    const container = if (start.policy_container) |*c| c else return false;
+    return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+}
+
 /// A worker creator's mixed-content answer, read only on its own thread.
 /// A nested data worker captures its owner's already-inherited restriction.
 fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory}!bool {
@@ -3861,6 +3929,10 @@ const ThreadHost = struct {
         /// The worker's cross-origin isolated capability, decided on the
         /// owner's thread (`workerCrossOriginIsolated`).
         cross_origin_isolated: bool = false,
+        /// Whether the worker's agent cluster's cross-origin isolation mode
+        /// is not "none", decided on the owner's thread
+        /// (`workerAgentClusterIsolated`).
+        agent_cluster_cross_origin_isolated: bool = false,
         /// The owner's mixed-content answer, read on that same thread.
         owner_prohibits_mixed_security_contexts: bool,
         /// Whether a dedicated worker's global scope will be a supported
@@ -3958,6 +4030,9 @@ const ThreadHost = struct {
                 // On the owner's thread: its capability and the worker's
                 // embedder policy decide the worker's.
                 .cross_origin_isolated = workerCrossOriginIsolated(start),
+                // On the owner's thread: the mode HTML "create a new realm"
+                // step 5 reads for the worker's realm.
+                .agent_cluster_cross_origin_isolated = workerAgentClusterIsolated(start),
                 // On the owner's thread: HTML 8.12's "supported" asks the
                 // owner set.
                 .owner_supports_animation_frames = start.shared == null and ownerSupportsAnimationFrames(start.owner_realm),

@@ -48,6 +48,7 @@ const no_hooks: protocol.HostHooks = .{};
 
 fn windowRealm(agent: *protocol.Agent, global_this: protocol.GlobalThis) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

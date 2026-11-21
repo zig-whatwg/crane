@@ -62,6 +62,7 @@ const WindowHost = struct {
 fn windowRealm() !runtime.Context {
     const isolate = try agent();
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = @ptrCast(isolate),
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

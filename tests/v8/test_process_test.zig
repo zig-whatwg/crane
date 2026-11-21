@@ -97,6 +97,7 @@ test "a test's agent ends its Window realms before itself, then runs the file's 
         defer test_agent.close();
         _ = try test_agent.open(.{ .context = false });
         _ = try test_agent.windowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = test_agent.agent(),
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

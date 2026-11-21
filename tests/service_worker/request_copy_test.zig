@@ -34,7 +34,7 @@ test "a service worker's copy of a hop after a cross-origin redirect keeps the r
         try std.testing.expectEqualStrings("null", own);
     }
 
-    const copy = (try sw.manager.copyRequestForWorker(allocator, request)).?;
+    const copy = (try sw.manager.copyRequestForWorker(allocator, request, null)).?;
     defer copy.deinit();
     // The hop: one URL, the current one.
     try std.testing.expectEqual(@as(usize, 1), copy.url_list.items.len);
@@ -59,7 +59,7 @@ test "a service worker's copy of a request no redirect tainted serializes its or
     // a.test -> b.test: b.test's previous URL was a.test, the request's own
     // origin - still "same-origin".
     try request.addUrl("https://b.test/two");
-    const copy = (try sw.manager.copyRequestForWorker(allocator, request)).?;
+    const copy = (try sw.manager.copyRequestForWorker(allocator, request, null)).?;
     defer copy.deinit();
     const copied = try serializedOrigin(copy);
     defer allocator.free(copied);
@@ -80,7 +80,7 @@ test "a service worker's copy keeps what its dropped hops made of Sec-Fetch-Site
     request.user_activation = true;
     try request.addUrl("https://not-web-platform.test:8443/redirect.py");
     try request.addUrl("https://web-platform.test:8443/navigation-headers-server.py");
-    const copy = (try sw.manager.copyRequestForWorker(allocator, request)).?;
+    const copy = (try sw.manager.copyRequestForWorker(allocator, request, null)).?;
     defer copy.deinit();
     try std.testing.expectEqual(@as(usize, 1), copy.url_list.items.len);
     try std.testing.expectEqual(fetch.internal.SiteRelation.cross_site, copy.dropped_urls_site);
@@ -94,14 +94,14 @@ test "a service worker's copy keeps what its dropped hops made of Sec-Fetch-Site
     try other.setOrigin("https://web-platform.test:8443");
     try other.addUrl("https://www1.web-platform.test:8443/redirect.py");
     try other.addUrl("https://web-platform.test:8443/target");
-    const other_copy = (try sw.manager.copyRequestForWorker(allocator, other)).?;
+    const other_copy = (try sw.manager.copyRequestForWorker(allocator, other, null)).?;
     defer other_copy.deinit();
     try std.testing.expectEqual(fetch.internal.SiteRelation.same_site, other_copy.dropped_urls_site);
     // A request with no hops: nothing dropped.
     const single = try InternalRequest.init(allocator, "https://web-platform.test:8443/one");
     defer single.deinit();
     try single.setOrigin("https://web-platform.test:8443");
-    const single_copy = (try sw.manager.copyRequestForWorker(allocator, single)).?;
+    const single_copy = (try sw.manager.copyRequestForWorker(allocator, single, null)).?;
     defer single_copy.deinit();
     try std.testing.expectEqual(fetch.internal.SiteRelation.same_origin, single_copy.dropped_urls_site);
 }
