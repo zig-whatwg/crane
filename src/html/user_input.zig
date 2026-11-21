@@ -1679,6 +1679,66 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     defaultKeyDownAction(keyboard, focused, key, modifiers);
 }
 
+/// HTML 4.10.21.2 "Implicit submission", for Enter in `target`. True when
+/// `target` is a field that blocks implicit submission of its form owner
+/// (Enter is then consumed), whatever the steps did:
+/// - the form's default button - its first submit button in tree order -
+///   with activation behaviour and not disabled gets a click event fired at
+///   it ("must cause the user agent to fire a click event at that default
+///   button");
+/// - a disabled default button: nothing ("implicit submission must not
+///   occur");
+/// - no submit button: if the form has more than one field that blocks
+///   implicit submission, nothing; otherwise the form is submitted from the
+///   form itself with userInvolvement "activation".
+/// Crane did none of it (html/semantics/forms/form-submission-0/
+/// implicit-submission.optional.html: Chrome 157, Firefox 160 and Safari
+/// 27.2 pass the two submitting cases).
+fn implicitSubmission(target: *Instance, modifiers: Modifiers) bool {
+    if (!blocksImplicitSubmission(target)) return false;
+    const form = form_associated.formOwner(target) orelse return false;
+    const root = treeRootOf(form);
+    var default_button: ?*Instance = null;
+    var blocking_fields: usize = 0;
+    var node: ?*Instance = root;
+    while (node) |n| : (node = form_associated.nextInTree(n, root, false)) {
+        if (!form_associated.isElement(n)) continue;
+        if (default_button == null and form_associated.isSubmitButton(n)) {
+            if (form_associated.formOwner(n) == form) default_button = n;
+        }
+        if (blocksImplicitSubmission(n) and form_associated.formOwner(n) == form) blocking_fields += 1;
+    }
+    if (default_button) |button| {
+        if (!form_associated.isDisabled(button)) fireSyntheticClick(button, modifiers);
+        return true;
+    }
+    if (blocking_fields > 1) return true;
+    dom.form_submission.submit(form, form, .activation) catch {};
+    return true;
+}
+
+/// "A field that blocks implicit submission of a form element is an input
+/// element whose form owner is that form element and whose type attribute is
+/// in one of the following states: Text, Search, Telephone, URL, Email,
+/// Password, Date, Month, Week, Time, Local Date and Time, Number" - the
+/// element half; the caller compares the form owner.
+fn blocksImplicitSubmission(element: *Instance) bool {
+    if (!form_associated.isInput(element)) return false;
+    var buffer: [32]u8 = undefined;
+    const t = form_associated.inputType(element, &buffer);
+    inline for (.{ "text", "search", "tel", "url", "email", "password", "date", "month", "week", "time", "datetime-local", "number" }) |name| {
+        if (std.mem.eql(u8, t, name)) return true;
+    }
+    return false;
+}
+
+/// The root of `node`'s tree (its shadow root, document or detached subtree).
+fn treeRootOf(node: *Instance) *Instance {
+    var current = node;
+    while (form_associated.parentOf(current)) |parent| current = parent;
+    return current;
+}
+
 /// Release `key`: keyup, then Space's keyboard activation.
 pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
     // As keyDown: no key is routed for a document that is not fully active.
@@ -1742,6 +1802,10 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         focus.navigateSequentially(document, if (modifiers.shift) .backward else .forward);
         return;
     }
+    // HTML 4.10.21.2 implicit submission: Enter in a field that blocks
+    // implicit submission submits its form - the platform convention every
+    // browser follows (the spec leaves the trigger to the user agent).
+    if (isKey(key, "Enter") and !modifiers.ctrl and !modifiers.alt and !modifiers.meta and implicitSubmission(target, modifiers)) return;
     const kind = textControlKind(target);
     // The clipboard shortcuts, in a text control or anywhere else: the
     // Clipboard API's copy, cut and paste actions as the user's own
