@@ -313,6 +313,12 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     if (l == .filter or l == .backdrop_filter) {
         if (isNone(value)) return retained(underlying);
         if (isNone(underlying)) return retained(value);
+        // Filter Effects 1 11, addition: "the concatenation of the two
+        // lists: 'base filter list added filter list'". It replaced the base
+        // list (web-animations/animation-model/animation-types/addition-per-
+        // property-001.html filter rows; Chrome 157, Firefox 160 and Safari
+        // 27.2 pass).
+        if (filterList(underlying)) |a| if (filterList(value)) |b| return concatFilters(allocator, a, b);
     }
     switch (underlying) {
         .number => |a| if (value == .number) return .{ .number = a + value.number },
@@ -1538,6 +1544,16 @@ fn mixFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem
         const fy = y orelse initialFilter(kind);
         items[i] = .{ .function = (try mixFilterFunction(allocator, &colors, fx, fy, p, op)) orelse return null };
     }
+    return .{ .filter = try filter_values.Filter.create(allocator, items) };
+}
+
+/// Filter Effects 1 11 addition: `a` then `b`, one list.
+fn concatFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem) Allocator.Error!Value {
+    if (a.len + b.len == 0) return Value.kw(.none);
+    const items = try allocator.alloc(FilterItem, a.len + b.len);
+    defer allocator.free(items);
+    @memcpy(items[0..a.len], a);
+    @memcpy(items[a.len..], b);
     return .{ .filter = try filter_values.Filter.create(allocator, items) };
 }
 
