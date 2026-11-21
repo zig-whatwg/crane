@@ -2939,8 +2939,14 @@ fn getLanguageAttribute(element: *runtime.Instance) []const u8 {
 /// Determine script type from type attribute
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element (steps 8-13)
 fn determineScriptType(element: *runtime.Instance) ScriptType {
-    const type_attr = getAttribute(element, "type");
+    return scriptTypeAtPrepare(getAttribute(element, "type"), getLanguageAttribute(element));
+}
 
+/// Prepare steps 8-13 for a script element whose type attribute is
+/// `type_attr` (null: none) and whose language attribute is `language` (""
+/// when absent) - the element's, and a speculative script's (HTML 13.2.8:
+/// the speculative HTML parser fetches only what the element would).
+pub fn scriptTypeAtPrepare(type_attr: ?[]const u8, language: []const u8) ScriptType {
     // Prepare step 8 distinguishes a missing type from an explicitly empty
     // one: the latter is classic even when language says something else.
     // WebKit ScriptElement::determineScriptType makes the same distinction.
@@ -2957,7 +2963,6 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
         if (value.len == 0) return .classic;
         break :blk value;
     } else blk: {
-        const language = getLanguageAttribute(element);
         if (language.len == 0) return .classic;
         // Step 8's obsolete language form is exactly "text/" + language;
         // language itself is not stripped. No recognized essence is longer.

@@ -260,6 +260,10 @@ pub const document_abort = @import("document_abort.zig");
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");
+/// HTML 13.2.8 "Speculative HTML parsing": the scanner a waiting parser runs
+/// over the rest of its input, and its look into style elements' @imports.
+pub const speculative_parser = @import("speculative_parser.zig");
+pub const speculative_css = @import("speculative_css.zig");
 /// HTML "encoding-parse a URL" relative to a Document.
 pub const encoding_parse = @import("dom").encoding_parse;
 /// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection
