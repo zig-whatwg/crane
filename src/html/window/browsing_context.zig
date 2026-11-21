@@ -176,6 +176,10 @@ pub const Navigables = struct {
     /// context's record (`BrowsingContext.deinit`). Window-thread state, as
     /// this list is: sessionStorage is [Exposed=Window].
     traversable_storage: storage.TraversableStorageSheds,
+    /// The Browser's navigation observer - its one slot, which the Browser
+    /// sets to its own dispatcher (src/html/navigation/observer.zig): told
+    /// each navigation milestone of these navigables, on the window thread.
+    observer: ?@import("../navigation/observer.zig").Observer = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
@@ -1170,6 +1174,14 @@ pub const BrowsingContext = struct {
 
     /// Close this browsing context
     pub fn close(self: *BrowsingContext) void {
+        // A top-level traversable closing: its documents were unloaded and
+        // destroyed before ("close a top-level traversable" -> "destroy a
+        // top-level traversable"), so the Browser's navigation observer
+        // hears it is gone now, once. (A child navigable's end is told by
+        // "destroy a child navigable", dom.navigables.)
+        if (self.parent == null and !self.is_closed) {
+            @import("../navigation/observer.zig").notify(self.navigables, .{ .navigable_id = self.id, .event = .navigable_destroyed });
+        }
         self.is_closed = true;
 
         // Disown the opener relationship

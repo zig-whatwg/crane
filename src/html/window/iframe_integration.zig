@@ -84,6 +84,13 @@ pub const NavigateRequest = struct {
     /// before a step of its own consumed it (window.open()'s choosing a
     /// navigable); null takes navigate step 4's snapshot.
     has_transient_activation: ?bool = null,
+    /// A "browser UI" navigation's request referrer, a URL (a host's: CDP
+    /// Page.navigate `referrer`); with `referrer_policy`. BORROWED.
+    referrer_url: ?[]const u8 = null,
+    /// Where the navigation ID of the cross-document navigation started is
+    /// written, when one started (the navigation observer's navigation_id).
+    /// BORROWED for the call.
+    started_navigation_id: ?*u64 = null,
 };
 
 /// An engine context this integration made for a content navigable it no
@@ -458,6 +465,19 @@ pub const IFrameIntegration = struct {
     /// scripts read navigation.currentEntry (lane loadpath1). Set just
     /// before a commit, taken when the document is made, cleared after.
     next_document_state: ?u64 = null,
+
+    /// The navigation whose commit runs now (navigate step 7's navigation
+    /// ID; 0 for none: an initial about:blank document, or a commit no
+    /// navigation record drives), and whether its document is a network
+    /// error's error document - what the document factory tells the
+    /// Browser's navigation observer when the new document is made
+    /// (html_core.navigation.observer, `committed`). Set just before a
+    /// commit, cleared after.
+    committing_navigation_id: u64 = 0,
+    committing_error_page: bool = false,
+    /// The navigation whose `committed` milestone the document factory last
+    /// reported: the commit reads it back to know its document was made.
+    committed_navigation_id: u64 = 0,
 
     /// The form control states a back/forward traversal's entry persisted
     /// ("restore persisted state" step 2), BORROWED from the joint history:

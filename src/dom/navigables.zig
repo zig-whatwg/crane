@@ -133,6 +133,10 @@ pub const Implementation = struct {
     /// in flight, read on the Browser's window thread. What a host shows
     /// ("Navigating to <url>", the browser console); null: not installed.
     navigation_url: ?*const fn (record: *anyopaque) []const u8 = null,
+    /// Resume navigable `navigable_id`'s navigations its Browser's navigation
+    /// observer held before their fetch (html_core.navigation.observer,
+    /// N3): each goes on from a task. The window thread.
+    resume_held_navigations: ?*const fn (navigables: *html_core.Navigables, navigable_id: u64) void = null,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -155,6 +159,15 @@ pub fn navigationUrl(record: *anyopaque) ?[]const u8 {
     const impl = implementation.get() orelse return null;
     const url_of = impl.navigation_url orelse return null;
     return url_of(record);
+}
+
+/// Resume navigable `navigable_id`'s navigations held before their fetch
+/// (html_core.navigation.observer.release). Nothing when no owner installed
+/// it.
+pub fn resumeHeldNavigations(navigables: *html_core.Navigables, navigable_id: u64) void {
+    const impl = implementation.get() orelse return;
+    const resume_held = impl.resume_held_navigations orelse return;
+    resume_held(navigables, navigable_id);
 }
 
 /// Choose a navigable for `request.target` from `source_document`'s node
@@ -544,12 +557,32 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             document_lifecycle.destroy(entry.document);
         }
     }
+    // The navigable and every navigable inside it are gone - unloaded, their
+    // documents destroyed: the Browser's navigation observer hears it,
+    // children first (CDP frameDetached).
+    if (integration.browsing_context) |bc| reportDestroyedTree(bc);
     // Its realm ends at a task of its own.
     if (integration.state != .discarded) queueRemovedFrameRealmEnd(container, integration);
     integration.onRemovedFromDocument();
     // Navigation and resources in an already-ready, document.open-created
     // stream both delay the parent. There is no content navigable now.
     if (interfaces.Node.get_ownerDocument(container) catch null) |document| document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+/// html_core.navigation.observer `navigable_destroyed` for `bc` and every
+/// navigable inside it, children first.
+fn reportDestroyedTree(bc: *BrowsingContext) void {
+    const navigables = bc.navigables orelse return;
+    if (navigables.observer == null) return;
+    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+    defer tree.deinit(std.heap.page_allocator);
+    tree.append(std.heap.page_allocator, bc) catch return;
+    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    var i = tree.items.len;
+    while (i > 0) {
+        i -= 1;
+        html_core.navigation.observer.notify(navigables, .{ .navigable_id = tree.items[i].id, .event = .navigable_destroyed });
+    }
 }
 
 /// HTML "destroy a child navigable", for the documents: the active
