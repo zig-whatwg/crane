@@ -467,7 +467,7 @@ pub const Scanner = struct {
         f.cors = script_request.corsSettingFromAttribute(attr(tag, "crossorigin"));
         f.referrer_policy = self.referrerPolicyOf(tag);
         f.integrity = attr(tag, "integrity") orelse "";
-        f.nonce = attr(tag, "nonce") orelse "";
+        f.nonce = nonceOf(tag, true);
         f.fetch_priority = priority(attr(tag, "fetchpriority"));
         f.initiator_type = .script;
         const deferred = attr(tag, "async") != null or attr(tag, "defer") != null;
@@ -512,7 +512,7 @@ pub const Scanner = struct {
         f.cors = script_request.corsSettingFromAttribute(attr(tag, "crossorigin"));
         f.referrer_policy = self.referrerPolicyOf(tag);
         f.integrity = attr(tag, "integrity") orelse "";
-        f.nonce = attr(tag, "nonce") orelse "";
+        f.nonce = nonceOf(tag, false);
         f.fetch_priority = priority(attr(tag, "fetchpriority"));
         f.initiator_type = .link;
         switch (link_types.relLinkType(rel)) {
@@ -634,6 +634,23 @@ fn attr(tag: *const TagToken, name: []const u8) ?[]const u8 {
 
 fn trimHtmlSpace(value: []const u8) []const u8 {
     return std.mem.trim(u8, value, " \t\n\r\x0c");
+}
+
+/// The element's nonce, if CSP 6.7.3.1 "Is element nonceable?" would say
+/// Nonceable - as the element's own fetch would use it
+/// (dom.csp_violations.nonceableScriptNonce): not after a duplicate-attribute
+/// parse error (step 3), and for a script not when an attribute's name or
+/// value holds "<script" or "<style" (step 2; Blink's scanner checks the same,
+/// StartTagScanner::MaybeClearNonceForDanglingMarkup).
+fn nonceOf(tag: *const TagToken, script_element: bool) []const u8 {
+    const nonce = attr(tag, "nonce") orelse return "";
+    if (nonce.len == 0 or tag.had_duplicate_attribute) return "";
+    if (script_element) for (tag.attributes.toSlice()) |*a| {
+        for ([_][]const u8{ a.getName(), a.getValue() }) |text| {
+            if (std.ascii.indexOfIgnoreCase(text, "<script") != null or std.ascii.indexOfIgnoreCase(text, "<style") != null) return "";
+        }
+    };
+    return nonce;
 }
 
 fn priority(value: ?[]const u8) fetch.internal.request.Priority {
@@ -782,4 +799,23 @@ test "a meta referrer sets the policy of later requests whose element sets none,
     try testing.expectEqual(@as(usize, 1), policies.len);
     try testing.expectEqualStrings("img-src 'none'", policies[0]);
     try testing.expectEqual(@as(usize, 0), scanner.newPolicies().len);
+}
+
+test "a nonce is passed on only where the element would be nonceable" {
+    const Nonces = struct {
+        list: std.ArrayListUnmanaged(u8) = .empty,
+        fn sink(self: *@This()) Sink {
+            return .{ .context = self, .found = collect };
+        }
+        fn collect(context: *anyopaque, f: *const Found) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.list.print(testing.allocator, "{s}={s};", .{ f.url, f.nonce }) catch {};
+        }
+    };
+    var nonces: Nonces = .{};
+    defer nonces.list.deinit(testing.allocator);
+    const scanner = try Scanner.create(testing.allocator, .{ .input = "<script src=a.js nonce=n1></script><script src=b.js nonce=n2 title=\"<script\"></script><script src=c.js nonce=n3 nonce=dup></script><link rel=stylesheet href=d.css nonce=n4>" });
+    defer scanner.destroy();
+    try scanner.scan(nonces.sink());
+    try testing.expectEqualStrings("a.js=n1;b.js=;c.js=;d.css=n4;", nonces.list.items);
 }

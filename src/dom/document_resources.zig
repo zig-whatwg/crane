@@ -27,6 +27,9 @@ pub const DocumentResources = struct {
     /// among them, as Chrome keeps the preload's resource in the document's
     /// cached_resources_map_.
     loaded: std.ArrayListUnmanaged(Item) = .empty,
+    /// HTML 13.2.8: the document's list of speculative fetch URLs, OWNED -
+    /// each URL is fetched speculatively once.
+    speculative_urls: std.ArrayListUnmanaged([]u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) DocumentResources {
         return .{ .allocator = allocator };
@@ -39,6 +42,8 @@ pub const DocumentResources = struct {
         self.preloads.clearRetainingCapacity();
         for (self.loaded.items) |*item| item.deinit(self.allocator);
         self.loaded.clearRetainingCapacity();
+        for (self.speculative_urls.items) |url| self.allocator.free(url);
+        self.speculative_urls.clearRetainingCapacity();
     }
 
     /// The document has completely loaded: a loaded resource that is in
@@ -61,6 +66,41 @@ pub const DocumentResources = struct {
         self.clear();
         self.preloads.deinit(self.allocator);
         self.loaded.deinit(self.allocator);
+        self.speculative_urls.deinit(self.allocator);
+    }
+
+    /// The document has finished parsing: a speculative fetch's entry no
+    /// element consumed leaves the preload map ("the parser should have
+    /// picked up all preloads by now": Blink Document::FinishedParsing ->
+    /// ResourceFetcher::ClearPreloads(kClearSpeculativeMarkupPreloads), which
+    /// keeps link preloads). A fetch still filling one keeps it.
+    pub fn dropSpeculative(self: *DocumentResources) void {
+        var i: usize = 0;
+        while (i < self.preloads.items.len) {
+            if (!self.preloads.items[i].entry.speculative) {
+                i += 1;
+                continue;
+            }
+            var item = self.preloads.orderedRemove(i);
+            item.deinit(self.allocator);
+        }
+    }
+
+    /// HTML 13.2.8 "speculative fetch": whether `request`, the speculative
+    /// HTML parser's for `url`, is to be fetched - "if url is already in
+    /// document's list of speculative fetch URLs, then do nothing", else it
+    /// joins the list - and the document has nothing of its key yet: a
+    /// preload, or a resource it loaded or is loading, would answer the
+    /// element's fetch already (Blink: a speculative preload of a resource the
+    /// document has is a memory-cache hit, ResourceFetcher kUse).
+    pub fn beginSpeculativeFetch(self: *DocumentResources, url: []const u8, request: *const InternalRequest) bool {
+        for (self.speculative_urls.items) |seen| if (std.mem.eql(u8, seen, url)) return false;
+        const copy = self.allocator.dupe(u8, url) catch return false;
+        self.speculative_urls.append(self.allocator, copy) catch {
+            self.allocator.free(copy);
+            return false;
+        };
+        return find(self.preloads.items, request) == null and find(self.loaded.items, request) == null;
     }
 
     /// HTML "consume a preloaded resource" for `request` - Fetch step 11 -
@@ -72,6 +112,18 @@ pub const DocumentResources = struct {
         // 1-4. The preload with request's preload key.
         if (find(self.preloads.items, request)) |index| {
             const item = self.preloads.items[index];
+            // A link preload element whose request matches a speculative
+            // fetch's entry - the speculative parser fetched this very preload
+            // ahead of the element - takes it over as its own preload: it stays
+            // in the map, no longer speculative, for its consumer (Blink: the
+            // scanner's request for a rel=preload link is the link preload,
+            // SetLinkPreload(true), which the element's own request reuses).
+            if (item.entry.speculative and request.link_preload and
+                (request.integrity_metadata.len == 0 or std.mem.eql(u8, request.integrity_metadata, item.integrity)))
+            {
+                item.entry.speculative = false;
+                return item.entry.retain();
+            }
             // 5-7. Its integrity metadata: the consumer's must be none, or
             // the same ("This comparison would ignore unknown integrity
             // options", issue #116: a string comparison here); otherwise the
@@ -117,8 +169,9 @@ pub const DocumentResources = struct {
     /// loaded resource's for its other subresources. Retained for the
     /// caller, who fulfils it.
     pub fn register(self: *DocumentResources, request: *const InternalRequest, load_complete: bool) ?*Entry {
-        if (request.link_preload) {
+        if (request.link_preload or request.speculative_preload) {
             const entry = Entry.create(self.allocator, true) catch return null;
+            entry.speculative = request.speculative_preload;
             const item = Item.make(self.allocator, request, entry) catch {
                 entry.release();
                 return null;
@@ -262,7 +315,7 @@ pub fn of(document: *runtime.Instance) ?*DocumentResources {
 }
 
 /// `document`'s resources, made on first use.
-fn ensure(document: *runtime.Instance) ?*DocumentResources {
+pub fn ensure(document: *runtime.Instance) ?*DocumentResources {
     const state = @import("document_state.zig").Registry.get(document) orelse return null;
     const rare = state.ensureRareData(document) catch return null;
     if (rare.resources) |resources| return resources;
@@ -282,7 +335,7 @@ fn registerThrough(context: *anyopaque, request: *const InternalRequest) ?*Entry
     const document: *runtime.Instance = @ptrCast(@alignCast(context));
     const load_complete = @import("document_lifecycle.zig").isCompletelyLoaded(document);
     // Nothing to keep: no map is made for it.
-    if (!request.link_preload and (!kept(request) or load_complete)) return null;
+    if (!request.link_preload and !request.speculative_preload and (!kept(request) or load_complete)) return null;
     const self = ensure(document) orelse return null;
     return self.register(request, load_complete);
 }
@@ -404,4 +457,79 @@ test "a completely loaded document lets go of the loaded resources that are in, 
     // The pending one still serves a fetch.
     const reused = resources.consume(pending_request, true).?;
     reused.release();
+}
+
+test "a speculative fetch's entry is consumed by the element's fetch like a preload, and the end of parsing drops one no element consumed" {
+    var resources = DocumentResources.init(testing.allocator);
+    defer resources.deinit();
+    const speculative = try testRequest("https://a.test/i.png", .image);
+    defer speculative.deinit();
+    speculative.speculative_preload = true;
+    const filled = resources.register(speculative, false).?;
+    defer filled.release();
+    try testing.expect(filled.speculative);
+    try testing.expectEqual(@as(usize, 1), resources.preloads.items.len);
+
+    // The img's own fetch consumes it, and the loaded map keeps it.
+    const img = try testRequest("https://a.test/i.png", .image);
+    defer img.deinit();
+    const served = resources.consume(img, false).?;
+    defer served.release();
+    try testing.expect(served == filled);
+    try testing.expectEqual(@as(usize, 0), resources.preloads.items.len);
+
+    // Another, never consumed, goes when the document finishes parsing; a link
+    // preload's stays.
+    const unused = try testRequest("https://a.test/u.js", .script);
+    defer unused.deinit();
+    unused.speculative_preload = true;
+    resources.register(unused, false).?.release();
+    const preload = try testRequest("https://a.test/p.css", .style);
+    defer preload.deinit();
+    preload.link_preload = true;
+    resources.register(preload, false).?.release();
+    resources.dropSpeculative();
+    try testing.expectEqual(@as(usize, 1), resources.preloads.items.len);
+    try testing.expect(!resources.preloads.items[0].entry.speculative);
+}
+
+test "a link preload element whose request matches a speculative fetch's entry takes it over as its own preload" {
+    var resources = DocumentResources.init(testing.allocator);
+    defer resources.deinit();
+    const speculative = try testRequest("https://a.test/s.css", .style);
+    defer speculative.deinit();
+    speculative.speculative_preload = true;
+    const filled = resources.register(speculative, false).?;
+    defer filled.release();
+    const element = try testRequest("https://a.test/s.css", .style);
+    defer element.deinit();
+    element.link_preload = true;
+    const taken = resources.consume(element, false).?;
+    defer taken.release();
+    try testing.expect(taken == filled);
+    // Still in the map, for the preload's consumer; no longer speculative, so
+    // the end of parsing keeps it.
+    try testing.expect(!filled.speculative);
+    resources.dropSpeculative();
+    try testing.expectEqual(@as(usize, 1), resources.preloads.items.len);
+    const sheet = try testRequest("https://a.test/s.css", .style);
+    defer sheet.deinit();
+    const consumed = resources.consume(sheet, false).?;
+    defer consumed.release();
+    try testing.expect(consumed == filled);
+    try testing.expectEqual(@as(usize, 0), resources.preloads.items.len);
+}
+
+test "the list of speculative fetch URLs lets a URL be fetched speculatively once, and never a key the document already has" {
+    var resources = DocumentResources.init(testing.allocator);
+    defer resources.deinit();
+    const first = try testRequest("https://a.test/a.js", .script);
+    defer first.deinit();
+    try testing.expect(resources.beginSpeculativeFetch("https://a.test/a.js", first));
+    try testing.expect(!resources.beginSpeculativeFetch("https://a.test/a.js", first));
+    // A style sheet the document is loading answers the element already.
+    const sheet = try testRequest("https://a.test/x.css", .style);
+    defer sheet.deinit();
+    resources.register(sheet, false).?.release();
+    try testing.expect(!resources.beginSpeculativeFetch("https://a.test/x.css", sheet));
 }

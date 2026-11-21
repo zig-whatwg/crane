@@ -341,6 +341,12 @@ pub const InputStreamManager = struct {
     /// A script-created stream has an insertion point even between scripts.
     script_nesting_level: ?*const u32 = null,
 
+    /// How many times document.write() inserted characters (`insert`): a
+    /// speculative HTML parser started before an insertion reads a copy of
+    /// the stream without it, and starts again (HTML 13.2.8, "start the
+    /// speculative HTML parser" step 3).
+    insertions: u64 = 0,
+
     /// The parser that processes inserted characters (document write steps
     /// step 11). It runs the tree builder until the tokenizer suspends at
     /// `stop_at`, or the tree construction stage aborts it.
@@ -418,6 +424,7 @@ pub const InputStreamManager = struct {
         const at = self.insertion_point orelse return;
         if (content.len == 0) return;
         try self.buffer.insertSlice(self.allocator, at, content);
+        self.insertions += 1;
 
         // The insertion point stays just before the character after it.
         self.insertion_point = at + content.len;
