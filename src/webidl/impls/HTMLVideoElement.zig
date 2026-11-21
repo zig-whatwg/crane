@@ -31,14 +31,19 @@ pub const InternalState = struct {
 const Registry = runtime.InstanceRegistry(.html_video_element, InternalState);
 
 pub fn installHooks() void {
-    dom.attribute_change_steps.install("video", &attributeChangeSteps);
+    // A namespace-wide poster step: "video"'s own element steps are
+    // HTMLMediaElement's (its src), which one element entry would replace.
+    dom.attribute_change_steps.installForAttribute("http://www.w3.org/1999/xhtml", "poster", .{ .change = &posterChangeSteps });
     dom.orphan_states.installRegistrySweep(Registry);
     dom.document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareAbort, .abort = abortDocument });
 }
 
-/// The video element's attribute change steps: its poster.
-fn attributeChangeSteps(instance: *runtime.Instance, local_name: []const u8, _: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
-    if (namespace != null or !std.mem.eql(u8, local_name, "poster")) return;
+/// The video element's attribute change steps for its poster (any other HTML
+/// element's poster attribute means nothing).
+fn posterChangeSteps(instance: *runtime.Instance, _: []const u8, _: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null) return;
+    const data = dom.element_data.of(instance) orelse return;
+    if (!std.mem.eql(u8, data.localName(), "video")) return;
     determinePosterFrame(instance, value);
 }
 
