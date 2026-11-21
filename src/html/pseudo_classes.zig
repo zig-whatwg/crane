@@ -293,9 +293,10 @@ fn isMedia(element: *Instance) bool {
 /// heading level is one of `levels` (bit n-1 for level n).
 fn heading(element: *Instance, levels: u9) bool {
     if (element.stateAs(interfaces.HTMLHeadingElement.State) == null) return false;
-    var local = interfaces.Element.get_localName(element) catch return false;
-    defer local.deinit(element.ctx.allocator);
-    const name = local.asSlice();
+    // The local name read in place from the element's shared name record
+    // (no localName string made per match).
+    const data = dom.element_data.of(element) orelse return false;
+    const name = data.name.local_name;
     if (name.len != 2 or name[0] != 'h' or name[1] < '1' or name[1] > '6') return false;
     const level = computedHeadingLevel(name[1] - '0', element);
     return levels & (@as(u9, 1) << @as(u4, @intCast(level - 1))) != 0;
@@ -326,9 +327,9 @@ fn computedHeadingOffset(element: *Instance) u64 {
     var inclusive_ancestor: ?*Instance = element;
     // Step 3.
     while (inclusive_ancestor) |node| {
-        const html_element = node.stateAs(interfaces.HTMLElement.State) != null;
-        const data = if (html_element) dom.element_data.of(node) else null;
-        if (data) |attributes| {
+        // "An HTML element": the name record's namespace, one compare.
+        const data = dom.element_data.of(node);
+        if (data) |attributes| if (attributes.name.isHtml()) {
             // Steps 3.1-3.3: an HTML element's headingoffset, by the rules
             // for parsing non-negative integers; an error adds 0.
             if (attributes.indexOfQualifiedName("headingoffset")) |index| {
@@ -338,7 +339,7 @@ fn computedHeadingOffset(element: *Instance) u64 {
             }
             // Step 3.4.
             if (attributes.indexOfQualifiedName("headingreset") != null) return offset;
-        }
+        };
         const parent = forms.parentOf(node) orelse break;
         // Step 3.5: a shadow root's host.
         if (parent.stateAs(interfaces.ShadowRoot.State) != null) {

@@ -720,15 +720,10 @@ fn namesOf(element: *runtime.Instance) ?ElementNames {
     // dom/collections/HTMLCollection-supported-property-names.html; Chrome
     // 157, Firefox 160 and Safari 27.2 pass).
     const name: ?[]const u8 = if (data.indexOfQualifiedName("name")) |index|
-        (if (data.attributeAt(index)) |entry| (if (inHtmlNamespace(element)) entry.value else null) else null)
+        (if (data.attributeAt(index)) |entry| (if (data.name.isHtml()) entry.value else null) else null)
     else
         null;
     return .{ .id = data.idValue(), .name = name };
-}
-
-fn inHtmlNamespace(element: *runtime.Instance) bool {
-    const names = dom.node_creation.elementNames(element) orelse return false;
-    return sameOptional(names.namespace, html_namespace);
 }
 
 /// Whether `name` is one of the collection's supported property names
