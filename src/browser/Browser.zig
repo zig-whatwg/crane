@@ -81,7 +81,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.ensureCanCompileStrings = html.code_generation.hooks.ensureCanCompileStrings;
     hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
     hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
-    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.construct;
+    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.hooks;
     hooks.agentClusterOf = html.agent_clusters.agentClusterOf;
     hooks.crossOriginIsolatedCapability = html.agent_clusters.crossOriginIsolatedCapability;
     if (html.webassembly_streaming.supported) hooks.compilePotentialWebAssemblyResponse = html.webassembly_streaming.compilePotentialWebAssemblyResponse;

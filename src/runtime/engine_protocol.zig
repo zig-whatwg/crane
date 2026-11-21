@@ -690,43 +690,54 @@ pub const HostHooks = struct {
     agentClusterOf: ?*const fn (host: ?*anyopaque, realm: Context) u64 = null,
     /// HTML 3.2.3 "HTML element constructors" [html_constructor]: the
     /// overridden constructor steps of an [HTMLConstructor] interface (its
-    /// generated `Meta.html_constructor`), split across the seam. The engine
-    /// does step 1 - NewTarget equal to the active function object is a
-    /// TypeError - and rejects a call without `new` (which step 5 also
-    /// would), before calling this; and steps 10-11, 14 and 16 after it, as
-    /// `HTMLConstructed` says. The host does steps 2-9, 12, 13 and 15.
+    /// generated `Meta.html_constructor`), split across the seam - two host
+    /// calls, the engine's steps around them:
     ///
-    /// `realm`: the current realm - the active function object's; its
-    /// global's associated Document is step 4's and step 9.2's. `new_target`:
-    /// NewTarget, BORROWED for the call - compared by identity
-    /// (`sameValue`) with the active custom element constructor map's keys
-    /// and the definitions' constructors. `interface`: the active function
-    /// object's interface identifier ("HTMLElement", "HTMLParagraphElement"),
-    /// static. Runs no script and leaves nothing pending.
+    /// - The engine: step 1 (NewTarget equal to the active function object
+    ///   is a TypeError), and a call without `new` is a TypeError (step 5
+    ///   would make it one).
+    /// - `HTMLConstructorHooks.resolve`, the host: steps 2-8 - the registry,
+    ///   the definition whose constructor is NewTarget, the active function
+    ///   object's check, isValue.
+    /// - `HTMLConstructorHooks.finish`, the host: step 9 (a new element,
+    ///   steps 9.1-9.9) or steps 12, 13 and 15 (the construction stack's last
+    ///   entry, replaced by the already constructed marker), as
+    ///   `HTMLConstructed` says.
+    /// - The engine: the element's wrapper gets the prototype (step 9.1's,
+    ///   and step 14's [[SetPrototypeOf]]) and is the construction's result
+    ///   (steps 9.10 and 16).
     ///
-    /// Errors: `error.TypeError` (steps 5, 7.1, 8.2 and 13) - the engine
-    /// throws a TypeError of `realm`; any other error the engine throws as
-    /// the binding throws a member's.
+    /// THE ADAPTER OWNS the construction's receiver and steps 10-11 -
+    /// Get(NewTarget, "prototype") with the GetFunctionRealm fallback, where
+    /// author script may run (a getter, a Proxy's get trap) - and WHEN it
+    /// does them is the adapter's documented choice (the user, 2026-11-21:
+    /// "I want to make this the responsibility of the js engine protocol"):
+    /// in the spec's order, between `resolve` and `finish` (after every
+    /// check of steps 1-8; for a definition whose construction stack is
+    /// empty, step 9.1's "internally create a new object implementing the
+    /// interface" reads the same prototype at the same point), or before
+    /// `resolve`, where the engine makes a receiver with NewTarget's prototype
+    /// before any constructor steps run. Whichever it is, no author script
+    /// runs between `resolve` and `finish` but those steps' own.
+    ///
+    /// - V8 (engines/v8/binding_plumbing.zig constructHTMLElement): before
+    ///   `resolve`, Chrome's order - V8 reads NewTarget.prototype when it
+    ///   makes an API function's receiver (builtins-api.cc
+    ///   HandleApiCallHelper: ApiNatives::InstantiateObject -> JSFunction::
+    ///   GetDerivedMap), and `resolve` and `finish` run back to back after.
+    ///   custom-elements/HTMLElement-constructor-customized-builtins.html is
+    ///   Chrome's 0/2 (Firefox 160, in spec order, 2/2; Safari 27.2 ships no
+    ///   customized built-ins).
+    /// - JavaScriptCore's C API hands a JSObjectCallAsConstructorCallback no
+    ///   new.target (`html_constructor` is unsupported there); a JS shim that
+    ///   passes new.target to the construct steps - a derived class, whose
+    ///   [[Construct]] makes no receiver - would give it the spec's order
+    ///   (lane blk7's handoff: tmp/plans/lane-blk7-handoff.md).
     ///
     /// Not installed: an [HTMLConstructor] interface constructs as its own
-    /// constructor does (HTMLElement makes a plain element).
-    ///
-    /// Order (V8, as Blink's V8HTMLConstructor::HtmlConstructor): V8 performs
-    /// Get(NewTarget, "prototype") when it makes the receiver, before any of
-    /// these steps runs, so a throwing or side-effecting prototype getter is
-    /// observed before the TypeErrors of steps 1-9, 12 and 13, where the spec
-    /// has it after them.
-    ///
-    /// This single call relies on that: the engine does steps 10-11 -
-    /// Get(NewTarget, "prototype") with the GetFunctionRealm fallback - BEFORE
-    /// it calls the hook, so the hook's steps 2-9, 12, 13 and 15 run with no
-    /// author script between them; and step 15 may come before step 14,
-    /// because [[SetPrototypeOf]] on an ordinary wrapper never throws. An
-    /// engine that does steps 10-11 in spec order, between the decision and
-    /// the construction stack's read (a native QuickJS adapter, say), needs a
-    /// phased hook instead: resolve (steps 1-9), initialize (9.2-9.9),
-    /// take_entry (12-13), commit (15).
-    htmlConstructor: ?*const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructed = null,
+    /// constructor does (HTMLElement makes a plain element), with NewTarget's
+    /// prototype.
+    htmlConstructor: ?HTMLConstructorHooks = null,
     /// WebAssembly Web API 2, "compile a potential WebAssembly response"
     /// [webassembly_streaming], split across the seam as browsers split it
     /// (Blink's WasmResponseExtensions, SpiderMonkey's ConsumeStreamCallback,
@@ -762,22 +773,60 @@ pub const HostHooks = struct {
 /// host's finishWebAssemblyResponse or abortWebAssemblyResponse.
 pub const WebAssemblyResponseCompilation = opaque {};
 
-/// What HostHooks.htmlConstructor hands the engine: the element the
+/// HostHooks.htmlConstructor: the host's two parts of HTML 3.2.3 "HTML
+/// element constructors", in the order HostHooks.htmlConstructor gives.
+pub const HTMLConstructorHooks = struct {
+    /// Steps 2-8. `realm`: the current realm - the active function object's;
+    /// its global's associated Document is step 4's and step 9.2's.
+    /// `new_target`: NewTarget, BORROWED for the call - compared by identity
+    /// (`sameValue`) with the active custom element constructor map's keys
+    /// and the definitions' constructors. `interface`: the active function
+    /// object's interface identifier ("HTMLElement", "HTMLParagraphElement"),
+    /// static. Runs no script and leaves nothing pending.
+    ///
+    /// Errors: `error.TypeError` (steps 5, 7.1 and 8.2) - the engine throws a
+    /// TypeError of `realm`; any other error the engine throws as the binding
+    /// throws a member's.
+    resolve: *const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructorResolution,
+    /// Step 9, or steps 12, 13 and 15, for what `resolve` answered in the
+    /// same construction - in the same `realm`, with the same `interface`;
+    /// the engine's steps 10-11 come before it (between the two calls, or
+    /// before `resolve`: HostHooks.htmlConstructor). Runs no script and
+    /// leaves nothing pending. Errors: `error.TypeError` (step 13), and as `resolve`'s.
+    finish: *const fn (host: ?*anyopaque, realm: Context, resolution: HTMLConstructorResolution, interface: []const u8) Error!HTMLConstructed,
+};
+
+/// What HTMLConstructorHooks.resolve decided (steps 2-8), handed back to
+/// `finish` in the same construction: the host's own records, opaque to the
+/// engine - the registry (step 2-4's) and the definition (step 5's). The
+/// engine keeps the resolution only between those two calls; between them
+/// author script may run (steps 10-11, in an adapter that does them there),
+/// but nothing it does frees either
+/// record before the construction ends - a registry lives while its
+/// document or an entry of the active custom element constructor map holds
+/// it, its definitions while it does, and a collected platform object is
+/// freed from the event loop, never inside script.
+pub const HTMLConstructorResolution = struct {
+    registry: *anyopaque,
+    definition: *anyopaque,
+};
+
+/// What HTMLConstructorHooks.finish hands the engine: the element the
 /// [HTMLConstructor] construction results in.
 pub const HTMLConstructed = union(enum) {
     /// Step 9, the definition's construction stack empty: step 9.1's new
-    /// object implementing the hook's `interface`, steps 9.2-9.9 done. OWNED,
-    /// handed to the engine: it wraps it in the object it made for NewTarget
-    /// - so its prototype is NewTarget's (steps 9.1 and 10-11) - and from
-    /// then the wrapper holds it, as any constructor's result; if the
-    /// wrapping fails the engine destroys it.
+    /// object implementing the hooks' `interface`, steps 9.2-9.9 done. OWNED,
+    /// handed to the engine: it wraps it with the prototype of steps 10-11
+    /// (step 9.1's "internally create a new object implementing the
+    /// interface" given NewTarget), and from then the wrapper holds it, as any
+    /// constructor's result; if the wrapping fails the engine destroys it.
     created: *Instance,
     /// Steps 12, 13 and 15: the construction stack's last entry - the
     /// element being upgraded - BORROWED (the stack and its tree hold it),
     /// its entry already replaced by the already-constructed marker. The
-    /// engine does step 14, [[SetPrototypeOf]] to NewTarget's prototype, on
-    /// its wrapper (the one it has, else a new one made for NewTarget), and
-    /// step 16: that wrapper is the construction's result.
+    /// engine does step 14, [[SetPrototypeOf]] to the prototype of steps
+    /// 10-11, on its wrapper (the one it has, else a new one), and step 16:
+    /// that wrapper is the construction's result.
     upgrading: *Instance,
 };
 

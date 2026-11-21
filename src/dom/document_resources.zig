@@ -251,14 +251,26 @@ fn reusable(request: *const InternalRequest) bool {
 ///   load per key (dom.style.font_loading's ResourceCache);
 /// - images: all three - Crane's list of available images
 ///   (dom.style.available_images, the img element's);
-/// - scripts: Chrome and Safari only. Firefox's release fetches a script
-///   again (dom/script/SharedScriptCache.cpp serves a document only behind
+/// - scripts (a classic script's, a module script's single fetch): Chrome
+///   (the same DetermineRevalidationPolicyInternal kUse: a ScriptResource is
+///   not raw) and Safari (CachedResourceLoader::determineRevalidationPolicy
+///   answers Use for a URL of its m_validatedURLs while the document's load
+///   event has not finished) - kept here. Firefox's release fetches a script again (dom/script/
+///   SharedScriptCache.cpp serves a document only behind
 ///   dom.script_loader.experimental.navigation_cache, @IS_NIGHTLY_BUILD@ in
-///   modules/libpref/init/StaticPrefList.yaml), so a script is not kept
-///   unless a preload brought it (`consume` keeps a consumed preload's
-///   response whatever its type).
+///   modules/libpref/init/StaticPrefList.yaml): one browser of three, so
+///   golden rule 2 keeps the majority's. A module script's second fetch is
+///   rare - the module map answers its URL first - but a classic script and
+///   a module script of one URL are two keys (no-cors and cors).
+///
+/// What a kept response may serve is the entry's (`Entry.reusable`: never a
+/// network error or a no-store response) and the key's (`reusable`: never a
+/// fetch(), an XMLHttpRequest or a navigation).
 fn kept(request: *const InternalRequest) bool {
-    return request.destination == .style;
+    return switch (request.destination) {
+        .style, .script => true,
+        else => false,
+    };
 }
 
 /// A key and its entry. The key's strings are OWNED.
@@ -430,6 +442,60 @@ test "a loading document reuses a subresource of the same key; fetch() and a mis
     defer checked.deinit();
     try checked.setIntegrityMetadata("sha256-abc");
     try testing.expect(resources.consume(checked, false) == null);
+}
+
+test "a loading document keeps a script for a later fetch of its key - while it loads, and not a no-store, failed or fetch() one" {
+    var resources = DocumentResources.init(testing.allocator);
+    defer resources.deinit();
+    // A classic script's request: no-cors, credentials "include".
+    const script = try testRequest("https://a.test/app.js", .script);
+    defer script.deinit();
+    const entry = resources.register(script, false).?;
+    defer entry.release();
+    // Still on its way: a second <script src> of the URL joins it.
+    const joined = resources.consume(script, false).?;
+    joined.release();
+    entry.fulfill(try fetch.internal.InternalResponse.init(testing.allocator));
+    const reused = resources.consume(script, false).?;
+    defer reused.release();
+    try testing.expect(reused == entry);
+
+    // A module script's request (cors, credentials "same-origin") is another
+    // key.
+    const module = try testRequest("https://a.test/app.js", .script);
+    defer module.deinit();
+    module.mode = .cors;
+    module.credentials_mode = .same_origin;
+    try testing.expect(resources.consume(module, false) == null);
+
+    // Once the document has loaded, nothing new is kept and a script that is
+    // in is fetched again.
+    const late = try testRequest("https://a.test/late.js", .script);
+    defer late.deinit();
+    try testing.expect(resources.register(late, true) == null);
+    try testing.expect(resources.consume(script, true) == null);
+
+    // A response its server forbade keeping, or a network error, is fetched
+    // again.
+    const no_store_request = try testRequest("https://a.test/no-store.js", .script);
+    defer no_store_request.deinit();
+    const no_store = resources.register(no_store_request, false).?;
+    defer no_store.release();
+    const forbidden = try fetch.internal.InternalResponse.init(testing.allocator);
+    try forbidden.header_list.append("Cache-Control", "no-store");
+    no_store.fulfill(forbidden);
+    try testing.expect(resources.consume(no_store_request, false) == null);
+    const failed_request = try testRequest("https://a.test/failed.js", .script);
+    defer failed_request.deinit();
+    const failed = resources.register(failed_request, false).?;
+    defer failed.release();
+    failed.fulfill(try fetch.internal.networkError(testing.allocator));
+    try testing.expect(resources.consume(failed_request, false) == null);
+
+    // fetch() of the URL is always made.
+    const raw = try testRequest("https://a.test/app.js", .empty);
+    defer raw.deinit();
+    try testing.expect(resources.consume(raw, false) == null);
 }
 
 test "a preload whose integrity metadata differs from the consumer's is not consumed" {

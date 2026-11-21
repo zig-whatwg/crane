@@ -2,13 +2,16 @@
 //! 3.2.3 "HTML element constructors" with a test-installed
 //! HostHooks.htmlConstructor standing in for the custom elements side.
 //!
-//! The engine does step 1 (NewTarget equal to the active function object is
-//! a TypeError) and steps 10-11, 14 and 16; the host does 2-9, 12, 13 and 15
-//! and answers `.created` - a new element the engine wraps in the object it
-//! made for NewTarget - or `.upgrading` - the construction stack's element,
-//! whose wrapper (the one it has, else that object) gets NewTarget's
+//! In the V8 adapter's documented order, Chrome's (the user, 2026-11-21:
+//! the adapter owns the receiver and steps 10-11): V8 reads
+//! Get(NewTarget, "prototype") as it makes the receiver; then the engine does
+//! step 1 (NewTarget equal to the active function object is a TypeError), the
+//! host's `resolve` steps 2-8 and its `finish` step 9 or steps 12, 13 and 15,
+//! back to back, answering `.created` - a new element the engine wraps in the
+//! object it made for NewTarget - or `.upgrading` - the construction stack's
+//! element, whose wrapper (the one it has, else that object) gets NewTarget's
 //! prototype and is the result. No hook: an [HTMLConstructor] interface
-//! constructs as it always has.
+//! constructs as its own constructor does.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
@@ -27,7 +30,9 @@ const Host = struct {
     /// The element to answer `.upgrading` with (BORROWED: the test keeps it
     /// reachable, as a construction stack does).
     upgrading: ?*runtime.Instance = null,
+    /// Constructions resolved (`resolve` calls) and finished (`finish`).
     calls: usize = 0,
+    finished: usize = 0,
     interface_buffer: [64]u8 = undefined,
     interface_len: usize = 0,
     /// NewTarget as the hook saw it, retained to compare.
@@ -41,15 +46,27 @@ const Host = struct {
     const Answer = enum { created, upgrading, type_error, stack };
     const Entry = union(enum) { element: *runtime.Instance, already_constructed };
 
-    const hooks: protocol.HostHooks = .{ .htmlConstructor = construct };
+    const hooks: protocol.HostHooks = .{ .htmlConstructor = .{ .resolve = resolve, .finish = finish } };
 
-    fn construct(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+    /// Steps 2-8: a TypeError (`answer = .type_error`), else the resolution
+    /// - this host, standing in for the registry and the definition.
+    fn resolve(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructorResolution {
         const self: *Host = @ptrCast(@alignCast(host.?));
         self.calls += 1;
         self.interface_len = @min(interface.len, self.interface_buffer.len);
         @memcpy(self.interface_buffer[0..self.interface_len], interface[0..self.interface_len]);
         if (self.new_target) |held| held.release();
         self.new_target = try protocol.retainValue(realm, new_target);
+        if (self.answer == .type_error) return error.TypeError;
+        return .{ .registry = self, .definition = self };
+    }
+
+    /// Step 9, or steps 12, 13 and 15.
+    fn finish(host: ?*anyopaque, realm: runtime.Context, resolution: protocol.HTMLConstructorResolution, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+        const self: *Host = @ptrCast(@alignCast(host.?));
+        // The resolution is what `resolve` answered.
+        if (resolution.registry != @as(*anyopaque, self) or resolution.definition != @as(*anyopaque, self)) return error.OperationFailed;
+        self.finished += 1;
         return switch (self.answer) {
             // 9.1: a new object implementing the interface - here the plain
             // element the interface's own constructor makes.
@@ -58,7 +75,7 @@ const Host = struct {
             else
                 interfaces.HTMLElement.call_constructor(realm)) catch return error.OperationFailed },
             .upgrading => .{ .upgrading = self.upgrading.? },
-            .type_error => error.TypeError,
+            .type_error => unreachable,
             .stack => blk: {
                 // 9. The stack is empty: a new element.
                 if (self.stack_len == 0) break :blk .{ .created = interfaces.HTMLElement.call_constructor(realm) catch return error.OperationFailed };
@@ -406,4 +423,127 @@ test "a NewTarget whose prototype getter constructs another element, with nothin
     , "true");
     try std.testing.expectEqual(@as(usize, 2), host.calls);
     try std.testing.expectEqual(@as(usize, 0), host.stack_len);
+}
+
+// The V8 adapter's order is Chrome's (the user, 2026-11-21; the protocol
+// leaves it to the adapter): V8 reads NewTarget.prototype as it makes the
+// receiver, before the checks of steps 1-8 - so a Proxy NewTarget's get trap
+// runs once even for a construction the host then refuses (custom-elements/
+// HTMLElement-constructor-customized-builtins.html: Chrome 157 0/2, the same
+// count; Firefox 160, in spec order, 2/2; Safari 27.2 ships no customized
+// built-ins).
+test "V8 adapter, Chrome's order: NewTarget's prototype is read once before the host's steps 2-8, also when they throw" {
+    var host: Host = .{ .answer = .type_error };
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    try page.expect(
+        \\class SomeCustomElement extends HTMLElement {};
+        \\let getCount = 0;
+        \\const countingProxy = new Proxy(SomeCustomElement, { get(target, prop, receiver) {
+        \\  if (prop === "prototype") ++getCount;
+        \\  return Reflect.get(target, prop, receiver);
+        \\} });
+        \\const outcomes = [];
+        \\try { new countingProxy(); outcomes.push('constructed'); } catch (e) { outcomes.push(e.constructor.name); }
+        \\try { Reflect.construct(HTMLElement, [], countingProxy); outcomes.push('constructed'); } catch (e) { outcomes.push(e.constructor.name); }
+        \\outcomes.join() + ' ' + getCount
+    , "TypeError,TypeError 2");
+    try std.testing.expectEqual(@as(usize, 2), host.calls);
+    try std.testing.expectEqual(@as(usize, 0), host.finished);
+}
+
+test "V8 adapter, Chrome's order: a construction reads NewTarget's prototype once, and a throwing read ends it before the host is asked" {
+    var host: Host = .{};
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    // Read once, its value the element's prototype; resolve and finish run
+    // back to back after it.
+    try page.expect(
+        \\globalThis.X = class X extends HTMLElement {};
+        \\let getCount = 0;
+        \\const countingProxy = new Proxy(X, { get(target, prop, receiver) {
+        \\  if (prop === "prototype") ++getCount;
+        \\  return Reflect.get(target, prop, receiver);
+        \\} });
+        \\const made = Reflect.construct(HTMLElement, [], countingProxy);
+        \\[getCount, Object.getPrototypeOf(made) === X.prototype, made instanceof HTMLElement].join()
+    , "1,true,true");
+    try std.testing.expectEqual(@as(usize, 1), host.calls);
+    try std.testing.expectEqual(@as(usize, 1), host.finished);
+    // A read that throws: the construction throws that, before steps 2-8 -
+    // the host was not asked at all.
+    try page.expect(
+        \\const boom = new Proxy(X, { get(target, prop, receiver) {
+        \\  if (prop === "prototype") throw new RangeError("boom");
+        \\  return Reflect.get(target, prop, receiver);
+        \\} });
+        \\try { Reflect.construct(HTMLElement, [], boom); 'constructed' } catch (e) { e.constructor.name + ' ' + e.message }
+    , "RangeError boom");
+    try std.testing.expectEqual(@as(usize, 1), host.calls);
+    try std.testing.expectEqual(@as(usize, 1), host.finished);
+}
+
+test "step 11: a NewTarget whose prototype is no object gives the element its realm's interface prototype object of the active function's interface" {
+    var host: Host = .{};
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    try page.expect(
+        \\function F() {}
+        \\F.prototype = 7;
+        \\const made = Reflect.construct(HTMLParagraphElement, [], F);
+        \\String(Object.getPrototypeOf(made) === HTMLParagraphElement.prototype)
+    , "true");
+    try std.testing.expectEqualStrings("HTMLParagraphElement", host.seenInterface());
+}
+
+test "an [HTMLConstructor] interface object keeps its shape: toString, name, length, prototype and its constructor" {
+    var host: Host = .{};
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    try page.expect(
+        \\[Function.prototype.toString.call(HTMLElement), HTMLElement.name, HTMLElement.length,
+        \\ HTMLElement.prototype.constructor === HTMLElement, Object.getPrototypeOf(HTMLElement) === Element,
+        \\ Object.getPrototypeOf(HTMLButtonElement) === HTMLElement,
+        \\ Object.getOwnPropertyNames(HTMLElement).join(' ')].join('|')
+    , "function HTMLElement() { [native code] }|HTMLElement|0|true|true|true|length name prototype");
+    // Its frames are a built-in's: an error thrown by the construction names
+    // no frame of it (V8 hides an API function's).
+    try page.expect("try { new HTMLElement(); 'constructed' } catch (e) { String(/HTMLElement \\(/.test(e.stack)) }", "false");
+}
+
+// Building an [HTMLConstructor] interface object runs no microtask: a wrap from
+// native code with no script on the stack - the parser's tree construction
+// handing an element to a MutationObserver's records - builds it, and any
+// script call or API definition it made at call depth 0 would be V8's kAuto
+// checkpoint (lane blk7's class form did: shadow-dom/declarative/innerhtml-
+// before-closing-tag.html ran its observer before the shadow root's content
+// was parsed). HTML performs a checkpoint only at its own points.
+test "building an [HTMLConstructor] interface object from native code runs no queued microtask" {
+    var host: Host = .{};
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    const Ran = struct {
+        count: usize = 0,
+        fn steps(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.count += 1;
+        }
+    };
+    var ran: Ran = .{};
+    try protocol.queueMicrotask(page.agent, Ran.steps, &ran);
+    // An element of an interface this realm has not built yet, wrapped from
+    // here: its interface object is built now.
+    const element = try interfaces.HTMLParagraphElement.call_constructor(page.realm);
+    const wrapped = try protocol.createSequenceOfPlatformObjects(page.realm, &.{element});
+    wrapped.release();
+    try std.testing.expectEqual(@as(usize, 0), ran.count);
+    try protocol.performMicrotaskCheckpoint(page.agent);
+    try std.testing.expectEqual(@as(usize, 1), ran.count);
+    // The interface object it built.
+    try page.expect("String(Function.prototype.toString.call(HTMLParagraphElement) === 'function HTMLParagraphElement() { [native code] }')", "true");
 }

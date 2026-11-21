@@ -309,18 +309,27 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
 
 /// HTML 3.2.3 "HTML element constructors", the overridden constructor
 /// steps of an [HTMLConstructor] interface, across the seam
-/// (engine.HostHooks.htmlConstructor): step 1 here, then steps 10-11
-/// (the receiver's prototype), the host's 2-9, 12, 13 and 15, and 14
-/// and 16 here. Takes `this_obj`, V8's receiver for NewTarget: it is
-/// bound to the element, or released - never left registered for an
-/// element whose existing wrapper is the result.
+/// (engine.HostHooks.htmlConstructor): steps 10-11 (the receiver's
+/// prototype), step 1 here, the host's 2-8 (`resolve`) and 9, 12, 13 and
+/// 15 (`finish`), back to back, and 14 and 16 here. Takes `this_obj`, V8's
+/// receiver for NewTarget: it is bound to the element, or released - never
+/// left registered for an element whose existing wrapper is the result.
 ///
-/// Order: V8 performed Get(NewTarget, "prototype") when it made the
-/// receiver, before step 1, so a throwing or side-effecting getter is
-/// seen before the TypeErrors of steps 1-9, 12 and 13 (the spec has it
-/// after them). Blink's V8HTMLConstructor::HtmlConstructor
+/// Order - the adapter's, as the protocol leaves it: V8 adapter follows
+/// Chrome's order (prototype read before the definition checks); the user,
+/// 2026-11-21; Firefox = spec, Safari ships no customized built-ins. V8
+/// performs Get(NewTarget, "prototype") when it makes an API function's
+/// receiver (builtins-api.cc HandleApiCallHelper: ApiNatives::
+/// InstantiateObject -> JSFunction::GetDerivedMap), before step 1, so a
+/// throwing or side-effecting getter is seen before the TypeErrors of
+/// steps 1-8, 12 and 13 (the spec has it after them: custom-elements/
+/// HTMLElement-constructor-customized-builtins.html, Chrome 157 0/2,
+/// Firefox 160 2/2). Blink's V8HTMLConstructor::HtmlConstructor
 /// (third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc)
-/// runs under the same V8 construct path and has the same order.
+/// runs under the same V8 construct path and has the same order. The
+/// class form that reads it in spec order - a derived class whose
+/// [[Construct]] makes no receiver - is lane blk7's handoff
+/// (tmp/plans/lane-blk7-handoff.md, "for the JSC/other adapters").
 fn constructHTMLElement(
     self: *const Constructor,
     info: *const v8.FunctionCallbackInfo,
@@ -384,11 +393,19 @@ fn constructHTMLElement(
         interface.handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, self.interface_name);
     }
 
-    // 2-9, 12, 13 and 15: the host's. NewTarget BORROWED for the call.
-    const constructed = hook.call(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
+    // 2-8: the host's `resolve`, then - with NewTarget's prototype read
+    // already (steps 10-11 above) and no author script between them - 9,
+    // or 12, 13 and 15: its `finish`. NewTarget BORROWED for the call.
+    const resolution = hook.hooks.resolve(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
         if (err == error.ExceptionPending) return;
-        // TypeError (steps 5, 7.1, 8.2 and 13): of the active
-        // function's realm.
+        // TypeError (steps 5, 7.1 and 8.2): of the active function's
+        // realm.
+        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+        return;
+    };
+    const constructed = hook.hooks.finish(hook.host, realm, resolution, self.interface_name) catch |err| {
+        if (err == error.ExceptionPending) return;
+        // TypeError (step 13): of the active function's realm.
         conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
         return;
     };

@@ -484,14 +484,14 @@ pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool
 /// interface's construction runs (interface.zig). Null for an agent without
 /// the hook, or an isolate createAgent did not make.
 pub const HTMLConstructorHook = struct {
-    call: *const fn (host: ?*anyopaque, realm: Context, new_target: engine.JSValue, interface: []const u8) Error!engine.HTMLConstructed,
+    hooks: engine.HTMLConstructorHooks,
     host: ?*anyopaque,
 };
 
 pub fn htmlConstructorHookOf(isolate: *ffi.Isolate) ?HTMLConstructorHook {
     const record = recordOf(isolate) orelse return null;
-    const call = record.hooks.htmlConstructor orelse return null;
-    return .{ .call = call, .host = record.host };
+    const hooks = record.hooks.htmlConstructor orelse return null;
+    return .{ .hooks = hooks, .host = record.host };
 }
 
 /// engine.agentHost: the host pointer `agent` was made with; null once
