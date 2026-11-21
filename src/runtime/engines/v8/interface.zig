@@ -3775,10 +3775,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (members_key) |key| {
                         if (proto_name_str) |unused| v8.v8_String_Dispose(unused);
                         v8.v8_PrototypeMembers_AddConstant(isolate, key, proto_const_name.ptr, proto_const_name.len, @floatFromInt(proto_const_value), 5);
-                        continue;
-                    }
-
-                    if (proto_name_str) |proto_const_name_v8| {
+                    } else if (proto_name_str) |proto_const_name_v8| {
                         // ObjectTemplate::Set keeps the key and value itself.
                         defer v8.v8_String_Dispose(proto_const_name_v8);
                         // Set constant on prototype template with correct attributes
@@ -3945,13 +3942,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime unforgeable and hasExposureOverride(Interface, method_name, false)) continue;
                     // An [HTMLConstructor] interface's prototype operation:
                     // the same template, kept for its class's prototype object.
-                    if (!unforgeable) {
-                        if (members_key) |key| {
-                            v8.v8_PrototypeMembers_AddMethod(isolate, key, method_name.ptr, method_name.len, MethodCallback(zig_name).callback, arity, !(comptime engineChecksReceiver(method_name, zig_name)), v8.PropertyAttribute.None);
-                            continue;
-                        }
+                    if (!unforgeable and members_key != null) {
+                        v8.v8_PrototypeMembers_AddMethod(isolate, members_key.?, method_name.ptr, method_name.len, MethodCallback(zig_name).callback, arity, !(comptime engineChecksReceiver(method_name, zig_name)), v8.PropertyAttribute.None);
+                    } else {
+                        registerMethod(zig_name, method_name, isolate, template, if (unforgeable) instance_tmpl else proto_tmpl, arity, if (unforgeable) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                     }
-                    registerMethod(zig_name, method_name, isolate, template, if (unforgeable) instance_tmpl else proto_tmpl, arity, if (unforgeable) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                 }
             }
 
@@ -4049,37 +4044,34 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // An [HTMLConstructor] interface's prototype attribute: the
                 // same templates, kept for its class's prototype object.
-                if (!unforgeable) {
-                    if (members_key) |key| {
-                        v8.v8_PrototypeMembers_AddAccessor(
-                            isolate,
-                            key,
-                            prop_name.ptr,
-                            prop_name.len,
-                            getter_cb,
-                            setter_cb,
-                            comptime acceptsAnyReceiver(prop_name, .getter),
-                            comptime acceptsAnyReceiver(prop_name, .setter),
-                            v8.PropertyAttribute.None,
-                        );
-                        continue;
-                    }
+                if (!unforgeable and members_key != null) {
+                    v8.v8_PrototypeMembers_AddAccessor(
+                        isolate,
+                        members_key.?,
+                        prop_name.ptr,
+                        prop_name.len,
+                        getter_cb,
+                        setter_cb,
+                        comptime acceptsAnyReceiver(prop_name, .getter),
+                        comptime acceptsAnyReceiver(prop_name, .setter),
+                        v8.PropertyAttribute.None,
+                    );
+                } else {
+                    // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
+                    // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.
+                    // Each function runs WebIDL's security check for a
+                    // cross-origin `this` unless HTML lists it (cross_origin.zig).
+                    v8.v8_ObjectTemplate_SetAccessorPropertyChecked(
+                        if (unforgeable) instance_tmpl else proto_tmpl,
+                        prop_name_str,
+                        getter_cb,
+                        setter_cb,
+                        comptime acceptsAnyReceiver(prop_name, .getter),
+                        comptime acceptsAnyReceiver(prop_name, .setter),
+                        // [LegacyUnforgeable]: { [[Configurable]]: false }.
+                        if (unforgeable) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
+                    );
                 }
-
-                // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
-                // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.
-                // Each function runs WebIDL's security check for a
-                // cross-origin `this` unless HTML lists it (cross_origin.zig).
-                v8.v8_ObjectTemplate_SetAccessorPropertyChecked(
-                    if (unforgeable) instance_tmpl else proto_tmpl,
-                    prop_name_str,
-                    getter_cb,
-                    setter_cb,
-                    comptime acceptsAnyReceiver(prop_name, .getter),
-                    comptime acceptsAnyReceiver(prop_name, .setter),
-                    // [LegacyUnforgeable]: { [[Configurable]]: false }.
-                    if (unforgeable) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
-                );
             }
         }
 
