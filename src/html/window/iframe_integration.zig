@@ -82,6 +82,10 @@ pub const NavigateRequest = struct {
     /// navigation - an address bar, the embedder's - with no sourceDocument
     /// (navigate step 5 asserts one implies the other).
     browser_ui: bool = false,
+    /// The source document's transient activation as the caller saw it
+    /// before a step of its own consumed it (window.open()'s choosing a
+    /// navigable); null takes navigate step 4's snapshot.
+    has_transient_activation: ?bool = null,
 };
 
 /// An engine context this integration made for a content navigable it no

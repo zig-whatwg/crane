@@ -1,9 +1,8 @@
 //! Implementation for CanvasPathDrawingStyles interface
 //!
-//! HTML 4.12.5.1.5: the line styles of whichever 2D context includes this
-//! mixin (dom.canvas_2d). The dash list and its offset are kept; lineWidth,
-//! lineCap, lineJoin and miterLimit are not implemented yet, so a stroke
-//! uses their initial values (1, butt, miter, 10).
+//! HTML 4.12.5.1.4: the line styles of whichever 2D context includes this
+//! mixin, kept in its drawing state (dom.canvas_2d.DrawingState): the line
+//! width, cap, join and miter limit, the dash list and its offset.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -46,28 +45,28 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for lineWidth
+/// Getter for lineWidth: "On getting, it must return the current value"
+/// (initially 1.0).
 pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.line_width;
 }
 
-/// Getter for lineCap
+/// Getter for lineCap: "On getting, it must return the current value"
+/// (initially "butt").
 pub fn get_lineCap(instance: *runtime.Instance) anyerror!enums.CanvasLineCap {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.line_cap;
 }
 
-/// Getter for lineJoin
+/// Getter for lineJoin: "On getting, it must return the current value"
+/// (initially "miter").
 pub fn get_lineJoin(instance: *runtime.Instance) anyerror!enums.CanvasLineJoin {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.line_join;
 }
 
-/// Getter for miterLimit
+/// Getter for miterLimit: "On getting, it must return the current value"
+/// (initially 10.0).
 pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.miter_limit;
 }
 
 /// The 2D context's state; an InvalidStateError for one whose state is gone
@@ -81,35 +80,38 @@ fn stateOf(instance: *runtime.Instance) !*dom.canvas_2d.Context2D {
 /// value" (initially 0).
 pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
     const state = try stateOf(instance);
-    return state.line_dash_offset;
+    return state.drawing.line_dash_offset;
 }
 
-/// Setter for lineWidth
+/// Setter for lineWidth: "On setting, zero, negative, infinite, and NaN
+/// values must be ignored, leaving the value unchanged; other values must
+/// change the current value to the new value."
 pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const state = try stateOf(instance);
+    if (!std.math.isFinite(value) or value <= 0) return;
+    state.drawing.line_width = value;
 }
 
-/// Setter for lineCap
+/// Setter for lineCap: "On setting, the current value must be changed to
+/// the new value" (WebIDL already dropped a string no CanvasLineCap value
+/// matches).
 pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try stateOf(instance)).drawing.line_cap = value;
 }
 
-/// Setter for lineJoin
+/// Setter for lineJoin: "On setting, the current value must be changed to
+/// the new value."
 pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try stateOf(instance)).drawing.line_join = value;
 }
 
-/// Setter for miterLimit
+/// Setter for miterLimit: "On setting, zero, negative, infinite, and NaN
+/// values must be ignored, leaving the value unchanged; other values must
+/// change the current value to the new value."
 pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const state = try stateOf(instance);
+    if (!std.math.isFinite(value) or value <= 0) return;
+    state.drawing.miter_limit = value;
 }
 
 /// Setter for lineDashOffset: "On setting, infinite and NaN values must be
@@ -118,7 +120,7 @@ pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
 pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
     const state = try stateOf(instance);
     if (!std.math.isFinite(value)) return;
-    state.line_dash_offset = value;
+    state.drawing.line_dash_offset = value;
 }
 
 /// Operation: getLineDash
@@ -129,7 +131,7 @@ pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void
 /// (CreateDataProperty), so an accessor on Array.prototype is never reached.
 pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = try stateOf(instance);
-    const dash = state.line_dash;
+    const dash = state.drawing.line_dash;
     const allocator = instance.ctx.allocator;
     const values = try allocator.alloc(runtime.JSValue, dash.len);
     defer allocator.free(values);
@@ -186,6 +188,6 @@ pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) 
     if (count != values.len) @memcpy(dash[values.len..], values);
 
     // 3. Set this's dash list to segments.
-    if (state.line_dash.len > 0) allocator.free(state.line_dash);
-    state.line_dash = dash;
+    if (state.drawing.line_dash.len > 0) allocator.free(state.drawing.line_dash);
+    state.drawing.line_dash = dash;
 }
