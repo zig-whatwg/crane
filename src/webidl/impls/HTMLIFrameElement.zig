@@ -311,8 +311,9 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
     }
 }
 
-/// Document creation callback for iframe navigation
-/// Called when navigateToSrcDoc or navigateToSrc needs to create a Document instance.
+/// Document creation callback for iframe navigation: the document a commit
+/// makes with no parse (IFrameIntegration's commitHtmlDocument and
+/// commitXmlDocument with no realm to parse in).
 /// Parameters: (runtime_context, browsing_context) -> document_instance
 fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext) ?*anyopaque {
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
@@ -688,20 +689,6 @@ fn wrapInOwnRealm(document: *runtime.Instance) void {
         return;
     };
     held.release();
-}
-
-/// Script execution callback for iframes
-/// Called by IFrameIntegration.executeScriptsInTree to run a script in the
-/// iframe's realm (engine.runClassicScript: prepared to run, then cleaned up
-/// - a microtask checkpoint when nothing else is running). What it throws is
-/// reported for the frame's window.
-/// Parameters: (the realm, script_source) -> void
-fn executeIframeScript(realm_ptr: ?*anyopaque, source: []const u8) void {
-    const realm: runtime.Context = @ptrCast(@alignCast(realm_ptr orelse return));
-    if (source.len == 0) return;
-    engine.runClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = reportException, .host = realm }) catch |err| {
-        log.debug("a frame's script did not run: {}", .{err});
-    };
 }
 
 /// HTML "report an exception" for the global of the realm the engine names,
@@ -2128,18 +2115,25 @@ fn aboutBlankReferrer(record: *Navigation) ?[]u8 {
 }
 
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
-/// global task on the navigation and traversal task source. With no loop (a
-/// context built for tests) it runs now.
-/// Queue `callback` as a task for navigation `id` of `integration`'s
-/// navigable: its context a `Ticket`, which the callback redeems
-/// (`Ticket.redeem`) and the loop frees if it drops the task.
+/// global task on the navigation and traversal task source - its context a
+/// `Ticket`, which the callback redeems (`Ticket.redeem`) and the loop frees
+/// if it drops the task. Never run in the caller: a navigable no event loop
+/// runs (no realm, or a realm no Browser drives) cannot go on, and its
+/// navigation ends here, as a planned form navigation with no loop does
+/// (lane life1: it used to run inline for a context built for tests, a path
+/// no browser has - every navigable's active window has an event loop).
 fn queueNavigationTask(integration: *IFrameIntegration, id: u64, callback: *const fn (?*anyopaque) void) void {
     const list = integration.navigables orelse return;
+    const loop = loop: {
+        const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse break :loop null));
+        break :loop runtime_ctx.getOptionalEventLoop();
+    } orelse {
+        if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
+        endNavigation(list, id);
+        return endLoadDelay(integration);
+    };
     const ticket = Ticket.create(list, id) orelse return;
-    const context: ?*anyopaque = ticket;
-    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse return callback(context)));
-    const loop = runtime_ctx.getOptionalEventLoop() orelse return callback(context);
-    loop.queueTask(.{ .callback = callback, .context = context, .drop = &Ticket.dropTask });
+    loop.queueTask(.{ .callback = callback, .context = ticket, .drop = &Ticket.dropTask });
 }
 
 /// Whether navigation `id` is still `integration`'s ongoing navigation.
@@ -5724,7 +5718,9 @@ fn queueHashChange(integration: *IFrameIntegration, old_url: []const u8, new_url
         },
         .allocator = allocator,
     };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    // A task, never run in the caller: a window no event loop runs gets no
+    // hashchange (lane life1; it ran inline for test-built contexts).
+    const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
     loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
 }
 
@@ -7570,8 +7566,6 @@ fn attachRealm(
     );
     integration.parse_xml_callback = &parseXmlForIframe;
 
-    // Set script execution callbacks (for script execution in iframe documents)
-    integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
     // Navigation: this engine's "navigate", the hook that ends a navigation
     // in flight when the navigable goes, and how a retired realm ends.
@@ -8737,7 +8731,6 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     const realm = window.ctx;
     integration.setRealmContext(realm.engine_ctx, @ptrCast(realm), @ptrCast(realm), @ptrCast(realm), createDocumentForIframe, hostRealmCleanup, parseHtmlForIframe);
     integration.parse_xml_callback = &parseXmlForIframe;
-    integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;

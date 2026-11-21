@@ -969,7 +969,9 @@ fn queueHashChange(window: *runtime.Instance, old_url: []const u8, new_url: []co
         .new_url = new_copy,
         .allocator = allocator,
     };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    // A task, never run in the caller: a window no event loop runs gets no
+    // hashchange (lane life1; it ran inline for test-built contexts).
+    const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
     loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
 }
 

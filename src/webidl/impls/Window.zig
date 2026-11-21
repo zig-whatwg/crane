@@ -1139,7 +1139,7 @@ pub fn getBoundV8Global(instance: *runtime.Instance) ?*anyopaque {
 /// This is used when creating a Window for an iframe that already has a browsing context.
 ///
 /// The iframe's browsing context was created when the iframe was inserted into the DOM
-/// (via IFrameIntegration.onInsertedIntoDocument). When contentWindow is accessed,
+/// (IFrameIntegration.ensureBrowsingContext). When contentWindow is accessed,
 /// a Window is created but it needs to use the iframe's EXISTING browsing context,
 /// not create a new one.
 ///
