@@ -774,8 +774,8 @@ pub const Console = struct {
         \\.url             the tab's URL
         \\.tabs            the Browser's tabs: its own and every popup a page opened
         \\.tab <n>         evaluate in tab <n> from now on
-        \\.newtab [<url>]  open a new tab (not supported yet)
-        \\.close [<n>]     close tab <n> (a popup), or the selected one
+        \\.newtab [<url>]  open a new tab (about:blank by default), select it and wait for its load
+        \\.close [<n>]     close tab <n>, or the selected one (not the Browser's first)
         \\.help            this list
         \\.exit            end the console (Ctrl+D, or Ctrl+C twice at an empty prompt)
         \\
@@ -831,7 +831,7 @@ pub const Console = struct {
         } else if (std.mem.eql(u8, name, ".tab")) {
             self.selectTab(argument);
         } else if (std.mem.eql(u8, name, ".newtab")) {
-            self.emit("(.newtab is not supported yet: a tab the host opens needs a Window realm that is not entered for its life - its own batch, HOST-OPENED TABS; window.open() from a page opens a popup, which .tabs lists)\n");
+            return self.newTab(argument);
         } else if (std.mem.eql(u8, name, ".close")) {
             self.closeTab(argument);
         } else {
@@ -882,6 +882,23 @@ pub const Console = struct {
         self.print("(the console evaluates in tab {s}: {s})\n", .{ argument, url });
     }
 
+    /// `.newtab [<url>]`: the browser's new-tab button - a tab of the host's
+    /// own in a new browsing context group (Browser.createTab) - selected,
+    /// then its first navigation waited for as `.open` waits.
+    fn newTab(self: *Console, argument: []const u8) void {
+        const url = if (argument.len == 0) "about:blank" else argument;
+        const id = self.browser.createTab(.{}) catch |err| {
+            self.print("(could not open a tab: {s})\n", .{describe(err)});
+            return self.becomeReady(.ready);
+        };
+        self.selected = id;
+        if (std.mem.eql(u8, url, "about:blank")) {
+            self.print("(the console evaluates in the new tab: about:blank)\n", .{});
+            return self.becomeReady(.ready);
+        }
+        self.open(url);
+    }
+
     fn closeTab(self: *Console, argument: []const u8) void {
         const chosen: ?u64 = if (argument.len == 0) self.selected else self.tabNumbered(argument);
         const id = chosen orelse return self.print("(no tab {s}: .tabs lists them)\n", .{argument});
@@ -889,6 +906,8 @@ pub const Console = struct {
             error.HostTraversable => return self.emit("(the Browser's own tab closes with the console: .exit)\n"),
             else => return self.print("(could not close the tab: {s})\n", .{describe(err)}),
         };
+        // The selected tab closed: the console evaluates in the active one.
+        if (self.selected != null and self.selected.? == id) self.selected = self.browser.activeTab();
         self.noteDocuments(true);
     }
 
