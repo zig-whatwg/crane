@@ -322,11 +322,36 @@ fn throwTypeError(isolate: *ffi.Isolate, message: []const u8) void {
 }
 
 fn setTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    if (!receiverIsAWindow(info)) return;
     timerInitializationFromCall(info, false);
 }
 
 fn setIntervalCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    if (!receiverIsAWindow(info)) return;
     timerInitializationFromCall(info, true);
+}
+
+/// WebIDL 3.7.6 "create an operation function" step 2.1, for these Window
+/// operations: "If esValue is null or undefined, set esValue to realm's
+/// global object" - V8 hands a FunctionTemplate function the global proxy
+/// for those - and step 2.1.3: "If esValue does not implement the interface
+/// target, throw a TypeError." So `Object.create(globalThis).setInterval(f)`
+/// and `clearTimeout.call({}, 0)` throw, as in Chrome 157, Firefox 160 and
+/// Safari 27.2 (webidl/ecmascript-binding/global-object-implicit-this-value
+/// {.any,-cross-realm}.html; a worker's global scope already did). The
+/// function's own Window - its realm's global - is the answer without a
+/// handle; any other receiver goes by THE Window-receiver rule
+/// (binding_plumbing.windowOf), which every generated Window member uses.
+/// The operation still acts on the function's realm's Window, as before. True
+/// when the receiver is a Window; false with the TypeError thrown.
+fn receiverIsAWindow(info: *const ffi.FunctionCallbackInfo) bool {
+    if (ffi.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisIsCurrentGlobal(info)) return true;
+    const isolate = info.getIsolate();
+    const this_obj = info.getThis();
+    defer ffi.v8_Object_Dispose(this_obj);
+    if (@import("binding_plumbing.zig").windowOf(isolate, this_obj) != null) return true;
+    throwTypeError(isolate, "Illegal invocation");
+    return false;
 }
 
 /// The binding of `long setTimeout(TimerHandler handler, optional long
@@ -415,6 +440,7 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
 /// either kind.
 fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    if (!receiverIsAWindow(info)) return;
     if (info.length() < 1) return;
 
     const id_value = info.get(0);
@@ -436,6 +462,7 @@ fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
 /// requestAnimationFrame(callback).
 fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    if (!receiverIsAWindow(info)) return;
 
     // A missing or non-callable argument is a TypeError per WebIDL, but these
     // natives report argument problems by returning the 0 sentinel rather than
@@ -465,6 +492,7 @@ fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv
 /// cancelAnimationFrame(handle). An unknown handle must do nothing.
 fn cancelAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    if (!receiverIsAWindow(info)) return;
     if (info.length() < 1) return;
 
     const handle_value = info.get(0);

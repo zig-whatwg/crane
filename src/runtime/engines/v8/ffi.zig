@@ -159,6 +159,10 @@ pub const FunctionCallbackInfo = opaque {
     /// handle: Locals in the callback's own HandleScope.
     pub extern fn v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(self: *const FunctionCallbackInfo) usize;
 
+    /// Whether `this` is the current context's global. No handle: Locals in
+    /// the callback's own HandleScope.
+    pub extern fn v8_FunctionCallbackInfo_ThisIsCurrentGlobal(self: *const FunctionCallbackInfo) bool;
+
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;

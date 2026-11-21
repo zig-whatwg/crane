@@ -540,16 +540,17 @@ fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     template_registry.register("Window", template, isolate);
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
     defer ffi.v8_ObjectTemplate_Dispose(instance_template);
-    // The deleter is WindowProxy [[Delete]]'s step for an index
-    // (context_manager.windowIndexedPropertyDeleter).
+    // The deleter, setter and definer are WindowProxy [[Delete]]'s, [[Set]]'s
+    // and [[DefineOwnProperty]]'s steps for an index
+    // (context_manager.windowIndexedPropertyDeleter, -Setter, -Definer).
     ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
         instance_template,
         context_manager.windowIndexedPropertyGetter,
-        null,
+        context_manager.windowIndexedPropertySetter,
         context_manager.windowIndexedPropertyQuery,
         context_manager.windowIndexedPropertyDeleter,
         context_manager.windowIndexedPropertyEnumerator,
-        null,
+        context_manager.windowIndexedPropertyDefiner,
         null,
     );
     // Every Window realm's exposed constructs, once per isolate, as the

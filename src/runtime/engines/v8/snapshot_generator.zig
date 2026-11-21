@@ -171,12 +171,12 @@ pub fn main(init: std.process.Init) !void {
     v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
         global_template,
         context_manager.windowIndexedPropertyGetter,
-        null, // setter - not needed for read-only frames access
+        context_manager.windowIndexedPropertySetter, // WindowProxy [[Set]] for an index
         context_manager.windowIndexedPropertyQuery,
         context_manager.windowIndexedPropertyDeleter, // WindowProxy [[Delete]] for an index
         context_manager.windowIndexedPropertyEnumerator,
-        null, // definer - not needed
-        null, // descriptor - not needed
+        context_manager.windowIndexedPropertyDefiner, // WindowProxy [[DefineOwnProperty]] for an index
+        null, // descriptor - the query's attributes and the getter's value
     );
     log(allocator, io, "  Global template configured with indexed handlers for frames[index]\\n", .{});
 

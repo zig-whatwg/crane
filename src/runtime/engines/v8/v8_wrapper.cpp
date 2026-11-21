@@ -10923,6 +10923,19 @@ uintptr_t v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(const FunctionCallba
     return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
 }
 
+// FunctionCallbackInfo - whether This() is the current context's global: a
+// natively bound Window operation's commonest receiver (page_realm's timers,
+// called contextually or as `frame.setTimeout`: V8 enters the function's
+// creation context, whose global that frame's WindowProxy is). Locals only,
+// in the callback's own HandleScope, as the getter fast path above: no
+// Global to make or free.
+bool v8_FunctionCallbackInfo_ThisIsCurrentGlobal(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return false;
+    return info->This()->StrictEquals(context->Global());
+}
+
 // FunctionCallbackInfo - set a primitive return value straight into the
 // return slot (a Smi where it fits, else a heap number made in the callback's
 // HandleScope): no Global for a number or boolean result.
