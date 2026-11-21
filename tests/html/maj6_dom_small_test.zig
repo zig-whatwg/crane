@@ -185,3 +185,22 @@ fn svgImportMap() !void {
 test "an inline SVG script of type importmap registers its import map" {
     try onFreshThread(svgImportMap);
 }
+
+fn styleTypeChange() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser,
+        \\globalThis.style = document.createElement('style');
+        \\style.type = 'no/mime';
+        \\style.textContent = 'body { color: rgb(0, 128, 0) }';
+        \\document.head.append(style);
+        \\0;
+    );
+    try expectTrue(browser, "document.styleSheets.length === 0 && getComputedStyle(document.body).color !== 'rgb(0, 128, 0)'");
+    try expectTrue(browser, "style.type = 'text/css'; document.styleSheets.length === 1 && getComputedStyle(document.body).color === 'rgb(0, 128, 0)'");
+    try expectTrue(browser, "style.type = 'no/mime'; document.styleSheets.length === 0 && getComputedStyle(document.body).color !== 'rgb(0, 128, 0)'");
+}
+
+test "a style element's type change updates its style block" {
+    try onFreshThread(styleTypeChange);
+}
