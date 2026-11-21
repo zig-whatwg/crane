@@ -590,6 +590,27 @@ fn queueMutationRecordInternal(
     try queueMutationObserverMicrotask(agent, target.ctx);
 }
 
+/// DOM "add transient registered observers" steps 7-8, for `observer`, which
+/// a transient registered observer was just added for: "Append observer to
+/// the surrounding agent's pending mutation observers" - the agent of
+/// `realm` - and "queue a mutation observer microtask", so its transient
+/// registered observers are removed at the next notify even if no record is
+/// queued for it.
+///
+/// Spec: https://dom.spec.whatwg.org/#add-transient-registered-observers
+pub fn transientObserverAdded(observer: *runtime.Instance, realm: runtime.Context) !void {
+    const agent = agentOf(realm) orelse return;
+    var already_pending = false;
+    for (agent.pending_observers.items()) |pending| {
+        if (pending == observer) {
+            already_pending = true;
+            break;
+        }
+    }
+    if (!already_pending) try agent.pending_observers.append(observer);
+    try queueMutationObserverMicrotask(agent, realm);
+}
+
 /// DOM §7.1 - Queue a mutation observer microtask
 ///
 /// Queue a microtask to notify mutation observers.

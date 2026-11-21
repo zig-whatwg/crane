@@ -289,11 +289,85 @@ fn isMedia(element: *Instance) bool {
     return element.stateAs(interfaces.HTMLMediaElement.State) != null;
 }
 
-fn heading(element: *Instance, levels: u6) bool {
+const element_node: u8 = 1;
+const document_fragment_node: u8 = 11;
+
+/// Selectors 5 :heading / :heading(levels): an element whose HTML computed
+/// heading level is one of `levels` (bit n-1 for level n).
+fn heading(element: *Instance, levels: u9) bool {
     if (element.stateAs(interfaces.HTMLHeadingElement.State) == null) return false;
-    var local = interfaces.Element.get_localName(element) catch return false;
-    defer local.deinit(element.ctx.allocator);
-    const name = local.asSlice();
+    // The local name read in place from the element's shared name record
+    // (no localName string made per match).
+    const data = dom.element_data.of(element) orelse return false;
+    const name = data.name.local_name;
     if (name.len != 2 or name[0] != 'h' or name[1] < '1' or name[1] > '6') return false;
-    return levels & (@as(u6, 1) << @as(u3, @intCast(name[1] - '1'))) != 0;
+    const level = computedHeadingLevel(name[1] - '0', element);
+    return levels & (@as(u9, 1) << @as(u4, @intCast(level - 1))) != 0;
+}
+
+/// HTML 4.3.11.1 "get an element's computed heading level", given the level
+/// its local name gives (steps 1-8: h1 is 1 ... h6 is 6): step 9 adds the
+/// computed heading offset, and steps 10-11 cap the level at 9. The offset was
+/// left out, so a heading under a headingoffset matched :heading() at its
+/// tag's level (css/selectors/invalidation/heading-pseudo-class-in-has-with-
+/// {headingoffset,slot-reassignment}.html: Safari 27.2 ships :heading; the
+/// spec, newer than Chrome 157 and Firefox 160, which have no :heading, says
+/// so - golden rule 2).
+fn computedHeadingLevel(base: u8, element: *Instance) u8 {
+    const level = @as(u64, base) +| computedHeadingOffset(element);
+    return @intCast(@min(level, 9));
+}
+
+/// HTML 4.3.11.1 "get an element's computed heading offset": the
+/// headingoffset values of `element` and its inclusive ancestors - up the host
+/// chain at a shadow root, never the flat tree (a slotted heading's level
+/// does not follow its slot) - up to and including the first with
+/// headingreset. Attributes read in place.
+fn computedHeadingOffset(element: *Instance) u64 {
+    // Step 1.
+    var offset: u64 = 0;
+    // Step 2. The walk follows the tree's own links (NodeBase), as selector
+    // matching does - one NodeBase read for the element, then parent_node -
+    // and reads each ancestor's attributes by their static ids (Blink's
+    // FastHasAttribute): :heading asks this of every heading it tests.
+    var inclusive_ancestor: *Instance = element;
+    var node = dom.instance_bridge.getNodeBase(element) orelse return 0;
+    // A document that never had a headingoffset or headingreset attribute
+    // (dom.heading_offsets, sticky) gives every heading an offset of 0: the
+    // walk would find neither. The heading, its ancestors and the hosts up
+    // its shadow-including chain share one node document.
+    if (node.documentBase()) |document| if (!dom.heading_offsets.seen(document)) return 0;
+    // Step 3.
+    while (true) {
+        // "An HTML element": the name record's namespace, one compare.
+        if (dom.element_data.of(inclusive_ancestor)) |attributes| if (attributes.name.isHtml()) {
+            // Steps 3.1-3.3: an HTML element's headingoffset, by the rules
+            // for parsing non-negative integers; an error adds 0.
+            if (attributes.indexOfLocal("headingoffset")) |index| {
+                if (attributes.valueAt(index)) |value| {
+                    if (dom.reflection.parseNonNegativeInteger(value)) |parsed| offset +|= @intCast(parsed);
+                }
+            }
+            // Step 3.4.
+            if (attributes.indexOfLocal("headingreset") != null) return offset;
+        };
+        const parent = node.parent_node orelse break;
+        const next: *Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(parent) orelse break));
+        switch (parent.node_type) {
+            // Step 3.6: the parent element.
+            element_node => {
+                inclusive_ancestor = next;
+                node = parent;
+            },
+            // Step 3.5: a shadow root's host.
+            document_fragment_node => {
+                if (next.stateAs(interfaces.ShadowRoot.State) == null) break;
+                inclusive_ancestor = (interfaces.ShadowRoot.get_host(next) catch null) orelse break;
+                node = dom.instance_bridge.getNodeBase(inclusive_ancestor) orelse break;
+            },
+            else => break,
+        }
+    }
+    // Step 4.
+    return offset;
 }
