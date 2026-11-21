@@ -706,7 +706,31 @@ fn enterMakesLineBreak(target: *Instance) bool {
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
     defer arena.deinit();
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
-    return activeHostIsPlaintextOnly(&edit) catch false;
+    const host = (affectedEditingHost(&edit) catch return false) orelse return false;
+    return hostChainIsPlaintextOnly(host) catch false;
+}
+
+/// Whether `host`, or an editing host it is nested in (through editable
+/// ancestors), is in the plaintext-only state - Enter's rule (lane edit4,
+/// A05). A contenteditable=true element inside a plaintext-only host takes
+/// a line break for Enter in Firefox 160 (the outermost host decides) and
+/// Safari 27.2 (a plaintext-only host anywhere around the caret), where
+/// Chrome 157 makes a paragraph (the nearest host decides): `<div
+/// contenteditable=plaintext-only><div contenteditable><p>a[]c</p></div>
+/// </div>` + Enter gives `<p>a<br>c</p>` (editing/plaintext-only/nested-with-
+/// contenteditable-true.html "should insert line break at typing Enter",
+/// FPP at wpt.fyi 2358bd4835). Golden rule 2, the majority. The reverse -
+/// plaintext-only inside contenteditable=true - is a line break already
+/// (the nearest host; Chrome and Safari, where Firefox's outermost host
+/// makes a paragraph). Styling stays with the nearest host (isPlaintextOnly).
+fn hostChainIsPlaintextOnly(host: *Instance) !bool {
+    if (try isPlaintextOnly(host)) return true;
+    var current = try common.parent(host);
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try isPlaintextOnly(c)) return (try common.isEditable(c)) or try common.isEditingHost(c);
+        if (!try common.isEditable(c)) break;
+    }
+    return false;
 }
 
 /// The select-all shortcut (user_input.zig): the selectAll command's action.
