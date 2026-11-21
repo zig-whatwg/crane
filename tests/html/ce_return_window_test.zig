@@ -28,7 +28,7 @@ fn exercise() !void {
     try engine.initializeEngine(.{});
     var host = AgentHost.init(testing.allocator);
     defer host.deinit();
-    const hooks: engine.HostHooks = .{ .htmlConstructor = html.custom_element_constructor.construct };
+    const hooks: engine.HostHooks = .{ .htmlConstructor = html.custom_element_constructor.hooks };
     const agent = try engine.createAgent(.{
         .can_block = false,
         .from_snapshot = false,

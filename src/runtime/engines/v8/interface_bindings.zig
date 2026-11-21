@@ -547,6 +547,108 @@ pub fn constructNamed(name: []const u8) ?u16 {
     return construct_index.get(name);
 }
 
+// ============================================================================
+// [HTMLConstructor] interface objects (HTML 3.2.3)
+// ============================================================================
+
+/// The [HTMLConstructor] interfaces that have an interface object, in
+/// declaration order: `html_constructors_extension_source` has a class for
+/// each, at its index here.
+pub const html_constructor_names = blk: {
+    @setEvalBranchQuota(100_000_000);
+    const decl_names = @typeInfo(interfaces).@"struct".decl_names;
+    var buf: [decl_names.len][]const u8 = undefined;
+    var n: usize = 0;
+    for (decl_names) |name| {
+        if (!hasInterfaceObject(name)) continue;
+        const T = @field(interfaces, name);
+        if (!@hasDecl(T, "html_constructor") or !T.html_constructor) continue;
+        buf[n] = name;
+        n += 1;
+    }
+    const final = buf[0..n].*;
+    break :blk final;
+};
+
+/// The index of the [HTMLConstructor] interface `name` in
+/// `html_constructor_names`, or null.
+pub fn htmlConstructorIndex(comptime name: []const u8) ?u32 {
+    comptime {
+        for (html_constructor_names, 0..) |entry, i| {
+            if (std.mem.eql(u8, entry, name)) return i;
+        }
+        return null;
+    }
+}
+
+/// The construct steps' descriptor of the [HTMLConstructor] interface at
+/// `index` of `html_constructor_names` (binding_plumbing.htmlConstructorCall
+/// is handed the index by the interface's class), or null for an index that
+/// names none.
+pub fn htmlConstructorDescriptor(index: u32) ?*const @import("binding_plumbing.zig").Constructor {
+    if (index >= html_constructor_descriptors.len) return null;
+    return html_constructor_descriptors[index];
+}
+
+const html_constructor_descriptors = blk: {
+    var out: [html_constructor_names.len]*const @import("binding_plumbing.zig").Constructor = undefined;
+    for (html_constructor_names, 0..) |name, i| out[i] = &V8Interface(@field(interfaces, name)).constructor_plumbing;
+    break :blk out;
+};
+
+/// The source of the V8 extension that makes the [HTMLConstructor] interface
+/// objects (v8_wrapper.cpp CraneHTMLConstructorsExtension; interface.zig
+/// `htmlInterfaceObject` says why each is a class). V8 runs it as it makes a
+/// Window realm's context: it hands the context its factory - through the
+/// extension's one native, CraneHTMLConstructorFactory - and defines nothing
+/// script can see. The factory makes the class of the interface at `index`
+/// of `html_constructor_names`, its constructor's steps the function
+/// `construct` (binding_plumbing.htmlConstructorCall), called with
+/// NewTarget, the class itself - its class binding, which script cannot
+/// change - and the index:
+///
+///     case 0: return class HTMLAnchorElement extends null {
+///       constructor() { return construct(new.target, HTMLAnchorElement, 0); }
+///     };
+///
+/// One class literal per interface, so that each class has a function of its
+/// own, with its interface's name; `extends null` makes it derived, its
+/// [[Construct]] making no receiver (ECMAScript 10.2.2 step 3), and its
+/// constructor, which never calls super(), returns the element. Plain ASCII
+/// (V8 keeps an extension's source as one-byte external string).
+pub const html_constructors_extension_source = blk: {
+    @setEvalBranchQuota(10_000_000);
+    var source: []const u8 = "(function () {\n" ++
+        "  native function CraneHTMLConstructorFactory();\n" ++
+        "  CraneHTMLConstructorFactory(function (index, construct) {\n" ++
+        "    switch (index) {\n";
+    for (html_constructor_names, 0..) |name, i| {
+        const number = std.fmt.comptimePrint("{d}", .{i});
+        source = source ++ "      case " ++ number ++ ": return class " ++ name ++ " extends null { constructor() { return construct(new.target, " ++ name ++ ", " ++ number ++ "); } };\n";
+    }
+    source = source ++ "    }\n  });\n})();\n";
+    break :blk std.fmt.comptimePrint("{s}", .{source});
+};
+
+/// v8_wrapper.cpp registers its extension with this source (at the platform
+/// start, once per process): a constant of the binary, `length` bytes.
+export fn crane_v8_html_constructors_extension_source(length: *c_int) [*]const u8 {
+    length.* = @intCast(html_constructors_extension_source.len);
+    return html_constructors_extension_source.ptr;
+}
+
+test "the [HTMLConstructor] extension has a class per interface, each named for it, and is ASCII" {
+    try std.testing.expect(html_constructor_names.len > 0);
+    inline for (html_constructor_names, 0..) |name, i| {
+        const line = std.fmt.comptimePrint("case {d}: return class {s} extends null {{ constructor() {{ return construct(new.target, {s}, {d}); }} }};", .{ i, name, name, i });
+        try std.testing.expect(std.mem.indexOf(u8, html_constructors_extension_source, line) != null);
+        try std.testing.expectEqual(@as(?u32, i), comptime htmlConstructorIndex(name));
+    }
+    try std.testing.expect(htmlConstructorIndex("HTMLElement") != null);
+    try std.testing.expect(htmlConstructorIndex("HTMLUnknownElement") == null);
+    for (html_constructors_extension_source) |byte| try std.testing.expect(byte < 0x80);
+}
+
 /// The indices of the constructs `scope` exposes unconditionally (on the
 /// global's template) and of those it exposes in a secure context only (on
 /// each secure realm's global).

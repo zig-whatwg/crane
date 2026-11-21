@@ -1752,6 +1752,18 @@ pub extern fn v8_Context_ErrorPrototype(context: *Context) ?*Object;
 /// %AsyncIteratorPrototype% of `context` - the realm's intrinsic, by V8's own
 /// name for it (no script is evaluated), kept per context. Caller owns it.
 pub extern fn v8_Context_AsyncIteratorPrototype(isolate: *Isolate, context: *Context) ?*Value;
+/// Whether `context` has the [HTMLConstructor] class factory its extension
+/// hands a Window realm's context as V8 makes it (v8_wrapper.cpp
+/// CraneHTMLConstructorsExtension). No handle.
+pub extern fn v8_Context_HasHTMLConstructorFactory(context: *Context) bool;
+/// HTML 3.2.3: the [HTMLConstructor] interface object of the interface at
+/// `index` of interface_bindings.html_constructor_names in `context` - a
+/// class from the context's factory, `construct` its constructor's steps -
+/// taking the place of `template_function`, the interface's set-up
+/// FunctionTemplate's function there (v8_wrapper.cpp says how). OWNED
+/// (v8_Function_Dispose); null when the context has no factory or V8
+/// refused a step. Neither handle passed in is taken over.
+pub extern fn v8_HTMLConstructor_InterfaceObject(isolate: *Isolate, context: *Context, index: u32, template_function: *Function, construct: *Function) ?*Function;
 /// Whether two module handles name the same module.
 pub extern fn v8_Module_Equals(a: *Module, b: *Module) bool;
 

@@ -1968,18 +1968,24 @@ pub fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void
 /// `materializeInterfaceObject` has set up in its realm.
 const materialized_interface_object_key = "crane:interface-object";
 
-/// Whether `constructor` is an interface object already set up: marked by
-/// `markMaterializedInterfaceObject`. Needs an entered context.
-fn isMaterializedInterfaceObject(constructor: *v8.Function) bool {
-    const marker = v8.v8_Object_GetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len) orelse return false;
-    v8.v8_Value_Dispose(marker);
-    return true;
+/// The interface object `materializeInterfaceObject` set up over the
+/// template's function `constructor` in its realm, as
+/// `markMaterializedInterfaceObject` recorded it: `constructor` itself, or
+/// for an [HTMLConstructor] interface the class that took its place
+/// (`htmlInterfaceObject`). OWNED; null when it is not set up yet. Needs an
+/// entered context.
+fn materializedInterfaceObject(constructor: *v8.Function) ?*v8.Function {
+    const marker = v8.v8_Object_GetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len) orelse return null;
+    return @ptrCast(marker);
 }
 
-/// Mark `constructor` as set up - a private property, invisible to script,
-/// whose value is the function itself (an edge to itself, nothing kept).
-fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
-    v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
+/// Mark `constructor` as set up, its realm's interface object being
+/// `interface_object` - `constructor` itself (an edge to itself, nothing
+/// kept), or an [HTMLConstructor] interface's class (kept as long as the
+/// template's instantiation, the realm's) - a private property, invisible
+/// to script.
+fn markMaterializedInterfaceObject(constructor: *v8.Function, interface_object: *v8.Function) void {
+    v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(interface_object));
 }
 
 /// Whether `context`'s realm's environment settings object is a secure
@@ -2763,6 +2769,22 @@ pub fn V8Interface(comptime Interface: type) type {
                 template_registry.register(global_name, new_template, isolate);
                 break :blk new_template;
             };
+
+            // An interface under an [HTMLConstructor] one builds its parent's
+            // interface object BEFORE V8 instantiates its own template: an
+            // [HTMLConstructor] interface's prototype object becomes its
+            // class's (`htmlInterfaceObject`) as it is built, and V8 links a
+            // template's prototype object to its parent template's function's
+            // `prototype` when it instantiates it (api-natives.cc
+            // InstantiateFunction, GetInstancePrototype) - the old one if the
+            // parent were built after. Every other interface keeps the order
+            // it has always had.
+            const parent_first: ?*v8.Function = if (comptime under_html_constructor)
+                V8Interface(InheritedInterface.?).materializeInterfaceObject(isolate, context, InheritedInterface.?.Meta.name)
+            else
+                null;
+            defer if (parent_first) |p| v8.v8_Function_Dispose(p);
+
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
 
             // Set up once per realm. V8 instantiates a template once per
@@ -2770,8 +2792,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // materializing this one as its parent, then this one's own
             // global property or lazy getter - is handed the object already
             // made, and finds it marked.
-            if (isMaterializedInterfaceObject(constructor)) return constructor;
-            markMaterializedInterfaceObject(constructor);
+            if (materializedInterfaceObject(constructor)) |interface_object| {
+                v8.v8_Function_Dispose(constructor);
+                return interface_object;
+            }
+            markMaterializedInterfaceObject(constructor, constructor);
 
             // WebIDL 3.7.1, create an interface object, steps 2-4: "If I
             // inherits from another interface, let constructorProto be the
@@ -2789,9 +2814,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // IDBRequest) was %Function.prototype%, for 616 interfaces of a
             // window.
             if (comptime InheritedInterface) |Parent| {
-                if (V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name)) |parent_object| {
-                    defer v8.v8_Function_Dispose(parent_object);
-                    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(constructor), context, @ptrCast(parent_object));
+                const parent_object = parent_first orelse V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name);
+                if (parent_object) |object| {
+                    defer if (parent_first == null) v8.v8_Function_Dispose(object);
+                    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(constructor), context, @ptrCast(object));
                 }
             }
 
@@ -2819,7 +2845,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 defer v8.v8_String_Dispose(prototype_key);
                 if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key))) |proto| {
                     defer v8.v8_Value_Dispose(proto);
-                    _ = v8.v8_Object_DefineProperty(
+                    // An [HTMLConstructor] interface's template function
+                    // keeps its `prototype` writable until its class takes
+                    // its place (`htmlInterfaceObject` gives it the class's
+                    // prototype object, then makes it read-only).
+                    if (comptime !is_html_constructor) _ = v8.v8_Object_DefineProperty(
                         @ptrCast(constructor),
                         context,
                         @ptrCast(prototype_key),
@@ -2921,8 +2951,62 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // HTML 3.2.3 [HTMLConstructor]: the interface object is a class
+            // made over the template's function, now that its prototype
+            // object and own properties are set up.
+            if (comptime is_html_constructor) {
+                if (htmlInterfaceObject(isolate, context, constructor)) |class_object| {
+                    markMaterializedInterfaceObject(constructor, class_object);
+                    v8.v8_Function_Dispose(constructor);
+                    return class_object;
+                }
+            }
             return constructor;
         }
+
+        /// HTML 3.2.3: an [HTMLConstructor] interface's interface object in
+        /// `context`, made over `template_function` - the interface's
+        /// FunctionTemplate's function there, set up - and taking its place
+        /// (v8_HTMLConstructor_InterfaceObject): a derived class, so that its
+        /// [[Construct]] makes no receiver and reads no NewTarget.prototype
+        /// before HTML's step 10 (binding_plumbing.htmlConstructorCall), with
+        /// the template function's prototype object's properties on the
+        /// class's own prototype object - which becomes the template
+        /// function's `prototype`, so that every wrapper of the interface in
+        /// the realm inherits from it - and its other own properties
+        /// (constants, static members) on the class. Nothing script reads
+        /// changes but that: the class's name, length, `prototype` (not
+        /// writable, enumerable or configurable), own properties and
+        /// Function.prototype.toString text ("function HTMLElement() {
+        /// [native code] }", an extension's function: interface_bindings
+        /// `html_constructors_extension_source`) are the template
+        /// function's (tests/v8/html_constructor_shape_test.zig pins them),
+        /// and neither has an own `arguments` or `caller`. OWNED; null - the
+        /// template function stays the interface object - in a context made
+        /// without the extension (the snapshot generator's, which builds no
+        /// [HTMLConstructor] interface object).
+        fn htmlInterfaceObject(isolate: *v8.Isolate, context: *v8.Context, template_function: *v8.Function) ?*v8.Function {
+            const index = comptime @import("interface_bindings.zig").htmlConstructorIndex(interface_name) orelse
+                @compileError(interface_name ++ " is an [HTMLConstructor] interface missing from interface_bindings.html_constructor_names");
+            if (!v8.v8_Context_HasHTMLConstructorFactory(context)) return null;
+            const construct_function = binding_plumbing.htmlConstructorFunction(isolate, context) orelse return null;
+            defer v8.v8_Function_Dispose(construct_function);
+            return v8.v8_HTMLConstructor_InterfaceObject(isolate, context, index, template_function, construct_function);
+        }
+
+        /// Whether an interface this one inherits from is an [HTMLConstructor]
+        /// one: then its parent's interface object is built first
+        /// (`materializeInterfaceObject`).
+        const under_html_constructor: bool = blk: {
+            var Current: ?type = InheritedInterface;
+            var depth: usize = 0;
+            while (Current) |Ancestor| : (depth += 1) {
+                if (depth > 32) break;
+                if (@hasDecl(Ancestor, "html_constructor") and Ancestor.html_constructor) break :blk true;
+                Current = V8Interface(Ancestor).InheritedInterface;
+            }
+            break :blk false;
+        };
 
         /// The interface this one inherits from - the parent whose template
         /// createTemplate Inherit()s - or null.
@@ -3475,9 +3559,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Make the "prototype" property read-only for regular interfaces.
             // Per WebIDL spec, Constructor.prototype should be non-writable.
-            // Note: This does NOT remove legacy "arguments"/"caller" properties -
-            // that's a V8 limitation we cannot work around without V8 internal APIs.
-            v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
+            // An [HTMLConstructor] interface's template function is not its
+            // interface object: its class is, which takes the template
+            // function's prototype object's place as its `prototype` - set on
+            // the function, so it stays writable until then
+            // (`htmlInterfaceObject`).
+            if (comptime !is_html_constructor) v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
 
             // The instance template has NO internal field: a wrapper points
             // at its anchor on the agent's C++ heap through Object::Wrap - a
@@ -4738,7 +4825,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// What this interface's constructor callback needs that is its own;
         /// the rest of its steps are binding_plumbing.construct's, shared by
         /// every interface.
-        const constructor_plumbing: binding_plumbing.Constructor = .{
+        pub const constructor_plumbing: binding_plumbing.Constructor = .{
             .interface_name = interface_name,
             .new_required_message = interface_name ++ " constructor: 'new' is required",
             // Released unless converting a constructor argument makes the
