@@ -344,6 +344,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    giveInitialVisibilityState(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -566,6 +567,7 @@ fn createNavigationDocument(
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    giveInitialVisibilityState(document_instance, browsing_ctx_ptr);
     // Step 21: "Potentially free deferred fetch quota for document" (Fetch
     // 4.12.1): a same-origin nested document shares its parent's quota, and
     // its origin is known only now, after redirects.
@@ -4573,6 +4575,21 @@ fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core
 /// document's referrer - the navigation request's referrer as main fetch
 /// left it, waiting on the navigable (IFrameIntegration.next_referrer). The
 /// empty string when there is none, or no request was fetched.
+/// HTML 6.2 "set the initial visibility state" of `document` to its
+/// navigable's traversable navigable's system visibility state - "initialize
+/// the navigable" step 6 for an initial about:blank document, "activate
+/// history entry" step 6 for a document a navigation made. Done as the
+/// document is made, before its parser runs a script, as the document becomes
+/// its navigable's active document in the same commit (the parse is inside
+/// it). A document the back/forward cache restores keeps the reactivation
+/// path's own visibility steps.
+fn giveInitialVisibilityState(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    dom_module.visibility_state.setInitial(document, switch (browsing_context.traversableSystemVisibility()) {
+        .visible => .visible,
+        .hidden => .hidden,
+    });
+}
+
 fn giveReferrer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     const referrer = integration.next_referrer orelse return;
@@ -8647,6 +8664,9 @@ fn createAuxiliaryNavigable(
     };
     // From here the integration owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
+    // A new top-level traversable's system visibility state, the platform's
+    // for its tab (HTML 6.2).
+    initialSystemVisibility(opener_realm, browsing_context);
     // A noopener popup is "created given null" opener: "create a new
     // top-level browsing context and document" step 1 makes it in a new
     // browsing context group, whose cross-origin isolation mode is "none" -
@@ -8753,8 +8773,24 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     // null creatorOrigin), as a new tab's initial empty document is in
     // Chrome, Firefox and Safari. The host reads it as the browsing
     // context's active document.
+    // Its system visibility state, the platform's for its tab (HTML 6.2),
+    // before the initial about:blank document takes it.
+    initialSystemVisibility(realm, browsing_context);
     makeInitialAboutBlank(integration, realm, browsing_context, null, null, null, allocator);
     return integration;
+}
+
+/// HTML 6.2: "A traversable navigable's system visibility state, including
+/// its initial value upon creation, is determined by the user agent" - for a
+/// top-level traversable this engine makes (the host's page, a popup), the
+/// platform's answer for its tab, whose TabId is its browsing context's id
+/// (docs/platform-protocol.md 6.10.4). The headless platforms answer visible.
+fn initialSystemVisibility(realm: runtime.Context, browsing_context: *html_core.BrowsingContext) void {
+    const browser = html_module.platform_state.of(realm) orelse return;
+    browsing_context.system_visibility = switch (@import("platform").systemVisibility(browser, browsing_context.id)) {
+        .visible => .visible,
+        .hidden => .hidden,
+    };
 }
 
 /// The host page's "create and initialize a Document object" steps 6-7

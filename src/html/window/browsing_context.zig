@@ -360,6 +360,9 @@ pub const WindowGeometry = struct {
     height: ?i32 = null,
 };
 
+/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
+pub const SystemVisibility = enum { visible, hidden };
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -461,6 +464,15 @@ pub const BrowsingContext = struct {
     /// iframe navigates, and every document keeps its own active set.
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#popup-sandboxing-flag-set
     popup_sandboxing_flags: SandboxingFlagSet = .empty,
+
+    /// HTML 7.3.1.1: a traversable navigable's system visibility state -
+    /// whether its window is minimized, its tab in the background, the page
+    /// covered by a system element. "Determined by the user agent, including
+    /// its initial value upon creation" (HTML 6.2): the platform's
+    /// (`systemVisibility` when the traversable is made, `visibility_changed`
+    /// after). Kept on the top-level traversable - every traversable is one -
+    /// and read for any navigable through `traversableSystemVisibility`.
+    system_visibility: SystemVisibility = .visible,
 
     /// HTML's one permitted sandboxed navigator: the browsing context that
     /// opened this one from a document with the sandboxed navigation browsing
@@ -955,6 +967,13 @@ pub const BrowsingContext = struct {
             current = p;
         }
         return current;
+    }
+
+    /// The system visibility state of this navigable's traversable navigable
+    /// (HTML 6.2): what "set the initial visibility state" gives a document
+    /// it makes active.
+    pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
+        return self.getTop().system_visibility;
     }
 
     /// Check if two browsing contexts are same origin

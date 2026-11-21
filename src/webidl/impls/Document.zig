@@ -306,7 +306,7 @@ pub fn installHooks() void {
     @import("dom").update_the_rendering.installStep(.fullscreen, &fullscreenStep);
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").fullscreen.removingSteps) catch @panic("fullscreen removing steps allocation");
     @import("dom").unloading_cleanup.installDocumentOnly(&@import("html").fullscreen.unloadingCleanup);
-    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook, .set_initial = &setInitialVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
     // applies the focus fixup rule as activeElement does).
@@ -693,6 +693,20 @@ fn updateVisibilityStateFromHook(document: *runtime.Instance, state: @import("do
         .visible => ._visible_,
         .hidden => ._hidden_,
     });
+}
+
+/// dom.visibility_state: HTML 6.2 "set the initial visibility state" of
+/// `document`: "Set document's visibility state to visibilityState" - no
+/// event. Step 2's VisibilityStateEntry (timestamp 0) is not queued: Crane
+/// has no visibility-state performance entries yet (Chrome alone ships the
+/// interface), and "update the visibility state" queues none either.
+fn setInitialVisibilityStateFromHook(document: *runtime.Instance, state: @import("dom").visibility_state.State) void {
+    const internal = getInternal(document) orelse return;
+    internal.visibility_state = switch (state) {
+        .visible => ._visible_,
+        .hidden => ._hidden_,
+    };
+    internal.hidden = state == .hidden;
 }
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,

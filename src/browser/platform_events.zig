@@ -8,8 +8,9 @@
 //! `post` only queues tasks on the event loops that need the event, through
 //! their TaskSinks, which is what any other thread may touch of a loop.
 //!
-//! One event is turned into steps so far, memory pressure. What the
-//! browsers do with it (read 2026-11-16):
+//! Two events are turned into steps so far: the system visibility state of a
+//! tab (`visibility_changed`, HTML 6.2: `systemVisibilityChanged`) and memory
+//! pressure. What the browsers do with memory pressure (read 2026-11-16):
 //!
 //! - Chromium: every level reaches V8. content/renderer/
 //!   blink_isolates_pressure_listener.cc OnReleaseMemory ->
@@ -64,9 +65,13 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const platform = @import("platform");
 const html = @import("html");
+const dom = @import("dom");
 const EventLoop = @import("event_loop.zig").EventLoop;
 
 pub const PlatformEvents = struct {
+    /// The scope's allocator, thread-safe: what an event's task carries is
+    /// made on the poster's thread and freed on the loop's.
+    allocator: std.mem.Allocator,
     /// Protects `loop` and `sink`. Held for a few instructions, never
     /// across a post.
     mutex: std.Io.Mutex = .init,
@@ -80,8 +85,7 @@ pub const PlatformEvents = struct {
     sink: ?*runtime.TaskSink = null,
 
     pub fn init(allocator: std.mem.Allocator) PlatformEvents {
-        _ = allocator;
-        return .{};
+        return .{ .allocator = allocator };
     }
 
     /// With the scope, after the Browser's platform state: no observer
@@ -130,10 +134,29 @@ pub const PlatformEvents = struct {
                 // but Chromium at its moderate level (the header).
                 .warning, .normal => {},
             },
+            .visibility_changed => self.postSystemVisibility(event.tab, event.visibility),
             // Not turned into steps yet (docs/platform-protocol.md 7; no
             // platform posts them).
             else => {},
         }
+    }
+
+    /// `visibility_changed(tab, visibility)`: one task for the window's
+    /// loop, which runs HTML 6.2's steps for the tab's traversable
+    /// (`systemVisibilityChanged`). Any thread.
+    fn postSystemVisibility(self: *PlatformEvents, tab: platform.TabId, visibility: platform.Visibility) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        const sink = if (self.sink) |held| held.retain() else null;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = sink orelse return;
+        defer held.release();
+        const scope = self.scope orelse return;
+        const change = self.allocator.create(SystemVisibilityChange) catch return;
+        change.* = .{ .allocator = self.allocator, .scope = scope, .tab = tab, .visibility = visibility };
+        // The sink takes the task whatever happens: a closed one drops it
+        // here (its `drop` frees the change), a loop that ends with it still
+        // posted drops it there.
+        _ = held.post(.{ .run = SystemVisibilityChange.run, .drop = SystemVisibilityChange.drop, .data = change });
     }
 
     /// Critical memory pressure: one task for the window's loop, one for
@@ -171,6 +194,68 @@ pub const PlatformEvents = struct {
 
     fn dropNothing(_: ?*anyopaque) void {}
 };
+
+/// A tab's new system visibility state, on its way to the window's loop.
+const SystemVisibilityChange = struct {
+    allocator: std.mem.Allocator,
+    scope: *runtime.BrowserScope,
+    tab: platform.TabId,
+    visibility: platform.Visibility,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *SystemVisibilityChange = @ptrCast(@alignCast(data orelse return));
+        defer self.allocator.destroy(self);
+        systemVisibilityChanged(self.scope, self.tab, self.visibility);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *SystemVisibilityChange = @ptrCast(@alignCast(data orelse return));
+        self.allocator.destroy(self);
+    }
+};
+
+/// HTML 6.2: "When a user agent determines that the system visibility state
+/// for traversable navigable traversable has changed to newState", for the
+/// tab `tab` names - a top-level traversable by its browsing context's id
+/// (the TabId the host lists: Browser.traversableIds), or every top-level
+/// traversable of the Browser for tab 0 (a platform that tracks no tabs, as
+/// the headless ones: docs/platform-protocol.md 6.10.4). The window's loop.
+pub fn systemVisibilityChanged(scope: *runtime.BrowserScope, tab: platform.TabId, visibility: platform.Visibility) void {
+    const navigables = dom.browser_state.existingNavigablesIn(scope) orelse return;
+    const new_state: html.window.browsing_context.SystemVisibility = switch (visibility) {
+        .visible => .visible,
+        .hidden => .hidden,
+    };
+    for (navigables.contexts()) |traversable| {
+        if (traversable.parent != null or traversable.is_closed) continue;
+        if (tab != 0 and traversable.id != tab) continue;
+        // Only a change is one ("has changed to newState").
+        if (traversable.system_visibility == new_state) continue;
+        traversable.system_visibility = new_state;
+        const active: *runtime.Instance = @ptrCast(@alignCast(traversable.getActiveDocument() orelse continue));
+        // 1. "Let navigables be the inclusive descendant navigables of
+        // traversable's active document."
+        var documents = dom.navigables.inclusiveDescendantDocuments(active, scope.allocator);
+        defer documents.deinit(scope.allocator);
+        // 2. "For each navigable of navigables" (in tree order, parents
+        // first - "in what order?" is open; Blink's
+        // Page::SetVisibilityState walks the frame tree the same way):
+        for (documents.items) |entry| {
+            // 2.1 "Let document be navigable's active document."
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            // 2.2 "Queue a global task on the user interaction task source
+            // given document's relevant global object to update the
+            // visibility state of document with newState."
+            const loop = entry.document.ctx.getOptionalEventLoop() orelse continue;
+            const task = scope.allocator.create(dom.visibility_state.UpdateTask) catch continue;
+            task.* = .{ .allocator = scope.allocator, .document = entry.document, .generation = entry.generation, .state = switch (visibility) {
+                .visible => .visible,
+                .hidden => .hidden,
+            } };
+            loop.queueTask(.{ .callback = dom.visibility_state.UpdateTask.run, .context = task, .drop = dom.visibility_state.UpdateTask.drop, .document = @ptrCast(entry.document) });
+        }
+    }
+}
 
 /// Make `scope`'s receiver for platform events - before the Browser's
 /// platform state, which borrows its EventSink - and answer it. A scope
