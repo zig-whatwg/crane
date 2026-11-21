@@ -429,9 +429,9 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   wrapper of a node keeps its tree as a reached main-world one does (V8: a
   holder anchor whose trace walks from the node). A world's timers are its
   Window's - one map of ids - and run in the world (the host is handed the
-  world realm and keeps the map on `mainRealmOf`). V8's part-1 deviation: a
-  world wrapper the binding changes (a [SameObject] edge) is held by script
-  and its tree's walk only through its own reach. JavaScriptCore, QuickJS and
+  world realm and keeps the map on `mainRealmOf`). V8 holds a world's node
+  wrapper by a traced reference whatever the binding writes on it, so the
+  walk keeps it with its tree. JavaScriptCore, QuickJS and
   the test adapter: no worlds (`createWorldRealm` is NotSupported).
 - **Threads:** an agent is used only on the thread that made it - every
   operation that takes the agent, or a realm or value of it, runs there. The
