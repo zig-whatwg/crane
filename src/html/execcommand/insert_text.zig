@@ -343,6 +343,8 @@ fn actionReplacing(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAc
         if (padding) |p| try removePadding(edit, p, text, 0, length);
     }
     // Step 15: "Restore states and values from overrides."
+    edit.applying_typing_style = true;
+    defer edit.applying_typing_style = false;
     try overrides.restoreStatesAndValues(edit, recorded);
     // Steps 16-17: canonicalize whitespace at the range's start and end,
     // fix collapsed space false.

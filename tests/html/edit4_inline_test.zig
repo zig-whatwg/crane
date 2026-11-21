@@ -7,6 +7,11 @@
 //! and PPF where only part of the span is selected; wpt.fyi 2358bd4835;
 //! Blink ApplyStyleCommand pushes the conflicting vertical-align off the
 //! node). Expected values are the data files' (tests/wpt/editing/data).
+//!
+//! A22 - hiliteColor on an author's <font> that wraps exactly the run puts
+//! the background on that font (all three; editing/run/hilitecolor.html PPP),
+//! while the typing style's own <font> keeps a background span inside it
+//! (editing/run/multitest.html PPP).
 const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 const harness = @import("editing4_harness.zig");
@@ -38,4 +43,23 @@ fn verticalAlign() !void {
 
 test "subscript and superscript take vertical-align off the spans they cover" {
     try helpers.onFreshThread(verticalAlign);
+}
+
+const normalize = "hostHTML().replace(/: /g, ':').replace(/;\"/g, '\"')";
+
+fn fontWrapper() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try page.run("document.getElementById('host').focus();");
+    // The author's font takes the background, in and out of CSS mode.
+    try harness.expectEval(page, "runCommands('<font size=6>[foo]</font>', [['stylewithcss','true'],['hilitecolor','#00FFFF']]); " ++ normalize, "<font size=\"6\" style=\"background-color:rgb(0, 255, 255)\">foo</font>");
+    try harness.expectEval(page, "runCommands('<font size=6>[foo]</font>', [['stylewithcss','false'],['hilitecolor','#00FFFF']]); " ++ normalize, "<font size=\"6\" style=\"background-color:rgb(0, 255, 255)\">foo</font>");
+    // Typed text: the typing style's font keeps a background span inside
+    // it (multitest.html ?9001-last, its first accepted form).
+    try harness.expectEval(page, "runCommands('abc[]ef', [['stylewithcss','false'],['fontSize','4'],['backColor','#00dddd'],['insertText','d']]); " ++ normalize, "abc<font size=\"4\"><span style=\"background-color:rgb(0, 221, 221)\">d</span></font>ef");
+}
+
+test "hiliteColor on an author's font wrapping the run styles that font" {
+    try helpers.onFreshThread(fontWrapper);
 }

@@ -64,6 +64,11 @@ pub const Edit = struct {
     /// wpt.fyi 2358bd4835; Blink ReplaceSelectionCommand's
     /// PositionAvoidingPrecedingNodes).
     caret_into_joined_line: bool = false,
+    /// insertText is applying the overrides to the text it just typed
+    /// (insert_text.zig step 15): a <font> the chain makes for one override
+    /// is not a wrapper the next background colour goes onto
+    /// (inline.zig valueOntoWrapper).
+    applying_typing_style: bool = false,
     /// An arena for the values one command produces - effective and
     /// specified command values, recorded overrides and recorded values -
     /// set by root.zig for exactly the command, query or key action and

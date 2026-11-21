@@ -1129,11 +1129,13 @@ fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: [
     // A background goes on a <font> only when the font was there before:
     // typed text gets its font and, inside it, a background span (Blink's
     // typing style makes both around the text; multitest.html fontName,
-    // foreColor, fontSize, backColor, insertText - PPP), so a font this
-    // command chain made keeps the span; hiliteColor on an author's
-    // `<font size=6>[foo]</font>` would put the style on that font, which
-    // this cannot tell apart, and is left to a new span.
-    if (!style_only_span and (command == .back_color or command == .hilite_color)) return false;
+    // foreColor, fontSize, backColor, insertText - PPP), so a font the
+    // typing style's chain made keeps the span; hiliteColor on an author's
+    // `<font size=6>[foo]</font>` puts the style on that font (lane edit4,
+    // A22: editing/run/hilitecolor.html, PPP at wpt.fyi 2358bd4835, in and
+    // out of CSS mode - Blink's ApplyInlineStyleChange sets the CSS on the
+    // run's existing style container).
+    if (!style_only_span and (command == .back_color or command == .hilite_color) and edit.applying_typing_style) return false;
     if (!style_only_span and !try isNamed(wrapper, "font")) return false;
     try style_values.setInline(wrapper, property, new_value);
     edit.modified = true;
