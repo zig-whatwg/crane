@@ -1493,6 +1493,20 @@ fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
 /// The navigable's active document, as its browsing context records it -
 /// not `window.document`, which is script's getter and refuses a
 /// cross-origin reader.
+/// Whether `record`'s navigation reserves a client for Handle Fetch. Not
+/// when the frame's sandboxing flags have the sandboxed origin browsing
+/// context flag (an iframe sandbox without allow-same-origin): the new
+/// document's origin is opaque, so the storage key obtained for its reserved
+/// environment matches no registration - Service Workers 2.5.1: sandboxed
+/// iframes without allow-same-origin "result in having the active service
+/// worker value of null as their origin is an opaque origin". The service
+/// worker handled such a frame's navigation and controlled it
+/// (service-workers/service-worker/sandboxed-iframe-fetch-event.https.html,
+/// 4 subtests; Chrome 157, Firefox 160 and Safari 27.2 pass).
+fn reservesClient(record: *const Navigation) bool {
+    return !record.target_sandboxing_flags.origin;
+}
+
 fn activeDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
     const browsing_context = integration.browsing_context orelse return null;
     const document = browsing_context.getActiveDocument() orelse return null;
@@ -2548,11 +2562,13 @@ fn startFetch(record: *Navigation) void {
         }
         // "Create navigation params by fetching": the request's reserved
         // client, a new environment - which Handle Fetch may make controlled
-        // (Service Workers 2.5.1) and the new document's realm adopts.
-        if (navigationRealmOf(record.integration)) |creator| {
+        // (Service Workers 2.5.1) and the new document's realm adopts. None
+        // for a frame whose sandboxing flags have the sandboxed origin
+        // browsing context flag (`reservesClient`).
+        if (reservesClient(record)) if (navigationRealmOf(record.integration)) |creator| {
             record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
             if (record.reserved_client != null) record.reserved_url = allocator.dupe(u8, url) catch null;
-        }
+        };
         request.reserved_client = record.reserved_client;
         request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
         // The client's ticket is the fetch's from here: its `gone` or
@@ -3155,10 +3171,10 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
                 record.allocator.free(reserved_url);
                 record.reserved_url = null;
                 // 21.2. A new reserved client, for the new URL.
-                if (navigationRealmOf(record.integration)) |creator| {
+                if (reservesClient(record)) if (navigationRealmOf(record.integration)) |creator| {
                     record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, location);
                     if (record.reserved_client != null) record.reserved_url = record.allocator.dupe(u8, location) catch null;
-                }
+                };
             }
         };
     }
@@ -3492,6 +3508,9 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     // state.
     const new_origin = if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.responseOrigin(record.url, response);
     const window_fate: WindowFate = if (record.group_switch == null and keepsInitialWindow(integration, new_origin)) .kept_for_next_document else .discarded;
+    // Whether the document this commit unloads is the navigable's initial
+    // about:blank, asked before it unloads (for the unload times below).
+    const old_was_initial_about_blank = if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false;
     // The back/forward cache may keep the displayed page (unload step 5).
     var kept: ?KeptDocument = null;
     if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept, window_fate, &unload_timing)) return endLoadDelay(integration);
@@ -3505,8 +3524,22 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     // WindowProxy - decided with no realm entered (`new_origin` above).
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
     // Navigation Timing: the unload times are the new document's only when
-    // the previous document was same origin with it.
-    if (response.timing) |*timing| {
+    // the previous document was same origin with it - HTML "unload a
+    // document" step 22: "If newDocument is given, newDocument's was created
+    // via cross-origin redirects is false, and newDocument's origin is the
+    // same as oldDocument's origin, then set newDocument's previous document
+    // unload timing to unloadTimingInfo."
+    //
+    // And not when the previous document is the initial about:blank, which
+    // Navigation Timing 2 counts as no previous document ("If there is no
+    // previous document ... this attribute MUST return zero"), though HTML's
+    // step 22 would pass its times on: Chrome 157, Firefox 160 and Safari
+    // 27.2 report 0 for a frame's first navigation from its initial
+    // about:blank (navigation-timing/test-no-previous-document.html and
+    // unload-event-same-origin-check.html's "No previous document" cases,
+    // which all three pass), so golden rule 2 follows them.
+    if (response.timing) |*timing| unload_times: {
+        if (old_was_initial_about_blank or response.has_cross_origin_redirects) break :unload_times;
         if (old_origin) |old| {
             if (new_origin.isSameOrigin(old)) {
                 // HTML "unload" steps 11 and 13: around the old document's

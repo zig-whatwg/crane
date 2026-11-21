@@ -203,6 +203,17 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
         if (!style_sheet_loading.potentiallyRenderBlocking(element, parser_made)) dom_module.document_rendering.unblock(element);
         return;
     }
+    // HTML lists no type change among the times "update a style block"
+    // runs, but the browsers update the block when the type changes - Blink's
+    // HTMLStyleElement::ParseAttribute, Gecko's HTMLStyleElement::AfterSetAttr
+    // (UpdateStyleSheetInternal) - so a block whose type becomes text/css
+    // gets its sheet and one whose type stops being it loses it
+    // (html/semantics/document-metadata/the-style-element/style_type_change
+    // .html; Chrome 157, Firefox 160 and Safari 27.2 pass). Golden rule 2.
+    if (std.mem.eql(u8, local_name, "type")) {
+        if (!internal.parser_inserting) style_block.update(element, internal);
+        return;
+    }
     if (!std.mem.eql(u8, local_name, "media")) return;
     // The associated CSS style sheet's media follows the attribute.
     if (internal.sheet) |record| {

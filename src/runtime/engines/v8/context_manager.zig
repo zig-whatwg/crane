@@ -1067,10 +1067,14 @@ pub fn windowIndexedPropertyQuery(
     // Check if this index is valid
     const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
     if (index < length) {
-        // Valid index - return property attributes (ReadOnly | DontEnum)
-        // Per spec, indexed properties on Window are configurable but not writable
+        // HTML 7.2.3.5 WindowProxy [[GetOwnProperty]] step 2.5: "Return
+        // PropertyDescriptor{ [[Value]]: value, [[Writable]]: false,
+        // [[Enumerable]]: true, [[Configurable]]: true }" - ReadOnly alone.
+        // It answered DontEnum too (window-indexed-properties.html's
+        // "Ensure indexed properties have the correct configuration";
+        // Chrome 157, Firefox 160 and Safari 27.2 pass).
         const isolate = info.getIsolate();
-        const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        const attrs = v8.v8_Integer_New(isolate, 1); // 1 = ReadOnly
         // SetReturnValue copies; the Global is ours.
         defer v8.v8_Value_Dispose(@ptrCast(attrs));
         info.setReturnValue(@ptrCast(attrs));
@@ -1108,6 +1112,59 @@ pub fn windowIndexedPropertyDeleter(
     // 2.1.3.
     info.setReturnValueBool(false);
     if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot delete a WindowProxy's indexed property");
+    return .kYes;
+}
+
+/// HTML 7.2.3.7 WindowProxy [[DefineOwnProperty]] (P, Desc), step 1.1, for
+/// an array index P on a same-origin WindowProxy (a cross-origin one throws,
+/// in cross_origin.zig): "If P is an array index property name, return
+/// false" - whether a child navigable is there or not. A false is a
+/// TypeError from Object.defineProperty and in strict code, and
+/// Reflect.defineProperty's false (as the binding's refuseDefine). Without
+/// it, V8 defined an own property at an index with no child, and replaced
+/// none at one with a child without saying so
+/// (html/browsers/the-window-object/window-indexed-properties{,-strict}.html;
+/// Chrome 157, Firefox 160 and Safari 27.2 pass).
+pub fn windowIndexedPropertyDefiner(
+    index: u32,
+    desc: *const v8.PropertyDescriptor,
+    info: *const v8.PropertyCallbackInfoBoolean,
+) callconv(.c) v8.Intercepted {
+    _ = index;
+    _ = desc;
+    // THE Window-receiver rule, as the getter's.
+    const this_obj = info.getHolder() orelse return .kNo;
+    defer v8.v8_Object_Dispose(this_obj);
+    _ = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
+    info.setFalse();
+    if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot define an indexed property on a WindowProxy");
+    return .kYes;
+}
+
+/// WindowProxy [[Set]] for an array index P on a same-origin WindowProxy:
+/// OrdinarySet, which ends in [[DefineOwnProperty]] on the WindowProxy -
+/// false for an array index (above) whether a child navigable is there
+/// ([[GetOwnProperty]]'s non-writable descriptor) or not (CreateDataProperty
+/// on the receiver) - so the assignment does nothing, and is a TypeError in
+/// strict code. V8's setter interceptor cannot answer false without throwing
+/// (its PropertyCallbackInfo<void> has no return value), so Reflect.set
+/// still answers true where the spec says false - Chrome 157's answer on the
+/// same V8 (it fails window-indexed-properties*.html's "Borderline numeric
+/// key: 2 ** 32 - 2 is an index" cases; Firefox 160 and Safari 27.2 pass).
+/// Without it, `window[1] = "foo"` with no second child defined an own
+/// property.
+pub fn windowIndexedPropertySetter(
+    index: u32,
+    value: *v8.Value,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    _ = index;
+    _ = value;
+    // THE Window-receiver rule, as the getter's.
+    const this_obj = info.getHolder() orelse return .kNo;
+    defer v8.v8_Object_Dispose(this_obj);
+    _ = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
+    if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot set an indexed property of a WindowProxy");
     return .kYes;
 }
 
@@ -1454,6 +1511,8 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyDeleter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertySetter));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyDefiner));
     // No named handler on the global: a Window's named properties are its
     // WindowProperties object's (window_properties.zig, HTML 7.3.3). The
     // global named getter and query that were registered here were installed

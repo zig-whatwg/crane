@@ -298,7 +298,7 @@ test "overlay: only the UA's important declarations and transitions set it" {
     try testing.expectEqualStrings("none", text.items);
 }
 
-test "animation types: overlay steps like visibility; three are not animatable" {
+test "animation types: overlay steps like visibility; two are not animatable, scroll-behavior is discrete" {
     const interpolation = css.interpolation;
     const Value = css.style_values.Value;
     const allocator = testing.allocator;
@@ -315,9 +315,12 @@ test "animation types: overlay steps like visibility; three are not animatable" 
         try testing.expect(v.eql(case[3]));
     }
     try testing.expect(try interpolation.transitionable(allocator, try longhandOf("overlay"), none, auto));
-    // Color Adjust 1 §4, Overflow 3 §5 and Writing Modes 4 §9.1.
-    for ([_][]const u8{ "forced-color-adjust", "scroll-behavior", "text-combine-upright" }) |name|
+    // Color Adjust 1 §4 and Writing Modes 4 §9.1. Not scroll-behavior:
+    // Overflow 3 §5 says not animatable, but Chrome, Firefox and Safari all
+    // animate it discretely (golden rule 2; lane maj6, css/interpolation.zig).
+    for ([_][]const u8{ "forced-color-adjust", "text-combine-upright" }) |name|
         try testing.expectEqual(interpolation.AnimationType.not_animatable, interpolation.animationType(try longhandOf(name)));
+    try testing.expectEqual(interpolation.AnimationType.by_computed_value, interpolation.animationType(try longhandOf("scroll-behavior")));
     for ([_][]const u8{ "isolation", "mix-blend-mode", "clear", "clip-rule", "ruby-position", "frame-sizing" }) |name|
         try testing.expect(!try interpolation.transitionable(allocator, try longhandOf(name), Value.kw(.auto), Value.kw(.none)));
 }

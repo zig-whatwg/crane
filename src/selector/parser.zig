@@ -626,7 +626,8 @@ pub const PseudoClassKind = union(enum) {
     Stalled,
     Muted,
     VolumeLocked,
-    Heading: u6,
+    /// The heading levels :heading() matches, bit n-1 for level n (1-9).
+    Heading: u9,
 
     // Language pseudo-classes: :lang()'s language ranges (Selectors 4 7.2),
     // the slice owned by the pseudo-class, the strings by the list.
@@ -1730,7 +1731,7 @@ pub const Parser = struct {
             .{ "paused", .Paused },                      .{ "seeking", .Seeking },
             .{ "buffering", .Buffering },                .{ "stalled", .Stalled },
             .{ "muted", .Muted },                        .{ "volume-locked", .VolumeLocked },
-            .{ "heading", .{ .Heading = 0b111111 } },    .{ "target", .Target },
+            .{ "heading", .{ .Heading = 0b111111111 } }, .{ "target", .Target },
             .{ "defined", .Defined },                    .{ "host", .{ .Host = null } },
             .{ "-internal-list-box", .InternalListBox },
         };
@@ -1924,16 +1925,17 @@ pub const Parser = struct {
     }
 
     /// HTML :heading(<integer>#), CSS Values 4 integer syntax. Keep only
-    /// levels 1-6 in the mask, while accepting every syntactically valid
-    /// integer.
-    fn parseHeadingLevels(args: []const Token) ParserError!u6 {
-        var levels: u6 = 0;
+    /// levels 1-9 in the mask - the levels HTML's computed heading level
+    /// gives (4.3.11.1: h1-h6 plus the heading offset, at most 9) - while
+    /// accepting every syntactically valid integer.
+    fn parseHeadingLevels(args: []const Token) ParserError!u9 {
+        var levels: u9 = 0;
         var stream = Stream{ .tokens = args };
         while (true) {
             _ = stream.skipWhitespace();
             const token = stream.peek();
             if (token.tag != .number or !token.is_integer) return error.InvalidSelector;
-            if (token.number >= 1 and token.number <= 6) levels |= @as(u6, 1) << @as(u3, @intFromFloat(token.number - 1));
+            if (token.number >= 1 and token.number <= 9) levels |= @as(u9, 1) << @as(u4, @intFromFloat(token.number - 1));
             stream.advance();
             _ = stream.skipWhitespace();
             if (stream.atEnd()) return levels;

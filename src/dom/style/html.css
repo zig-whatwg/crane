@@ -72,8 +72,14 @@ dialog {
    Chrome ships these UA rules (5/5 and 4/4); Firefox/Safari lack the property. */
 [inert] { interactivity: inert !important; }
 
+/* visibility: visible is not in HTML 15.3.3's sheet, but Chrome 157, Firefox
+   160 and Safari 27.2 all give a modal dialog visibility: visible from their
+   UA sheets (Blink html.css dialog:modal; html/semantics/interactive-elements/
+   the-dialog-element/modal-dialog-in-visibility-hidden.html, all three
+   pass): golden rule 2, the browsers. */
 dialog:modal {
  interactivity: auto;
+ visibility: visible;
  position: fixed;
  overflow: auto;
  inset-block: 0;

@@ -159,6 +159,12 @@ pub const FunctionCallbackInfo = opaque {
     /// handle: Locals in the callback's own HandleScope.
     pub extern fn v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(self: *const FunctionCallbackInfo) usize;
 
+    /// When `this` is the current context's global, the context's Crane id
+    /// (context_manager.getByKey's key); 0 for any other receiver. An id, NOT
+    /// an allocation - nothing to free. No handle: Locals in the callback's
+    /// own HandleScope.
+    pub extern fn v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(self: *const FunctionCallbackInfo) usize;
+
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;

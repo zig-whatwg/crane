@@ -10923,6 +10923,21 @@ uintptr_t v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(const FunctionCallba
     return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
 }
 
+// FunctionCallbackInfo - when This() is the current context's global, the
+// context's Crane id (CraneContextIdOf: the key of Crane's realm registry,
+// context_manager.getByKey); 0 for any other receiver. A natively bound Window
+// operation's commonest receiver (page_realm's timers, called contextually or
+// as `frame.setTimeout`: V8 enters the function's creation context, whose
+// global that frame's WindowProxy is). An ID, NOT AN ALLOCATION, as the getter
+// fast path above: Locals only, in the callback's own HandleScope.
+uintptr_t v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return 0;
+    if (!info->This()->StrictEquals(context->Global())) return 0;
+    return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
+}
+
 // FunctionCallbackInfo - set a primitive return value straight into the
 // return slot (a Smi where it fits, else a heap number made in the callback's
 // HandleScope): no Global for a number or boolean result.
