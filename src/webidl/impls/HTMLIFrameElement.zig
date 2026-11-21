@@ -3492,6 +3492,9 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     // state.
     const new_origin = if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.responseOrigin(record.url, response);
     const window_fate: WindowFate = if (record.group_switch == null and keepsInitialWindow(integration, new_origin)) .kept_for_next_document else .discarded;
+    // Whether the document this commit unloads is the navigable's initial
+    // about:blank, asked before it unloads (for the unload times below).
+    const old_was_initial_about_blank = if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false;
     // The back/forward cache may keep the displayed page (unload step 5).
     var kept: ?KeptDocument = null;
     if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept, window_fate, &unload_timing)) return endLoadDelay(integration);
@@ -3505,8 +3508,22 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     // WindowProxy - decided with no realm entered (`new_origin` above).
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
     // Navigation Timing: the unload times are the new document's only when
-    // the previous document was same origin with it.
-    if (response.timing) |*timing| {
+    // the previous document was same origin with it - HTML "unload a
+    // document" step 22: "If newDocument is given, newDocument's was created
+    // via cross-origin redirects is false, and newDocument's origin is the
+    // same as oldDocument's origin, then set newDocument's previous document
+    // unload timing to unloadTimingInfo."
+    //
+    // And not when the previous document is the initial about:blank, which
+    // Navigation Timing 2 counts as no previous document ("If there is no
+    // previous document ... this attribute MUST return zero"), though HTML's
+    // step 22 would pass its times on: Chrome 157, Firefox 160 and Safari
+    // 27.2 report 0 for a frame's first navigation from its initial
+    // about:blank (navigation-timing/test-no-previous-document.html and
+    // unload-event-same-origin-check.html's "No previous document" cases,
+    // which all three pass), so golden rule 2 follows them.
+    if (response.timing) |*timing| unload_times: {
+        if (old_was_initial_about_blank or response.has_cross_origin_redirects) break :unload_times;
         if (old_origin) |old| {
             if (new_origin.isSameOrigin(old)) {
                 // HTML "unload" steps 11 and 13: around the old document's
