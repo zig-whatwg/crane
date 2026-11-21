@@ -740,8 +740,8 @@ progress = [
 
 [[infra]]
 id = "api-subset-build"
-title = "A smaller build from a list of web APIs (0.1 requirement)"
-why = """The user, 2026-11-12: a dead-code-elimination build flag that takes the list of web \
+title = "A smaller build from a list of web APIs (0.2 - moved from 0.1 by the user, 2026-11-21)"
+why = """Moved to 0.2 by the user on 2026-11-21 ("I want to move the following to 0.2: smaller build from list of web APIs"). The user, 2026-11-12: a dead-code-elimination build flag that takes the list of web \
 APIs a host needs, adds what those depend on, and compiles a smaller engine - "a blocker \
 for 0.1". The release console is 89.8 MB (50.9 MB of code: about 26 MB V8 and ICU, about \
 24 MB Crane's own, by symbol name); only Crane's half can shrink this way."""
@@ -764,6 +764,43 @@ progress = []
 
   [[infra.items]]
   name = "The build option, the reduced snapshot, tests of a reduced build, documentation"
+  status = "todo"
+
+[[infra]]
+id = "cdp"
+title = "Chrome DevTools Protocol server (0.1 requirement)"
+why = """The user, 2026-11-21: "I want to add the following to 0.1: Chrome Devtools Protocol". \
+Automation clients (Puppeteer, Playwright's Chromium path, chromedp, Lightpanda's users) drive \
+a headless browser through CDP over a WebSocket; Crane's host API and repl reach pages only \
+through browser algorithms (no invented paths), so CDP is a host surface over those same \
+algorithms - Target/Page/Runtime/DOM/Network/Input/Fetch/Emulation commands map onto \
+navigation, script evaluation, the DOM and the fetch layer the way Chromium's \
+content/browser/devtools does, never a side door."""
+done_when = """A CDP endpoint (HTTP /json/version, /json/list and the browser WebSocket) in the \
+release console and the host API, implementing the domains Puppeteer and Playwright need for \
+headless automation without a renderer (Target with flat sessions, Browser, Page lifecycle \
+events and navigation, Runtime evaluate/callFunctionOn/remote objects and console events, \
+DOM and DOMSnapshot reads, Network events and request interception via Fetch, Input key \
+and mouse dispatch, Emulation basics, Storage/cookies); geometry-dependent commands answer \
+as a headless browser without a renderer would; measured by running Puppeteer's and \
+Playwright's own test suites against Crane (as the framework matrix does), with a results \
+page; protocol definitions from the published devtools-protocol JSON (BSD-3), cited."""
+progress = []
+
+  [[infra.items]]
+  name = "Design: transport, session model, domain list from Puppeteer/Playwright usage, mapping onto Crane's browser algorithms (Chromium content/browser/devtools as reference)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Transport + Target/Browser/Page/Runtime core: connect, create targets, navigate, evaluate, lifecycle events"
+  status = "todo"
+
+  [[infra.items]]
+  name = "DOM, Network/Fetch interception, Input, Emulation, Storage domains"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Puppeteer and Playwright suites against Crane, results page"
   status = "todo"
 
 [[parallel]]
