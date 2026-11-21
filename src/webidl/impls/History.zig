@@ -744,6 +744,12 @@ fn urlAndHistoryUpdate(
     }
     // Step 9: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
+    // The Browser's navigation observer: a same-document navigation (CDP
+    // navigatedWithinDocument; html_core.navigation.observer).
+    html_core.navigation.observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .same_document = .{ .url = new_url, .kind = switch (effective) {
+        .push => .push,
+        .replace => .replace,
+    } } } });
     // Step 12: "Update the navigation API entries for a same-document
     // navigation given document's relevant global object's navigation API,
     // newEntry, and historyHandling."
@@ -898,6 +904,11 @@ fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry:
     const scroll_restoration_manual = entry.scroll_restoration_manual;
 
     setDocumentUrl(window, new_url);
+    // The Browser's navigation observer: a same-document traversal (CDP
+    // navigatedWithinDocument; html_core.navigation.observer).
+    if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
+        html_core.navigation.observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .same_document = .{ .url = new_url, .kind = .traverse } } });
+    }
     // 6.3: "Restore the history object state given document and entry."
     internal.has_state = false;
     const kept_state: ?engine.Owned = stateValue(history_instance, internal, entry) catch null;
@@ -969,7 +980,9 @@ fn queueHashChange(window: *runtime.Instance, old_url: []const u8, new_url: []co
         .new_url = new_copy,
         .allocator = allocator,
     };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    // A task, never run in the caller: a window no event loop runs gets no
+    // hashchange (lane life1; it ran inline for test-built contexts).
+    const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
     loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
 }
 

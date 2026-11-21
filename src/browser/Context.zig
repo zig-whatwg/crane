@@ -1842,10 +1842,33 @@ pub const Context = struct {
     /// document of the same origin (create and initialize a Document object
     /// steps 6-7). error.NoTraversable for a page with no record.
     pub fn navigate(self: *Context, url: []const u8) !void {
+        _ = try self.navigateWithOptions(url, .{});
+    }
+
+    /// What a host's navigation of the page may say beyond its URL (the
+    /// CDP design's N5: Page.navigate's `referrer` and `referrerPolicy`).
+    pub const NavigateOptions = struct {
+        /// The request's referrer, a URL (main fetch strips it and applies
+        /// the policy, as for any URL referrer). BORROWED for the call.
+        referrer: ?[]const u8 = null,
+        referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    };
+
+    /// `navigate` with `options`: the id of the cross-document navigation it
+    /// started (navigate step 7's navigation ID - the navigation observer's
+    /// `navigation_id`, CDP's loaderId), or 0 when none started (a
+    /// same-document navigation, or one refused or ignored).
+    pub fn navigateWithOptions(self: *Context, url: []const u8, options: NavigateOptions) !u64 {
         const record = self.traversable orelse return error.NoTraversable;
         const serialized = serializedUrlOf(self.allocator, url);
         defer if (serialized) |s| self.allocator.free(s);
-        dom_mod.top_level_traversables.navigate(record, serialized orelse url, .{});
+        var started: u64 = 0;
+        dom_mod.top_level_traversables.navigate(record, serialized orelse url, .{
+            .referrer = options.referrer,
+            .referrer_policy = options.referrer_policy,
+            .started_navigation_id = &started,
+        });
+        return started;
     }
 
     /// `url` parsed and serialized; null when it does not parse.
