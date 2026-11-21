@@ -38,9 +38,11 @@ const value_cases = [_]ValueCase{
     .{ .input = "{<p><p> <p>foo</p>}", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "p|div|<div> foo</div>" },
     // A block holding other blocks is the value too.
     .{ .input = "<div><ol><li>[foo]</ol></div>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "div|div|<div><ol><li>foo</li></ol></div>" },
-    // A dl holding the range's dt and dd; after, the range spans two divs:
-    // "" (Chrome and Safari make one div with a br, which reports "div").
-    .{ .input = "<dl><dt>[foo<dd>bar]</dl>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "dl||<div>foo</div><div>bar</div>" },
+    // A dl holding the range's dt and dd; after, the range spans two divs
+    // and reports their shared "div" (lane edit4: the user's ruling B5 (b),
+    // 2026-11-21 - the spec's and Firefox's value; Chrome and Safari reach
+    // "div" by making one div with a br).
+    .{ .input = "<dl><dt>[foo<dd>bar]</dl>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "dl|div|<div>foo</div><div>bar</div>" },
     // A dd line gets its dl (Firefox's DOM; all three report "dd").
     .{ .input = "<p>[foobar]</p>", .commands = "[[\"formatblock\",\"<dd>\"]]", .expected = "p|dd|<dl><dd>foobar</dd></dl>" },
     .{ .input = "<div>[foobar]</div>", .commands = "[[\"formatblock\",\"<dt>\"]]", .expected = "div|dt|<dl><dt>foobar</dt></dl>" },
@@ -51,12 +53,13 @@ const value_cases = [_]ValueCase{
     .{ .input = "<blockquote><p>[foo]<p>bar</blockquote><p>extra", .commands = "[[\"formatblock\",\"<blockquote>\"]]", .expected = "p|blockquote|<blockquote><blockquote>foo</blockquote><p>bar</p></blockquote><p>extra</p>" },
     // A container already of the name is rewrapped as one (the spec).
     .{ .input = "<div>[foobar]</div>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "div|div|<div>foobar</div>" },
-    .{ .input = "<p>[foo<p>bar]", .commands = "[[\"formatblock\",\"<p>\"]]", .expected = "||<p>foo</p><p>bar</p>" },
+    .{ .input = "<p>[foo<p>bar]", .commands = "[[\"formatblock\",\"<p>\"]]", .expected = "p|p|<p>foo</p><p>bar</p>" },
     // The new block takes the replaced container's attributes (all three).
     .{ .input = "<div style=color:blue>[foo]</div>", .commands = "[[\"stylewithcss\",\"false\"],[\"formatblock\",\"<p>\"]]", .expected = "div|p|<p style=\"color:blue\">foo</p>" },
     .{ .input = "<div style=color:blue>[foo]</div>", .commands = "[[\"stylewithcss\",\"true\"],[\"formatblock\",\"<p>\"]]", .expected = "div|p|<p style=\"color:blue\">foo</p>" },
-    // Several blocks: "" (Chrome and Safari).
-    .{ .input = "<p>[foo<p>bar]<p>baz", .commands = "[]", .expected = "||<p>foo</p><p>bar</p><p>baz</p>" },
+    // Several blocks of one name: that name (the user's ruling B5 (b),
+    // 2026-11-21: the spec, Firefox and the data; Chrome and Safari say "").
+    .{ .input = "<p>[foo<p>bar]<p>baz", .commands = "[]", .expected = "p|p|<p>foo</p><p>bar</p><p>baz</p>" },
 };
 
 fn valueCases() !void {

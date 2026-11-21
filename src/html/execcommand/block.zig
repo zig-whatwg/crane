@@ -676,6 +676,52 @@ fn dissolvesForFormatBlock(node: *Instance) !bool {
 /// VisibleSelection) and FormatBlockCommand::ElementForFormatBlockCommand
 /// (format_block_command.cc). Golden rule 2, no newer spec.
 pub fn formatBlockValue(edit: *Edit) ![]const u8 {
+    const value = try commonAncestorFormatBlockValue(edit);
+    // A selection over several blocks that all carry one formattable name
+    // answers that name (the user's ruling, 2026-11-21 ~2:25 PM ET, B5 (b):
+    // "keep two blocks and answer the spec/Firefox value"): where the
+    // common ancestor names no block ("") or only the dl around dd/dt
+    // blocks, Firefox 160 and the data answer the blocks' shared name -
+    // `<p>[foo<p>bar]` reports "p", and after formatBlock "dd" on it, "dd"
+    // (editing/run/formatblock.html: the value-before rows FPF, the
+    // value-after rows PPP, wpt.fyi 2358bd4835). Chrome 157 and Safari 27.2
+    // reach the same "dd"/"div" after formatBlock only by making ONE block
+    // (`<dd>foo<br>bar</dd>`), and answer "" before it; Crane keeps the
+    // spec's two blocks (Firefox's), so it takes Firefox's value with them:
+    // a "spec + one browser over a two-browser majority" ruling, like
+    // selectAll (2026-11-11) and push-down (2026-11-19). Blocks of
+    // different names keep the common ancestor's answer
+    // (`<h1>[foo</h1><h2>bar]</h2>` is "" in Chrome, Safari and the data).
+    if (value.len == 0 or std.mem.eql(u8, value, "dl")) {
+        if (try sharedFormatBlockName(edit)) |shared| return shared;
+    }
+    return value;
+}
+
+/// The formattable block name every visible editable leaf of the
+/// block-extended active range is in (its formatBlock owner, as the
+/// indeterminacy reads it), or null when they differ, one has none, or
+/// there is no leaf.
+fn sharedFormatBlockName(edit: *Edit) !?[]const u8 {
+    const range = (try blockExtendActiveRange(edit)) orelse return null;
+    var leaves: std.ArrayList(*Instance) = .empty;
+    defer leaves.deinit(edit.allocator);
+    try visibleEditableLeaves(edit, range, &leaves);
+    var shared: ?[]const u8 = null;
+    for (leaves.items) |leaf| {
+        const node = try formatBlockOwner(leaf);
+        if (!try isFormatBlockCandidate(node)) return null;
+        const name = try formattableName(node);
+        if (name.len == 0) return null;
+        if (shared) |s| {
+            if (!std.mem.eql(u8, s, name)) return null;
+        } else shared = name;
+    }
+    return shared;
+}
+
+/// Blink's ValueFormatBlock (see formatBlockValue's comment above).
+fn commonAncestorFormatBlockValue(edit: *Edit) ![]const u8 {
     const start = (try edit.rangeStart()) orelse return "";
     const end = (try edit.rangeEnd()) orelse return "";
     const visible = visible_position.visibleRange(edit.scratchAllocator(), start, end) orelse return "";
