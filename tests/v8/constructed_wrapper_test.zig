@@ -2,10 +2,8 @@
 //! root cause, tmp/analysis/fix-list.md).
 //!
 //! The binding binds a constructed instance to the object V8 made for
-//! NewTarget on the generic constructor path; an [HTMLConstructor] interface's
-//! class (no receiver) wraps its `.created` and never-wrapped `.upgrading`
-//! answers as any wrap does and gives the wrapper NewTarget's prototype. Two
-//! defects lived there:
+//! NewTarget - the generic constructor path, and [HTMLConstructor]'s
+//! `.created` and never-wrapped `.upgrading` answers. Two defects lived there:
 //!
 //! - An instance its own construction had already wrapped (a template's
 //!   establish step traced its content from it) had that wrapper REPLACED, and

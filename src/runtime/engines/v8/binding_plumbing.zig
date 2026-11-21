@@ -47,8 +47,8 @@ const webidl = @import("webidl");
 const dom_algorithm = @import("dom_algorithm.zig");
 const interface = @import("interface.zig");
 const realm_global = @import("realm_global.zig");
+const template_registry = @import("template_registry.zig");
 const protocol_agents = @import("protocol_agents.zig");
-const engine = @import("engine");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const value_operations = @import("value_operations.zig");
 const CallFrame = @import("call_frame.zig").CallFrame;
@@ -179,17 +179,16 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     var receiver_taken = false;
     defer if (!receiver_taken) v8.v8_Object_Dispose(this_obj);
 
-    // HTML 3.2.3 "HTML element constructors" [html_constructor]: an
-    // [HTMLConstructor] interface's interface object is a class that never
-    // reaches here (`htmlConstructorCall`); its template's function does
-    // only where that class could not be made - a context made without the
-    // extension, where no custom element constructs. There, with the host's
-    // hook installed, it is an illegal constructor: V8 has already read
-    // NewTarget.prototype for the receiver, before HTML's checks. With no
-    // hook it constructs as its own constructor does, below.
-    if (self.html_constructor and protocol_agents.htmlConstructorHookOf(isolate) != null) {
-        conv.throwTypeErrorFromContext(isolate, constructor_context, "Illegal constructor");
-        return;
+    // HTML 3.2.3 "HTML element constructors" [html_constructor]: with
+    // the agent's host hook, the construction is HTML's - the element
+    // a custom element class's super() gets, new or upgrading.
+    if (self.html_constructor) {
+        if (protocol_agents.htmlConstructorHookOf(isolate)) |hook| {
+            // It binds or releases the receiver itself.
+            receiver_taken = true;
+            constructHTMLElement(self, info, hook, this_obj, isolate, current_context, constructor_context, ctx);
+            return;
+        }
     }
 
     // ========================================
@@ -308,201 +307,224 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // Return 'this' (V8 does this automatically for constructors)
 }
 
-/// HTML 3.2.3 "HTML element constructors", the overridden constructor steps
-/// of an [HTMLConstructor] interface, as its interface object runs them: a
-/// derived class (interface.zig `htmlInterfaceObject`; its source
-/// interface_bindings `html_constructors_extension_source`) whose
-/// [[Construct]] makes no receiver - V8 reads no NewTarget.prototype before
-/// these steps, as it does for an API function's receiver - and whose
-/// constructor calls this, as a function, with NewTarget, itself (the active
-/// function object) and its interface's index, then returns what this
-/// returns. In the spec's order (engine.HostHooks.htmlConstructor):
+/// HTML 3.2.3 "HTML element constructors", the overridden constructor
+/// steps of an [HTMLConstructor] interface, across the seam
+/// (engine.HostHooks.htmlConstructor): steps 10-11 (the receiver's
+/// prototype), step 1 here, the host's 2-8 (`resolve`) and 9, 12, 13 and
+/// 15 (`finish`), back to back, and 14 and 16 here. Takes `this_obj`, V8's
+/// receiver for NewTarget: it is bound to the element, or released - never
+/// left registered for an element whose existing wrapper is the result.
 ///
-/// - step 1 here;
-/// - steps 2-8, the host's `resolve`;
-/// - steps 10-11 here (`newTargetPrototype`), after every check of steps
-///   1-8 - custom-elements/HTMLElement-constructor-customized-builtins.html
-///   and HTMLElement-constructor.html's "must not get .prototype until it
-///   finishes its registration sanity checks" count the reads (Firefox 160
-///   passes them; Chrome 157, whose API functions read the prototype first,
-///   and Safari 27.2, which ships no customized built-ins, do not; the spec
-///   and the Firefox/Gecko order: dom/bindings/BindingUtils.cpp
-///   HTMLConstructor reads the desired prototype after its definition
-///   checks);
-/// - step 9, or steps 12, 13 and 15, the host's `finish`;
-/// - the element's wrapper given the prototype (step 9.1's, step 14) and
-///   returned (steps 9.10 and 16) here.
-///
-/// With no hook installed the interface constructs as its own constructor
-/// does: a new element of its interface, with NewTarget's prototype.
-pub fn htmlConstructorCall(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    // A DOM algorithm on the agent's stack until it returns into script
-    // (dom_algorithm.zig; refcount design 9, risk 4).
-    const algorithm = dom_algorithm.enter(info.getIsolate());
-    defer dom_algorithm.leaveToScript(algorithm);
-    const isolate = info.getIsolate();
+/// Order - the adapter's, as the protocol leaves it: V8 adapter follows
+/// Chrome's order (prototype read before the definition checks); the user,
+/// 2026-11-21; Firefox = spec, Safari ships no customized built-ins. V8
+/// performs Get(NewTarget, "prototype") when it makes an API function's
+/// receiver (builtins-api.cc HandleApiCallHelper: ApiNatives::
+/// InstantiateObject -> JSFunction::GetDerivedMap), before step 1, so a
+/// throwing or side-effecting getter is seen before the TypeErrors of
+/// steps 1-8, 12 and 13 (the spec has it after them: custom-elements/
+/// HTMLElement-constructor-customized-builtins.html, Chrome 157 0/2,
+/// Firefox 160 2/2). Blink's V8HTMLConstructor::HtmlConstructor
+/// (third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc)
+/// runs under the same V8 construct path and has the same order. The
+/// class form that reads it in spec order - a derived class whose
+/// [[Construct]] makes no receiver - is lane blk7's handoff
+/// (tmp/plans/lane-blk7-handoff.md, "for the JSC/other adapters").
+fn constructHTMLElement(
+    self: *const Constructor,
+    info: *const v8.FunctionCallbackInfo,
+    hook: protocol_agents.HTMLConstructorHook,
+    this_obj: *v8.Object,
+    isolate: *v8.Isolate,
+    current_context: *v8.Context,
+    function_context: *v8.Context,
+    realm: runtime.Context,
+) void {
+    var receiver_taken = false;
+    defer if (!receiver_taken) v8.v8_Object_Dispose(this_obj);
 
-    // Only the classes call it: construct(new.target, X, index).
-    if (info.isConstructCall() or info.length() < 3) {
-        conv.throwTypeError(isolate, "Illegal constructor");
-        return;
-    }
-    // The current context is the class's - the realm whose interface object
-    // the active function object is, and the current realm of these steps.
-    const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwError(isolate, "No current V8 context");
-        return;
-    };
-    defer v8.v8_Context_Dispose(current_context);
-    const index_value = info.get(2);
-    defer v8.v8_Value_Dispose(index_value);
-    const self = @import("interface_bindings.zig").htmlConstructorDescriptor(v8.v8_Value_Uint32Value(index_value, current_context)) orelse {
-        conv.throwTypeErrorFromContext(isolate, current_context, "Illegal constructor");
+    // The active function object: this interface's interface object.
+    // A construct call's FunctionCallbackInfo names its target as the
+    // FunctionTemplateInfo rather than the function (V8's
+    // GetTargetFunctionTemplateInfo reads either), and V8 >= 14 gives no
+    // read of it; the interface object is the template's instantiation in
+    // the current context - the callee's, which V8 entered for the call.
+    const active: ?*v8.Function = activeInterfaceObject(self, current_context);
+    defer if (active) |f| v8.v8_Function_Dispose(f);
+
+    // A construct call always has NewTarget.
+    const new_target = info.getNewTarget() orelse {
+        conv.throwTypeErrorFromContext(isolate, function_context, "Illegal constructor");
         return;
     };
-    const new_target = info.get(0);
     defer v8.v8_Value_Dispose(new_target);
-    const active = info.get(1);
-    defer v8.v8_Value_Dispose(active);
 
-    const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
-        conv.throwError(isolate, "Failed to get isolate allocator");
-        return;
-    };
-    const ctx_mgr = @import("context_manager.zig");
-    const realm = ctx_mgr.getOrCreateWithIsolate(current_context, isolate, allocator) catch {
-        conv.throwError(isolate, "Failed to get runtime context");
-        return;
-    };
-
-    const hook = protocol_agents.htmlConstructorHookOf(isolate);
-
-    // 1. If NewTarget is equal to the active function object, then throw a
-    //    TypeError.
-    if (hook != null and v8.v8_Value_StrictEquals(new_target, active)) {
-        conv.throwTypeErrorFromContext(isolate, current_context, "Illegal constructor");
-        return;
-    }
-
-    // 2-8: the host's. NewTarget BORROWED for the call.
-    const resolution: ?engine.HTMLConstructorResolution = if (hook) |h|
-        h.hooks.resolve(h.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
-            if (err == error.ExceptionPending) return;
-            // TypeError (steps 5, 7.1 and 8.2): of the active function's
-            // realm, the current one.
-            conv.throwWebIDLErrorFromContext(isolate, current_context, @errorName(err));
+    // 1. If NewTarget is equal to the active function object, then
+    //    throw a TypeError.
+    if (active) |function| {
+        if (v8.v8_Value_StrictEquals(new_target, @ptrCast(function))) {
+            conv.throwTypeErrorFromContext(isolate, function_context, "Illegal constructor");
             return;
         }
-    else
-        null;
-
-    // 10-11. Author script may run (a getter, a Proxy's get trap): an
-    //        exception it throws is the construction's.
-    const prototype = newTargetPrototype(new_target, isolate, current_context, self.interface_name) orelse return;
-    defer v8.v8_Value_Dispose(prototype);
-
-    // 9, or 12, 13 and 15: the host's. With no hook, the interface's own
-    // constructor (an [HTMLConstructor] constructor takes no argument).
-    const constructed: engine.HTMLConstructed = if (hook) |h|
-        h.hooks.finish(h.host, realm, resolution.?, self.interface_name) catch |err| {
-            if (err == error.ExceptionPending) return;
-            // TypeError (step 13).
-            conv.throwWebIDLErrorFromContext(isolate, current_context, @errorName(err));
-            return;
-        }
-    else
-        .{ .created = self.construct(info, allocator, realm, current_context, isolate) catch |err| {
-            if (err == conv.ConversionError.ExceptionPending) return;
-            conv.throwWebIDLErrorFromContext(isolate, current_context, @errorName(err));
-            return;
-        } };
-    const created = constructed == .created;
-    const element = switch (constructed) {
-        .created, .upgrading => |e| e,
-    };
-
-    // The element's wrapper in its relevant realm: the one it has - an
-    // upgraded element's, or one its creation already made (an edge traced
-    // to it) - else a new one, its interface's (WrapperCache keeps it, the
-    // node's slot for an element). A wrapper that could not be made: a new
-    // element is this construction's to free (nothing else ever wrapped it),
-    // an upgraded one stays the construction stack's; the construction throws.
-    const wrapped = conv.instanceToV8Checked(isolate, element) catch {
-        if (created) element.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(element));
-        conv.throwWebIDLErrorFromContext(isolate, current_context, "OutOfMemory");
-        return;
-    };
-    if (!v8.v8_Value_IsObject(wrapped)) {
-        if (created) element.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(element));
-        conv.throwTypeErrorFromContext(isolate, current_context, "Illegal constructor");
-        return;
     }
-    // Held at once: the cache holds it weakly, and setting the prototype
-    // allocates.
-    const wrapper = v8.v8_Global_Clone(wrapped) orelse return;
-    defer v8.v8_Global_Dispose(wrapper);
 
-    // 9.1 ("internally create a new object implementing the interface"
-    // given NewTarget) and 14 (? element.[[SetPrototypeOf]](prototype)): an
-    // ordinary wrapper's answers false rather than throwing when it cannot
-    // (non-extensible), a normal completion; a legacy platform object's
-    // proxy forwards to its target (an exception its trap throws stays
-    // pending, and V8 throws it in place of the result).
-    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(wrapper), current_context, prototype);
+    // 10-11. Let prototype be ? Get(NewTarget, "prototype"); if it is
+    //        not an Object, the interface prototype object of
+    //        GetFunctionRealm(NewTarget) whose interface is the active
+    //        function's. V8 made the receiver with NewTarget's
+    //        prototype, or - for a non-object - the active function's
+    //        own realm's. Only then can the realm be wrong, so only then
+    //        is NewTarget read again (its getter runs twice there, as on
+    //        every constructor's path); a prototype of NewTarget's own
+    //        is never re-read, so its getter's script ran once, before
+    //        the host's steps (the hook's single-call contract).
+    //    V8's fallback for a non-object is %Object.prototype% of
+    //    GetFunctionRealm(NewTarget) for an API constructor
+    //    (JSFunction::GetDerivedMap: OBJECT_FUNCTION_INDEX when the
+    //    constructor names no intrinsic), never an interface
+    //    prototype - so a receiver given that object needs the
+    //    fallback too (CE-S1: newtarget.html, newtarget-customized-
+    //    builtins.html). The fallback re-reads NewTarget.prototype
+    //    and changes nothing for a real object, so a NewTarget whose
+    //    prototype IS that %Object.prototype% stays as it is.
+    if (receiverHasActivePrototype(this_obj, active, current_context) or
+        receiverHasRealmObjectPrototype(this_obj, new_target, isolate))
+    {
+        interface.handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, self.interface_name);
+    }
 
-    // 9.10 / 16. Return element: the class's constructor returns it.
-    info.setReturnValue(wrapper);
-}
-
-/// Steps 10-11: ? Get(NewTarget, "prototype"); one that is not an Object
-/// falls back to the interface prototype object of GetFunctionRealm(
-/// NewTarget) whose interface is the active function object's - that
-/// realm's interface object built there first, so it is its class's
-/// prototype object (interface.zig `htmlInterfaceObject`). OWNED; null with
-/// the exception pending that the read threw, or when nothing answered.
-fn newTargetPrototype(new_target: *v8.Value, isolate: *v8.Isolate, context: *v8.Context, interface_name: []const u8) ?*v8.Value {
-    const key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return null;
-    defer v8.v8_String_Dispose(key);
-    // 10. Let prototype be ? Get(NewTarget, "prototype").
-    const value = v8.v8_Object_Get(@ptrCast(new_target), context, @ptrCast(key)) orelse return null;
-    if (v8.v8_Value_IsObject(value)) return value;
-    v8.v8_Value_Dispose(value);
-    // 11.1. Let realm be ? GetFunctionRealm(NewTarget) - this realm when V8
-    //       answers none.
-    const target_realm_owned = interface.getFunctionRealm(new_target, isolate);
-    defer if (target_realm_owned) |r| v8.v8_Context_Dispose(r);
-    const target_realm = target_realm_owned orelse context;
-    // 11.2. The interface prototype object of realm whose interface is the
-    //       active function object's.
-    const object = @import("interface_bindings.zig").materializeInterfaceObjectByName(interface_name, isolate, target_realm) orelse return null;
-    defer v8.v8_Function_Dispose(object);
-    const prototype = v8.v8_Object_Get(@ptrCast(object), target_realm, @ptrCast(key)) orelse return null;
-    if (v8.v8_Value_IsObject(prototype)) return prototype;
-    v8.v8_Value_Dispose(prototype);
-    return null;
-}
-
-/// The construct steps' function (`htmlConstructorCall`) in `context`, which
-/// interface.zig `htmlInterfaceObject` hands each class it makes there: made
-/// from one template per isolate, which V8 instantiates once per context
-/// (its instantiation cache), never a constructor. OWNED; null when V8 could
-/// not make it.
-pub fn htmlConstructorFunction(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Function {
-    const isolate_templates = @import("isolate_templates.zig");
-    // Not an interface name (it has spaces), so it cannot collide with one.
-    const key = "HTMLConstructor construct steps";
-    const storage = isolate_templates.storageFor(isolate) orelse return null;
-    const template = storage.get(key) orelse made: {
-        const made = v8.v8_FunctionTemplate_New(isolate, htmlConstructorCall, null) orelse return null;
-        v8.v8_FunctionTemplate_RemovePrototype(made);
-        storage.put(key, made) catch {
-            v8.v8_FunctionTemplate_Dispose(made);
-            return null;
-        };
-        break :made made;
+    // 2-8: the host's `resolve`, then - with NewTarget's prototype read
+    // already (steps 10-11 above) and no author script between them - 9,
+    // or 12, 13 and 15: its `finish`. NewTarget BORROWED for the call.
+    const resolution = hook.hooks.resolve(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
+        if (err == error.ExceptionPending) return;
+        // TypeError (steps 5, 7.1 and 8.2): of the active function's
+        // realm.
+        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+        return;
     };
+    const constructed = hook.hooks.finish(hook.host, realm, resolution, self.interface_name) catch |err| {
+        if (err == error.ExceptionPending) return;
+        // TypeError (step 13): of the active function's realm.
+        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+        return;
+    };
+    switch (constructed) {
+        // 9. A new element: wrapped in the receiver, whose prototype is
+        //    NewTarget's (9.1). The construction's result is the
+        //    receiver, as for any constructor - unless the element's
+        //    creation already wrapped it (an edge traced to it made
+        //    its wrapper): that wrapper is then the element's, and
+        //    takes the receiver's prototype as an upgrade's does
+        //    (steps 14 and 16 below). Binding the receiver would
+        //    replace it, and every edge drawn on it with it (a
+        //    template's content, PR-M1); WrapperCache.set refuses.
+        .created => |element| {
+            if (interface.adoptExistingWrapper(info, this_obj, element, function_context)) return;
+            receiver_taken = bindConstructedElement(self, this_obj, element, isolate) catch |err| {
+                // Not cached: the new element is this construction's
+                // to free (nothing else ever wrapped it), and the
+                // construction throws (Codex row 15 Q22).
+                element.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(element));
+                conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+                return;
+            };
+        },
+        .upgrading => |element| {
+            // 14. Perform ? element.[[SetPrototypeOf]](prototype). An
+            //     ordinary object's answers false rather than throwing
+            //     (non-extensible): a normal completion, so nothing is
+            //     thrown.
+            // 16. Return element: its wrapper is the construction's
+            //     result (V8 takes an API constructor's object return
+            //     value). The receiver is discarded, bound to nothing.
+            if (interface.adoptExistingWrapper(info, this_obj, element, function_context)) return;
+            // Never wrapped: the receiver becomes its wrapper, with
+            // the prototype already set (step 14) - and is the result
+            // (step 16).
+            receiver_taken = bindConstructedElement(self, this_obj, element, isolate) catch |err| {
+                // Not cached: the upgrading element stays the
+                // construction stack's; the construction throws.
+                conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+                return;
+            };
+        },
+    }
+}
+
+/// This interface's interface object in `context`: its FunctionTemplate's
+/// instantiation there (one per context, so identity holds). OWNED.
+fn activeInterfaceObject(self: *const Constructor, context: *v8.Context) ?*v8.Function {
+    const template = template_registry.getTemplate(self.interface_name) orelse return null;
     return v8.v8_FunctionTemplate_GetFunction(template, context);
+}
+
+/// Whether V8 gave `receiver` the active function's own `prototype` -
+/// what it does when NewTarget's is not an object (and when it is that
+/// very object). The active function is an interface object, whose
+/// `prototype` is a non-writable, non-configurable data property: the
+/// read runs no script.
+fn receiverHasActivePrototype(receiver: *v8.Object, active_function: ?*v8.Function, context: *v8.Context) bool {
+    const function = active_function orelse return true;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return true;
+    const key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return true;
+    defer v8.v8_String_Dispose(key);
+    const active_prototype = v8.v8_Object_Get(@ptrCast(function), context, @ptrCast(key)) orelse return true;
+    defer v8.v8_Value_Dispose(active_prototype);
+    const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return true;
+    defer v8.v8_Value_Dispose(prototype);
+    return v8.v8_Value_StrictEquals(prototype, active_prototype);
+}
+
+/// Whether V8 gave `receiver` %Object.prototype% of
+/// GetFunctionRealm(`new_target`) - what it does for an API
+/// constructor when NewTarget's `prototype` is not an object. A
+/// prototype whose own [[Prototype]] is not null cannot be it, and is
+/// answered without finding the realm.
+fn receiverHasRealmObjectPrototype(receiver: *v8.Object, new_target: *v8.Value, isolate: *v8.Isolate) bool {
+    const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return false;
+    defer v8.v8_Value_Dispose(prototype);
+    if (!v8.v8_Value_IsObject(prototype)) return false;
+    const above = v8.v8_Object_GetPrototypeV2(@ptrCast(prototype)) orelse return false;
+    defer v8.v8_Value_Dispose(above);
+    if (!v8.v8_Value_IsNull(above)) return false;
+    const realm = interface.getFunctionRealm(new_target, isolate) orelse return false;
+    defer v8.v8_Context_Dispose(realm);
+    // An ordinary object made in that realm has its %Object.prototype%.
+    const probe = v8.v8_Object_NewInContext(realm) orelse return false;
+    defer v8.v8_Object_Dispose(probe);
+    const object_prototype = v8.v8_Object_GetPrototypeV2(probe) orelse return false;
+    defer v8.v8_Value_Dispose(object_prototype);
+    return v8.v8_Value_StrictEquals(prototype, object_prototype);
+}
+
+/// The wrapper cache of `element`'s relevant realm.
+fn elementWrapperCache(element: *runtime.Instance) ?*WrapperCache {
+    const storage = element.ctx.getV8WrapperCacheStorage() orelse return null;
+    return @ptrCast(@alignCast(storage));
+}
+
+/// Bind `element` to `receiver` - the object V8 made for NewTarget - as
+/// the constructor path binds its instance: the link (an element's, its
+/// NodeAnchor, is made as the cache takes the receiver), and the wrapper
+/// cache's entry. Whether the cache took the receiver's handle.
+fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, element: *runtime.Instance, isolate: *v8.Isolate) anyerror!bool {
+    if (!interface.setInstance(isolate, receiver, element)) return false;
+    if (self.install_conditional_unforgeables) |install| {
+        const context: *v8.Context = @ptrCast(@alignCast(element.ctx.engine_ctx orelse return false));
+        install(isolate, context, receiver);
+    }
+    const cache = elementWrapperCache(element) orelse return false;
+    // The element's receiver moves into its slot (its box goes): the
+    // caller reads `receiver` no more.
+    _ = cache.set(element, receiver, isolate) catch |err| {
+        // Not cached (OutOfMemory): the receiver must not reach the
+        // element, which nothing owns through it (Codex row 15 Q22).
+        log.warn("a constructed {s}'s wrapper was not cached: {s}", .{ self.interface_name, @errorName(err) });
+        unbindReceiver(receiver);
+        return err;
+    };
+    return true;
 }
 
 /// Sever the link `setInstance` made on `receiver`, so a receiver the

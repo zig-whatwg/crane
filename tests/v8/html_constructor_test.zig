@@ -2,14 +2,16 @@
 //! 3.2.3 "HTML element constructors" with a test-installed
 //! HostHooks.htmlConstructor standing in for the custom elements side.
 //!
-//! In the spec's order: the engine does step 1 (NewTarget equal to the
-//! active function object is a TypeError); the host's `resolve` steps 2-8;
-//! the engine steps 10-11 (Get(NewTarget, "prototype")) - after the checks;
-//! the host's `finish` step 9 or steps 12, 13 and 15, answering `.created` -
-//! a new element the engine wraps with that prototype - or `.upgrading` -
-//! the construction stack's element, whose wrapper (the one it has, else a
-//! new one) gets that prototype and is the result. No hook: an
-//! [HTMLConstructor] interface constructs as its own constructor does.
+//! In the V8 adapter's documented order, Chrome's (the user, 2026-11-21:
+//! the adapter owns the receiver and steps 10-11): V8 reads
+//! Get(NewTarget, "prototype") as it makes the receiver; then the engine does
+//! step 1 (NewTarget equal to the active function object is a TypeError), the
+//! host's `resolve` steps 2-8 and its `finish` step 9 or steps 12, 13 and 15,
+//! back to back, answering `.created` - a new element the engine wraps in the
+//! object it made for NewTarget - or `.upgrading` - the construction stack's
+//! element, whose wrapper (the one it has, else that object) gets NewTarget's
+//! prototype and is the result. No hook: an [HTMLConstructor] interface
+//! constructs as its own constructor does.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
@@ -423,13 +425,14 @@ test "a NewTarget whose prototype getter constructs another element, with nothin
     try std.testing.expectEqual(@as(usize, 0), host.stack_len);
 }
 
-// HTML 3.2.3 steps 10-11 come after the checks of steps 1-8: a NewTarget whose
-// prototype read is observable (a Proxy's get trap) is not read when the host's
-// steps throw (custom-elements/HTMLElement-constructor-customized-builtins.html,
-// HTMLElement-constructor.html "must not get .prototype until it finishes its
-// registration sanity checks"; Firefox 160 in spec order, Chrome 157 reads it
-// first: its API functions make a receiver before the callback, as V8's did here).
-test "steps 10-11 after the checks: a TypeError of the host's steps 2-8 leaves NewTarget's prototype unread" {
+// The V8 adapter's order is Chrome's (the user, 2026-11-21; the protocol
+// leaves it to the adapter): V8 reads NewTarget.prototype as it makes the
+// receiver, before the checks of steps 1-8 - so a Proxy NewTarget's get trap
+// runs once even for a construction the host then refuses (custom-elements/
+// HTMLElement-constructor-customized-builtins.html: Chrome 157 0/2, the same
+// count; Firefox 160, in spec order, 2/2; Safari 27.2 ships no customized
+// built-ins).
+test "V8 adapter, Chrome's order: NewTarget's prototype is read once before the host's steps 2-8, also when they throw" {
     var host: Host = .{ .answer = .type_error };
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
@@ -445,17 +448,18 @@ test "steps 10-11 after the checks: a TypeError of the host's steps 2-8 leaves N
         \\try { new countingProxy(); outcomes.push('constructed'); } catch (e) { outcomes.push(e.constructor.name); }
         \\try { Reflect.construct(HTMLElement, [], countingProxy); outcomes.push('constructed'); } catch (e) { outcomes.push(e.constructor.name); }
         \\outcomes.join() + ' ' + getCount
-    , "TypeError,TypeError 0");
+    , "TypeError,TypeError 2");
     try std.testing.expectEqual(@as(usize, 2), host.calls);
     try std.testing.expectEqual(@as(usize, 0), host.finished);
 }
 
-test "steps 10-11 between the host's two parts: a construction reads NewTarget's prototype once, and a throwing read ends it before step 9" {
+test "V8 adapter, Chrome's order: a construction reads NewTarget's prototype once, and a throwing read ends it before the host is asked" {
     var host: Host = .{};
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
     defer host.deinit();
-    // Read once, its value the element's prototype.
+    // Read once, its value the element's prototype; resolve and finish run
+    // back to back after it.
     try page.expect(
         \\globalThis.X = class X extends HTMLElement {};
         \\let getCount = 0;
@@ -468,8 +472,8 @@ test "steps 10-11 between the host's two parts: a construction reads NewTarget's
     , "1,true,true");
     try std.testing.expectEqual(@as(usize, 1), host.calls);
     try std.testing.expectEqual(@as(usize, 1), host.finished);
-    // A read that throws: the construction throws that, after steps 2-8 and
-    // before step 9 - the host was asked to resolve, never to finish.
+    // A read that throws: the construction throws that, before steps 2-8 -
+    // the host was not asked at all.
     try page.expect(
         \\const boom = new Proxy(X, { get(target, prop, receiver) {
         \\  if (prop === "prototype") throw new RangeError("boom");
@@ -477,7 +481,7 @@ test "steps 10-11 between the host's two parts: a construction reads NewTarget's
         \\} });
         \\try { Reflect.construct(HTMLElement, [], boom); 'constructed' } catch (e) { e.constructor.name + ' ' + e.message }
     , "RangeError boom");
-    try std.testing.expectEqual(@as(usize, 2), host.calls);
+    try std.testing.expectEqual(@as(usize, 1), host.calls);
     try std.testing.expectEqual(@as(usize, 1), host.finished);
 }
 
@@ -495,7 +499,7 @@ test "step 11: a NewTarget whose prototype is no object gives the element its re
     try std.testing.expectEqualStrings("HTMLParagraphElement", host.seenInterface());
 }
 
-test "an [HTMLConstructor] interface object is a function the class form keeps: toString, name, length, prototype and its constructor" {
+test "an [HTMLConstructor] interface object keeps its shape: toString, name, length, prototype and its constructor" {
     var host: Host = .{};
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
@@ -507,17 +511,17 @@ test "an [HTMLConstructor] interface object is a function the class form keeps: 
         \\ Object.getOwnPropertyNames(HTMLElement).join(' ')].join('|')
     , "function HTMLElement() { [native code] }|HTMLElement|0|true|true|true|length name prototype");
     // Its frames are a built-in's: an error thrown by the construction names
-    // no frame of the class (V8 hides an extension's functions).
+    // no frame of it (V8 hides an API function's).
     try page.expect("try { new HTMLElement(); 'constructed' } catch (e) { String(/HTMLElement \\(/.test(e.stack)) }", "false");
 }
 
 // Building an [HTMLConstructor] interface object runs no microtask: a wrap from
 // native code with no script on the stack - the parser's tree construction
-// handing an element to a MutationObserver's records - builds it, and the
-// extension's factory call and the property copies ended at call depth 0, where
-// V8's kAuto policy performs a checkpoint (shadow-dom/declarative/innerhtml-
-// before-closing-tag.html ran its observer before the shadow root's content was
-// parsed). HTML performs a checkpoint only at its own points.
+// handing an element to a MutationObserver's records - builds it, and any
+// script call or API definition it made at call depth 0 would be V8's kAuto
+// checkpoint (lane blk7's class form did: shadow-dom/declarative/innerhtml-
+// before-closing-tag.html ran its observer before the shadow root's content
+// was parsed). HTML performs a checkpoint only at its own points.
 test "building an [HTMLConstructor] interface object from native code runs no queued microtask" {
     var host: Host = .{};
     const page = try Page.open(&Host.hooks, &host);
@@ -540,6 +544,6 @@ test "building an [HTMLConstructor] interface object from native code runs no qu
     try std.testing.expectEqual(@as(usize, 0), ran.count);
     try protocol.performMicrotaskCheckpoint(page.agent);
     try std.testing.expectEqual(@as(usize, 1), ran.count);
-    // The interface object it built is the class, its prototype the wrapper's.
+    // The interface object it built.
     try page.expect("String(Function.prototype.toString.call(HTMLParagraphElement) === 'function HTMLParagraphElement() { [native code] }')", "true");
 }

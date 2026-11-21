@@ -2840,10 +2840,6 @@ void v8_test_BackingStore_Release(void* held) {
 /// as Chromium's on desktop (gin/cppgc.cc kCageSize).
 static constexpr size_t kCppgcCageBytes = static_cast<size_t>(16) * 1024 * 1024 * 1024;
 
-/// Registers the [HTMLConstructor] classes' extension (defined with the
-/// context slots it fills, below).
-static void RegisterHTMLConstructorsExtension();
-
 /// v8_Platform_Start's answer (ffi.zig PlatformStart).
 enum PlatformStartResult : int {
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
@@ -2919,8 +2915,6 @@ int v8_Platform_Start(const char* flags) {
             g_platform.sandbox_allocator = new CraneInSandboxAllocator();
             V8::SetInSandboxAllocator(std::shared_ptr<v8::Allocator>(g_platform.sandbox_allocator, [](v8::Allocator*) {}));
 #endif
-            // Before any context is made: a Window realm's names it.
-            RegisterHTMLConstructorsExtension();
             g_platform.flags = flags ? flags : "";
             g_platform.started.store(true, std::memory_order_release);
             return kPlatformStartedNow;
@@ -3744,24 +3738,6 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
 
 class NodeWrapperRootsHandler;
 
-/// One prototype member of an [HTMLConstructor] interface (IsolateData::
-/// prototype_members): an attribute's accessor pair, an operation or a
-/// constant, as createTemplate registers it on a PrototypeTemplate - the same
-/// FunctionTemplates (names, lengths, receiver checks) and attributes. Its
-/// handles are the isolate's.
-struct CranePrototypeMember {
-    enum Kind : uint8_t { kAccessor, kMethod, kConstant };
-    Kind kind;
-    PropertyAttribute attributes;
-    Global<String> name;
-    /// The getter's (an accessor) or the operation's template.
-    Global<FunctionTemplate> first;
-    /// The setter's template (an accessor with one).
-    Global<FunctionTemplate> second;
-    /// A constant's value.
-    double number = 0;
-};
-
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -3967,15 +3943,6 @@ struct IsolateData {
     /// window's Location or History), beside the record's own traced
     /// reference, which is no root. Few. Emptied by v8_Isolate_Dispose.
     std::unordered_map<CraneWrapperCell*, Global<Object>> strong_wrappers;
-    /// An [HTMLConstructor] interface's prototype members, by its index of
-    /// interface_bindings.html_constructor_names: what its FunctionTemplate's
-    /// PrototypeTemplate would hold, kept here instead so that a realm
-    /// defines them straight on the interface's class's prototype object
-    /// (v8_HTMLConstructor_InterfaceObject) rather than on a template-made
-    /// object it would copy them from and drop (CranePrototypeMember says
-    /// why). The isolate's, made with its templates. Emptied by
-    /// v8_Isolate_Dispose.
-    std::unordered_map<uint32_t, std::vector<struct CranePrototypeMember>> prototype_members;
     void (*platform_wrappers_weak)(void* data) = nullptr;
     void (*platform_wrapper_dropped)(void* data, CraneWrapperCell* cell) = nullptr;
     /// The binding changed a wrapper an anchored record holds by a traced
@@ -6989,8 +6956,6 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             endWrappedInstances(record, isolate);
             // A wrapper cache that outlived its agent's realms left these.
             record->strong_wrappers.clear();
-            // The [HTMLConstructor] prototype members' templates and names.
-            record->prototype_members.clear();
             // Its anchors' registry, unrooted while the heap lives: the
             // heap's termination in Isolate::Dispose collects it and every
             // anchor (none holds a slot any more), and no Persistent of the
@@ -7716,380 +7681,10 @@ enum CraneContextSlot : int {
     /// and the one for those with one.
     kLegacyProxyHandlerIndex,
     kLegacyProxyNamedSetterHandlerIndex,
-    /// A Window realm's [HTMLConstructor] class factory, which the extension
-    /// hands it as the context is made (CraneHTMLConstructorsExtension).
-    kHTMLConstructorFactoryIndex,
 };
 static_assert(kCrossOriginFunctionsIndex == 2 && kAsyncIteratorPrototypeIndex == 3 &&
-                  kLegacyProxyHandlerIndex == 4 && kLegacyProxyNamedSetterHandlerIndex == 5 &&
-                  kHTMLConstructorFactoryIndex == 6,
-              "a context's embedder-data slots are 1..6, one user each");
-
-// ============================================================================
-// [HTMLConstructor] interface objects (HTML 3.2.3): classes from an extension
-// ============================================================================
-//
-// HTML's [HTMLConstructor] steps read NewTarget.prototype at step 10, after
-// the checks of steps 1-8. A FunctionTemplate's function cannot: its
-// [[Construct]] (builtins-api.cc HandleApiCallHelper<true>) makes the receiver
-// from the instance template with NewTarget - ApiNatives::InstantiateObject ->
-// JSFunction::GetDerivedMap, a [[Get]] of a Proxy NewTarget's "prototype" -
-// before the callback runs, and no public API skips that (Chrome 157 reads it
-// first: custom-elements/HTMLElement-constructor-customized-builtins.html
-// 0/2; Firefox 160, in spec order, 2/2). A derived class's [[Construct]]
-// makes no receiver (ECMAScript 10.2.2 [[Construct]] step 3: only a "base"
-// constructor does OrdinaryCreateFromConstructor), so each [HTMLConstructor]
-// interface object is a class whose constructor calls the construct steps
-// (binding_plumbing.htmlConstructorCall), which read the prototype in order.
-//
-// The classes come from an extension: an extension's script is not user
-// JavaScript (Script::Type::kExtension), so Function.prototype.toString
-// prints its functions as NativeFunction text - "function HTMLElement() {
-// [native code] }", as for the template's function (JSFunction::ToString,
-// !IsUserJavaScript) - and stack traces leave its frames out, as an API
-// function's (IsNotHidden). V8 installs an extension into each context made
-// with it, restored from the snapshot or made afresh, and never into the
-// snapshot (bootstrapper.cc Bootstrapper::InstallExtensions: "Don't install
-// extensions into the snapshot"). Its script (interface_bindings
-// html_constructors_extension_source) hands the new context its factory,
-// one class literal per interface, through the extension's one native,
-// which keeps it in the context's kHTMLConstructorFactoryIndex slot.
-
-static constexpr const char kCraneHTMLConstructorsExtension[] = "crane/html-constructors";
-
-/// interface_bindings.zig: the extension's source, a constant of the binary.
-extern "C" const char* crane_v8_html_constructors_extension_source(int* length);
-
-class CraneHTMLConstructorsExtension final : public Extension {
-public:
-    CraneHTMLConstructorsExtension(const char* source, int length)
-        : Extension(kCraneHTMLConstructorsExtension, source, 0, nullptr, length) {}
-
-    /// The script's one native, CraneHTMLConstructorFactory.
-    Local<FunctionTemplate> GetNativeFunctionTemplate(Isolate* isolate, Local<String> name) override {
-        (void)name;
-        return FunctionTemplate::New(isolate, KeepFactory, Local<Value>(), Local<Signature>(), 1, ConstructorBehavior::kThrow);
-    }
-
-private:
-    /// Called by the script as V8 installs the extension into a new context,
-    /// entered: its factory goes into the context's slot.
-    static void KeepFactory(const FunctionCallbackInfo<Value>& info) {
-        if (info.Length() < 1 || !info[0]->IsFunction()) return;
-        info.GetIsolate()->GetCurrentContext()->SetEmbedderDataV2(kHTMLConstructorFactoryIndex, info[0]);
-    }
-};
-
-/// Once per process, from v8_Platform_Start under its lock, before any context
-/// names the extension. V8 keeps the extension (RegisterExtension takes it
-/// over); its source is the binary's.
-static void RegisterHTMLConstructorsExtension() {
-    int length = 0;
-    const char* source = crane_v8_html_constructors_extension_source(&length);
-    RegisterExtension(std::make_unique<CraneHTMLConstructorsExtension>(source, length));
-}
-
-/// The extensions a Window realm's context is made with: the
-/// [HTMLConstructor] classes'. A local of each call that makes one.
-struct WindowRealmExtensions {
-    const char* names[1] = {kCraneHTMLConstructorsExtension};
-    ExtensionConfiguration configuration{1, names};
-};
-
-extern "C" {
-
-/// Whether `context` has the [HTMLConstructor] class factory: made with the
-/// extension (a Window realm's), V8 having run it.
-bool v8_Context_HasHTMLConstructorFactory(Global<Context>* context) {
-    if (!context || context->IsEmpty()) return false;
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
-    Local<Context> realm = context->Get(isolate);
-    if (realm->GetNumberOfEmbedderDataFields() <= static_cast<uint32_t>(kHTMLConstructorFactoryIndex)) return false;
-    Local<Value> factory = realm->GetEmbedderDataV2(kHTMLConstructorFactoryIndex).As<Value>();
-    return !factory.IsEmpty() && factory->IsFunction();
-}
-
-}  // extern "C"
-
-/// `from`'s own properties defined on `to`, in `from`'s order, each with its
-/// kind and attributes - but those named in `skip`; `constructor`, when not
-/// empty, is defined in place of `from`'s own "constructor" (writable,
-/// configurable, not enumerable: WebIDL 3.7.3). Each descriptor's fields are
-/// read as the descriptor object's own properties - never through its
-/// prototype, %Object.prototype%, which script may have given a "get" or a
-/// "value". False when V8 refused a step.
-static bool CopyOwnProperties(Isolate* isolate, Local<Context> context, Local<Object> from, Local<Object> to, Local<Function> constructor,
-                              std::initializer_list<const char*> skip) {
-    Local<Array> keys;
-    if (!from->GetOwnPropertyNames(context, PropertyFilter::ALL_PROPERTIES, KeyConversionMode::kKeepNumbers).ToLocal(&keys)) return false;
-    Local<String> get_key = String::NewFromUtf8Literal(isolate, "get", NewStringType::kInternalized);
-    Local<String> set_key = String::NewFromUtf8Literal(isolate, "set", NewStringType::kInternalized);
-    Local<String> value_key = String::NewFromUtf8Literal(isolate, "value", NewStringType::kInternalized);
-    Local<String> writable_key = String::NewFromUtf8Literal(isolate, "writable", NewStringType::kInternalized);
-    Local<String> enumerable_key = String::NewFromUtf8Literal(isolate, "enumerable", NewStringType::kInternalized);
-    Local<String> configurable_key = String::NewFromUtf8Literal(isolate, "configurable", NewStringType::kInternalized);
-    Local<String> constructor_key = String::NewFromUtf8Literal(isolate, "constructor", NewStringType::kInternalized);
-    for (uint32_t i = 0; i < keys->Length(); i++) {
-        Local<Value> key_value;
-        if (!keys->Get(context, i).ToLocal(&key_value) || !key_value->IsName()) return false;
-        Local<Name> key = key_value.As<Name>();
-        bool skipped = false;
-        for (const char* name : skip) {
-            if (key->IsString() && key.As<String>()->StringEquals(String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked())) {
-                skipped = true;
-                break;
-            }
-        }
-        if (skipped) continue;
-        if (!constructor.IsEmpty() && key->StrictEquals(constructor_key)) {
-            if (!to->DefineOwnProperty(context, key, constructor, DontEnum).FromMaybe(false)) return false;
-            continue;
-        }
-        Local<Value> descriptor_value;
-        if (!from->GetOwnPropertyDescriptor(context, key).ToLocal(&descriptor_value) || !descriptor_value->IsObject()) return false;
-        Local<Object> descriptor = descriptor_value.As<Object>();
-        Local<Value> enumerable, configurable;
-        if (!descriptor->Get(context, enumerable_key).ToLocal(&enumerable) || !descriptor->Get(context, configurable_key).ToLocal(&configurable)) return false;
-        Maybe<bool> accessor = descriptor->HasOwnProperty(context, get_key);
-        if (accessor.IsNothing()) return false;
-        if (accessor.FromJust()) {
-            Local<Value> getter, setter;
-            if (!descriptor->Get(context, get_key).ToLocal(&getter) || !descriptor->Get(context, set_key).ToLocal(&setter)) return false;
-            PropertyDescriptor property(getter, setter);
-            property.set_enumerable(enumerable->BooleanValue(isolate));
-            property.set_configurable(configurable->BooleanValue(isolate));
-            if (!to->DefineProperty(context, key, property).FromMaybe(false)) return false;
-        } else {
-            Local<Value> value, writable;
-            if (!descriptor->Get(context, value_key).ToLocal(&value) || !descriptor->Get(context, writable_key).ToLocal(&writable)) return false;
-            PropertyDescriptor property(value, writable->BooleanValue(isolate));
-            property.set_enumerable(enumerable->BooleanValue(isolate));
-            property.set_configurable(configurable->BooleanValue(isolate));
-            if (!to->DefineProperty(context, key, property).FromMaybe(false)) return false;
-        }
-    }
-    return true;
-}
-
-extern "C" {
-
-// ---- [HTMLConstructor] prototype members: defined on the class's own ----
-//
-// A template-made prototype object would be copied from and dropped: every
-// realm that builds the interface object paid for each property's descriptor
-// and for the copy, and the template-made object stayed as garbage until a
-// major collection (lane blk7's cost window: +3.7M instructions per realm
-// building 20 interfaces, load.news +2.2 MB). So createTemplate registers an
-// [HTMLConstructor] interface's prototype members here, with the
-// FunctionTemplates and attributes it gives a PrototypeTemplate, and the realm
-// defines them straight on the class's prototype object, in the order the
-// template had them. A template-made object keeps its accessor pairs' functions
-// as templates until script reads them; an object's accessor property takes
-// functions, so these are made when the interface object is built.
-
-/// The members registered so far for the [HTMLConstructor] interface at
-/// `key`, made empty: its template is being made (again) in this isolate.
-void v8_PrototypeMembers_Reset(Isolate* isolate, uint32_t key) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return;
-    record->prototype_members[key].clear();
-}
-
-/// An attribute's accessor pair, as v8_ObjectTemplate_SetAccessorPropertyChecked
-/// makes its templates: "get <name>" of length 0, "set <name>" of length 1 when
-/// there is a setter, each accepting any receiver or not as asked.
-void v8_PrototypeMembers_AddAccessor(Isolate* isolate, uint32_t key, const char* name, size_t name_length, FunctionCallback getter,
-                                     FunctionCallback setter, bool getter_accepts_any_receiver, bool setter_accepts_any_receiver, int attributes) {
-    IsolateData* record = isolateData(isolate);
-    if (!record || !getter) return;
-    HandleScope handle_scope(isolate);
-    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
-    std::string property(name, name_length);
-    Local<FunctionTemplate> getter_tpl = FunctionTemplate::New(isolate, getter, Local<Value>());
-    getter_tpl->SetClassName(String::NewFromUtf8(isolate, ("get " + property).c_str(), NewStringType::kNormal).ToLocalChecked());
-    getter_tpl->SetLength(0);
-    getter_tpl->SetAcceptAnyReceiver(getter_accepts_any_receiver);
-    CranePrototypeMember member{};
-    member.kind = CranePrototypeMember::kAccessor;
-    member.attributes = static_cast<PropertyAttribute>(attributes);
-    member.name.Reset(isolate, key_name);
-    member.first.Reset(isolate, getter_tpl);
-    if (setter) {
-        Local<FunctionTemplate> setter_tpl = FunctionTemplate::New(isolate, setter, Local<Value>());
-        setter_tpl->SetClassName(String::NewFromUtf8(isolate, ("set " + property).c_str(), NewStringType::kNormal).ToLocalChecked());
-        setter_tpl->SetLength(1);
-        setter_tpl->SetAcceptAnyReceiver(setter_accepts_any_receiver);
-        member.second.Reset(isolate, setter_tpl);
-    }
-    record->prototype_members[key].push_back(std::move(member));
-}
-
-/// An operation, as binding_plumbing.registerMethod makes its template: of
-/// length `arity`, no `prototype`, named for itself (a template set on a
-/// PrototypeTemplate takes the property's name when V8 makes its function).
-void v8_PrototypeMembers_AddMethod(Isolate* isolate, uint32_t key, const char* name, size_t name_length, FunctionCallback callback, int arity,
-                                   bool accepts_any_receiver, int attributes) {
-    IsolateData* record = isolateData(isolate);
-    if (!record || !callback) return;
-    HandleScope handle_scope(isolate);
-    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
-    Local<FunctionTemplate> method_tpl = FunctionTemplate::New(isolate, callback, Local<Value>());
-    method_tpl->SetLength(arity);
-    method_tpl->RemovePrototype();
-    method_tpl->SetAcceptAnyReceiver(accepts_any_receiver);
-    method_tpl->SetClassName(key_name);
-    CranePrototypeMember member{};
-    member.kind = CranePrototypeMember::kMethod;
-    member.attributes = static_cast<PropertyAttribute>(attributes);
-    member.name.Reset(isolate, key_name);
-    member.first.Reset(isolate, method_tpl);
-    record->prototype_members[key].push_back(std::move(member));
-}
-
-/// A constant: a Number, with `attributes`.
-void v8_PrototypeMembers_AddConstant(Isolate* isolate, uint32_t key, const char* name, size_t name_length, double value, int attributes) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return;
-    HandleScope handle_scope(isolate);
-    Local<String> key_name = String::NewFromUtf8(isolate, name, NewStringType::kInternalized, static_cast<int>(name_length)).ToLocalChecked();
-    CranePrototypeMember member{};
-    member.kind = CranePrototypeMember::kConstant;
-    member.attributes = static_cast<PropertyAttribute>(attributes);
-    member.name.Reset(isolate, key_name);
-    member.number = value;
-    record->prototype_members[key].push_back(std::move(member));
-}
-
-/// Define the members registered for `key` on `target`, in `context`
-/// (entered), in their order. False when V8 refused one.
-static bool InstallPrototypeMembers(Isolate* isolate, Local<Context> context, Local<Object> target, uint32_t key) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return true;
-    auto found = record->prototype_members.find(key);
-    if (found == record->prototype_members.end()) return true;
-    for (const CranePrototypeMember& member : found->second) {
-        Local<String> name = member.name.Get(isolate);
-        switch (member.kind) {
-            case CranePrototypeMember::kAccessor: {
-                Local<Function> getter;
-                if (!member.first.Get(isolate)->GetFunction(context).ToLocal(&getter)) return false;
-                Local<Function> setter;
-                if (!member.second.IsEmpty() && !member.second.Get(isolate)->GetFunction(context).ToLocal(&setter)) return false;
-                target->SetAccessorProperty(name, getter, setter, member.attributes);
-                break;
-            }
-            case CranePrototypeMember::kMethod: {
-                Local<Function> method;
-                if (!member.first.Get(isolate)->GetFunction(context).ToLocal(&method)) return false;
-                if (!target->DefineOwnProperty(context, name, method, member.attributes).FromMaybe(false)) return false;
-                break;
-            }
-            case CranePrototypeMember::kConstant:
-                if (!target->DefineOwnProperty(context, name, Number::New(isolate, member.number), member.attributes).FromMaybe(false)) return false;
-                break;
-        }
-    }
-    return true;
-}
-
-/// The members registered for `key` defined on `target` itself: the
-/// interface's template function stays its interface object, in a context
-/// made without the [HTMLConstructor] classes' extension. False when V8
-/// refused one.
-bool v8_PrototypeMembers_InstallOn(Isolate* isolate, Global<Context>* context, uint32_t key, Global<Object>* target) {
-    if (!isolate || !context || context->IsEmpty() || !target) return false;
-    HandleScope handle_scope(isolate);
-    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
-    Local<Context> realm = context->Get(isolate);
-    Context::Scope entered(realm);
-    TryCatch failure(isolate);
-    return InstallPrototypeMembers(isolate, realm, target->Get(isolate), key);
-}
-
-/// [HTMLConstructor] (HTML 3.2.3): the interface object of the interface at
-/// `index` of interface_bindings.html_constructor_names in `context`, a class
-/// made by the context's factory (v8_Context_HasHTMLConstructorFactory) with
-/// `construct` (binding_plumbing.htmlConstructorCall's function) as its
-/// constructor's steps, over `template_function` - the interface's
-/// FunctionTemplate's function there, its prototype object and own properties
-/// set up (interface.zig materializeInterfaceObject) - whose place it takes:
-///
-/// - the class's prototype object - with only its `constructor` until now -
-///   gets the template function's prototype object's [[Prototype]] (the
-///   parent interface's prototype object), the interface's prototype members
-///   (IsolateData::prototype_members, in the template's order), then that
-///   object's own properties in their order - `constructor` the class (WebIDL
-///   3.7.3), @@toStringTag, an iterator, @@unscopables: what the realm gave it;
-/// - the class gets the template function's [[Prototype]] (the parent's
-///   interface object) and own properties beyond length, name and prototype
-///   (constants, static members), in their order;
-/// - the template function's `prototype` becomes the class's prototype object
-///   (JSFunction::SetPrototype gives its initial map that prototype), so that
-///   every wrapper its instance template makes in the realm - every one: the
-///   realm builds an interface object before its first wrapper
-///   (template_registry.ensureInterfaceObjectBuilt) - inherits from it; then
-///   read-only, as WebIDL has an interface object's.
-///
-/// The template function is reachable from nothing script holds after this.
-/// OWNED; null when the context has no factory or V8 refused a step (the
-/// template function then stays the interface object). Runs no author script:
-/// the factory is the extension's, and every read here is of an own property;
-/// and no microtask (NativeStepScope).
-Global<Function>* v8_HTMLConstructor_InterfaceObject(Isolate* isolate, Global<Context>* context, uint32_t index, Global<Function>* template_function,
-                                                     Global<Function>* construct) {
-    if (!isolate || !context || context->IsEmpty() || !template_function || !construct) return nullptr;
-    HandleScope handle_scope(isolate);
-    // Not a script call: an interface object is often built from native code
-    // with no script on the stack - a wrap the parser's tree construction
-    // asks for, a lazy global's getter - and the factory's Call, and every
-    // DefineProperty below, would otherwise end at call depth 0 with a kAuto
-    // microtask checkpoint, running a MutationObserver's callback in the
-    // middle of the parse (shadow-dom/declarative/innerhtml-before-closing-
-    // tag.html; NativeStepScope says why).
-    NativeStepScope native_step(isolate);
-    Local<Context> realm = context->Get(isolate);
-    if (realm->GetNumberOfEmbedderDataFields() <= static_cast<uint32_t>(kHTMLConstructorFactoryIndex)) return nullptr;
-    Local<Value> factory = realm->GetEmbedderDataV2(kHTMLConstructorFactoryIndex).As<Value>();
-    if (factory.IsEmpty() || !factory->IsFunction()) return nullptr;
-    Context::Scope entered(realm);
-    // Nothing here runs author script; an exception could only be V8's own
-    // (out of memory), and it does not outlive this call.
-    TryCatch failure(isolate);
-    Local<Value> argv[2] = {Integer::NewFromUnsigned(isolate, index), construct->Get(isolate)};
-    Local<Value> made;
-    if (!factory.As<Function>()->Call(realm, Undefined(isolate), 2, argv).ToLocal(&made) || !made->IsFunction()) return nullptr;
-    Local<Function> interface_object = made.As<Function>();
-    Local<Function> function = template_function->Get(isolate);
-    Local<String> prototype_key = String::NewFromUtf8Literal(isolate, "prototype", NewStringType::kInternalized);
-    Local<String> constructor_key = String::NewFromUtf8Literal(isolate, "constructor", NewStringType::kInternalized);
-    Local<Value> template_prototype, class_prototype;
-    if (!function->Get(realm, prototype_key).ToLocal(&template_prototype) || !template_prototype->IsObject()) return nullptr;
-    if (!interface_object->Get(realm, prototype_key).ToLocal(&class_prototype) || !class_prototype->IsObject()) return nullptr;
-    Local<Object> from = template_prototype.As<Object>();
-    Local<Object> to = class_prototype.As<Object>();
-    // The interface prototype object: the class's, with the interface's
-    // members defined on it (IsolateData::prototype_members, in the
-    // template's order), then what the realm gave the template function's
-    // prototype object - its `constructor` (the class's here), @@toStringTag,
-    // an iterator, @@unscopables - in that object's order, after them, as the
-    // template-made object had them.
-    if (!to->Delete(realm, constructor_key).FromMaybe(false)) return nullptr;
-    if (!to->SetPrototype(realm, from->GetPrototype()).FromMaybe(false)) return nullptr;
-    if (!InstallPrototypeMembers(isolate, realm, to, index)) return nullptr;
-    if (!CopyOwnProperties(isolate, realm, from, to, interface_object, {})) return nullptr;
-    // The interface object: the class, given the template function's.
-    if (!interface_object->SetPrototype(realm, function->GetPrototype()).FromMaybe(false)) return nullptr;
-    if (!CopyOwnProperties(isolate, realm, function, interface_object, Local<Function>(), {"length", "name", "prototype", "arguments", "caller"})) return nullptr;
-    // Every wrapper of the interface in the realm inherits from it.
-    if (!function->Set(realm, prototype_key, to).FromMaybe(false)) return nullptr;
-    if (function->DefineOwnProperty(realm, prototype_key, to, static_cast<PropertyAttribute>(ReadOnly | DontEnum | DontDelete)).IsNothing()) return nullptr;
-    return trackHandle(new Global<Function>(isolate, interface_object));
-}
-
-}  // extern "C"
-
+                  kLegacyProxyHandlerIndex == 4 && kLegacyProxyNamedSetterHandlerIndex == 5,
+              "a context's embedder-data slots are 1..5, one user each");
 
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
@@ -8199,11 +7794,7 @@ Global<Context>* v8_Context_New(Isolate* isolate) {
 Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<ObjectTemplate>* global_template) {
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_template = global_template->Get(isolate);
-    // A Window realm's context (protocol_realms.createWindowRealm, made
-    // afresh; the snapshot generator's, where V8 installs no extension):
-    // with the [HTMLConstructor] classes' extension (WindowRealmExtensions).
-    WindowRealmExtensions extensions;
-    Local<Context> context = Context::New(isolate, &extensions.configuration, local_template);
+    Local<Context> context = Context::New(isolate, nullptr, local_template);
     countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
@@ -15064,13 +14655,9 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
     // added via AddContext() during snapshot creation. This preserves the
     // global proxy (unlike the default context from SetDefaultContext).
     // The DeserializeInternalFieldsCallback handles any internal field restoration.
-    // A Window realm's context: with the [HTMLConstructor] classes'
-    // extension (WindowRealmExtensions), which V8 runs in it.
-    WindowRealmExtensions extensions;
     MaybeLocal<Context> maybe_context = Context::FromSnapshot(
         isolate, 0,
-        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr),
-        &extensions.configuration);
+        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
 
     Local<Context> context;
     if (!maybe_context.ToLocal(&context)) return nullptr;
@@ -15106,13 +14693,10 @@ Global<Context>* v8_Context_NewFromSnapshotWithGlobal(Isolate* isolate, Global<O
     TryCatch try_catch(isolate);
 
     Local<Object> proxy = global_proxy->Get(isolate);
-    // A Window realm's context: with the [HTMLConstructor] classes'
-    // extension (WindowRealmExtensions).
-    WindowRealmExtensions extensions;
     MaybeLocal<Context> maybe_context = Context::FromSnapshot(
         isolate, 0,
         DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr),
-        &extensions.configuration,
+        nullptr,
         MaybeLocal<Value>(proxy));
 
     Local<Context> context;
@@ -17944,10 +17528,7 @@ Global<Context>* v8_Value_GetFunctionRealm(Global<Value>* value, bool* revoked_p
 Global<Context>* v8_Context_NewWithGlobalTemplateAndProxy(Isolate* isolate, Global<ObjectTemplate>* global_template, Global<Object>* global_proxy) {
     if (!isolate || !global_template || !global_proxy) return nullptr;
     HandleScope handle_scope(isolate);
-    // A Window realm's context: with the [HTMLConstructor] classes'
-    // extension (WindowRealmExtensions).
-    WindowRealmExtensions extensions;
-    Local<Context> context = Context::New(isolate, &extensions.configuration, global_template->Get(isolate), global_proxy->Get(isolate));
+    Local<Context> context = Context::New(isolate, nullptr, global_template->Get(isolate), global_proxy->Get(isolate));
     if (context.IsEmpty()) return nullptr;
     g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<Context>(isolate, context));

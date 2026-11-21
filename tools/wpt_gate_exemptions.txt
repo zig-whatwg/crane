@@ -2142,3 +2142,13 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; ke
 matches         = firefox
 ruling          = golden rule 2, mechanisms without a majority -> spec (integrator, 2026-11-20 3:56 PM ET)
 revisit         = when two browsers agree on the span's attribute
+
+[custom-elements/HTMLElement-constructor-customized-builtins.html]
+kind            = follows-majority
+why             = Crane's V8 adapter reads NewTarget.prototype when V8 makes an API function's receiver, before HTML 3.2.3's definition checks (steps 1-8), as Chrome does; both subtests fail at the same assertion as Chrome's ("Should never have gotten .prototype expected 0 but got 1"); Firefox reads it after the checks, as the spec has it; Safari ships no customized built-ins (it fails earlier, at assert_throws_js)
+chrome.result   = wpt.fyi run 4786307730243584: 0/2 (Chrome 157, 2358bd4835; both "assert_equals: Should never have gotten .prototype expected 0 but got 1")
+firefox.result  = wpt.fyi run 4877168468033536: 2/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835; "assert_throws_js: Should not be able to construct an HTMLElement named 'button'" - no customized built-ins)
+matches         = chrome
+ruling          = the user, 2026-11-21 12:43 PM ET: "I want to make this the responsibility of the js engine protocol" - the adapter owns the receiver and steps 10-11 (engine.HostHooks.htmlConstructor); the V8 adapter follows Chrome's order (relayed by the integrator 12:44 PM ET)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves (an adapter that reads the prototype in spec order)

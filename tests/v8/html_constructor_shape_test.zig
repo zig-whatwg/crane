@@ -1,12 +1,13 @@
 //! The [HTMLConstructor] interface objects' shape (HTML 3.2.3; WebIDL 3.7.1
 //! "create an interface object", 3.7.3 "create an interface prototype
-//! object"), PINNED on main 5a621f2cb before lane blk7 changed how they are
-//! made (each became a derived class whose [[Construct]] makes no receiver,
-//! so that HTML's step 10 reads NewTarget.prototype after the checks of steps
-//! 1-9). For every one of the 77 [HTMLConstructor] interfaces a Window
-//! exposes, in a page's realm and a frame's - restored from the build's
-//! snapshot and made without it - and in a realm whose element wrappers are
-//! made before script reads any interface object:
+//! object"), PINNED on main 5a621f2cb - what any change to how they are made
+//! must keep (lane blk7 made them derived classes, whose [[Construct]] makes
+//! no receiver, and held them to these pins; the user then ruled the V8
+//! adapter keeps Chrome's FunctionTemplates, 2026-11-21). For every one of the
+//! 77 [HTMLConstructor] interfaces a Window exposes, in a page's realm and a
+//! frame's - restored from the build's snapshot and made without it - and in
+//! a realm whose element wrappers are made before script reads any interface
+//! object:
 //!
 //! - typeof, name and length; Function.prototype.toString's NativeFunction
 //!   text, with the interface's name;
