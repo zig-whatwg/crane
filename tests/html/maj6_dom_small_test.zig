@@ -119,3 +119,31 @@ fn transientObservers() !void {
 test "transient registered observers: sourced from the original registration, and gone at the next notify" {
     try onFreshThread(transientObservers);
 }
+
+fn headingLevels() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser,
+        \\document.body.innerHTML = '<section headingoffset=2><h1 id=a></h1><div headingreset headingoffset=1><h2 id=b></h2></div>' +
+        \\  '<article headingoffset=7><h5 id=c></h5></article><div headingoffset=x><h3 id=d></h3></div></section><div id=host headingoffset=3></div>';
+        \\const root = document.getElementById('host').attachShadow({ mode: 'open' });
+        \\root.innerHTML = '<div headingoffset=1><h1 id=e></h1></div>';
+        \\globalThis.$ = (id) => document.getElementById(id) || root.getElementById(id);
+        \\globalThis.levelOf = (el) => { for (let n = 1; n <= 9; n++) if (el.matches(':heading(' + n + ')')) return n; return 0; };
+        \\0;
+    );
+    // 2 + 1 for a, the reset ends b's walk at its div: 2 + 1.
+    try expectTrue(browser, "levelOf($('a')) === 3 && $('a').matches(':heading') && !$('a').matches(':heading(1)')");
+    try expectTrue(browser, "levelOf($('b')) === 3");
+    // Capped at 9; an unparsable offset adds nothing.
+    try expectTrue(browser, "levelOf($('c')) === 9 && levelOf($('d')) === 5");
+    // Up the host chain from a shadow tree: 1 + 1 + 3.
+    try expectTrue(browser, "levelOf($('e')) === 5");
+    // A change of an ancestor's offset is a new level.
+    try expectTrue(browser, "document.querySelector('section').headingOffset = 0; levelOf($('a')) === 1");
+    try expectTrue(browser, "$('b').parentElement.headingReset = false; levelOf($('b')) === 3");
+}
+
+test "the :heading() level counts the heading offset of the element's ancestors" {
+    try onFreshThread(headingLevels);
+}

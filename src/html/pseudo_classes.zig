@@ -289,11 +289,65 @@ fn isMedia(element: *Instance) bool {
     return element.stateAs(interfaces.HTMLMediaElement.State) != null;
 }
 
-fn heading(element: *Instance, levels: u6) bool {
+/// Selectors 5 :heading / :heading(levels): an element whose HTML computed
+/// heading level is one of `levels` (bit n-1 for level n).
+fn heading(element: *Instance, levels: u9) bool {
     if (element.stateAs(interfaces.HTMLHeadingElement.State) == null) return false;
     var local = interfaces.Element.get_localName(element) catch return false;
     defer local.deinit(element.ctx.allocator);
     const name = local.asSlice();
     if (name.len != 2 or name[0] != 'h' or name[1] < '1' or name[1] > '6') return false;
-    return levels & (@as(u6, 1) << @as(u3, @intCast(name[1] - '1'))) != 0;
+    const level = computedHeadingLevel(name[1] - '0', element);
+    return levels & (@as(u9, 1) << @as(u4, @intCast(level - 1))) != 0;
+}
+
+/// HTML 4.3.11.1 "get an element's computed heading level", given the level
+/// its local name gives (steps 1-8: h1 is 1 ... h6 is 6): step 9 adds the
+/// computed heading offset, and steps 10-11 cap the level at 9. The offset was
+/// left out, so a heading under a headingoffset matched :heading() at its
+/// tag's level (css/selectors/invalidation/heading-pseudo-class-in-has-with-
+/// {headingoffset,slot-reassignment}.html: Safari 27.2 ships :heading; the
+/// spec, newer than Chrome 157 and Firefox 160, which have no :heading, says
+/// so - golden rule 2).
+fn computedHeadingLevel(base: u8, element: *Instance) u8 {
+    const level = @as(u64, base) +| computedHeadingOffset(element);
+    return @intCast(@min(level, 9));
+}
+
+/// HTML 4.3.11.1 "get an element's computed heading offset": the
+/// headingoffset values of `element` and its inclusive ancestors - up the host
+/// chain at a shadow root, never the flat tree (a slotted heading's level
+/// does not follow its slot) - up to and including the first with
+/// headingreset. Attributes read in place.
+fn computedHeadingOffset(element: *Instance) u64 {
+    // Step 1.
+    var offset: u64 = 0;
+    // Step 2.
+    var inclusive_ancestor: ?*Instance = element;
+    // Step 3.
+    while (inclusive_ancestor) |node| {
+        const html_element = node.stateAs(interfaces.HTMLElement.State) != null;
+        const data = if (html_element) dom.element_data.of(node) else null;
+        if (data) |attributes| {
+            // Steps 3.1-3.3: an HTML element's headingoffset, by the rules
+            // for parsing non-negative integers; an error adds 0.
+            if (attributes.indexOfQualifiedName("headingoffset")) |index| {
+                if (attributes.attributeAt(index)) |entry| {
+                    if (dom.reflection.parseNonNegativeInteger(entry.value)) |value| offset +|= @intCast(value);
+                }
+            }
+            // Step 3.4.
+            if (attributes.indexOfQualifiedName("headingreset") != null) return offset;
+        }
+        const parent = forms.parentOf(node) orelse break;
+        // Step 3.5: a shadow root's host.
+        if (parent.stateAs(interfaces.ShadowRoot.State) != null) {
+            inclusive_ancestor = interfaces.ShadowRoot.get_host(parent) catch null;
+            continue;
+        }
+        // Step 3.6: the parent element.
+        inclusive_ancestor = if (forms.isElement(parent)) parent else null;
+    }
+    // Step 4.
+    return offset;
 }
