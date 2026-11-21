@@ -367,6 +367,8 @@ fn isFormatBlockCandidate(node: *Instance) !bool {
 /// The wrap context of formatBlock step 10.2.3.
 const FormatBlockContext = struct {
     name: []const u8,
+    /// The blocks this formatBlock run has made so far (see siblingCriteria).
+    created: *std.ArrayList(*Instance),
 
     pub fn siblingCriteria(self: FormatBlockContext, node: *Instance) anyerror!bool {
         // "If value is "div" or "p", sibling criteria returns false;
@@ -375,11 +377,23 @@ const FormatBlockContext = struct {
         if (std.mem.eql(u8, self.name, "div") or std.mem.eql(u8, self.name, "p")) return false;
         if (!try common.isHtmlElementNamed(node, self.name)) return false;
         const attributes = try interfaces.Element.get_attributes(node);
-        return (try interfaces.NamedNodeMap.get_length(attributes)) == 0;
+        if ((try interfaces.NamedNodeMap.get_length(attributes)) != 0) return false;
+        // Only a block this run made: a line joins the new block of the line
+        // before it, never a block that was already there - `[foo]<blockquote>
+        // bar</blockquote><p>extra` + "blockquote" gives `<blockquote>foo
+        // </blockquote><blockquote>bar</blockquote>` in Chrome 157, Firefox 160
+        // and Safari 27.2 (editing/run/formatblock.html, PPP at wpt.fyi
+        // 2358bd4835), where the spec's criteria merge it into the existing
+        // one (lane edit4, A21). Blink's ApplyBlockElementCommand::
+        // FormatSelection shares one new block among the selected paragraphs
+        // and never reuses one outside them. Golden rule 2, no newer spec.
+        return std.mem.indexOfScalar(*Instance, self.created.items, node) != null;
     }
 
     pub fn newParent(self: FormatBlockContext, edit: *Edit) anyerror!?*Instance {
-        return try edit.createElement(self.name);
+        const element = try edit.createElement(self.name);
+        try self.created.append(edit.allocator, element);
+        return element;
     }
 };
 
@@ -415,6 +429,8 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
     // the ancestors of a prohibited paragraph child, outermost first.
     var node_list: std.ArrayList(*Instance) = .empty;
     defer node_list.deinit(edit.allocator);
+    var created: std.ArrayList(*Instance) = .empty;
+    defer created.deinit(edit.allocator);
     var walk = try ContainedWalk.init(new_range);
     while (try walk.next()) |node| {
         if (!try common.isEditable(node)) continue;
@@ -519,7 +535,7 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
         skip: {
             if (!dissolved_other_name and try nearestFormatBlockIsNamed(sublist.items[0], name)) break :skip;
             if (!try nameIsAllowedInHost(sublist.items[0], name)) break :skip;
-            wrapped = try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name });
+            wrapped = try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name, .created = &created });
         }
         if (dissolved_with_attributes) |old| {
             if (wrapped != null and !try hasAttributes(wrapped.?) and (try common.firstChild(wrapped.?)) == sublist.items[0]) {
