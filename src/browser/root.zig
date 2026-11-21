@@ -47,6 +47,9 @@ pub const BrowserHost = @import("BrowserHost.zig").BrowserHost;
 pub const host_events = @import("host_events.zig");
 /// A script value as the host API hands it out (BiDi's RemoteValue, JSON).
 pub const remote_value = @import("remote_value.zig");
+/// The host API's C ABI (include/crane.h): its `crane_*` symbols are
+/// emitted only by an artifact that references this (src/lib_exports.zig).
+pub const capi = @import("capi.zig");
 
 /// What every Browser shares, started once before any (docs/instances.md).
 pub const process = @import("process.zig");
