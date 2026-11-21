@@ -314,6 +314,29 @@ pub const BrowserHost = struct {
         return c.result;
     }
 
+    /// `traverseHistory`, then wait as `options.wait` asks for the document
+    /// the traversal shows (WebDriver's Back and Forward: "traverse the
+    /// history by a delta", then wait for the navigation to complete). False
+    /// - with no wait - when there was no entry `delta` steps away.
+    pub fn traverseHistoryAndWait(self: *BrowserHost, tab: Browser.TabId, delta: i32, options: NavigateOptions) !bool {
+        const Start = struct {
+            tab: Browser.TabId,
+            delta: i32,
+            before: ?Browser.TraversableState = null,
+            result: anyerror!bool = error.BrowserGone,
+            fn run(ctx: ?*anyopaque, b: *Browser) void {
+                const c: *@This() = @ptrCast(@alignCast(ctx.?));
+                c.before = b.traversableState(c.tab);
+                c.result = b.traverseHistoryByDelta(c.tab, c.delta);
+            }
+        };
+        var start_call: Start = .{ .tab = tab, .delta = delta };
+        try self.call(&start_call, Start.run);
+        if (!try start_call.result) return false;
+        try self.waitForReadiness(tab, start_call.before, options.wait, options.timeout_ms);
+        return true;
+    }
+
     /// Tab `tab`'s active document's URL, OWNED by `allocator`.
     pub fn tabUrl(self: *BrowserHost, allocator: std.mem.Allocator, tab: Browser.TabId) ![]u8 {
         const Call = struct {
