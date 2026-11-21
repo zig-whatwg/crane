@@ -62,6 +62,9 @@ pub const memory_release = @import("memory_release.zig");
 /// A Browser's receiver for platform events (the platform protocol's
 /// EventSink): a critical memory-pressure event becomes tasks.
 pub const platform_events = @import("platform_events.zig");
+/// A top-level traversable's viewport: the platform's window rect and a
+/// host's override (CDP Emulation.setDeviceMetricsOverride).
+pub const viewport = @import("viewport.zig");
 
 pub const Context = @import("Context.zig").Context;
 pub const back_forward_cache = @import("back_forward_cache.zig");
@@ -80,6 +83,7 @@ test {
     _ = @import("process.zig");
     _ = @import("Context.zig");
     _ = @import("rendering.zig");
+    _ = @import("viewport.zig");
     _ = @import("memory_release.zig");
     _ = @import("storage/Storage.zig");
 }

@@ -219,6 +219,7 @@ pub fn installHooks() void {
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
         .process_frame_attributes = &processFrameAttributes,
         .navigation_url = &navigationUrlOf,
+        .resume_held_navigations = &resumeHeldNavigations,
     });
     // The states no deinit reached, at their Browser's end.
     States.installSweep();
@@ -311,8 +312,9 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
     }
 }
 
-/// Document creation callback for iframe navigation
-/// Called when navigateToSrcDoc or navigateToSrc needs to create a Document instance.
+/// Document creation callback for iframe navigation: the document a commit
+/// makes with no parse (IFrameIntegration's commitHtmlDocument and
+/// commitXmlDocument with no realm to parse in).
 /// Parameters: (runtime_context, browsing_context) -> document_instance
 fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext) ?*anyopaque {
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
@@ -343,6 +345,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    giveInitialVisibilityState(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -420,6 +423,9 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         dom_module.window_globals.setDocument(window_instance, document_instance);
         // Set the defaultView on the document (bidirectional Document <-> Window link)
         dom_module.document_browsing_context.setWindow(document_instance, window_instance);
+        // An initial about:blank document (navigation 0), or the empty
+        // document of a commit with no realm to parse in: committed.
+        reportCommitted(browsing_ctx_ptr, document_instance, "text/html");
     }
 
     return document_instance;
@@ -565,6 +571,7 @@ fn createNavigationDocument(
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    giveInitialVisibilityState(document_instance, browsing_ctx_ptr);
     // Step 21: "Potentially free deferred fetch quota for document" (Fetch
     // 4.12.1): a same-origin nested document shares its parent's quota, and
     // its origin is known only now, after redirects.
@@ -574,6 +581,9 @@ fn createNavigationDocument(
         browsing_ctx_ptr.setActiveDocument(document_instance, window_inst);
         dom_module.window_globals.setDocument(window_inst, document_instance);
         dom_module.document_browsing_context.setWindow(document_instance, window_inst);
+        // The new document is its Window's and its navigable's active one,
+        // before its parser runs: the navigation observer's `committed`.
+        reportCommitted(browsing_ctx_ptr, document_instance, content_type);
     } else {
         log.debug("[createNavigationDocument] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
@@ -688,20 +698,6 @@ fn wrapInOwnRealm(document: *runtime.Instance) void {
         return;
     };
     held.release();
-}
-
-/// Script execution callback for iframes
-/// Called by IFrameIntegration.executeScriptsInTree to run a script in the
-/// iframe's realm (engine.runClassicScript: prepared to run, then cleaned up
-/// - a microtask checkpoint when nothing else is running). What it throws is
-/// reported for the frame's window.
-/// Parameters: (the realm, script_source) -> void
-fn executeIframeScript(realm_ptr: ?*anyopaque, source: []const u8) void {
-    const realm: runtime.Context = @ptrCast(@alignCast(realm_ptr orelse return));
-    if (source.len == 0) return;
-    engine.runClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = reportException, .host = realm }) catch |err| {
-        log.debug("a frame's script did not run: {}", .{err});
-    };
 }
 
 /// HTML "report an exception" for the global of the realm the engine names,
@@ -835,6 +831,8 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: 
 // realm, and handlers on its window persist into the next document.
 
 const navigate_steps = html_core.navigation.navigate_steps;
+/// The Browser's navigation observer (src/html/navigation/observer.zig).
+const observer = html_core.navigation.observer;
 const navigation_fetch = html_core.navigation.fetch_integration;
 const WindowFate = dom_module.window_documents.WindowFate;
 const document_lifecycle = dom_module.document_lifecycle;
@@ -888,6 +886,18 @@ pub const NavigateOptions = struct {
     /// "cspNavigationType": "form-submission" for a form's planned
     /// navigation, else "other" (CSP 4.2.4's type).
     csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
+    /// A host's own navigation (user involvement "browser UI", no
+    /// sourceDocument) may name its request's referrer: a URL, serialized
+    /// (CDP Page.navigate `referrer`, which Chrome's NavigationController
+    /// gives the request with `referrerPolicy`). BORROWED. Ignored when a
+    /// sourceDocument or `referrer_document` decides the referrer.
+    referrer_url: ?[]const u8 = null,
+    /// Where the navigation ID of the cross-document navigation this call
+    /// started is written (navigate step 7; the navigation observer's
+    /// `navigation_id`, CDP's loaderId), when it started one; left as it
+    /// was when none started (a same-document navigation, a navigation
+    /// refused or ignored). BORROWED for the call.
+    started_navigation_id: ?*u64 = null,
 };
 
 /// Where a traversal's population reports its end: the traversable's
@@ -1073,6 +1083,17 @@ const Navigation = struct {
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
     response: ?navigation_fetch.NavigationFetchResult = null,
+    /// The navigation observer heard it start (`started`), and its new
+    /// document commit (`committed`): a record ended between the two told it
+    /// `aborted` (html_core.navigation.observer).
+    started_reported: bool = false,
+    committed_reported: bool = false,
+    /// Why it ended, when a step that ends it says (else `destroy` reads it
+    /// from the navigable's state).
+    abort_reason: ?observer.AbortReason = null,
+    /// The navigation observer holds it before its fetch (N3), until
+    /// observer.release resumes it (`resumeHeldNavigations`).
+    held: bool = false,
     /// "Create navigation params by fetching"'s reserved client
     /// (dom.service_worker_clients' handle), until the new document's realm
     /// takes it; one no document took is discarded.
@@ -1100,6 +1121,10 @@ const Navigation = struct {
     final_sandboxing_flags: SandboxingFlagSet = .empty,
 
     fn destroy(self: *Navigation) void {
+        // A navigation the observer saw start, ending with no document
+        // committed: aborted - and, with no other navigation of the navigable
+        // in flight, done loading.
+        if (self.started_reported and !self.committed_reported) self.reportAborted();
         // The traversal waiting for this population hears that it ended,
         // after the record is gone (lane nav2 C1).
         const wait = self.traversal_wait;
@@ -1145,6 +1170,23 @@ const Navigation = struct {
         if (self.required_csp) |required| self.allocator.free(required);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
+    }
+
+    /// html_core.navigation.observer: this navigation ended uncommitted.
+    fn reportAborted(self: *Navigation) void {
+        const integration = self.integration;
+        const bc = integration.browsing_context orelse return;
+        const reason: observer.AbortReason = self.abort_reason orelse
+            if (integration.state == .discarded) .navigable_gone else switch (integration.ongoing_navigation) {
+                .id => |other| if (other != self.id) .superseded else .stopped,
+                .traversal => .superseded,
+                .none => .stopped,
+            };
+        observer.notify(self.navigables, .{ .navigable_id = bc.id, .navigation_id = self.id, .event = .{ .aborted = .{ .reason = reason } } });
+        // Nothing else of the navigable loading: it stopped loading.
+        if (reason != .superseded and reason != .navigable_gone and integration.ongoing_navigation == .none) {
+            observer.notify(self.navigables, .{ .navigable_id = bc.id, .event = .stopped_loading });
+        }
     }
 };
 
@@ -1796,6 +1838,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (dom_module.policy_containers.of(referrer_document)) |container| record.referrer_policy = container.referrer_policy;
         }
     };
+    // A host's navigation that names its referrer (N5: CDP Page.navigate
+    // `referrer`/`referrerPolicy`): main fetch's "determine request's
+    // referrer" strips and applies the policy to it, as for any URL
+    // referrer.
+    if (options.source_document == null and options.referrer_document == null) if (options.referrer_url) |referrer| {
+        record.referrer = allocator.dupe(u8, referrer) catch null;
+    };
     // Step 4: "Let sourceSnapshotParams be the result of snapshotting source
     // snapshot params given sourceDocument" - its source policy container a
     // clone of sourceDocument's policy container.
@@ -1950,6 +1999,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         record.destroy();
         return;
     };
+    if (options.started_navigation_id) |out| out.* = id;
 
     // Step 20: a javascript: URL runs in a task, not the caller.
     if (navigate_steps.isJavascript(url)) {
@@ -2035,6 +2085,16 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (navigationById(list, id) == null or !isOngoing(integration, id)) return;
         }
     }
+    // The navigation starts loading - past its navigate event, before
+    // beforeunload and its fetch: the observer hears it (CDP
+    // frameStartedLoading, frameRequestedNavigation for a document's).
+    if (navigationById(list, id)) |started| {
+        started.started_reported = true;
+        observer.notify(list, .{ .navigable_id = browsing_context.id, .navigation_id = id, .event = .{ .started = .{
+            .url = url,
+            .initiator = if (options.user_involvement == .browser_ui) .browser_ui else .document,
+        } } });
+    }
     // Step 23: "If sourceDocument is navigable's container document, then
     // reserve deferred fetch quota for navigable's container given url's
     // origin" (Fetch 4.12.1; dom.deferred_fetches). Golden rule 2, stated:
@@ -2068,8 +2128,59 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // beforeunload already: "apply the history step" checks it for every
     // navigable the traversal takes to another document, before their
     // navigate events (History's runTraversal and reload).
-    if (options.traversal_entry != 0) return startFetch(navigationById(list, id) orelse return);
+    if (options.traversal_entry != 0) return startFetchUnlessHeld(navigationById(list, id) orelse return);
     runBeforeUnload(list, id);
+}
+
+/// Start `record`'s fetch, unless the Browser's navigation observer holds
+/// its navigable's navigation (N3, a target created paused: Chrome's
+/// TargetHandler throttle defers the request at WillStartRequest): then it
+/// parks, after beforeunload, until observer.release resumes it
+/// (`resumeHeldNavigations`). A traversal's or reload's population is never
+/// held - the apply running it waits for it.
+fn startFetchUnlessHeld(record: *Navigation) void {
+    if (record.traversal_entry == 0) if (record.integration.browsing_context) |bc| {
+        if (observer.holds(record.navigables, bc.id)) {
+            record.held = true;
+            return;
+        }
+    };
+    startFetch(record);
+}
+
+/// dom.navigables' resume hook (observer.release): navigable
+/// `navigable_id`'s held navigations go on, each from a task of its event
+/// loop.
+fn resumeHeldNavigations(list: *Navigables, navigable_id: u64) void {
+    var ids: [8]u64 = undefined;
+    while (true) {
+        var count: usize = 0;
+        var it = list.navigationIterator();
+        while (it.next()) |kv| {
+            const record: *Navigation = @ptrCast(@alignCast(kv.value_ptr.*));
+            if (!record.held) continue;
+            const bc = record.integration.browsing_context orelse continue;
+            if (bc.id != navigable_id) continue;
+            ids[count] = kv.key_ptr.*;
+            count += 1;
+            if (count == ids.len) break;
+        }
+        if (count == 0) return;
+        for (ids[0..count]) |id| {
+            const record = navigationById(list, id) orelse continue;
+            record.held = false;
+            queueNavigationTask(record.integration, id, &resumeHeldNavigation);
+        }
+    }
+}
+
+/// A held navigation's task: its fetch starts now, if it is still its
+/// navigable's ongoing navigation.
+fn resumeHeldNavigation(context: ?*anyopaque) void {
+    const task = Ticket.redeem(context) orelse return;
+    const record = navigationById(task.navigables, task.id) orelse return;
+    if (!isOngoing(record.integration, record.id)) return endNavigation(task.navigables, task.id);
+    startFetch(record);
 }
 
 /// Fetch "determine request's referrer" step 2 for a request whose
@@ -2128,18 +2239,25 @@ fn aboutBlankReferrer(record: *Navigation) ?[]u8 {
 }
 
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
-/// global task on the navigation and traversal task source. With no loop (a
-/// context built for tests) it runs now.
-/// Queue `callback` as a task for navigation `id` of `integration`'s
-/// navigable: its context a `Ticket`, which the callback redeems
-/// (`Ticket.redeem`) and the loop frees if it drops the task.
+/// global task on the navigation and traversal task source - its context a
+/// `Ticket`, which the callback redeems (`Ticket.redeem`) and the loop frees
+/// if it drops the task. Never run in the caller: a navigable no event loop
+/// runs (no realm, or a realm no Browser drives) cannot go on, and its
+/// navigation ends here, as a planned form navigation with no loop does
+/// (lane life1: it used to run inline for a context built for tests, a path
+/// no browser has - every navigable's active window has an event loop).
 fn queueNavigationTask(integration: *IFrameIntegration, id: u64, callback: *const fn (?*anyopaque) void) void {
     const list = integration.navigables orelse return;
+    const loop = loop: {
+        const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse break :loop null));
+        break :loop runtime_ctx.getOptionalEventLoop();
+    } orelse {
+        if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
+        endNavigation(list, id);
+        return endLoadDelay(integration);
+    };
     const ticket = Ticket.create(list, id) orelse return;
-    const context: ?*anyopaque = ticket;
-    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse return callback(context)));
-    const loop = runtime_ctx.getOptionalEventLoop() orelse return callback(context);
-    loop.queueTask(.{ .callback = callback, .context = context, .drop = &Ticket.dropTask });
+    loop.queueTask(.{ .callback = callback, .context = ticket, .drop = &Ticket.dropTask });
 }
 
 /// Whether navigation `id` is still `integration`'s ongoing navigation.
@@ -2221,6 +2339,7 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
         // and ends its record - and a navigable taken away ends it too.
         const again = navigationById(list, id) orelse return;
         if (canceled) {
+            again.abort_reason = .canceled_by_beforeunload;
             setOngoingNavigation(again.integration, .none);
             endLoadDelay(again.integration);
             return;
@@ -2251,7 +2370,7 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
             if (runtime.SlabAllocator.generationOf(entry.document) == entry.generation) document_lifecycle.endLoad(entry.document);
         }
     }
-    startFetch(navigationById(list, id) orelse return);
+    startFetchUnlessHeld(navigationById(list, id) orelse return);
 }
 
 /// Navigate step 24.3's queued task for the browser's own navigation: "abort
@@ -2628,6 +2747,18 @@ fn startFetch(record: *Navigation) void {
         // A frame's blob is obtained for its reserved environment, by its
         // storage key (`reservedBlobStorageKey`); a top-level navigation's
         // is not checked.
+        //
+        // Stated, the one fetch still made in the caller (lane life1): HTML
+        // resolves the URL's blob URL entry when the URL is parsed and reads
+        // it "in parallel". Reading it here, at the navigation's start, gives
+        // the same bytes - a blob is immutable, and a URL revoked after the
+        // navigation began still loads. Reading it from the navigation's task
+        // needs the entry captured here (File API "resolve a blob URL"),
+        // which scheme fetch then authorizes strictly by storage key; the
+        // store's navigation lookup keeps its older comparison for a reserved
+        // navigation client's key ("- -" identity, BlobURLStore.
+        // legacyKeysEqual), which moves with streamnav's captured entries
+        // (row 115 Q18).
         const blob_storage_key = if (destination == .document) null else reservedBlobStorageKey(allocator, record.integration, url) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -2651,25 +2782,69 @@ fn startFetch(record: *Navigation) void {
         record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
+    // Navigate step 24.10: "attempt to populate the history entry's
+    // document" runs in parallel - its fetch is not the caller's. data:,
+    // file: and every other scheme this engine answers without the network
+    // are fetched by the navigation's own task (`fetchWithoutNetwork`),
+    // which then goes on as the queued "afterDocumentPopulated" steps do
+    // (`runCommit`): the commit keeps the place in the queue it had when the
+    // fetch was made here, and the caller never waits for a file read.
+    // Chrome (a URLLoader in the network service, or the browser process's
+    // file and data URL loaders), Firefox and Safari (their channels) load
+    // each of these schemes asynchronously.
+    queueNavigationTask(record.integration, record.id, &fetchWithoutNetwork);
+}
+
+/// Navigate step 24.10's fetch for a navigation `startFetch` gave no
+/// network fetch (data:, file:, and the schemes Fetch answers with a
+/// network error), from the navigation's own task: the response, then
+/// runCommit's steps in the same task. Nothing when the navigation ended
+/// before its task ran (a later navigation replaced it, its navigable went).
+fn fetchWithoutNetwork(context: ?*anyopaque) void {
+    const ticket = Ticket.of(context orelse return);
+    if (navigationById(ticket.navigables, ticket.id)) |record| {
+        if (record.response == null and isOngoing(record.integration, record.id)) fetchResourceWithoutNetwork(record);
+    }
+    // Redeems the ticket.
+    runCommit(context);
+}
+
+/// `fetchWithoutNetwork`'s fetch: `record.response`, a network error when
+/// the request cannot be made. Runs no script.
+fn fetchResourceWithoutNetwork(record: *Navigation) void {
+    const allocator = record.allocator;
+    const url = record.url;
+    const scheme = navigate_steps.schemeOf(url);
+    const destination: navigation_fetch.NavigationFetchOptions.Destination = if (record.integration.iframe_element) |element_ptr|
+        switch (dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe) {
+            .iframe => .iframe,
+            .frame => .frame,
+            .object => .object,
+            .embed => .embed,
+        }
+    else
+        .document;
     // data:/file: bypass main fetch. Run its steps 4 and 7 here:
     // monitored policies report, then enforced policies can block.
     if (std.mem.eql(u8, scheme, "data") or std.mem.eql(u8, scheme, "file")) {
         if (record.initiator_policy_container) |*container| {
             if (destination != .document and !container.csp_list.isEmpty()) {
+                // With no response (out of memory even for a network error),
+                // runCommit ends the navigation.
                 const request = navigation_fetch.navigationRequest(allocator, url, .{
                     .destination = destination,
                     .mode = .navigate,
                     .policy_container = container,
                 }) catch {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+                    return;
                 };
                 defer request.deinit();
                 if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
                 fetch_mod.algorithms.csp_check.reportViolationsForRequest(request);
                 if (fetch_mod.algorithms.csp_check.shouldRequestBeBlocked(request)) {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+                    return;
                 }
             }
         }
@@ -2678,8 +2853,7 @@ fn startFetch(record: *Navigation) void {
         .destination = destination,
         .mode = .navigate,
         .redirect = .follow,
-    }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-    queueNavigationTask(record.integration, record.id, &runCommit);
+    }) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
 }
 
 /// Whether two or more of `integration`'s ancestor navigables show a
@@ -3286,6 +3460,7 @@ fn runCommit(context: ?*anyopaque) void {
     // the one it has, and no load event is owed. Decided before anything is
     // unloaded.
     if (!integration.responseMakesDocument(response)) {
+        reportReadyToCommit(record, response, if (response.status == 204 or response.status == 205) .no_document else .download);
         // For a traversal, HTML "apply the history step" step 12.8's
         // afterDocumentPopulated step 1: no document, so the change is
         // update-only - the navigable's active session history entry (and
@@ -3357,6 +3532,11 @@ fn runCommit(context: ?*anyopaque) void {
     params_container_taken = true;
     record.group_switch = group_switch;
 
+    // Ready to commit: the response is decided and nothing has unloaded yet
+    // (Chrome's NavigationRequest::ReadyToCommitNavigation, which answers
+    // Page.navigate before the commit's frameNavigated).
+    reportReadyToCommit(record, response, if (response.is_network_error) .network_error else .document);
+
     // Navigate step 23.9's completionSteps (lane nav2 F1): "Append session
     // history traversal steps to navigable's traversable navigable to
     // finalize a cross-document navigation". The rest of the commit is that
@@ -3380,6 +3560,32 @@ fn runCommit(context: ?*anyopaque) void {
     // now - a navigation's lists its entry after the unload
     // (recordInHistory), as before F1.
     commitAfterFinalize(integration, record, null);
+}
+
+/// html_core.navigation.observer: `record`'s response is decided - it will
+/// commit a document (an error document for a network error), or none.
+fn reportReadyToCommit(record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult, outcome: observer.ReadyOutcome) void {
+    const bc = record.integration.browsing_context orelse return;
+    observer.notify(record.navigables, .{
+        .navigable_id = bc.id,
+        .navigation_id = record.id,
+        .event = .{
+            .ready_to_commit = .{
+                .url = if (response.final_url.len > 0) response.final_url else record.url,
+                .outcome = outcome,
+                .status = response.status,
+                .mime_type = response.content_type orelse "",
+                // Chrome's net error names, which clients match: a network error
+                // Crane does not tell apart is net::ERR_FAILED (net/base/
+                // net_error_list.h); an aborted fetch is net::ERR_ABORTED.
+                .error_text = switch (outcome) {
+                    .network_error => "net::ERR_FAILED",
+                    .download => "net::ERR_ABORTED",
+                    else => "",
+                },
+            },
+        },
+    });
 }
 
 /// The .push_replace apply's step-12 job for `browsing_context_ptr`'s
@@ -4524,6 +4730,41 @@ fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core
 /// document's referrer - the navigation request's referrer as main fetch
 /// left it, waiting on the navigable (IFrameIntegration.next_referrer). The
 /// empty string when there is none, or no request was fetched.
+/// html_core.navigation.observer `committed`: `document` (just made, linked
+/// to its Window and its navigable, its parser not yet run) is
+/// `browsing_context`'s active document, the document of the navigation
+/// whose commit runs now (IFrameIntegration.committing_navigation_id; 0 for
+/// an initial about:blank document), at the URL that commit recorded.
+fn reportCommitted(browsing_context: *html_core.BrowsingContext, document: *runtime.Instance, mime_type: []const u8) void {
+    const list = browsing_context.navigables orelse return;
+    if (list.observer == null) return;
+    const integration = integrationOfBrowsingContext(browsing_context);
+    const navigation_id: u64 = if (integration) |i| i.committing_navigation_id else 0;
+    if (integration) |i| i.committed_navigation_id = navigation_id;
+    const url: []const u8 = if (navigation_id != 0) (if (integration.?.loaded_url) |u| u else "about:blank") else "about:blank";
+    observer.notify(list, .{ .navigable_id = browsing_context.id, .navigation_id = navigation_id, .event = .{ .committed = .{
+        .url = url,
+        .document = .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) },
+        .mime_type = mime_type,
+        .error_page = if (integration) |i| i.committing_error_page else false,
+    } } });
+}
+
+/// HTML 6.2 "set the initial visibility state" of `document` to its
+/// navigable's traversable navigable's system visibility state - "initialize
+/// the navigable" step 6 for an initial about:blank document, "activate
+/// history entry" step 6 for a document a navigation made. Done as the
+/// document is made, before its parser runs a script, as the document becomes
+/// its navigable's active document in the same commit (the parse is inside
+/// it). A document the back/forward cache restores keeps the reactivation
+/// path's own visibility steps.
+fn giveInitialVisibilityState(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    dom_module.visibility_state.setInitial(document, switch (browsing_context.traversableSystemVisibility()) {
+        .visible => .visible,
+        .hidden => .hidden,
+    });
+}
+
 fn giveReferrer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     const referrer = integration.next_referrer orelse return;
@@ -4760,6 +5001,15 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     defer integration.next_document_state = null;
     integration.next_persisted_state = persistedStateOf(integration, record);
     defer integration.next_persisted_state = null;
+    // The navigation observer's `committed`, told by the document factory
+    // when the new document is made (`reportCommitted`): this navigation's.
+    integration.committing_navigation_id = record.id;
+    integration.committing_error_page = response.is_network_error;
+    defer {
+        if (integration.committed_navigation_id == record.id) record.committed_reported = true;
+        integration.committing_navigation_id = 0;
+        integration.committing_error_page = false;
+    }
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
@@ -5578,6 +5828,9 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     }
     // Step 12: "Set navigable's active document's URL to url."
     integration.setDocumentUrl(url);
+    // The navigation observer: a same-document navigation (CDP
+    // navigatedWithinDocument).
+    if (integration.browsing_context) |bc| observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .same_document = .{ .url = url, .kind = .fragment } } });
     // Step 15, "update document for history step application" 6.4.2:
     // "Update the navigation API entries for a same-document navigation
     // given navigation, historyEntry, and historyHandling."
@@ -5669,7 +5922,9 @@ fn queueHashChange(integration: *IFrameIntegration, old_url: []const u8, new_url
         },
         .allocator = allocator,
     };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    // A task, never run in the caller: a window no event loop runs gets no
+    // hashchange (lane life1; it ran inline for test-built contexts).
+    const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
     loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
 }
 
@@ -5809,6 +6064,12 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 }
 
 fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
+    // Step 13 appends "finalize a cross-document navigation" to the traversal
+    // queue. Stated (golden rule 2, Chrome + Safari): the String's document
+    // is committed here, in the task that evaluated it - Blink's
+    // ScriptController::ExecuteJavaScriptURL and WebKit's
+    // executeJavaScriptURL replace the document on the same stack; Firefox
+    // (nsJSChannel) and the spec do it later (JointHistory.settleApply).
     // Step 13: finalized as a "replace" - in the history before the new
     // document's scripts run, as for any other document. "Evaluate a
     // javascript: URL": the new document state's origin is initiatorOrigin,
@@ -5827,6 +6088,11 @@ fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, 
     const document_state = recordInHistory(integration, record, url, origin);
     integration.next_document_state = document_state;
     defer integration.next_document_state = null;
+    integration.committing_navigation_id = record.id;
+    defer {
+        if (integration.committed_navigation_id == record.id) record.committed_reported = true;
+        integration.committing_navigation_id = 0;
+    }
     integration.commitHtmlAt(url, html, if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.container_origin) catch return endLoadDelay(integration);
     attachDocument(integration, document_state, false);
 }
@@ -6547,6 +6813,8 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
         .referrer_policy = request.referrer_policy,
         .user_involvement = if (request.browser_ui) .browser_ui else .none,
         .has_transient_activation = request.has_transient_activation,
+        .referrer_url = request.referrer_url,
+        .started_navigation_id = request.started_navigation_id,
     });
 }
 
@@ -7202,6 +7470,9 @@ fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *
     integration.setNextSandboxingFlags(creation_flags);
     defer integration.setNextSandboxingFlags(.empty);
 
+    // The Browser's navigation observer hears of the child navigable before
+    // its initial about:blank document commits (CDP frameAttached).
+    observer.notify(existing_bc.navigables, .{ .navigable_id = existing_bc.id, .event = .{ .navigable_created = .{ .parent_id = parent_bc.id } } });
     // The navigable's context, Window and initial about:blank document,
     // whose creator is the element's node document.
     _ = attachNavigableContext(
@@ -7509,8 +7780,6 @@ fn attachRealm(
     );
     integration.parse_xml_callback = &parseXmlForIframe;
 
-    // Set script execution callbacks (for script execution in iframe documents)
-    integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
     // Navigation: this engine's "navigate", the hook that ends a navigation
     // in flight when the navigable goes, and how a retired realm ends.
@@ -8595,6 +8864,15 @@ fn createAuxiliaryNavigable(
     };
     // From here the integration owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
+    // A new top-level traversable's system visibility state, the platform's
+    // for its tab (HTML 6.2).
+    initialSystemVisibility(opener_realm, browsing_context);
+    // The Browser's navigation observer: a top-level traversable the page
+    // made, with its opener unless noopener.
+    observer.notify(browsing_context.navigables, .{ .navigable_id = browsing_context.id, .event = .{ .navigable_created = .{
+        .opener_id = if (noopener) null else opener_bc.id,
+        .created_by = .page,
+    } } });
     // A noopener popup is "created given null" opener: "create a new
     // top-level browsing context and document" step 1 makes it in a new
     // browsing context group, whose cross-origin isolation mode is "none" -
@@ -8679,7 +8957,6 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     const realm = window.ctx;
     integration.setRealmContext(realm.engine_ctx, @ptrCast(realm), @ptrCast(realm), @ptrCast(realm), createDocumentForIframe, hostRealmCleanup, parseHtmlForIframe);
     integration.parse_xml_callback = &parseXmlForIframe;
-    integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
@@ -8702,8 +8979,27 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     // null creatorOrigin), as a new tab's initial empty document is in
     // Chrome, Firefox and Safari. The host reads it as the browsing
     // context's active document.
+    // Its system visibility state, the platform's for its tab (HTML 6.2),
+    // before the initial about:blank document takes it.
+    initialSystemVisibility(realm, browsing_context);
+    // The Browser's navigation observer: the host's own top-level
+    // traversable, before its initial about:blank document commits.
+    observer.notify(browsing_context.navigables, .{ .navigable_id = browsing_context.id, .event = .{ .navigable_created = .{ .created_by = .host } } });
     makeInitialAboutBlank(integration, realm, browsing_context, null, null, null, allocator);
     return integration;
+}
+
+/// HTML 6.2: "A traversable navigable's system visibility state, including
+/// its initial value upon creation, is determined by the user agent" - for a
+/// top-level traversable this engine makes (the host's page, a popup), the
+/// platform's answer for its tab, whose TabId is its browsing context's id
+/// (docs/platform-protocol.md 6.10.4). The headless platforms answer visible.
+fn initialSystemVisibility(realm: runtime.Context, browsing_context: *html_core.BrowsingContext) void {
+    const browser = html_module.platform_state.of(realm) orelse return;
+    browsing_context.system_visibility = switch (@import("platform").systemVisibility(browser, browsing_context.id)) {
+        .visible => .visible,
+        .hidden => .hidden,
+    };
 }
 
 /// The host page's "create and initialize a Document object" steps 6-7
@@ -8724,7 +9020,13 @@ fn realmForHostDocument(integration: *IFrameIntegration, new_origin: html_core.O
 /// navigation) - with the response the embedder supplies, if any.
 fn navigateHostTraversable(record: *anyopaque, url: []const u8, options: dom_module.top_level_traversables.NavigateOptions) void {
     const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
-    navigate(integration, url, .{ .user_involvement = .browser_ui, .markup = options.markup });
+    navigate(integration, url, .{
+        .user_involvement = .browser_ui,
+        .markup = options.markup,
+        .referrer_url = options.referrer,
+        .referrer_policy = options.referrer_policy,
+        .started_navigation_id = options.started_navigation_id,
+    });
 }
 
 /// dom.top_level_traversables: whether the host page's traversable has a

@@ -306,7 +306,7 @@ pub fn installHooks() void {
     @import("dom").update_the_rendering.installStep(.fullscreen, &fullscreenStep);
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").fullscreen.removingSteps) catch @panic("fullscreen removing steps allocation");
     @import("dom").unloading_cleanup.installDocumentOnly(&@import("html").fullscreen.unloadingCleanup);
-    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook, .set_initial = &setInitialVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
     // applies the focus fixup rule as activeElement does).
@@ -693,6 +693,20 @@ fn updateVisibilityStateFromHook(document: *runtime.Instance, state: @import("do
         .visible => ._visible_,
         .hidden => ._hidden_,
     });
+}
+
+/// dom.visibility_state: HTML 6.2 "set the initial visibility state" of
+/// `document`: "Set document's visibility state to visibilityState" - no
+/// event. Step 2's VisibilityStateEntry (timestamp 0) is not queued: Crane
+/// has no visibility-state performance entries yet (Chrome alone ships the
+/// interface), and "update the visibility state" queues none either.
+fn setInitialVisibilityStateFromHook(document: *runtime.Instance, state: @import("dom").visibility_state.State) void {
+    const internal = getInternal(document) orelse return;
+    internal.visibility_state = switch (state) {
+        .visible => ._visible_,
+        .hidden => ._hidden_,
+    };
+    internal.hidden = state == .hidden;
 }
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
@@ -4254,6 +4268,7 @@ fn domContentLoadedSteps(data: ?*anyopaque) void {
     if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_start);
     fireEvent(document, document, "DOMContentLoaded", true);
     if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_end);
+    if (get_defaultView(document) catch null) |window| reportLifecycle(document, window, .dom_content_loaded);
     // Step 6.4: enable the client message queue of the
     // ServiceWorkerContainer whose client is the document's relevant
     // settings object.
@@ -5316,6 +5331,7 @@ fn completeLoading(document: *runtime.Instance) void {
     fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
+    reportLifecycle(document, window, .load);
     // "Restore persisted state" step 2 at the latest: right after the
     // window's load event, before pageshow (Blink
     // LocalDOMWindow::DispatchLoadAndPageshowEvents -> RestoreImmediately).
@@ -5362,6 +5378,9 @@ fn completeLoading(document: *runtime.Instance) void {
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
     internal.completely_loaded = true;
+    // Its navigable is done loading, unless a navigation of it is under way
+    // (one its load or pageshow listeners started).
+    if (!@import("dom").content_navigables.isNavigating(document)) reportLifecycle(document, window, .stopped_loading);
     // The SVG document fragments' timelines begin once the load event has
     // fired (SVG Animations 2 4.1, timelinebegin "loadend"; Blink
     // Document::DispatchLoadAndPageshowEvents -> SVGDocumentExtensions::
@@ -5379,6 +5398,21 @@ fn completeLoading(document: *runtime.Instance) void {
     // loaded time. Its wait starts in a task queued behind the container's
     // load event, so a refresh of no time never overtakes that event.
     if (internal.declarative_refresh != null) queueLifecycleTask(document, .declarative_refresh);
+}
+
+/// html_core.navigation.observer: a lifecycle milestone of `document`, its
+/// `window`'s, told to the Browser's navigation observer (CDP lifecycleEvent
+/// DOMContentLoaded / load, domContentEventFired, loadEventFired,
+/// frameStoppedLoading). Runs no script.
+fn reportLifecycle(document: *runtime.Instance, window: *runtime.Instance, comptime kind: enum { dom_content_loaded, load, stopped_loading }) void {
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    const observer = html_core.navigation.observer;
+    const ref: observer.DocumentRef = .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) };
+    observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = switch (kind) {
+        .dom_content_loaded => .{ .dom_content_loaded = .{ .document = ref } },
+        .load => .{ .load = .{ .document = ref } },
+        .stopped_loading => .stopped_loading,
+    } });
 }
 
 /// "Completely finish loading" steps 4-5 for `container`, run in the

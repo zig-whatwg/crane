@@ -14,7 +14,8 @@
 //! The Window implementation uses pluggable backends:
 //! - BrowsingContext: Manages window relationships (parent, opener, etc.)
 //! - UIBackend: Handles alert/confirm/prompt dialogs
-//! - AnimationFrameScheduler: Manages requestAnimationFrame callbacks
+//! - requestAnimationFrame: the Browser's frame clock (src/browser/rendering.zig),
+//!   bound on every Window realm through the engine's window operations
 //! - TimerManager: Handles setTimeout/setInterval (from event_loop)
 
 const std = @import("std");
@@ -40,8 +41,6 @@ const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
 const UIBackend = html_core.window.UIBackend;
 const StubUIBackend = html_core.window.StubUIBackend;
-const AnimationFrameScheduler = html_core.window.AnimationFrameScheduler;
-const StubFrameTimingBackend = html_core.window.StubFrameTimingBackend;
 
 // requestIdleCallback's idle periods: the event loop's and IdleDeadline's
 // halves (src/dom/idle_periods.zig).
@@ -106,12 +105,6 @@ pub const InternalState = struct {
 
     /// Stub UI backend instance (default, can be replaced)
     stub_ui_backend: StubUIBackend,
-
-    /// Animation frame scheduler
-    animation_scheduler: ?*AnimationFrameScheduler = null,
-
-    /// Stub frame timing backend (default, can be replaced)
-    stub_timing_backend: StubFrameTimingBackend,
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
@@ -255,6 +248,9 @@ pub const InternalState = struct {
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
     inner_height: i32 = 768,
+    /// CSSOM View "run the resize steps": the viewport size the last run saw
+    /// for this window's document, null before its first.
+    resize_seen: ?[2]i32 = null,
     outer_width: i32 = 1024,
     outer_height: i32 = 768,
     screen_x: i32 = 0,
@@ -289,7 +285,6 @@ pub const InternalState = struct {
             .allocator = allocator,
             .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
             .stub_ui_backend = StubUIBackend.init(.{}),
-            .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
             .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
             .close_watcher_manager = @import("dom").close_watcher_manager.Manager.init(allocator),
@@ -321,11 +316,6 @@ pub const InternalState = struct {
         }
 
         // Clean up event handlers
-
-        // Clean up animation scheduler if created
-        if (self.animation_scheduler) |scheduler| {
-            scheduler.deinit();
-        }
 
         // The idle callbacks normally ended with the window's document
         // (endIdleCallbacks, an unloading document cleanup step, which also
@@ -403,6 +393,9 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // HTML update the rendering step 8: CSSOM View's resize steps, the
+    // window's (it keeps the size they last saw).
+    @import("dom").update_the_rendering.installStep(.resize, &resizeStep);
     // "Destroy a document" and "unload a document" end the window's idle
     // callbacks and their timeouts (an unloading document cleanup step).
     @import("dom").unloading_cleanup.install(&endIdleCallbacks);
@@ -1139,7 +1132,7 @@ pub fn getBoundV8Global(instance: *runtime.Instance) ?*anyopaque {
 /// This is used when creating a Window for an iframe that already has a browsing context.
 ///
 /// The iframe's browsing context was created when the iframe was inserted into the DOM
-/// (via IFrameIntegration.onInsertedIntoDocument). When contentWindow is accessed,
+/// (IFrameIntegration.ensureBrowsingContext). When contentWindow is accessed,
 /// a Window is created but it needs to use the iframe's EXISTING browsing context,
 /// not create a new one.
 ///
@@ -1232,6 +1225,9 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         // the new document's.
         if (!internal.idle.ended) internal.idle.replaced_pending_end = true;
         internal.idle.ended = false;
+        // The resize steps' "since the last time these steps were run" is
+        // per document: the new one starts with no run.
+        internal.resize_seen = null;
     };
     internal.document = document;
     // The Window holds its document counted from here (refcount step 5i),
@@ -1909,13 +1905,45 @@ pub fn get_visualViewport(instance: *runtime.Instance) anyerror!?*runtime.Instan
 /// Per spec: Returns the viewport width in CSS pixels.
 pub fn get_innerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.width;
     return internal.inner_width;
+}
+
+/// HTML "update the rendering" step 8, CSSOM View "run the resize steps" for
+/// `document`: "If doc's viewport has had its width or height changed (e.g.
+/// as a result of the user resizing the browser window ...) since the last
+/// time these steps were run, fire an event named resize at the Window object
+/// associated with doc." The viewport is innerWidth x innerHeight: a
+/// top-level traversable's window as the platform (window_rect_changed) or a
+/// host's override reports it (src/browser/viewport.zig, which asks for the
+/// frame). The first run for a document records its size, firing nothing.
+fn resizeStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const internal = getInternal(window) orelse return;
+    const size: [2]i32 = .{ get_innerWidth(window) catch return, get_innerHeight(window) catch return };
+    const seen = internal.resize_seen;
+    internal.resize_seen = size;
+    const last = seen orelse return;
+    if (last[0] == size[0] and last[1] == size[1]) return;
+    // "Fire an event named resize": an Event, not bubbling, not cancelable.
+    @import("dom").navigables.fireSimpleEvent(window, "resize");
+}
+
+/// The viewport of a top-level traversable's Window, as the host's override
+/// or the platform's window reports it (BrowsingContext.traversableViewport);
+/// null for a child navigable's Window - its viewport is its container's box
+/// - and while neither is known.
+fn topLevelViewport(internal: *InternalState) ?html_core.window.browsing_context.ViewportSize {
+    if (internal.browsing_context.parent != null) return null;
+    return internal.browsing_context.traversableViewport();
 }
 
 /// Getter for innerHeight
 /// Per spec: Returns the viewport height in CSS pixels.
 pub fn get_innerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.height;
     return internal.inner_height;
 }
 
@@ -4290,17 +4318,10 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
 /// Operation: cancelAnimationFrame
 /// Per spec §8.14.2: Cancels a previously scheduled animation frame callback.
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // Cancel the animation frame if scheduler exists
-    if (internal.animation_scheduler) |scheduler| {
-        scheduler.cancelAnimationFrame(handle);
-    }
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // Bound natively, as requestAnimationFrame is (see there): nothing is
+    // registered through this entry.
+    _ = handle;
 }
 
 /// Fetch §5.6, fetchLater() method steps.
@@ -4383,39 +4404,19 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
     return interfaces.FetchLaterResult.initWith(allocator, instance.ctx, .{ .deferred_activation = activated });
 }
 
-/// Operation: requestAnimationFrame
-/// Per spec §8.14.2: Schedules a callback to be invoked before the next repaint.
-///
-/// TODO: When fully implementing, the callback MUST be stored as a V8 Global handle
-/// to survive past the caller's HandleScope. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. Create Global handle for the FrameRequestCallback
-/// 2. Store in animation frame registry with Global handle
-/// 3. Dispose Global handle when callback fires or is canceled
+/// Operation: requestAnimationFrame (HTML 8.12). Every Window realm binds it,
+/// and cancelAnimationFrame, natively through the engine's window operations
+/// (engine.installWindowOperations -> src/browser/rendering.zig: the
+/// Browser's frame clock, the documents' maps of animation frame callbacks),
+/// which take the callback as the owned value this generated signature cannot
+/// carry (its FrameRequestCallback is not a JS callback). This entry is
+/// reached by no Window a Browser makes: it registers nothing. (Lane life1
+/// removed the timer-driven AnimationFrameScheduler it used to make here, the
+/// "requestAnimationFrame timer" the frame clock replaced.)
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return 0; // Return 0 handle if window is closed
-    }
-
-    // Create animation scheduler lazily if not exists
-    if (internal.animation_scheduler == null) {
-        internal.animation_scheduler = try AnimationFrameScheduler.init(
-            internal.allocator,
-            internal.stub_timing_backend.backend(),
-        );
-    }
-
-    // Schedule the callback
-    // The callback needs to be wrapped to match our internal signature
-    // TODO: Proper callback wrapping - for now return placeholder
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     _ = callback;
-    return 0; // Placeholder
+    return 0;
 }
 
 /// Operation: cancelIdleCallback

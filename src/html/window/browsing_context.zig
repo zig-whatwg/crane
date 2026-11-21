@@ -176,6 +176,10 @@ pub const Navigables = struct {
     /// context's record (`BrowsingContext.deinit`). Window-thread state, as
     /// this list is: sessionStorage is [Exposed=Window].
     traversable_storage: storage.TraversableStorageSheds,
+    /// The Browser's navigation observer - its one slot, which the Browser
+    /// sets to its own dispatcher (src/html/navigation/observer.zig): told
+    /// each navigation milestone of these navigables, on the window thread.
+    observer: ?@import("../navigation/observer.zig").Observer = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
@@ -360,6 +364,13 @@ pub const WindowGeometry = struct {
     height: ?i32 = null,
 };
 
+/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
+pub const SystemVisibility = enum { visible, hidden };
+
+/// A viewport's size in CSS pixels (CSSOM View innerWidth/innerHeight are
+/// `long`).
+pub const ViewportSize = struct { width: i32, height: i32 };
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -461,6 +472,30 @@ pub const BrowsingContext = struct {
     /// iframe navigates, and every document keeps its own active set.
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#popup-sandboxing-flag-set
     popup_sandboxing_flags: SandboxingFlagSet = .empty,
+
+    /// HTML 7.3.1.1: a traversable navigable's system visibility state -
+    /// whether its window is minimized, its tab in the background, the page
+    /// covered by a system element. "Determined by the user agent, including
+    /// its initial value upon creation" (HTML 6.2): the platform's
+    /// (`systemVisibility` when the traversable is made, `visibility_changed`
+    /// after). Kept on the top-level traversable - every traversable is one -
+    /// and read for any navigable through `traversableSystemVisibility`.
+    system_visibility: SystemVisibility = .visible,
+
+    /// A top-level traversable's viewport size in CSS pixels, as the
+    /// platform's window reports it (`window_rect_changed(tab, rect)`: a
+    /// headless window has no chrome, so its rect's size is its viewport -
+    /// the integrator's ruling C, 2026-11-21), or null while the platform has
+    /// said nothing (the Window's own size then: its defaults, or what
+    /// window.open's features asked for). CSSOM View's innerWidth/innerHeight,
+    /// and the media queries that read them, read it through
+    /// `traversableViewport`.
+    viewport: ?ViewportSize = null,
+    /// A host's override of that viewport (an automation client's device
+    /// metrics: CDP Emulation.setDeviceMetricsOverride, as Chrome's
+    /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
+    /// page), which wins over the platform's while set.
+    viewport_override: ?ViewportSize = null,
 
     /// HTML's one permitted sandboxed navigator: the browsing context that
     /// opened this one from a document with the sandboxed navigation browsing
@@ -957,6 +992,22 @@ pub const BrowsingContext = struct {
         return current;
     }
 
+    /// The system visibility state of this navigable's traversable navigable
+    /// (HTML 6.2): what "set the initial visibility state" gives a document
+    /// it makes active.
+    pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
+        return self.getTop().system_visibility;
+    }
+
+    /// The viewport size of this navigable's top-level traversable - a
+    /// host's override, else the platform's window - or null when neither
+    /// is known. Only a top-level traversable's viewport is the window's: a
+    /// child navigable's is its container's box, which a renderer answers.
+    pub fn traversableViewport(self: *BrowsingContext) ?ViewportSize {
+        const top = self.getTop();
+        return top.viewport_override orelse top.viewport;
+    }
+
     /// Check if two browsing contexts are same origin
     /// Per HTML Standard §7.5 - "Two origins are same origin if their schemes,
     /// hosts, and ports are identical"
@@ -1123,6 +1174,14 @@ pub const BrowsingContext = struct {
 
     /// Close this browsing context
     pub fn close(self: *BrowsingContext) void {
+        // A top-level traversable closing: its documents were unloaded and
+        // destroyed before ("close a top-level traversable" -> "destroy a
+        // top-level traversable"), so the Browser's navigation observer
+        // hears it is gone now, once. (A child navigable's end is told by
+        // "destroy a child navigable", dom.navigables.)
+        if (self.parent == null and !self.is_closed) {
+            @import("../navigation/observer.zig").notify(self.navigables, .{ .navigable_id = self.id, .event = .navigable_destroyed });
+        }
         self.is_closed = true;
 
         // Disown the opener relationship
