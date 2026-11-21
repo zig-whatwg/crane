@@ -1590,6 +1590,35 @@ fn previousPositionOf(ctx: *Context, position: Position, rule: Rule) Position {
     });
 }
 
+/// Whether the canonical caret `position` sits in a Text node beside one of
+/// its characters that is not white-space: the character is rendered (the
+/// canonical position is a candidate in that Text, and a character that is
+/// not white-space never collapses), so a caret position lies on its other
+/// side and the caret is not its root's only one. The answer previous- and
+/// next-position give, without their walk - each delete runs this check
+/// (soleCaretRoot), and the walk across a block boundary costs most of a
+/// delete (lane edit3's profile of the delete-join cost row, 2026-11-20).
+fn besideRenderedCharacter(position: Position) bool {
+    if (position.type != .offset_in_anchor) return false;
+    const node = position.anchor orelse return false;
+    if (!isTextNode(node)) return false;
+    var data = editing.textData(node) catch return false;
+    defer data.deinit(node.ctx.allocator);
+    const units = data.asSlice();
+    const sides = [_]?u16{
+        if (position.offset > 0) editing.codeUnitAt(units, position.offset - 1) else null,
+        editing.codeUnitAt(units, position.offset),
+    };
+    for (sides) |side| {
+        const unit = side orelse continue;
+        switch (unit) {
+            ' ', '\t', '\n', '\r', 0x0c => {},
+            else => return true,
+        }
+    }
+    return false;
+}
+
 /// The root editable element of the caret at `point` when the caret is
 /// the only place a caret can be in it - Blink's TypingCommand::
 /// DeleteKeyPressed: PreviousPositionOf and NextPositionOf(visible start,
@@ -1600,6 +1629,7 @@ pub fn soleCaretRoot(allocator: std.mem.Allocator, point: Point) ?*Instance {
     defer ctx.deinit();
     const position = canonicalPosition(&ctx, Position.at(point.node, point.offset));
     if (position.isNull()) return null;
+    if (besideRenderedCharacter(position)) return null;
     if (!previousPositionOf(&ctx, position, .cannot_cross).isNull()) return null;
     if (!nextPositionOf(&ctx, position, .cannot_cross).isNull()) return null;
     return rootEditableElementOf(position);
