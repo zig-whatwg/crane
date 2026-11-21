@@ -87,25 +87,25 @@ fn setStyle(instance: *runtime.Instance, slot: *dom.canvas_2d.Style, value: runt
 /// Getter for strokeStyle (HTML 4.12.5.1.10).
 pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = try stateOf(instance);
-    return styleValue(instance, state.stroke_style);
+    return styleValue(instance, state.drawing.stroke_style);
 }
 
 /// Getter for fillStyle (HTML 4.12.5.1.10).
 pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = try stateOf(instance);
-    return styleValue(instance, state.fill_style);
+    return styleValue(instance, state.drawing.fill_style);
 }
 
 /// Setter for strokeStyle (HTML 4.12.5.1.10).
 pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const state = try stateOf(instance);
-    try setStyle(instance, &state.stroke_style, value);
+    try setStyle(instance, &state.drawing.stroke_style, value);
 }
 
 /// Setter for fillStyle (HTML 4.12.5.1.10).
 pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const state = try stateOf(instance);
-    try setStyle(instance, &state.fill_style, value);
+    try setStyle(instance, &state.drawing.fill_style, value);
 }
 
 /// Operation: createLinearGradient

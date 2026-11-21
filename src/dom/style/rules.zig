@@ -1422,19 +1422,28 @@ fn buildImport(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule {
     rest = std.mem.trim(u8, rest, " \t\n\r\x0c");
     var layer: ?[]u8 = null;
     defer if (!keep) if (layer) |l| a.free(l);
+    // A layer() that holds no <layer-name> is not the optional layer part:
+    // it, and all that follows it, is the <import-conditions> - and a
+    // supports() is the conditions' first part only - so it all reads as
+    // the <media-query-list>, its first query a <general-enclosed>
+    // (CSS Cascade 5 §2.4; Chrome, Firefox and Safari keep the rule, its
+    // media "not all" or the layer() as written: css/css-cascade/parsing/
+    // layer-import-parsing.html, css/cssom/CSSImportRule-layer-false-positive.html).
+    var conditions = true;
     if (std.ascii.startsWithIgnoreCase(rest, "layer(")) {
-        const end = std.mem.indexOfScalar(u8, rest, ')') orelse return null;
-        const n = std.mem.trim(u8, rest["layer(".len..end], " ");
-        if (!isLayerName(n)) return null;
-        layer = try a.dupe(u8, n);
-        rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
+        const end = matchingParen(rest, "layer".len) orelse rest.len;
+        const n = std.mem.trim(u8, rest["layer(".len..@min(end, rest.len)], " ");
+        if (end < rest.len and isLayerName(n)) {
+            layer = try a.dupe(u8, n);
+            rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
+        } else conditions = false;
     } else if (rest.len >= 5 and std.ascii.eqlIgnoreCase(rest[0..5], "layer") and (rest.len == 5 or rest[5] == ' ')) {
         layer = try a.dupe(u8, "");
         rest = std.mem.trim(u8, rest[5..], " \t\n\r\x0c");
     }
     var supports: ?[]u8 = null;
     defer if (!keep) if (supports) |t| a.free(t);
-    if (std.ascii.startsWithIgnoreCase(rest, "supports(")) {
+    if (conditions and std.ascii.startsWithIgnoreCase(rest, "supports(")) {
         const end = matchingParen(rest, "supports".len) orelse return null;
         supports = try a.dupe(u8, std.mem.trim(u8, rest["supports(".len..end], " "));
         rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");

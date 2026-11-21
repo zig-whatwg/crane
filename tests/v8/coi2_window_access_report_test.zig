@@ -164,10 +164,10 @@ test "a same-origin page's use of a frame's cross-origin accessible members is r
     // Each use in its own try: the report comes before the member's steps,
     // which a frame with no browsing context may refuse.
     try Pair.run(pair.page, attempt ++ "[() => w.self, () => w.window, () => w.frames, () => w.closed, () => w.length, () => w.top, () => w.parent, () => w.opener].forEach(attempt)");
-    // A same-origin Window's `self` and `frames` are data properties whose
-    // value is the global (protocol_realms bindWindowToGlobal): no binding
-    // runs for them, so only their cross-origin [[Get]] reports (below).
-    try expectReported(&host, pair, "window,closed,length,top,parent,opener");
+    // A same-origin Window's `self` and `frames` are accessors like
+    // `window` (lane maj5: HTML's [Replaceable] attributes), so their getters
+    // report as `window`'s does.
+    try expectReported(&host, pair, "self,window,frames,closed,length,top,parent,opener");
     try Pair.run(pair.page, attempt ++ "[() => w.blur(), () => w.focus(), () => w.postMessage('x', '*'), () => { w.opener = null; }, () => w.location].forEach(attempt)");
     try expectReported(&host, pair, "blur,focus,postMessage,opener,location");
     // Members outside CrossOriginProperties, and an index naming no child:

@@ -1257,9 +1257,19 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
 ///
 /// On the agent's own thread (the current isolate's realms).
 pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
-    const state = currentRealms() orelse return null;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
-    const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return null;
+    return getWindowForContextId(isolate, @intFromPtr(raw_addr));
+}
+
+/// `getWindowForContext` for the context whose Crane id is `id`
+/// (v8_Context_GetRawAddress's number, as
+/// v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal answers it), in
+/// `isolate`'s agent: no context handle (binding_plumbing.answerWindowGetter,
+/// on every read of Window's window, self and frames).
+pub fn getWindowForContextId(isolate: *v8.Isolate, id: usize) ?*runtime.Instance {
+    const state = protocol_agents.realmsOf(isolate) orelse return null;
+    const entry = state.contexts.get(id) orelse return null;
     return entry.window_instance;
 }
 

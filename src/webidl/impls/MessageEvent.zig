@@ -407,8 +407,25 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     const allocator = instance.ctx.allocator;
     const state = instance.getState(State);
 
+    // `sequence<MessagePort> ports = []`, converted as WebIDL converts an
+    // argument - before the method's steps, so even for an event being
+    // dispatched: an iterable of MessagePort objects, null, a non-iterable
+    // or an item that is no MessagePort a TypeError (Chrome, Firefox and
+    // Safari: html/webappapis/scripting/events/messageevent-constructor.https.html).
+    var next_ports: []*runtime.Instance = &.{};
+    errdefer if (next_ports.len > 0) allocator.free(next_ports);
+    if (ports.was_passed and ports.value != .undefined) {
+        const realm = engine.currentRealm() orelse instance.ctx;
+        const items = try engine.convertToSequenceOfPlatformObjects(realm, ports.value, allocator);
+        if (items.len == 0) allocator.free(items) else next_ports = items;
+        for (next_ports) |port| if (port.vtable != &interfaces.MessagePort.vtable) return error.TypeError;
+    }
+
     // initEvent step 1: an event being dispatched is left as it is.
-    if (event_construction.dispatchFlag(instance)) return;
+    if (event_construction.dispatchFlag(instance)) {
+        if (next_ports.len > 0) allocator.free(next_ports);
+        return;
+    }
 
     // The copies first - the fallible part - so nothing is half set.
     var next_last_event_id = if (lastEventId.was_passed) try lastEventId.value.clone(allocator) else runtime.DOMString.initEmpty();
@@ -446,8 +463,22 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
         if (state.own._internal) |internal| holdSource(instance, internal, source_value);
     }
 
-    // TODO(seam): "ports" - a sequence<MessagePort> the binding hands over as
-    // an `any` (initMessageEvent's ports default `[]`); setting the frozen
-    // array from it needs the array's elements as MessagePort instances.
-    _ = ports;
+    // "ports": a new frozen array of the given ports - a new object even for
+    // the same ports ("initMessageEvent() changes ev.ports"), made at once
+    // since it is what keeps them (as the constructor does).
+    if (state.own._internal) |internal| {
+        if (internal.ports_hold) |held| {
+            held.release();
+            internal.ports_hold = null;
+            state.own.ports = runtime.JSValue.jsUndefined;
+        }
+        if (internal.ports.len > 0) allocator.free(internal.ports);
+        internal.ports = next_ports;
+        next_ports = &.{};
+        // Where no array can be made now, the first read makes it.
+        makePortsArray(instance) catch {};
+    } else if (next_ports.len > 0) {
+        allocator.free(next_ports);
+        next_ports = &.{};
+    }
 }

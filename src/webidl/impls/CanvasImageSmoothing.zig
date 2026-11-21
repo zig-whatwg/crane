@@ -1,4 +1,7 @@
 //! Implementation for CanvasImageSmoothing interface
+//!
+//! HTML 4.12.5.1.18: imageSmoothingEnabled and imageSmoothingQuality of
+//! whichever 2D context includes this mixin, in its drawing state.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +10,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const dom = @import("dom");
 const CanvasImageSmoothing = interfaces.CanvasImageSmoothing;
 
 pub const State = CanvasImageSmoothing.State;
@@ -39,28 +43,33 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for imageSmoothingEnabled
+/// The 2D context's state; an InvalidStateError for one whose state is gone
+/// (or an includer that keeps none - PaintRenderingContext2D, which no paint
+/// worklet makes yet).
+fn stateOf(instance: *runtime.Instance) !*dom.canvas_2d.Context2D {
+    return dom.canvas_2d.stateOf(instance) orelse error.InvalidStateError;
+}
+
+/// Getter for imageSmoothingEnabled: "on getting, must return the last
+/// value it was set to" (initially true).
 pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.image_smoothing_enabled;
 }
 
-/// Getter for imageSmoothingQuality
+/// Getter for imageSmoothingQuality: "on getting, must return the last
+/// value it was set to" (initially "low").
 pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!enums.ImageSmoothingQuality {
-    _ = instance;
-    return error.NotImplemented;
+    return (try stateOf(instance)).drawing.image_smoothing_quality;
 }
 
-/// Setter for imageSmoothingEnabled
+/// Setter for imageSmoothingEnabled: "On setting, it must be set to the new
+/// value."
 pub fn set_imageSmoothingEnabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try stateOf(instance)).drawing.image_smoothing_enabled = value;
 }
 
-/// Setter for imageSmoothingQuality
+/// Setter for imageSmoothingQuality: "On setting, it must be set to the new
+/// value."
 pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.ImageSmoothingQuality) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try stateOf(instance)).drawing.image_smoothing_quality = value;
 }

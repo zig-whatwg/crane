@@ -844,6 +844,10 @@ const fetch_mod = @import("fetch");
 pub const NavigateOptions = struct {
     /// "sourceDocument": the document whose script (or element) navigates.
     source_document: ?*runtime.Instance = null,
+    /// The source document's transient activation, snapshotted by a caller
+    /// before a step of its own consumed it (NavigateRequest's); null
+    /// snapshots it at navigate step 4.
+    has_transient_activation: ?bool = null,
     /// With no source document: the document the request's referrer is, as
     /// "client" resolves it, with its referrer policy - a declarative
     /// refresh's reload (traverseNavigable's `refresh`).
@@ -1015,6 +1019,12 @@ const Navigation = struct {
     /// request's policy container, and the initiator's a local URL's
     /// document inherits. Owned; null with no source document.
     initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// Navigate step 4's source snapshot params' has transient activation:
+    /// whether the source document's window had transient activation as the
+    /// navigation started - "create navigation params by fetching" step 9
+    /// sets the request's user-activation from it (Fetch Metadata's
+    /// Sec-Fetch-User). False with no source document.
+    has_transient_activation: bool = false,
     /// A traversal's (or reload's) navigation with no source document: the
     /// navigable's active document's policy container, cloned as the
     /// traversal starts - "apply the history step" step 12.4: with no source
@@ -1809,6 +1819,18 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // relevant settings object: the request's client, whose global a
         // violation of the request is (CSP 2.4.2).
         record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
+        // ... and its has transient activation: "true if sourceDocument's
+        // relevant global object has transient activation" - or what the
+        // caller saw before a step of its own consumed it: window.open()'s
+        // choosing a navigable consumes the activation (step 8.1) before it
+        // navigates, yet Chrome and Firefox send Sec-Fetch-User: ?1 for a
+        // popup opened from a click (fetch/metadata/window-open.https.sub.html
+        // "user-activated: sec-fetch-user"; golden rule 2, the majority).
+        if (options.has_transient_activation) |activated| {
+            record.has_transient_activation = activated;
+        } else if (interfaces.Document.get_defaultView(source) catch null) |source_window| {
+            record.has_transient_activation = @import("html").user_activation.hasTransientActivation(source_window);
+        }
         // Step 4's fetch client: snapshot Mixed Content 4.3 while the
         // source document's settings still describe this navigation.
         if (windowOfRealm(source.ctx)) |global| {
@@ -2412,6 +2434,11 @@ fn startFetch(record: *Navigation) void {
             } else .document,
             .network_partition_key = partition_key,
             .mode = .navigate,
+            // Step 9: "If sourceSnapshotParams's has transient activation is
+            // true, then set request's user-activation to true" (Fetch
+            // Metadata sends Sec-Fetch-User: ?1 for it; Chrome and Firefox:
+            // fetch/metadata/window-open.https.sub.html, generated/element-*).
+            .user_activation = record.has_transient_activation,
             // Step 3: redirect mode "manual" - the navigation follows each
             // redirect itself (step 21, `followManualRedirect`), so every
             // hop's request goes through main fetch and Handle Fetch.
@@ -6486,6 +6513,7 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
         .history_behavior = request.history_behavior,
         .referrer_policy = request.referrer_policy,
         .user_involvement = if (request.browser_ui) .browser_ui else .none,
+        .has_transient_activation = request.has_transient_activation,
     });
 }
 

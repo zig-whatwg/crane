@@ -689,19 +689,12 @@ fn bindWindowToGlobal(
     // wrapped with the realm's anchor (Blink SetupWindowPrototypeChain 434-437).
     _ = window_properties.insertIntoPrototypeChain(isolate, context);
 
-    // `self` and `frames` are [Replaceable]: own data properties whose value
-    // is the global itself, as their setter's [[DefineOwnProperty]] makes them
-    // - defined, never assigned, which would run the script-facing setter
-    // (docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-
-    // never-assigns-them.md). They keep `self === globalThis`, which
-    // testharness.js's `(function (global_scope) { ... })(self)` needs.
-    // (`window` is an own accessor, registered above.)
-    inline for (.{ "self", "frames" }) |name| {
-        if (ffi.v8_String_NewFromUtf8(isolate, name.ptr, name.len)) |key| {
-            defer ffi.v8_String_Dispose(key);
-            _ = ffi.v8_Object_DefineProperty(global, context, @ptrCast(key), @ptrCast(global), true, true, true);
-        }
-    }
+    // `self` and `frames`, like `window`, are own ACCESSORS of the global,
+    // registered above (HTML 7.2.2: "[Replaceable] readonly attribute
+    // WindowProxy self"; Chrome, Firefox and Safari expose a getter and a
+    // setter - html/browsers/the-window-object/window-properties.https.html):
+    // their getters answer the global this value (answerWindowGetter), so
+    // `self === globalThis` still holds, and a detached frame's still answer.
 }
 
 /// A Window realm whose end is under way: a stack, one node per `endRealm`

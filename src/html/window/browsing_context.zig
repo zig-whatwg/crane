@@ -51,6 +51,14 @@ pub const InputModality = struct {
     pointer: bool,
 };
 
+/// `BrowsingContext.focus_visible`: the element focus() was called on with
+/// focusVisible given - an identity with its slab generation - and the value.
+pub const FocusVisible = struct {
+    element: InstancePtr,
+    generation: u64,
+    visible: bool,
+};
+
 /// A top-level traversable's text controls with an uncommitted user edit
 /// (`BrowsingContext.pending_edits`), oldest first: each control - an
 /// identity, with its slab generation, so one that was freed is never matched
@@ -556,6 +564,12 @@ pub const BrowsingContext = struct {
     /// session history; null until the first interaction. It was one per
     /// thread, so another tab's key press decided this tab's :focus-visible.
     input_modality: ?InputModality = null,
+
+    /// The element whose focus a focus() call with FocusOptions.focusVisible
+    /// last indicated or not (html.focus, for :focus-visible): an identity,
+    /// never read through, with its slab generation. It overrides the
+    /// heuristic for that element until the next focus() or user input.
+    focus_visible: ?FocusVisible = null,
 
     /// The text controls in this top-level traversable whose value the user
     /// changed and has not committed (html.focus, the focus update steps'

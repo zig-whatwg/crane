@@ -889,7 +889,8 @@ pub const Getter = struct {
     /// WebIDL attribute getter 1.1.2.2 / HTML 7.2.1.1: Location's Proxy
     /// checks its platform target (`V8Interface.acceptsAnyReceiver`).
     checks_receiver: bool,
-    /// Window's `window`: answered without its Window (`answerWindowGetter`).
+    /// Window's `window`, `self` and `frames`: answered on the getter's own
+    /// global without its Window, before anything else (`answerWindowGetter`).
     answers_window: bool,
     /// A handle for `this` is used: a [Global] interface compares it with
     /// globals, and a [SameObject] attribute draws an edge from it.
@@ -962,6 +963,10 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
     // Use compile-time debug logging to avoid runtime overhead
     // This is called on every property access, so must be zero-cost when disabled
     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ self.interface_name, self.getter_name });
+    // Window's window, self and frames on the getter's own global - nearly
+    // every read of them - need no Window, no bracket and no handle (see
+    // answerWindowGetter); any other receiver takes the steps below.
+    if (self.answers_window and answerWindowGetter(info, self.window_access)) return;
     // A DOM algorithm on the agent's stack until it returns
     // into script (dom_algorithm.zig; refcount design 9, risk 4).
     const algorithm = dom_algorithm.enter(info.getIsolate());
@@ -993,11 +998,6 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
             return;
         },
         .instance => {},
-    }
-
-    // `window` needs no Window (see answerWindowGetter).
-    if (self.answers_window) {
-        if (answerWindowGetter(info, self.window_access)) return;
     }
 
     // Instance getter - extract instance from 'this' and call.
@@ -1606,33 +1606,38 @@ pub fn recordSameObjectEdge(isolate: *v8.Isolate, owner: *v8.Object, prop_name: 
 /// relevant realm.[[GlobalEnv]].[[GlobalThisValue]]" - the WindowProxy,
 /// which the getter's own realm answers without its Window: when `this` is
 /// that realm's global, its global this value is the context's global
-/// proxy. `self` and `frames` are own data properties holding it already;
-/// `window` is an accessor, and a removed frame's realm ends
+/// proxy. A removed frame's realm ends
 /// (engine.WindowRealmEnd.navigable_destroyed) with its global still
 /// attached but its Window freed, so looking the Window up made `w.window`
 /// throw where `w.self` answered (self-et-al.window.js). Answers false for
 /// any other `this`, which the generic path brand-checks.
+///
+/// Nearly every read of the three is this case, so it runs first in
+/// attributeGetter, before the DOM-algorithm bracket and the error realm: it
+/// runs no DOM algorithm and throws nothing, and it makes no handle - the
+/// check and the return value are v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal's,
+/// on Locals, which answers the context's id. It used to make three Globals
+/// per read (the current context, its global, `this`), with the bracket and
+/// the error realm around them; once `self` and `frames` were accessors too
+/// (HTML's [Replaceable] attributes, lane maj5), `self === window` took twice
+/// as long (perf_bench window.self-read 2.0x) - Blink's generated getters
+/// make no persistent handle either. HTML 7.1.3.3's access report check is
+/// unchanged: for the Window the method's realm was registered with (never
+/// field 0 of its global, which a reused WindowProxy points at the next
+/// realm's Window), only while the Browser monitors access
+/// (reportWindowAccess's own first test: Chromium's DOMWindow::ReportCoopAccess
+/// early return), and inside the bracket, as before.
 pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo, window_access: ?[]const u8) bool {
+    const context_id = v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(info);
+    if (context_id == 0) return false;
+    const property = window_access orelse return true;
     const isolate = info.getIsolate();
-    // V8 enters the getter's creation context: the method's realm.
-    const method_ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
-    defer v8.v8_Context_Dispose(method_ctx);
-    const method_global = v8.v8_Context_Global(method_ctx) orelse return false;
-    defer v8.v8_Object_Dispose(method_global);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
-    // HTML 7.1.3.3's access report check, for the method's realm's Window:
-    // `this` is the method's own global, so THE Window-receiver rule's
-    // contextual case - the Window the method's realm was attached with
-    // (never field 0 of its global, which a reused WindowProxy points at the
-    // next realm's Window). reportWindowAccess asks first whether the
-    // Browser monitors access at all.
-    if (window_access) |property| {
-        if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| @import("protocol_realms.zig").reportWindowAccess(window, property);
-    }
-    // Copied into the return value; ours is released above.
-    info.setReturnValue(@ptrCast(method_global));
+    const window = @import("context_manager.zig").getWindowForContextId(isolate, context_id) orelse return true;
+    const protocol_realms = @import("protocol_realms.zig");
+    if (!protocol_realms.windowAccessMonitored(window)) return true;
+    const algorithm = dom_algorithm.enter(isolate);
+    defer dom_algorithm.leaveToScript(algorithm);
+    protocol_realms.reportWindowAccess(window, property);
     return true;
 }
 
