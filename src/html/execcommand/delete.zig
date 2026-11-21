@@ -2155,3 +2155,151 @@ fn isAllowedChildOfAnAncestorInHost(node: *Instance) !bool {
     }
     return false;
 }
+
+// ============================================================================
+// Target ranges of the deletion keys (Input Events 2, getTargetRanges())
+// ============================================================================
+
+/// A deletion key's target range: the DOM range its beforeinput reports.
+pub const TargetRange = struct { start: Point, end: Point };
+
+/// The block element whose first position `point` is - climbing from a
+/// point at offset 0 through nodes that are their parent's first child -
+/// when that is not the editing host; else null.
+fn blockStartingAt(point: Point) !?*Instance {
+    if (point.offset != 0) return null;
+    var node = point.node;
+    while (true) {
+        if (common.isElement(node) and common.isBlockNode(node)) {
+            if (try common.isEditingHost(node)) return null;
+            return node;
+        }
+        const p = (try common.parent(node)) orelse return null;
+        if ((try common.firstChild(p)) != node) return null;
+        node = p;
+    }
+}
+
+/// The end of a Backspace or Delete key's target range over a selection
+/// that ends at the first position of a block the deletion will join:
+/// before that block, not inside its first line (lane edit4, B6; the
+/// user's ruling 2026-11-21 ~2:25 PM ET, "Firefox's point (the tests')"):
+/// `<br>[abc<br><div id=child>]def<br>ghi</div>` + Backspace reports
+/// `(#text "abc", 0) - (<div contenteditable>, 3)` in Firefox 160 and the
+/// test, Chrome 157 `... - (<div id=child>, 0)`, Safari 27.2 runs none of
+/// these subtests (editing/other/delete-without-unwrapping-first-line-of-
+/// child-block.html, wpt.fyi 2358bd4835). Both browsers end it at the
+/// block's boundary; which side is a 1-1 split the Input Events spec does
+/// not settle ("the ranges that will be affected"), ruled to Firefox's.
+/// Typing over the same selection keeps the end inside the block (both).
+pub fn deletionEnd(start: Point, end: Point) !Point {
+    const block = (try blockStartingAt(end)) orelse return end;
+    if (common.isInclusiveDescendantOf(start.node, block)) return end;
+    return try common.pointBefore(block, (try common.parent(block)).?);
+}
+
+/// The node a deleted line break `node` takes with it: its inline
+/// ancestors that hold nothing else (`<b><br></b>` goes whole).
+fn lineBreakExtent(node_in: *Instance) !*Instance {
+    var node = node_in;
+    while (try common.parent(node)) |p| {
+        if (!common.isElement(p) or !common.isInlineNode(p) or try common.isEditingHost(p)) break;
+        if ((try common.childCount(p)) != 1) break;
+        node = p;
+    }
+    return node;
+}
+
+/// The range of the line break `node` ends with (backward: its last one)
+/// or starts with (forward: its first one): a br, or a preserved line
+/// feed at the end (start) of a Text node; a node that is only that line
+/// break goes whole, with its inline wrappers (lineBreakExtent).
+fn lineBreakRange(node_in: *Instance, direction: Direction) !?TargetRange {
+    var node = node_in;
+    // Down to the deepest last (first) child.
+    while (common.isElement(node) and !common.isBlockNode(node)) {
+        const child = (if (direction == .backward) try common.lastChild(node) else try common.firstChild(node)) orelse break;
+        node = child;
+    }
+    if (try isBr(node)) {
+        const whole = try lineBreakExtent(node);
+        const p = (try common.parent(whole)) orelse return null;
+        return .{ .start = try common.pointBefore(whole, p), .end = try common.pointAfter(whole, p) };
+    }
+    if (!common.isText(node)) return null;
+    if (!(try common.whiteSpaceAround(node)).preservesNewlines()) return null;
+    var data = try common.textData(node);
+    defer data.deinit(node.ctx.allocator);
+    const bytes = data.asSlice();
+    if (bytes.len == 0) return null;
+    const length = try common.nodeLength(node);
+    if (bytes.len == 1 and bytes[0] == '\n') {
+        const whole = try lineBreakExtent(node);
+        const p = (try common.parent(whole)) orelse return null;
+        return .{ .start = try common.pointBefore(whole, p), .end = try common.pointAfter(whole, p) };
+    }
+    if (direction == .backward) {
+        if (bytes[bytes.len - 1] != '\n') return null;
+        return .{ .start = .{ .node = node, .offset = length - 1 }, .end = .{ .node = node, .offset = length } };
+    }
+    if (bytes[0] != '\n') return null;
+    return .{ .start = .{ .node = node, .offset = 0 }, .end = .{ .node = node, .offset = 1 } };
+}
+
+/// A collapsed Backspace's (`.backward`) or Delete's target range where the
+/// key removes the line break between a line and a following block (lane
+/// edit4, B6): Backspace at the first position of a block whose previous
+/// sibling ends with a line break, Delete just before a line break that
+/// the block follows. `abc<br><br><div id=child>[]def</div>` + Backspace
+/// reports `(<div contenteditable>, 2) - (<div contenteditable>, 3)` (the
+/// second br) and `<b><br></b><div id=child>[]def</div>` the whole `<b>`,
+/// in Chrome 157 and Firefox 160 alike save the end point, ruled to
+/// Firefox's as in deletionEnd (delete-without-unwrapping-first-line-of-
+/// child-block.html; Safari runs none of these). Blink computes the range
+/// from the selection its TypingCommand will delete, Gecko from
+/// AutoDeleteRangesHandler::ComputeRangesToDelete. Other carets report none
+/// yet (TODO: the character and paragraph-join ranges).
+pub fn caretTargetRange(edit: *Edit, direction: Direction) !?TargetRange {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (direction == .backward) {
+        const block = (try blockStartingAt(caret)) orelse return null;
+        const previous = (try common.previousSibling(block)) orelse return null;
+        if (common.isElement(previous) and common.isBlockNode(previous)) return null;
+        return try lineBreakRange(previous, .backward);
+    }
+    // Delete: the node at the caret.
+    const at: ?*Instance = if (common.isText(caret.node))
+        (if (caret.offset < try common.nodeLength(caret.node)) caret.node else null)
+    else
+        try common.childAt(caret.node, caret.offset);
+    const node = at orelse return null;
+    if (common.isText(node)) {
+        // A preserved line feed right at the caret, ending its Text node,
+        // with a block after it.
+        if (!(try common.whiteSpaceAround(node)).preservesNewlines()) return null;
+        var data = try common.textData(node);
+        defer data.deinit(node.ctx.allocator);
+        const bytes = data.asSlice();
+        const length = try common.nodeLength(node);
+        if (caret.offset + 1 != length or bytes.len == 0 or bytes[bytes.len - 1] != '\n') return null;
+        if (!try blockFollows(node)) return null;
+        if (length == 1) return try lineBreakRange(node, .forward);
+        return .{ .start = caret, .end = .{ .node = node, .offset = length } };
+    }
+    if (!try isBr(node)) return null;
+    if (!try blockFollows(node)) return null;
+    return try lineBreakRange(node, .forward);
+}
+
+/// Whether the next sibling of `node` - or of the inline ancestors it ends -
+/// is a block element.
+fn blockFollows(node_in: *Instance) !bool {
+    var node = node_in;
+    while (true) {
+        if (try common.nextSibling(node)) |next| return common.isElement(next) and common.isBlockNode(next);
+        const p = (try common.parent(node)) orelse return false;
+        if (!common.isElement(p) or !common.isInlineNode(p) or try common.isEditingHost(p)) return false;
+        node = p;
+    }
+}

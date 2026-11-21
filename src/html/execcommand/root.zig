@@ -568,7 +568,7 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // fire no beforeinput.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, selectionTargetRange(&edit))) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, deletionTargetRange(&edit, command))) return;
     if (!isConnected(host)) return;
     // Step 4.4: a beforeinput listener may have moved or removed the
     // selection.
@@ -937,6 +937,21 @@ const TargetRange = struct { start: common.Point, end: common.Point };
 /// selection, wpt.fyi 2358bd4835). A collapsed one gets none: what a caret's
 /// Backspace or Delete removes is the action's to compute (TODO: Blink's
 /// TypingCommand target ranges for a caret).
+/// A Backspace (`.delete`) or Delete key's target range: over a selection,
+/// the selection ending before a block it would join into
+/// (delete.deletionEnd); for a caret, the line break it removes before a
+/// block (delete.caretTargetRange). Lane edit4, B6.
+fn deletionTargetRange(edit: *Edit, command: Command) ?TargetRange {
+    const direction: delete.Direction = if (command == .forward_delete) .forward else .backward;
+    if (edit.rangeCollapsed() catch true) {
+        const caret = (delete.caretTargetRange(edit, direction) catch return null) orelse return null;
+        return .{ .start = caret.start, .end = caret.end };
+    }
+    var range = selectionTargetRange(edit) orelse return null;
+    range.end = delete.deletionEnd(range.start, range.end) catch range.end;
+    return range;
+}
+
 fn selectionTargetRange(edit: *Edit) ?TargetRange {
     if (edit.rangeCollapsed() catch true) return null;
     const start = (edit.rangeStart() catch return null) orelse return null;
