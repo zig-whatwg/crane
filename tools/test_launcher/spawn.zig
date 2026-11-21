@@ -44,12 +44,18 @@ const posix = std.posix;
 /// One per launcher process; every thread that spawns shares it.
 pub const Spawner = struct {
     io: Io,
+    /// Held across each spawn: a spawn's pipe() and its fcntl(FD_CLOEXEC)
+    /// both run inside std.process.spawn, so no other spawn of this process
+    /// can copy the descriptor table between them.
+    lock: Io.Mutex = .init,
 
     pub fn init(io: Io) Spawner {
         return .{ .io = io };
     }
 
     pub fn spawn(s: *Spawner, options: std.process.SpawnOptions) std.process.SpawnError!std.process.Child {
+        s.lock.lockUncancelable(s.io);
+        defer s.lock.unlock(s.io);
         return std.process.spawn(s.io, options);
     }
 };
@@ -60,9 +66,47 @@ pub const Spawner = struct {
 /// exec - except `keep` (the build runner's progress pipe, ZIG_PROGRESS).
 /// At most `buffer.len` of them, in descriptor order.
 pub fn strayInheritedPipes(io: Io, buffer: []posix.fd_t, keep: ?posix.fd_t) ![]posix.fd_t {
-    _ = io;
-    _ = keep;
-    return buffer[0..0];
+    // The open descriptors, as the kernel lists them (Linux procfs, the
+    // BSDs' and macOS's fdesc) - CPython's subprocess reads the same two to
+    // close a child's descriptors (_posixsubprocess.c, FD_DIR).
+    const listing = if (builtin.os.tag == .linux) "/proc/self/fd" else "/dev/fd";
+    var dir = try Io.Dir.cwd().openDir(io, listing, .{ .iterate = true });
+    defer dir.close(io);
+    var count: usize = 0;
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        const fd = std.fmt.parseInt(posix.fd_t, entry.name, 10) catch continue;
+        if (fd <= 2 or fd == dir.handle) continue;
+        if (keep) |k| if (fd == k) continue;
+        // Close-on-exec: this process's own. Not open: gone since listed.
+        if (closeOnExec(fd) orelse true) continue;
+        const file: Io.File = .{ .handle = fd, .flags = .{ .nonblocking = false } };
+        const stat = file.stat(io) catch continue;
+        if (stat.kind != .named_pipe) continue;
+        if (count == buffer.len) break;
+        buffer[count] = fd;
+        count += 1;
+    }
+    std.mem.sort(posix.fd_t, buffer[0..count], {}, std.sort.asc(posix.fd_t));
+    return buffer[0..count];
+}
+
+/// Closes every stray inherited pipe end (`strayInheritedPipes`, keeping the
+/// build runner's progress pipe); returns how many. Run first in main,
+/// before this process starts a thread or a child: it is what a racing
+/// spawn of zig build's runner handed this launcher (the file comment).
+pub fn closeStrayInheritedPipes(io: Io, environ: *const std.process.Environ.Map) usize {
+    var buffer: [256]posix.fd_t = undefined;
+    const stray = strayInheritedPipes(io, &buffer, progressDescriptor(environ)) catch return 0;
+    for (stray) |fd| close(fd);
+    return stray.len;
+}
+
+/// The build runner's progress pipe, which it hands this process on purpose
+/// and names in ZIG_PROGRESS (std.Progress); null without one.
+pub fn progressDescriptor(environ: *const std.process.Environ.Map) ?posix.fd_t {
+    const text = environ.get("ZIG_PROGRESS") orelse return null;
+    return std.fmt.parseInt(posix.fd_t, text, 10) catch null;
 }
 
 // The few descriptor calls this file needs, over libc or the Linux syscalls
@@ -155,7 +199,7 @@ fn heldPipesWhileSpawning(spawner: *Spawner, threads: u32, spawns: u32) !u32 {
 test "processes started from several threads at once hold none of each other's pipes" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
     var spawner: Spawner = .init(testing.io);
-    // Before the Spawner's lock, 13 to 51 of 2,000 on macOS (chat2).
+    // Without the Spawner's lock, 13 to 51 of 2,000 on macOS (chat2).
     try testing.expectEqual(@as(u32, 0), try heldPipesWhileSpawning(&spawner, 4, 500));
 }
 

@@ -39,6 +39,7 @@ const server_mod = @import("server.zig");
 const Slots = @import("slots.zig").Slots;
 const verify_mod = @import("verify.zig");
 const filter_mod = @import("filter.zig");
+const spawn_mod = @import("spawn.zig");
 
 test {
     _ = plan_mod;
@@ -599,6 +600,10 @@ const testing = std.testing;
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
+    // First, before a thread or a child exists: let go of the pipe ends a
+    // racing spawn of zig build's runner handed this process, which would
+    // keep another launcher's output open past its exit (spawn.zig).
+    const stray_pipes = spawn_mod.closeStrayInheritedPipes(io, init.environ_map);
     const gpa = init.gpa;
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
@@ -899,6 +904,7 @@ pub fn main(init: std.process.Init) !void {
         );
         if (c.bad() != 0) try out.print("  replay: {s}\n", .{replay});
         if (exit_failures != 0) try out.print("  {d} test processes exited non-zero after exit\n", .{exit_failures});
+        if (stray_pipes != 0) try out.print("  closed {d} pipe ends inherited from a racing spawn of the build runner (spawn.zig)\n", .{stray_pipes});
     } else try out.print(
         "test_launcher: {s}{s}: {s}PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
             "  wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB, {d} exited non-zero after exit\n",
