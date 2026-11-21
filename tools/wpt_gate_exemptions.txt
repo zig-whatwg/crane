@@ -1,5 +1,5 @@
 # The 0.1 gate's exemptions: worklist files omitted from the blocking count
-# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Five kinds:
+# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Six kinds:
 #
 #   intentional  ALL THREE of Chrome, Firefox and Safari intentionally deviate
 #                from the spec the file tests (the user, 2026-10-17; golden rule
@@ -39,13 +39,21 @@
 #                ships, a mechanism-by-mechanism majority). The entry comes off
 #                when the browsers change: re-check it against each new aligned
 #                wpt.fyi run, and whenever Crane's own result moves.
+#   single-shipper  the file tests a feature only ONE of Chrome, Firefox and
+#                Safari ships, and its remaining failures hinge on a mechanism
+#                where Crane does what the other two browsers and the spec do
+#                (the user, 2026-11-21 5:58 AM ET, choice (a)): the one browser
+#                that ships the feature is the only one Crane could match, and
+#                only by giving up what the other two and the spec agree on.
+#                The entry comes off when a second browser ships the feature.
 #
 # Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
 # (the public results site). A listed file that would block is counted in its
 # kind's own group - "exempt (all three browsers intentionally deviate)",
 # "exempt until an upstream test bug is fixed", "exempt until a renderer
-# answers geometry", "exempt until a decoder plays its media" or "exempt:
-# Crane follows the browser majority" - never as blocking; a listed file that
+# answers geometry", "exempt until a decoder plays its media", "exempt:
+# Crane follows the browser majority" or "exempt: only one browser ships the
+# feature" - never as blocking; a listed file that
 # does not block keeps its own standing. Both tools stop with an error on an
 # invalid entry - never a silent exemption. The progress page shows a
 # follows-majority file's current passes/total beside the browsers' and asks for
@@ -137,6 +145,20 @@
 #
 #   The results are the aligned stable runs at Crane's own WPT revision (tests/wpt's
 #   .crane-upstream-revision), so the browsers ran the file Crane runs.
+#
+# A single-shipper entry (the user, 2026-11-21):
+#
+#   [html/example/file.html]
+#   kind            = single-shipper
+#   why             = one line: the feature only one browser ships, and the mechanism the remaining failures need
+#   shipper         = chrome  (the one browser that ships the feature: chrome, firefox or safari)
+#   chrome.result   = wpt.fyi run <run id>: <passes>/<total>
+#   firefox.result  = wpt.fyi run <run id>: <passes>/<total>
+#   safari.result   = wpt.fyi run <run id>: <passes>/<total>
+#                     (the two that do not ship the feature have the same result)
+#   mechanism       = what Crane follows - what the other two browsers and the spec do - with the engines' code
+#   spec            = https://... the spec text of that mechanism
+#   revisit         = when <a second browser> ships <the feature>
 #
 # (Each value is one line; the examples above wrap only here.)
 #
@@ -2127,3 +2149,20 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; ke
 matches         = firefox
 ruling          = golden rule 2, mechanisms without a majority -> spec (integrator, 2026-11-20 3:56 PM ET)
 revisit         = when two browsers agree on the span's attribute
+
+# single-shipper (lane pscan1, 2026-11-21; the user's ruling 5:58 AM ET, choice (a)): only Chrome ships
+# PerformanceResourceTiming.renderBlockingStatus. Crane's result is 37 of the 38 keys; the last needs two Chrome-only
+# mechanisms. The browsers' results are the aligned stable runs at 2358bd4835, read from wptd storage 2026-11-21 by
+# 5:40 AM ET (clock); the engines' code read 2026-11-21 (Blink html_document_parser.cc, html_preload_scanner.cc,
+# css_preload_scanner.cc at chromium main; WebKit HTMLDocumentParser.cpp at WebKit main).
+
+[resource-timing/render-blocking-status-link.html]
+kind            = single-shipper
+why             = only Chrome ships renderBlockingStatus; Crane reports 37 of the 38 keys as Chrome does, and the last, 'stylesheet-inline-imported-dynamic-docwrite' = "blocking", comes from two Chrome-only mechanisms: Chrome's parser pauses on the body script's first document.write of an in-body stylesheet link (Blink HTMLDocumentParser::DidAddPendingParserBlockingStylesheet -> CheckIfBlockingStylesheetAdded -> IsPaused() via WaitingForStylesheets), so the later write of <style>@import is not parsed during write() but scanned by its fresh insertion preload scanner (HTMLDocumentParser::insert, `if (IsPaused() && preloader_)`), whose seen_body_ is false, so CSSPreloadScanner::EmitRule classifies the import kBlocking and the real @import reuses that request
+shipper         = chrome
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: renderBlockingStatus undefined)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: renderBlockingStatus undefined)
+mechanism       = Crane keeps parsing past an in-body style sheet - a document.write during a script is parsed before write() returns when no parsing-blocking script is pending (HTML "document write steps" step 11), and the speculative parser runs only while one is (HTML 13.2.8, "execute the pending parsing-blocking scripts" steps 3 and 7) - as Firefox (nsHtml5Parser::Parse speculates only when mBlocked by a script) and Safari (WebKit HTMLDocumentParser::insert and pumpTokenizer scan only when isWaitingForScripts(): a paused tree builder or a parser-blocking script, never a style sheet) do; so the written <style> is parsed in the body and its import is "non-blocking", as the body rule gives it
+spec            = https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps
+revisit         = when Firefox or Safari ships PerformanceResourceTiming.renderBlockingStatus
