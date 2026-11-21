@@ -39,6 +39,12 @@ fn timelineOf(svg: *runtime.Instance, create: bool) ?*smil.Timeline {
     return made;
 }
 
+/// dom.smil.document_animations: whether `element` is an svg element - the
+/// brand check, one ancestry entry read.
+fn isSvg(element: *runtime.Instance) bool {
+    return element.stateAs(State) != null;
+}
+
 /// The timeline goes with the element: its animation elements are left on
 /// none first, then what it owns.
 pub fn deinitOwn(instance: *runtime.Instance) void {
@@ -52,7 +58,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// The hooks this type owns, installed once, at process start.
 pub fn installHooks() void {
     States.installSweep();
-    smil.installSvgElement(.{ .timeline_of = &timelineOf });
+    smil.installSvgElement(.{ .timeline_of = &timelineOf, .is_svg = &isSvg });
 }
 
 /// Getter for x

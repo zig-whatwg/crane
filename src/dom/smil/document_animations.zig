@@ -167,6 +167,8 @@ pub const SvgElementSteps = struct {
     /// The timeline of `svg`, an svg element - made when `create` is set;
     /// null for any other element.
     timeline_of: *const fn (svg: *runtime.Instance, create: bool) ?*Timeline,
+    /// Whether `element` is an svg element: its brand, no lookup.
+    is_svg: *const fn (element: *runtime.Instance) bool,
 };
 
 /// Process-wide, written once at start-up (hook.zig).
@@ -417,12 +419,12 @@ fn canStart(document: *runtime.Instance) bool {
 pub fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1 or !node.is_connected) return;
     const element = instanceOf(node) orelse return;
-    const name = svgName(element) orelse return;
-    if (std.mem.eql(u8, name, "svg")) {
+    // Two brand checks (one ancestry entry each) before any lookup: nearly
+    // every inserted element is neither an svg nor an animation element.
+    if (isSvgElement(element)) {
         if (isOutermost(element)) svgInserted(element);
         return;
     }
-    if (kindOf(name) == null) return;
     const state = stateOf(element) orelse return;
     animationInserted(state);
 }
@@ -432,14 +434,18 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     _ = old_parent;
     if (node.node_type != 1) return;
     const element = instanceOf(node) orelse return;
-    const name = svgName(element) orelse return;
-    if (std.mem.eql(u8, name, "svg")) {
+    if (isSvgElement(element)) {
         if (documentOf(element)) |document| unregisterTimeline(element, document);
         return;
     }
-    if (kindOf(name) == null) return;
     const state = stateOf(element) orelse return;
     animationRemoved(state);
+}
+
+/// Whether `element` is an svg element (SVGSVGElement's brand).
+fn isSvgElement(element: *runtime.Instance) bool {
+    const steps = svg_steps.get() orelse return false;
+    return steps.is_svg(element);
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
