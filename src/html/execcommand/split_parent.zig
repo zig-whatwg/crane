@@ -15,13 +15,20 @@ fn contains(list: []const *Instance, node: *Instance) bool {
 
 /// "split the parent" of `node_list`, consecutive siblings in tree order.
 pub fn splitParent(edit: *Edit, node_list: []const *Instance) !void {
+    return splitParentOf(edit, node_list, false);
+}
+
+/// "split the parent", where `nested_host` lets a parent that is an
+/// editing host nested in richly editable content be split as editable
+/// content (removeFormat: common.isNestedRichEditingHost).
+pub fn splitParentOf(edit: *Edit, node_list: []const *Instance, nested_host: bool) !void {
     if (node_list.len == 0) return;
     const first = node_list[0];
     const last = node_list[node_list.len - 1];
     // Step 1.
     const original_parent = (try common.parent(first)) orelse return;
     // Step 2.
-    if (!try common.isEditable(original_parent)) return;
+    if (!try common.isEditable(original_parent) and !(nested_host and try common.isNestedRichEditingHost(original_parent))) return;
     const grandparent = (try common.parent(original_parent)) orelse return;
     const first_in_list = if (try common.firstChild(original_parent)) |c| contains(node_list, c) else false;
     // Step 3.

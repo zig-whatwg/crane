@@ -158,9 +158,7 @@ pub fn isAllowedChildOfName(node: *Instance, parent_name: []const u8) !bool {
 }
 
 fn splitText(edit: *Edit, node: *Instance, offset: u32) !*Instance {
-    const result = try interfaces.Text.call_splitText(node, offset);
-    edit.modified = true;
-    return result;
+    return try edit.splitText(node, offset);
 }
 
 // ============================================================================
@@ -652,11 +650,13 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     // italic, backColor and hiliteColor Chrome and Safari split too but
     // Firefox nests as the spec does, and the data keeps the spec (bold.html
     // "<span style=font-weight:100>foo[bar]baz</span>", backcolor.html
-    // "fo[o<span style=background-color:tan>b]ar</span>baz": FPF), so
-    // splitting there would trade ~46 passing subtests for none - following
-    // the Chrome + Safari majority there needs the user's ruling (OPEN, lane
-    // edit2's report, 2026-11-19); nobody splits a block
-    // (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
+    // "fo[o<span style=background-color:tan>b]ar</span>baz": FPF). There
+    // Crane keeps nesting - the user's ruling (a), 2026-11-19 ~5:50 PM ET,
+    // "Keep Firefox + spec": bold, backColor and hiliteColor nest as the
+    // Editing spec and Firefox do, over the Chrome + Safari split, keeping
+    // the 46 rows FPF that the split would lose (a scoped exception to golden
+    // rule 2's majority, like the selectAll and preload rulings); nobody
+    // splits a block (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
     // the value above IS the new one the spec's steps below stand (bold.html
     // "<b id=purple>bar [baz] qoz</b>": the data keeps the spec's result).
     if (new_value != null) {
@@ -672,6 +672,33 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     while (ancestor_list.items.len > 0) {
         const ancestor = ancestor_list.pop().?;
         if (try specifiedValue(edit, ancestor, command)) |specified| propagated_value = specified;
+        // In CSS mode an ancestor b, i, u, strike, s or em, or a styled
+        // span, that specifies the value is split around the child that
+        // leads to node, and only the part holding it loses the value: the
+        // parts beside it keep the element as it was, where the spec's force
+        // the value makes new styled spans. `<u>foo[bar]baz</u>` + underline
+        // gives `<u>foo</u>bar<u>baz</u>`, `foo<span style="text-decoration:
+        // underline line-through">b[a]r</span>baz` + strikethrough keeps the
+        // span on "b" and "r" and an underline-only span on "a" (Firefox and
+        // Safari; Chrome writes text-decoration-line there). All three
+        // browsers keep the element (editing/run/bold.html, italic.html,
+        // underline.html, strikethrough.html; wpt.fyi 2358bd4835: Chrome 157,
+        // Firefox 160, Safari 27.2), where the WPT data expects the spec's
+        // spans: the user's ruling (b), 2026-11-19 5:48 PM ET, "Follow all
+        // three browsers" - the 30 rows FFF this loses are recorded as
+        // user-ruling losses, and two rows PPP are gained
+        // (strikethrough.html "<strike>fo[o</strike><s>b]ar</s>",
+        // underline.html "foo<u>ba[r</u>]baz"). Mechanism: Blink
+        // ApplyStyleCommand::PushDownInlineStyleAroundNode (apply_style_
+        // command.cc), Gecko HTMLEditor::SplitAncestorStyledInlineElementsAt
+        // RangeEdges (HTMLEditor.cpp) - the split splitAround makes. Outside
+        // CSS mode force the value remakes the same b, i, u or strike.
+        if (try keepsElementInCssMode(edit, ancestor, command)) {
+            const path_child = if (ancestor_list.items.len > 0) ancestor_list.items[ancestor_list.items.len - 1] else node;
+            try splitAround(edit, ancestor, path_child);
+            _ = try clearValue(edit, ancestor, command);
+            continue;
+        }
         var children: std.ArrayList(*Instance) = .empty;
         var child = try common.firstChild(ancestor);
         while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
@@ -684,13 +711,10 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
         // 2358bd4835). Mechanism: Blink PushDownInlineStyleAroundNode wraps
         // the children in clones of the elements it pushes down; Gecko
         // splits the element (SplitAncestorStyledInlineElementsAtRangeEdges).
-        // Golden rule 2, no newer spec. The browsers copy b, i, u, strike and
-        // styled spans the same way, but there the data still expects the
-        // spec's new elements in CSS mode (`<u>foo[bar]baz</u>`, `foo[<b>b]ar
-        // </b>baz`, `<strike>foo[bar]baz</strike>`...: ~30 rows FFF that Crane
-        // passes), so copying them would trade passing subtests - an OPEN
-        // ruling candidate (lane edit2's report, 2026-11-19); outside CSS mode
-        // force the value remakes the same b, i, u or strike anyway.
+        // Golden rule 2, no newer spec. The browsers keep b, i, u, strike and
+        // styled spans the same way: in CSS mode that is the split above (the
+        // user's ruling (b)); outside CSS mode force the value remakes the
+        // same b, i, u or strike anyway.
         var copy_of: ?*Instance = null;
         if ((try specifiedValue(edit, ancestor, command)) != null) {
             // The removed element itself is what each run copies.
@@ -749,6 +773,21 @@ fn splitsLikeTheBrowsers(command: Command) bool {
         .font_size, .font_name, .fore_color => true,
         else => false,
     };
+}
+
+/// Whether push down values keeps `ancestor` on the parts beside the node
+/// (pushDownValues, the user's ruling (b)): CSS mode, the bold, italic,
+/// underline or strikethrough command, and an HTML b, i, u, strike, s or em
+/// element, or a span, that specifies a value for it (a span specifies one
+/// only through its style attribute).
+fn keepsElementInCssMode(edit: *Edit, ancestor: *Instance, command: Command) !bool {
+    switch (command) {
+        .bold, .italic, .underline, .strikethrough => {},
+        else => return false,
+    }
+    if (!try overrides.cssStylingFlag(edit)) return false;
+    if (!try common.isHtmlElementIn(ancestor, &.{ "b", "i", "u", "strike", "s", "em", "span" })) return false;
+    return (try specifiedValue(edit, ancestor, command)) != null;
 }
 
 /// The browsers' push down where the spec's step 10 gives up (see
@@ -1581,8 +1620,14 @@ fn rootOf(node: *Instance) *Instance {
 
 /// "removeFormat candidate".
 fn isRemoveFormatCandidate(node: *Instance) !bool {
-    if (!try isNamedIn(node, &.{ "abbr", "acronym", "b", "bdi", "bdo", "big", "blink", "cite", "code", "dfn", "em", "font", "i", "ins", "kbd", "mark", "nobr", "q", "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "tt", "u", "var" })) return false;
+    if (!try isRemoveFormatCandidateName(node)) return false;
     return try common.isEditable(node);
+}
+
+/// Whether `node` is an element whose name makes it a removeFormat
+/// candidate when editable.
+fn isRemoveFormatCandidateName(node: *Instance) !bool {
+    return try isNamedIn(node, &.{ "abbr", "acronym", "b", "bdi", "bdo", "big", "blink", "cite", "code", "dfn", "em", "font", "i", "ins", "kbd", "mark", "nobr", "q", "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "tt", "u", "var" });
 }
 
 /// The removeFormat action.
@@ -1620,9 +1665,21 @@ fn removeFormat(edit: *Edit) !bool {
         for (nodes) |node| {
             while (true) {
                 const p = (try common.parent(node)) orelse break;
-                if (!try isRemoveFormatCandidate(p)) break;
-                if (!try common.inSameEditingHost(p, node)) break;
-                try split_parent.splitParent(edit, &.{node});
+                // A candidate element that is a contenteditable host nested
+                // in richly editable content is split out as content of the
+                // outer host, as all three browsers change it (golden rule 2
+                // mechanism by mechanism, the integrator's ruling of
+                // 2026-11-20 3:56 PM ET: "not a host of its own" has all
+                // three; what then happens to the span has no majority, so
+                // the spec's split - Firefox's unwrap; common.
+                // isNestedRichEditingHost).
+                const nested_host = (try isRemoveFormatCandidateName(p)) and try common.isNestedRichEditingHost(p);
+                if (!nested_host) {
+                    if (!try isRemoveFormatCandidate(p)) break;
+                    if (!try common.inSameEditingHost(p, node)) break;
+                }
+                try split_parent.splitParentOf(edit, &.{node}, nested_host);
+                if (nested_host and (try common.parent(node)) == p) break;
             }
         }
     }
