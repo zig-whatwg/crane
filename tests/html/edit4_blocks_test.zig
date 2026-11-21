@@ -5,6 +5,10 @@
 //! </blockquote>` + "blockquote" keeps two blockquotes (Chrome 157, Firefox
 //! 160 and Safari 27.2; editing/run/formatblock.html PPP at wpt.fyi
 //! 2358bd4835), where the spec's sibling criteria merge them.
+//!
+//! A27 - insertHTML after an empty line's placeholder br replaces it:
+//! `<p><br>{}</p>` + "abc" gives `<p>abc</p>` (Chrome 157 and Firefox 160;
+//! editing/run/inserthtml.html PPF).
 const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 const harness = @import("editing4_harness.zig");
@@ -26,4 +30,21 @@ fn siblings() !void {
 
 test "formatBlock does not merge into a block that was already there" {
     try helpers.onFreshThread(siblings);
+}
+
+const placeholder_cases = [_]harness.Case{
+    .{ .input = "<p><br>{}</p>", .commands = &.{.{ "inserthtml", "abc" }}, .expected = "<p>abc</p>" },
+    .{ .input = "<p>{}<br></p>", .commands = &.{.{ "inserthtml", "abc" }}, .expected = "<p>abc</p>" },
+};
+
+fn placeholder() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try page.run("document.getElementById('host').focus();");
+    try harness.runCases(page, &placeholder_cases);
+}
+
+test "insertHTML after an empty line's placeholder br replaces it" {
+    try helpers.onFreshThread(placeholder);
 }
