@@ -103,6 +103,8 @@ pub const animations = @import("animations/root.zig");
 pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
+/// An element's own step for an event before its listeners (Blink's HandleLocalEvents).
+pub const local_event_steps = @import("local_event_steps.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const saved_form_state = @import("saved_form_state.zig");
 pub const selected_content = @import("selected_content.zig");

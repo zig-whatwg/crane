@@ -1527,6 +1527,11 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
     // whole dispatch (dom.event_listener_list.Key): the event's type cannot
     // change while it is dispatched, but for invoke step 11's rename.
     const type_key = EventTypeKey.of(event_type);
+    // Not a DOM step: an element type's own step for this event type at its
+    // place on the path, before its listeners (dom.local_event_steps,
+    // Blink's HandleLocalEvents) - looked up once; with none for the type,
+    // invoke runs none.
+    const local_step = dom_module.local_event_steps.forType(type_key);
 
     // Steps 2-6.11. Step 5: targetOverride is target, or - legacy target
     // override flag set - `target_override`, the Window's associated
@@ -1574,7 +1579,7 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
         else
             event_dispatch.Phase.capturing;
         // Step 6.13.3.
-        invoke(dispatch_path, &path[i], event, state, .capturing, did_throw, type_key);
+        invoke(dispatch_path, &path[i], event, state, .capturing, did_throw, type_key, local_step);
     }
 
     // Step 6.14: for each item of event's path, in order, invoke with "bubbling".
@@ -1590,7 +1595,7 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
             state.phase = event_dispatch.Phase.bubbling;
         }
         // Step 6.14.3
-        invoke(dispatch_path, item, event, state, .bubbling, did_throw, type_key);
+        invoke(dispatch_path, item, event, state, .bubbling, did_throw, type_key, local_step);
     }
 
     // Steps 7-11: eventPhase NONE, currentTarget null, the path empty, the
@@ -1620,8 +1625,10 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
 ///
 /// `item` is BORROWED from the event's path, `path`, which outlives the call.
-/// `event_type` is the event's type, looked up once per dispatch.
-fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
+/// `event_type` is the event's type, looked up once per dispatch, and
+/// `local_step` the element types' own step for it (dom.local_event_steps),
+/// if any.
+fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey, local_step: ?dom_module.local_event_steps.Run) void {
     // Steps 1-3: event's target is the shadow-adjusted target of the last
     // item at or before this one whose shadow-adjusted target is non-null -
     // recorded on the item when the path was built. Written raw: the path
@@ -1641,6 +1648,19 @@ fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module
     // Step 6: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
     if (state.stop_propagation_flag) return;
+
+    // Not a DOM step: the invocation target's own step for this event, before
+    // its listeners (dom.local_event_steps; Blink's
+    // NodeEventContext::HandleLocalEvents, which EventDispatcher runs per
+    // node in both passes). A stop sets the stop propagation flag - as the
+    // step's stopPropagation() does in Blink - and runs none of this item's
+    // listeners.
+    if (local_step) |step| {
+        if (step(item.invocation_target, item.target, state.phase) == .stop) {
+            state.stop_propagation_flag = true;
+            return;
+        }
+    }
 
     // Step 7: the currentTarget attribute's value is the dispatch's to
     // keep (null outside dispatch), with its slab generation.
