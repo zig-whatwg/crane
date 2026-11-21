@@ -27,8 +27,8 @@ build.zig platform:darwin code 16
 build.zig platform:darwin comment 8
 build.zig platform:homebrew code 5
 build.zig platform:homebrew comment 5
-build.zig platform:ios code 63
-build.zig platform:ios comment 40
+build.zig platform:ios code 62
+build.zig platform:ios comment 39
 build.zig platform:iphoneos code 3
 build.zig platform:iphoneos comment 6
 build.zig platform:linux code 30
