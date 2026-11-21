@@ -144,7 +144,7 @@ fn dupCloseOnExec(fd: posix.fd_t) ?posix.fd_t {
 const testing = std.testing;
 
 /// How many of `spawns` exited children, started from `threads` threads at
-/// once beside a thread that keeps starting longer-lived ones, still had a
+/// once beside two threads that keep starting longer-lived ones, still had a
 /// pipe some other process held: each child's read ends are duplicated
 /// before it is reaped, and a pipe whose read end does not poll ready (end
 /// of stream) the moment its only writer is gone has another writer.
@@ -176,7 +176,10 @@ fn heldPipesWhileSpawning(spawner: *Spawner, threads: u32, spawns: u32) !u32 {
 
         fn long(sh: *@This()) void {
             const io = sh.spawner.io;
-            var live: [4]?std.process.Child = @splat(null);
+            // Each lives for the next 16 of this thread's spawns: long
+            // enough to still hold a pipe it inherited when its short
+            // neighbour polls.
+            var live: [16]?std.process.Child = @splat(null);
             var i: usize = 0;
             while (!sh.stop.load(.monotonic)) : (i += 1) {
                 const slot = &live[i % live.len];
@@ -187,12 +190,13 @@ fn heldPipesWhileSpawning(spawner: *Spawner, threads: u32, spawns: u32) !u32 {
         }
     };
     var shared: Shared = .{ .spawner = spawner, .spawns = spawns };
-    const sleeper = try std.Thread.spawn(.{}, Shared.long, .{&shared});
+    var sleepers: [2]std.Thread = undefined;
+    for (&sleepers) |*t| t.* = try std.Thread.spawn(.{}, Shared.long, .{&shared});
     var workers: [8]std.Thread = undefined;
     for (workers[0..threads]) |*w| w.* = try std.Thread.spawn(.{}, Shared.short, .{&shared});
     for (workers[0..threads]) |w| w.join();
     shared.stop.store(true, .monotonic);
-    sleeper.join();
+    for (sleepers) |t| t.join();
     return shared.held.load(.monotonic);
 }
 
