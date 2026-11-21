@@ -23,6 +23,17 @@ const signal_stack = @import("signal_stack.zig");
 /// rule and the reads a platform's observer polls (the linux platform's
 /// memory_pressure.zig).
 pub const meminfo = @import("meminfo.zig");
+/// The remote debugging transport (protocol 6.12): loopback TCP and the
+/// inherited pipe pair.
+const devtools_transport = @import("devtools_transport.zig");
+pub const devtoolsListen = devtools_transport.devtoolsListen;
+pub const devtoolsAccept = devtools_transport.devtoolsAccept;
+pub const devtoolsRead = devtools_transport.devtoolsRead;
+pub const devtoolsWrite = devtools_transport.devtoolsWrite;
+pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
+pub const devtoolsClose = devtools_transport.devtoolsClose;
+pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
+pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
 
 const log = std.log.scoped(.platform);
 

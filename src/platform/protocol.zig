@@ -431,6 +431,11 @@ pub const Capabilities = struct {
     device_posture: Support,
     virtual_keyboard: Support,
     protocol_handlers: Support,
+    /// The remote debugging transport (6.12): the Chrome DevTools Protocol's
+    /// listener and connections. Unsupported, there is no remote debugging -
+    /// the console's --remote-debugging-port and WebDriver's se:cdp answer
+    /// that this build has none (iOS; `-Dcdp=false` compiles it out).
+    devtools_transport: Support,
 };
 
 pub const Capability = std.meta.FieldEnum(Capabilities);
@@ -3518,6 +3523,98 @@ pub inline fn protectPages(range: AddressRange, offset: usize, length: usize, ac
 pub inline fn releaseAddressSpace(range: AddressRange) void {
     comptime gate(.address_space, "releaseAddressSpace");
     return impl.releaseAddressSpace(range);
+}
+
+// ============================================================================
+// 6.12 Remote debugging transport [devtools_transport]
+// ============================================================================
+//
+// The Chrome DevTools Protocol's transport (src/devtools; CDP part 1,
+// tmp/plans/cdp-part1-design.md 2.1): a TCP listener on the loopback interface
+// only - Chrome's DevToolsHttpHandler binds 127.0.0.1 unless told otherwise
+// (content/browser/devtools/devtools_http_handler.cc) and Crane never binds
+// another address - its accepted connections, and the inherited pipe pair of
+// Chrome's --remote-debugging-pipe (devtools_pipe_handler.cc: fd 3 reads, fd
+// 4 writes). Blocking calls, made from the remote end's own threads, never
+// from a Browser thread: a connection's reader blocks in `devtoolsRead`, its
+// writer in `devtoolsWrite`, and `devtoolsShutdown` from another thread ends
+// a blocked read (the connection's end). Darwin and Linux: kit/posix. iOS has
+// no remote debugging: kit/headless answers `error.NotSupported`.
+
+/// A listening socket, OWNED until `devtoolsCloseListener`. `port` is the
+/// port it listens on (the one asked for, or the one the OS chose for 0).
+pub const DevtoolsListener = extern struct {
+    handle: i64,
+    port: u16,
+};
+
+/// One end of a byte stream - an accepted connection, or one direction of
+/// an inherited pipe. OWNED until `devtoolsClose`.
+pub const DevtoolsStream = extern struct {
+    handle: i64,
+};
+
+/// The two inherited pipe ends of --remote-debugging-pipe.
+pub const DevtoolsPipe = extern struct {
+    read: DevtoolsStream,
+    write: DevtoolsStream,
+};
+
+/// Listen on 127.0.0.1:`port` (0: any free port). `error.Busy` when the
+/// port is taken, `error.AccessDenied` when the OS refuses it.
+pub inline fn devtoolsListen(port: u16) Error!DevtoolsListener {
+    comptime gate(.devtools_transport, "devtoolsListen");
+    return impl.devtoolsListen(port);
+}
+
+/// Wait up to `timeout_ms` for a connection on `listener`; null when none
+/// arrived in that time (the caller checks whether it is stopping, then
+/// waits again). The connection is OWNED by the caller.
+pub inline fn devtoolsAccept(listener: DevtoolsListener, timeout_ms: u32) Error!?DevtoolsStream {
+    comptime gate(.devtools_transport, "devtoolsAccept");
+    return impl.devtoolsAccept(listener, timeout_ms);
+}
+
+/// Read what has arrived, at most `buffer.len` bytes, blocking until
+/// something has. 0: the peer closed its end, or `devtoolsShutdown` ended
+/// the read.
+pub inline fn devtoolsRead(stream: DevtoolsStream, buffer: []u8) Error!usize {
+    comptime gate(.devtools_transport, "devtoolsRead");
+    return impl.devtoolsRead(stream, buffer);
+}
+
+/// Write all of `bytes` (BORROWED), blocking until the OS has taken them.
+/// `error.Io` when the peer has gone.
+pub inline fn devtoolsWrite(stream: DevtoolsStream, bytes: Bytes) Error!void {
+    comptime gate(.devtools_transport, "devtoolsWrite");
+    return impl.devtoolsWrite(stream, bytes);
+}
+
+/// End both directions of `stream` without releasing it: a read blocked in
+/// another thread returns 0. Any thread.
+pub inline fn devtoolsShutdown(stream: DevtoolsStream) void {
+    comptime gate(.devtools_transport, "devtoolsShutdown");
+    return impl.devtoolsShutdown(stream);
+}
+
+/// Release `stream`. Nothing may be blocked on it.
+pub inline fn devtoolsClose(stream: DevtoolsStream) void {
+    comptime gate(.devtools_transport, "devtoolsClose");
+    return impl.devtoolsClose(stream);
+}
+
+/// Stop listening and release `listener`. Nothing may be blocked on it.
+pub inline fn devtoolsCloseListener(listener: DevtoolsListener) void {
+    comptime gate(.devtools_transport, "devtoolsCloseListener");
+    return impl.devtoolsCloseListener(listener);
+}
+
+/// Take the pipe pair the process inherited: `read_fd` to read the
+/// client's messages from, `write_fd` to write to it (Chrome's 3 and 4).
+/// `error.NotFound` when either descriptor is not open.
+pub inline fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!DevtoolsPipe {
+    comptime gate(.devtools_transport, "devtoolsOpenInheritedPipe");
+    return impl.devtoolsOpenInheritedPipe(read_fd, write_fd);
 }
 
 // ============================================================================
