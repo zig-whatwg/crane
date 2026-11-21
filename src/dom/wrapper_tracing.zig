@@ -355,7 +355,11 @@ const Pruned = struct {
     }
 
     fn visit(self: Pruned, node: *NodeBase) void {
-        if (!node.wrapper.isEmpty()) engine.traceNodeWrapper(self.tracer, &node.wrapper);
+        // Every held node is named, wrapped in the main world or not: the
+        // engine keeps the node's wrapper in each isolated world too
+        // (engine.traceNodeWrapper; a world's wrapper holds its node without
+        // the main world's slot), and does nothing more for an empty slot.
+        engine.traceNodeWrapper(self.tracer, &node.wrapper);
         if (node.traces_held) traceHolderNode(node, self.tracer);
     }
 };

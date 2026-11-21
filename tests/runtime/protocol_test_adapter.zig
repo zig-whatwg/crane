@@ -165,6 +165,29 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _: *const engine.BuiltinFunction) Error!engine.Owned {
     return error.NotSupported;
 }
+// Isolated worlds (engine.createWorldRealm and the rest): no engine linked,
+// no world realm - the host has no worlds (engine-protocol.md, "Isolated
+// worlds").
+pub fn createWorldRealm(_: Context, _: *const engine.WorldRealmOptions) Error!Context {
+    return error.NotSupported;
+}
+pub fn worldRealmFor(main: Context, world: engine.WorldId) ?Context {
+    return if (world == engine.main_world) main else null;
+}
+pub fn worldOf(_: Context) engine.WorldId {
+    return engine.main_world;
+}
+pub fn mainRealmOf(realm: Context) Context {
+    return realm;
+}
+pub fn worldInfoOf(_: Context) ?engine.WorldInfo {
+    return null;
+}
+pub fn worldRealmsOf(_: Context, _: []Context) usize {
+    return 0;
+}
+pub fn destroyWorldRealms(_: Context) void {}
+pub fn installWorldObserver(_: *Agent, _: ?*const engine.WorldObserver, _: ?*anyopaque) void {}
 
 // 4.3 Running script
 

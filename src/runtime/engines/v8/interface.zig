@@ -8985,10 +8985,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get runtime context from context manager
                     const context_manager = @import("context_manager.zig");
-                    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
+                    const function_ctx = context_manager.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
                         conv.throwError(isolate, "Failed to get runtime context");
                         return;
                     };
+                    // What a static operation of an isolated world makes is the
+                    // page's: its main realm's (protocol_worlds.zig), as for a
+                    // constructor (binding_plumbing.zig). Its result is wrapped
+                    // in the world all the same: the conversion asks the world
+                    // of the realm the operation runs in.
+                    const protocol_worlds = @import("protocol_worlds.zig");
+                    const runtime_ctx = if (protocol_worlds.realmMayHaveWorlds(function_ctx)) protocol_worlds.mainRealmOf(function_ctx) else function_ctx;
 
                     // Create a template instance to carry context to the static method
                     // This instance is just a vehicle for passing allocator/context
@@ -9277,6 +9284,15 @@ pub fn setInstance(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.
     return true;
 }
 
+/// `setInstance` for a receiver an isolated world realm's cache will keep
+/// (protocol_worlds.zig): a node's is bound to a platform anchor too
+/// (platform_anchor.bindInWorld).
+pub fn setInstanceInWorld(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.Instance) bool {
+    if (!platform_anchor.bindInWorld(isolate, object, instance)) return false;
+    runtime.instance_lifecycle.markWrapped(instance);
+    return true;
+}
+
 // ============================================================================
 // Cross-Realm Constructor Support
 // ============================================================================
@@ -9305,7 +9321,14 @@ pub fn setInstance(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.
 /// `receiver` is the caller's to release either way, bound to nothing when
 /// this answers true.
 pub fn adoptExistingWrapper(info: *const v8.FunctionCallbackInfo, receiver: *v8.Object, instance: *runtime.Instance, function_context: *v8.Context) bool {
-    const storage = instance.ctx.getV8WrapperCacheStorage() orelse return false;
+    return adoptExistingWrapperIn(info, receiver, instance, function_context, instance.ctx);
+}
+
+/// `adoptExistingWrapper` with the wrapper looked up in `cache_realm`'s cache:
+/// an isolated world's constructor adopts only its world's wrapper of the
+/// instance (protocol_worlds.zig), never the main world's.
+pub fn adoptExistingWrapperIn(info: *const v8.FunctionCallbackInfo, receiver: *v8.Object, instance: *runtime.Instance, function_context: *v8.Context, cache_realm: runtime.Context) bool {
+    const storage = cache_realm.getV8WrapperCacheStorage() orelse return false;
     const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
     if (cache.is_tearing_down) return false;
     const borrowed = cache.existingWrapper(instance) orelse return false;

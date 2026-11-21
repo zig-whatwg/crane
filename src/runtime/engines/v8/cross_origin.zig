@@ -241,6 +241,18 @@ fn sameOrigin(isolate: *v8.Isolate, current_realm: ?*anyopaque, object_ptr: ?*an
     const check = protocol_realms.sameOriginCheckOf(object.ctx) orelse return true;
     const key = current_realm orelse return false;
     const current = context_manager.getByKey(@intFromPtr(key)) orelse return false;
+    // An isolated world's script (protocol_worlds.zig): a world made with
+    // universal access reaches every origin's objects - Blink's isolated
+    // world security origin, which Page.createIsolatedWorld's
+    // grantUniveralAccess gives every origin's access (DOMWrapperWorld::
+    // SetIsolatedWorldSecurityOrigin, BindingSecurity's
+    // ShouldAllowAccessTo) - and any other world is its page's origin: the
+    // host is asked about its main realm.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    if (protocol_worlds.realmMayHaveWorlds(current)) {
+        if (protocol_worlds.hasUniversalAccess(current)) return true;
+        return check.is_platform_object_same_origin(check.host, protocol_worlds.mainRealmOf(current), object);
+    }
     return check.is_platform_object_same_origin(check.host, current, object);
 }
 

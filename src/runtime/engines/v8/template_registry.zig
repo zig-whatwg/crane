@@ -245,6 +245,22 @@ pub fn wrapInstanceAsV8Object(
     // the half worth checking.
     ownership.assertOwned(isolate, "template_registry.wrapInstanceAsV8Object");
 
+    // An isolated world's realm (protocol_worlds.zig): its own wrapper of
+    // every platform object, nodes and its Window included, in its own world
+    // cache. Two loads decide it for a Browser that has made no world.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    const in_world = protocol_worlds.realmMayHaveWorlds(instance.ctx) and protocol_worlds.worldOfContext(context) != 0;
+    if (in_world) {
+        if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
+            // The world realm's global, which its cache keeps for the Window
+            // it is bound to - never the main world's (boundGlobal).
+            const world_realm = @import("context_manager.zig").get(context) orelse return error.WindowHasNoGlobal;
+            const storage = world_realm.getV8WrapperCacheStorage() orelse return error.WindowHasNoGlobal;
+            const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
+            return cache.get(instance) orelse error.WindowHasNoGlobal;
+        }
+    }
+
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
@@ -274,7 +290,9 @@ pub fn wrapInstanceAsV8Object(
     // runtime.lifetime.slotOf: the adapter never names NodeBase's field. The
     // slot holds the wrapper itself - a TracedReference - and its address is
     // the handle (node_wrappers, the wrapper redesign's P2 and P4).
-    if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
+    if (!in_world) {
+        if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
+    }
 
     // ========================================
     // CACHE LOOKUP: Check if we already have a wrapper for this instance
@@ -380,7 +398,8 @@ pub fn wrapInstanceAsV8Object(
     // V8DOMWrapper::SetNativeInfo) - no template but a realm's global's has
     // an internal field. Not a node's here: its anchor is made at the cache
     // step below (WrapperCache.set -> node_wrappers.adopt, design 4.2).
-    if (!platform_anchor.bind(isolate, v8_object, instance)) {
+    const bound = if (in_world) platform_anchor.bindInWorld(isolate, v8_object, instance) else platform_anchor.bind(isolate, v8_object, instance);
+    if (!bound) {
         v8.v8_Object_Dispose(v8_object);
         return error.ObjectCreationFailed;
     }
