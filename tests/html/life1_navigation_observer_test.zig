@@ -342,3 +342,26 @@ fn hostNavigationReferrer() !void {
 test "a host navigation names its referrer and learns its navigation id" {
     try onFreshThread(hostNavigationReferrer);
 }
+
+fn contextNavigateReturnsItsId() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try loadedPage(browser);
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    try recorder.observe(browser);
+    const tab = browser.hostTraversableId() orelse return error.NoTab;
+    // The host's navigation of its page: the id it started is the one its
+    // milestones carry (CDP Page.navigate's loaderId).
+    const started = try page.navigateWithOptions("data:text/html,<title>by id</title>", .{});
+    try testing.expect(started != 0);
+    try until(browser, "document.title === 'by id'");
+    try testing.expectEqual(started, recorder.first(tab, .started).?.navigation_id);
+    try testing.expectEqual(started, recorder.first(tab, .committed).?.navigation_id);
+    // A same-document navigation starts none.
+    try testing.expectEqual(@as(u64, 0), try page.navigateWithOptions("data:text/html,<title>by id</title>#frag", .{}));
+}
+
+test "Context.navigateWithOptions returns the id of the navigation it started" {
+    try onFreshThread(contextNavigateReturnsItsId);
+}
