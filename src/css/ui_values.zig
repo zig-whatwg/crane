@@ -85,8 +85,13 @@ pub fn consumeAutoColor(options: properties.ParseOptions, stream: *Stream) Alloc
     return properties.parseLonghand(color_options, .color, stream);
 }
 
+/// CSS UI 4 §5.2: `auto | <color> [auto | <color>]?` - the two-value form
+/// begins with a color, so an `auto` first value stands alone (Chrome,
+/// Firefox and Safari reject "auto auto" and "auto <color>":
+/// css/css-ui/parsing/caret-color-invalid.html).
 pub fn consumeCaretColor(options: properties.ParseOptions, stream: *Stream) Allocator.Error!?Value {
     const first = try consumeAutoColor(options, stream) orelse return null;
+    if (first.isKeyword(.auto)) return first;
     errdefer first.release();
     const saved = stream.*;
     const second = try consumeAutoColor(options, stream) orelse {

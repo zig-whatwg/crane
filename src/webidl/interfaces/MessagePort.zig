@@ -47,7 +47,6 @@ pub const MessagePort = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "onclose", "get_onclose", "set_onclose" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
@@ -76,7 +75,6 @@ pub const MessagePort = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "onclose", "get_onclose", "set_onclose" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
@@ -96,11 +94,9 @@ pub const MessagePort = struct {
     );
 
     const delegates = .{
-        .get_onclose = &get_onclose,
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
 
-        .set_onclose = &set_onclose,
         .set_onmessage = &set_onmessage,
         .set_onmessageerror = &set_onmessageerror,
 
@@ -200,16 +196,6 @@ pub const MessagePort = struct {
 
     const event_handlers = @import("dom").event_handlers;
 
-    pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(MessagePortImpl, "get_onclose")) return try MessagePortImpl.get_onclose(instance);
-        return event_handlers.value(EventHandler, instance, "onclose");
-    }
-
-    pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(MessagePortImpl, "set_onclose")) return try MessagePortImpl.set_onclose(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onclose", value);
-    }
-
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(MessagePortImpl, "get_onmessage")) return try MessagePortImpl.get_onmessage(instance);
         return event_handlers.value(EventHandler, instance, "onmessage");
@@ -262,7 +248,7 @@ pub const MessagePort = struct {
     };
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
-    pub const legacy_treat_non_object_as_null = .{ "set_onclose", "set_onmessage", "set_onmessageerror" };
+    pub const legacy_treat_non_object_as_null = .{ "set_onmessage", "set_onmessageerror" };
 
     /// WebIDL `object` arguments (or sequences of `object`): a value that is
     /// not an Object throws a TypeError (bit i = argument i).

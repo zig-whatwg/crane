@@ -10898,6 +10898,31 @@ void* v8_FunctionCallbackInfo_ThisNodeSlot(const FunctionCallbackInfo<Value>* in
     return anchor ? anchor->slot_ : nullptr;
 }
 
+// FunctionCallbackInfo - Window's window, self and frames getters on their
+// commonest receiver (lane maj5; binding_plumbing.answerWindowGetter): when
+// This() is the current context's global - V8 enters the getter's creation
+// context, so this is the getter's own realm's WindowProxy, read by that
+// realm's script or another's (`frame.self`) - it is set as the return value
+// and the context's Crane id is answered (CraneContextIdOf, the key of
+// Crane's realm registry: context_manager.getWindowForContextId). The answer
+// is an ID, NOT AN ALLOCATION: nothing to free - the exception to "every v8_*
+// call returning a pointer allocates", and so a uintptr_t. 0 for any other
+// receiver (another realm's WindowProxy, a plain object), which the
+// binding's general path answers. Locals only, in the HandleScope V8 opens
+// around every API callback (perf3 phase 1b, below): the three Globals this
+// read used to make - the current context, its global, This() - were most of
+// its cost (perf_bench window.self-read: `self === window` at 2.0x once self
+// was an accessor too).
+uintptr_t v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return 0;
+    Local<Object> global = context->Global();
+    if (!info->This()->StrictEquals(global)) return 0;
+    info->GetReturnValue().Set(global);
+    return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
+}
+
 // FunctionCallbackInfo - set a primitive return value straight into the
 // return slot (a Smi where it fits, else a heap number made in the callback's
 // HandleScope): no Global for a number or boolean result.

@@ -150,6 +150,15 @@ pub const FunctionCallbackInfo = opaque {
     /// handle.
     pub extern fn v8_FunctionCallbackInfo_ThisNodeSlot(self: *const FunctionCallbackInfo) ?*anyopaque;
 
+    /// Window's window, self and frames on the getter's own global: when
+    /// `this` is the current context's global, it is set as the return value
+    /// and the context's Crane id (v8_Context_GetRawAddress's number, the key
+    /// of context_manager's realm registry) is answered; 0 for any other
+    /// receiver. An id, NOT an allocation - nothing to free (the exception to
+    /// "every v8_* call returning a pointer allocates", hence a usize). No
+    /// handle: Locals in the callback's own HandleScope.
+    pub extern fn v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(self: *const FunctionCallbackInfo) usize;
+
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;

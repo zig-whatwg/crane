@@ -218,8 +218,8 @@ fn forgetPort(instance: *runtime.Instance) void {
 /// back/forward cache - so they run at the same moment either way, and a
 /// worker's ports go when it ends.
 pub fn disentangleIn(realm: runtime.Context) void {
-    // Backwards: disentangling posts the peer's close event and frees
-    // nothing here, but stay safe if it did.
+    // Backwards: disentangling posts a task to the peer and frees nothing
+    // here, but stay safe if it did.
     const ports = realm.objects(.message_ports);
     var i = ports.items.len;
     while (i > 0) {
@@ -233,8 +233,9 @@ pub fn disentangleIn(realm: runtime.Context) void {
 }
 
 /// HTML "disentangle" (9.4.4), initiated by `instance`: the two ports are
-/// disentangled and the other one hears `close`, from a task of its own realm
-/// - which may be another agent's, on another thread.
+/// disentangled, and the other one is told so from a task of its own realm -
+/// which may be another agent's, on another thread - so its pending activity
+/// ends (no event: see `peerDisentangledSteps`).
 fn disentangle(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     // A shipped port is not entangled: its end is another port's now.
@@ -259,7 +260,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 // ============================================================================
-// Event handlers (HTML § 9.4.3: onmessage, onmessageerror, onclose). Their
+// Event handlers (HTML § 9.4.3: onmessage, onmessageerror). Their
 // values live in EventTarget's event handler map, where a `message` event
 // fired at this port finds them.
 // ============================================================================
@@ -655,30 +656,21 @@ fn fire(port: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, 
     event.releaseIfUnwrapped(generation);
 }
 
-/// Disentangle step 4, for this port: its peer disentangled, and this is
-/// the task of its realm that fires `close` at it.
+/// Its peer disentangled: the task of this port's realm that notes it.
 fn closedHook(receiver: *anyopaque, generation: u64) void {
     const port = liveReceiver(receiver, generation) orelse return;
-    engine.runTaskInRealm(port.ctx, fireCloseSteps, port) catch {};
+    engine.runTaskInRealm(port.ctx, peerDisentangledSteps, port) catch {};
 }
 
-fn fireCloseSteps(data: ?*anyopaque) void {
+/// The port is no longer entangled, so no longer active: its pending
+/// activity ends. No event is fired: whatwg/html#13016 (2026-10) removed
+/// MessagePort's `close` event and `onclose` - "no browser ships the close
+/// events" - and Chrome, Firefox and Safari fire none
+/// (webmessaging/message-channels/historical.any.js; the IDL member goes
+/// through codegen's member_removals.zig). The port lifetime rules the
+/// revert restored are not changed here: a port stays held exactly as
+/// before, while its queue is enabled and it is entangled.
+fn peerDisentangledSteps(data: ?*anyopaque) void {
     const port: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
-    // Its peer closed: it is no longer entangled, so no longer active - but
-    // the `close` event is dispatched first, while it is still held.
-    defer syncPendingActivity(port);
-    // A cross-realm transform's port has no close handler (Streams 8.2 adds
-    // message and messageerror handlers only), and no script can listen.
-    if (getInternal(port)) |internal| {
-        if (internal.native != null) return;
-    }
-    if (!documentIsFullyActive(port)) return;
-    const event = interfaces.Event.call_constructor(
-        port.ctx,
-        runtime.DOMString.initInterned("close"),
-        webidl.Opt(dictionaries.EventInit).notPassed(),
-    ) catch return;
-    const generation = runtime.SlabAllocator.generationOf(event);
-    _ = dom.fire_event.dispatchTrusted(port, event) catch {};
-    event.releaseIfUnwrapped(generation);
+    syncPendingActivity(port);
 }
