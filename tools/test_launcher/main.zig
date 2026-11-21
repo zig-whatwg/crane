@@ -47,6 +47,7 @@ test {
     _ = report;
     _ = server_mod;
     _ = @import("slots.zig");
+    _ = @import("spawn.zig");
     _ = verify_mod;
     _ = filter_mod;
     _ = Args;
