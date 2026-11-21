@@ -615,12 +615,16 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
     const native = if (getInternal(port)) |internal| internal.native else null;
 
     // A closing worker dispatches nothing - neither the message nor a
-    // messageerror (Blink, message_port.cc MessagePort::DispatchMessageEvent:
-    // "if (scope->IsClosing()) return;"): close() and "terminate a worker"
-    // set the closing flag, and its event loop runs no further task. A task
-    // already running when "terminate a worker" aborts the worker's script
-    // can fail to deserialize because of that abort; it is checked again
-    // below, so that the abort never reads as a messageerror. A cross-realm
+    // messageerror. HTML 10.2.2: "Once the WorkerGlobalScope's closing flag
+    // is set to true, the event loop's task queues must discard any further
+    // tasks that would be added to them"; "terminate a worker" 1. sets the
+    // closing flag, 2. discards the queued tasks "without processing them",
+    // 3. aborts the script currently running in the worker. Blink checks the
+    // same flag at dispatch (message_port.cc MessagePort::
+    // DispatchMessageEvent: "if (scope->IsClosing()) return;"). A task
+    // already running when step 3 lands can fail to deserialize because of
+    // that abort; it is checked again below, so that the abort never reads
+    // as a messageerror. A cross-realm
     // transform's messageerror steps post "error" to the other realm: a
     // stream transferred to a terminated worker would error in the page
     // (streams/transferable/worker.html, 'terminating a worker should not
