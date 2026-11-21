@@ -262,6 +262,9 @@ pub const document_abort = @import("document_abort.zig");
 pub const scripted_parser = @import("scripted_parser.zig");
 /// HTML "encoding-parse a URL" relative to a Document.
 pub const encoding_parse = @import("dom").encoding_parse;
+/// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection
+/// (the img element's and the speculative HTML parser's).
+pub const image_source_selection = @import("image_source_selection.zig");
 
 /// Parser script execution callback and context for V8 integration.
 /// Provides the bridge between tree builder's script callback and V8 execution.
