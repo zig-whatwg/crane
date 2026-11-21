@@ -1554,8 +1554,17 @@ pub const WorkerHost = struct {
         const graph = module_script.moduleWorkerScriptGraph(&env, url, self.script_url, source) orelse return false;
         if (graph.error_to_rethrow != null) return false;
 
-        self.runModuleScript(&env, graph);
-        return true;
+        const evaluated = self.runModuleScript(&env, graph);
+        // Service Workers "Run Service Worker" step 9.5: a module script
+        // whose evaluation promise is rejected sets the start status to that
+        // throw completion, so the worker does not start and its
+        // registration's job rejects (as a classic script that throws). It
+        // started: register() resolved for a module service worker that
+        // throws at its top level (service-workers/service-worker/
+        // registration-script-module.https.html 'uncaught exception' and
+        // 'undefined error' cases; Chrome 157, Firefox 160 and Safari 27.2
+        // pass). Other workers run on after reporting it.
+        return evaluated or self.service == null;
     }
 
     /// HTML "run a module script" for the worker: evaluate between "prepare
@@ -1569,28 +1578,34 @@ pub const WorkerHost = struct {
     /// the ones the evaluation queued, and runs in step 9's checkpoint
     /// (microtasks/evaluation-order-1-throw-static-import: "body",
     /// "microtask", then "global-error").
-    fn runModuleScript(self: *Self, env: *const module_script.Environment, script: *module_script.ModuleScript) void {
-        const realm = self.realm orelse return;
+    /// False when the evaluation promise was settled with a rejection
+    /// (an error to rethrow, or a synchronous throw).
+    fn runModuleScript(self: *Self, env: *const module_script.Environment, script: *module_script.ModuleScript) bool {
+        const realm = self.realm orelse return false;
         self.entered += 1;
         defer self.entered -= 1;
         // Step 5: prepare to run script.
-        const scope = engine.prepareToRunScript(realm) catch return;
+        const scope = engine.prepareToRunScript(realm) catch return false;
         // Step 9: clean up after running script - the microtask checkpoint.
         defer engine.cleanUpAfterRunningScript(scope);
         switch (module_script.run(env, script)) {
-            .ok => {},
+            .ok => return true,
             // Steps 6-7 settled the evaluation promise with a rejection (an
             // error to rethrow, or a synchronous throw): step 8's reaction.
             .report => |exception| {
                 defer exception.release();
-                const promise = engine.createRejectedPromise(realm, exception.value) catch
-                    return self.reportValue(realm, exception.value);
+                const promise = engine.createRejectedPromise(realm, exception.value) catch {
+                    self.reportValue(realm, exception.value);
+                    return false;
+                };
                 defer promise.release();
                 self.reportRejectionLater(realm, promise.value);
+                return false;
             },
             .pending => |promise| {
                 defer promise.release();
                 self.reportRejectionLater(realm, promise.value);
+                return true;
             },
         }
     }
