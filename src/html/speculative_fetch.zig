@@ -200,18 +200,29 @@ pub const Speculation = struct {
     }
 
     /// The URL `found` names: encoding-parsed with the document's encoding,
-    /// against the predicted frozen base URL (the first base element's href
-    /// parsed against the document's fallback base URL, which is the
-    /// document's URL here) when the scan met one, else the document's base
-    /// URL. OWNED; null when it does not parse.
+    /// against the predicted frozen base URL when the scan met a base
+    /// element, else the document's base URL. OWNED; null when it does not
+    /// parse.
+    ///
+    /// The predicted base is HTML's "set the frozen base URL" for that
+    /// element: its href parsed against the document's fallback base URL -
+    /// the document's URL, or an about:blank / srcdoc document's about base
+    /// URL - as the base element computes it (HTMLBaseElement
+    /// setFrozenBaseURL); a URL that fails to parse, or a data: or
+    /// javascript: one, leaves the document's base URL (Blink
+    /// TokenPreloadScanner::UpdatePredictedBaseURL rejects the same).
     fn resolve(self: *Speculation, found: *const Found) !?[]const u8 {
         const allocator = self.allocator;
         const document = self.document;
         const href = found.base orelse return dom.encoding_parse.encodingParseAndSerializeWithAllocator(allocator, document, found.url);
-        const fallback = dom.document_internals.getURL(document);
+        const document_url = try interfaces.Document.get_URL(document);
+        defer document.ctx.allocator.free(document_url);
+        const fallback = dom.document_lifecycle.aboutFallbackBaseUrl(document) orelse document_url;
         const base = (try dom.encoding_parse.encodingParseAndSerializeAgainst(allocator, document, href, fallback)) orelse
             return dom.encoding_parse.encodingParseAndSerializeWithAllocator(allocator, document, found.url);
         defer allocator.free(base);
+        if (std.ascii.startsWithIgnoreCase(base, "data:") or std.ascii.startsWithIgnoreCase(base, "javascript:"))
+            return dom.encoding_parse.encodingParseAndSerializeWithAllocator(allocator, document, found.url);
         return dom.encoding_parse.encodingParseAndSerializeAgainst(allocator, document, found.url, base);
     }
 };
