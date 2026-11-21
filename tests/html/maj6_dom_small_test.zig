@@ -73,3 +73,49 @@ fn collectionNames() !void {
 test "an HTMLCollection is named by the name attribute of HTML elements only" {
     try onFreshThread(collectionNames);
 }
+
+fn transientObservers() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser,
+        \\globalThis.tree = () => {
+        \\  const parent = document.createElement('div'); parent.id = 'parent';
+        \\  const child = parent.appendChild(document.createElement('div')); child.id = 'child';
+        \\  const grandchild = child.appendChild(document.createElement('div')); grandchild.id = 'grandchild';
+        \\  return { parent, child, grandchild };
+        \\};
+        \\globalThis.summarize = (records) => records.map(r => r.type + ' ' + r.target.id + [...r.addedNodes].map(n => ' +' + n.id).join('') + [...r.removedNodes].map(n => ' -' + n.id).join(''));
+        \\globalThis.out = {};
+        \\// Added with no record queued: the transient still goes at the next notify.
+        \\{ const { parent, child } = tree();
+        \\  const mo = new MutationObserver(() => { out.calledA = true; });
+        \\  mo.observe(parent, { attributes: true, subtree: true });
+        \\  child.remove();
+        \\  setTimeout(() => { child.setAttribute('data-x', ''); out.a = mo.takeRecords().length; }, 0); }
+        \\// The removal queues the notify microtask before a later promise job.
+        \\{ const { parent, child } = tree();
+        \\  out.order = [];
+        \\  const mo = new MutationObserver(() => out.order.push('observer'));
+        \\  mo.observe(parent, { attributes: true, subtree: true });
+        \\  child.remove();
+        \\  Promise.resolve().then(() => out.order.push('promise'));
+        \\  child.setAttribute('data-x', ''); }
+        \\// observe() again on the target ends a transient copied from a transient.
+        \\{ const { parent, child, grandchild } = tree();
+        \\  const mo = new MutationObserver(() => {});
+        \\  mo.observe(parent, { childList: true, subtree: true });
+        \\  child.remove(); grandchild.remove();
+        \\  mo.observe(parent, { childList: true, subtree: true });
+        \\  child.append(document.createElement('span')); grandchild.append(document.createElement('span'));
+        \\  out.c = summarize(mo.takeRecords()).join(','); }
+        \\0;
+    );
+    _ = try browser.runEventLoopBlocking(50);
+    try expectTrue(browser, "out.a === 0 && out.calledA === undefined");
+    try expectTrue(browser, "out.order.join(',') === 'observer,promise'");
+    try expectTrue(browser, "out.c === 'childList parent -child,childList child -grandchild'");
+}
+
+test "transient registered observers: sourced from the original registration, and gone at the next notify" {
+    try onFreshThread(transientObservers);
+}

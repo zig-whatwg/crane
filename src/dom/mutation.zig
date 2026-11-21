@@ -389,19 +389,35 @@ fn setConnectedRecursive(node: anytype, connected: bool) void {
     while (walk.next()) |descendant| descendant.is_connected = connected;
 }
 
-/// DOM "remove" step 15: "For each inclusive ancestor inclusiveAncestor of
-/// parent, and then for each registered of inclusiveAncestor's registered
-/// observer list, if
-/// registered's options["subtree"] is true, then append a new transient
-/// registered observer whose observer is registered's observer, options is
-/// registered's options, and source is registered to node's registered
-/// observer list."
+/// DOM "add transient registered observers" given `node` and `parent` (the
+/// remove algorithm's step 15, the move algorithm's step 17): for each
+/// inclusive ancestor of parent, for each of its registered observers whose
+/// options["subtree"] is true -
+/// 3. "Let source be registered's source if registered is a transient
+///    registered observer; otherwise registered." A source here is named by
+///    the node that lists it (registered_observer.transient_source), the
+///    observer being the same: a transient's own source, else the ancestor.
+/// 4. "If node's registered observer list contains a transient registered
+///    observer whose source is source, then continue."
+/// 5. Append a transient registered observer with source's options and
+///    source to node's list; 6. a weak reference to node to the observer's
+///    transient node set (observer_registrations.transientAdded);
+/// 7. "Append observer to the surrounding agent's pending mutation
+///    observers"; 8. "Queue a mutation observer microtask" - so the
+///    transient observers go at the next notify even when no record is
+///    queued for the observer.
+///
+/// Steps 3-4 and 7-8 were missing (the older text's "source is registered"):
+/// a subtree removed from a removed subtree kept a transient that observe()
+/// on the original target did not remove, and with no record queued the
+/// transients outlived the next notify
+/// (dom/nodes/MutationObserver-transient-registered-observers.window.html;
+/// Chrome 157, Firefox 160 and Safari 27.2 pass).
 ///
 /// Only `node` gets one: "queue a mutation record" walks the inclusive
 /// ancestors of its target, so a transient observer on the removed subtree's
-/// root sees every mutation inside it. The observer is told, so that notify
-/// step 6.3 can take the transient observers off again.
-/// Spec: https://dom.spec.whatwg.org/#concept-node-remove
+/// root sees every mutation inside it.
+/// Spec: https://dom.spec.whatwg.org/#add-transient-registered-observers
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
     const removed: *NodeBase = @ptrCast(node);
     const removed_instance: ?*runtime.Instance = if (instance_bridge.getInstance(removed)) |opaque_ptr|
@@ -421,20 +437,40 @@ fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void 
         // of its old parent.
         var entries = ancestor.registeredObservers();
         while (entries.next()) |registered| {
+            // Step 1.
             if (!registered.options.subtree) continue;
+            // Step 3.
+            const source: *const anyopaque = registered.transient_source orelse @ptrCast(ancestor);
+            // Step 4.
+            if (hasTransientFrom(removed, registered.observer, source)) continue;
+            // Step 5.
             _ = try removed.appendRegisteredObserver(.{
                 .observer = registered.observer,
                 .observer_generation = registered.observer_generation,
                 .options = registered.options,
-                .transient_source = ancestor,
+                .transient_source = source,
             });
             const observer_opaque = @import("handles.zig").mutationObserverToAnyopaque(registered.observer) orelse continue;
             const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
+            if (runtime.SlabAllocator.generationOf(observer) != registered.observer_generation) continue;
+            // Step 6.
             if (removed_instance) |instance| {
                 @import("observer_registrations.zig").transientAdded(observer, registered.observer_generation, instance);
             }
+            // Steps 7-8.
+            try mutation_observer.transientObserverAdded(observer, if (removed_instance) |instance| instance.ctx else observer.ctx);
         }
     }
+}
+
+/// Step 4's test: whether `node`'s registered observer list has a transient
+/// registered observer of `observer` whose source is `source`.
+fn hasTransientFrom(node: *NodeBase, observer: anytype, source: *const anyopaque) bool {
+    var entries = node.registeredObservers();
+    while (entries.next()) |registered| {
+        if (registered.transient_source == source and registered.observer == observer) return true;
+    }
+    return false;
 }
 
 /// Helper to get node type from any node-like type
