@@ -192,7 +192,7 @@ fn statusOf(err: anyerror) Status {
 }
 
 fn dupeZ(text: []const u8) ![*:0]u8 {
-    return (try allocator.dupeZ(u8, text)).ptr;
+    return (try allocator.dupeSentinel(u8, text, 0)).ptr;
 }
 
 // ============================================================================
