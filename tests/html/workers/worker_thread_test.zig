@@ -90,6 +90,7 @@ const TestHost = struct {
         self.agent = agent;
         if (!thread.link.publishAgent(agent)) return false;
         const made = engine.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "http://web-platform.test:8000/workers/w.js",
             .timer = thread.loop.timerInterface(),
             .event_loop = thread.loop.eventLoop(),

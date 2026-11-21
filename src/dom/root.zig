@@ -97,6 +97,7 @@ pub const style_sheet_owners = @import("style_sheet_owners.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");
 pub const adopting_steps = @import("adopting_steps.zig");
 pub const document_rendering = @import("document_rendering.zig");
+pub const document_resources = @import("document_resources.zig");
 pub const update_the_rendering = @import("update_the_rendering.zig");
 /// Web Animations: the timing model, its objects' models, and update animations and send events (lane rendering2).
 pub const animations = @import("animations/root.zig");

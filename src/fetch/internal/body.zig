@@ -17,6 +17,7 @@ const network = @import("../network/root.zig");
 const StreamingSource = network.StreamingSource;
 const body_pipe = @import("body_pipe.zig");
 pub const BodyPipe = body_pipe.BodyPipe;
+const BodyRelay = @import("service_worker_fetch.zig").BodyRelay;
 
 /// Body source types for tracking the origin of body data.
 /// Per spec, source can be null, bytes, Blob, or FormData.
@@ -87,6 +88,14 @@ pub const Body = struct {
     /// A body still arriving from the network: its bytes are in the pipe,
     /// not `data`, until a reader takes them. The body owns its reader's end.
     pipe: ?*BodyPipe = null,
+
+    /// A request body still arriving from another thread: the reader's end
+    /// of the relay a stream body's bytes cross to a service worker's thread
+    /// on (service_worker_fetch.Upload), while requestForServiceWorker is on
+    /// its way there. The worker's thread turns it into `pipe` before its
+    /// realm sees the body (AgentFetches.readRelay). OWNED: freeing the body
+    /// first cancels it - the writer stops. Never cloned.
+    upload_relay: ?*BodyRelay = null,
 
     const Self = @This();
 
@@ -193,6 +202,10 @@ pub const Body = struct {
     /// Deinitialize the body, freeing all resources.
     pub fn deinit(self: *Self) void {
         if (self.pipe) |pipe| pipe.release();
+        if (self.upload_relay) |relay| {
+            relay.cancel();
+            relay.release();
+        }
         self.data.deinit(self.allocator);
         self.allocator.destroy(self);
     }

@@ -64,6 +64,10 @@ pub const Settings = struct {
     origin_record: ?*const fn (global: *runtime.Instance) ?*OriginRecord = null,
     /// The settings object's execution environment is a secure context.
     is_secure_context: *const fn (global: *runtime.Instance) bool,
+    /// A Window's associated Document: whose map of preloaded resources
+    /// Fetch step 11 consumes from (dom.document_resources). BORROWED; null
+    /// where this kind of global has none.
+    associated_document: ?*const fn (global: *runtime.Instance) ?*runtime.Instance = null,
     /// The settings object's cross-origin isolated capability.
     cross_origin_isolated: *const fn (global: *runtime.Instance) bool,
     /// The global's IDBFactory; null where this kind of global has none yet.
@@ -348,6 +352,11 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // Service Workers "Handle Fetch" step 10: the route of a controlled
     // client's requests to its active service worker.
     client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
+    // Fetch step 11: a Window client's document's map of preloaded resources
+    // (and the resources it loaded while loading).
+    if (settings.associated_document) |document_of| {
+        if (document_of(global)) |document| client.request.document_resources = @import("document_resources.zig").routeFor(document);
+    }
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
     client.request.coep_violation_reporter = @import("coep_reporting.zig").reporterFor(global);
     return client;

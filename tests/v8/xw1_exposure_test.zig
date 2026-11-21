@@ -124,14 +124,14 @@ pub fn checkWithSnapshot(snapshot: ?[]const u8) !void {
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = snapshot != null, .hooks = &hooks, .allocator = testing.allocator });
     defer engine.destroyAgent(agent);
     if (snapshot != null) try testing.expect(ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent))));
-    const page = try engine.createWindowRealm(&.{ .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
+    const page = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
     defer engine.destroyWindowRealm(page, .global_detached);
     try verify(page, .Window, true);
     try expect(page, "['responseXML' in XMLHttpRequest.prototype, 'timing' in Performance.prototype, typeof URL.createObjectURL].join()", "true,true,function");
-    const child = try engine.createWindowRealm(&.{ .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window, .parent = page });
+    const child = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window, .parent = page });
     defer engine.destroyWindowRealm(child, .global_detached);
     try verify(child, .Window, true);
-    const replaced = try engine.createWindowRealm(&.{ .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window, .parent = page });
+    const replaced = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = testing.allocator, .from_snapshot = snapshot != null, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window, .parent = page });
     defer engine.destroyWindowRealm(replaced, .global_detached);
     try expect(replaced,
         \\(() => {
@@ -144,15 +144,15 @@ pub fn checkWithSnapshot(snapshot: ?[]const u8) !void {
         \\})()
     , "true,true,true,true");
     inline for (.{ .{ .dedicated, Scope.DedicatedWorker }, .{ .shared, Scope.SharedWorker }, .{ .service, Scope.ServiceWorker } }) |case| {
-        const made = try engine.createWorkerRealm(agent, &.{ .global = case[0], .url = "https://example.test/worker.js", .allocator = testing.allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+        const made = try engine.createWorkerRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = case[0], .url = "https://example.test/worker.js", .allocator = testing.allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
         defer engine.destroyWorkerRealm(made.realm, null, null);
         try verify(made.realm, case[1], true);
         try expect(made.realm, "[typeof XMLHttpRequest !== 'undefined' && 'responseXML' in XMLHttpRequest.prototype, 'timing' in Performance.prototype, typeof URL.createObjectURL, typeof Worker].join()", if (case[1] == .ServiceWorker) "false,false,undefined,undefined" else "false,false,function,function");
-        const insecure = try engine.createWorkerRealm(agent, &.{ .global = case[0], .url = "http://example.test/worker.js", .secure_context = false, .allocator = testing.allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+        const insecure = try engine.createWorkerRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = case[0], .url = "http://example.test/worker.js", .secure_context = false, .allocator = testing.allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
         defer engine.destroyWorkerRealm(insecure.realm, null, null);
         try verify(insecure.realm, case[1], false);
     }
-    const worklet = try engine.createWorkletRealm(agent, &.{ .global = .paint, .owner = page, .api_base_url = "https://example.test", .allocator = testing.allocator });
+    const worklet = try engine.createWorkletRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = .paint, .owner = page, .api_base_url = "https://example.test", .allocator = testing.allocator });
     defer engine.destroyWorkletRealm(worklet.realm);
     try verify(worklet.realm, .PaintWorklet, true);
     try expect(worklet.realm, "[typeof Worker, typeof XMLHttpRequest, typeof PaintWorkletGlobalScope].join()", "undefined,undefined,function");

@@ -65,6 +65,7 @@ const Made = struct {
 
 fn openRealm(agent: *engine.Agent) !runtime.Context {
     return engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,

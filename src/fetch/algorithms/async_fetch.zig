@@ -90,6 +90,17 @@ pub const AsyncFetch = struct {
     /// nobody reads it.
     relay: ?*BodyRelay = null,
     relay_source: ?*PipeSource = null,
+    /// HTTP fetch step 3.2's tee of a stream request body for the service
+    /// worker that handles it: this fetch writes its branch to the relay the
+    /// worker's realm reads, each turn (`pumpUpload`), until the body ends or
+    /// the worker stops reading. The fetch is not over while it does.
+    upload: ?service_worker_fetch.Upload = null,
+    /// The `.request_body` step: HTTP fetch step 4 waits for the request's
+    /// stream body to arrive whole (`pump` asks each turn).
+    awaiting_request_body: bool = false,
+    /// The `.document_resource` step: main fetch step 12 waits for its
+    /// preloaded response candidate (`pump` asks each turn).
+    awaiting_document_resource: bool = false,
     /// Handle Fetch 13.3.4's race, while the call races the network (and,
     /// when the network's response won, until its body has arrived).
     race: Race = .{},
@@ -251,6 +262,9 @@ pub const AsyncFetch = struct {
         };
         fetches.live.append(fetches.allocator, self) catch return FetchError.OutOfMemory;
 
+        // A client that takes the whole body: its response may be kept for
+        // its document (FetchJob.keepForDocument).
+        job.keeps_whole_body = collect;
         self.advance(job.start());
         return self;
     }
@@ -286,6 +300,21 @@ pub const AsyncFetch = struct {
             if (failure.release_reason) |release| release(reason);
         }
         self.destroy();
+    }
+
+    /// Whether this fetch fills an entry its document keeps
+    /// (FetchJob.keepForDocument) and has not handed its response over: a
+    /// client that lets go of it may leave it running for the document
+    /// (`rebind`) rather than terminate it.
+    pub fn keepsForDocument(self: *const AsyncFetch) bool {
+        return !self.delivered and self.job.document_registration != null;
+    }
+
+    /// The fetch goes on for a new client - one that only drops its response
+    /// (a style sheet fetch its element left, for its document's entry). The
+    /// old client hears nothing more.
+    pub fn rebind(self: *AsyncFetch, client: Client) void {
+        self.client = client;
     }
 
     /// Whether this fetch goes on without its client once the client is
@@ -361,6 +390,10 @@ pub const AsyncFetch = struct {
         if (self.source) |source| source.fail(.{ .kind = .network });
         if (self.relay_source) |source| source.fail(.{ .kind = .network });
         self.letRelayGo();
+        // A stream request body's branch still written to a worker: its body
+        // fails there.
+        if (self.upload) |*u| u.abandon();
+        self.upload = null;
         // The job abandons a service worker call still unanswered.
         self.service_worker_call = null;
         if (self.outcome) |outcome| {
@@ -423,7 +456,7 @@ pub const AsyncFetch = struct {
     /// navigation's redirect: the fetch goes on when the client asks).
     fn over(self: *const AsyncFetch) bool {
         return self.delivered and self.source == null and self.transfer == null and self.relay == null and
-            self.race.network == null and !self.job.hasNextManualRedirect();
+            self.race.network == null and self.upload == null and !self.job.hasNextManualRedirect();
     }
 
     /// Whether the response delivered is a navigation's redirect whose next
@@ -485,7 +518,30 @@ pub const AsyncFetch = struct {
                     self.track_body_end = arriving and (self.job.awaitsBodyEnd() or self.race_owner != null);
                     return;
                 },
+                .document_resource => {
+                    // Asked again at every turn of the loop (`pump`).
+                    if (self.job.documentResourceReady()) {
+                        next = self.job.resumeDocumentResource();
+                        continue;
+                    }
+                    self.awaiting_document_resource = true;
+                    return;
+                },
+                .request_body => {
+                    // The body's end resumes it (`awaitRequestBody`).
+                    if (!self.job.requestBodyArriving() or self.requestBodyEnded()) {
+                        next = self.job.resumeRequestBody();
+                        continue;
+                    }
+                    self.awaiting_request_body = true;
+                    return;
+                },
                 .service_worker => |call| {
+                    // A stream body's tee for the worker: written from here.
+                    if (call.takeUpload()) |upload| {
+                        if (self.upload) |*old| old.abandon();
+                        self.upload = upload;
+                    }
                     // Asked again at every turn of the loop (`pump`).
                     self.service_worker_call = call;
                     // 13.3.4.5: the network races the worker.
@@ -626,6 +682,43 @@ pub const AsyncFetch = struct {
         if (self.race.network != null or self.race.kept != null) return self.raceWorkerAnswered(answer);
         self.service_worker_call = null;
         self.advance(self.job.resumeServiceWorker(self.attachRelay(answer)));
+        return true;
+    }
+
+    /// `pump`: the stream request body's branch for the service worker,
+    /// written to its relay. Whether it ended (the body's end written, or the
+    /// worker stopped reading it).
+    fn pumpUpload(self: *AsyncFetch) bool {
+        const upload = if (self.upload) |*u| u else return false;
+        if (upload.pump()) return false;
+        self.upload = null;
+        return true;
+    }
+
+    /// Whether the request body's pipe has ended (finished or failed).
+    fn requestBodyEnded(self: *const AsyncFetch) bool {
+        const b = self.job.request.body orelse return true;
+        return switch (b) {
+            .bytes => true,
+            .body => |body| if (body.pipe) |pipe| pipe.state != .open else true,
+        };
+    }
+
+    /// `pump`: the `.document_resource` step's wait, over once the
+    /// candidate's fetch has its response (or failed).
+    fn awaitDocumentResource(self: *AsyncFetch) bool {
+        if (!self.awaiting_document_resource or !self.job.documentResourceReady()) return false;
+        self.awaiting_document_resource = false;
+        self.advance(self.job.resumeDocumentResource());
+        return true;
+    }
+
+    /// `pump`: the `.request_body` step's wait, over once the body has
+    /// arrived whole or failed.
+    fn awaitRequestBody(self: *AsyncFetch) bool {
+        if (!self.awaiting_request_body or !self.requestBodyEnded()) return false;
+        self.awaiting_request_body = false;
+        self.advance(self.job.resumeRequestBody());
         return true;
     }
 
@@ -912,6 +1005,31 @@ pub const AgentFetches = struct {
     /// 5a78f4525f caps only their number, dom.fetchKeepalive.*_limit). A
     /// field, not a constant, so that a test can shorten it.
     kept_limit_ms: i64 = 30 * std.time.ms_per_s,
+    /// Request bodies another thread writes for this agent's realms - a
+    /// stream body a page's fetch hands to a service worker of this agent
+    /// (`readRelay`) - each drained into the pipe its realm reads, every
+    /// turn (`drainRelayReaders`).
+    relay_readers: std.ArrayListUnmanaged(*RelayReader) = .empty,
+
+    /// A body arriving through a relay another thread writes: what this
+    /// agent's loop drains into its source each turn. The source's producer:
+    /// when its last reader goes - the realm's body stream cancelled or
+    /// collected - the relay is cancelled, which the writer sees
+    /// (service_worker_fetch.Upload), and this reader is dropped at the next
+    /// turn.
+    pub const RelayReader = struct {
+        relay: *BodyRelay,
+        /// Null once its producer was cancelled: the source may be gone.
+        source: ?*PipeSource,
+
+        fn cancel(context: *anyopaque) void {
+            const self: *RelayReader = @ptrCast(@alignCast(context));
+            // Called inside a delivery to the source, or from a reader's
+            // release: only marked here, and dropped by the next turn.
+            self.source = null;
+            self.relay.cancel();
+        }
+    };
 
     pub fn init(allocator: Allocator) AgentFetches {
         return .{ .allocator = allocator, .scheduler = NetworkScheduler.init(allocator) };
@@ -943,7 +1061,76 @@ pub const AgentFetches = struct {
         }
         if (self.live.items.len != 0) log.warn("{d} fetches outlived their agent", .{self.live.items.len});
         self.live.deinit(self.allocator);
+        // A relayed body nobody read to its end: the writer stops, and its
+        // readers' body fails.
+        for (self.relay_readers.items) |reader| {
+            if (reader.source) |source| {
+                source.producer = null;
+                source.fail(.{ .kind = .network });
+            }
+            reader.relay.cancel();
+            reader.relay.release();
+            self.allocator.destroy(reader);
+        }
+        self.relay_readers.deinit(self.allocator);
         self.scheduler.deinit();
+    }
+
+    /// A pipe of this agent fed from `relay` - a request body another thread
+    /// writes (service_worker_fetch.Upload) - as this agent's loop drains it
+    /// (`pump`). It takes the reader's reference to `relay`; on failure that
+    /// stays the caller's.
+    pub fn readRelay(self: *AgentFetches, relay: *BodyRelay) Allocator.Error!*body_pipe.BodyPipe {
+        const reader = try self.allocator.create(RelayReader);
+        errdefer self.allocator.destroy(reader);
+        const source = try PipeSource.create(self.allocator);
+        // No pause: the writer keeps no backpressure (BodyRelay).
+        source.producer = .{ .context = reader, .cancel = RelayReader.cancel };
+        const pipe = source.branch() catch |err| {
+            source.producer = null;
+            source.fail(.{ .kind = .network });
+            return err;
+        };
+        reader.* = .{ .relay = relay, .source = source };
+        self.relay_readers.append(self.allocator, reader) catch |err| {
+            // The pipe's release would cancel the relay through the
+            // producer: the relay is still the caller's.
+            source.producer = null;
+            pipe.release();
+            return err;
+        };
+        return pipe;
+    }
+
+    /// `pump`: what each relay's writer wrote since the last turn, into its
+    /// pipe; its end once it has ended. A reader whose source's last reader
+    /// went, or whose relay ended, goes.
+    fn drainRelayReaders(self: *AgentFetches) bool {
+        var progressed = false;
+        var i: usize = 0;
+        while (i < self.relay_readers.items.len) {
+            const reader = self.relay_readers.items[i];
+            const ended = if (reader.source) |source| blk: {
+                const before = reader.relay.drained;
+                const end = reader.relay.drainInto(source);
+                if (reader.relay.drained != before) progressed = true;
+                // The delivery may have cancelled it (`RelayReader.cancel`).
+                break :blk end != .open or reader.source == null;
+            } else true;
+            if (!ended) {
+                i += 1;
+                continue;
+            }
+            // drainInto finished or failed the source, which let its
+            // producer go - and may have freed it, once its last reader went
+            // in that delivery; a cancelled one's producer went first. The
+            // source is not touched again.
+            _ = self.relay_readers.orderedRemove(i);
+            reader.relay.release();
+            self.allocator.destroy(reader);
+            progressed = true;
+        }
+        return progressed;
     }
 
     /// The event loop's network step: one turn's progress for every fetch of
@@ -968,7 +1155,13 @@ pub const AgentFetches = struct {
             const f = self.live.items[i];
             if (f.askServiceWorker()) progressed = true;
             if (f.drainRelay()) progressed = true;
+            if (f.pumpUpload()) progressed = true;
+            if (f.awaitRequestBody()) progressed = true;
+            if (f.awaitDocumentResource()) progressed = true;
         }
+        // Request bodies other threads write for this agent's service
+        // worker realms (`readRelay`).
+        if (self.drainRelayReaders()) progressed = true;
 
         // One at a time, from the front afresh: a client may start or
         // terminate fetches from its callbacks.
@@ -977,6 +1170,8 @@ pub const AgentFetches = struct {
                 var outcome = f.outcome.?;
                 f.outcome = null;
                 if (f.collect) outcome = AsyncFetch.settleCollected(outcome);
+                // The whole response, for the document that keeps it.
+                f.job.keepForDocument(&outcome);
                 f.delivered = true;
                 // If it is over already, the next round tells the client so.
                 f.client.done(f.client.context, outcome);
@@ -1126,6 +1321,6 @@ pub const AgentFetches = struct {
     /// The agent's fetches that have not ended. While there are any, its
     /// event loop has work: it must keep turning, and not sleep through them.
     pub fn inFlight(self: *const AgentFetches) usize {
-        return self.live.items.len;
+        return self.live.items.len + self.relay_readers.items.len;
     }
 };

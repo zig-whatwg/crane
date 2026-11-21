@@ -65,6 +65,7 @@ const Page = struct {
     fn open() !Page {
         const isolate = try test_agent.open(.{});
         const realm = try test_agent.windowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = test_agent.agent(),
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

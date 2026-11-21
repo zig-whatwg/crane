@@ -46,6 +46,7 @@ fn setup() !void {
 
 fn windowRealm(agent: *protocol.Agent, parent: ?runtime.Context) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

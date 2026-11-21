@@ -39,7 +39,7 @@ pub const Created = struct {
 
 /// What HTMLIFrameElement supplies.
 pub const Implementation = struct {
-    create: *const fn (allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet) ?Created,
+    create: *const fn (allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet, noopener: bool) ?Created,
     /// HTML "definitely close" the top-level traversable whose active window
     /// is `window`: false when `window` is not a top-level traversable's.
     definitely_close: *const fn (window: *runtime.Instance) bool,
@@ -121,10 +121,15 @@ pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noo
 /// sandboxing flag set is
 /// `popup_sandboxing_flags` ("the rules for choosing a navigable" step 8.9,
 /// dom.sandboxing.popupSandboxingFlags) - the creation sandboxing flags of
-/// that document and of every navigation in it. Null when none can be made.
-pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet) ?Created {
+/// that document and of every navigation in it. With `noopener` ("the rules
+/// for choosing a navigable" step 8.7: a new top-level traversable "given
+/// null" opener) the initial about:blank document has no creator: a new
+/// policy container ("create a new browsing context and document" given a
+/// null creator), though it keeps the opener's origin, as the browsers do
+/// (HTMLIFrameElement.createAuxiliaryNavigable). Null when none can be made.
+pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet, noopener: bool) ?Created {
     const impl = implementation.get() orelse return null;
-    return impl.create(allocator, opener_browsing_context, is_popup, popup_sandboxing_flags);
+    return impl.create(allocator, opener_browsing_context, is_popup, popup_sandboxing_flags, noopener);
 }
 
 /// HTML "definitely close" the top-level traversable whose active window is
@@ -221,7 +226,7 @@ test "without an installed implementation no navigable is made or closed" {
     try std.testing.expect(!isInstalled());
     // Never dereferenced: with no implementation nothing reads it.
     var opener: u8 = 0;
-    try std.testing.expect(create(std.testing.allocator, &opener, false, .empty) == null);
+    try std.testing.expect(create(std.testing.allocator, &opener, false, .empty, false) == null);
     // Never dereferenced either.
     var window: runtime.Instance = undefined;
     try std.testing.expect(!definitelyClose(&window));

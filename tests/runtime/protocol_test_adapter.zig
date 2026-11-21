@@ -126,7 +126,9 @@ pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
 /// No engine: no realm, so none that exposes a [SecureContext] construct
-/// it was asked to hide (WindowRealmOptions.secure_context).
+/// it was asked to hide (WindowRealmOptions.secure_context), nor a
+/// SharedArrayBuffer it was asked to delete
+/// (WindowRealmOptions.agent_cluster_cross_origin_isolated).
 /// Nor one to adopt (WindowRealmOptions.auxiliary: [reuse_window_proxy] is
 /// unsupported here, so the host keeps one Window per navigable).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {

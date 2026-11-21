@@ -103,6 +103,7 @@ fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) 
     // fallback when a blob is rejected.
     if (from_snapshot) try std.testing.expect(ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent))));
     const window = if (kind != .worker) try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.testing.allocator,
         .from_snapshot = from_snapshot,
@@ -114,12 +115,14 @@ fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) 
     const realm = switch (kind) {
         .window => window.?,
         .worker => (try engine.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "https://wj1.test/worker.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
             .allocator = std.testing.allocator,
         })).realm,
         .worklet => (try engine.createWorkletRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .global = .paint,
             .owner = window.?,
             .api_base_url = "https://wj1.test/",
@@ -1115,6 +1118,7 @@ const FirstWasmDelivery = struct {
         const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
         defer engine.destroyAgent(agent);
         const realm = try engine.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.testing.allocator,
             .from_snapshot = false,
@@ -1177,6 +1181,7 @@ const FirstWasmDelivery = struct {
         const agent = try engine.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
         defer engine.destroyAgent(agent);
         const realm = (try engine.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "https://wj1.test/receiver.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),

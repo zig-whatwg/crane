@@ -92,6 +92,7 @@ pub const request_client = @import("request_client.zig");
 /// Service Workers "Handle Fetch", as fetch reaches it: the request's route,
 /// the call its answer arrives on, the relay a response body crosses on.
 pub const service_worker_fetch = @import("service_worker_fetch.zig");
+pub const document_resources = @import("document_resources.zig");
 pub const ServiceWorkerRoute = service_worker_fetch.Route;
 pub const RequestClient = request_client.RequestClient;
 pub const populateRequestFromClient = request_client.populateRequestFromClient;
@@ -170,6 +171,7 @@ test {
     _ = request;
     _ = request_client;
     _ = service_worker_fetch;
+    _ = document_resources;
     _ = policy_container;
     _ = cross_origin_policies;
     _ = response;

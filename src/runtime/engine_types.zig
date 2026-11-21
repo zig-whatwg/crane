@@ -325,6 +325,15 @@ pub const WorkerRealmOptions = struct {
     /// exposes no [SecureContext] interface object or member (WebIDL
     /// 3.3.13). True, the default, keeps every construct exposed, as before.
     secure_context: bool = true,
+    /// HTML "create a new realm" step 5 (engine.WindowRealmOptions has the
+    /// same field): whether the worker agent's agent cluster has a
+    /// cross-origin isolation mode other than "none" as the realm is made -
+    /// a dedicated worker's cluster is its owner's ("obtain a worker/worklet
+    /// agent" step 3); a shared or service worker's is its own, as the host
+    /// decides it (html.worker_host). False: the engine deletes the global's
+    /// SharedArrayBuffer property once the global object exists. No default:
+    /// every caller decides.
+    agent_cluster_cross_origin_isolated: bool,
 };
 
 /// A worker realm and its global object.
@@ -372,6 +381,13 @@ pub const WorkletRealmOptions = struct {
     on_realm: ?*const fn (data: ?*anyopaque, realm: Context) void = null,
     /// Passed to `on_realm`.
     data: ?*anyopaque = null,
+    /// HTML "create a new realm" step 5 (engine.WindowRealmOptions has the
+    /// same field): whether the worklet agent's agent cluster - its owner's
+    /// ("obtain a worker/worklet agent" step 3) - has a cross-origin
+    /// isolation mode other than "none". False: the engine deletes the
+    /// global's SharedArrayBuffer property once the global object exists. No
+    /// default: every caller decides.
+    agent_cluster_cross_origin_isolated: bool,
 };
 
 /// A worklet realm and its global object.

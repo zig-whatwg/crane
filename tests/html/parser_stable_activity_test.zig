@@ -35,6 +35,7 @@ fn selectionOrder() !void {
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .allocator = testing.allocator, .hooks = &.{} });
     defer engine.destroyAgent(agent);
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,
@@ -146,6 +147,7 @@ fn continuationEnd(ending: Ending) !void {
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .allocator = testing.allocator, .hooks = &.{} });
     defer engine.destroyAgent(agent);
     const parent = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,
@@ -155,6 +157,7 @@ fn continuationEnd(ending: Ending) !void {
     });
     defer engine.destroyWindowRealm(parent, .global_detached);
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,

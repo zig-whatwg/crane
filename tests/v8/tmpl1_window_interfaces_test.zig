@@ -216,6 +216,7 @@ fn workerInterfaceCheck(comptime secure: bool) []const u8 {
 /// The checks in every kind of Window realm of `agent`.
 fn checkEveryRealmKind(agent: *protocol.Agent, from_snapshot: bool) !void {
     const page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,
@@ -280,6 +281,7 @@ const Frame = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *Frame = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = self.from_snapshot,
@@ -404,6 +406,7 @@ test "an isolate restored from the snapshot makes an interface's template when a
     const restored = (try SnapshotAgent.open()) orelse return error.SkipZigTest;
     defer restored.close();
     const page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = restored.agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = true,
@@ -437,6 +440,7 @@ test "an isolate made without the snapshot makes an interface's template when a 
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     const page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -466,7 +470,7 @@ test "a dedicated worker's realm has the interface objects a dedicated worker ex
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     {
-        const made = try protocol.createWorkerRealm(agent, &.{ .global = .dedicated, .url = "https://tmpl1.test/worker.js", .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+        const made = try protocol.createWorkerRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = .dedicated, .url = "https://tmpl1.test/worker.js", .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
         defer protocol.destroyWorkerRealm(made.realm, null, null);
         const count = templateCount(agent);
         if (count >= 60) std.debug.print("{d} templates after a worker realm that read nothing\n", .{count});
@@ -475,7 +479,7 @@ test "a dedicated worker's realm has the interface objects a dedicated worker ex
         try expectEval(made.realm, workerInterfaceCheck(true), "ok");
         try testing.expect(v8.template_registry.getTemplateForIsolate("TextDecoder", @ptrCast(@alignCast(agent))) != null);
     }
-    const insecure = try protocol.createWorkerRealm(agent, &.{ .global = .dedicated, .url = "http://tmpl1.test/worker.js", .secure_context = false, .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+    const insecure = try protocol.createWorkerRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = .dedicated, .url = "http://tmpl1.test/worker.js", .secure_context = false, .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
     defer protocol.destroyWorkerRealm(insecure.realm, null, null);
     try expectEval(insecure.realm, workerInterfaceCheck(false), "ok");
 }

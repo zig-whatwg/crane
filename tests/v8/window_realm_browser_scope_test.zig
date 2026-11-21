@@ -45,6 +45,7 @@ test "a window realm's Browser is recorded before its Window is made, and a fram
 
     var page_seen: Seen = .{};
     const page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -63,6 +64,7 @@ test "a window realm's Browser is recorded before its Window is made, and a fram
 
     var frame_seen: Seen = .{};
     const frame = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
