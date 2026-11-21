@@ -53,6 +53,9 @@ pub fn fetch(
         // blocking fetch's request has a byte body), so it is a network
         // error.
         .request_body => step = try job.resumeRequestBody(),
+        // A preloaded response candidate still pending: nothing here can wait
+        // for it, so the request is fetched.
+        .document_resource => step = try job.abandonDocumentResource(),
         .done => return job.takeResult(),
         .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
         .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(abandonUpload(call).wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {

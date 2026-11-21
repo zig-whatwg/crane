@@ -73,6 +73,10 @@ pub const RequestClient = struct {
     /// Fetch" step 10): set only while a service worker controls the
     /// settings object. BORROWED: its Browser outlives every fetch.
     service_worker: ?request_mod.ServiceWorkerRoute = null,
+    /// A Window's document's resources, which Fetch step 11 consumes a
+    /// preload from (InternalRequest.document_resources). BORROWED: asked
+    /// only at a fetch's start. Null for any other global.
+    document_resources: ?request_mod.DocumentResourcesRoute = null,
     /// SRI §3.8.3. BORROWED with the CSP reporter's client lifetime.
     integrity_violation_reporter: ?request_mod.IntegrityViolationReporter = null,
     /// Fetch 3.7's CORP violation reports. BORROWED with the CSP reporter's
@@ -180,6 +184,8 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // its client's active service worker - one the client has when it is
     // populated.
     if (request.service_worker == null) request.service_worker = client.service_worker;
+    // Fetch step 11 asks the Window client's document's resources.
+    if (request.document_resources == null) request.document_resources = client.document_resources;
     if (request.integrity_violation_reporter == null) request.integrity_violation_reporter = client.integrity_violation_reporter;
     if (request.coep_violation_reporter == null) request.coep_violation_reporter = client.coep_violation_reporter;
 }

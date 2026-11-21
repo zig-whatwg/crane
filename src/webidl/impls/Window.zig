@@ -439,6 +439,7 @@ pub fn installHooks() void {
         .origin = &settingsOrigin,
         .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
+        .associated_document = &settingsAssociatedDocument,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
@@ -590,6 +591,13 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
     const internal = getInternal(instance) orelse return null;
     return &internal.reporting;
+}
+
+/// The settings object's associated Document (HTML 7.2.2.1), for Fetch step
+/// 11's map of preloaded resources.
+fn settingsAssociatedDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.document;
 }
 
 fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fetches.FetchGroup {

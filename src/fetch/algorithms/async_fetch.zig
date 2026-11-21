@@ -98,6 +98,9 @@ pub const AsyncFetch = struct {
     /// The `.request_body` step: HTTP fetch step 4 waits for the request's
     /// stream body to arrive whole (`pump` asks each turn).
     awaiting_request_body: bool = false,
+    /// The `.document_resource` step: main fetch step 12 waits for its
+    /// preloaded response candidate (`pump` asks each turn).
+    awaiting_document_resource: bool = false,
     /// Handle Fetch 13.3.4's race, while the call races the network (and,
     /// when the network's response won, until its body has arrived).
     race: Race = .{},
@@ -259,6 +262,9 @@ pub const AsyncFetch = struct {
         };
         fetches.live.append(fetches.allocator, self) catch return FetchError.OutOfMemory;
 
+        // A client that takes the whole body: its response may be kept for
+        // its document (FetchJob.keepForDocument).
+        job.keeps_whole_body = collect;
         self.advance(job.start());
         return self;
     }
@@ -497,6 +503,15 @@ pub const AsyncFetch = struct {
                     self.track_body_end = arriving and (self.job.awaitsBodyEnd() or self.race_owner != null);
                     return;
                 },
+                .document_resource => {
+                    // Asked again at every turn of the loop (`pump`).
+                    if (self.job.documentResourceReady()) {
+                        next = self.job.resumeDocumentResource();
+                        continue;
+                    }
+                    self.awaiting_document_resource = true;
+                    return;
+                },
                 .request_body => {
                     // The body's end resumes it (`awaitRequestBody`).
                     if (!self.job.requestBodyArriving() or self.requestBodyEnded()) {
@@ -672,6 +687,15 @@ pub const AsyncFetch = struct {
             .bytes => true,
             .body => |body| if (body.pipe) |pipe| pipe.state != .open else true,
         };
+    }
+
+    /// `pump`: the `.document_resource` step's wait, over once the
+    /// candidate's fetch has its response (or failed).
+    fn awaitDocumentResource(self: *AsyncFetch) bool {
+        if (!self.awaiting_document_resource or !self.job.documentResourceReady()) return false;
+        self.awaiting_document_resource = false;
+        self.advance(self.job.resumeDocumentResource());
+        return true;
     }
 
     /// `pump`: the `.request_body` step's wait, over once the body has
@@ -1118,6 +1142,7 @@ pub const AgentFetches = struct {
             if (f.drainRelay()) progressed = true;
             if (f.pumpUpload()) progressed = true;
             if (f.awaitRequestBody()) progressed = true;
+            if (f.awaitDocumentResource()) progressed = true;
         }
         // Request bodies other threads write for this agent's service
         // worker realms (`readRelay`).
@@ -1130,6 +1155,8 @@ pub const AgentFetches = struct {
                 var outcome = f.outcome.?;
                 f.outcome = null;
                 if (f.collect) outcome = AsyncFetch.settleCollected(outcome);
+                // The whole response, for the document that keeps it.
+                f.job.keepForDocument(&outcome);
                 f.delivered = true;
                 // If it is over already, the next round tells the client so.
                 f.client.done(f.client.context, outcome);

@@ -547,10 +547,11 @@ fn unblockRenderingFor(load: *Load) void {
 /// preload steps' fetch, then `error` at the element for a network error and
 /// `load` otherwise. The load's id, or null when nothing is fetched.
 ///
-/// Not modelled, stated: the document's map of preloaded resources, which a
-/// later fetch of the same resource would consume instead of the network.
-/// A preload fetches, and fires its event; the fetch that would have used it
-/// goes to the network again.
+/// Steps 6-7 and 11-12, the preload entry and its commit to the document's
+/// map of preloaded resources, are the request's (`link_preload`): Fetch
+/// step 11 makes the entry, and the response handed over whole fills it
+/// (fetch.internal.document_resources, dom.document_resources), for a later
+/// fetch of the same preload key to consume.
 pub fn startPreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     return startLinkFetch(element, .preload, options, destination);
 }
@@ -1101,6 +1102,10 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     // Prefetch step 5. Fetch consumes this for CSP's union check.
     // It is distinct from Resource Timing's initiatorType.
     if (load.kind == .prefetch) request.initiator = .prefetch;
+    // HTML "preload": the response goes into the document's map of
+    // preloaded resources (steps 6-7 and 11-12: dom.document_resources), for
+    // a later fetch of the same preload key to consume (Fetch step 11).
+    if (load.kind == .preload and parent == null) request.link_preload = true;
     // "Set request's client to options's environment": the element's
     // relevant settings object - its realm's global's.
     if (globalOf(load.realm)) |global| {

@@ -4778,6 +4778,9 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.script_delivery_continuation_suppressed = true;
     internal.render_blocking_elements.clear();
+    // Its resources serve no later fetch (the entries live on while a fetch
+    // fills or waits on one).
+    internal.resources.clear();
     internal.salvageable = false;
     internal.destroyed = true;
     internal.kept_in_bfcache = false;

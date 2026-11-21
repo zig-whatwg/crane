@@ -37,6 +37,7 @@ const main_fetch = @import("main_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
+const document_resources = @import("../internal/document_resources.zig");
 const cache_transaction = @import("../cache/transaction.zig");
 
 /// Error types for fetch.
@@ -139,6 +140,25 @@ pub const FetchJob = struct {
     /// HTTP fetch step 4's makeCORSPreflight, while the `.request_body` step
     /// waits for a stream body's bytes (`resumeRequestBody`).
     request_body_preflight: bool = false,
+    /// Fetch step 11's preloaded response candidate: the document resource
+    /// whose response answers this fetch at main fetch step 12 (the job's
+    /// reference), until it is served. Its makeCORSPreflight, should the
+    /// blocking driver give up on it (`abandonDocumentResource`).
+    document_entry: ?*document_resources.Entry = null,
+    document_preflight: bool = false,
+    /// The fetch was answered from its document's resources: it reports no
+    /// Resource Timing entry of its own (document_resources.zig).
+    served_from_document: bool = false,
+    /// The entry this fetch's response fills for its document - a preload's,
+    /// or a loaded resource's (the job's reference), until the response is
+    /// handed over whole (`keepForDocument`).
+    document_registration: ?*document_resources.Entry = null,
+    /// The client takes the response with its whole body (AsyncFetch.start):
+    /// only such a response is kept for the document.
+    keeps_whole_body: bool = false,
+    /// The entry this fetch filled was upgraded to render-blocking before it
+    /// was let go (`upgradesRenderBlocking`).
+    render_blocking_upgraded: bool = false,
     /// Fetch response handover step 4's report timing steps, waiting for the
     /// end of the body of the response handed over (`handOverTiming`).
     deferred_timing: ?DeferredTiming = null,
@@ -180,6 +200,11 @@ pub const FetchJob = struct {
         /// first, as fetch() reads a stream body it sends straight to the
         /// network: resume with resumeRequestBody once the pipe has ended.
         request_body,
+        /// Main fetch step 12: the preloaded response candidate is
+        /// "pending" - its document resource's fetch is under way. Resume
+        /// with resumeDocumentResource once it is not
+        /// (`documentResourceReady`).
+        document_resource,
         /// Fetch has its response; `takeResult` hands it over.
         done,
     };
@@ -240,6 +265,13 @@ pub const FetchJob = struct {
         if (self.response) |response| response.deinit();
         if (self.pending_response) |response| response.deinit();
         self.dropManualRedirect();
+        // A document resource not served, or never filled: its entry is
+        // let go - one this fetch was to fill has no response.
+        if (self.document_entry) |entry| entry.release();
+        if (self.document_registration) |entry| {
+            entry.abandon();
+            entry.release();
+        }
         // A body that never ended: nothing is reported.
         self.dropDeferredTiming();
         self.params.deinit();
@@ -304,6 +336,11 @@ pub const FetchJob = struct {
                 }
             }
         }
+
+        // Step 11: a preloaded response candidate from the Window client's
+        // document - or, the document keeping nothing that answers it, the
+        // entry this fetch fills for the document.
+        self.consumeDocumentResource();
 
         // Step 17: main fetch - for every scheme. Its step 12 decides
         // between scheme fetch (data:, about:, blob:, with the tainting and
@@ -509,7 +546,18 @@ pub const FetchJob = struct {
             .http_fetch => false,
             .http_fetch_with_cors_preflight => true,
         };
+        // Step 12's first statement: the preloaded response candidate, not
+        // the network (nor a service worker).
+        if (self.document_entry != null) {
+            self.document_preflight = make_cors_preflight;
+            return self.serveDocumentResource();
+        }
+        return self.httpFetchStep(make_cors_preflight);
+    }
 
+    /// Main fetch step 12's HTTP fetch, from step 3 - a service worker -
+    /// then step 4, the network.
+    fn httpFetchStep(self: *FetchJob, make_cors_preflight: bool) FetchError!Step {
         // HTTP fetch step 3: a service worker, before any request goes out
         // (a preflight is the network's, step 4.1).
         const handled = http_fetch.handleFetchStart(self.params) catch |err| return self.httpFetchFailed(err);
@@ -521,6 +569,76 @@ pub const FetchJob = struct {
             return .{ .service_worker = started.call };
         }
         return self.httpFetchFromNetwork(make_cors_preflight);
+    }
+
+    /// Fetch step 11, at the fetch's start, while its client is alive: the
+    /// document's preload with this request's preload key - or a resource of
+    /// the loading document that answers it - becomes the preloaded
+    /// response candidate (`document_entry`). Otherwise a request the
+    /// document keeps (a preload's, a loading document's subresource whose
+    /// whole body its client reads) gets the entry it fills
+    /// (`document_registration`). The route is read here alone.
+    fn consumeDocumentResource(self: *FetchJob) void {
+        const route = self.request.document_resources orelse return;
+        self.request.document_resources = null;
+        if (!document_resources.step11Applies(self.request)) return;
+        if (route.consume(route.context, self.request)) |entry| {
+            self.document_entry = entry;
+            return;
+        }
+        if (!self.keeps_whole_body) return;
+        self.document_registration = route.register(route.context, self.request);
+    }
+
+    /// Main fetch step 12, "preloaded response candidate is non-null":
+    /// "wait until it is not pending" (`.document_resource`), then its
+    /// response is main fetch's.
+    fn serveDocumentResource(self: *FetchJob) FetchError!Step {
+        const entry = self.document_entry orelse return self.httpFetchStep(self.document_preflight);
+        if (entry.state == .pending) return .document_resource;
+        self.document_entry = null;
+        defer entry.release();
+        // Its fetch went with no response: this one fetches the resource.
+        if (entry.state == .abandoned) return self.httpFetchStep(self.document_preflight);
+        const response = entry.responseFor(self.allocator) catch return FetchError.OutOfMemory;
+        self.served_from_document = true;
+        return self.mainFetchFetched(response);
+    }
+
+    /// Whether the preloaded response candidate is no longer pending.
+    pub fn documentResourceReady(self: *const FetchJob) bool {
+        const entry = self.document_entry orelse return true;
+        return entry.state != .pending;
+    }
+
+    /// Carry on from the `.document_resource` step.
+    pub fn resumeDocumentResource(self: *FetchJob) FetchError!Step {
+        return self.serveDocumentResource();
+    }
+
+    /// The `.document_resource` step, for a driver that cannot wait (the
+    /// blocking fetch): the candidate is let go, and the request is fetched.
+    pub fn abandonDocumentResource(self: *FetchJob) FetchError!Step {
+        if (self.document_entry) |entry| {
+            if (entry.state != .pending) return self.serveDocumentResource();
+            entry.release();
+            self.document_entry = null;
+        }
+        return self.httpFetchStep(self.document_preflight);
+    }
+
+    /// The response handed over, with its whole body (a collected fetch's,
+    /// `result`): the entry this fetch fills for its document takes a copy -
+    /// HTML "preload" step 11.5 ("set entry's response to response"), or the
+    /// document's reuse of what it loaded. A failed fetch fails it.
+    pub fn keepForDocument(self: *FetchJob, result: *const (FetchError!FetchResult)) void {
+        const entry = self.document_registration orelse return;
+        self.document_registration = null;
+        self.render_blocking_upgraded = entry.upgrade_render_blocking;
+        defer entry.release();
+        const fetched = result.* catch return entry.abandon();
+        const copy = fetched.response.clone() catch return entry.abandon();
+        entry.fulfill(copy);
     }
 
     /// Whether the request's body is a stream whose bytes are still
@@ -923,10 +1041,23 @@ pub const FetchJob = struct {
         self.deferred_timing = null;
     }
 
+    /// Whether this fetch's entry - a preload's - was consumed by a
+    /// render-blocking fetch while it was in flight. The entry is let go once
+    /// the response is handed over, so a preload whose report comes after
+    /// its body's end keeps its answer in `render_blocking_upgraded`.
+    fn upgradesRenderBlocking(self: *const FetchJob) bool {
+        if (self.render_blocking_upgraded) return true;
+        const entry = self.document_registration orelse return false;
+        return entry.upgrade_render_blocking;
+    }
+
     /// 4.2.1 and 4.3: a request whose report timing steps run - one with an
     /// initiator type, whose client's global hears it, and an HTTP(S) URL.
     fn reportsTiming(self: *const FetchJob) bool {
         const request = self.request;
+        // A fetch its document's resources answered: the resource has its
+        // entry, its first fetch's (document_resources.zig).
+        if (self.served_from_document) return false;
         if (request.initiator_type == null or request.timing_reporter == null) return false;
         const url = request.getUrl();
         return std.mem.startsWith(u8, url, "http:") or std.mem.startsWith(u8, url, "https:");
@@ -1055,8 +1186,19 @@ pub const FetchJob = struct {
         var opaque_timing: ?FetchTimingInfo = null;
         defer if (opaque_timing) |*o| o.deinit();
         var reported: *const FetchTimingInfo = timing_info;
+        // A preload a render-blocking fetch consumed while it was in flight
+        // reports "blocking" (document_resources.Entry.
+        // upgrade_render_blocking, Chrome's
+        // MakePreloadedResourceBlockIfNeeded) - a shallow copy, borrowed for
+        // the report.
+        var upgraded: FetchTimingInfo = undefined;
+        if (self.upgradesRenderBlocking() and !timing_info.render_blocking) {
+            upgraded = timing_info.*;
+            upgraded.render_blocking = true;
+            reported = &upgraded;
+        }
         if (!facts.timing_allow_passed) {
-            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, timing_info);
+            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, reported);
             reported = &opaque_timing.?;
         }
         // 4.2.8. Mark resource timing (the reporter's global does).
@@ -1192,10 +1334,12 @@ const TestTimingReports = struct {
     initiator: ?internal_request.InitiatorType = null,
     status: u16 = 0,
     start_time: f64 = 0,
+    render_blocking: bool = false,
 
     fn report(context: *anyopaque, timing: *const internal_request.TimingReport) void {
         const self: *TestTimingReports = @ptrCast(@alignCast(context));
         self.count += 1;
+        self.render_blocking = timing.timing_info.render_blocking;
         @memcpy(self.url[0..timing.url.len], timing.url);
         self.url_len = timing.url.len;
         self.initiator = timing.initiator_type;
@@ -1218,6 +1362,129 @@ fn testAnswer(status: u16) NetworkResponse {
         .remote_ip = null,
         .remote_port = null,
     };
+}
+
+/// A Window client's document as Fetch step 11 reaches it: one entry, which
+/// a request consumes or the next request fills.
+const TestDocument = struct {
+    entry: ?*document_resources.Entry = null,
+    preload: bool = false,
+
+    fn route(self: *TestDocument) internal_request.DocumentResourcesRoute {
+        return .{ .context = self, .consume = consume, .register = register };
+    }
+
+    fn consume(context: *anyopaque, request: *const InternalRequest) ?*document_resources.Entry {
+        const self: *TestDocument = @ptrCast(@alignCast(context));
+        const entry = self.entry orelse return null;
+        if (request.render_blocking and entry.state == .pending) entry.upgrade_render_blocking = true;
+        return entry.retain();
+    }
+
+    fn register(context: *anyopaque, request: *const InternalRequest) ?*document_resources.Entry {
+        const self: *TestDocument = @ptrCast(@alignCast(context));
+        _ = request;
+        if (self.entry != null) return null;
+        self.entry = document_resources.Entry.create(std.testing.allocator, self.preload) catch return null;
+        return self.entry.?.retain();
+    }
+
+    fn deinit(self: *TestDocument) void {
+        if (self.entry) |entry| entry.release();
+    }
+};
+
+fn documentRequest(document: *TestDocument, reports: *TestTimingReports) !*InternalRequest {
+    const request = try InternalRequest.init(std.testing.allocator, "https://a.test/s.css");
+    try request.setOrigin("https://a.test");
+    request.mode = .no_cors;
+    request.destination = .style;
+    request.initiator_type = .link;
+    request.timing_reporter = .{ .context = reports, .report = &TestTimingReports.report };
+    request.document_resources = document.route();
+    return request;
+}
+
+test "Fetch step 11: a preload's response answers a later request of its key, with no network step and no timing report of its own" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{ .preload = true };
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    // The preload: its whole response, handed over, fills the entry.
+    const preload = try documentRequest(&document, &reports);
+    defer preload.deinit();
+    preload.link_preload = true;
+    const producer = try FetchJob.create(allocator, preload, false, .{});
+    defer producer.destroy();
+    producer.keeps_whole_body = true;
+    try std.testing.expect(try producer.start() == .network);
+    // A render-blocking request consumes it while it is in flight: its
+    // pending entry, which then waits.
+    const sheet = try documentRequest(&document, &reports);
+    defer sheet.deinit();
+    sheet.render_blocking = true;
+    const consumer = try FetchJob.create(allocator, sheet, false, .{});
+    defer consumer.destroy();
+    try std.testing.expect(try consumer.start() == .document_resource);
+    try std.testing.expect(!consumer.documentResourceReady());
+
+    try std.testing.expect(try producer.resumeNetwork(testAnswer(200)) == .done);
+    var produced: FetchError!FetchResult = producer.takeResult();
+    producer.keepForDocument(&produced);
+    if (produced) |*r| r.deinit() else |_| {}
+    // The preload's report: once, and "blocking" (Chrome's upgrade).
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    try std.testing.expect(reports.render_blocking);
+
+    try std.testing.expect(consumer.documentResourceReady());
+    try std.testing.expect(try consumer.resumeDocumentResource() == .done);
+    var result = consumer.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 200), result.response.status);
+    // The consumer reported nothing.
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    // The route is read at the start alone.
+    try std.testing.expect(sheet.document_resources == null);
+}
+
+test "a request whose candidate's fetch went with no response fetches the resource itself" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{};
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    const first = try documentRequest(&document, &reports);
+    defer first.deinit();
+    const producer = try FetchJob.create(allocator, first, false, .{});
+    producer.keeps_whole_body = true;
+    try std.testing.expect(try producer.start() == .network);
+    const second = try documentRequest(&document, &reports);
+    defer second.deinit();
+    const consumer = try FetchJob.create(allocator, second, false, .{});
+    defer consumer.destroy();
+    try std.testing.expect(try consumer.start() == .document_resource);
+    // The first fetch is terminated (its element removed): no response.
+    producer.destroy();
+    try std.testing.expectEqual(document_resources.Entry.State.abandoned, document.entry.?.state);
+    try std.testing.expect(try consumer.resumeDocumentResource() == .network);
+    try std.testing.expect(try consumer.resumeNetwork(testAnswer(200)) == .done);
+    var result = consumer.takeResult();
+    defer result.deinit();
+    // It fetched, so it reports.
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+}
+
+test "the blocking driver does not wait for a pending candidate: it fetches" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{};
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    document.entry = try document_resources.Entry.create(allocator, false);
+    const request = try documentRequest(&document, &reports);
+    defer request.deinit();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .document_resource);
+    try std.testing.expect(try job.abandonDocumentResource() == .network);
 }
 
 test "fetch response handover: a request with an initiator type reports its timing to its client's global, once" {
