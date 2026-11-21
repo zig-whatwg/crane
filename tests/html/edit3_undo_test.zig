@@ -203,6 +203,46 @@ test "typing merges into one undo step until the selection moves" {
     try helpers.onFreshThread(typingMerges);
 }
 
+/// A typing step keeps a run of characters typed one after another into
+/// one Text node as one insertion (src/html/execcommand/undo.zig recordText;
+/// Gecko's InsertTextTransaction::Merge). Undo and redo still take the whole
+/// step - after a burst, after a burst a caret move broke, in the middle of
+/// a Text, and over a space whose white-space fix-up records between the
+/// characters.
+fn typingBurstsReplayWhole() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // A burst at the end of a Text: one step.
+    try page.run("setupHost('<p>abc[]</p>'); for (const c of 'xyz') document.execCommand('insertText', false, c);");
+    try harness.expectEval(page, "hostHTML()", "<p>abcxyz</p>");
+    try harness.expectEval(page, "String(document.execCommand('undo')) + hostHTML()", "true<p>abc</p>");
+    try harness.expectEval(page, "String(document.execCommand('redo')) + hostHTML()", "true<p>abcxyz</p>");
+    try harness.expectEval(page, "String(document.execCommand('undo')) + hostHTML()", "true<p>abc</p>");
+    try harness.expectEval(page, "String(document.execCommand('undo')) + hostHTML()", "false<p>abc</p>");
+    // A burst a caret move broke: two steps, each whole.
+    try page.run("setupHost('<p>abc[]</p>'); for (const c of 'xy') document.execCommand('insertText', false, c); getSelection().collapse(host.firstChild.firstChild, 0); for (const c of 'qr') document.execCommand('insertText', false, c);");
+    try harness.expectEval(page, "hostHTML()", "<p>qrabcxy</p>");
+    try harness.expectEval(page, "document.execCommand('undo'); hostHTML()", "<p>abcxy</p>");
+    try harness.expectEval(page, "document.execCommand('undo'); hostHTML()", "<p>abc</p>");
+    try harness.expectEval(page, "document.execCommand('redo'); hostHTML()", "<p>abcxy</p>");
+    try harness.expectEval(page, "document.execCommand('redo'); hostHTML()", "<p>qrabcxy</p>");
+    try harness.expectEval(page, "document.execCommand('undo'); document.execCommand('undo'); hostHTML()", "<p>abc</p>");
+    // In the middle of a Text.
+    try page.run("setupHost('<p>a[]bc</p>'); for (const c of 'xy') document.execCommand('insertText', false, c);");
+    try harness.expectEval(page, "hostHTML()", "<p>axybc</p>");
+    try harness.expectEval(page, "document.execCommand('undo'); hostHTML()", "<p>abc</p>");
+    try harness.expectEval(page, "document.execCommand('redo'); hostHTML()", "<p>axybc</p>");
+    // Over a space: the fix-up's changes sit between the characters.
+    try page.run("setupHost('<p>abc[]</p>'); for (const c of 'd e') document.execCommand('insertText', false, c); globalThis.typed = hostHTML();");
+    try harness.expectEval(page, "document.execCommand('undo'); hostHTML()", "<p>abc</p>");
+    try harness.expectEval(page, "document.execCommand('redo'); String(hostHTML() === typed && typed.startsWith('<p>abcd'))", "true");
+}
+
+test "a typing burst kept as one insertion still undoes and redoes whole" {
+    try helpers.onFreshThread(typingBurstsReplayWhole);
+}
+
 fn destroyedDocumentLetsGo() !void {
     const page = try helpers.Page.open();
     defer page.close();
