@@ -79,6 +79,11 @@ pub const BrowserSide = struct {
         self.browser = browser;
         try host_bridge.addListener(browser, self.listener());
         self.listening = true;
+        // The tabs that exist already (the console's first tab, a WebDriver
+        // session's): the devtools thread hears of them as of new ones.
+        const tabs = try host_bridge.listTabs(browser, self.allocator);
+        defer host_bridge.freeTabs(self.allocator, tabs);
+        for (tabs) |t| self.sink.post(self.sink.context, self, .{ .tab_created = .{ .tab = t.id, .opener = t.opener, .opened_by_page = t.opened_by_page } });
     }
 
     /// Browser thread: detach every session and stop listening.
