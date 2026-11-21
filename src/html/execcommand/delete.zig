@@ -29,6 +29,7 @@ const whitespace = @import("whitespace.zig");
 const split_parent = @import("split_parent.zig");
 const dom = @import("dom");
 const overrides = @import("overrides.zig");
+const inline_formatting = @import("inline.zig");
 const block_formatting = @import("block.zig");
 const lists = @import("lists.zig");
 const indent = @import("indent.zig");
@@ -152,7 +153,21 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // dropped afterwards (overrides.restoreTypingStyle).
     const downstream_start = try common.lastEquivalentPoint(original_start);
     const typing_node = if (common.isText(downstream_start.node)) downstream_start.node else original_start.node;
-    const recorded = try overrides.recordCurrentStatesAndValues(edit, typing_node);
+    // A deletion that only merges two blocks (nothing formattable in the
+    // range) keeps the style where it starts, minus the link's own: see
+    // overrides.recordTypingStyleAcrossMerge (lane edit4, A04).
+    const merges_only = start_block != null and end_block != null and start_block.? != end_block.? and
+        (try inline_formatting.firstFormattableNode(edit)) == null;
+    // Across a merge the style is the first line's end - the upstream
+    // point, inside its last inline content (a forward delete's range starts
+    // after it): Blink's selection_to_delete_.Start() is that visible
+    // position's deep equivalent.
+    const upstream_start = try common.firstEquivalentPoint(original_start);
+    const merge_node = if (common.isText(upstream_start.node)) upstream_start.node else typing_node;
+    const recorded = if (merges_only)
+        try overrides.recordTypingStyleAcrossMerge(edit, merge_node)
+    else
+        try overrides.recordCurrentStatesAndValues(edit, typing_node);
     // Step 21: one editable Text node.
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);
@@ -478,7 +493,11 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         }
     }
     // Step 41.
-    try overrides.restoreTypingStyle(edit, recorded);
+    if (merges_only) {
+        try overrides.restoreTypingStyleAfterMerge(edit, recorded);
+    } else {
+        try overrides.restoreTypingStyle(edit, recorded);
+    }
 }
 
 /// The caret's place after a join: the spec's first equivalent point -

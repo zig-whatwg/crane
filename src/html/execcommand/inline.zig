@@ -135,6 +135,11 @@ fn parentElement(node: *Instance) !?*Instance {
 }
 
 /// The value of `element`'s attribute `name` in the scratch arena, or null.
+/// An a element with an href (a link).
+fn isLink(node: *Instance) !bool {
+    return (try isNamed(node, "a")) and try common.hasAttribute(node, "href");
+}
+
 fn attribute(edit: *Edit, element: *Instance, name: []const u8) !?[]const u8 {
     var value = (try interfaces.Element.call_getAttribute(element, DOMString.initInterned(name))) orelse return null;
     defer value.deinit(element.ctx.allocator);
@@ -911,8 +916,23 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     const new_value = new_value_in orelse return;
     // Step 4: an allowed child of span joins a matching sibling.
     if (try isAllowedChildOfName(node, "span")) {
-        if (try common.previousSibling(node)) |previous| try reorderModifiableDescendants(edit, previous, command, new_value);
-        if (try common.nextSibling(node)) |next| try reorderModifiableDescendants(edit, next, command, new_value);
+        // A link beside the node keeps its structure: its one styled child
+        // is not pulled out around it (lane edit4, A04). Typing "XY" after
+        // `<a href style=color:blue><b>foo</b></a>` with bold pending gives
+        // `<a ...><b>foo</b></a><b>XY</b>` in Firefox 160 and in Chrome 157
+        // (where it bolds the text), and Safari 27.2's `<b><a ...>foo</a>XY
+        // </b>` is the spec's reorder modifiable descendants
+        // (editing/other/typing-around-link-element-after-joining-
+        // paragraphs.html, wpt.fyi 2358bd4835). Of the browsers that bold
+        // the text, Chrome and Firefox: the majority (golden rule 2). Blink
+        // inserts the text after the anchor (InsertTextCommand,
+        // PositionAvoidingSpecialElementBoundary) and styles it alone.
+        if (try common.previousSibling(node)) |previous| {
+            if (!try isLink(previous)) try reorderModifiableDescendants(edit, previous, command, new_value);
+        }
+        if (try common.nextSibling(node)) |next| {
+            if (!try isLink(next)) try reorderModifiableDescendants(edit, next, command, new_value);
+        }
         const name = newParentName(command, new_value, try overrides.cssStylingFlag(edit), scratch(edit));
         _ = try wrap_mod.wrap(edit, &.{node}, ForceCriteria{ .edit = edit, .command = command, .new_value = new_value, .name = name });
     }
