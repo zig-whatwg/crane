@@ -856,6 +856,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try writeExempt(w, site, .needs_renderer);
     try writeExempt(w, site, .needs_decoder);
     try writeExempt(w, site, .follows_majority);
+    try writeExempt(w, site, .single_shipper);
     try writeVersus(w, site);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
@@ -1044,6 +1045,16 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         try writeNotCounted(w, listed.intentional or listed.test_bug or listed.needs_renderer or listed.needs_decoder, n);
         try w.print(" <a href=\"#exempt-follows-majority\">exempt because Crane follows the browser majority</a>: Crane already does what the majority of Chrome, Firefox and Safari does there (or what a recorded ruling decides), so no change in Crane can clear {s}.", .{if (n == 1) "it" else "them"});
     }
+    if (listed.single_shipper) {
+        // The user's 2026-11-21 5:58 AM ET ruling, choice (a): a file testing
+        // a feature only one browser ships, whose remaining failures hinge on
+        // a mechanism where Crane does what the other two browsers and the
+        // spec do, does not block; it comes off when a second browser ships
+        // the feature.
+        const n = exemptCount(site, .single_shipper);
+        try writeNotCounted(w, listed.intentional or listed.test_bug or listed.needs_renderer or listed.needs_decoder or listed.follows_majority, n);
+        try w.print(" <a href=\"#exempt-single-shipper\">exempt because only one browser ships the feature</a>: {s} on a mechanism where Crane does what the other two browsers and the specification do.", .{if (n == 1) "its remaining failures hinge" else "the remaining failures of each hinge"});
+    }
     try w.writeAll(" Per-subtest detail comes from the runner&rsquo;s result streams: ");
     if (site.detail_files > 0) {
         try html.num(w, site.detail_files);
@@ -1054,7 +1065,7 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         try w.writeAll("no file has it in this generation yet, so each file&rsquo;s section gives its counts.");
     }
     try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory, where each test file opens in place to its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
-    if (listed.intentional or listed.test_bug or listed.needs_renderer or listed.needs_decoder or listed.follows_majority) {
+    if (listed.intentional or listed.test_bug or listed.needs_renderer or listed.needs_decoder or listed.follows_majority or listed.single_shipper) {
         try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but ");
         var any = false;
         if (listed.intentional or listed.test_bug) {
@@ -1068,6 +1079,7 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
             .{ listed.needs_renderer, "it fails only because no renderer answers geometry" },
             .{ listed.needs_decoder, "it fails only because the platform has no decoder for its media" },
             .{ listed.follows_majority, "Crane&rsquo;s result is the browser majority&rsquo;s" },
+            .{ listed.single_shipper, "it tests a feature only one browser ships" },
         };
         for (more) |m| {
             if (!m[0]) continue;
@@ -1080,7 +1092,7 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try w.writeAll("</dl>\n</div>\n</section>\n");
 }
 
-const ExemptKinds = struct { intentional: bool = false, test_bug: bool = false, needs_renderer: bool = false, needs_decoder: bool = false, follows_majority: bool = false };
+const ExemptKinds = struct { intentional: bool = false, test_bug: bool = false, needs_renderer: bool = false, needs_decoder: bool = false, follows_majority: bool = false, single_shipper: bool = false };
 
 /// The status sentence's opening for a kind's count: "Not counted among them"
 /// for the first kind listed, "Nor is"/"Nor are" for each after it.
@@ -1103,6 +1115,7 @@ fn exemptKinds(site: *const Site) ExemptKinds {
         .needs_renderer => k.needs_renderer = true,
         .needs_decoder => k.needs_decoder = true,
         .follows_majority => k.follows_majority = true,
+        .single_shipper => k.single_shipper = true,
     };
     return k;
 }
@@ -1124,7 +1137,9 @@ fn exemptCount(site: *const Site, kind: model.ExemptionKind) u64 {
 /// failing assertion needs a layout box, and the assertion. Needs a decoder:
 /// why, the media it plays, and the assertion. Follows the majority: what
 /// Crane does, the browsers it matches, each browser's wpt.fyi result, the
-/// ruling when there is one, and when the entry is revisited.
+/// ruling when there is one, and when the entry is revisited. Only one browser
+/// ships the feature: which one, the mechanism Crane follows and its spec,
+/// each browser's wpt.fyi result, and when the entry is revisited.
 fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
     try w.writeAll("<p>");
     try html.text(w, e.why);
@@ -1209,6 +1224,23 @@ fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
             try html.text(w, e.revisit);
             try w.writeAll("</dd></div>");
         },
+        .single_shipper => {
+            try w.print("<div><dt>Ships the feature</dt><dd>{s}</dd></div><div><dt>Crane follows</dt><dd>", .{e.shipper.label()});
+            try html.text(w, e.mechanism);
+            try w.writeAll("</dd></div><div><dt>Spec</dt><dd><a href=\"");
+            try html.text(w, e.spec);
+            try w.writeAll("\">");
+            try html.text(w, e.spec);
+            try w.writeAll("</a></dd></div>");
+            inline for (comptime std.enums.values(model.Browser)) |b| {
+                try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
+                try html.text(w, e.result[@backingInt(b)]);
+                try w.writeAll("</dd></div>");
+            }
+            try w.writeAll("<div><dt>Revisit</dt><dd>");
+            try html.text(w, e.revisit);
+            try w.writeAll("</dd></div>");
+        },
     }
     try w.writeAll("</dl>\n");
 }
@@ -1238,6 +1270,10 @@ fn writeExempt(w: W, site: *const Site, kind: model.ExemptionKind) Error!void {
         .follows_majority => {
             if (!listed.follows_majority) return;
             try w.writeAll("<section class=\"front\" id=\"exempt-follows-majority\" aria-labelledby=\"exempt-follows-majority-h\">\n<h2 id=\"exempt-follows-majority-h\">Exempt: Crane follows the browser majority</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count although none of their subtests passes: Crane already does what the browsers do. Its result on each equals, subtest by subtest, that of the majority of Chrome, Firefox and Safari (or of the browsers a recorded ruling follows), and where the browsers and the specification disagree, Crane follows the browsers &mdash; so no change in Crane can clear the file. Each lists every browser&rsquo;s wpt.fyi result, the browsers Crane matches, the ruling when there is one, and when it is revisited: when the browsers change, the exemption ends. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+        },
+        .single_shipper => {
+            if (!listed.single_shipper) return;
+            try w.writeAll("<section class=\"front\" id=\"exempt-single-shipper\" aria-labelledby=\"exempt-single-shipper-h\">\n<h2 id=\"exempt-single-shipper-h\">Exempt: only one browser ships the feature</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count: each tests a feature only one of Chrome, Firefox and Safari ships, and its remaining failures hinge on a mechanism where Crane does what the other two browsers and the specification do &mdash; so the one browser that ships the feature is the only one whose result Crane could match, and only by giving up what the other two and the specification agree on. Each lists the browser that ships the feature, the mechanism Crane follows with its specification, every browser&rsquo;s wpt.fyi result, and when it is revisited: when a second browser ships the feature, the exemption ends. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
         },
     }
     for (site.exemptions) |*e| {
@@ -1706,6 +1742,7 @@ pub fn writeFileSection(w: W, gpa: std.mem.Allocator, site: *const Site, f: *con
             .needs_renderer => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate until a renderer answers geometry</p>\n",
             .needs_decoder => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate until a decoder plays its media</p>\n",
             .follows_majority => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate: Crane follows the browser majority</p>\n",
+            .single_shipper => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate: only one browser ships the feature</p>\n",
         });
         try writeEvidence(w, e);
         try w.writeAll("</div>\n");

@@ -302,89 +302,19 @@ fn isAlternate(element: *runtime.Instance, internal: *const InternalState) bool 
     return title.len != 0 and hasToken(rel, "alternate") and !internal.explicitly_enabled;
 }
 
-const LinkType = enum { none, stylesheet, preload, modulepreload, prefetch, icon };
-
-/// The `as` attribute's state, a potential destination, as a destination;
-/// null when it is in no state. "fetch" is the empty destination, which is
-/// not script-like.
-fn asDestination(as: ?[]const u8) ?Destination {
-    const value = as orelse return null;
-    if (std.ascii.eqlIgnoreCase(value, "fetch")) return .empty;
-    inline for (@typeInfo(Destination).@"enum".field_names, @typeInfo(Destination).@"enum".field_values) |field_name, field_value| {
-        if (field_value != @backingInt(Destination.empty) and keywordIs(field_name, value)) {
-            return @field(Destination, field_name);
-        }
-    }
-    return null;
-}
-
-/// The destination a preload of the `as` attribute's value fetches with: its
-/// state - one of the keywords `as` reflects (`potential_destinations`),
-/// ASCII case-insensitively - translated ("fetch" is the empty string), or
-/// null when it is in no state.
-///
-/// HTML's "translate a preload destination" returns null for every keyword
-/// but "fetch", "font", "image", "script", "style" and "track" - 8 of the 14
-/// keywords its own `as` attribute accepts (the module preload destinations)
-/// - and its preload then returns with no fetch and no event, so a page that
-/// sets one of them waits forever: fetch/api/request/destination/
-/// fetch-destination.https.html cannot finish (wpt.fyi at 71b58bb191: Chrome
-/// 30/30 and Safari 28/30 never reach the wait - their `as` reflects none of
-/// those values - and Firefox 29/30). Firefox preloads every value its `as`
-/// reflects, with that destination (nsNetUtil.cpp's kAsAttributeTable: json,
-/// audio, video and text among them). The user's ruling (2026-11-18): Crane
-/// takes Firefox's model - rel=preload runs for every value `as` accepts -
-/// and keeps its reflection (every potential destination).
-fn preloadDestination(as: ?[]const u8) ?Destination {
-    const value = as orelse return null;
-    for (potential_destinations) |keyword| {
-        if (std.ascii.eqlIgnoreCase(value, keyword)) return asDestination(keyword);
-    }
-    return null;
-}
-
-const Destination = @import("fetch").internal.Destination;
-
-/// The preload link type's "matches": whether the type attribute's value
-/// suits `destination`. Absent or empty, or for "fetch", it does; otherwise
-/// by its essence - text/css for style, a JavaScript MIME type for script,
-/// image/*, font/* and text/vtt for image, font and track.
-fn typeMatches(type_attr: ?[]const u8, destination: Destination) bool {
-    const value = type_attr orelse return true;
-    if (value.len == 0 or destination == .empty) return true;
-    const essence = std.mem.trim(u8, value[0 .. std.mem.indexOfScalar(u8, value, ';') orelse value.len], " \t\n\x0C\r");
-    var buffer: [128]u8 = undefined;
-    if (essence.len > buffer.len) return false;
-    const lower = std.ascii.lowerString(&buffer, essence);
-    return switch (destination) {
-        .style => std.mem.eql(u8, lower, "text/css"),
-        .script => @import("mimesniff").predicates.isJavaScriptMimeTypeEssenceMatch(lower),
-        .image => std.mem.startsWith(u8, lower, "image/"),
-        .font => std.mem.startsWith(u8, lower, "font/") or std.mem.startsWith(u8, lower, "application/font-"),
-        .track => std.mem.eql(u8, lower, "text/vtt"),
-        else => false,
-    };
-}
-
-/// Whether the space-separated `value` has `keyword`, ASCII
-/// case-insensitively.
-fn hasToken(value: []const u8, keyword: []const u8) bool {
-    var tokens = std.mem.tokenizeAny(u8, value, " \t\n\x0C\r");
-    while (tokens.next()) |token| {
-        if (std.ascii.eqlIgnoreCase(token, keyword)) return true;
-    }
-    return false;
-}
-
-/// 4.2.4.2: whether the type attribute's value is a type the stylesheet
-/// link type supports. Absent, it is the link type's default type,
-/// text/css. The empty string is taken as the default too, as browsers do
-/// (Blink's LinkStyle), and parameters do not change the type.
-fn supportedType(value: ?[]const u8) bool {
-    const v = value orelse return true;
-    const essence = std.mem.trim(u8, v[0 .. std.mem.indexOfScalar(u8, v, ';') orelse v.len], " \t\n\x0C\r");
-    return essence.len == 0 or std.ascii.eqlIgnoreCase(essence, "text/css");
-}
+/// The link types and `as`/`type` rules, shared with the speculative HTML
+/// parser (html.link_types).
+const link_types = @import("html").link_types;
+const LinkType = link_types.LinkType;
+const Destination = link_types.Destination;
+const asDestination = link_types.asDestination;
+const preloadDestination = link_types.preloadDestination;
+const typeMatches = link_types.typeMatches;
+const hasToken = link_types.hasToken;
+const supportedType = link_types.supportedType;
+const keywordIs = link_types.keywordIs;
+const relLinkType = link_types.relLinkType;
+const potential_destinations = link_types.potential_destinations;
 
 /// A referrerpolicy attribute's state: a referrer policy keyword, ASCII
 /// case-insensitively, else the empty string.
@@ -399,17 +329,6 @@ fn referrerPolicyState(value: ?[]const u8) ReferrerPolicy {
 }
 
 const ReferrerPolicy = @import("fetch").internal.ReferrerPolicy;
-
-/// Whether `value` is the keyword an enum field `name` stands for - its
-/// underscores hyphens - ASCII case-insensitively.
-fn keywordIs(name: []const u8, value: []const u8) bool {
-    if (name.len != value.len) return false;
-    for (name, value) |n, c| {
-        const want: u8 = if (n == '_') '-' else n;
-        if (std.ascii.toLower(c) != want) return false;
-    }
-    return true;
-}
 
 const referrer_policies = [_][]const u8{
     "no-referrer",                     "no-referrer-when-downgrade", "same-origin",
@@ -490,17 +409,6 @@ fn attributeChangeSteps(
     }
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     fetchAndProcess(element);
-}
-
-/// The link type a rel value makes the element fetch (`linkType`).
-fn relLinkType(rel: ?[]const u8) LinkType {
-    const value = rel orelse return .none;
-    if (hasToken(value, "stylesheet")) return .stylesheet;
-    if (hasToken(value, "preload")) return .preload;
-    if (hasToken(value, "modulepreload")) return .modulepreload;
-    if (hasToken(value, "prefetch")) return .prefetch;
-    if (hasToken(value, "icon")) return .icon;
-    return .none;
 }
 
 /// Whether a type attribute of `type_attr` lets the element's link be
@@ -885,14 +793,6 @@ pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString)
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), .{ .domstring = value });
 }
-
-/// Fetch's potential destinations: "fetch" and the destinations.
-const potential_destinations = [_][]const u8{
-    "fetch",  "audio",         "audioworklet", "document", "embed",  "font",         "frame",
-    "iframe", "image",         "json",         "manifest", "object", "paintworklet", "report",
-    "script", "serviceworker", "sharedworker", "style",    "track",  "video",        "webidentity",
-    "worker", "xslt",
-};
 
 /// An enumerated attribute's state as the keyword it is, ASCII
 /// case-insensitively; `default` when absent or not a keyword.

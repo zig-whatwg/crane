@@ -1633,7 +1633,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Check if tag name is an HTML breakout tag for foreign content.
-    fn isForeignContentHtmlBreakout(name: []const u8) bool {
+    pub fn isForeignContentHtmlBreakout(name: []const u8) bool {
         const breakout_tags = [_][]const u8{
             "b",       "big",  "blockquote", "body",  "br",   "center",
             "code",    "dd",   "div",        "dl",    "dt",   "em",
@@ -1651,7 +1651,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Check if font tag has breakout attributes (color, face, size).
-    fn hasFontBreakoutAttribute(tag: TagToken) bool {
+    pub fn hasFontBreakoutAttribute(tag: TagToken) bool {
         const attrs = tag.attributes.toSlice();
         for (attrs) |attr| {
             const attr_name = attr.getName();

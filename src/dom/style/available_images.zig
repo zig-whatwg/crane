@@ -241,6 +241,8 @@ pub const Loader = struct {
     document_realm: ?runtime.Context = null,
     delaying_load: bool = false,
     image: ?*Image = null,
+    /// The outcome fires load or error at the element (`Options.fire_events`).
+    fire_events: bool = true,
 
     pub const Options = struct {
         initiator: fetch.internal.InitiatorType,
@@ -250,6 +252,11 @@ pub const Loader = struct {
         /// empty or unparsable src. SVG ImageLoader replaces it and reports
         /// an asynchronous error (SVG 2 §16.1.7 invalid references).
         invalid_source: enum { ignore, queue_error } = .ignore,
+        /// Fire load or error at the element when the image is in. A video's
+        /// poster frame fires neither (HTML 4.8.9 "determine the element's
+        /// poster frame": "If an image is thus obtained, the poster frame is
+        /// that image. Otherwise, there is no poster frame.").
+        fire_events: bool = true,
     };
 
     pub fn create(element: *runtime.Instance) Allocator.Error!*Loader {
@@ -347,6 +354,7 @@ pub const Loader = struct {
         else
             input.len == 0;
         if (empty and options.invalid_source == .ignore) return;
+        self.fire_events = options.fire_events;
         const document = (try interfaces.Node.get_ownerDocument(self.element)) orelse return;
         const document_generation = runtime.SlabAllocator.generationOf(document);
         if (!document.ctx.hasEngine() or document_activity.activity(document, document_generation) == .gone) return;
@@ -500,7 +508,7 @@ pub const Loader = struct {
 
         fn steps(context: ?*anyopaque) void {
             const self: *Delivery = @ptrCast(@alignCast(context.?));
-            if (!self.current()) return;
+            if (!self.current() or !self.loader.fire_events) return;
             const element = self.loader.element;
             const event = interfaces.Event.call_constructor(element.ctx, runtime.DOMString.initInterned(if (self.image != null) "load" else "error"), webidl.Opt(@import("dictionaries").EventInit).notPassed()) catch return;
             const generation = runtime.SlabAllocator.generationOf(event);

@@ -2316,3 +2316,38 @@ pass_rate = 17/40
 condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 44/60 (gap min 1 / p50 100 / max 977 us)
 measured_at = 64e969a54
 paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[editing/run/underline.html]
+generation = 235
+kind = user-ruling
+why = 2129 -> 2120 (-9): 10 rows lost, 1 gained ("foo<u>ba[r</u>]baz") - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/italic.html]
+generation = 235
+kind = user-ruling
+why = 2068 -> 2062 (-6): 6 rows lost - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/strikethrough.html]
+generation = 235
+kind = user-ruling
+why = 2120 -> 2114 (-6): 7 rows lost, 1 gained ("<strike>fo[o</strike><s>b]ar</s>") - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/bold.html]
+generation = 235
+kind = user-ruling
+why = 3030 -> 3025 (-5): 5 rows lost - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-navigation-blocked.window.js]
+generation = 235
+kind = user-ruling
+why = 3 -> 0: lane blk5 (merge 5c31228a3, commit 3ae3dcaba) made an about:srcdoc navigation by the frame's parent load the frame's srcdoc content, as Chrome 157 and Safari 27.2 do (Chromium CheckAboutSrcDoc reproduced), which unblocks grandparent_location_aboutsrcdoc (+6). This file then fails all 3 subtests with exactly the assertion Chrome and Safari fail with ('Received message "srcdoc ready" but expected to receive no message'; aligned wpt.fyi runs at 2358bd4835: Chrome 0/3, Safari 0/3, Firefox 3/3); it carries a follows-majority gate entry (matches chrome, safari).
+date = 2026-11-20
+decision = The user, 2026-11-20 5:01 PM ET: "Accept" (keep about:srcdoc-by-parent loading srcdoc content, Chrome + Safari; +6 grandparent / -3 this file).

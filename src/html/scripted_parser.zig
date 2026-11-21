@@ -60,6 +60,8 @@ const StreamedBody = html_core.navigation.fetch_integration.StreamedBody;
 // the parser's script end-tag steps.
 const parser_scripts = @import("parser_script_execution.zig");
 const parser_mutation = @import("parser_dom_mutation.zig");
+const speculative_fetch = @import("speculative_fetch.zig");
+const script_execution = @import("script_execution.zig");
 const DomTreeAdapter = parser_scripts.DomTreeAdapter;
 const ParserScriptContext = parser_scripts.ParserScriptContext;
 
@@ -240,6 +242,13 @@ pub const DocumentParser = struct {
     /// pending parsing-blocking scripts", then "run a fragment parser").
     /// Null: the input stream's inserted characters are processed again.
     on_blocking_script_ready: ?*const fn (*DocumentParser) void = null,
+    /// HTML 13.2.8: this parser's speculative HTML parser - active while the
+    /// parser waits for a pending parsing-blocking script, kept between waits
+    /// while it is still ahead of the parser (speculative_fetch.Speculation).
+    /// Null: none started, or stopped.
+    speculation: ?*speculative_fetch.Speculation = null,
+    /// A task to run the speculation's next slice is queued (`SpeculationTask`).
+    speculation_queued: bool = false,
 
     pub fn create(
         allocator: Allocator,
@@ -562,6 +571,7 @@ pub const DocumentParser = struct {
         self.input_stream.deinit();
         self.tokenizer.deinit();
         if (self.owned_loader) |*loader| loader.deinit();
+        self.stopSpeculation();
         self.releaseNetworkInput();
         if (self.network) |*input| input.releaseScanner();
         self.raw_bytes.deinit(self.allocator);
@@ -583,6 +593,9 @@ pub const DocumentParser = struct {
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
+        // HTML "abort a parser" step 4: "Stop the speculative HTML parser for
+        // this HTML parser."
+        self.stopSpeculation();
         // HTML "abort a document": any further data received from the
         // network is discarded - the body's transfer stops.
         self.releaseNetworkInput();
@@ -597,6 +610,7 @@ pub const DocumentParser = struct {
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
+        self.stopSpeculation();
         // Releasing the body only cancels its transfer: native, no script.
         self.releaseNetworkInput();
     }
@@ -746,10 +760,130 @@ pub const DocumentParser = struct {
         defer call.deinit();
         self.pump_depth += 1;
         defer self.pump_depth -= 1;
+        // "Execute the pending parsing-blocking scripts" step 7: the wait is
+        // over - "stop the speculative HTML parser" - before the script runs.
+        if (self.pump_depth == 1 and script_execution.pendingParserBlockingScriptReady(self.document)) self.pauseSpeculation();
         parser_scripts.resumeAfterBlockingScript(&self.script_context);
         if (self.detached or !self.isCurrent()) return;
         try self.tree_builder.parse();
         if (self.trace_failure) |err| return err;
+        if (self.pump_depth == 1) self.speculateWhileWaiting();
+    }
+
+    /// "Execute the pending parsing-blocking scripts" step 3, "start the
+    /// speculative HTML parser for parser", when this parser has stopped to
+    /// wait for its document's pending parsing-blocking script: a
+    /// speculative parser starts at the parser's next input character "with
+    /// the same state as parser", reads to the end of the input there is,
+    /// and fetches what it finds (speculative_fetch). One still ahead of the
+    /// parser over an unchanged stream goes on instead (Speculation.covers).
+    /// Step 2: never for a fragment parser (streaming HTML's - `owner`); "an
+    /// element created in an inert Document" fetches nothing, which the
+    /// speculation checks; with scripting disabled no script waits.
+    fn speculateWhileWaiting(self: *DocumentParser) void {
+        if (self.owner != null or !self.tree_builder.scripting_enabled) return;
+        if (self.detached or self.eof_processed or !self.isCurrent()) return;
+        if (!self.tree_builder.waiting_for_parser_blocking_script or self.tree_builder.script_nesting_level != 0) return;
+        if (script_execution.pendingParsingBlockingScript(self.document) == null) return;
+        if (script_execution.pendingParserBlockingScriptReady(self.document)) return;
+        const stream = &self.input_stream;
+        const position = self.tokenizer.nextInputPosition();
+        if (self.speculation) |current| {
+            if (!current.covers(position, stream.insertions)) self.stopSpeculation();
+        }
+        if (self.speculation == null) {
+            const options: @import("speculative_parser.zig").Options = .{
+                .input = stream.buffer.items[@min(position, stream.buffer.items.len)..],
+                .complete = stream.complete,
+                .scripting = self.tree_builder.scripting_enabled,
+                .media = dom.style.hooks.mediaValues(self.document),
+                .in_body = (interfaces.Document.get_body(self.document) catch null) != null,
+                .base_known = document_internals.getFrozenBaseURL(self.document) != null,
+            };
+            self.speculation = speculative_fetch.Speculation.create(self.allocator, self.document, options, position, stream.insertions) catch return;
+        }
+        self.speculation.?.active = true;
+        self.queueSpeculationSlice(.give_way);
+    }
+
+    /// What a speculation task does when it runs.
+    const SpeculationStep = enum {
+        /// Queue the slice behind what was queued meanwhile: the event loop's
+        /// network step queues a response's task after the tasks of its turn,
+        /// so a slice queued in that turn would run ahead of it - and the
+        /// pending parsing-blocking script's response, a cache hit's
+        /// included, would wait for a slice it does not need.
+        give_way,
+        /// Read one slice.
+        scan,
+    };
+
+    /// The speculative parser reads on in slices, a task each, while the
+    /// parser waits (speculative_fetch.Speculation.scanSlice), each slice
+    /// behind a task that gives way to what the network delivered; with no
+    /// event loop, at once.
+    fn queueSpeculationSlice(self: *DocumentParser, step: SpeculationStep) void {
+        const speculation = self.speculation orelse return;
+        if (!speculation.active or self.speculation_queued) return;
+        const loop = self.ctx.getOptionalEventLoop() orelse {
+            _ = speculation.scanSlice(std.math.maxInt(usize));
+            return;
+        };
+        const task = self.allocator.create(SpeculationTask) catch return;
+        task.* = .{ .parser = self, .step = step };
+        self.speculation_queued = true;
+        self.retain();
+        // A task on the networking task source given the document's relevant
+        // global, as the parser's own reads are (HTML 7.5.1).
+        loop.queueTask(.{
+            .callback = &SpeculationTask.run,
+            .context = task,
+            .drop = &SpeculationTask.drop,
+            .document = self.document,
+            .document_generation = self.document_generation,
+        });
+    }
+
+    const SpeculationTask = struct {
+        parser: *DocumentParser,
+        step: SpeculationStep,
+
+        fn run(context: ?*anyopaque) void {
+            const self: *SpeculationTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            const step = self.step;
+            parser.allocator.destroy(self);
+            defer parser.release();
+            parser.speculation_queued = false;
+            if (parser.detached or parser.eof_processed or !parser.isCurrent()) return;
+            const speculation = parser.speculation orelse return;
+            switch (step) {
+                .give_way => parser.queueSpeculationSlice(.scan),
+                .scan => if (speculation.scanSlice(speculative_fetch.Speculation.slice_bytes)) parser.queueSpeculationSlice(.give_way),
+            }
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *SpeculationTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            parser.allocator.destroy(self);
+            parser.speculation_queued = false;
+            parser.release();
+        }
+    };
+
+    /// The wait is over (step 7): the speculation stops reading. It is kept
+    /// while it is ahead of the parser, for the next wait.
+    fn pauseSpeculation(self: *DocumentParser) void {
+        if (self.speculation) |speculation| speculation.active = false;
+    }
+
+    /// "Stop the speculative HTML parser": its input and what it found to
+    /// fetch go (the fetches it started run on, for the document's map).
+    fn stopSpeculation(self: *DocumentParser) void {
+        const speculation = self.speculation orelse return;
+        self.speculation = null;
+        speculation.destroy();
     }
 
     fn isCurrent(self: *const DocumentParser) bool {
@@ -776,6 +910,14 @@ pub const DocumentParser = struct {
         try self.pump();
         if (self.detached or !self.isCurrent() or !self.input_stream.eof_processed) return;
         self.eof_processed = true;
+        // "Stop parsing" step 1: "If the active speculative HTML parser is not
+        // null, then stop the speculative HTML parser" - and what it fetched
+        // that no element took leaves the document's map (Blink
+        // Document::FinishedParsing -> ClearPreloads(kClearSpeculativeMarkupPreloads)).
+        if (self.speculation != null) {
+            self.stopSpeculation();
+            if (dom.document_resources.of(self.document)) |resources| resources.dropSpeculative();
+        }
         // The parse is over: the document's shared attribute blocks start
         // their 10 s (dom.attribute_block_cache).
         self.adapter.finishedParsing();
@@ -831,11 +973,16 @@ pub const DocumentParser = struct {
             // so both are what arrived, as for a body read whole).
             dom.performance_timeline.navigationBodyEnded(self.ctx, input.received, input.received);
         }
+        if (ended) if (self.speculation) |speculation| speculation.complete();
         // A parsing-blocking script holds the parser: the bytes wait in the
-        // input stream until the script's ready task resumes it.
+        // input stream until the script's ready task resumes it - and the
+        // speculative parser reads them.
         if (self.pump_depth != 0) return;
         const internal = document_internals.getInternal(self.document) orelse return;
-        if (internal.scripts.pending_parsing_blocking_script != null) return;
+        if (internal.scripts.pending_parsing_blocking_script != null) {
+            self.queueSpeculationSlice(.give_way);
+            return;
+        }
         if (ended) try self.finishIfPossible() else try self.pump();
     }
 
@@ -874,6 +1021,9 @@ pub const DocumentParser = struct {
         const stream = &self.input_stream;
         try stream.buffer.appendSlice(stream.allocator, chars.items);
         stream.sync();
+        // 13.2.8: "Bytes pushed into the HTML parser's input byte stream must
+        // also be pushed into the speculative HTML parser's input byte stream."
+        if (self.speculation) |speculation| speculation.append(chars.items);
     }
 
     /// Stop reading the body: its transfer stops once no reader is left.
