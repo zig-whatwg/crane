@@ -147,3 +147,20 @@ fn headingLevels() !void {
 test "the :heading() level counts the heading offset of the element's ancestors" {
     try onFreshThread(headingLevels);
 }
+
+fn modalDialogVisibility() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser,
+        \\document.body.innerHTML = '<div style="visibility: hidden"><dialog id=d>x</dialog></div>';
+        \\globalThis.d = document.getElementById('d');
+        \\0;
+    );
+    try expectTrue(browser, "(() => { d.show(); const v = getComputedStyle(d).visibility; d.close(); return v === 'hidden'; })()");
+    try expectTrue(browser, "(() => { d.showModal(); const v = getComputedStyle(d).visibility; d.close(); return v === 'visible'; })()");
+    try expectTrue(browser, "(() => { d.style.visibility = 'hidden'; d.showModal(); const v = getComputedStyle(d).visibility; d.close(); d.style.removeProperty('visibility'); return v === 'hidden'; })()");
+}
+
+test "a modal dialog is visibility: visible from the UA sheet, as in all three browsers" {
+    try onFreshThread(modalDialogVisibility);
+}
