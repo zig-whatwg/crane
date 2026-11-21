@@ -95,8 +95,13 @@ pub const AnimationType = enum {
 /// animation and transition controls (Animations 1, Transitions 1), the
 /// bidi and writing-mode properties (Writing Modes 4 2.1-2.4, 5.1, 9.1),
 /// contain (Contain 2 3), interpolate-size (Values 5 / Sizing 4),
-/// forced-color-adjust (Color Adjustment 1 §4), scroll-behavior (Overflow 3
-/// §5).
+/// forced-color-adjust (Color Adjustment 1 §4).
+///
+/// Not scroll-behavior, though Overflow 3 §5 says "not animatable": Chrome
+/// 157, Firefox 160 and Safari 27.2 all animate it discretely (web-animations/
+/// animation-model/animation-types/{interpolation,addition,accumulation}-per-
+/// property-002.html, whose property list gives it 'discrete'), so golden
+/// rule 2 follows them; it is by computed value, a keyword, so discrete.
 const not_animatable = [_]Longhand{
     .animation_duration,    .animation_timing_function, .animation_delay,            .animation_iteration_count,
     .animation_direction,   .animation_fill_mode,       .animation_play_state,       .animation_name,
@@ -104,7 +109,7 @@ const not_animatable = [_]Longhand{
     .transition_property,   .transition_duration,       .transition_timing_function, .transition_delay,
     .transition_behavior,   .direction,                 .unicode_bidi,               .writing_mode,
     .text_orientation,      .contain,                   .interpolate_size,           .forced_color_adjust,
-    .scroll_behavior,       .text_combine_upright,
+    .text_combine_upright,
 };
 
 const type_table: [std.meta.fieldNames(Longhand).len]AnimationType = blk: {
@@ -1705,6 +1710,8 @@ test "animation type default: an unlisted longhand is by computed value, never n
     try testing.expectEqual(AnimationType.by_computed_value, animationType(.width));
     try testing.expectEqual(AnimationType.by_computed_value, animationType(.opacity));
     try testing.expectEqual(AnimationType.visibility, animationType(.visibility));
+    // All three browsers animate scroll-behavior (discretely).
+    try testing.expectEqual(AnimationType.by_computed_value, animationType(.scroll_behavior));
     for (not_animatable) |l| try testing.expectEqual(AnimationType.not_animatable, animationType(l));
     var count: usize = 0;
     for (type_table) |t| {
