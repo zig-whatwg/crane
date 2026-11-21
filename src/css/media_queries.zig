@@ -35,6 +35,7 @@
 const std = @import("std");
 const tokenizer = @import("tokenizer.zig");
 const serialize_mod = @import("serialize.zig");
+const math_values = @import("math_values.zig");
 
 const Token = tokenizer.Token;
 
@@ -121,6 +122,21 @@ pub const Value = union(enum) {
     dimension: struct { value: f64, unit: []const u8 },
     ident: []const u8,
     ratio: struct { numerator: f64, denominator: f64 },
+    /// A math function standing for a <number>, <length> or <resolution>
+    /// (CSS Values 4 §10: math functions are allowed wherever those are).
+    math: Math,
+};
+
+/// A math function in an <mf-value>: its serialization, simplified (CSS
+/// Values 4 §10.12-10.13: `calc(1x + 2x)` is `calc(3dppx)`, as Chrome,
+/// Firefox and Safari serialize it: css/mediaqueries/match-media-parsing.html),
+/// and the plain value it simplifies to - a number, or a dimension in
+/// absolute canonical units - for evaluation. A function that does not
+/// simplify that far (a relative unit, a percentage) has none and evaluates
+/// to unknown.
+pub const Math = struct {
+    text: []const u8,
+    simple: ?*const Value,
 };
 
 /// The feature a media feature name refers to, when this module answers it.
@@ -384,6 +400,8 @@ fn evalBoolean(id: FeatureId, values: *const MediaValues) Tri {
 /// `feature op value` for one comparison. Unknown when `value` is not a
 /// valid value of the feature (section 3.2).
 fn compare(id: FeatureId, op: Op, value: *const Value, values: *const MediaValues) Tri {
+    // A math function compares as the value it simplifies to.
+    if (value.* == .math) return compare(id, op, value.math.simple orelse return .u, values);
     switch (id.category()) {
         .none => return .u,
         .length => {
@@ -708,10 +726,20 @@ const Parser = struct {
         return i;
     }
 
-    /// `end` without trailing whitespace.
+    /// `end` without trailing whitespace - unless end of input closes a
+    /// block that whitespace is in: "consume a simple block" stops only at
+    /// its closer or at EOF (CSS Syntax 3 §5.4.8), so the whitespace is the
+    /// block's own (" ( color   " is "(color)" in Chrome, Firefox and
+    /// Safari: css/mediaqueries/match-media-parsing.html).
     fn trimEnd(p: *const Parser, start: usize, end: usize) usize {
         var e = end;
         while (e > start and p.isWs(e - 1)) e -= 1;
+        if (e < end and end == p.tokens.len) {
+            for (start..e) |k| switch (p.tt(k)) {
+                .left_paren, .left_bracket, .left_brace => if (p.closer[k] >= p.tokens.len) return end,
+                else => {},
+            };
+        }
         return e;
     }
 
@@ -1119,8 +1147,48 @@ const Parser = struct {
                 i.* += 1;
                 return .{ .ident = try p.identText(t.value) };
             },
+            .function => {
+                if (!math_values.isFunction(t)) return null;
+                return p.parseMath(i, end);
+            },
             else => return null,
         }
+    }
+
+    /// A math function at `i.*` (the function token, its `(` the next
+    /// token) running to its closer - or to end of input, which closes it -
+    /// as a <number>, a <length> or a <resolution>, whichever its type is.
+    fn parseMath(p: *const Parser, i: *usize, end: usize) Error!?Value {
+        const open = i.* + 1;
+        if (open >= end or p.tt(open) != .left_paren) return null;
+        const close = p.closer[open];
+        if (close < p.tokens.len and close >= end) return null;
+        const text_start = @intFromPtr(p.tokens[i.*].value.ptr) - @intFromPtr(p.input.ptr);
+        const text_end = if (close < p.tokens.len)
+            @intFromPtr(p.tokens[close].value.ptr) - @intFromPtr(p.input.ptr) + p.tokens[close].value.len
+        else
+            p.input.len;
+        const text = p.input[text_start..text_end];
+        for ([_]math_values.Kind{ .number, .length, .resolution }) |kind| {
+            const parsed = (try math_values.parse(p.arena, text, .{ .kind = kind })) orelse continue;
+            const expression = parsed.expression;
+            defer expression.unref();
+            if (parsed.consumed != text.len) return null;
+            var out: std.ArrayList(u8) = .empty;
+            try expression.serialize(&out, p.arena);
+            var simple: ?*const Value = null;
+            if (expression.knownNumber()) |number| {
+                const slot = try p.arena.create(Value);
+                slot.* = if (number.unit == .number)
+                    .{ .number = .{ .value = number.value, .is_integer = number.value == @floor(number.value) } }
+                else
+                    .{ .dimension = .{ .value = number.value * (number.unit.absoluteScale() orelse return null), .unit = number.unit.canonical().name() } };
+                simple = slot;
+            }
+            i.* = if (close < p.tokens.len) close + 1 else p.tokens.len;
+            return .{ .math = .{ .text = out.items, .simple = simple } };
+        }
+        return null;
     }
 };
 
@@ -1332,6 +1400,7 @@ fn serializeValue(v: *const Value, w: *std.Io.Writer) std.Io.Writer.Error!void {
         .dimension => |d| try w.print("{d}{s}", .{ d.value, d.unit }),
         .ident => |i| try w.writeAll(i),
         .ratio => |r| try w.print("{d} / {d}", .{ r.numerator, r.denominator }),
+        .math => |m| try w.writeAll(m.text),
     }
 }
 

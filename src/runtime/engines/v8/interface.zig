@@ -3158,17 +3158,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     const getter_name: []const u8 = prop[1];
                     const setter_name: ?[]const u8 = prop[2];
 
-                    // `self` and `frames` are [Replaceable]: the realm defines them
-                    // as own data properties whose value is the global itself
-                    // (protocol_realms bindWindowToGlobal), which testharness.js's
-                    // `(function (global_scope) { ... })(self)` needs. `window` is
-                    // an accessor like any other member, the global's own: its
-                    // getter answers the global (answerWindowGetter).
-                    if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
-                        std.mem.eql(u8, prop_name, "frames")))
-                    {
-                        continue;
-                    }
+                    // `window`, `self` and `frames` are accessors like any other
+                    // member, the global's own (WebIDL 3.7.6, [Global]); their
+                    // getters answer the global (answerWindowGetter), and `self`
+                    // and `frames` are [Replaceable]: their setter defines an own
+                    // data property in the accessor's place.
 
                     const prop_name_str = v8.v8_String_NewFromUtf8(
                         isolate,
@@ -4051,7 +4045,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     .kind = kind,
                     .checks_receiver = std.mem.eql(u8, iface_name, "Location") and
                         !acceptsAnyReceiver(getter_name["get_".len..], .getter),
-                    .answers_window = kind == .instance and is_global_interface and std.mem.eql(u8, getter_name, "get_window"),
+                    .answers_window = kind == .instance and is_global_interface and (std.mem.eql(u8, getter_name, "get_window") or
+                        std.mem.eql(u8, getter_name, "get_self") or std.mem.eql(u8, getter_name, "get_frames")),
                     .needs_this_handle = kind == .instance and (is_global_interface or same_object),
                     .lenient_this = isLenientThisProperty(prop_name),
                     .global_interface = is_global_interface,

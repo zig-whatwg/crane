@@ -156,12 +156,13 @@ pub const RangeValue = struct {
 pub fn parseSingleRangeHeaderValue(value: []const u8, allow_whitespace: bool) ?RangeValue {
     var pos: usize = 0;
 
-    // Step 1: If value doesn't start with "bytes", return failure
+    // Step 2: "If data does not start with "bytes", then return failure" -
+    // Infra's "starts with", code point for code point: the unit is
+    // case-sensitive (fetch/range/blob.any.js "Blob range unit is
+    // case-sensitive"; Chrome and Firefox preflight a `Range: BYTES=...`,
+    // cors/cors-safelisted-request-header.any.js).
     const prefix = "bytes";
-    if (value.len < prefix.len) return null;
-    if (!std.ascii.eqlIgnoreCase(value[0..prefix.len], prefix)) {
-        return null;
-    }
+    if (!std.mem.startsWith(u8, value, prefix)) return null;
     pos = prefix.len;
 
     // Step 2: Skip whitespace if allowed
@@ -533,6 +534,8 @@ test "parseSingleRangeHeaderValue: invalid" {
     try std.testing.expect(parseSingleRangeHeaderValue("bytes=-", false) == null); // both null
     try std.testing.expect(parseSingleRangeHeaderValue("bytes=100-50", false) == null); // start > end
     try std.testing.expect(parseSingleRangeHeaderValue("chars=0-100", false) == null); // wrong prefix
+    try std.testing.expect(parseSingleRangeHeaderValue("BYTES=0-100", false) == null); // the unit is case-sensitive
+    try std.testing.expect(parseSingleRangeHeaderValue("Bytes=0-100", true) == null);
     try std.testing.expect(parseSingleRangeHeaderValue("bytes0-100", false) == null); // missing =
     try std.testing.expect(parseSingleRangeHeaderValue("bytes=0-100extra", false) == null); // extra chars
 }

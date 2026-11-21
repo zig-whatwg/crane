@@ -9,11 +9,14 @@
 //! the step that finds it (`stateOf`), so the mixins never name a context's
 //! impl.
 //!
-//! The drawing model is the one the contexts have: the current
-//! transformation matrix, global alpha, shadows, clipping region, filter
-//! and compositing operator keep their defaults (identity, 1.0, none, none,
-//! none, source-over) - their setters are not implemented - so painting a
-//! shape is a source-over of its coverage of each pixel.
+//! The drawing state (4.12.5.1.3) is one value, `DrawingState`, which
+//! save() pushes and restore() pops whole. Painting reads the fill and
+//! stroke styles, global alpha, line width and line cap; the current
+//! transformation matrix and clipping region are not modelled yet (their
+//! methods are not implemented), and shadows, filters, the compositing
+//! operator other than source-over, dashes and round or bevel joins are not
+//! painted yet (TODO: each is kept in the state and read back, as the
+//! attributes require, but a shape is still a source-over of its coverage).
 //!
 //! lint-impls: hook for CanvasRenderingContext2D, OffscreenCanvasRenderingContext2D
 
@@ -21,6 +24,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const css = @import("css");
+const enums = @import("enums");
 const image_sources = @import("image_sources.zig");
 
 /// A CSS color as a 2D context keeps it: sRGB with 8-bit channels and 8-bit
@@ -34,6 +38,7 @@ pub const Color = struct {
     a: u8,
 
     pub const black: Color = .{ .r = 0, .g = 0, .b = 0, .a = 255 };
+    pub const transparent_black: Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
 
     /// The color premultiplied by its alpha scaled by `coverage` (0-1): the
     /// premultiplied source a shape covering that much of a pixel paints.
@@ -60,12 +65,27 @@ pub const Style = union(enum) {
 /// reads back as transparent black.
 pub const max_bitmap_pixels: u64 = 1 << 28;
 
-/// A 2D rendering context's state: its output bitmap (shared with its
-/// canvas) and its drawing state.
-pub const Context2D = struct {
-    allocator: Allocator,
-    /// The output bitmap: premultiplied RGBA8 with its origin-clean flag.
-    bitmap: image_sources.OutputBitmap,
+/// The compositing and blending operators (4.12.5.1.17): the values
+/// Compositing and Blending 1's <blend-mode> and <composite-mode> take
+/// (HTML's [COMPOSITE] reference), in the order of `operators`.
+pub const operators = [_][]const u8{
+    // <composite-mode>
+    "clear",          "copy",       "source-over",     "destination-over", "source-in",
+    "destination-in", "source-out", "destination-out", "source-atop",      "destination-atop",
+    "xor",            "lighter",
+    // <blend-mode>
+       "normal",          "multiply",         "screen",
+    "overlay",        "darken",     "lighten",         "color-dodge",      "color-burn",
+    "hard-light",     "soft-light", "difference",      "exclusion",        "hue",
+    "saturation",     "color",      "luminosity",
+};
+const source_over: u8 = 2;
+
+/// A context's drawing state (4.12.5.1.3), as one value: everything it
+/// consists of that this context models, each at its initial value. The
+/// owned strings are null at their initial value. Copy it only with
+/// `clone`; free it with `deinit`.
+pub const DrawingState = struct {
     /// The dash list (CanvasPathDrawingStyles), OWNED.
     line_dash: []f64 = &.{},
     line_dash_offset: f64 = 0,
@@ -73,26 +93,137 @@ pub const Context2D = struct {
     /// "#000000"."
     fill_style: Style = .{ .color = Color.black },
     stroke_style: Style = .{ .color = Color.black },
+    /// 4.12.5.1.4: "initially ... 1.0", "butt", "miter", "10.0".
+    line_width: f64 = 1.0,
+    line_cap: enums.CanvasLineCap = ._butt_,
+    line_join: enums.CanvasLineJoin = ._miter_,
+    miter_limit: f64 = 10.0,
+    /// 4.12.5.1.17: global alpha 1.0; the operator an index into
+    /// `operators`, initially source-over.
+    global_alpha: f64 = 1.0,
+    composite_operator: u8 = source_over,
+    /// 4.12.5.1.19: offsets and blur 0; the shadow color transparent black.
+    shadow_offset_x: f64 = 0,
+    shadow_offset_y: f64 = 0,
+    shadow_blur: f64 = 0,
+    shadow_color: Color = Color.transparent_black,
+    /// 4.12.5.1.20: the current filter, a string, initially "none"; OWNED.
+    filter: ?[]u8 = null,
+    /// 4.12.5.1.5: the font, the serialization of the computed font,
+    /// initially "10px sans-serif"; OWNED.
+    font: ?[]u8 = null,
+    text_align: enums.CanvasTextAlign = ._start_,
+    text_baseline: enums.CanvasTextBaseline = ._alphabetic_,
+    direction: enums.CanvasDirection = ._inherit_,
+    /// The letter and word spacing, serialized CSS <length>s, initially
+    /// "0px"; OWNED.
+    letter_spacing: ?[]u8 = null,
+    word_spacing: ?[]u8 = null,
+    font_kerning: enums.CanvasFontKerning = ._auto_,
+    font_stretch: enums.CanvasFontStretch = ._normal_,
+    font_variant_caps: enums.CanvasFontVariantCaps = ._normal_,
+    text_rendering: enums.CanvasTextRendering = ._auto_,
+    /// The language, initially "inherit"; OWNED.
+    lang: ?[]u8 = null,
+    /// 4.12.5.1.18: true, and "low".
+    image_smoothing_enabled: bool = true,
+    image_smoothing_quality: enums.ImageSmoothingQuality = ._low_,
+
+    pub const initial_filter = "none";
+    pub const initial_font = "10px sans-serif";
+    pub const initial_spacing = "0px";
+    pub const initial_lang = "inherit";
+
+    /// A copy owning copies of the strings and the dash list.
+    pub fn clone(self: *const DrawingState, allocator: Allocator) Allocator.Error!DrawingState {
+        var copy = self.*;
+        copy.line_dash = &.{};
+        copy.filter = null;
+        copy.font = null;
+        copy.letter_spacing = null;
+        copy.word_spacing = null;
+        copy.lang = null;
+        errdefer copy.deinit(allocator);
+        if (self.line_dash.len > 0) copy.line_dash = try allocator.dupe(f64, self.line_dash);
+        inline for (.{ "filter", "font", "letter_spacing", "word_spacing", "lang" }) |name| {
+            if (@field(self, name)) |text| @field(copy, name) = try allocator.dupe(u8, text);
+        }
+        return copy;
+    }
+
+    pub fn deinit(self: *DrawingState, allocator: Allocator) void {
+        if (self.line_dash.len > 0) allocator.free(self.line_dash);
+        inline for (.{ "filter", "font", "letter_spacing", "word_spacing", "lang" }) |name| {
+            if (@field(self, name)) |text| allocator.free(text);
+        }
+        self.* = .{};
+    }
+
+    /// Replace the owned string `field` (one of the optional string fields)
+    /// with a copy of `text`; its initial value when `text` is `initial`.
+    pub fn setText(self: *DrawingState, allocator: Allocator, comptime field: []const u8, text: []const u8, initial: []const u8) Allocator.Error!void {
+        const copy: ?[]u8 = if (std.mem.eql(u8, text, initial)) null else try allocator.dupe(u8, text);
+        if (@field(self, field)) |old| allocator.free(old);
+        @field(self, field) = copy;
+    }
+};
+
+/// A 2D rendering context's state: its output bitmap (shared with its
+/// canvas), its drawing state and the stack save() pushes it on.
+pub const Context2D = struct {
+    allocator: Allocator,
+    /// The output bitmap: premultiplied RGBA8 with its origin-clean flag.
+    bitmap: image_sources.OutputBitmap,
+    /// The current drawing state.
+    drawing: DrawingState = .{},
+    /// The drawing state stack (4.12.5.1.3), OWNED.
+    stack: std.ArrayList(DrawingState) = .empty,
+    /// CanvasState's context lost flag: "initialized to false when the
+    /// object is created". Nothing loses a context here (no GPU).
+    context_lost: bool = false,
 
     pub fn init(allocator: Allocator) Context2D {
         return .{ .allocator = allocator, .bitmap = .{ .allocator = allocator } };
     }
 
-    /// "Reset the rendering context to its default state" (4.12.5.1.1),
-    /// for the state this context models: the drawing state - the dash
-    /// list, its offset, the fill and stroke styles. Clearing the bitmap is
-    /// the caller's ("set bitmap dimensions" resizes it).
+    /// "Reset the rendering context to its default state" (4.12.5.1.3)
+    /// steps 3 and 4 for the state this context models: the drawing state
+    /// stack is cleared and the drawing state is reset to its initial
+    /// values (step 2's path is not modelled). Step 1, clearing the bitmap,
+    /// is the caller's ("set bitmap dimensions" resizes it; reset() clears
+    /// it: `clearBitmap`).
     pub fn reset(self: *Context2D) void {
-        if (self.line_dash.len > 0) self.allocator.free(self.line_dash);
-        self.line_dash = &.{};
-        self.line_dash_offset = 0;
-        self.fill_style = .{ .color = Color.black };
-        self.stroke_style = .{ .color = Color.black };
+        for (self.stack.items) |*saved| saved.deinit(self.allocator);
+        self.stack.clearRetainingCapacity();
+        self.drawing.deinit(self.allocator);
+    }
+
+    /// save(): "push a copy of the current drawing state onto the drawing
+    /// state stack".
+    pub fn save(self: *Context2D) Allocator.Error!void {
+        var copy = try self.drawing.clone(self.allocator);
+        errdefer copy.deinit(self.allocator);
+        try self.stack.append(self.allocator, copy);
+    }
+
+    /// restore(): "pop the top entry in the drawing state stack, and reset
+    /// the drawing state it describes. If there is no saved state, then the
+    /// method must do nothing."
+    pub fn restore(self: *Context2D) void {
+        const saved = self.stack.pop() orelse return;
+        self.drawing.deinit(self.allocator);
+        self.drawing = saved;
+    }
+
+    /// Step 1 of resetting to the default state: "Clear canvas's bitmap to
+    /// transparent black."
+    pub fn clearBitmap(self: *Context2D) void {
+        @memset(self.bitmap.pixels, 0);
     }
 
     pub fn deinit(self: *Context2D) void {
-        if (self.line_dash.len > 0) self.allocator.free(self.line_dash);
-        self.line_dash = &.{};
+        self.reset();
+        self.stack.deinit(self.allocator);
         self.bitmap.deinit();
     }
 };
@@ -176,6 +307,91 @@ pub fn serializeColor(allocator: Allocator, color: Color) Allocator.Error![]u8 {
 }
 
 // ---------------------------------------------------------------------------
+// Text styles (4.12.5.1.5) and filters (4.12.5.1.20)
+// ---------------------------------------------------------------------------
+
+const Block = css.declarations.DeclarationBlock;
+
+/// Whether every longhand of `block`'s declaration of `longhands` is a value:
+/// no CSS-wide keyword ("without supporting property-independent style sheet
+/// syntax like 'inherit'"), and no var() (property-independent too).
+fn plainValues(block: *const Block, longhands: []const css.properties.Longhand) bool {
+    for (longhands) |l| {
+        const declaration = block.get(l) orelse return false;
+        switch (declaration.value) {
+            .css_wide => return false,
+            .value => |v| if (v == .pending) return false,
+        }
+    }
+    return true;
+}
+
+/// The `font` setter's parsing (4.12.5.1.5): `text` parsed as a CSS
+/// <'font'> value without CSS-wide keywords, computed - "with the
+/// 'line-height' component forced to 'normal', with the 'font-size'
+/// component converted to CSS pixels" - and serialized as the getter
+/// returns it, "with no 'line-height' component". OWNED; null when it does
+/// not parse (the setter then ignores it). Relative sizes and weights are
+/// computed against "the normal-weight 10px sans-serif default". TODO: a
+/// canvas element being rendered is the font style source object, its
+/// computed font the base instead; the element is not consulted yet (as
+/// parseColor's currentcolor is not).
+pub fn parseFont(allocator: Allocator, text: []const u8) Allocator.Error!?[]u8 {
+    const options: css.properties.ParseOptions = .{ .allocator = allocator };
+    var block = Block.init(allocator);
+    defer block.deinit();
+    if (!try block.setProperty(options, "font", text, "")) return null;
+    const longhands = &css.font_shorthand.longhands;
+    if (!plainValues(&block, longhands)) return null;
+
+    var default_block = Block.init(allocator);
+    defer default_block.deinit();
+    _ = try default_block.setProperty(options, "font", DrawingState.initial_font, "");
+    const default_style = try css.cascade.cascade(.{ .allocator = allocator, .parent = null }, &.{.{ .block = &default_block, .source = .{ .origin = .author } }});
+    defer default_style.destroy();
+    const style = try css.cascade.cascade(.{ .allocator = allocator, .parent = default_style }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+    defer style.destroy();
+
+    var assigned: [longhands.len]css.properties.Assigned = undefined;
+    for (longhands, 0..) |l, i| assigned[i] = .{ .value = if (l == .line_height) css.style_values.Value.kw(.normal) else style.get(l) };
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    if (!try css.properties.serializeShorthand(.font, &assigned, .computed, &out, allocator)) {
+        out.deinit(allocator);
+        return null;
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+/// The letterSpacing and wordSpacing setters' parsing: `text` as a CSS
+/// <length>, serialized; OWNED, or null when it is not one (ignored then).
+pub fn parseLength(allocator: Allocator, text: []const u8) Allocator.Error!?[]u8 {
+    const options: css.properties.ParseOptions = .{ .allocator = allocator };
+    var stream = css.properties.Stream.init(text);
+    // outline-offset's grammar is exactly <length>, of either sign.
+    const value = (try css.properties.parseLonghand(options, .outline_offset, &stream)) orelse return null;
+    defer value.release();
+    if (!stream.atEnd()) return null;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try css.properties.serializeValue(.outline_offset, value, &out, allocator);
+    return try out.toOwnedSlice(allocator);
+}
+
+/// The filter setter's step 2: whether `text` parses as a
+/// <filter-value-list> with no property-independent syntax.
+pub fn isFilterValueList(allocator: Allocator, text: []const u8) Allocator.Error!bool {
+    var block = Block.init(allocator);
+    defer block.deinit();
+    if (!try block.setProperty(.{ .allocator = allocator }, "filter", text, "")) return false;
+    if (!plainValues(&block, &.{.filter})) return false;
+    // `none` is filter's other value, not a <filter-value-list> (step 1
+    // takes the exact string "none").
+    const declaration = block.get(.filter).?;
+    return !declaration.value.value.isKeyword(.none);
+}
+
+// ---------------------------------------------------------------------------
 // Painting (4.12.5.1.14, CanvasRect)
 // ---------------------------------------------------------------------------
 
@@ -254,11 +470,19 @@ fn paint(bitmap: *image_sources.OutputBitmap, outer: Rect, inner: ?Rect, color: 
     }
 }
 
+/// A style's color with the global alpha applied (4.12.5.1.17: "an alpha
+/// value that is applied to shapes and images before they are composited").
+fn withGlobalAlpha(color: Color, global_alpha: f64) Color {
+    var out = color;
+    out.a = @intFromFloat(@round(@as(f64, @floatFromInt(color.a)) * std.math.clamp(global_alpha, 0, 1)));
+    return out;
+}
+
 /// fillRect(x, y, w, h) steps 2-3 (step 1, the non-finite check, is the
 /// caller's): paint the rectangle with `style`.
 pub fn fillRect(state: *Context2D, x: f64, y: f64, w: f64, h: f64) void {
-    switch (state.fill_style) {
-        .color => |color| paint(&state.bitmap, Rect.of(x, y, w, h), null, color),
+    switch (state.drawing.fill_style) {
+        .color => |color| paint(&state.bitmap, Rect.of(x, y, w, h), null, withGlobalAlpha(color, state.drawing.global_alpha)),
     }
 }
 
@@ -286,38 +510,36 @@ pub fn clearRect(state: *Context2D, x: f64, y: f64, w: f64, h: f64) void {
 }
 
 /// strokeRect(x, y, w, h) step 2: the path of the rectangle traced with the
-/// line styles - the default ones (line width 1, butt caps, miter joins at
-/// a limit of 10, no dash: their setters are not implemented) - and filled
-/// with `style`. Both w and h zero: an empty path, nothing drawn. One zero:
-/// a single line from (x, y) to (x + w, y + h), butt-capped. Otherwise a
-/// closed path of four lines: its right-angled corners are mitred (ratio
-/// sqrt 2 under the limit), so the trace is the rectangle grown by half the
-/// line width less the rectangle shrunk by it.
+/// line styles and filled with `style`. Both w and h zero: an empty path,
+/// nothing drawn. One zero: a single line from (x, y) to (x + w, y + h),
+/// capped: a butt cap ends it at its points, a square cap half the line
+/// width past them. Otherwise a closed path of four lines whose
+/// right-angled corners are mitred, so the trace is the rectangle grown by
+/// half the line width less the rectangle shrunk by it. TODO: round caps,
+/// round and bevel joins, a miter limit under sqrt 2 (which bevels the
+/// corners) and the dash list are not traced yet: those shapes paint as
+/// butt caps and miter joins.
 pub fn strokeRect(state: *Context2D, x: f64, y: f64, w: f64, h: f64) void {
-    const half = line_width / 2;
-    const color = switch (state.stroke_style) {
+    const half = state.drawing.line_width / 2;
+    const color = withGlobalAlpha(switch (state.drawing.stroke_style) {
         .color => |color| color,
-    };
+    }, state.drawing.global_alpha);
     if (w == 0 and h == 0) return;
     const rect = Rect.of(x, y, w, h);
     if (w == 0 or h == 0) {
-        // One line: butt caps end it at its points.
+        // One line: its caps end it at its points (butt) or half the line
+        // width past them (square).
+        const cap: f64 = if (state.drawing.line_cap == ._square_) half else 0;
         const line: Rect = if (w == 0)
-            .{ .left = x - half, .right = x + half, .top = rect.top, .bottom = rect.bottom }
+            .{ .left = x - half, .right = x + half, .top = rect.top - cap, .bottom = rect.bottom + cap }
         else
-            .{ .left = rect.left, .right = rect.right, .top = y - half, .bottom = y + half };
+            .{ .left = rect.left - cap, .right = rect.right + cap, .top = y - half, .bottom = y + half };
         return paint(&state.bitmap, line, null, color);
     }
     const outer: Rect = .{ .left = rect.left - half, .top = rect.top - half, .right = rect.right + half, .bottom = rect.bottom + half };
     const inner: Rect = .{ .left = rect.left + half, .top = rect.top + half, .right = rect.right - half, .bottom = rect.bottom - half };
     paint(&state.bitmap, outer, inner, color);
 }
-
-/// CanvasPathDrawingStyles' lineWidth: 1 ("When the object implementing
-/// the CanvasPathDrawingStyles interface is created, the lineWidth
-/// attribute must initially have the value 1.0"); its setter is not
-/// implemented, so it stays that.
-const line_width: f64 = 1.0;
 
 test "parseColor quantizes to 8-bit sRGB with 8-bit alpha; serializeColor is HTML-compatible" {
     const allocator = std.testing.allocator;
@@ -340,7 +562,7 @@ test "fillRect paints whole pixels exactly and a half-covered pixel at half alph
     var state = Context2D.init(allocator);
     defer state.deinit();
     try state.bitmap.resize(3, 1);
-    state.fill_style = .{ .color = .{ .r = 255, .g = 0, .b = 0, .a = 255 } };
+    state.drawing.fill_style = .{ .color = .{ .r = 255, .g = 0, .b = 0, .a = 255 } };
     fillRect(&state, 0, 0, 1.5, 1);
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, state.bitmap.pixels[0..4]);
     try std.testing.expectEqualSlices(u8, &.{ 128, 0, 0, 128 }, state.bitmap.pixels[4..8]);
@@ -355,7 +577,7 @@ test "clearRect clears what it covers; strokeRect traces the rectangle's outline
     var state = Context2D.init(allocator);
     defer state.deinit();
     try state.bitmap.resize(4, 4);
-    state.fill_style = .{ .color = Color.black };
+    state.drawing.fill_style = .{ .color = Color.black };
     fillRect(&state, 0, 0, 4, 4);
     clearRect(&state, 1, 1, 2, 2);
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 255 }, state.bitmap.pixels[0..4]);

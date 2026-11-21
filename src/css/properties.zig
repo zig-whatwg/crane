@@ -1857,6 +1857,15 @@ const legacy_aliases = .{
     .{ "-webkit-column-rule-width", Property{ .longhand = .column_rule_width } },
     .{ "-webkit-columns", Property{ .shorthand = .columns } },
     .{ "-webkit-column-rule", Property{ .shorthand = .column_rule } },
+    // Compat §3.4.1, shipped by Chrome, Firefox and Safari (wpt.fyi
+    // 2358bd4835: custom-elements/reactions/CSSStyleDeclaration.html,
+    // css/cssom/computed-style-set-property.html).
+    .{ "-webkit-filter", Property{ .longhand = .filter } },
+    .{ "-webkit-transition", Property{ .shorthand = .transition } },
+    .{ "-webkit-transition-delay", Property{ .longhand = .transition_delay } },
+    .{ "-webkit-transition-duration", Property{ .longhand = .transition_duration } },
+    .{ "-webkit-transition-property", Property{ .longhand = .transition_property } },
+    .{ "-webkit-transition-timing-function", Property{ .longhand = .transition_timing_function } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
@@ -1893,7 +1902,9 @@ const by_name = blk: {
 test "a legacy name alias is the property it names" {
     try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-webkit-appearance").?);
     try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-WEBKIT-APPEARANCE").?);
-    try std.testing.expectEqual(@as(?Property, null), lookup("-webkit-filter"));
+    try std.testing.expectEqual(Property{ .longhand = .filter }, lookup("-webkit-filter").?);
+    try std.testing.expectEqual(Property{ .shorthand = .transition }, lookup("-WEBKIT-TRANSITION").?);
+    try std.testing.expectEqual(@as(?Property, null), lookup("-webkit-not-a-property"));
 }
 
 /// The supported property named `property_name`, ASCII case-insensitively;

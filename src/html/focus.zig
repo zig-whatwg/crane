@@ -803,7 +803,7 @@ pub const focusSelectionPosition = @import("selection_focus.zig").focusPosition;
 
 /// The HTMLOrSVGElement focus(options) method steps (6.6.6), for every
 /// element type that includes the mixin.
-pub fn focusMethod(element: *Instance) void {
+pub fn focusMethod(element: *Instance, focus_visible: ?bool) void {
     // Step 1: "If the allow focus steps given this's node document return
     // false, then return."
     const document = nodeDocument(element) orelse return;
@@ -821,7 +821,17 @@ pub fn focusMethod(element: *Instance) void {
     @import("selection_focus.zig").caretOnFocus(element);
     // Step 2: "Run the focusing steps for this."
     focusingSteps(element, null, .other);
-    // Steps 3-4 (indicate focus, scroll into view): nothing is rendered.
+    // Step 3: "If options["focusVisible"] is true, or does not exist but in
+    // an implementation-defined way the user agent determines it would be
+    // best to do so, then indicate focus." Nothing is drawn, but
+    // :focus-visible matches where focus is indicated (Selectors 4 §11.3),
+    // so a given focusVisible decides it for this element - until the next
+    // focus() or user input - over the heuristic (matchesFocusVisible;
+    // Chrome, Firefox and Safari: html/interaction/focus/processing-model/
+    // focusVisible.html). Step 4 (scroll into view): nothing is laid out.
+    if (traversableOf(document)) |traversable| {
+        traversable.focus_visible = if (focus_visible) |visible| .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .visible = visible } else null;
+    }
 }
 
 /// HTML "allow focus steps". The focus-without-user-activation feature's
@@ -1011,6 +1021,8 @@ pub fn noteInputModality(document: *Instance, pointer: bool) void {
     const top = topLevelDocumentOf(document);
     const traversable = traversableOf(top) orelse return;
     traversable.input_modality = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
+    // User input ends what a focus() call's focusVisible decided.
+    traversable.focus_visible = null;
 }
 
 /// Whether `element` takes text input: a text control or an editing host.
@@ -1032,10 +1044,15 @@ fn takesTextInput(element: *Instance) bool {
 /// script focus with no pointer interaction before it.
 pub fn matchesFocusVisible(element: *Instance) bool {
     if (!matchesFocus(element)) return false;
-    if (takesTextInput(element)) return true;
     const document = nodeDocument(element) orelse return true;
     const top = topLevelDocumentOf(document);
-    const traversable = traversableOf(top) orelse return true;
+    const traversable_or_null = traversableOf(top);
+    // focus() with focusVisible given decided it for this element.
+    if (traversable_or_null) |traversable| if (traversable.focus_visible) |decided| {
+        if (@as(*Instance, @ptrCast(@alignCast(decided.element))) == element and runtime.SlabAllocator.generationOf(element) == decided.generation) return decided.visible;
+    };
+    if (takesTextInput(element)) return true;
+    const traversable = traversable_or_null orelse return true;
     const modality = traversable.input_modality orelse return true;
     if (@as(*Instance, @ptrCast(@alignCast(modality.document))) != top or runtime.SlabAllocator.generationOf(top) != modality.generation) return true;
     return !modality.pointer;

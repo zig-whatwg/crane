@@ -948,6 +948,11 @@ const Context = struct {
     /// transition pseudo-element its :only-child tests that pseudo-element
     /// (PseudoElementOnlyChild).
     after_pseudo_element: ?[]const u8 = null,
+    /// Inside a compound-selector argument (:host(), :host-context(),
+    /// ::slotted()): a logical combination there takes compound selectors
+    /// only, no combinator - Chrome and Firefox reject `:host(:not(.a .b))`
+    /// (css/selectors/parsing/parse-not.html).
+    compound_only: bool = false,
 };
 
 /// An end-of-input token, what reading past a range returns.
@@ -1223,6 +1228,9 @@ pub const Parser = struct {
             // 3.6.5: a combinator after a pseudo-element is invalid (none of
             // the pseudo-elements here has internal structure).
             if (has_pseudo_element) return error.InvalidSelector;
+            // A compound-selector argument's logical combinations hold
+            // compounds only.
+            if (ctx.compound_only) return error.InvalidSelector;
 
             const combinator: Combinator = if (combinatorOf(stream.peek())) |explicit| blk: {
                 stream.advance();
@@ -1750,7 +1758,9 @@ pub const Parser = struct {
     /// css/css-shadow/slotted-parsing.html, css/css-pseudo/parsing/
     /// highlight-pseudos.html).
     fn allowedAfterPseudoElement(pseudo_element: []const u8, kind: PseudoClassKind) bool {
-        if (std.mem.eql(u8, pseudo_element, "slotted") or isHighlightPseudoElement(pseudo_element)) return switch (kind) {
+        // CSS Multicol 2 ::column takes no user action pseudo-class either
+        // (all three: css/css-multicol/parsing/column-pseudo-invalid.html).
+        if (std.mem.eql(u8, pseudo_element, "slotted") or std.mem.eql(u8, pseudo_element, "column") or isHighlightPseudoElement(pseudo_element)) return switch (kind) {
             .Is, .Where, .Not => true,
             else => false,
         };
@@ -1763,14 +1773,23 @@ pub const Parser = struct {
         switch (kind) {
             .Hover, .Active, .Focus, .FocusVisible, .FocusWithin, .Is, .Where, .Not => return true,
             .FirstChild, .LastChild, .OnlyChild, .FirstOfType, .LastOfType, .OnlyOfType, .Empty, .Root, .NthChild, .NthLastChild, .NthOfType, .NthLastOfType, .Has, .Scope, .Host => return false,
-            else => return std.mem.eql(u8, pseudo_element, "part"),
+            // The element-backed pseudo-elements - ::part() and HTML's
+            // ::details-content - take the other pseudo-classes, :lang()
+            // among them (css/css-conditional/js/
+            // CSS-supports-details-content-pseudo-parsing.html).
+            else => return isElementBacked(pseudo_element),
         }
+    }
+
+    /// CSS Pseudo 4 §4.2: the element-backed pseudo-elements Crane knows.
+    fn isElementBacked(pseudo_element: []const u8) bool {
+        return std.mem.eql(u8, pseudo_element, "part") or std.mem.eql(u8, pseudo_element, "details-content");
     }
 
     /// A functional pseudo-class `name(` over its arguments `args`.
     fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
         const real = Context{ .real = true, .in_has = ctx.in_has };
-        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_pseudo_element = ctx.after_pseudo_element };
+        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_pseudo_element = ctx.after_pseudo_element, .compound_only = ctx.compound_only };
         if (std.ascii.eqlIgnoreCase(name, "not")) {
             // 4.3: :not(<complex-real-selector-list>).
             return .{ .Not = try self.boxedList(args, logical, .{ .forgiving = false, .relative = false }) };
@@ -1827,7 +1846,12 @@ pub const Parser = struct {
         }
         if (std.ascii.eqlIgnoreCase(name, "state")) {
             // HTML: ":state(<custom-ident>)".
-            return .{ .State = (try singleToken(args, .ident)).value };
+            const state = (try singleToken(args, .ident)).value;
+            // CSSOM 5.2: the argument serializes without the whitespace
+            // around it (custom-elements/state/state-pseudo-class.html in all
+            // three browsers).
+            try self.trimSpan(args);
+            return .{ .State = state };
         }
         if (std.ascii.eqlIgnoreCase(name, "heading")) return .{ .Heading = try parseHeadingLevels(args) };
         if (std.ascii.eqlIgnoreCase(name, "host")) {
@@ -1851,7 +1875,9 @@ pub const Parser = struct {
 
     /// A <compound-selector> argument (:host(), ::slotted()),
     /// as a one-selector list.
-    fn compoundArgument(self: *Parser, tokens: []const Token, ctx: Context) ParserError!*SelectorList {
+    fn compoundArgument(self: *Parser, tokens: []const Token, ctx_in: Context) ParserError!*SelectorList {
+        var ctx = ctx_in;
+        ctx.compound_only = true;
         var stream = Stream{ .tokens = tokens };
         _ = stream.skipWhitespace();
         const start = stream.pos;
@@ -1935,7 +1961,14 @@ pub const Parser = struct {
                 // Appendix B: "All other pseudo-elements whose names begin
                 // with "-webkit-" ... and that are not functional notations
                 // must be treated as valid at parse time."
-                if (!self.support_check and token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) break :blk try self.lowercase(token.value);
+                if (!self.support_check and token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) {
+                    // ... and serialize lowercase, as any pseudo-element
+                    // name (css/selectors/webkit-pseudo-element.html in all
+                    // three browsers): the source text lowercased, so an
+                    // escape stays an escape.
+                    try self.serializeAs(token.start, token.end, try self.lowercase(self.tokenizer.input[token.start..token.end]));
+                    break :blk try self.lowercase(token.value);
+                }
                 return error.InvalidSelector;
             },
             .function => blk: {
@@ -1969,7 +2002,7 @@ pub const Parser = struct {
                 !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part") and
                     !std.mem.eql(u8, name, "first-line") and !std.mem.eql(u8, name, "first-letter") and
                     !isHighlightPseudoElement(name)
-            else if (std.mem.eql(u8, first, "part"))
+            else if (isElementBacked(first))
                 // ::part() takes ::first-line, ::first-letter and the
                 // highlight pseudo-elements (css/selectors/parsing/
                 // parse-part.html, css/css-pseudo/parsing/highlight-pseudos.html:
@@ -2042,10 +2075,29 @@ pub const Parser = struct {
             const identifier = try singleToken(args, .ident);
             if (!std.ascii.eqlIgnoreCase(identifier.value, "select")) return error.InvalidSelector;
             try self.serializeAs(identifier.start, identifier.end, "select");
+        } else if (std.mem.eql(u8, name, "scroll-button")) {
+            // CSS Overflow 5 §3.2: ::scroll-button( '*' |
+            // <scroll-button-direction> ) - one argument; anything else
+            // (a string, a number, two directions, an unknown word) is an
+            // invalid selector, as in Chrome, the browser that ships it
+            // (css/css-overflow/parsing/scroll-buttons-invalid.html). The
+            // keyword serializes lowercase, as ::picker()'s does.
+            const token = stream.peek();
+            stream.advance();
+            _ = stream.skipWhitespace();
+            if (!stream.atEnd()) return error.InvalidSelector;
+            if (token.tag == .delim and token.delim == '*') return;
+            if (token.tag != .ident) return error.InvalidSelector;
+            const direction = knownPseudoElement(token.value, &scroll_button_directions) orelse return error.InvalidSelector;
+            try self.serializeAs(token.start, token.end, direction);
         } else if (isNamedViewTransitionName(name)) {
             try self.parseViewTransitionArgument(&stream, pseudo);
         }
     }
+
+    /// CSS Overflow 5 §3.2 <scroll-button-direction>: the physical and
+    /// flow-relative directions, and prev / next.
+    const scroll_button_directions = [_][]const u8{ "up", "down", "left", "right", "block-start", "block-end", "inline-start", "inline-end", "prev", "next" };
 
     /// View Transitions 2 §10.4: <pt-name-and-class-selector> =
     /// <pt-name-selector> <pt-class-selector>? | <pt-class-selector>, with
