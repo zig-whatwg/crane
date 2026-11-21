@@ -369,6 +369,17 @@ fn runRecorded(edit: *Edit, command: Command, value: []const u8, host: *Instance
     return try runAction(edit, command, value);
 }
 
+/// Whether formatBlock's `value`, one pair of angle brackets stripped, is a
+/// qualified name an element could have: the check Blink's
+/// ExecuteFormatBlock makes (Document::ParseQualifiedName) before it builds
+/// and applies its command (see execCommand step 6).
+fn formatBlockNameParses(value_in: []const u8) bool {
+    var value = value_in;
+    if (value.len >= 2 and value[0] == '<' and value[value.len - 1] == '>') value = value[1 .. value.len - 1];
+    _ = dom.names.validateAndExtract("http://www.w3.org/1999/xhtml", value, .element) catch return false;
+    return true;
+}
+
 /// insertText step 5's "take the action for the insertParagraph command",
 /// through this dispatch (its action is lane editing4's, blocks.zig).
 fn insertParagraphAction(edit: *Edit) anyerror!bool {
@@ -427,9 +438,38 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
         return false;
     };
     // Step 6.
-    if (!result) return false;
-    // Step 7: input, if the action modified the DOM tree.
-    if (edit.modified and isConnected(host)) _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
+    if (!result) {
+        // formatBlock given a valid qualified name that names no block to
+        // format with ("quasit") changes nothing and returns false, yet
+        // fires input: Blink's ExecuteFormatBlock (editing/commands/
+        // editor_command.cc) parses the name, applies a FormatBlockCommand
+        // and returns its DidApply(), and the applied command dispatches
+        // input (Chrome 157 probe; Chrome and Safari 27.2 pass
+        // editing/event.html's formatBlock "quasit" input row, Firefox 160
+        // fires nothing - golden rule 2, the majority). A value that is not
+        // a qualified name ("") is refused before any command runs: no
+        // input in all three.
+        if (command == .format_block and formatBlockNameParses(value) and isConnected(host))
+            _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
+        return false;
+    }
+    // Step 7: input. The spec fires it only "if the action modified DOM
+    // tree" (Firefox 160 does so); Chrome 157 and Safari 27.2 fire it for
+    // every command that ran, changed or not - Blink's
+    // Editor::AppliedEditing and WebKit's Editor::appliedEditing dispatch
+    // it for each applied command, so backColor "quasit", fontName "serif"
+    // over serif text, unlink with no link, justifyLeft over left-aligned
+    // text and outdent with nothing to outdent all fire it
+    // (editing/event.html, wpt.fyi 2358bd4835: those rows pass in Chrome
+    // and Safari; the "quasit" colours and justifyLeft in Firefox too).
+    // Golden rule 2, no newer spec: the majority. The typing commands -
+    // insertText, delete, forwardDelete, insertLineBreak, insertParagraph -
+    // keep the spec's rule: Blink runs them as TypingCommands, which
+    // dispatch input themselves only when they typed or deleted something
+    // (TypingCommand::TypingAddedToOpenCommand; CompositeEditCommand::Apply
+    // skips AppliedEditing for them), so a delete at the editing host's
+    // start fires none.
+    if ((edit.modified or !command.isTyping()) and isConnected(host)) _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
     // Step 8.
     return true;
 }
