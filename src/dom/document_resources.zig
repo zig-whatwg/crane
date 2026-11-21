@@ -93,7 +93,21 @@ pub const DocumentResources = struct {
     /// preload, or a resource it loaded or is loading, would answer the
     /// element's fetch already (Blink: a speculative preload of a resource the
     /// document has is a memory-cache hit, ResourceFetcher kUse).
+    ///
+    /// A render-blocking speculative request that meets the document's
+    /// preload of its key still in flight makes that preload's Resource
+    /// Timing entry "blocking" (Chrome, the only engine that reports
+    /// renderBlockingStatus: ResourceFetcher::MatchPreload returns a preload
+    /// to a speculative request without consuming it, and RequestResource
+    /// then runs MakePreloadedResourceBlockIfNeeded -
+    /// render-blocking-status-link.html's
+    /// "link-script-preload-used-immediately": the scanner's parser-blocking
+    /// script meets the link preload its own scan just started).
     pub fn beginSpeculativeFetch(self: *DocumentResources, url: []const u8, request: *const InternalRequest) bool {
+        if (find(self.preloads.items, request)) |index| {
+            const entry = self.preloads.items[index].entry;
+            if (request.render_blocking and entry.state == .pending) entry.upgrade_render_blocking = true;
+        }
         for (self.speculative_urls.items) |seen| if (std.mem.eql(u8, seen, url)) return false;
         const copy = self.allocator.dupe(u8, url) catch return false;
         self.speculative_urls.append(self.allocator, copy) catch {
@@ -532,4 +546,18 @@ test "the list of speculative fetch URLs lets a URL be fetched speculatively onc
     defer sheet.deinit();
     resources.register(sheet, false).?.release();
     try testing.expect(!resources.beginSpeculativeFetch("https://a.test/x.css", sheet));
+    // A render-blocking speculative request meeting a preload of its key in
+    // flight makes it blocking, and fetches nothing itself.
+    const preload = try testRequest("https://a.test/p.js", .script);
+    defer preload.deinit();
+    preload.speculative_preload = true;
+    const entry = resources.register(preload, false).?;
+    defer entry.release();
+    try testing.expect(!resources.beginSpeculativeFetch("https://a.test/p.js", preload));
+    try testing.expect(!entry.upgrade_render_blocking);
+    const blocking = try testRequest("https://a.test/p.js", .script);
+    defer blocking.deinit();
+    blocking.render_blocking = true;
+    try testing.expect(!resources.beginSpeculativeFetch("https://a.test/p.js", blocking));
+    try testing.expect(entry.upgrade_render_blocking);
 }
