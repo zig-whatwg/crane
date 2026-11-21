@@ -591,6 +591,7 @@ pub fn htmlConstructorDescriptor(index: u32) ?*const @import("binding_plumbing.z
 }
 
 const html_constructor_descriptors = blk: {
+    @setEvalBranchQuota(100_000_000);
     var out: [html_constructor_names.len]*const @import("binding_plumbing.zig").Constructor = undefined;
     for (html_constructor_names, 0..) |name, i| out[i] = &V8Interface(@field(interfaces, name)).constructor_plumbing;
     break :blk out;
