@@ -29,6 +29,7 @@ const whitespace = @import("whitespace.zig");
 const split_parent = @import("split_parent.zig");
 const dom = @import("dom");
 const overrides = @import("overrides.zig");
+const inline_formatting = @import("inline.zig");
 const block_formatting = @import("block.zig");
 const lists = @import("lists.zig");
 const indent = @import("indent.zig");
@@ -152,7 +153,21 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // dropped afterwards (overrides.restoreTypingStyle).
     const downstream_start = try common.lastEquivalentPoint(original_start);
     const typing_node = if (common.isText(downstream_start.node)) downstream_start.node else original_start.node;
-    const recorded = try overrides.recordCurrentStatesAndValues(edit, typing_node);
+    // A deletion that only merges two blocks (nothing formattable in the
+    // range) keeps the style where it starts, minus the link's own: see
+    // overrides.recordTypingStyleAcrossMerge (lane edit4, A04).
+    const merges_only = start_block != null and end_block != null and start_block.? != end_block.? and
+        (try inline_formatting.firstFormattableNode(edit)) == null;
+    // Across a merge the style is the first line's end - the upstream
+    // point, inside its last inline content (a forward delete's range starts
+    // after it): Blink's selection_to_delete_.Start() is that visible
+    // position's deep equivalent.
+    const upstream_start = try common.firstEquivalentPoint(original_start);
+    const merge_node = if (common.isText(upstream_start.node)) upstream_start.node else typing_node;
+    const recorded = if (merges_only)
+        try overrides.recordTypingStyleAcrossMerge(edit, merge_node)
+    else
+        try overrides.recordCurrentStatesAndValues(edit, typing_node);
     // Step 21: one editable Text node.
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);
@@ -478,7 +493,11 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         }
     }
     // Step 41.
-    try overrides.restoreTypingStyle(edit, recorded);
+    if (merges_only) {
+        try overrides.restoreTypingStyleAfterMerge(edit, recorded);
+    } else {
+        try overrides.restoreTypingStyle(edit, recorded);
+    }
 }
 
 /// The caret's place after a join: the spec's first equivalent point -
@@ -1332,9 +1351,16 @@ pub fn deleteAction(edit: *Edit) !bool {
         break;
     }
     // Step 5: a character, or a br, hr or img - or an element whose
-    // contents editing ignores, deleted whole like the img.
+    // contents editing ignores, deleted whole like the img. A br goes even
+    // when an inline element holds the caret (lane edit4, A12): `<div><font>
+    // <table><td>a</table><br>{}<br><table><td>b</table></font></div>` +
+    // delete removes one br in Chrome 157, Firefox 160 and Safari 27.2
+    // (editing/run/delete.html, PPP at wpt.fyi 2358bd4835), where the spec's
+    // steps 5-6 require a block node and do nothing. Golden rule 2, no newer
+    // spec.
     if ((common.isText(point.node) and point.offset != 0) or
-        (common.isBlockNode(point.node) and ((try childBeforeIsNamed(point, &.{ "br", "hr", "img" })) or try childBeforeIsIgnoredContent(point))))
+        (common.isBlockNode(point.node) and ((try childBeforeIsNamed(point, &.{ "br", "hr", "img" })) or try childBeforeIsIgnoredContent(point))) or
+        (common.isInlineNode(point.node) and try childBeforeIsNamed(point, &.{"br"})))
     {
         // A line break that white-space collapsing hides spaces around goes
         // with them (see collapsedLineBreakRun).
@@ -1552,6 +1578,25 @@ pub fn deleteAction(edit: *Edit) !bool {
     // Step 16: the general block merge - down to the previous block's end,
     // past non-editable atoms (see removeAtomsBefore).
     while (try common.childBefore(start.node, start.offset)) |child| {
+        // A br that ends a block right after a block child makes an empty
+        // line of its own: Backspace from the next block removes just it
+        // (lane edit4, A13): `<div><div>abc</div><br></div><div>[]def</div>`
+        // gives `<div><div>abc</div></div><div>def</div>` or `<div><div>abc
+        // </div>def</div>` in Chrome 157, Firefox 160 and Safari 27.2
+        // (editing/run/delete.html, PPP at wpt.fyi 2358bd4835), where the
+        // spec removes it as invisible and joins "def" into the inner div.
+        // brBetweenBlocks' rule at a block's end. Golden rule 2, no newer
+        // spec.
+        if (start.node != point.node and (try isBr(child)) and (try common.isEditable(child)) and
+            (try common.nextSibling(child)) == null and common.isBlockNode(start.node))
+        {
+            if (try common.previousSibling(child)) |before| {
+                if (common.isElement(before) and common.isBlockNode(before)) {
+                    try edit.removeNode(child);
+                    return true;
+                }
+            }
+        }
         if ((try common.isEditable(child)) and ((try common.isInvisible(child)) or try isEmptyBlock(child))) {
             if (point.node == start.node and point.offset >= start.offset) point.offset -= 1;
             try edit.removeNode(child);
@@ -1688,8 +1733,15 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
-    // Step 6.
-    if (common.isInlineNode(point.node)) return true;
+    // Step 6 - but a br right after the caret goes even inside an inline
+    // element, as Backspace's does (lane edit4, A12): `<div><font><table>
+    // <td>a</table>{}<br><br><table><td>b</table></font></div>` +
+    // forwardDelete removes one br in all three browsers (forwarddelete.html,
+    // PPP at wpt.fyi 2358bd4835).
+    if (common.isInlineNode(point.node)) {
+        const child = (try common.childAt(point.node, point.offset)) orelse return true;
+        if (!try isBr(child)) return true;
+    }
     // Step 7: a br, hr or img that is not a collapsed block prop - or an
     // element whose contents editing ignores, deleted whole like the img.
     if (try common.childAt(point.node, point.offset)) |child| {
@@ -2154,4 +2206,152 @@ fn isAllowedChildOfAnAncestorInHost(node: *Instance) !bool {
         if (try common.isAllowedChild(.{ .node = node }, c)) return true;
     }
     return false;
+}
+
+// ============================================================================
+// Target ranges of the deletion keys (Input Events 2, getTargetRanges())
+// ============================================================================
+
+/// A deletion key's target range: the DOM range its beforeinput reports.
+pub const TargetRange = struct { start: Point, end: Point };
+
+/// The block element whose first position `point` is - climbing from a
+/// point at offset 0 through nodes that are their parent's first child -
+/// when that is not the editing host; else null.
+fn blockStartingAt(point: Point) !?*Instance {
+    if (point.offset != 0) return null;
+    var node = point.node;
+    while (true) {
+        if (common.isElement(node) and common.isBlockNode(node)) {
+            if (try common.isEditingHost(node)) return null;
+            return node;
+        }
+        const p = (try common.parent(node)) orelse return null;
+        if ((try common.firstChild(p)) != node) return null;
+        node = p;
+    }
+}
+
+/// The end of a Backspace or Delete key's target range over a selection
+/// that ends at the first position of a block the deletion will join:
+/// before that block, not inside its first line (lane edit4, B6; the
+/// user's ruling 2026-11-21 ~2:25 PM ET, "Firefox's point (the tests')"):
+/// `<br>[abc<br><div id=child>]def<br>ghi</div>` + Backspace reports
+/// `(#text "abc", 0) - (<div contenteditable>, 3)` in Firefox 160 and the
+/// test, Chrome 157 `... - (<div id=child>, 0)`, Safari 27.2 runs none of
+/// these subtests (editing/other/delete-without-unwrapping-first-line-of-
+/// child-block.html, wpt.fyi 2358bd4835). Both browsers end it at the
+/// block's boundary; which side is a 1-1 split the Input Events spec does
+/// not settle ("the ranges that will be affected"), ruled to Firefox's.
+/// Typing over the same selection keeps the end inside the block (both).
+pub fn deletionEnd(start: Point, end: Point) !Point {
+    const block = (try blockStartingAt(end)) orelse return end;
+    if (common.isInclusiveDescendantOf(start.node, block)) return end;
+    return try common.pointBefore(block, (try common.parent(block)).?);
+}
+
+/// The node a deleted line break `node` takes with it: its inline
+/// ancestors that hold nothing else (`<b><br></b>` goes whole).
+fn lineBreakExtent(node_in: *Instance) !*Instance {
+    var node = node_in;
+    while (try common.parent(node)) |p| {
+        if (!common.isElement(p) or !common.isInlineNode(p) or try common.isEditingHost(p)) break;
+        if ((try common.childCount(p)) != 1) break;
+        node = p;
+    }
+    return node;
+}
+
+/// The range of the line break `node` ends with (backward: its last one)
+/// or starts with (forward: its first one): a br, or a preserved line
+/// feed at the end (start) of a Text node; a node that is only that line
+/// break goes whole, with its inline wrappers (lineBreakExtent).
+fn lineBreakRange(node_in: *Instance, direction: Direction) !?TargetRange {
+    var node = node_in;
+    // Down to the deepest last (first) child.
+    while (common.isElement(node) and !common.isBlockNode(node)) {
+        const child = (if (direction == .backward) try common.lastChild(node) else try common.firstChild(node)) orelse break;
+        node = child;
+    }
+    if (try isBr(node)) {
+        const whole = try lineBreakExtent(node);
+        const p = (try common.parent(whole)) orelse return null;
+        return .{ .start = try common.pointBefore(whole, p), .end = try common.pointAfter(whole, p) };
+    }
+    if (!common.isText(node)) return null;
+    if (!(try common.whiteSpaceAround(node)).preservesNewlines()) return null;
+    var data = try common.textData(node);
+    defer data.deinit(node.ctx.allocator);
+    const bytes = data.asSlice();
+    if (bytes.len == 0) return null;
+    const length = try common.nodeLength(node);
+    if (bytes.len == 1 and bytes[0] == '\n') {
+        const whole = try lineBreakExtent(node);
+        const p = (try common.parent(whole)) orelse return null;
+        return .{ .start = try common.pointBefore(whole, p), .end = try common.pointAfter(whole, p) };
+    }
+    if (direction == .backward) {
+        if (bytes[bytes.len - 1] != '\n') return null;
+        return .{ .start = .{ .node = node, .offset = length - 1 }, .end = .{ .node = node, .offset = length } };
+    }
+    if (bytes[0] != '\n') return null;
+    return .{ .start = .{ .node = node, .offset = 0 }, .end = .{ .node = node, .offset = 1 } };
+}
+
+/// A collapsed Backspace's (`.backward`) or Delete's target range where the
+/// key removes the line break between a line and a following block (lane
+/// edit4, B6): Backspace at the first position of a block whose previous
+/// sibling ends with a line break, Delete just before a line break that
+/// the block follows. `abc<br><br><div id=child>[]def</div>` + Backspace
+/// reports `(<div contenteditable>, 2) - (<div contenteditable>, 3)` (the
+/// second br) and `<b><br></b><div id=child>[]def</div>` the whole `<b>`,
+/// in Chrome 157 and Firefox 160 alike save the end point, ruled to
+/// Firefox's as in deletionEnd (delete-without-unwrapping-first-line-of-
+/// child-block.html; Safari runs none of these). Blink computes the range
+/// from the selection its TypingCommand will delete, Gecko from
+/// AutoDeleteRangesHandler::ComputeRangesToDelete. Other carets report none
+/// yet (TODO: the character and paragraph-join ranges).
+pub fn caretTargetRange(edit: *Edit, direction: Direction) !?TargetRange {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (direction == .backward) {
+        const block = (try blockStartingAt(caret)) orelse return null;
+        const previous = (try common.previousSibling(block)) orelse return null;
+        if (common.isElement(previous) and common.isBlockNode(previous)) return null;
+        return try lineBreakRange(previous, .backward);
+    }
+    // Delete: the node at the caret.
+    const at: ?*Instance = if (common.isText(caret.node))
+        (if (caret.offset < try common.nodeLength(caret.node)) caret.node else null)
+    else
+        try common.childAt(caret.node, caret.offset);
+    const node = at orelse return null;
+    if (common.isText(node)) {
+        // A preserved line feed right at the caret, ending its Text node,
+        // with a block after it.
+        if (!(try common.whiteSpaceAround(node)).preservesNewlines()) return null;
+        var data = try common.textData(node);
+        defer data.deinit(node.ctx.allocator);
+        const bytes = data.asSlice();
+        const length = try common.nodeLength(node);
+        if (caret.offset + 1 != length or bytes.len == 0 or bytes[bytes.len - 1] != '\n') return null;
+        if (!try blockFollows(node)) return null;
+        if (length == 1) return try lineBreakRange(node, .forward);
+        return .{ .start = caret, .end = .{ .node = node, .offset = length } };
+    }
+    if (!try isBr(node)) return null;
+    if (!try blockFollows(node)) return null;
+    return try lineBreakRange(node, .forward);
+}
+
+/// Whether the next sibling of `node` - or of the inline ancestors it ends -
+/// is a block element.
+fn blockFollows(node_in: *Instance) !bool {
+    var node = node_in;
+    while (true) {
+        if (try common.nextSibling(node)) |next| return common.isElement(next) and common.isBlockNode(next);
+        const p = (try common.parent(node)) orelse return false;
+        if (!common.isElement(p) or !common.isInlineNode(p) or try common.isEditingHost(p)) return false;
+        node = p;
+    }
 }

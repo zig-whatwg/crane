@@ -135,6 +135,11 @@ fn parentElement(node: *Instance) !?*Instance {
 }
 
 /// The value of `element`'s attribute `name` in the scratch arena, or null.
+/// An a element with an href (a link).
+fn isLink(node: *Instance) !bool {
+    return (try isNamed(node, "a")) and try common.hasAttribute(node, "href");
+}
+
 fn attribute(edit: *Edit, element: *Instance, name: []const u8) !?[]const u8 {
     var value = (try interfaces.Element.call_getAttribute(element, DOMString.initInterned(name))) orelse return null;
     defer value.deinit(element.ctx.allocator);
@@ -829,6 +834,41 @@ fn splitDifferingAncestors(edit: *Edit, node: *Instance, ancestors: []const *Ins
     }
 }
 
+/// subscript and superscript's push of a conflicting vertical-align off
+/// `node` (see setSelectionValue): from the outermost inline editable
+/// element holding `node` (itself included) inwards, one whose style
+/// attribute sets vertical-align is split around the child leading to
+/// `node` (splitAround: the parts beside it keep it), loses that
+/// declaration, and - a span left with no attributes - is unwrapped,
+/// preserving ranges.
+fn pushVerticalAlignOff(edit: *Edit, node: *Instance) !void {
+    var chain: std.ArrayList(*Instance) = .empty;
+    var current: ?*Instance = node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (!common.isElement(c)) continue;
+        if (!common.isInlineNode(c) or !try common.isEditable(c)) break;
+        try chain.append(scratch(edit), c);
+    }
+    var index = chain.items.len;
+    while (index > 0) {
+        index -= 1;
+        const element = chain.items[index];
+        if ((try style_values.inlineValue(scratch(edit), element, "vertical-align")).len == 0) continue;
+        if (element != node) {
+            const path_child = if (index == 0) node else chain.items[index - 1];
+            try splitAround(edit, element, path_child);
+        }
+        try style_values.removeInline(element, "vertical-align");
+        try style_values.dropEmptyStyleAttribute(element);
+        edit.modified = true;
+        if ((try isNamed(element, "span")) and (try attributeCount(element)) == 0) {
+            const p = (try common.parent(element)) orelse continue;
+            while (try common.firstChild(element)) |c| try edit.movePreservingRanges(c, p, try common.indexOf(element));
+            try edit.removeNode(element);
+        }
+    }
+}
+
 /// Split `ancestor` so that it holds only `child`: its children before
 /// `child` move, preserving ranges, into a shallow copy of it inserted
 /// before it, and those after into a copy inserted after it.
@@ -911,8 +951,23 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     const new_value = new_value_in orelse return;
     // Step 4: an allowed child of span joins a matching sibling.
     if (try isAllowedChildOfName(node, "span")) {
-        if (try common.previousSibling(node)) |previous| try reorderModifiableDescendants(edit, previous, command, new_value);
-        if (try common.nextSibling(node)) |next| try reorderModifiableDescendants(edit, next, command, new_value);
+        // A link beside the node keeps its structure: its one styled child
+        // is not pulled out around it (lane edit4, A04). Typing "XY" after
+        // `<a href style=color:blue><b>foo</b></a>` with bold pending gives
+        // `<a ...><b>foo</b></a><b>XY</b>` in Firefox 160 and in Chrome 157
+        // (where it bolds the text), and Safari 27.2's `<b><a ...>foo</a>XY
+        // </b>` is the spec's reorder modifiable descendants
+        // (editing/other/typing-around-link-element-after-joining-
+        // paragraphs.html, wpt.fyi 2358bd4835). Of the browsers that bold
+        // the text, Chrome and Firefox: the majority (golden rule 2). Blink
+        // inserts the text after the anchor (InsertTextCommand,
+        // PositionAvoidingSpecialElementBoundary) and styles it alone.
+        if (try common.previousSibling(node)) |previous| {
+            if (!try isLink(previous)) try reorderModifiableDescendants(edit, previous, command, new_value);
+        }
+        if (try common.nextSibling(node)) |next| {
+            if (!try isLink(next)) try reorderModifiableDescendants(edit, next, command, new_value);
+        }
         const name = newParentName(command, new_value, try overrides.cssStylingFlag(edit), scratch(edit));
         _ = try wrap_mod.wrap(edit, &.{node}, ForceCriteria{ .edit = edit, .command = command, .new_value = new_value, .name = name });
     }
@@ -1074,11 +1129,13 @@ fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: [
     // A background goes on a <font> only when the font was there before:
     // typed text gets its font and, inside it, a background span (Blink's
     // typing style makes both around the text; multitest.html fontName,
-    // foreColor, fontSize, backColor, insertText - PPP), so a font this
-    // command chain made keeps the span; hiliteColor on an author's
-    // `<font size=6>[foo]</font>` would put the style on that font, which
-    // this cannot tell apart, and is left to a new span.
-    if (!style_only_span and (command == .back_color or command == .hilite_color)) return false;
+    // foreColor, fontSize, backColor, insertText - PPP), so a font the
+    // typing style's chain made keeps the span; hiliteColor on an author's
+    // `<font size=6>[foo]</font>` puts the style on that font (lane edit4,
+    // A22: editing/run/hilitecolor.html, PPP at wpt.fyi 2358bd4835, in and
+    // out of CSS mode - Blink's ApplyInlineStyleChange sets the CSS on the
+    // run's existing style container).
+    if (!style_only_span and (command == .back_color or command == .hilite_color) and edit.applying_typing_style) return false;
     if (!style_only_span and !try isNamed(wrapper, "font")) return false;
     try style_values.setInline(wrapper, property, new_value);
     edit.modified = true;
@@ -1218,6 +1275,29 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
         if (common.isText(end.node) and (try common.isEditable(end.node)) and end.offset != 0 and end.offset != try common.nodeLength(end.node)) {
             _ = try splitText(edit, end.node, end.offset);
         }
+    }
+    // subscript and superscript take vertical-align out of the style
+    // attributes of the inline elements that hold the selected nodes (lane
+    // edit4, A32): `foo<span style=vertical-align:super>[bar]</span>baz` +
+    // subscript gives `foo<sub>bar</sub>baz`, and `<sub>fo[o</sub><span
+    // style=vertical-align:top>b]ar</span>` gives `<sub>foob</sub><span
+    // style="vertical-align:top">ar</span>` (editing/run/subscript.html and
+    // superscript.html outside CSS mode: PPP, and PPF for the partial span,
+    // wpt.fyi 2358bd4835), where the spec - whose sub/sup specified command
+    // value reads only sub and sup elements - keeps the span and nests a
+    // <sub> inside. Mechanism: the vertical-align the command applies
+    // conflicts with the span's, so Blink's ApplyStyleCommand pushes it off
+    // the node (PushDownInlineStyleAroundNode splits the span around it) and
+    // removes it (RemoveInlineStyleFromElement; a span left with no
+    // attributes is unwrapped), then the new <sub> merges with a <sub>
+    // beside it (apply_style_command.cc). Golden rule 2, no newer spec. The
+    // state stays the spec's (only sub/sup elements count), so a
+    // vertical-align:sub span is not already subscript - Firefox and the
+    // data, where Chrome and Safari toggle it off.
+    if ((command == .subscript or command == .superscript) and new_value != null) {
+        const bounds = (try activeBounds(edit)) orelse return;
+        const nodes = try effectivelyContainedNodes(edit, bounds, .editable);
+        for (nodes) |node| try pushVerticalAlignOff(edit, node);
     }
     // Steps 5-6: clear the value of every editable element effectively
     // contained in the active range.

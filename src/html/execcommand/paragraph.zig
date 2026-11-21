@@ -328,6 +328,41 @@ fn outermostUnsplittable(node: *Instance) !?*Instance {
     return outermost;
 }
 
+/// The editable first cell (td or th) of the table that `node` - a table,
+/// thead, tbody, tfoot, tr, colgroup or col element - belongs to, or null
+/// (see insertParagraphAfterDeletion).
+fn tableStructureFirstCell(node: *Instance) !?*Instance {
+    if (!try common.isHtmlElementIn(node, &.{ "table", "thead", "tbody", "tfoot", "tr", "colgroup", "col" })) return null;
+    var table: ?*Instance = node;
+    while (table) |t| : (table = try common.parent(t)) {
+        if (try common.isHtmlElementNamed(t, "table")) break;
+    }
+    const root = table orelse return null;
+    // The first td or th in tree order inside the table (not a nested
+    // table's).
+    var current = try common.firstChild(root);
+    while (current) |c| {
+        if (try common.isHtmlElementIn(c, &.{ "td", "th" })) {
+            return if ((try common.isEditable(c)) or try common.isEditingHost(c)) c else null;
+        }
+        if ((try common.isHtmlElementIn(c, &.{ "thead", "tbody", "tfoot", "tr" })) and (try common.firstChild(c)) != null) {
+            current = try common.firstChild(c);
+            continue;
+        }
+        var next = c;
+        while (true) {
+            if (try common.nextSibling(next)) |sibling| {
+                current = sibling;
+                break;
+            }
+            const up = (try common.parent(next)) orelse return null;
+            if (up == root) return null;
+            next = up;
+        }
+    }
+    return null;
+}
+
 /// The insertParagraph command's action.
 pub fn insertParagraphAction(edit: *Edit) !bool {
     // Step 1.
@@ -401,6 +436,30 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         const p = (try common.parent(element)) orelse return true;
         node = p;
         offset = try common.indexOf(element);
+    }
+    // A point in table structure outside any cell - in a table, a row
+    // group, a row, a colgroup or a col - moves to the start of the table's
+    // first cell, so the paragraph goes there (lane edit4, B2; the user's
+    // ruling 2026-11-21 ~2:25 PM ET, "follow Chrome + Safari"): `<table>
+    // <colgroup><col></colgroup><tbody><tr><td>abc</td></tr></tbody>
+    // </table>` with the caret in the col + Enter gives `<td><br>abc</td>`
+    // in Chrome 157 and Safari 27.2, where Firefox 160 puts a new paragraph
+    // before the table; the test accepts both (editing/other/insertparagraph-
+    // in-non-splittable-element.html col, colgroup, tbody, tr: PPP at
+    // wpt.fyi 2358bd4835), the spec's steps split the table. Blink
+    // canonicalizes the caret to the first visible position, inside the
+    // first cell (VisiblePosition, InsertParagraphSeparatorCommand). It
+    // costs editing/run/insertparagraph.html `[["insertparagraph",""]]
+    // "<table><tbody data-start=0 data-end=1><tr><td>foo<td>bar<tr><td>baz
+    // <td>quz</table>" compare innerHTML`, which all three browsers fail and
+    // Crane passed on the spec: ruled a user-ruling loss.
+    // In that cell the paragraph is a line break, as Blink makes one when
+    // the paragraph's block is a table cell (InsertParagraphSeparatorCommand
+    // applies an InsertLineBreakCommand for IsTableCell(start_block)):
+    // Chrome's and Safari's `<td><br>abc</td>`.
+    if (try tableStructureFirstCell(node)) |cell| {
+        try edit.collapse(cell, 0);
+        return insertLineBreakAfterDeletion(edit);
     }
     // Step 7.
     try edit.collapse(node, offset);
