@@ -145,11 +145,42 @@ pub fn selectionListState(edit: *Edit) !ListState {
     return listState(edit, true);
 }
 
-/// The list state, `for_query` applying the browsers' table-cell rule of
-/// the queries (below); toggle lists' own mode (its step 1) is the spec's
-/// state, so a second insertOrderedList over two cells' lists takes both
-/// out, as the browsers do.
+/// The list a caret's queries answer: the ol or ul whose editable list item
+/// is the caret's nearest li, or null (the spec's state decides). All three
+/// browsers answer from the item that holds the caret: Blink's
+/// SelectionListState, for a caret, "EnclosingElementWithTag(start,
+/// tag_name)" (third_party/blink/renderer/core/editing/commands/
+/// editor_command.cc, chromium 1f3d2bc10d1; WebKit's selectionListState the
+/// same), Gecko's ListElementSelectionState an li's parent list. The spec's
+/// block-extension climbs past a wrapper whose edges meet the list's and
+/// answers "mixed": `<div><ol><li>abc[]</li></ol></div>` - what all three
+/// browsers make of `<div>{}<br></div>` + insertOrderedList + "abc" - is
+/// queryCommandState true and queryCommandIndeterm false in Chrome 157,
+/// Firefox 160 and Safari 27.2 (editing/run/insertorderedlist.html,
+/// wpt.fyi 2358bd4835). Golden rule 2, no newer spec.
+fn caretItemList(edit: *Edit) !?ListState {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    var current: ?*Instance = caret.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (!try common.isHtmlElementNamed(c, "li")) continue;
+        if (!try common.isEditable(c)) return null;
+        const list = (try common.parent(c)) orelse return null;
+        if (try common.isHtmlElementNamed(list, "ol")) return .ol;
+        if (try common.isHtmlElementNamed(list, "ul")) return .ul;
+        return null;
+    }
+    return null;
+}
+
+/// The list state, `for_query` applying the browsers' rules of the queries
+/// (a caret's list item, caretItemList; table cells, below); toggle lists'
+/// own mode (its step 1) is the spec's state, so a second insertOrderedList
+/// over two cells' lists takes both out, as the browsers do.
 fn listState(edit: *Edit, for_query: bool) !ListState {
+    if (for_query) {
+        if (try caretItemList(edit)) |state| return state;
+    }
     // Steps 1-2 (a table cell bounds the extension, see
     // extendedActiveRange).
     const range = (try extendedActiveRange(edit)) orelse return .none;
@@ -265,6 +296,33 @@ const NewListContext = struct {
     }
 };
 
+/// The container of an empty line the caret is in, which toggle lists gives
+/// a new list inside (see toggleListsAction): a collapsed selection in an
+/// empty editing host (nothing to wrap), or in a div - an editable one or
+/// the host - whose only child is a br (the node list is that div, or its
+/// br).
+fn emptyLineContainer(edit: *Edit, node_list: []const *Instance) !?*Instance {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (node_list.len == 0) {
+        if (!try common.isEditingHost(caret.node)) return null;
+        if ((try common.firstChild(caret.node)) != null) return null;
+        return caret.node;
+    }
+    if (node_list.len != 1) return null;
+    // The node list holds the div itself (its block-extended range contains
+    // it), or - the host being the div - its br.
+    const member = node_list[0];
+    const container = if (try common.isHtmlElementNamed(member, "br")) (try common.parent(member)) orelse return null else member;
+    if (!try common.isHtmlElementNamed(container, "div")) return null;
+    if (!(try common.isEditable(container)) and !try common.isEditingHost(container)) return null;
+    if ((try common.childCount(container)) != 1) return null;
+    const br = (try common.firstChild(container)).?;
+    if (!try common.isHtmlElementNamed(br, "br")) return null;
+    if (caret.node != container and caret.node != br) return null;
+    return container;
+}
+
 /// Remove and return the first member of `list`.
 fn shift(list: *std.ArrayList(*Instance)) *Instance {
     return list.orderedRemove(0);
@@ -321,6 +379,32 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
             const kind = (try isList(node)) or (try parentIsList(node)) or try block.isAllowedChildOfName(.{ .node = node }, "li");
             if (!kind) continue;
             try node_list.append(edit.allocator, node);
+        }
+    }
+    // An empty line with nothing to wrap - an empty editing host, or a div
+    // holding only its padding br - gets a new list with one empty item at
+    // the caret, inside its container: all three browsers turn `{}` and
+    // `<div>{}<br></div>` + insertOrderedList + "abc" into `<ol><li>abc</li>
+    // </ol>` and `<div><ol><li>abc</li></ol></div>` (editing/run/
+    // insertorderedlist.html, insertunorderedlist.html: PPP at wpt.fyi
+    // 2358bd4835; Blink InsertListCommand::DoApplyForSingleParagraph puts the
+    // list in the empty paragraph, Gecko keeps a div as a container), where
+    // the spec's node list is empty or replaces the div. A p keeps the spec's
+    // replacement (Firefox and the data; Chrome and Safari nest the list in
+    // the p - following them would trade passing subtests).
+    if (!mode_disable) {
+        if (try emptyLineContainer(edit, node_list.items)) |container| {
+            const list = try edit.createElement(tag_name);
+            const item = try edit.createElement("li");
+            try edit.appendChild(list, item);
+            if (try common.firstChild(container)) |br| {
+                try edit.appendChild(item, br);
+            } else {
+                try edit.appendChild(item, try edit.createElement("br"));
+            }
+            try edit.appendChild(container, list);
+            try edit.collapse(item, 0);
+            return true;
         }
     }
     // Step 9: enabling leaves top-level lists alone.

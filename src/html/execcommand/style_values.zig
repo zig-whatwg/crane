@@ -25,6 +25,7 @@ const webidl = @import("webidl");
 const dom = @import("dom");
 const css = @import("css");
 const common = @import("common.zig");
+const undo = @import("undo.zig");
 
 const Instance = runtime.Instance;
 const DOMString = runtime.DOMString;
@@ -153,7 +154,11 @@ fn belongsTo(declared: []const u8, property: css.properties.Property) bool {
 /// changes nothing).
 pub fn setInline(element: *Instance, name: []const u8, value: []const u8) !void {
     const declaration = (try declarationOf(element)) orelse return;
+    // Recorded as a change of the style attribute (undo.zig).
+    var write = try undo.AttributeWrite.begin(element, "style");
+    errdefer write.abandon();
     try interfaces.CSSStyleDeclaration.call_setProperty(declaration, DOMString.initInterned(name), DOMString.initInterned(value), webidl.Opt(DOMString).notPassed());
+    try write.end();
 }
 
 /// Unset `name` in the style attribute, then drop a style attribute left
@@ -162,8 +167,11 @@ pub fn setInline(element: *Instance, name: []const u8, value: []const u8) !void 
 /// (and the browsers) follow.
 pub fn removeInline(element: *Instance, name: []const u8) !void {
     const declaration = (try declarationOf(element)) orelse return;
+    var write = try undo.AttributeWrite.begin(element, "style");
+    errdefer write.abandon();
     var old = try interfaces.CSSStyleDeclaration.call_removeProperty(declaration, DOMString.initInterned(name));
     old.deinit(element.ctx.allocator);
+    try write.end();
     try dropEmptyStyleAttribute(element);
 }
 

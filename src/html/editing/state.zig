@@ -124,8 +124,9 @@ pub const EditorState = struct {
     /// Command: enableObjectResizing
     object_resizing: bool = true, // Enabled by default in most browsers
 
-    /// Undo/redo history manager
-    undo_manager: history.UndoManager,
+    /// The Document's editing undo history (history.zig): its undo and
+    /// redo lists, which the html module's execcommand records and replays.
+    undo_stack: history.UndoStack,
 
     /// Reference to associated document (weak reference)
     document: ?DocumentHandle = null,
@@ -137,14 +138,14 @@ pub const EditorState = struct {
     pub fn init(allocator: std.mem.Allocator) EditorState {
         return .{
             .allocator = allocator,
-            .undo_manager = history.UndoManager.init(allocator),
+            .undo_stack = history.UndoStack.init(allocator),
         };
     }
 
     /// Clean up editor state
     pub fn deinit(self: *EditorState) void {
         self.formatting_overrides.clear(self.allocator);
-        self.undo_manager.deinit();
+        self.undo_stack.deinit();
     }
 
     /// Check if editing is enabled for the document
@@ -169,8 +170,8 @@ pub const EditorState = struct {
 
         // Check undo/redo availability
         return switch (command) {
-            .undo => self.undo_manager.canUndo(),
-            .redo => self.undo_manager.canRedo(),
+            .undo => self.undo_stack.canUndo(),
+            .redo => self.undo_stack.canRedo(),
             else => true,
         };
     }

@@ -20,7 +20,7 @@ pub const DocumentHandle = *anyopaque;
 
 pub const Command = commands.Command;
 pub const EditorState = state.EditorState;
-pub const UndoManager = history.UndoManager;
+pub const UndoStack = history.UndoStack;
 
 /// Result of executing a command
 pub const CommandResult = struct {
@@ -131,9 +131,10 @@ fn executeCommandImpl(
         // before this executor, so they never arrive here.
         .copy, .cut, .paste => .{ .success = false },
 
-        // History commands
-        .undo => executeUndo(allocator, document),
-        .redo => executeRedo(allocator, document),
+        // undo and redo are the html module's (src/html/execcommand/undo.zig,
+        // over the history in history.zig); Document.execCommand dispatches
+        // them there before this executor, so they never arrive here.
+        .undo, .redo => .{ .success = false },
 
         // selectAll, delete and forwardDelete are the html module's
         // (src/html/execcommand/, on the generated interfaces, which
@@ -150,172 +151,6 @@ fn executeCommandImpl(
         .enableObjectResizing,
         => executeConfigCommand(allocator, document, command, value),
     };
-}
-
-/// Execute undo command
-/// Reverts the most recent editing operation
-///
-/// Algorithm:
-/// 1. Get UndoManager for document
-/// 2. If undo stack is empty, return false
-/// 3. Pop entry from undo stack
-/// 4. Apply undo_data to reverse the operation
-/// 5. Push entry to redo stack
-/// 6. Return true
-fn executeUndo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeUndoIn(allocator, document, try getOrCreateEditorState(allocator, document));
-}
-
-fn executeUndoIn(allocator: std.mem.Allocator, document: DocumentHandle, editor_state: *EditorState) !CommandResult {
-
-    // Check if undo is available
-    if (!editor_state.undo_manager.canUndo()) {
-        return .{ .success = false };
-    }
-
-    // Get the entry to undo
-    if (editor_state.undo_manager.undo()) |entry| {
-        // Apply the undo operation based on entry type
-        try applyUndoEntry(allocator, document, entry);
-        return .{ .success = true };
-    }
-
-    return .{ .success = false };
-}
-
-/// Execute redo command
-/// Re-applies the most recently undone operation
-///
-/// Algorithm:
-/// 1. Get UndoManager for document
-/// 2. If redo stack is empty, return false
-/// 3. Pop entry from redo stack
-/// 4. Apply redo_data to re-apply the operation
-/// 5. Push entry to undo stack
-/// 6. Return true
-fn executeRedo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeRedoIn(allocator, document, try getOrCreateEditorState(allocator, document));
-}
-
-fn executeRedoIn(allocator: std.mem.Allocator, document: DocumentHandle, editor_state: *EditorState) !CommandResult {
-
-    // Check if redo is available
-    if (!editor_state.undo_manager.canRedo()) {
-        return .{ .success = false };
-    }
-
-    // Get the entry to redo
-    if (editor_state.undo_manager.redo()) |entry| {
-        // Apply the redo operation based on entry type
-        try applyRedoEntry(allocator, document, entry);
-        return .{ .success = true };
-    }
-
-    return .{ .success = false };
-}
-
-/// Apply an undo entry to reverse an operation
-fn applyUndoEntry(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    entry: *history.UndoEntry,
-) !void {
-    _ = allocator;
-    _ = document;
-
-    // Apply based on entry type
-    switch (entry.entry_type) {
-        .insert_text => {
-            // Undo text insertion = delete the inserted text
-            // Position is in entry.undo_data.position
-            // Length to delete is the inserted text length from redo_data
-            // TODO: Integrate with DOM when available
-            // deleteText(document, entry.redo_data.position, entry.redo_data.text.len);
-        },
-        .delete_text => {
-            // Undo text deletion = re-insert the deleted text
-            // Position is in entry.undo_data.position
-            // Text to insert is in entry.undo_data.text
-            // TODO: Integrate with DOM when available
-            // insertText(document, entry.undo_data.position, entry.undo_data.text);
-        },
-        .format => {
-            // Undo formatting = toggle format back
-            // The previous state is in entry.undo_data.format_was_active
-            // TODO: Integrate with DOM when available
-            // toggleFormat(document, entry.command, entry.undo_data.format_was_active);
-        },
-        .structure => {
-            // Undo structural change = restore previous structure
-            // HTML is in entry.undo_data.html
-            // TODO: Integrate with DOM when available
-            // replaceHtml(document, entry.undo_data.position, entry.undo_data.html);
-        },
-        .link => {
-            // Undo link operation
-            // For createLink: remove the link
-            // For unlink: restore the link
-            // TODO: Integrate with DOM when available
-        },
-        .insert_content => {
-            // Undo content insertion = remove the inserted content
-            // TODO: Integrate with DOM when available
-        },
-        .composite => {
-            // Composite entries would need to undo multiple operations
-            // TODO: Implement when composite undo is needed
-        },
-    }
-}
-
-/// Apply a redo entry to re-apply an operation
-fn applyRedoEntry(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    entry: *history.UndoEntry,
-) !void {
-    _ = allocator;
-    _ = document;
-
-    // Apply based on entry type
-    switch (entry.entry_type) {
-        .insert_text => {
-            // Redo text insertion = insert the text again
-            // Position is in entry.redo_data.position
-            // Text to insert is in entry.redo_data.text
-            // TODO: Integrate with DOM when available
-            // insertText(document, entry.redo_data.position, entry.redo_data.text);
-        },
-        .delete_text => {
-            // Redo text deletion = delete the text again
-            // Position is in entry.redo_data.position
-            // Length to delete is the deleted text length from undo_data
-            // TODO: Integrate with DOM when available
-            // deleteText(document, entry.undo_data.position, entry.undo_data.text.len);
-        },
-        .format => {
-            // Redo formatting = apply format
-            // The target state is in entry.redo_data.format_was_active
-            // TODO: Integrate with DOM when available
-            // toggleFormat(document, entry.command, entry.redo_data.format_was_active);
-        },
-        .structure => {
-            // Redo structural change = apply the structure
-            // TODO: Integrate with DOM when available
-        },
-        .link => {
-            // Redo link operation
-            // TODO: Integrate with DOM when available
-        },
-        .insert_content => {
-            // Redo content insertion = insert the content
-            // TODO: Integrate with DOM when available
-        },
-        .composite => {
-            // Composite entries would need to redo multiple operations
-            // TODO: Implement when composite redo is needed
-        },
-    }
 }
 
 /// Execute configuration command
@@ -467,193 +302,33 @@ fn freeEditorState(state_ptr: *anyopaque, allocator: std.mem.Allocator) void {
     allocator.destroy(editor_state);
 }
 
-/// The editing subsystem's step in a Document's teardown, installed once at
-/// process start by Document's installHooks (the owner of the editing
-/// commands).
+/// dom.editor_states: the nodes a Document's editor state holds - its undo
+/// history's (history.zig) - named to the collector from the Document's
+/// `traceHeldNodes`, in its atomic pause. Reads only.
+fn traceEditorState(state_ptr: *anyopaque, tracer: *dom.editor_states.Tracer) void {
+    const editor_state: *const EditorState = @ptrCast(@alignCast(state_ptr));
+    editor_state.undo_stack.trace(tracer);
+}
+
+/// dom.editor_states: a destroyed Document's editor state lets go of the
+/// nodes it holds - its undo history empties (refcount step 7b).
+fn releaseEditorStateNodes(state_ptr: *anyopaque) void {
+    const editor_state: *EditorState = @ptrCast(@alignCast(state_ptr));
+    editor_state.undo_stack.clear();
+}
+
+/// dom.editor_states: whether a Document's editor state holds nodes now - a
+/// step on its undo or redo list.
+fn editorStateHoldsNodes(state_ptr: *anyopaque) bool {
+    const editor_state: *const EditorState = @ptrCast(@alignCast(state_ptr));
+    return editor_state.undo_stack.canUndo() or editor_state.undo_stack.canRedo();
+}
+
+/// The editing subsystem's steps in a Document's tracing, destruction and
+/// teardown, installed once at process start by Document's installHooks (the
+/// owner of the editing commands).
 pub fn installHooks() void {
-    dom.editor_states.install(&freeEditorState);
-}
-
-// =============================================================================
-// Undo Entry Recording Helpers
-// =============================================================================
-
-/// Record an undo entry for a text operation
-pub fn recordTextOperation(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    command: Command,
-    deleted_text: ?[]const u8,
-    inserted_text: ?[]const u8,
-    position: usize,
-) !void {
-    return recordTextOperationIn(allocator, try getOrCreateEditorState(allocator, document), command, deleted_text, inserted_text, position);
-}
-
-fn recordTextOperationIn(
-    allocator: std.mem.Allocator,
-    editor_state: *EditorState,
-    command: Command,
-    deleted_text: ?[]const u8,
-    inserted_text: ?[]const u8,
-    position: usize,
-) !void {
-    const entry = try history.UndoEntry.initTextOperation(
-        allocator,
-        command,
-        deleted_text,
-        inserted_text,
-        position,
-    );
-    try editor_state.undo_manager.push(entry);
-}
-
-/// Record an undo entry for a formatting operation
-pub fn recordFormatOperation(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    command: Command,
-    was_active: bool,
-) !void {
-    return recordFormatOperationIn(allocator, try getOrCreateEditorState(allocator, document), command, was_active);
-}
-
-fn recordFormatOperationIn(allocator: std.mem.Allocator, editor_state: *EditorState, command: Command, was_active: bool) !void {
-    const entry = history.UndoEntry.initFormatOperation(allocator, command, was_active);
-    try editor_state.undo_manager.push(entry);
-}
-
-/// Record an undo entry for a structure operation (paragraphs, lists, etc.)
-pub fn recordStructureOperation(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    command: Command,
-    old_html: ?[]const u8,
-    new_html: ?[]const u8,
-    position: usize,
-) !void {
-    const editor_state = try getOrCreateEditorState(allocator, document);
-
-    var entry = history.UndoEntry{
-        .allocator = allocator,
-        .entry_type = .structure,
-        .command = command,
-        .undo_data = .{
-            .position = position,
-        },
-        .redo_data = .{
-            .position = position,
-        },
-        .timestamp = clock.wallSeconds(),
-    };
-
-    // Copy HTML strings
-    if (old_html) |html| {
-        entry.undo_data.html = try allocator.dupe(u8, html);
-    }
-    if (new_html) |html| {
-        entry.redo_data.html = try allocator.dupe(u8, html);
-    }
-
-    try editor_state.undo_manager.push(entry);
-}
-
-/// Record an undo entry for a link operation
-pub fn recordLinkOperation(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    command: Command,
-    old_html: ?[]const u8,
-    new_html: ?[]const u8,
-    position: usize,
-) !void {
-    const editor_state = try getOrCreateEditorState(allocator, document);
-
-    var entry = history.UndoEntry{
-        .allocator = allocator,
-        .entry_type = .link,
-        .command = command,
-        .undo_data = .{
-            .position = position,
-        },
-        .redo_data = .{
-            .position = position,
-        },
-        .timestamp = clock.wallSeconds(),
-    };
-
-    // Copy HTML strings
-    if (old_html) |html| {
-        entry.undo_data.html = try allocator.dupe(u8, html);
-    }
-    if (new_html) |html| {
-        entry.redo_data.html = try allocator.dupe(u8, html);
-    }
-
-    try editor_state.undo_manager.push(entry);
-}
-
-/// Record an undo entry for content insertion (image, HTML)
-pub fn recordContentInsertion(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    command: Command,
-    inserted_html: []const u8,
-    position: usize,
-) !void {
-    const editor_state = try getOrCreateEditorState(allocator, document);
-
-    var entry = history.UndoEntry{
-        .allocator = allocator,
-        .entry_type = .insert_content,
-        .command = command,
-        .undo_data = .{
-            .position = position,
-        },
-        .redo_data = .{
-            .position = position,
-        },
-        .timestamp = clock.wallSeconds(),
-    };
-
-    entry.redo_data.html = try allocator.dupe(u8, inserted_html);
-
-    try editor_state.undo_manager.push(entry);
-}
-
-/// Check if undo is available for a document
-pub fn canUndo(allocator: std.mem.Allocator, document: DocumentHandle) bool {
-    _ = allocator;
-    const editor_state = existingEditorState(document) orelse return false;
-    return editor_state.undo_manager.canUndo();
-}
-
-/// Check if redo is available for a document
-pub fn canRedo(allocator: std.mem.Allocator, document: DocumentHandle) bool {
-    _ = allocator;
-    const editor_state = existingEditorState(document) orelse return false;
-    return editor_state.undo_manager.canRedo();
-}
-
-/// Get the number of undo entries for a document
-pub fn getUndoCount(allocator: std.mem.Allocator, document: DocumentHandle) usize {
-    _ = allocator;
-    const editor_state = existingEditorState(document) orelse return 0;
-    return editor_state.undo_manager.undoCount();
-}
-
-/// Get the number of redo entries for a document
-pub fn getRedoCount(allocator: std.mem.Allocator, document: DocumentHandle) usize {
-    _ = allocator;
-    const editor_state = existingEditorState(document) orelse return 0;
-    return editor_state.undo_manager.redoCount();
-}
-
-/// Clear undo/redo history for a document
-pub fn clearUndoHistory(allocator: std.mem.Allocator, document: DocumentHandle) void {
-    _ = allocator;
-    const editor_state = existingEditorState(document) orelse return;
-    editor_state.undo_manager.clear();
+    dom.editor_states.install(.{ .free = &freeEditorState, .trace = &traceEditorState, .release_nodes = &releaseEditorStateNodes, .holds_nodes = &editorStateHoldsNodes });
 }
 
 // =============================================================================
@@ -666,88 +341,4 @@ test "queryCommandSupported" {
     try std.testing.expect(queryCommandSupported("createLink"));
     try std.testing.expect(!queryCommandSupported("unknownCommand"));
     try std.testing.expect(!queryCommandSupported(""));
-}
-
-// The undo history of one editor state. A Document keeps its own (the
-// integration is tests/html/leaks6_editing_state_leak_test.zig); these run
-// the executor's steps on a state of their own, with a handle no step
-// dereferences for these entries.
-
-test "undo/redo integration" {
-    const allocator = std.testing.allocator;
-    var dummy: u8 = 0;
-    const document: DocumentHandle = &dummy;
-    var editor_state = EditorState.init(allocator);
-    defer editor_state.deinit();
-
-    // Initially, undo should not be available
-    try std.testing.expect(!editor_state.undo_manager.canUndo());
-    try std.testing.expect(!editor_state.undo_manager.canRedo());
-
-    // Record a formatting operation
-    try recordFormatOperationIn(allocator, &editor_state, .bold, false);
-
-    // Now undo should be available
-    try std.testing.expect(editor_state.undo_manager.canUndo());
-    try std.testing.expect(!editor_state.undo_manager.canRedo());
-    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.undoCount());
-
-    // Execute undo
-    const undo_result = try executeUndoIn(allocator, document, &editor_state);
-    try std.testing.expect(undo_result.success);
-
-    // Now redo should be available, undo should not
-    try std.testing.expect(!editor_state.undo_manager.canUndo());
-    try std.testing.expect(editor_state.undo_manager.canRedo());
-    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.redoCount());
-
-    // Execute redo
-    const redo_result = try executeRedoIn(allocator, document, &editor_state);
-    try std.testing.expect(redo_result.success);
-
-    // Back to initial state after redo
-    try std.testing.expect(editor_state.undo_manager.canUndo());
-    try std.testing.expect(!editor_state.undo_manager.canRedo());
-}
-
-test "undo fails when nothing to undo" {
-    const allocator = std.testing.allocator;
-    var dummy: u8 = 0;
-    var editor_state = EditorState.init(allocator);
-    defer editor_state.deinit();
-    const result = try executeUndoIn(allocator, &dummy, &editor_state);
-    try std.testing.expect(!result.success);
-}
-
-test "redo fails when nothing to redo" {
-    const allocator = std.testing.allocator;
-    var dummy: u8 = 0;
-    var editor_state = EditorState.init(allocator);
-    defer editor_state.deinit();
-    const result = try executeRedoIn(allocator, &dummy, &editor_state);
-    try std.testing.expect(!result.success);
-}
-
-test "clear undo history" {
-    const allocator = std.testing.allocator;
-    var editor_state = EditorState.init(allocator);
-    defer editor_state.deinit();
-
-    try recordFormatOperationIn(allocator, &editor_state, .bold, false);
-    try recordFormatOperationIn(allocator, &editor_state, .italic, false);
-    try std.testing.expectEqual(@as(usize, 2), editor_state.undo_manager.undoCount());
-
-    editor_state.undo_manager.clear();
-    try std.testing.expectEqual(@as(usize, 0), editor_state.undo_manager.undoCount());
-    try std.testing.expect(!editor_state.undo_manager.canUndo());
-}
-
-test "record text operation" {
-    const allocator = std.testing.allocator;
-    var editor_state = EditorState.init(allocator);
-    defer editor_state.deinit();
-
-    try recordTextOperationIn(allocator, &editor_state, .insertText, null, "Hello", 0);
-    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.undoCount());
-    try std.testing.expect(editor_state.undo_manager.canUndo());
 }
