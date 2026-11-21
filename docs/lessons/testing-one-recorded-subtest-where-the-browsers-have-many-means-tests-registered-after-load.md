@@ -7,6 +7,6 @@
 
 **What Happened**: Lane maj6, css/css-text-decor/parsing/text-decoration-inset-computed.html: generation 234 recorded 1 subtest (PASS), Chrome 157 16/16, Firefox 160 10/16. The file registers its 16 tests in `document.fonts.load("20px Ahem").then(...)`. Gecko's FontFaceSet blocks onload while a font loads and Blink's font fetch is a load-blocking request of the document's fetcher; Crane's FaceLoad fetched the font without delaying the load event, so load fired first.
 
-**Fix**: Find what the callback waits on and make it delay the load event the way the browsers do (here dom.document_lifecycle.delayLoadEvent at the face's first fetch, undelayLoadEvent on every path the load ends by), then check the file records all its subtests.
+**Fix**: Find what the callback waits on and make it delay the load event the way the browsers do, from the moment the work STARTS - synchronously, in the call that starts it - and undelay on every path it ends by; then check the file records all its subtests. The first try delayed at the face's fetch, which ran in the face's next task: by then "the end" had already queued load, and the file still recorded 1 subtest. Delaying in Face.start (FontFace load(), synchronous) recorded 16, 12 passing (Chrome 16, Firefox 10).
 
-**Takeaway**: **A file with an OK status and far fewer subtests than the browsers' is a harness that completed early - look for the load-event delay its test registration depended on, not for failing assertions.**
+**Takeaway**: **A file with an OK status and far fewer subtests than the browsers' is a harness that completed early - look for the load-event delay its test registration depended on, not for failing assertions; a delay begun in a later task is too late.**
