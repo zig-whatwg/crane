@@ -30,10 +30,8 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Build Zig library
         run: |
@@ -63,10 +61,8 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Build Zig library for iOS
         run: |

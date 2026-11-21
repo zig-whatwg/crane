@@ -16,10 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Install Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       # The module list is DERIVED from build.zig's `harness_sources`
       # (build.zig:2792, the source of truth) instead of being re-typed here.
@@ -88,10 +86,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Install Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       # libuv is real: build.zig links /opt/homebrew/opt/libuv (build.zig:265).
       # Homebrew's v8 is theatre - nothing in build.zig reads it. The install is
