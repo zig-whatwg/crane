@@ -105,24 +105,107 @@ test "the [HTMLConstructor] table is the 77 interfaces HTML and its applicable s
 /// Recorded from this test's own output on that tree (an empty entry prints
 /// what it reads).
 const prototype_shapes = "{" ++
+    "'HTMLAnchorElement':'a0797347/29'," ++
+    "'HTMLAreaElement':'3727badd/26'," ++
+    "'HTMLAudioElement':'79735475/2'," ++
+    "'HTMLBRElement':'2ccffcf1/3'," ++
+    "'HTMLBaseElement':'096988c1/4'," ++
+    "'HTMLBodyElement':'2e86dadf/30'," ++
+    "'HTMLButtonElement':'1946241d/23'," ++
+    "'HTMLCameraElement':'c5c0dbfa/8'," ++
+    "'HTMLCanvasElement':'20368582/9'," ++
+    "'HTMLDListElement':'1f1b9d0d/3'," ++
+    "'HTMLDataElement':'187007e9/3'," ++
+    "'HTMLDataListElement':'924d8fd1/3'," ++
+    "'HTMLDetailsElement':'7a6fa4ec/4'," ++
+    "'HTMLDialogElement':'85c45e20/9'," ++
+    "'HTMLDirectoryElement':'1f1b9d0d/3'," ++
+    "'HTMLDivElement':'8c4c7915/3'," ++
+    "'HTMLElement':'d020e339/152'," ++
+    "'HTMLEmbedElement':'770c2ddc/9'," ++
+    "'HTMLFencedFrameElement':'88e1bb07/7'," ++
+    "'HTMLFieldSetElement':'8e103add/13'," ++
+    "'HTMLFontElement':'96aad77f/5'," ++
+    "'HTMLFormElement':'1851c40a/21'," ++
+    "'HTMLFrameElement':'c04f88c4/12'," ++
+    "'HTMLFrameSetElement':'b5c477f9/25'," ++
+    "'HTMLGeolocationElement':'d5f58ced/14'," ++
+    "'HTMLHRElement':'6802175b/7'," ++
+    "'HTMLHeadElement':'79735475/2'," ++
+    "'HTMLHeadingElement':'8c4c7915/3'," ++
+    "'HTMLHtmlElement':'a4a8752e/3'," ++
+    "'HTMLIFrameElement':'1c33c66b/26'," ++
+    "'HTMLImageElement':'0bc3edcf/30'," ++
+    "'HTMLInputElement':'0ce32926/63'," ++
+    "'HTMLInstallElement':'46cf9b9c/8'," ++
+    "'HTMLLIElement':'9d39cf04/4'," ++
+    "'HTMLLabelElement':'acfbbe3d/5'," ++
+    "'HTMLLegendElement':'0ae285cb/4'," ++
+    "'HTMLLinkElement':'c712f6c4/22'," ++
+    "'HTMLMapElement':'eea01ff9/4'," ++
+    "'HTMLMarqueeElement':'23b0a376/15'," ++
+    "'HTMLMenuElement':'1f1b9d0d/3'," ++
+    "'HTMLMetaElement':'41c6aefb/7'," ++
+    "'HTMLMeterElement':'b72c1f80/9'," ++
+    "'HTMLMicrophoneElement':'c5c0dbfa/8'," ++
+    "'HTMLModElement':'1a213433/4'," ++
+    "'HTMLOListElement':'5376bf30/6'," ++
+    "'HTMLObjectElement':'2fe75145/28'," ++
+    "'HTMLOptGroupElement':'313e5571/4'," ++
+    "'HTMLOptionElement':'18741ae6/10'," ++
+    "'HTMLOutputElement':'f8f737c2/15'," ++
+    "'HTMLParagraphElement':'8c4c7915/3'," ++
+    "'HTMLParamElement':'661bde24/6'," ++
+    "'HTMLPictureElement':'79735475/2'," ++
+    "'HTMLPortalElement':'413578b8/8'," ++
+    "'HTMLPreElement':'4a794be6/3'," ++
+    "'HTMLProgressElement':'13ca2f02/6'," ++
+    "'HTMLQuoteElement':'be0a6495/3'," ++
+    "'HTMLScriptElement':'6dfa1a9b/18'," ++
+    "'HTMLSelectElement':'705f67ac/28'," ++
+    "'HTMLSelectedContentElement':'79735475/2'," ++
+    "'HTMLSlotElement':'b9ba0c41/6'," ++
+    "'HTMLSourceElement':'e9df9cd1/9'," ++
+    "'HTMLSpanElement':'79735475/2'," ++
+    "'HTMLStyleElement':'76d9f685/7'," ++
+    "'HTMLTableCaptionElement':'8c4c7915/3'," ++
+    "'HTMLTableCellElement':'df0f7302/17'," ++
+    "'HTMLTableColElement':'92c996fe/8'," ++
+    "'HTMLTableElement':'e32c4483/25'," ++
+    "'HTMLTableRowElement':'b8dcec7d/12'," ++
+    "'HTMLTableSectionElement':'c6b86619/9'," ++
+    "'HTMLTemplateElement':'2a59e838/10'," ++
+    "'HTMLTextAreaElement':'8b834354/32'," ++
+    "'HTMLTimeElement':'b5517f53/3'," ++
+    "'HTMLTitleElement':'c0629175/3'," ++
+    "'HTMLTrackElement':'484ba327/13'," ++
+    "'HTMLUListElement':'328916e8/4'," ++
+    "'HTMLUserMediaElement':'3bee1e00/8'," ++
+    "'HTMLVideoElement':'b3ed224b/15'," ++
     "}";
 
 /// The interface objects' own properties (keys, kinds and attributes) on
-/// main 5a621f2cb, the same for every one with no constants of its own: a
-/// FunctionTemplate's function has V8's own `arguments` and `caller`.
-const interface_object_shape = "";
+/// main 5a621f2cb: length, name and prototype for every one with no static
+/// member of its own - no `arguments` or `caller` (WebIDL 3.7.1; V8 gives a
+/// FunctionTemplate's function none since it is made read-only-prototype) -
+/// and HTMLScriptElement's static supports() and HTMLTrackElement's
+/// constants after them.
+const interface_object_shapes = "{" ++
+    "'*':'length:v001,name:v001,prototype:v000'," ++
+    "'HTMLScriptElement':'length:v001,name:v001,prototype:v000,supports:v111'," ++
+    "'HTMLTrackElement':'length:v001,name:v001,prototype:v000,NONE:v010,LOADING:v010,LOADED:v010,ERROR:v010'," ++
+    "}";
 
 /// The JS that checks it all in a realm: "ok", or the first failures (and,
 /// for an unrecorded fingerprint, what it read).
 fn shapeCheck(comptime secure: bool) []const u8 {
     return "const table = " ++ html_constructors.table ++ ";\nconst SHAPES = " ++ prototype_shapes ++
-        ";\nconst OBJECT_SHAPE = '" ++ interface_object_shape ++ "';\nconst SECURE = " ++ (if (secure) "true" else "false") ++ ";\n" ++
+        ";\nconst OBJECT_SHAPES = " ++ interface_object_shapes ++ ";\nconst SECURE = " ++ (if (secure) "true" else "false") ++ ";\n" ++
         \\(() => {
         \\  const bad = [], record = [];
         \\  const fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
         \\  const shape = o => Reflect.ownKeys(o).map(k => { const d = Object.getOwnPropertyDescriptor(o, k);
         \\    return String(k) + ':' + ('value' in d ? 'v' + (+d.writable) : 'a' + (d.get ? 1 : 0) + (d.set ? 1 : 0)) + (+d.enumerable) + (+d.configurable); }).join(',');
-        \\  const objectShapes = new Map();
         \\  for (const [n, p] of table) {
         \\    const X = globalThis[n], P = globalThis[p];
         \\    if (typeof X !== 'function') { bad.push('no interface object ' + n); continue; }
@@ -142,21 +225,13 @@ fn shapeCheck(comptime secure: bool) []const u8 {
         \\    let threw = null;
         \\    try { X(); } catch (e) { threw = e; }
         \\    if (!(threw instanceof TypeError)) bad.push('called without new ' + n);
-        \\    const os = shape(X);
-        \\    if (!objectShapes.has(os)) objectShapes.set(os, []);
-        \\    objectShapes.get(os).push(n);
+        \\    const os = shape(X), pinned = OBJECT_SHAPES[n in OBJECT_SHAPES ? n : '*'];
+        \\    if (os !== pinned) bad.push('interface object shape ' + n + ': ' + os);
         \\    if (SECURE) {
         \\      const got = fnv(shape(proto)) + '/' + Reflect.ownKeys(proto).length;
         \\      if (!(n in SHAPES)) record.push(n + ':' + got);
         \\      else if (SHAPES[n] !== got) bad.push('prototype shape ' + n + ' ' + got + ' (pinned ' + SHAPES[n] + ')');
         \\    }
-        \\  }
-        \\  // The interface objects' own properties: one shape for all but those
-        \\  // with constants of their own (HTMLTrackElement's).
-        \\  for (const [os, names] of objectShapes) {
-        \\    if (names.includes('HTMLElement') && OBJECT_SHAPE !== '' && os !== OBJECT_SHAPE) bad.push('interface object shape ' + os);
-        \\    if (names.includes('HTMLElement') && OBJECT_SHAPE === '') record.push('OBJECT_SHAPE ' + os);
-        \\    if (!names.includes('HTMLElement') && !names.every(n => n === 'HTMLTrackElement')) bad.push('another interface object shape: ' + names.join(' ') + ': ' + os);
         \\  }
         \\  if (SECURE !== ('onpointerrawupdate' in HTMLElement.prototype)) bad.push('[SecureContext] member onpointerrawupdate');
         \\  // [LegacyFactoryFunction]s: their prototype is the interface's (WebIDL 3.7.2).
