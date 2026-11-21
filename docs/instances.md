@@ -96,6 +96,16 @@ unless it was opened with noopener. Two Browsers in one process share nothing mu
 default; an optional profile directory persists the Browser's stores, one live Browser per
 directory.
 
+The profile directory (lane life1; the user's ruling D6, 2026-11-21: Puppeteer's `--user-data-dir`
+fully supported) is `BrowserConfig.profile_dir`, which the console's `--user-data-dir` / `--profile`
+set and the platform receives as `BrowserOptions.profile_dir`. The Browser holds `<dir>/LOCK` under
+an exclusive advisory lock for its life (kit/posix `ProfileLock`: flock, released by the kernel if the
+process dies, so a crash leaves no stale lock); a second live Browser on the directory fails to start
+with `error.ProfileInUse`. Its stores open through the platform's storage engine (platform protocol
+6.6) under the directory - SQLite on every platform with a profile directory (the user's ruling,
+2026-11-21) - and kit/memory_store stays the engine of a Browser with none. Session state stays in
+memory either way, as in every browser across restarts: sessionStorage, session cookies, the tabs.
+
 ## Rules for new state
 
 1. **Do not add a `threadlocal` or a container-level `var`.** A threadlocal is per thread, which is

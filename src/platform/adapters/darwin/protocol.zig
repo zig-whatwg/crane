@@ -91,6 +91,9 @@ const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding"
 /// Browser's memory-pressure observer (memory_pressure.zig: a DISPATCH_SOURCE_TYPE_MEMORYPRESSURE source), which
 /// reports through the Browser's EventSink from `start` until `deinit`.
 const Extra = struct {
+    /// One live Browser per profile directory (kit/browser_state).
+    pub const ProfileLock = posix.ProfileLock;
+
     clipboard: memory_clipboard.Clipboard,
     memory_pressure: memory_pressure.Observer = .{},
 

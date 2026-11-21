@@ -9,6 +9,12 @@
 //! error{OutOfMemory}!Extra` and `fn deinit(*Extra) void`; a platform with no
 //! state of its own passes `struct {}`.
 //!
+//! `Extra` may declare `ProfileLock`, a type with `fn acquire(directory:
+//! []const u8) platform.Error!ProfileLock` and `fn release(*ProfileLock)
+//! void` (kit/posix's): a Browser given a profile directory holds it for its
+//! life - one live Browser per directory (docs/instances.md), a second is
+//! error.Busy - and a platform with no file system of its own declares none.
+//!
 //! `Extra` may also declare `fn start(*Extra, platform.EventSink) void`: the
 //! platform's observers (docs/platform-protocol.md 3.3), which report through
 //! the Browser's EventSink from threads of their own. `create` calls it last,
@@ -30,6 +36,8 @@ pub fn BrowserState(comptime Extra: type) type {
         events: platform.EventSink,
         /// Owned copy of BrowserOptions.profile_dir; null: in memory.
         profile_dir: ?[]u8,
+        /// The Browser's hold on its profile directory, while it has one.
+        profile_lock: if (@hasDecl(Extra, "ProfileLock")) ?Extra.ProfileLock else void,
         stores: memory_store.Stores,
         platform_options: platform.PlatformBrowserOptions,
         extra: Extra,
@@ -39,11 +47,26 @@ pub fn BrowserState(comptime Extra: type) type {
             errdefer allocator.destroy(self);
             const profile_dir: ?[]u8 = if (options.profile_dir) |dir| try allocator.dupe(u8, dir.slice()) else null;
             errdefer if (profile_dir) |dir| allocator.free(dir);
+            // One live Browser per profile directory: taken before anything
+            // else is made, so a refused Browser leaves nothing behind.
+            var profile_lock: if (@hasDecl(Extra, "ProfileLock")) ?Extra.ProfileLock else void = if (@hasDecl(Extra, "ProfileLock")) null else {};
+            if (@hasDecl(Extra, "ProfileLock")) {
+                if (profile_dir) |dir| profile_lock = try Extra.ProfileLock.acquire(dir);
+            }
+            errdefer if (@hasDecl(Extra, "ProfileLock")) {
+                if (profile_lock) |*held| held.release();
+            };
             const extra: Extra = if (@hasDecl(Extra, "init")) try Extra.init(allocator, options) else .{};
             self.* = .{
                 .allocator = allocator,
                 .events = events,
                 .profile_dir = profile_dir,
+                .profile_lock = profile_lock,
+                // TODO(lane life1, D6): a Browser with a profile directory
+                // opens its stores persistently under it - the persistent
+                // backend behind the same openStore (docs/platform-protocol.md
+                // 6.6) waits on the user's choice of engine (integrator,
+                // 2026-11-21 6:38 PM ET); until then they are in memory.
                 .stores = .init(allocator),
                 .platform_options = options.platform,
                 .extra = extra,
@@ -56,6 +79,11 @@ pub fn BrowserState(comptime Extra: type) type {
             const self = of(browser);
             if (@hasDecl(Extra, "deinit")) self.extra.deinit();
             self.stores.deinit();
+            // The directory is free for the next Browser once its stores
+            // are closed.
+            if (@hasDecl(Extra, "ProfileLock")) {
+                if (self.profile_lock) |*held| held.release();
+            }
             if (self.profile_dir) |dir| self.allocator.free(dir);
             self.allocator.destroy(self);
         }

@@ -103,6 +103,13 @@ pub const BrowserConfig = struct {
     /// and persisting them under a profile directory is its own work
     /// (STORAGE PERSISTENCE, tmp/plans/lane-console-handoff.md).
     persist_storage: bool = false,
+    /// The Browser's profile directory (docs/instances.md): its stores
+    /// persist under it, and it is the Browser's alone while it lives - a
+    /// second live Browser given the same directory fails to start with
+    /// error.ProfileInUse, as Chrome's profile lock refuses one. Null (the
+    /// default): in memory, nothing written to disk. The console's
+    /// --user-data-dir / --profile set it. BORROWED for `init`.
+    profile_dir: ?[]const u8 = null,
     /// Initial URL to navigate to (optional)
     initial_url: ?[]const u8 = null,
     /// Enable debug logging
@@ -277,7 +284,14 @@ pub const Browser = struct {
         // ends, so it is the scope's earlier supplement and ends after it.
         // It has no loop to post to until `attach`, below.
         const platform_events = try @import("platform_events.zig").make(scope);
-        const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform }, platform_events.eventSink());
+        const browser_platform = @import("html").platform_state.createWith(scope, &.{
+            .platform = config.platform,
+            .profile_dir = if (config.profile_dir) |dir| platform.Str.from(dir) else null,
+        }, platform_events.eventSink()) catch |err| return switch (err) {
+            // Another live Browser holds the profile directory.
+            error.Busy => error.ProfileInUse,
+            else => err,
+        };
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;
         const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
