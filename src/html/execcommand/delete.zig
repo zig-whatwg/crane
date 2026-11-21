@@ -1571,6 +1571,25 @@ pub fn deleteAction(edit: *Edit) !bool {
     // Step 16: the general block merge - down to the previous block's end,
     // past non-editable atoms (see removeAtomsBefore).
     while (try common.childBefore(start.node, start.offset)) |child| {
+        // A br that ends a block right after a block child makes an empty
+        // line of its own: Backspace from the next block removes just it
+        // (lane edit4, A13): `<div><div>abc</div><br></div><div>[]def</div>`
+        // gives `<div><div>abc</div></div><div>def</div>` or `<div><div>abc
+        // </div>def</div>` in Chrome 157, Firefox 160 and Safari 27.2
+        // (editing/run/delete.html, PPP at wpt.fyi 2358bd4835), where the
+        // spec removes it as invisible and joins "def" into the inner div.
+        // brBetweenBlocks' rule at a block's end. Golden rule 2, no newer
+        // spec.
+        if (start.node != point.node and (try isBr(child)) and (try common.isEditable(child)) and
+            (try common.nextSibling(child)) == null and common.isBlockNode(start.node))
+        {
+            if (try common.previousSibling(child)) |before| {
+                if (common.isElement(before) and common.isBlockNode(before)) {
+                    try edit.removeNode(child);
+                    return true;
+                }
+            }
+        }
         if ((try common.isEditable(child)) and ((try common.isInvisible(child)) or try isEmptyBlock(child))) {
             if (point.node == start.node and point.offset >= start.offset) point.offset -= 1;
             try edit.removeNode(child);
