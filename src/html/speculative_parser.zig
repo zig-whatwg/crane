@@ -385,6 +385,7 @@ pub const Scanner = struct {
         if (eql(name, "img")) return self.img(tag, sink);
         if (eql(name, "source")) return self.source(tag);
         if (eql(name, "input")) return self.input(tag, sink);
+        if (eql(name, "video")) return self.video(tag, sink);
     }
 
     /// Blink's HTMLTokenizer::UpdateStateFor, the tree builder's choice of
@@ -593,6 +594,17 @@ pub const Scanner = struct {
         report(sink, &f);
     }
 
+    /// HTML 4.8.9 "determine the element's poster frame": the poster's
+    /// request has no CORS mode and credentials "include", whatever the
+    /// crossorigin attribute says (Blink scans the poster too:
+    /// StartTagScanner::ProcessVideoAttribute).
+    fn video(self: *Scanner, tag: *const TagToken, sink: Sink) !void {
+        const poster = attr(tag, "poster") orelse return;
+        var f = self.found(.image, poster);
+        f.initiator_type = .video;
+        report(sink, &f);
+    }
+
     /// The @import rules of the style element that just ended.
     fn emitImports(self: *Scanner, sink: Sink) !void {
         const urls = try self.css.takeImports();
@@ -719,8 +731,8 @@ test "the speculative parser finds scripts, style sheets, preloads and images, a
         \\<link rel=preload as=style href=pre.css><link rel=preload as=bogus href=bogus>
         \\<link rel=modulepreload href=mp.js>
         \\<img src=i.png><img data-src=d.png><img src=lazy.png loading=lazy><img src="data:image/png,x">
-        \\<input type=image src=in.png>
-    }, "classic_script a.js\nmodule_script m.js\nclassic_script e.js\nstyle_sheet s.css\npreload pre.css\nmodulepreload mp.js\nimage i.png\nimage in.png\n");
+        \\<input type=image src=in.png><video poster=p.png></video>
+    }, "classic_script a.js\nmodule_script m.js\nclassic_script e.js\nstyle_sheet s.css\npreload pre.css\nmodulepreload mp.js\nimage i.png\nimage in.png\nimage p.png\n");
 }
 
 test "nothing is fetched from a template's contents, except a declarative shadow root's; rawtext hides markup" {
