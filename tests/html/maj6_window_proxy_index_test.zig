@@ -90,6 +90,20 @@ fn operationReceivers() !void {
     try expectTrue(browser, "typeof window.setTimeout(() => {}, 0) === 'number'");
     try expectTrue(browser, "clearTimeout.call(window[0], 0) === undefined");
     try expectTrue(browser, "typeof window[0].setTimeout(() => {}, 0) === 'number'");
+    // The timer is the receiver's: in the frame's map when the frame is
+    // `this`, whichever realm's function made it.
+    const held = try browser.evaluateScript(
+        \\globalThis.out = {};
+        \\const frame = window[0];
+        \\const a = window.setTimeout.call(frame, () => { out.a = true; }, 0);
+        \\frame.clearTimeout(a);
+        \\const b = window.setTimeout.call(frame, () => { out.b = true; }, 0);
+        \\clearTimeout(b);
+        \\0;
+    );
+    held.release();
+    _ = try browser.runEventLoopBlocking(50);
+    try expectTrue(browser, "out.a === undefined && out.b === true");
 }
 
 test "a same-origin WindowProxy refuses to define or set an array-index property" {
