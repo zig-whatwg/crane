@@ -83,13 +83,18 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
         // removes a sole collapsed line break; a caret after the empty
         // line's placeholder is at the line's start (Blink's
         // ReplaceSelectionCommand removes the placeholder). Golden rule 2.
+        // Only the line break itself: an inline element holding one stays
+        // where it is - `<p><span><!--foo--><br><!--bar--></span>{}</p>` +
+        // "<!--abc-->" keeps the span and its br (Firefox 160; Crane at
+        // generation 235; Chrome 157 and Safari 27.2 put the comment
+        // before the span, which the data does not accept).
         const sole = (try common.childCount(point.node)) == 1;
         var child = try common.firstChild(point.node);
         while (child) |c| : ({
             child = try common.nextSibling(c);
             index += 1;
         }) {
-            if (index < point.offset and !sole) continue;
+            if (index < point.offset and !(sole and try common.isCollapsedLineBreak(c))) continue;
             if ((try common.isEditable(c)) and try common.isCollapsedBlockProp(c)) try props.append(edit.scratchAllocator(), c);
         }
         for (props.items) |prop| try edit.removeNode(prop);
