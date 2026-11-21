@@ -12,14 +12,17 @@ const test_suites = @import("tools/test_suites.zig");
 /// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
 
+/// The Zig that builds Crane, std-only and pinned by `zig build test`.
+const zig_toolchain = @import("tools/zig_toolchain.zig");
+
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
-// (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
-// aarch64-ios (ziglang/zig#37061) and its checkAllAllocationFailures lets
-// resizes reach SafeAllocator, so tests fail with NondeterministicMemoryUsage
-// (ziglang/zig#37142). build.zig.zon's minimum_zig_version is not enforced.
+// (0.17.1-dev+77c319a0f0) until 0.17.1 ships, and refuses every other Zig by
+// name: anything older than 0.17 (0.16 was retired on 2026-11-21) and 0.17.0
+// itself (ziglang/zig#37061, #37142) - tools/zig_toolchain.zig `refusal`.
+// build.zig.zon's minimum_zig_version is not enforced.
 comptime {
-    const v = @import("builtin").zig_version;
-    if (v.major == 0 and v.minor == 17 and v.patch == 0) @compileError("Crane does not build with Zig 0.17.0 (ziglang/zig#37061: aarch64-ios; #37142: checkAllAllocationFailures resizes): use the pinned 0.17.x-branch build 0.17.1-dev+77c319a0f0 (77c319a0f00a), or 0.17.1 once it ships");
+    const builtin = @import("builtin");
+    if (zig_toolchain.refusal(builtin.zig_version)) |why| @compileError("Zig " ++ builtin.zig_version_string ++ ": " ++ why);
 }
 
 // ============================================================================
@@ -2505,8 +2508,8 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
 }
 
 /// A C header set translated to Zig by the build: what a file's `@cImport`
-/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; works on 0.16
-/// and 0.17, where Step.TranslateC is deprecated but present). The file
+/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; Step.TranslateC
+/// is deprecated in 0.17 but present). The file
 /// imports the result by name (`const c = @import("curl_c");`).
 ///
 /// `@cImport` translated against its module's include paths and C macros; a
@@ -5837,6 +5840,15 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, test_suites_tests, "tools-test_suites", null).step);
+
+    // tools/zig_toolchain.zig: the configure's refusal of every Zig but the
+    // pinned 0.17 (the comptime block at the top of this file), std-only.
+    const zig_toolchain_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/zig_toolchain.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, zig_toolchain_tests, "tools-zig_toolchain", null).step);
 
     // The build side of the engine adapters: the std-only helpers of each
     // listed adapter's build file that hold tests of their own (the

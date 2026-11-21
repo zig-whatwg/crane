@@ -45,12 +45,19 @@ mid-run. Both are gone; but on a shared machine prefer the binary directly:
 0.17.x branch at 77c319a0f00a (`zig version`: `0.17.1-dev+77c319a0f0`), because
 0.17.0 cannot build aarch64-ios (ziglang/zig#37061, fixed for 0.17.1). It lives
 at `~/crane-toolchains/zig-0.17.1-dev+77c319a0f0/` on the Mac and every pool
-host; `build.zig.zon`'s `minimum_zig_version` says 0.17, and the pool's zig shim
-picks the toolchain from it. Switch to 0.17.1 when it ships.
+host, and the pool's zig shim (`~/crane-bin/zig`) runs it for every command.
+Switch to 0.17.1 when it ships.
 
+- **Zig 0.16 is retired** (lane z17f, 2026-11-21): no host or script runs it.
+  `build.zig.zon`'s `minimum_zig_version` (0.17.0) is not enforced, so
+  `build.zig` refuses any other Zig at configure time, by name
+  (`tools/zig_toolchain.zig`, pinned by `zig build test`): anything older than
+  0.17, and 0.17.0 itself (#37061; #37142, checkAllAllocationFailures lets
+  resizes through). Its message names the pinned build; the errors printed
+  beside it are the old Zig failing on 0.17 code.
 - **`zig build` takes no `--global-cache-dir`.** The global cache is set only
-  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`, a
-  cache 0.16 never shared); `--cache-dir` works as before.
+  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`);
+  `--cache-dir` works as before.
 - **The configuration is cached, and stays cacheable** (lane cfg1, 2026-11-17).
   `build.zig` runs in a configure process whose result Zig 0.17 caches, keyed
   by build.zig and what it imports, the command line, and the paths the

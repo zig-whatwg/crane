@@ -34,10 +34,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Build Zig library for Android (arm64-v8a only, KNOWN BROKEN)
         run: |
