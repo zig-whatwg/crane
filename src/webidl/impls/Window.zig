@@ -14,7 +14,8 @@
 //! The Window implementation uses pluggable backends:
 //! - BrowsingContext: Manages window relationships (parent, opener, etc.)
 //! - UIBackend: Handles alert/confirm/prompt dialogs
-//! - AnimationFrameScheduler: Manages requestAnimationFrame callbacks
+//! - requestAnimationFrame: the Browser's frame clock (src/browser/rendering.zig),
+//!   bound on every Window realm through the engine's window operations
 //! - TimerManager: Handles setTimeout/setInterval (from event_loop)
 
 const std = @import("std");
@@ -40,8 +41,6 @@ const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
 const UIBackend = html_core.window.UIBackend;
 const StubUIBackend = html_core.window.StubUIBackend;
-const AnimationFrameScheduler = html_core.window.AnimationFrameScheduler;
-const StubFrameTimingBackend = html_core.window.StubFrameTimingBackend;
 
 // requestIdleCallback's idle periods: the event loop's and IdleDeadline's
 // halves (src/dom/idle_periods.zig).
@@ -106,12 +105,6 @@ pub const InternalState = struct {
 
     /// Stub UI backend instance (default, can be replaced)
     stub_ui_backend: StubUIBackend,
-
-    /// Animation frame scheduler
-    animation_scheduler: ?*AnimationFrameScheduler = null,
-
-    /// Stub frame timing backend (default, can be replaced)
-    stub_timing_backend: StubFrameTimingBackend,
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
@@ -289,7 +282,6 @@ pub const InternalState = struct {
             .allocator = allocator,
             .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
             .stub_ui_backend = StubUIBackend.init(.{}),
-            .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
             .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
             .close_watcher_manager = @import("dom").close_watcher_manager.Manager.init(allocator),
@@ -321,11 +313,6 @@ pub const InternalState = struct {
         }
 
         // Clean up event handlers
-
-        // Clean up animation scheduler if created
-        if (self.animation_scheduler) |scheduler| {
-            scheduler.deinit();
-        }
 
         // The idle callbacks normally ended with the window's document
         // (endIdleCallbacks, an unloading document cleanup step, which also
@@ -4289,17 +4276,10 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
 /// Operation: cancelAnimationFrame
 /// Per spec §8.14.2: Cancels a previously scheduled animation frame callback.
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // Cancel the animation frame if scheduler exists
-    if (internal.animation_scheduler) |scheduler| {
-        scheduler.cancelAnimationFrame(handle);
-    }
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // Bound natively, as requestAnimationFrame is (see there): nothing is
+    // registered through this entry.
+    _ = handle;
 }
 
 /// Fetch §5.6, fetchLater() method steps.
@@ -4382,39 +4362,19 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
     return interfaces.FetchLaterResult.initWith(allocator, instance.ctx, .{ .deferred_activation = activated });
 }
 
-/// Operation: requestAnimationFrame
-/// Per spec §8.14.2: Schedules a callback to be invoked before the next repaint.
-///
-/// TODO: When fully implementing, the callback MUST be stored as a V8 Global handle
-/// to survive past the caller's HandleScope. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. Create Global handle for the FrameRequestCallback
-/// 2. Store in animation frame registry with Global handle
-/// 3. Dispose Global handle when callback fires or is canceled
+/// Operation: requestAnimationFrame (HTML 8.12). Every Window realm binds it,
+/// and cancelAnimationFrame, natively through the engine's window operations
+/// (engine.installWindowOperations -> src/browser/rendering.zig: the
+/// Browser's frame clock, the documents' maps of animation frame callbacks),
+/// which take the callback as the owned value this generated signature cannot
+/// carry (its FrameRequestCallback is not a JS callback). This entry is
+/// reached by no Window a Browser makes: it registers nothing. (Lane life1
+/// removed the timer-driven AnimationFrameScheduler it used to make here, the
+/// "requestAnimationFrame timer" the frame clock replaced.)
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return 0; // Return 0 handle if window is closed
-    }
-
-    // Create animation scheduler lazily if not exists
-    if (internal.animation_scheduler == null) {
-        internal.animation_scheduler = try AnimationFrameScheduler.init(
-            internal.allocator,
-            internal.stub_timing_backend.backend(),
-        );
-    }
-
-    // Schedule the callback
-    // The callback needs to be wrapped to match our internal signature
-    // TODO: Proper callback wrapping - for now return placeholder
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     _ = callback;
-    return 0; // Placeholder
+    return 0;
 }
 
 /// Operation: cancelIdleCallback
