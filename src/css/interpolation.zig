@@ -373,9 +373,14 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
         if (try transform_interpolation.combine(allocator, underlying, value, 1, .accumulate)) |sum| return sum;
         return retained(value);
     }
-    // Filter Effects 1 11: filter lists accumulate function by function.
+    // Filter Effects 1 11: filter lists accumulate function by function;
+    // lists that cannot (14.3: "returns the filter value, V_b") give V_b,
+    // never the addition's concatenation, as transforms above
+    // (web-animations accumulation-per-property-001.html 'filter: mismatched
+    // ordered filter functions'; Chrome 157, Firefox 160 and Safari 27.2).
     if (l == .filter or l == .backdrop_filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
+        return retained(value);
     };
     // translate, rotate and scale accumulate component by component; scale's
     // components as one-based values (mixTransforms).

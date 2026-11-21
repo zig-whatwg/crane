@@ -10,7 +10,7 @@ const Style = css.computed_style.ComputedStyle;
 const Block = css.declarations.DeclarationBlock;
 const interpolation = css.interpolation;
 
-const Op = enum { interpolate, add };
+const Op = enum { interpolate, add, accumulate };
 
 fn computeOne(allocator: Allocator, name: []const u8, text: []const u8) !*Style {
     var block = Block.init(allocator);
@@ -28,6 +28,7 @@ fn combined(allocator: Allocator, op: Op, name: []const u8, from: []const u8, to
     const raw = switch (op) {
         .interpolate => try interpolation.interpolate(allocator, l, a.get(l), b.get(l), p),
         .add => try interpolation.add(allocator, l, a.get(l), b.get(l)),
+        .accumulate => try interpolation.accumulate(allocator, l, a.get(l), b.get(l)),
     };
     const result = interpolation.clampFinal(l, raw);
     var block = Block.init(allocator);
@@ -54,4 +55,17 @@ test "filter lists add by concatenation" {
     // none is the identity list.
     try combined(allocator, .add, "filter", "none", "blur(20px)", 1, "blur(20px)");
     try combined(allocator, .add, "filter", "blur(10px)", "none", 1, "blur(10px)");
+}
+
+test "filter lists that do not match accumulate to the added value, never the concatenation" {
+    const allocator = testing.allocator;
+    // Filter Effects 1 14.3: accumulation "returns the filter value, V_b"
+    // when the lists cannot be accumulated function by function
+    // (web-animations/animation-model/animation-types/accumulation-per-
+    // property-001.html 'filter: mismatched ordered filter functions';
+    // effect-value-iteration-composite-operation.html 'iteration composition
+    // of discrete filter list because of mismatch of the order').
+    try combined(allocator, .accumulate, "filter", "blur(10px) brightness(1.3)", "brightness(1.2) blur(20px)", 1, "brightness(1.2) blur(20px)");
+    // Matching lists still accumulate function by function.
+    try combined(allocator, .accumulate, "filter", "blur(10px) brightness(0.3)", "blur(20px) brightness(0.1)", 1, "blur(30px) brightness(0)");
 }
