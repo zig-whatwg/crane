@@ -510,3 +510,36 @@ test "an [HTMLConstructor] interface object is a function the class form keeps: 
     // no frame of the class (V8 hides an extension's functions).
     try page.expect("try { new HTMLElement(); 'constructed' } catch (e) { String(/HTMLElement \\(/.test(e.stack)) }", "false");
 }
+
+// Building an [HTMLConstructor] interface object runs no microtask: a wrap from
+// native code with no script on the stack - the parser's tree construction
+// handing an element to a MutationObserver's records - builds it, and the
+// extension's factory call and the property copies ended at call depth 0, where
+// V8's kAuto policy performs a checkpoint (shadow-dom/declarative/innerhtml-
+// before-closing-tag.html ran its observer before the shadow root's content was
+// parsed). HTML performs a checkpoint only at its own points.
+test "building an [HTMLConstructor] interface object from native code runs no queued microtask" {
+    var host: Host = .{};
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    const Ran = struct {
+        count: usize = 0,
+        fn steps(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.count += 1;
+        }
+    };
+    var ran: Ran = .{};
+    try protocol.queueMicrotask(page.agent, Ran.steps, &ran);
+    // An element of an interface this realm has not built yet, wrapped from
+    // here: its interface object is built now.
+    const element = try interfaces.HTMLParagraphElement.call_constructor(page.realm);
+    const wrapped = try protocol.createSequenceOfPlatformObjects(page.realm, &.{element});
+    wrapped.release();
+    try std.testing.expectEqual(@as(usize, 0), ran.count);
+    try protocol.performMicrotaskCheckpoint(page.agent);
+    try std.testing.expectEqual(@as(usize, 1), ran.count);
+    // The interface object it built is the class, its prototype the wrapper's.
+    try page.expect("String(Function.prototype.toString.call(HTMLParagraphElement) === 'function HTMLParagraphElement() { [native code] }')", "true");
+}
