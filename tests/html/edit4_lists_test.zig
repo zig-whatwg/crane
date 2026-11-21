@@ -12,6 +12,10 @@
 //! the first one's direction: `<ol dir="rtl"><li>abc</li><li>def</li></ol>`
 //! (Firefox 160; Chrome 157 keeps the first div around the list; both are in
 //! the data, Safari 27.2 fails - PPF at wpt.fyi 2358bd4835).
+//!
+//! A26 - a selection ending at the first position of a later block leaves
+//! that block out of the list (Chrome 157 and Firefox 160, PPF; Blink's
+//! InsertListCommand moves such an end to the previous position).
 const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 const harness = @import("editing4_harness.zig");
@@ -57,4 +61,23 @@ fn directions() !void {
 
 test "insert*list gives the new list the first converted block's dir" {
     try helpers.onFreshThread(directions);
+}
+
+const end_at_block_start_cases = [_]harness.Case{
+    .{ .input = "<div>[abc</div><div>def</div><div>]ghi</div>", .commands = &.{.{ "insertunorderedlist", "" }}, .expected = "<ul><li>abc</li><li>def</li></ul><div>ghi</div>" },
+    .{ .input = "<div>[abc</div><div>def</div><div>}<br></div>", .commands = &.{.{ "insertunorderedlist", "" }}, .expected = "<ul><li>abc</li><li>def</li></ul><div><br></div>" },
+    // Ending inside the block's text: it is listed (unchanged).
+    .{ .input = "<div>[abc</div><div>def</div><div>g]hi</div>", .commands = &.{.{ "insertunorderedlist", "" }}, .expected = "<ul><li>abc</li><li>def</li><li>ghi</li></ul>" },
+};
+
+fn endAtBlockStart() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try page.run("document.getElementById('host').focus();");
+    try harness.runCases(page, &end_at_block_start_cases);
+}
+
+test "insert*list leaves out a block the selection only reaches the start of" {
+    try helpers.onFreshThread(endAtBlockStart);
 }

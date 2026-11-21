@@ -829,6 +829,14 @@ pub fn localNameInto(node: *Instance, buffer: []u8) !?[]const u8 {
     return buffer[0..name.len];
 }
 
+/// Element.getAttribute(name), copied into `allocator`; null when absent.
+pub fn getAttribute(allocator: std.mem.Allocator, element: *Instance, name: []const u8) !?[]const u8 {
+    if (!isElement(element)) return null;
+    var value = (try interfaces.Element.call_getAttribute(element, DOMString.initInterned(name))) orelse return null;
+    defer value.deinit(element.ctx.allocator);
+    return try allocator.dupe(u8, value.asSlice());
+}
+
 pub fn hasAttribute(element: *Instance, name: []const u8) !bool {
     if (!isElement(element)) return false;
     return try interfaces.Element.call_hasAttribute(element, DOMString.initInterned(name));
