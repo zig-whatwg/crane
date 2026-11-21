@@ -92,6 +92,14 @@ pub fn releaseTab(b: *Browser, tab: TabId) void {
     if (comptime @hasDecl(Browser, "releaseTab")) return b.releaseTab(tab);
 }
 
+/// Browser thread. Whether tabs a page opens (window.open, a target=_blank
+/// link) start held at life1's hold point until `releaseTab` (Target.
+/// setAutoAttach {waitForDebuggerOnStart} on a browser session: Chrome's
+/// TargetHandler throttle pauses popups too).
+pub fn holdTabsOpenedByPages(b: *Browser, hold: bool) void {
+    if (comptime @hasDecl(Browser, "holdTabsOpenedByPages")) return b.holdTabsOpenedByPages(hold);
+}
+
 /// Browser thread. Make `tab` the active one (Target.activateTarget).
 pub fn activateTab(b: *Browser, tab: TabId) !void {
     if (comptime @hasDecl(Browser, "activateTab")) return b.activateTab(tab);

@@ -271,6 +271,31 @@ pub const DetachTask = struct {
     }
 };
 
+/// Tell the Browser whether tabs its pages open start held
+/// (host_bridge.holdTabsOpenedByPages).
+pub const HoldPopupsTask = struct {
+    side: *BrowserSide,
+    hold: bool,
+
+    pub fn post(side: *BrowserSide, hold: bool) void {
+        side.wait_for_debugger.store(hold, .release);
+        const task = side.allocator.create(HoldPopupsTask) catch return;
+        task.* = .{ .side = side, .hold = hold };
+        _ = side.host.post(task, run, drop);
+    }
+
+    fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
+        const task: *HoldPopupsTask = @ptrCast(@alignCast(context.?));
+        defer task.side.allocator.destroy(task);
+        host_bridge.holdTabsOpenedByPages(browser, task.hold);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const task: *HoldPopupsTask = @ptrCast(@alignCast(context.?));
+        task.side.allocator.destroy(task);
+    }
+};
+
 /// Run `uninstall` on the Browser thread and wait for it (before the
 /// Browser stops).
 pub fn uninstallAndWait(side: *BrowserSide) void {

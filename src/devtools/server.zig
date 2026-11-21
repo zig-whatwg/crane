@@ -448,6 +448,16 @@ pub const Server = struct {
         return false;
     }
 
+    /// Tell every Browser whether the tabs its pages open start held: while
+    /// any browser session auto-attaches with waitForDebuggerOnStart.
+    pub fn updatePopupHolds(self: *Server) void {
+        for (self.contexts.items) |c| {
+            if (c.disposed) continue;
+            const hold = self.wouldWait(c);
+            if (c.side.wait_for_debugger.load(.acquire) != hold) browser_side.HoldPopupsTask.post(c.side, hold);
+        }
+    }
+
     /// Devtools thread: a tab's targets go. Their sessions detach
     /// (detachedFromTarget to each parent), then targetDestroyed.
     pub fn removeTarget(self: *Server, target: *targets.Target, with_partner: bool) void {
@@ -698,6 +708,7 @@ pub const Server = struct {
         connection.implicit_session = null;
         connection.outbound.close();
         connection.shutdown();
+        self.updatePopupHolds();
         for (self.connections.items, 0..) |c, at| if (c == connection) {
             _ = self.connections.orderedRemove(at);
             connection.release();

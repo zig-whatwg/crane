@@ -191,6 +191,9 @@ pub const TargetDomain = struct {
             .wait_for_debugger = params.waitForDebuggerOnStart,
             .filter = try targets.Filter.fromParams(server.allocator, params.filter),
         };
+        // Popups start held while some browser session waits for new
+        // targets (every context's Browser hears it).
+        server.updatePopupHolds();
         if (!params.autoAttach) return .{};
         switch (session.kind) {
             .browser => {
@@ -328,6 +331,7 @@ pub const TargetDomain = struct {
             return err;
         };
         if (params.disposeOnDetach orelse false) context.dispose_with = session.connection_id;
+        server.updatePopupHolds();
         return .{ .browserContextId = context.id.slice() };
     }
 
