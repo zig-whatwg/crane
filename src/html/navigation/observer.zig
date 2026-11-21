@@ -102,8 +102,11 @@ pub const Event = union(enum) {
     /// The new document is its Window's associated Document and the
     /// navigable's active document, before its parser runs a script (CDP
     /// executionContextsCleared, lifecycleEvent init/commit, frameNavigated).
-    /// Also an initial about:blank document, with navigation_id 0.
-    committed: struct { url: []const u8, document: DocumentRef, mime_type: []const u8, error_page: bool = false },
+    /// Also an initial about:blank document, with navigation_id 0, and a
+    /// document the back/forward cache shows again (`restored`, CDP
+    /// frameNavigated type BackForwardCacheRestore; navigation_id 0 - the
+    /// document keeps the id its own navigation gave it).
+    committed: struct { url: []const u8, document: DocumentRef, mime_type: []const u8, error_page: bool = false, restored: bool = false },
     /// A same-document navigation updated the URL (CDP navigatedWithinDocument).
     same_document: struct { url: []const u8, kind: SameDocumentKind },
     /// A started navigation ended without committing (CDP loadingFailed).

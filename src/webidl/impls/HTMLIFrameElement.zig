@@ -4750,6 +4750,24 @@ fn reportCommitted(browsing_context: *html_core.BrowsingContext, document: *runt
     } } });
 }
 
+/// html_core.navigation.observer `committed` for a document the back/forward
+/// cache shows again (`restored`), at its own URL.
+fn reportRestored(browsing_context: *html_core.BrowsingContext, document: *runtime.Instance) void {
+    const list = browsing_context.navigables orelse return;
+    if (list.observer == null) return;
+    const allocator = document.ctx.allocator;
+    const url = interfaces.Document.get_URL(document) catch return;
+    defer allocator.free(url);
+    var content_type = interfaces.Document.get_contentType(document) catch return;
+    defer content_type.deinit(allocator);
+    observer.notify(list, .{ .navigable_id = browsing_context.id, .event = .{ .committed = .{
+        .url = url,
+        .document = .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) },
+        .mime_type = content_type.asSlice(),
+        .restored = true,
+    } } });
+}
+
 /// HTML 6.2 "set the initial visibility state" of `document` to its
 /// navigable's traversable navigable's system visibility state - "initialize
 /// the navigable" step 6 for an initial about:blank document, "activate
@@ -8563,6 +8581,10 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     // Its view of the history is the traversable's again, before pageshow
     // (JointHistory.holdView).
     if (bc.getTop().joint_history) |joint| joint.releaseView(bc.id);
+    // The navigation observer: the kept document is the navigable's active
+    // one again (CDP frameNavigated, type BackForwardCacheRestore), before
+    // its pageshow.
+    reportRestored(bc, page.document);
 
     if (leaving_realm) |realm| {
         if (kept) |leaving| {

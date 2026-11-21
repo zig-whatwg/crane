@@ -365,3 +365,27 @@ fn contextNavigateReturnsItsId() !void {
 test "Context.navigateWithOptions returns the id of the navigation it started" {
     try onFreshThread(contextNavigateReturnsItsId);
 }
+
+fn bfcacheRestoreIsCommitted() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try loadedPage(browser);
+    // Two documents of the host page's history, the first kept by the
+    // back/forward cache when the second commits.
+    try page.loadHTML("<!doctype html><title>two</title>", .{ .base_url = "http://example.test/two" });
+    try until(browser, "document.title === 'two' && document.readyState === 'complete'");
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    try recorder.observe(browser);
+    const tab = browser.hostTraversableId() orelse return error.NoTab;
+    try page.runScript("history.back();");
+    try until(browser, "document.title === 'one'");
+    // Restored or reloaded, the document the tab shows again is committed
+    // (CDP frameNavigated; a restore's has type BackForwardCacheRestore).
+    const committed = recorder.first(tab, .committed) orelse return error.NoCommit;
+    try testing.expectEqualStrings("http://example.test/one", committed.url);
+}
+
+test "a traversal back commits the document it shows again, restored from the back/forward cache or loaded" {
+    try onFreshThread(bfcacheRestoreIsCommitted);
+}
