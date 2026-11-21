@@ -25,6 +25,12 @@ const rows = [_]Row{
     .{ .white_space = "pre-wrap", .markup = "<p>abc[]\\n</p>", .commands = "[['inserttext','x']]", .expected = "<p>abcx\\n</p>" },
     .{ .white_space = "normal", .markup = "<p>abc[]<br></p>", .commands = "[['inserttext','x']]", .expected = "<p>abcx<br></p>" },
     .{ .white_space = "normal", .markup = "<p>{}<br></p>", .commands = "[['inserttext','x']]", .expected = "<p>x</p>" },
+    // A selection inside one Text node is replaced in place (Blink and
+    // WebKit's PerformTrivialReplace): the line feed after it stays, for one
+    // character and for several (inserttext-before-unnecessary-linebreak.html,
+    // Chrome and Safari pass, Firefox fails).
+    .{ .white_space = "pre-wrap", .markup = "<p>[abc]\\n</p>", .commands = "[['inserttext','x']]", .expected = "<p>x\\n</p>" },
+    .{ .white_space = "pre-wrap", .markup = "<p>[abc]\\n</p>", .commands = "[['inserttext','xy']]", .expected = "<p>xy\\n</p>" },
 };
 
 fn paddingCases() !void {
