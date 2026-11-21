@@ -369,6 +369,17 @@ fn runRecorded(edit: *Edit, command: Command, value: []const u8, host: *Instance
     return try runAction(edit, command, value);
 }
 
+/// Whether formatBlock's `value`, one pair of angle brackets stripped, is a
+/// qualified name an element could have: the check Blink's
+/// ExecuteFormatBlock makes (Document::ParseQualifiedName) before it builds
+/// and applies its command (see execCommand step 6).
+fn formatBlockNameParses(value_in: []const u8) bool {
+    var value = value_in;
+    if (value.len >= 2 and value[0] == '<' and value[value.len - 1] == '>') value = value[1 .. value.len - 1];
+    _ = dom.names.validateAndExtract("http://www.w3.org/1999/xhtml", value, .element) catch return false;
+    return true;
+}
+
 /// insertText step 5's "take the action for the insertParagraph command",
 /// through this dispatch (its action is lane editing4's, blocks.zig).
 fn insertParagraphAction(edit: *Edit) anyerror!bool {
@@ -427,9 +438,38 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
         return false;
     };
     // Step 6.
-    if (!result) return false;
-    // Step 7: input, if the action modified the DOM tree.
-    if (edit.modified and isConnected(host)) _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
+    if (!result) {
+        // formatBlock given a valid qualified name that names no block to
+        // format with ("quasit") changes nothing and returns false, yet
+        // fires input: Blink's ExecuteFormatBlock (editing/commands/
+        // editor_command.cc) parses the name, applies a FormatBlockCommand
+        // and returns its DidApply(), and the applied command dispatches
+        // input (Chrome 157 probe; Chrome and Safari 27.2 pass
+        // editing/event.html's formatBlock "quasit" input row, Firefox 160
+        // fires nothing - golden rule 2, the majority). A value that is not
+        // a qualified name ("") is refused before any command runs: no
+        // input in all three.
+        if (command == .format_block and formatBlockNameParses(value) and isConnected(host))
+            _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
+        return false;
+    }
+    // Step 7: input. The spec fires it only "if the action modified DOM
+    // tree" (Firefox 160 does so); Chrome 157 and Safari 27.2 fire it for
+    // every command that ran, changed or not - Blink's
+    // Editor::AppliedEditing and WebKit's Editor::appliedEditing dispatch
+    // it for each applied command, so backColor "quasit", fontName "serif"
+    // over serif text, unlink with no link, justifyLeft over left-aligned
+    // text and outdent with nothing to outdent all fire it
+    // (editing/event.html, wpt.fyi 2358bd4835: those rows pass in Chrome
+    // and Safari; the "quasit" colours and justifyLeft in Firefox too).
+    // Golden rule 2, no newer spec: the majority. The typing commands -
+    // insertText, delete, forwardDelete, insertLineBreak, insertParagraph -
+    // keep the spec's rule: Blink runs them as TypingCommands, which
+    // dispatch input themselves only when they typed or deleted something
+    // (TypingCommand::TypingAddedToOpenCommand; CompositeEditCommand::Apply
+    // skips AppliedEditing for them), so a delete at the editing host's
+    // start fires none.
+    if ((edit.modified or !command.isTyping()) and isConnected(host)) _ = fireInputEvent(host, "input", command.inputType(), command.inputData(value));
     // Step 8.
     return true;
 }
@@ -528,7 +568,7 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // fire no beforeinput.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, selectionTargetRange(&edit))) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, deletionTargetRange(&edit, command))) return;
     if (!isConnected(host)) return;
     // Step 4.4: a beforeinput listener may have moved or removed the
     // selection.
@@ -666,7 +706,31 @@ fn enterMakesLineBreak(target: *Instance) bool {
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
     defer arena.deinit();
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
-    return activeHostIsPlaintextOnly(&edit) catch false;
+    const host = (affectedEditingHost(&edit) catch return false) orelse return false;
+    return hostChainIsPlaintextOnly(host) catch false;
+}
+
+/// Whether `host`, or an editing host it is nested in (through editable
+/// ancestors), is in the plaintext-only state - Enter's rule (lane edit4,
+/// A05). A contenteditable=true element inside a plaintext-only host takes
+/// a line break for Enter in Firefox 160 (the outermost host decides) and
+/// Safari 27.2 (a plaintext-only host anywhere around the caret), where
+/// Chrome 157 makes a paragraph (the nearest host decides): `<div
+/// contenteditable=plaintext-only><div contenteditable><p>a[]c</p></div>
+/// </div>` + Enter gives `<p>a<br>c</p>` (editing/plaintext-only/nested-with-
+/// contenteditable-true.html "should insert line break at typing Enter",
+/// FPP at wpt.fyi 2358bd4835). Golden rule 2, the majority. The reverse -
+/// plaintext-only inside contenteditable=true - is a line break already
+/// (the nearest host; Chrome and Safari, where Firefox's outermost host
+/// makes a paragraph). Styling stays with the nearest host (isPlaintextOnly).
+fn hostChainIsPlaintextOnly(host: *Instance) !bool {
+    if (try isPlaintextOnly(host)) return true;
+    var current = try common.parent(host);
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try isPlaintextOnly(c)) return (try common.isEditable(c)) or try common.isEditingHost(c);
+        if (!try common.isEditable(c)) break;
+    }
+    return false;
 }
 
 /// The select-all shortcut (user_input.zig): the selectAll command's action.
@@ -873,6 +937,21 @@ const TargetRange = struct { start: common.Point, end: common.Point };
 /// selection, wpt.fyi 2358bd4835). A collapsed one gets none: what a caret's
 /// Backspace or Delete removes is the action's to compute (TODO: Blink's
 /// TypingCommand target ranges for a caret).
+/// A Backspace (`.delete`) or Delete key's target range: over a selection,
+/// the selection ending before a block it would join into
+/// (delete.deletionEnd); for a caret, the line break it removes before a
+/// block (delete.caretTargetRange). Lane edit4, B6.
+fn deletionTargetRange(edit: *Edit, command: Command) ?TargetRange {
+    const direction: delete.Direction = if (command == .forward_delete) .forward else .backward;
+    if (edit.rangeCollapsed() catch true) {
+        const caret = (delete.caretTargetRange(edit, direction) catch return null) orelse return null;
+        return .{ .start = caret.start, .end = caret.end };
+    }
+    var range = selectionTargetRange(edit) orelse return null;
+    range.end = delete.deletionEnd(range.start, range.end) catch range.end;
+    return range;
+}
+
 fn selectionTargetRange(edit: *Edit) ?TargetRange {
     if (edit.rangeCollapsed() catch true) return null;
     const start = (edit.rangeStart() catch return null) orelse return null;

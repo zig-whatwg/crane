@@ -447,7 +447,7 @@ capability the branch compiles out.
 | `heap_statistics`, `heap_snapshots`, `diagnostic_counters` | native | unsupported | the diagnostics tier reports nothing |
 | `script_abort` | native (TerminateExecution) | unsupported - no public way to end a running script (JSContextGroupSetExecutionTimeLimit is SPI) | a script that never returns holds its agent's thread; the host's bound is outside the process (the WPT runner's stall watchdog) |
 | `code_generation_checks` | native (ModifyCodeGenerationFromStringsCallback, AllowWasmCodeGenerationCallback) | unsupported - no hook before eval, the Function constructor or WebAssembly compilation compiles | the HostHooks below are never called: eval, Function and WebAssembly compile unchecked - CSP's 'unsafe-eval' / 'wasm-unsafe-eval' and Trusted Types' eval sink go unenforced (security-relevant) |
-| `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
+| `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget; V8 makes the receiver first - Chrome's order) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
 | `cross_origin_objects` | emulated (Location uses a Proxy with HTML internal methods and explicit borrowed-receiver checks; Window keeps native access checks and the global proxy, with public-API limits on prototype/extensibility/enumeration) | unsupported - no access-check API and no WindowProxy apart from the global; JSClassDefinition callbacks could emulate it except for [[GetPrototypeOf]] | the engine runs no cross-origin check: Window's `document` getter keeps the host's own check, and every other property of another realm's WindowProxy or Location is reached as a same-origin one would be (security-relevant) |
 | `window_access_reporting` | native (the binding of each CrossOriginProperties(Window) member, the indexed and named getters and the opener setter call the realm's `report_window_access` with the incumbent realm: protocol_realms.reportWindowAccess) | unsupported - without cross_origin_objects no binding tells another realm's use of a Window's members apart | no access is reported: Cross-Origin-Opener-Policy-Report-Only makes no access reports and no "coop-access-violation" report reaches a ReportingObserver |
 | `webassembly_streaming` | native (Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and instantiateStreaming and hands each fulfilled source to the host) | unsupported - no streaming hook in the public C API (WebKit's compileStreaming is JSGlobalObject's private GlobalObjectMethodTable) | `WebAssembly.compileStreaming` and `instantiateStreaming` are absent |
@@ -512,15 +512,21 @@ argument's code) and `ensureCanCompileWasmBytes`
 (HostEnsureCanCompileWasmBytes: false is a WebAssembly.CompileError), and
 [html_constructor] `htmlConstructor` (HTML 3.2.3 "HTML element constructors"
 for an [HTMLConstructor] interface, its generated `Meta.html_constructor`: the
-engine does step 1 and steps 10-11, 14 and 16, the host steps 2-9, 12, 13 and
-15, given the current realm, NewTarget BORROWED and the active function's
-interface; it answers `HTMLConstructed` - `.created`, a new element OWNED and
-handed to the engine to wrap with NewTarget's prototype, or `.upgrading`, the
-construction stack's element BORROWED, whose wrapper - the one it has or a new
-one - gets NewTarget's prototype and is the construction's result; no hook
-installed, the interface constructs as its own constructor does. V8 gets
-NewTarget's prototype when it makes the receiver, before step 1, as Blink's
-V8HTMLConstructor does), and `agentClusterOf` (the realm's ECMAScript agent
+engine does step 1; the host's `resolve` steps 2-8, given the current realm,
+NewTarget BORROWED and the active function's interface, answering an opaque
+`HTMLConstructorResolution` (its registry and definition); the host's `finish`
+step 9 or steps 12, 13 and 15, answering `HTMLConstructed` - `.created`, a new
+element OWNED and handed to the engine to wrap with NewTarget's prototype, or
+`.upgrading`, the construction stack's element BORROWED, whose wrapper - the one
+it has or a new one - gets that prototype and is the construction's result; no
+hook installed, the interface constructs as its own constructor does. THE
+ADAPTER owns the receiver and steps 10-11, Get(NewTarget, "prototype"), and
+when it does them is its documented choice (the user, 2026-11-21: "I want to
+make this the responsibility of the js engine protocol"): between `resolve` and
+`finish` in the spec's order, or before `resolve`. V8 follows Chrome's order -
+V8 reads the prototype when it makes an API function's receiver, before the
+callback - so custom-elements/HTMLElement-constructor-customized-builtins.html
+is Chrome's 0/2), and `agentClusterOf` (the realm's ECMAScript agent
 cluster as HTML allocates them, an opaque nonzero key: a WebAssembly.Module
 records its realm's when it is serialized, and a deserialization in another
 cluster throws DataCloneError, a messageerror for a message; not installed,

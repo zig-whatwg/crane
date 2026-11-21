@@ -39,10 +39,19 @@ const Host = struct {
     element: ?*runtime.Instance = null,
     child: ?*runtime.Instance = null,
 
-    const hooks: protocol.HostHooks = .{ .htmlConstructor = construct };
+    const hooks: protocol.HostHooks = .{ .htmlConstructor = .{ .resolve = resolve, .finish = construct } };
 
-    fn construct(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+    /// Steps 2-8: always a definition (this host stands in for it).
+    fn resolve(host: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSValue, interface: []const u8) protocol.Error!protocol.HTMLConstructorResolution {
+        _ = realm;
         _ = new_target;
+        _ = interface;
+        return .{ .registry = host.?, .definition = host.? };
+    }
+
+    /// Step 9.
+    fn construct(host: ?*anyopaque, realm: runtime.Context, resolution: protocol.HTMLConstructorResolution, interface: []const u8) protocol.Error!protocol.HTMLConstructed {
+        _ = resolution;
         _ = interface;
         const self: *Host = @ptrCast(@alignCast(host.?));
         const element = interfaces.HTMLElement.call_constructor(realm) catch return error.OperationFailed;

@@ -11,5 +11,6 @@
 1. Merge main into the lane branch FIRST, then make the list and the patch: `git diff --name-only main HEAD -- tests | grep '_test.zig$'` and `git diff HEAD main -- src tools tests build.zig build.zig.zon` are then exactly the lane's change.
 2. Or name the branch point: `git diff $(git merge-base main HEAD) HEAD`.
 3. Before a job that takes a patch, check it on the Mac: `grep '^diff --git' <patch>` should list only files the lane changed.
+4. Leave the WPT gitlink out of every patch a console is built from: `-- src tests tools ':!tests/wpt'`. A base-vs-base patch between two mains legitimately crosses a WPT update, and a mirror's `tests/wpt` is a directory, so `git apply` refuses the gitlink with "tests/wpt: wrong type" (lane edit4, 2026-11-21: its base-vs-base console job failed this way the moment it was placed).
 
 **Takeaway**: **Merge main, then diff. A `git diff main` made before the merge is a statement about two branches, not about your change.**
