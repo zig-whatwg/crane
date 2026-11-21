@@ -274,7 +274,7 @@ fn freeAll(urls: [][]u8) void {
 }
 
 test "the @import rules at the start of a style sheet are found, url() and strings alike" {
-    const urls = try scanAll(" /* c */ @charset \"utf-8\"; @import url( 'a.css' );\n@import \"b.css\";@import url(c.css);\n@layer x; @import url(d.css) layer(base); p { } @import url(e.css);");
+    const urls = try scanAll(" /* c */ @charset \"utf-8\"; @import url('a.css');\n@import \"b.css\";@import url(c.css);\n@layer x; @import url(d.css) layer(base); p { } @import url(e.css);");
     defer freeAll(urls);
     try testing.expectEqual(@as(usize, 4), urls.len);
     try testing.expectEqualStrings("a.css", urls[0]);
@@ -308,6 +308,15 @@ test "a semicolon inside an unfinished url() or string is part of the URL" {
     try testing.expectEqual(@as(usize, 2), urls.len);
     try testing.expectEqualStrings("a;b.css", urls[0]);
     try testing.expectEqualStrings("c;d.css", urls[1]);
+}
+
+test "whitespace inside url( ... ) ends the rule value, as in Blink's scanner: the import is not preloaded" {
+    // Blink's Tokenize: a space in the rule value moves to kAfterRuleValue and
+    // what follows is read as a trailing condition (WebKit the same).
+    const urls = try scanAll("@import url( 'spaced.css' ); @import url(next.css);");
+    defer freeAll(urls);
+    try testing.expectEqual(@as(usize, 1), urls.len);
+    try testing.expectEqualStrings("next.css", urls[0]);
 }
 
 test "a URL fed in pieces is read whole" {

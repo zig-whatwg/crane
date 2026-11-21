@@ -757,7 +757,7 @@ test "nothing is fetched from a template's contents, except a declarative shadow
 
 test "SVG's script and image load from href or xlink:href, MathML's script loads nothing, and a breakout tag ends foreign content" {
     try expectScan(.{ .input =
-        \\<svg><script href=s1.js></script><script xlink:href=s2.js></script><image href=i1.png></image><image xlink:href=i2.png/></svg>
+        \\<svg><script href=s1.js></script><script xlink:href=s2.js></script><image href=i1.png></image><image xlink:href=i2.png /></svg>
         \\<math><script src=m.js></script><font><script src=mf.js></script></font></math>
         \\<math><p><script src=after-breakout.js></script></math>
     }, "classic_script s1.js\nclassic_script s2.js\nimage i1.png\nimage i2.png\nclassic_script after-breakout.js\n");
