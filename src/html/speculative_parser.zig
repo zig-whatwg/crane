@@ -659,10 +659,19 @@ fn nonceOf(tag: *const TagToken, script_element: bool) []const u8 {
     if (nonce.len == 0 or tag.had_duplicate_attribute) return "";
     if (script_element) for (tag.attributes.toSlice()) |*a| {
         for ([_][]const u8{ a.getName(), a.getValue() }) |text| {
-            if (std.ascii.indexOfIgnoreCase(text, "<script") != null or std.ascii.indexOfIgnoreCase(text, "<style") != null) return "";
+            if (containsIgnoreCase(text, "<script") or containsIgnoreCase(text, "<style")) return "";
         }
     };
     return nonce;
+}
+
+fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
+    if (needle.len > haystack.len) return false;
+    var i: usize = 0;
+    while (i + needle.len <= haystack.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(haystack[i..][0..needle.len], needle)) return true;
+    }
+    return false;
 }
 
 fn priority(value: ?[]const u8) fetch.internal.request.Priority {
