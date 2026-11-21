@@ -2284,6 +2284,39 @@ why = 65 -> 64: the subtest "Cookie with %xa in value is rejected or modified (H
 date = 2026-11-19
 decision = The user, 2026-11-19 7:46 PM ET: "Accept" (asked whether net3 may merge with its 2 cookie %xa losses, Crane = Chrome, all three browsers fail).
 
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: lanes blk5/blk6/maj5 - 7dab04f47, b10f5516f, 4b2444691, 149054394, f38d4ee97, 34a6ceafa, 79e482573 and others - touched HTMLIFrameElement.zig, main_fetch.zig, http_fetch.zig, performance_timeline.zig): unchanged cause - startTime is the time origin (the navigation's start) and redirectStart the first hop's fetch start, both read from the monotonic clock and coarsened to the 125 us tick with nothing waiting between them, so redirectStart is greater than startTime only when the gap crosses a tick. Lane flk3, a diagnostic production runner of 64e969a54 (a FLK3GAP line in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 1.10, 2026-11-21 10:18 AM ET), the file alone, 60 runs, a fresh process per run: the iframe navigation's gap min 48 / p50 50 / max 217 us, 27 passes of 60 where the tick model (min(gap, 125)/125 per run, summed) predicts 25.2 - and in every one of the 60 runs the result is exactly whether the fetch's tick is later than the navigation's (pass iff crossed, 60/60). Evidence: tmp/plans/flk3-evidence/item3-nav2-sc.txt (each run: result, gap). Chrome and Safari pass through process hops of milliseconds; Firefox fails 2 of 3 (the generation 225 entry).
+tick_us = 125
+gap_us = min 48 / p50 50 / max 217
+pass_rate = 27/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 48-217 us (p50 50) after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 64e969a54
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: lanes blk5/blk6/maj5 touched HTMLIFrameElement.zig, main_fetch.zig, performance_timeline.zig): unchanged cause - on a connection reused from an earlier https file in the runner process every connection time is fetchStart (Fetch "clamp and coarsen connection timing info" step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart > 0 only when the navigation's fetch starts in a later 125 us tick than its time origin, the navigation's start. Lane flk3, a diagnostic production runner of 64e969a54 (a FLK3GAP line in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (2026-11-21 10:20 AM ET): content-encoding.https.html then this file in one fresh process, 30 runs - 22 pass, 8 fail (runs 1, 7, 10, 13, 23, 27, 28, 29: "secureConnectionStart is non-zero"), and each failure is a run whose fetch stayed in its navigation's tick (gaps 21-26 us); the gap over all 30 runs min 20 / p50 22 / max 58 us. The passing runs that did not cross a tick are those that made a fresh TLS handshake (secureConnectionStart past fetchStart whatever the gap) - only a run that reuses the connection can fail, as the generation 228 entry found.
+tick_us = 125
+gap_us = min 20 / p50 22 / max 58
+pass_rate = 22/30
+condition = navigation-timing/content-encoding.https.html first in the same runner process, so the navigation may reuse its connection to web-platform.test:8443 (some runs reuse it, and only those can fail)
+measured_at = 64e969a54
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: 4b2444691 touched fetch_event.zig, 68eeaaf6b and c9734fdbe performance_timeline.zig): unchanged cause - the assert that fails, "fetchStart should be marked before the Fetch event handler is called", compares the fetch event dispatch time (Service Workers "Create Fetch Event and Dispatch" step 17.4.12, Navigation Timing's fetchStart under a service worker) with the handler's first performance.now(), dispatched at step 17.4.13 with nothing between, so the two are equal on the 125 us grid unless that gap crosses a tick (lesson spec-compliance-a-strict-order-between-coarse-marks-is-a-bet-on-time.md). Lane flk3, a diagnostic production runner of 64e969a54 (lane flaky7's F7NOW/F7FES/F7STATE marks, never committed; analysis tmp/flaky7/tools/nt_gaps.py) on server1 in a closed, quiet window (2026-11-21 10:21 AM ET), the file alone in a fresh runner process per run: unloaded, fetchStart -> handler min 1 / p50 100 / max 977 us, 44/60 pass (the per-run tick prediction agrees with the result in 57/60); under --load=28 (a 32-runner sweep's load) min 47 / p50 53 / max 92 us, 17/40 pass (agrees 40/40). Evidence: tmp/plans/flk3-evidence/item3-nte.txt. No browser passes the file (the generation 214 entry); nothing to fix without a delay between two spec steps (no invented paths). Its gate exemption is the follows-majority entry in tools/wpt_gate_exemptions.txt (blk5).
+tick_us = 125
+gap_us = min 47 / p50 53 / max 92
+pass_rate = 17/40
+condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 44/60 (gap min 1 / p50 100 / max 977 us)
+measured_at = 64e969a54
+paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
 [editing/run/underline.html]
 generation = 235
 kind = user-ruling

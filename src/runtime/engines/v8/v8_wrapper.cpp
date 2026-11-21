@@ -14376,9 +14376,9 @@ void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* contex
         return;
     }
     
-    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Setting default context\n");
+    // No success line: a passing snapshot generator writes nothing to stderr
+    // (engine_build.zig expectQuietSuccess; snapshot_generator_log.zig).
     sc->SetDefaultContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
-    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Default context set successfully\n");
 }
 
 /// Add context to snapshot at specific index
@@ -14406,9 +14406,8 @@ size_t v8_SnapshotCreator_AddContext(void* creator, Global<Context>* context) {
         return SIZE_MAX;
     }
     
-    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Adding context to snapshot\n");
+    // No success line (as SetDefaultContext): the caller logs the index.
     size_t index = sc->AddContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
-    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Context added at index %zu\n", index);
     return index;
 }
 
