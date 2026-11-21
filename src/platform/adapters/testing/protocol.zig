@@ -21,6 +21,12 @@ const platform = @import("platform");
 const platform_options = @import("platform_options");
 const posix = @import("kit_posix");
 const headless = @import("kit_headless");
+/// The remote debugging transport (protocol 6.12) over kit/posix's
+/// sockets, unless devtools_transport is compiled out (`-Dcdp=false`).
+const devtools_transport_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "devtools_transport")) break false;
+} else true;
+const devtools_transport = if (devtools_transport_built_in) posix else headless;
 const brotli = @import("kit_brotli");
 const inflate = @import("kit_inflate");
 const memory_store = @import("kit_memory_store");
@@ -137,6 +143,9 @@ pub const protocol = struct {
         c.resident_memory = .native;
         // Reserved address space for each Browser's heap (6.11): kit/posix.
         c.address_space = .native;
+        // The remote debugging transport (6.12): kit/posix's loopback
+        // listener and inherited pipes.
+        if (devtools_transport_built_in) c.devtools_transport = .native;
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
@@ -464,4 +473,12 @@ pub const protocol = struct {
     pub const queryLocalFonts = headless.queryLocalFonts;
     pub const showVirtualKeyboard = headless.showVirtualKeyboard;
     pub const hideVirtualKeyboard = headless.hideVirtualKeyboard;
+    pub const devtoolsListen = devtools_transport.devtoolsListen;
+    pub const devtoolsAccept = devtools_transport.devtoolsAccept;
+    pub const devtoolsRead = devtools_transport.devtoolsRead;
+    pub const devtoolsWrite = devtools_transport.devtoolsWrite;
+    pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
+    pub const devtoolsClose = devtools_transport.devtoolsClose;
+    pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
+    pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
 };
