@@ -1,6 +1,11 @@
 # Workflow: A throwaway microbenchmark on the pool - its own git repo, a build script, the pinned Zig
 
 **Date**: 2026-11-10
+**Status** (2026-11-21, lane z17f): Zig 0.16 is retired. ~/crane-bin/zig now
+runs the pinned 0.17 in every directory (tmp/remote/zig-shim.sh), so the
+shim no longer picks 0.16.0 for a tree without a 0.17 build.zig.zon. Calling
+the pinned binary by path still works. The advice on the own repo and the
+build script stands.
 **Lesson**: To run a standalone microbenchmark on the compute pool without a Crane worktree: give it its own git repo under tmp/ (crane-remote syncs the git toplevel it runs in), build it from a script (crane-remote rewrites `zig build` in the COMMAND string, which turns `zig build-exe` into `zig build --cache-dir <x>-exe`), and call the pinned 0.17 binary by path (the pool's `zig` shim picks 0.16.0 for a tree without a build.zig.zon declaring 0.17).
 
 **Why**: crane-remote.sh and crane-pool.sh are built around Crane trees: the mirror is the git toplevel of the caller's directory (the MAIN checkout is refused for non-main mirrors), the command string is rewritten for cache paths, and ~/crane-bin/zig chooses the toolchain from build.zig.zon.
