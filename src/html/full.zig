@@ -264,6 +264,8 @@ pub const scripted_parser = @import("scripted_parser.zig");
 /// over the rest of its input, and its look into style elements' @imports.
 pub const speculative_parser = @import("speculative_parser.zig");
 pub const speculative_css = @import("speculative_css.zig");
+/// A waiting parser's speculative HTML parser and its speculative fetches.
+pub const speculative_fetch = @import("speculative_fetch.zig");
 /// HTML "encoding-parse a URL" relative to a Document.
 pub const encoding_parse = @import("dom").encoding_parse;
 /// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection

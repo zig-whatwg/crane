@@ -803,13 +803,26 @@ pub const DocumentParser = struct {
             self.speculation = speculative_fetch.Speculation.create(self.allocator, self.document, options, position, stream.insertions) catch return;
         }
         self.speculation.?.active = true;
-        self.queueSpeculationSlice();
+        self.queueSpeculationSlice(.give_way);
     }
 
+    /// What a speculation task does when it runs.
+    const SpeculationStep = enum {
+        /// Queue the slice behind what was queued meanwhile: the event loop's
+        /// network step queues a response's task after the tasks of its turn,
+        /// so a slice queued in that turn would run ahead of it - and the
+        /// pending parsing-blocking script's response, a cache hit's
+        /// included, would wait for a slice it does not need.
+        give_way,
+        /// Read one slice.
+        scan,
+    };
+
     /// The speculative parser reads on in slices, a task each, while the
-    /// parser waits (speculative_fetch.Speculation.scanSlice); with no event
-    /// loop, at once.
-    fn queueSpeculationSlice(self: *DocumentParser) void {
+    /// parser waits (speculative_fetch.Speculation.scanSlice), each slice
+    /// behind a task that gives way to what the network delivered; with no
+    /// event loop, at once.
+    fn queueSpeculationSlice(self: *DocumentParser, step: SpeculationStep) void {
         const speculation = self.speculation orelse return;
         if (!speculation.active or self.speculation_queued) return;
         const loop = self.ctx.getOptionalEventLoop() orelse {
@@ -817,7 +830,7 @@ pub const DocumentParser = struct {
             return;
         };
         const task = self.allocator.create(SpeculationTask) catch return;
-        task.* = .{ .parser = self };
+        task.* = .{ .parser = self, .step = step };
         self.speculation_queued = true;
         self.retain();
         // A task on the networking task source given the document's relevant
@@ -833,16 +846,21 @@ pub const DocumentParser = struct {
 
     const SpeculationTask = struct {
         parser: *DocumentParser,
+        step: SpeculationStep,
 
         fn run(context: ?*anyopaque) void {
             const self: *SpeculationTask = @ptrCast(@alignCast(context.?));
             const parser = self.parser;
+            const step = self.step;
             parser.allocator.destroy(self);
             defer parser.release();
             parser.speculation_queued = false;
             if (parser.detached or parser.eof_processed or !parser.isCurrent()) return;
             const speculation = parser.speculation orelse return;
-            if (speculation.scanSlice(speculative_fetch.Speculation.slice_bytes)) parser.queueSpeculationSlice();
+            switch (step) {
+                .give_way => parser.queueSpeculationSlice(.scan),
+                .scan => if (speculation.scanSlice(speculative_fetch.Speculation.slice_bytes)) parser.queueSpeculationSlice(.give_way),
+            }
         }
 
         fn drop(context: ?*anyopaque) void {
@@ -962,7 +980,7 @@ pub const DocumentParser = struct {
         if (self.pump_depth != 0) return;
         const internal = document_internals.getInternal(self.document) orelse return;
         if (internal.scripts.pending_parsing_blocking_script != null) {
-            self.queueSpeculationSlice();
+            self.queueSpeculationSlice(.give_way);
             return;
         }
         if (ended) try self.finishIfPossible() else try self.pump();

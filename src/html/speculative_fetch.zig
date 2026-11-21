@@ -127,7 +127,22 @@ pub const Speculation = struct {
     }
 
     /// The input one slice of the speculative parser reads (`scanSlice`).
-    pub const slice_bytes = 32 * 1024;
+    ///
+    /// Small because Crane reads sockets only between tasks (the event
+    /// loop's network step, browser/event_loop.zig step 2c): a slice that
+    /// runs while the pending parsing-blocking script's response arrives
+    /// holds that response until it ends. At 32 KB a slice took about a
+    /// millisecond, as long as a full parse of that input, and the cost pair
+    /// read load.news 1.215 and load.docs 1.053 against main (lane pscan1,
+    /// 2026-11-21); 2 KB holds a response a few tens of microseconds at
+    /// most. WebKit and Blink scan all of the input at once when the parser
+    /// pauses (WebKit HTMLDocumentParser::pumpTokenizer; Blink
+    /// HTMLDocumentParser::PumpTokenizer -> ScanAndPreload, or its
+    /// BackgroundHTMLScanner off the main thread) - their network reads on
+    /// another thread, which the scan never holds. A network thread is the
+    /// real cure (feature queue "NETWORKING THAT PROGRESSES WHILE SCRIPT
+    /// RUNS"); with it, this can grow again.
+    pub const slice_bytes = 2 * 1024;
 
     /// Run the scanner over up to `budget` bytes of what it has, fetching each
     /// speculative mock element's resource: true when input is left for
@@ -135,9 +150,7 @@ pub const Speculation = struct {
     /// or until it reaches the end of its input stream": here in slices from
     /// the event loop, while the parser waits (DocumentParser), so a script
     /// that arrives stops it between two slices - the speculation never
-    /// delays the parser it serves. WebKit scans the whole input at once on
-    /// the main thread (HTMLDocumentParser::pumpTokenizer -> preloadScanner
-    /// ->scan); Blink scans on a background thread (BackgroundHTMLScanner).
+    /// delays the parser it serves.
     pub fn scanSlice(self: *Speculation, budget: usize) bool {
         if (self.failed or !self.active) return false;
         if (!self.documentLive()) return false;
@@ -332,3 +345,11 @@ const Detached = struct {
         self.destroy();
     }
 };
+
+test "a speculation slice reads a few kilobytes at most: Crane reads sockets only between tasks" {
+    // The pending parsing-blocking script's response waits for the slice
+    // that runs while it arrives (`Speculation.slice_bytes`): at 32 KB the
+    // cost pair read load.news 1.215 against main.
+    try std.testing.expect(Speculation.slice_bytes <= 4 * 1024);
+    try std.testing.expect(Speculation.slice_bytes >= 512);
+}
