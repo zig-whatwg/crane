@@ -492,6 +492,21 @@ pub fn mainFetchFinish(
         return fetched;
     }
 
+    // Steps 15-16: "Let internalResponse be response, if response is a
+    // network error; otherwise response's internal response. If
+    // internalResponse's URL list is empty, then set it to a clone of
+    // request's URL list." A response a service worker made (new
+    // Response()) has none, so XHR's responseURL and responseXML's URL read
+    // "" (service-workers/service-worker/xhr-response-url.https.html, the
+    // generated-response cases; Chrome 157, Firefox 160 and Safari 27.2
+    // pass). A network error's URL list is never read; it is left alone.
+    {
+        const internal = fetched.internal orelse fetched;
+        if (!isNetworkError(internal) and internal.url_list.items.len == 0) {
+            for (request.url_list.items) |url| internal.addUrl(url) catch break;
+        }
+    }
+
     // Step 20 (current Fetch numbering), before marking the response's
     // filter: Mixed Content 4.5 reads the INTERNAL response URL. Step 16
     // supplies the request URL list when the response has none. Blocking
