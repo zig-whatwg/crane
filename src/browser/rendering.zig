@@ -612,6 +612,12 @@ fn updateTheRendering(frames: *Frames) void {
         if (dispatchState(frames, &token) == null) break;
         if (!document.current()) continue;
         dom_mod.animations.updateAnimationsAndSendEvents(document.document, frame);
+        // SVG animation elements' timelines move in the same step (Blink
+        // PageAnimator::ServiceScriptedAnimations ->
+        // SVGDocumentExtensions::ServiceSmilOnAnimationFrame); their
+        // TimeEvents are queued as tasks, so no script runs here.
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.smil.document_animations.serviceAnimations(document.document);
     }
     // 12. The fullscreen steps. 13. The context lost steps.
     runOwnerStep(frames, &token, documents.items, .fullscreen, frame);
@@ -949,6 +955,8 @@ pub fn windowResumed(realm: runtime.Context) void {
             // Its animations too: a running one, a pending task or a queued
             // event waits for its document's next frame.
             if (ownersPending(instance) or dom_mod.animations.registry.needsFrames(instance)) requestFrame(instance);
+            // A running SVG timeline asks for its next frame again.
+            dom_mod.smil.document_animations.requestFrameIfNeeded(instance);
         }
     };
     schedule(frames);

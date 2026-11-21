@@ -247,14 +247,24 @@ pub fn get_accessKeyLabel(instance: *runtime.Instance) anyerror!runtime.DOMStrin
 /// Getter for draggable
 /// Spec: https://html.spec.whatwg.org/multipage/dnd.html#the-draggable-attribute
 /// Returns true if draggable="true", false if "false", auto-determined otherwise
+/// HTML 6.11.7: the draggable content attribute is an enumerated attribute
+/// (keywords ASCII case-insensitive) with the states true, false and auto
+/// (its missing and invalid value defaults). In the auto state the IDL
+/// attribute is true for an img element and an a element with an href
+/// content attribute - and, by the spec's text, an object element that
+/// represents an image, which none of the three browsers makes draggable
+/// (Blink overrides draggable() only in HTMLImageElement and
+/// HTMLAnchorElement, Gecko only in HTMLImageElement and HTMLAnchorElement,
+/// WebKit the same: golden rule 2).
 pub fn get_draggable(instance: *runtime.Instance) anyerror!bool {
-    if (getContentAttribute(instance, "draggable")) |value| {
-        const s = value.asSlice();
-        if (std.mem.eql(u8, s, "true")) return true;
-        if (std.mem.eql(u8, s, "false")) return false;
+    const data = element_data.of(instance) orelse return false;
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "draggable")) |attribute| {
+        if (std.ascii.eqlIgnoreCase(attribute.value, "true")) return true;
+        if (std.ascii.eqlIgnoreCase(attribute.value, "false")) return false;
     }
-    // Auto: images and links are draggable by default
-    // Simplified: return false for auto
+    const name = data.localName();
+    if (std.mem.eql(u8, name, "img")) return true;
+    if (std.mem.eql(u8, name, "a")) return element_data.hasAttribute(data, "href");
     return false;
 }
 

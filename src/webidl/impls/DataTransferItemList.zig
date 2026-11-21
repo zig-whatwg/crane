@@ -71,7 +71,11 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The store, unless the list is in the disabled mode.
 fn storeOf(instance: *runtime.Instance) ?*drag_data_store.Store {
     const internal = getInternal(instance) orelse return null;
-    _ = internal.data_transfer.get() orelse return null;
+    const data_transfer = internal.data_transfer.get() orelse return null;
+    // Still associated: a DataTransfer a DND event made reads as disabled
+    // once its event broke the association (HTML 6.11.4 step 15), and the
+    // store may since have gone with its drag-and-drop operation.
+    if (drag_data_store.storeOf(data_transfer) != internal.store) return null;
     return internal.store;
 }
 

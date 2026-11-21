@@ -39,6 +39,7 @@ const close_watchers = @import("close_watchers.zig");
 const fullscreen = @import("fullscreen.zig");
 const access_keys = @import("access_keys.zig");
 const pointer_capture = dom.pointer_capture;
+const drag_and_drop = @import("drag_and_drop.zig");
 
 const Instance = runtime.Instance;
 const log = std.log.scoped(.user_input);
@@ -372,6 +373,17 @@ pub const PointerType = enum {
     }
 };
 
+/// Where a pointer is, as the embedder reports it: an offset in CSS pixels
+/// from the centre of an element (a WebDriver element origin), or from the
+/// viewport's origin (`origin` the document element). Crane has no layout,
+/// so two positions compare only over the same origin (the drag threshold,
+/// html/drag_and_drop.zig).
+pub const Position = struct {
+    origin: Weak,
+    x: f64,
+    y: f64,
+};
+
 /// A pointer's state, owned by the embedder: what is under it and which
 /// buttons are down.
 pub const Pointer = struct {
@@ -426,6 +438,15 @@ pub const Pointer = struct {
     /// The option of a native list box this device last picked without
     /// Shift: a Shift+click's range starts there (select_picker.mouseDown).
     listbox_anchor: ?Weak = null,
+    /// Where the embedder last put the pointer, and where the primary
+    /// button went down (`Position`).
+    position: ?Position = null,
+    press_position: ?Position = null,
+    /// HTML 6.11.5: the node a primary press that was not canceled went down
+    /// on - what a move past the drag threshold may begin to drag - and the
+    /// drag-and-drop operation in progress, OWNED (html/drag_and_drop.zig).
+    drag_press: ?Weak = null,
+    drag: ?*drag_and_drop.DragOperation = null,
 
     /// The orientation the events report: the reported pair, and the other
     /// pair converted from it (Pointer Events 3.1.5); with neither, the
@@ -723,6 +744,9 @@ pub fn pointerMove(pointer: *Pointer, hit: *Instance, modifiers: Modifiers) void
     // element reference when its node document is not the active document);
     // an embedder that passes one all the same moves nothing.
     if (nodeDocument(hit)) |document| if (!isFullyActive(document)) return;
+    // HTML 6.11.5: a drag in progress takes the move, and so does a move
+    // that begins one; the pointer's own events are suppressed.
+    if (drag_and_drop.moved(pointer, hit, modifiers)) return;
     // Pointer Events 3.1.3: process pending pointer capture; the event's
     // target is the pointer capture target override, if set.
     const target = pointerEventTarget(pointer, hit, modifiers, true);
@@ -806,6 +830,9 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit != 0) return;
     const first = pointer.buttons == 0;
+    // HTML 6.11.5: what the press would drag, found before its listeners run
+    // (html/drag_and_drop.zig candidateAt).
+    const drag_candidate: ?*Instance = if (button == 0 and first and pointer.pointer_type != .touch) drag_and_drop.candidateAt(hit) else null;
     pointer.buttons |= bit;
     // Pointer Events: the pointer is in the active buttons state, and its
     // active document is the target's (3.1.3, set before the event fires,
@@ -847,6 +874,9 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const down_target = capturedOr(pointer, pointer.currentTarget() orelse return);
     if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null)) return;
     mousedownDefaults(pointer, down_target, button, modifiers, pointer);
+    // HTML 6.11.5: a primary press neither pointerdown nor mousedown
+    // canceled may begin a drag of what it went down on.
+    if (button == 0 and pointer.pointer_type != .touch) drag_and_drop.pressed(pointer, drag_candidate);
 }
 
 /// The element a mouse event of `pointer` goes to now: its capture target,
@@ -984,6 +1014,20 @@ fn commonAncestor(a: *Instance, b: *Instance) ?*Instance {
 pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit == 0) return;
+    if (pointer.drag != null) {
+        // HTML 6.11.5: the release ends the drag - the drop, or its
+        // failure - and its pointerup, mouseup and click are suppressed.
+        pointer.buttons &= ~bit;
+        const pressed = if (pointer.down_targets[button]) |weak| weak.get() else null;
+        pointer.down_targets[button] = null;
+        if (pointer.buttons == 0) {
+            pointer.compatibility_suppressed = false;
+            if (pressed) |p| if (nodeDocument(p)) |document| dom.pointer_states.set(document, .pointed, null);
+        }
+        _ = drag_and_drop.released(pointer, button, modifiers);
+        return;
+    }
+    if (button == 0) pointer.drag_press = null;
     pointer.buttons &= ~bit;
     const down = if (pointer.down_targets[button]) |weak| weak.get() else null;
     pointer.down_targets[button] = null;
@@ -1160,6 +1204,9 @@ fn implicitlyReleaseCapture(pointer: *Pointer, target: *Instance, modifiers: Mod
 /// session): it is no active pointer of the traversable it was acting on
 /// any more, and holds no capture there. No event fires.
 pub fn pointerGone(pointer: *Pointer) void {
+    // A drag in progress ends with its device, without events.
+    drag_and_drop.abandon(pointer);
+    pointer.drag_press = null;
     const near = liveTarget(pointer.touch_start) orelse liveTarget(pointer.touch_hit) orelse liveTarget(pointer.hit) orelse return;
     const pointers = activePointersOf(near) orelse return;
     if (pointer.pointer_type == .mouse) {
@@ -2414,6 +2461,41 @@ pub fn pasteIntoTextControl(control: *Instance, text: []const u8) void {
     const kind = textControlKind(control);
     if (kind == .none or !isMutable(control)) return;
     insertText(control, kind, text, "insertFromPaste");
+}
+
+/// HTML 6.11.5 step 4's drop default action into the text control
+/// `control`: `text` goes in as typed text does - at the control's selection,
+/// which the caller put at its end - with beforeinput and input of inputType
+/// insertFromDrop (Input Events 2).
+pub fn dropIntoTextControl(control: *Instance, text: []const u8) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    if (kind == .selection) {
+        var value = getValue(control) orelse return;
+        defer value.deinit(control.ctx.allocator);
+        const end: u32 = @intCast(form_associated.utf16Length(value.asSlice()));
+        dom.form_controls.setEditorSelection(control, .{ .start = end, .end = end, .backward = false });
+    }
+    insertText(control, kind, text, "insertFromDrop");
+}
+
+/// HTML 6.11.5 step 10: a drag began, so the pointer's event stream is
+/// suppressed (Pointer Events 3.1.3.3): pointercancel at its target, the
+/// implicit release of its capture, then pointerout and pointerleave; the
+/// pointer is over nothing until its next move after the drag.
+pub fn suppressPointerStream(pointer: *Pointer, modifiers: Modifiers) void {
+    const hit = pointer.currentTarget() orelse return;
+    const target = capturedOr(pointer, hit);
+    if (isReachable(target)) _ = firePointerEventOnly(target, "pointercancel", pointer, modifiers, -1, 0, null);
+    implicitlyReleaseCapture(pointer, target, modifiers);
+    if (isReachable(target)) {
+        _ = firePointerEventOnly(target, "pointerout", pointer, modifiers, -1, 0, null);
+        var chain: [64]*Instance = undefined;
+        const len = ancestors(target, &chain);
+        for (chain[0..len]) |element| _ = firePointerEventOnly(element, "pointerleave", pointer, modifiers, -1, 0, null);
+    }
+    if (nodeDocument(target)) |document| dom.pointer_states.set(document, .hovered, null);
+    pointer.hit = null;
 }
 
 /// The cut action's removal in the text control `control` (8.2 step

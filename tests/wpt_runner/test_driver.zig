@@ -1204,7 +1204,18 @@ const Command = struct {
                 const pointer = self.actionPointer(action) orelse return outOfMemory();
                 if (action.pointer_type != .mouse) applyProperties(pointer, action.properties);
                 switch (self.moveTarget(action)) {
-                    .target => |target| user_input.pointerMove(pointer, target, driver.globalModifiers()),
+                    .target => |target| {
+                        // Where the move put the pointer, for what compares
+                        // positions (the drag threshold): an offset from the
+                        // element origin's centre, or the viewport's (whose
+                        // hit is the root element here).
+                        const origin: *Instance = switch (action.origin) {
+                            .element => |weak| knownElement(weak) orelse target,
+                            else => target,
+                        };
+                        pointer.position = .{ .origin = Weak.of(origin), .x = action.x, .y = action.y };
+                        user_input.pointerMove(pointer, target, driver.globalModifiers());
+                    },
                     .stay => {},
                     .failure => |failure| return failure,
                 }
