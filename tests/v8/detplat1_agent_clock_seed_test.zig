@@ -42,7 +42,7 @@ fn evaluateInNewAgent(options: engine.AgentOptions, source: []const u8, second_r
     defer own_runtime.end();
     const agent = try engine.createAgent(options);
     defer engine.destroyAgent(agent);
-    const realm_options: engine.WindowRealmOptions = .{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://detplat1.test", .create_global_object = createGlobal };
+    const realm_options: engine.WindowRealmOptions = .{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://detplat1.test", .create_global_object = createGlobal };
     const first = try engine.createWindowRealm(&realm_options);
     defer engine.destroyWindowRealm(first, .global_detached);
     const text = try engine.evaluateClassicScriptToString(first, .{ .utf8 = source }, "detplat1.js", null, std.testing.allocator, reporter);

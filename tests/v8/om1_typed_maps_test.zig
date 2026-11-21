@@ -33,7 +33,7 @@ fn check(source: []const u8, inspect_snapshot: bool) !void {
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = a });
     defer engine.destroyAgent(agent);
-    const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = a, .from_snapshot = false, .timer = null, .origin = "https://om1.test", .browser_scope = &scope, .create_global_object = Host.window });
+    const realm = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = a, .from_snapshot = false, .timer = null, .origin = "https://om1.test", .browser_scope = &scope, .create_global_object = Host.window });
     defer engine.destroyWindowRealm(realm, .global_detached);
     // The existing style_engine_test.zig Page harness creates an HTMLDocument
     // and installs its window through this owner hook. Do not assume a prior

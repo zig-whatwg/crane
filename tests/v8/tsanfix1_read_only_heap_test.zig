@@ -107,6 +107,7 @@ const Window = struct {
         errdefer engine.destroyAgent(agent);
         // Its realms come from the snapshot only when the agent did.
         const realm = try engine.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = engine.agentRestoredFromSnapshot(agent),
@@ -160,7 +161,7 @@ const Worker = struct {
         const agent = try engine.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         defer engine.destroyAgent(agent);
         try testing.expect(!engine.agentRestoredFromSnapshot(agent));
-        const made = try engine.createWorkerRealm(agent, &.{ .global = .dedicated, .url = "https://read-only-heap.test/worker.js", .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
+        const made = try engine.createWorkerRealm(agent, &.{ .agent_cluster_cross_origin_isolated = true, .global = .dedicated, .url = "https://read-only-heap.test/worker.js", .allocator = std.heap.c_allocator, .timer = null, .event_loop = @import("inline_task_loop.zig").eventLoop() });
         defer engine.destroyWorkerRealm(made.realm, null, null);
         try expectEval(made.realm, "[typeof WorkerGlobalScope, typeof Document, 6 * 7].join()", "function,undefined,42");
         self.ready.store(true, .release);

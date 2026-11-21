@@ -155,6 +155,7 @@ const EngineRealm = struct {
         errdefer engine.destroyAgent(self.agent);
         self.capture = .{};
         self.realm = try engine.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = allocator,
             .from_snapshot = false,
@@ -261,6 +262,7 @@ fn expectDocumentTracedParser() !void {
     defer engine.destroyAgent(agent);
     var capture = WindowCapture{};
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = allocator,
         .from_snapshot = false,

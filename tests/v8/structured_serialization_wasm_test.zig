@@ -84,6 +84,7 @@ fn setup() !void {
 
 fn windowRealm(agent: *protocol.Agent) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -316,6 +317,7 @@ const Receiver = struct {
         const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &Host.hooks, .host = &host, .allocator = std.heap.page_allocator });
         defer protocol.destroyAgent(agent);
         const worker = try protocol.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "https://example.test/worker.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),

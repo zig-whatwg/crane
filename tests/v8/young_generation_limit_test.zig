@@ -153,7 +153,7 @@ fn semispacesOf(limit: Limit) !Semispaces {
     defer own_runtime.end();
     const agent = try makeAgent(limit, .{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
     defer engine.destroyAgent(agent);
-    const realm_options: engine.WindowRealmOptions = .{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://young-generation.test", .create_global_object = createGlobal };
+    const realm_options: engine.WindowRealmOptions = .{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://young-generation.test", .create_global_object = createGlobal };
     const realm = try engine.createWindowRealm(&realm_options);
     defer engine.destroyWindowRealm(realm, .global_detached);
     return runThrough(realm, @ptrCast(@alignCast(agent)));
@@ -265,7 +265,7 @@ test "an agent restored from the snapshot is held to its young generation too" {
     // with a warning, when the snapshot does not restore - which would make
     // this test pass through the other site).
     if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
-    const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.heap.c_allocator, .from_snapshot = true, .timer = null, .origin = "https://young-generation.test", .create_global_object = createSnapshotGlobal });
+    const realm = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.heap.c_allocator, .from_snapshot = true, .timer = null, .origin = "https://young-generation.test", .create_global_object = createSnapshotGlobal });
     defer engine.destroyWindowRealm(realm, .global_detached);
     try expectHeldTo("24 MB, an agent restored from the snapshot", try runThrough(realm, @ptrCast(@alignCast(agent))), 8 * mb);
 }

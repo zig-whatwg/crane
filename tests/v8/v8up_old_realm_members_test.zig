@@ -60,6 +60,7 @@ const snapshot_path = @import("test_snapshot").path;
 
 fn windowRealm(agent: *protocol.Agent, global_this: protocol.GlobalThis) !runtime.Context {
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -163,6 +164,7 @@ const SnapshotPage = struct {
         errdefer protocol.destroyAgent(agent);
         if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,
@@ -199,6 +201,7 @@ const SnapshotFrame = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *SnapshotFrame = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,

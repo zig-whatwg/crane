@@ -51,6 +51,7 @@ test "a realm that is not a secure context is refused, never made exposing every
         }
     };
     try std.testing.expectError(error.NotSupported, engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = @ptrCast(&agent_slot),
         .allocator = std.testing.allocator,
         .from_snapshot = false,

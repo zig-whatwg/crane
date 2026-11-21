@@ -474,6 +474,225 @@ pub const ReadAll = struct {
     }
 };
 
+/// fetch()'s request body read from its ReadableStream as it comes, into a
+/// pipe the request's body reads (Fetch "transmit request body": each chunk
+/// read is a Uint8Array, and goes on as it is read) - for a request a
+/// service worker is asked to handle, whose fetch event sees the body as a
+/// stream while the page still writes it (HTTP fetch step 3.2 tees it:
+/// service_worker_fetch.Upload). ReadAll reads one whole first, for a request
+/// sent straight to the network.
+///
+/// The pipe's source has this as its producer: when its last reader goes -
+/// the request's own branch (HTTP fetch step 3.5.4 cancels it once the
+/// worker responds) and the worker's - the stream is cancelled, with
+/// undefined, in a task of the realm (`sourceGone`): a tee's source is
+/// cancelled when both its branches are, and the branches' reasons - one of
+/// them a value of the worker's realm - do not cross threads. Fetch's abort
+/// steps cancel it with their reason (`cancel`).
+pub const UploadPump = struct {
+    allocator: std.mem.Allocator,
+    realm: js.Realm,
+    reader: *runtime.Instance,
+    /// The reader - and through its edge the stream - until this ends:
+    /// fetch() reads a request's body after script may have dropped every
+    /// reference to it.
+    reader_hold: js.Hold,
+    /// The pipe's source, while it has a reader and the body has not ended.
+    source: ?*fetch.internal.PipeSource,
+    /// Told when this is gone; null once its owner let go (`cancel`).
+    owner: ?Listener,
+    /// The read loop is over: closed, errored, dropped, or stopped once
+    /// nobody read the pipe.
+    read_over: bool = false,
+    /// The task that cancels the stream is queued (`sourceGone`).
+    task_queued: bool = false,
+
+    pub const Listener = struct {
+        context: *anyopaque,
+        ended: *const fn (context: *anyopaque) void,
+    };
+
+    pub const Started = struct {
+        pump: *UploadPump,
+        /// The request body's reader end. OWNED by the caller.
+        pipe: *BodyPipe,
+    };
+
+    const vtable = srd.ReadRequest.VTable{ .chunk = chunk, .close = close, .err = fail, .drop = drop };
+
+    /// Acquire a reader for `stream` and make the pipe its chunks go into;
+    /// reading starts at `begin`, once the caller holds both.
+    pub fn start(allocator: std.mem.Allocator, realm: js.Realm, stream: *runtime.Instance, owner: Listener) !Started {
+        const reader = try srd.acquireDefaultReader(realm, stream);
+        const self = try allocator.create(UploadPump);
+        errdefer allocator.destroy(self);
+        const source = try fetch.internal.PipeSource.create(allocator);
+        const pipe = source.branch() catch |err| {
+            source.fail(.{ .kind = .network });
+            return err;
+        };
+        // No pause: the stream is read as fast as it gives chunks, as
+        // ReadAll reads it.
+        source.producer = .{ .context = self, .cancel = sourceGone };
+        self.* = .{ .allocator = allocator, .realm = realm, .reader = reader, .reader_hold = js.Hold.take(reader), .source = source, .owner = owner };
+        return .{ .pump = self, .pipe = pipe };
+    }
+
+    /// Start reading. The body may end before this returns.
+    pub fn begin(self: *UploadPump) void {
+        self.readNext();
+    }
+
+    /// Fetch's abort steps: "cancel request's body with error" - the stream
+    /// is cancelled with `reason` now, through the reader that holds it, and
+    /// the pipe's readers see the body fail. The owner hears nothing more.
+    pub fn cancel(self: *UploadPump, reason: js.Value) void {
+        self.owner = null;
+        self.dropSource(.aborted);
+        if (self.read_over) return;
+        const reader = srd.readerOf(self.reader) orelse return;
+        // The pending read's close steps run inside, and end this.
+        const promise = srd.readerGenericCancel(self.realm, reader, reason) catch return;
+        js.dispose(promise);
+    }
+
+    fn dropSource(self: *UploadPump, kind: fetch.internal.body_pipe.Failure.Kind) void {
+        const source = self.source orelse return;
+        self.source = null;
+        source.fail(.{ .kind = kind });
+    }
+
+    fn readNext(self: *UploadPump) void {
+        const reader = srd.readerOf(self.reader) orelse {
+            self.dropSource(.network);
+            return self.endRead();
+        };
+        srd.defaultReaderRead(self.realm, reader, .{ .ctx = self, .vtable = &vtable });
+    }
+
+    fn chunk(ctx: *anyopaque, realm: js.Realm, value: js.Value) void {
+        const self: *UploadPump = @ptrCast(@alignCast(ctx));
+        // Nobody reads the pipe any more: no further read; the queued task
+        // cancels the stream.
+        const source = self.source orelse return self.endRead();
+        const info = js.describeView(value) orelse return self.typeError(realm);
+        if (info.kind != .uint8) return self.typeError(realm);
+        const buffer = js.viewBuffer(value) catch return self.typeError(realm);
+        defer js.dispose(buffer);
+        const all = js.bufferBytes(buffer) orelse return self.typeError(realm);
+        source.push(all[info.byte_offset..][0..info.byte_length]);
+        self.readNext();
+    }
+
+    fn close(ctx: *anyopaque, realm: js.Realm) void {
+        _ = realm;
+        const self: *UploadPump = @ptrCast(@alignCast(ctx));
+        if (self.source) |source| {
+            self.source = null;
+            source.finish();
+        }
+        self.endRead();
+    }
+
+    fn fail(ctx: *anyopaque, realm: js.Realm, e: js.Value) void {
+        _ = realm;
+        _ = e;
+        const self: *UploadPump = @ptrCast(@alignCast(ctx));
+        self.dropSource(.network);
+        self.endRead();
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *UploadPump = @ptrCast(@alignCast(ctx));
+        self.dropSource(.network);
+        self.endRead();
+    }
+
+    /// A chunk that is not a Uint8Array: the body fails, and the stream is
+    /// cancelled with the TypeError - nothing will read it again (ReadAll's
+    /// typeError).
+    fn typeError(self: *UploadPump, realm: js.Realm) void {
+        self.dropSource(.network);
+        if (realm.typeError("a request body chunk is not a Uint8Array")) |e| {
+            defer js.dispose(e);
+            if (srd.readerOf(self.reader)) |reader| {
+                if (srd.readerGenericCancel(realm, reader, e)) |promise| js.dispose(promise) else |_| {}
+            }
+        } else |_| {}
+        self.endRead();
+    }
+
+    fn endRead(self: *UploadPump) void {
+        if (self.read_over) return;
+        self.read_over = true;
+        if (!self.task_queued) self.destroy();
+    }
+
+    /// The pipe's source has no reader left (its producer's cancel): the
+    /// stream is cancelled from a task of its realm - this runs inside fetch
+    /// and the network step, where no script may run.
+    fn sourceGone(context: *anyopaque) void {
+        const self: *UploadPump = @ptrCast(@alignCast(context));
+        self.source = null;
+        if (self.task_queued) return;
+        const ctx = self.realm.ctx;
+        if (ctx.getOptionalEventLoop()) |loop| {
+            self.task_queued = true;
+            const window: ?*runtime.Instance = if (ctx.isWindow()) blk: {
+                const record = ctx.getRealm() orelse break :blk null;
+                break :blk @ptrCast(@alignCast(record.global_object orelse break :blk null));
+            } else null;
+            loop.queueTask(.{
+                .callback = cancelTask,
+                .context = self,
+                .drop = cancelTaskDropped,
+                .document = window,
+                .document_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0,
+            });
+            return;
+        }
+        // A bare realm with no loop (a unit test's): in its turn now.
+        self.task_queued = true;
+        cancelTask(self);
+    }
+
+    fn cancelTask(context: ?*anyopaque) void {
+        const self: *UploadPump = @ptrCast(@alignCast(context.?));
+        engine.runTaskInRealm(self.realm.ctx, cancelSteps, self) catch {};
+        self.task_queued = false;
+        self.read_over = true;
+        self.destroy();
+    }
+
+    /// "Cancel request's body with undefined", in the realm: a pending read
+    /// ends with it (its close steps), and the stream's cancel algorithm
+    /// runs.
+    fn cancelSteps(data: ?*anyopaque) void {
+        const self: *UploadPump = @ptrCast(@alignCast(data.?));
+        const reader = srd.readerOf(self.reader) orelse return;
+        const reason = self.realm.undefinedValue() catch return;
+        defer js.dispose(reason);
+        const promise = srd.readerGenericCancel(self.realm, reader, reason) catch return;
+        js.dispose(promise);
+    }
+
+    /// The loop is going: the task never runs, and its stream is torn down
+    /// with it.
+    fn cancelTaskDropped(context: ?*anyopaque) void {
+        const self: *UploadPump = @ptrCast(@alignCast(context.?));
+        self.task_queued = false;
+        if (self.read_over) self.destroy();
+    }
+
+    fn destroy(self: *UploadPump) void {
+        const owner = self.owner;
+        const hold = self.reader_hold;
+        self.allocator.destroy(self);
+        hold.give();
+        if (owner) |o| o.ended(o.context);
+    }
+};
+
 /// Cancel `stream` with `reason` if it is readable and nobody holds it -
 /// fetch()'s "abort the fetch() call" step 2, "cancel request's body with
 /// error", before anything reads it.

@@ -150,6 +150,10 @@ pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 /// `auxiliary` (window.open's realm follows its parent's WindowProxy) needs
 /// [reuse_window_proxy], declared unsupported here: the host keeps one Window
 /// per navigable - the declared fallback - so no realm is ever adopted.
+/// TODO (once linked): honour `agent_cluster_cross_origin_isolated` - with
+/// false, delete the global's SharedArrayBuffer once it exists (HTML "create
+/// a new realm" step 5), in Window, worker and worklet realms alike, as the
+/// V8 adapter does (src/runtime/engines/v8/shared_array_buffer_exposure.zig).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }

@@ -307,6 +307,7 @@ fn dialogBeforeToggleRetiresRealm() !void {
     // As in ce_scope_agent_test, explicitly create a child realm afresh.
     // The process may have been started without a snapshot by another test.
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = page.browser.agent.?,
         .allocator = std.testing.allocator,
         .from_snapshot = false,

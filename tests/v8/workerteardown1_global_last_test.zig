@@ -174,6 +174,7 @@ const Run = enum { to_the_end, fail_after_readers };
 /// count into `readers` while it is `current`.
 fn runRealm(readers: *Readers, agent: *protocol.Agent, run: Run) !void {
     const made = try protocol.createWorkerRealm(agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
