@@ -134,6 +134,10 @@ pub const BrowserScope = struct {
         dom_string_map,
         svg_image_element,
         svg_use_element,
+        // dom.smil.document_animations (lane dnd1): an animation element's
+        // timing state, an outermost svg element's timeline.
+        svg_animation_element,
+        svg_svg_element,
         font_face,
         font_face_set,
         /// dom.browser_object_lists: the Browser's IntersectionObservers

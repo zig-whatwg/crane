@@ -1203,6 +1203,12 @@ fn attributeChangeSteps(
     const own_name = internal.data.name;
     const element_namespace = own_name.namespace_uri orelse return;
     dom.attribute_change_steps.runForAttribute(instance, element_namespace, local_name, old_value, value, namespace);
+    if (own_name.namespace == .svg) {
+        // An SVG element type's own steps (the animation elements' timing
+        // attributes: dom.smil.document_animations).
+        dom.attribute_change_steps.runSvg(instance, own_name.local_name, local_name, old_value, value, namespace);
+        return;
+    }
     if (!own_name.isHtml()) return;
     dom.attribute_change_steps.run(instance, own_name.local_name, local_name, old_value, value, namespace);
 }

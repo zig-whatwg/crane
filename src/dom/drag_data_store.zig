@@ -100,6 +100,13 @@ pub const Store = struct {
     /// by "write content to the clipboard". Owned entries, ASCII lowercase.
     clear_was_called: bool = false,
     types_to_clear: std.ArrayList([]u8) = .empty,
+    /// HTML 6.11.2: the drag data store bitmap - the element
+    /// setDragImage() named, whose image (or rendering) the host draws as
+    /// the drag feedback - and its hot spot coordinate. Kept weakly: a host
+    /// that draws it reads it while the drag lasts.
+    bitmap: ?KeptInstance = null,
+    hot_spot_x: i32 = 0,
+    hot_spot_y: i32 = 0,
 
     pub fn create(allocator: std.mem.Allocator, owner: *runtime.Instance, mode: Mode) error{OutOfMemory}!*Store {
         const store = try allocator.create(Store);
@@ -219,6 +226,13 @@ pub const Store = struct {
         };
     }
 
+    /// setDragImage() step 3-4: the drag data store bitmap and hot spot.
+    pub fn setBitmap(self: *Store, image: *runtime.Instance, x: i32, y: i32) void {
+        self.bitmap = KeptInstance.of(image);
+        self.hot_spot_x = x;
+        self.hot_spot_y = y;
+    }
+
     /// The DataTransfer's `files`, to rebuild on every change.
     pub fn setFiles(self: *Store, files: *runtime.Instance) void {
         self.files = KeptInstance.of(files);
@@ -313,6 +327,21 @@ pub const DataTransferSteps = struct {
     /// The store `data_transfer` is associated with; null when it is no
     /// longer associated with one, or is not a DataTransfer.
     store_of: *const fn (data_transfer: *runtime.Instance) ?*Store,
+    /// HTML 6.11.4 "fire a DND event" step 5: a new DataTransfer in `realm`
+    /// associated with `store`, which stays its drag-and-drop operation's.
+    make_for_store: *const fn (realm: runtime.Context, store: *Store) anyerror!*runtime.Instance,
+    /// Step 15: break the association between `data_transfer` and its store.
+    disassociate: *const fn (data_transfer: *runtime.Instance) void,
+    /// The effectAllowed and dropEffect attributes' current values.
+    effects_of: *const fn (data_transfer: *runtime.Instance) Effects,
+    /// Steps 6-7: initialize effectAllowed and dropEffect.
+    set_effects: *const fn (data_transfer: *runtime.Instance, effects: Effects) void,
+};
+
+/// A DataTransfer's effectAllowed and dropEffect (static strings).
+pub const Effects = struct {
+    effect_allowed: []const u8 = "none",
+    drop_effect: []const u8 = "none",
 };
 
 const Implementation = struct {
@@ -333,6 +362,29 @@ pub fn installDataTransfer(steps: DataTransferSteps) void {
 pub fn storeOf(data_transfer: *runtime.Instance) ?*Store {
     const steps = implementation.read().data_transfer orelse return null;
     return steps.store_of(data_transfer);
+}
+
+/// A new DataTransfer in `realm` associated with `store` (a drag-and-drop
+/// operation's), for one DND event.
+pub fn makeForStore(realm: runtime.Context, store: *Store) !*runtime.Instance {
+    const steps = implementation.read().data_transfer orelse return error.NotSupported;
+    return steps.make_for_store(realm, store);
+}
+
+/// Break the association between `data_transfer` and its drag data store.
+pub fn disassociate(data_transfer: *runtime.Instance) void {
+    const steps = implementation.read().data_transfer orelse return;
+    steps.disassociate(data_transfer);
+}
+
+pub fn effectsOf(data_transfer: *runtime.Instance) Effects {
+    const steps = implementation.read().data_transfer orelse return .{};
+    return steps.effects_of(data_transfer);
+}
+
+pub fn setEffects(data_transfer: *runtime.Instance, effects: Effects) void {
+    const steps = implementation.read().data_transfer orelse return;
+    steps.set_effects(data_transfer, effects);
 }
 
 /// Called by DataTransferItemList's installHooks, once, at process start.
