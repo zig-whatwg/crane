@@ -638,6 +638,12 @@ const FetchCall = struct {
     /// read stands for the fetch in `fetch_holds`.
     upload: ?*fetch_body.ReadAll = null,
     pending_request: ?*fetch.internal.InternalRequest = null,
+    /// While requestObject's stream body is read as it comes into the
+    /// request's body pipe - a request a service worker is asked to handle
+    /// (`offeredToServiceWorker`): the fetch is under way meanwhile. Cleared
+    /// when the pump is gone (`uploadPumpEnded`); the abort steps cancel it
+    /// with their reason.
+    upload_pump: ?*fetch_body.UploadPump = null,
 
     const Self = @This();
 
@@ -844,6 +850,12 @@ const FetchCall = struct {
             }
             self.fetch_holds = false;
         }
+        // The same for a stream body read as it comes (`upload_pump`): its
+        // stream hears the reason now; the fetch is ended below.
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            self.cancelPump(pump, if (signal) |s| abortReasonOf(s) else null);
+        }
 
         // Step 11.3: Abort controller with the signal's abort reason -
         // the fetch ends here, its transfer cancelled, and a body still
@@ -882,6 +894,29 @@ const FetchCall = struct {
         const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return };
         defer reason_value.release();
         engine.rejectPromise(&self.capability, reason_value.value) catch {};
+    }
+
+    /// `signal`'s abort reason, held by the caller.
+    fn abortReasonOf(signal: *runtime.Instance) ?engine.Owned {
+        return .{ .value = interfaces.AbortSignal.get_reason(signal) catch return null };
+    }
+
+    /// Cancel a stream body read as it comes (`upload_pump`) with `reason`
+    /// (released here), or undefined: Fetch "abort the fetch() call" step 2.
+    fn cancelPump(self: *Self, pump: *fetch_body.UploadPump, reason: ?engine.Owned) void {
+        defer if (reason) |r| r.release();
+        const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch return;
+        const value = if (reason) |r| cancel_realm.fromRuntime(r.value) catch null else cancel_realm.undefinedValue() catch null;
+        const v = value orelse return;
+        defer streams_js.dispose(v);
+        pump.cancel(v);
+    }
+
+    /// The pump reading requestObject's stream body is gone: its body ended,
+    /// failed, or nobody read it.
+    fn uploadPumpEnded(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.upload_pump = null;
     }
 
     fn liveSignal(self: *const Self) ?*runtime.Instance {
@@ -977,6 +1012,10 @@ const FetchCall = struct {
         self.settleResolver();
         self.releaseKeepalive();
         self.untrack();
+        // A pump still reading the stream body outlives the call (the
+        // request's pipe still has a reader): it tells nobody when it ends.
+        if (self.upload_pump) |pump| pump.owner = null;
+        self.upload_pump = null;
         self.allocator.destroy(self);
     }
 
@@ -1077,6 +1116,11 @@ const FetchCall = struct {
             self.fetch_holds = false;
             failed = true;
         }
+        // A stream body read as it comes: cancelled with the same TypeError.
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            engine.runInRealm(self.ctx, cancelPumpForCache, pump) catch {};
+        }
         if (self.in_flight) |f| {
             self.in_flight = null;
             // A body still arriving fails as the network failing would:
@@ -1096,6 +1140,13 @@ const FetchCall = struct {
             self.outcome = error.NetworkError;
             self.queueSettle();
         }
+    }
+
+    fn cancelPumpForCache(data: ?*anyopaque) void {
+        const pump: *fetch_body.UploadPump = @ptrCast(@alignCast(data.?));
+        const e = pump.realm.typeError("Failed to fetch") catch return;
+        defer streams_js.dispose(e);
+        pump.cancel(e);
     }
 
     fn cancelUploadForCache(data: ?*anyopaque) void {
@@ -1223,6 +1274,16 @@ const FetchCall = struct {
                 }
             }
             self.fetch_holds = false;
+        }
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
+                const value = if (reason) |e| r.fromRuntime(e.value) catch null else r.undefinedValue() catch null;
+                if (value) |v| {
+                    defer streams_js.dispose(v);
+                    pump.cancel(v);
+                }
+            }
         }
         if (self.in_flight) |f| {
             self.in_flight = null;
@@ -1390,7 +1451,50 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const url = fetched_request.getUrl();
     const transmits_body = std.ascii.startsWithIgnoreCase(url, "http:") or std.ascii.startsWithIgnoreCase(url, "https:");
     const body_stream = if (transmits_body) fetch_objects.requestBodyStream(request_object) else null;
-    if (body_stream) |stream| {
+    if (body_stream != null and offeredToServiceWorker(fetched_request)) {
+        // A service worker is asked to handle the request (HTTP fetch step
+        // 3): its fetch event's request.body is a stream of the bytes as the
+        // page's stream gives them (step 3.2's tee, service_worker_fetch.
+        // Upload), so the fetch starts now, its body a pipe the stream is
+        // read into as it comes (fetch_body.UploadPump). Waiting for the
+        // whole body first left a stream that never closes - an upload the
+        // worker cancels - with a fetch that never started
+        // (service-workers/service-worker/fetch-request-body-cancel.https.html).
+        // Should the network get the request after all (no worker handles
+        // it, or it falls back), HTTP fetch step 4 waits for the bytes then.
+        const started = fetch_body.UploadPump.start(allocator, realm, body_stream.?, .{ .context = call, .ended = Call.uploadPumpEnded }) catch {
+            fetched_request.deinit();
+            call.releaseKeepalive();
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+        // A stream's body: no source, its bytes through the pipe.
+        const body = fetch.internal.Body.fromPipe(allocator, started.pipe) catch {
+            started.pipe.release();
+            fetched_request.deinit();
+            call.releaseKeepalive();
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+        if (fetched_request.body) |old| switch (old) {
+            .body => |b| b.deinit(),
+            .bytes => {},
+        };
+        fetched_request.body = .{ .body = body };
+        call.upload_pump = started.pump;
+        call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, @import("dom").agent_fetches.of(instance.ctx), call.client()) catch {
+            // The fetch owned the request, and freed it - its pipe with it,
+            // which leaves the pump to cancel the stream in a task.
+            call.releaseKeepalive();
+            if (call.upload_pump) |pump| pump.owner = null;
+            call.upload_pump = null;
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+    } else if (body_stream) |stream| {
         // The body's bytes are only in its stream: read them first (the
         // read starts below, once the abort steps can reach it).
         call.pending_request = fetched_request;
@@ -1427,10 +1531,19 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // Read the body to send. It may be read - and the fetch started, or p
     // rejected and the call freed - before this returns: `call` is not
     // touched after.
-    if (call.upload) |u| u.begin();
+    if (call.upload) |u| u.begin() else if (call.upload_pump) |pump| pump.begin();
 
     // Step 13.
     return p.take();
+}
+
+/// Whether HTTP fetch step 3 will ask a service worker to handle `request`:
+/// its service-workers mode is "all" and its client is controlled - "populate
+/// request from client" gave it a route to its Browser's service workers
+/// only then (service_worker_fetch.Route). Handle Fetch may still return
+/// null (no fetch event handler, a router rule), sending it to the network.
+fn offeredToServiceWorker(request: *const fetch.internal.InternalRequest) bool {
+    return request.service_workers_mode == .all and request.service_worker != null;
 }
 
 /// Fetch "populate request from client", for a request whose client is

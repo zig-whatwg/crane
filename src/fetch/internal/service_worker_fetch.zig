@@ -102,6 +102,12 @@ pub const Call = struct {
     /// What a blocking wait does around itself (`wait`): set by the service
     /// worker side before the call is handed to fetch, read only by `wait`.
     blocking: ?Blocking = null,
+    /// The writer's end of the request body's relay (`Upload`), when the
+    /// request's body was a stream still arriving: set by the route on the
+    /// fetching thread as it makes the call, and taken there by the fetch's
+    /// driver at its `.service_worker` step (`takeUpload`) - never touched by
+    /// any other thread.
+    upload: ?Upload = null,
 
     pub const State = enum { pending, answered, taken, abandoned, lost };
 
@@ -191,6 +197,13 @@ pub const Call = struct {
         }
     }
 
+    /// The fetching side's: the request body's relay writer, once (`upload`).
+    pub fn takeUpload(self: *Call) ?Upload {
+        const upload = self.upload orelse return null;
+        self.upload = null;
+        return upload;
+    }
+
     /// The fetching side gives up (its fetch was terminated): an answer
     /// waiting, or one still to come, is freed.
     pub fn abandon(self: *Call) void {
@@ -246,12 +259,81 @@ pub fn freeAnswer(value: Call.Answer) void {
     }
 }
 
-/// A response body on its way from a service worker's thread to the
-/// fetching thread. The writer is the service worker side, the reader the
-/// fetching side; each holds one reference.
+/// HTTP fetch step 3.2 for a request whose body is a stream still arriving
+/// (its bytes in a pipe, fed from the page's ReadableStream): the fetching
+/// side's end of requestForServiceWorker's body. Handle Fetch hands the
+/// worker a clone of the request, and a clone tees the body ("clone a
+/// body"): `pipe` is that tee's branch, on the fetching thread, whose bytes
+/// are written to `relay` for the worker's thread to read - the request's
+/// own branch stays the request's, for HTTP fetch step 4 should the worker
+/// fall back. `relay` is a BodyRelay whose writer is this side (the
+/// response's runs the other way).
 ///
-/// No backpressure (a stated deviation): what the service worker writes waits
-/// here until the fetching side drains it, however much there is.
+/// Cancelling the worker's body - `event.request.body.cancel()` - cancels the
+/// relay; this side then lets its branch go, and once the request's own
+/// branch goes too (HTTP fetch step 3.5.4 cancels it when the worker
+/// responds) the page's stream is cancelled: a tee's source is cancelled when
+/// both branches are. The cancel's reason, a value of the worker's realm,
+/// does not cross threads: the page's stream is cancelled with undefined.
+///
+/// Fetching thread only, from the route that makes it to the driver that
+/// pumps it (async_fetch.zig).
+pub const Upload = struct {
+    /// The tee's branch for the worker. OWNED.
+    pipe: *body_pipe.BodyPipe,
+    /// The writer's reference. OWNED.
+    relay: *BodyRelay,
+
+    /// Move what has arrived to the relay, and the end once it has come.
+    /// False once there is nothing more to do: the body ended, or the worker
+    /// stopped reading - then `pipe` and `relay` have been let go.
+    pub fn pump(self: *Upload) bool {
+        if (self.relay.isCancelled()) {
+            self.finish();
+            return false;
+        }
+        if (self.pipe.hasBytes()) {
+            const bytes = self.pipe.take() catch {
+                self.relay.fail();
+                self.finish();
+                return false;
+            };
+            defer self.pipe.allocator.free(bytes);
+            if (!self.relay.write(bytes)) {
+                self.finish();
+                return false;
+            }
+        }
+        switch (self.pipe.state) {
+            .open => return true,
+            .closed => self.relay.close(),
+            .errored => self.relay.fail(),
+        }
+        self.finish();
+        return false;
+    }
+
+    /// The fetch is over with the body still arriving: the worker's body
+    /// fails, and the branch goes.
+    pub fn abandon(self: *Upload) void {
+        self.relay.fail();
+        self.finish();
+    }
+
+    fn finish(self: *Upload) void {
+        self.pipe.release();
+        self.relay.release();
+    }
+};
+
+/// A body on its way between a service worker's thread and the fetching
+/// thread: a response's from the service worker side (the writer) to the
+/// fetching side (the reader), or a request's the other way (`Upload` writes,
+/// the worker's realm reads: AgentFetches.readRelay). Each side holds one
+/// reference.
+///
+/// No backpressure (a stated deviation): what the writer writes waits here
+/// until the reader drains it, however much there is.
 pub const BodyRelay = struct {
     allocator: Allocator,
     mutex: std.Io.Mutex = .init,
@@ -290,7 +372,7 @@ pub const BodyRelay = struct {
         return self;
     }
 
-    // -- The writer (the service worker side) --------------------------------
+    // -- The writer (a response's service worker side, a request's fetching side)
 
     /// More of the body. False when nobody reads any more (or the bytes could
     /// not be kept, which fails the body): the writer stops.
@@ -352,7 +434,7 @@ pub const BodyRelay = struct {
         futexIo().futexWake(u32, &self.wake.raw, 1);
     }
 
-    // -- The reader (the fetching side) --------------------------------------
+    // -- The reader (a response's fetching side, a request's worker side) ---
 
     /// Hand what was written since the last drain to `source`, and its end
     /// once it has ended. `.open` while more may come.
@@ -588,6 +670,96 @@ test "a relay that fails errors the pipe; one whose reader is gone stops its wri
         relay.release();
         relay.release();
     }
+}
+
+/// A producer that counts its cancels: a stream body's source (fetch()'s
+/// UploadPump in production).
+const CountingProducer = struct {
+    cancels: u32 = 0,
+
+    fn producer(self: *CountingProducer) body_pipe.Producer {
+        return .{ .context = self, .cancel = cancel };
+    }
+
+    fn cancel(context: *anyopaque) void {
+        const self: *CountingProducer = @ptrCast(@alignCast(context));
+        self.cancels += 1;
+    }
+};
+
+test "an upload writes its branch of a stream body to the relay as it arrives, then the body's end" {
+    var producer: CountingProducer = .{};
+    const source = try PipeSource.create(testing.allocator);
+    source.producer = producer.producer();
+    // The request's own branch, and the worker's tee of it.
+    const request_branch = try source.branch();
+    source.push("abc");
+    const relay = try BodyRelay.create(testing.allocator);
+    var upload: Upload = .{ .pipe = try request_branch.tee(), .relay = relay };
+
+    // The reader (the worker's thread, here this one) drains a pipe of its own.
+    const reader_source = try PipeSource.create(testing.allocator);
+    const reader_pipe = try reader_source.branch();
+    defer reader_pipe.release();
+
+    // What arrived before the tee, then what arrives after: both reach the
+    // relay, while the body is still open.
+    try testing.expect(upload.pump());
+    source.push("def");
+    try testing.expect(upload.pump());
+    try testing.expectEqual(BodyRelay.End.open, relay.drainInto(reader_source));
+    const first = try reader_pipe.take();
+    defer testing.allocator.free(first);
+    try testing.expectEqualStrings("abcdef", first);
+
+    // The body ends: its end is written, and the upload lets go.
+    source.finish();
+    try testing.expect(!upload.pump());
+    try testing.expectEqual(BodyRelay.End.closed, relay.drainInto(reader_source));
+    relay.release();
+    try testing.expectEqual(body_pipe.State.closed, reader_pipe.state);
+    // The request's branch is still there for HTTP fetch step 4.
+    try testing.expectEqual(@as(u32, 0), producer.cancels);
+    request_branch.release();
+}
+
+test "a worker that stops reading its request body ends the upload; the stream is cancelled once the request's branch goes too" {
+    var producer: CountingProducer = .{};
+    const source = try PipeSource.create(testing.allocator);
+    source.producer = producer.producer();
+    const request_branch = try source.branch();
+    const relay = try BodyRelay.create(testing.allocator);
+    var upload: Upload = .{ .pipe = try request_branch.tee(), .relay = relay };
+    source.push("1");
+    try testing.expect(upload.pump());
+
+    // The worker cancels event.request.body: the reader cancels the relay.
+    relay.cancel();
+    relay.release();
+    try testing.expect(!upload.pump());
+    // The request's branch still reads: the stream goes on.
+    try testing.expectEqual(@as(u32, 0), producer.cancels);
+    // HTTP fetch step 3.5.4 cancels the request's body: no reader is left,
+    // and the stream's producer is cancelled - once.
+    request_branch.release();
+    try testing.expectEqual(@as(u32, 1), producer.cancels);
+}
+
+test "an upload abandoned with its body still arriving fails the worker's body" {
+    var producer: CountingProducer = .{};
+    const source = try PipeSource.create(testing.allocator);
+    source.producer = producer.producer();
+    const request_branch = try source.branch();
+    defer request_branch.release();
+    const relay = try BodyRelay.create(testing.allocator);
+    var upload: Upload = .{ .pipe = try request_branch.tee(), .relay = relay };
+    const reader_source = try PipeSource.create(testing.allocator);
+    const reader_pipe = try reader_source.branch();
+    defer reader_pipe.release();
+    upload.abandon();
+    try testing.expectEqual(BodyRelay.End.errored, relay.drainInto(reader_source));
+    relay.release();
+    try testing.expectEqual(body_pipe.State.errored, reader_pipe.state);
 }
 
 const Gone = struct {

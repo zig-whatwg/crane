@@ -136,6 +136,9 @@ pub const FetchJob = struct {
     /// (fetch.zig) does not race - it waits for the fetch event's answer
     /// alone, as for a "fetch-event" source.
     service_worker_race: bool = false,
+    /// HTTP fetch step 4's makeCORSPreflight, while the `.request_body` step
+    /// waits for a stream body's bytes (`resumeRequestBody`).
+    request_body_preflight: bool = false,
     /// Fetch response handover step 4's report timing steps, waiting for the
     /// end of the body of the response handed over (`handOverTiming`).
     deferred_timing: ?DeferredTiming = null,
@@ -170,6 +173,13 @@ pub const FetchJob = struct {
         /// Main fetch step 23 needs the whole response body. Resume with
         /// resumeBody once its pipe has ended (finished or failed).
         body,
+        /// HTTP fetch step 4 sends a request whose stream body is still
+        /// arriving through its pipe (fetch()'s body handed on as it came,
+        /// for a service worker that then fell back - or never handled it).
+        /// The network layer sends a body of bytes, so they are all read
+        /// first, as fetch() reads a stream body it sends straight to the
+        /// network: resume with resumeRequestBody once the pipe has ended.
+        request_body,
         /// Fetch has its response; `takeResult` hands it over.
         done,
     };
@@ -513,6 +523,54 @@ pub const FetchJob = struct {
         return self.httpFetchFromNetwork(make_cors_preflight);
     }
 
+    /// Whether the request's body is a stream whose bytes are still
+    /// arriving through its pipe (`.request_body`).
+    pub fn requestBodyArriving(self: *const FetchJob) bool {
+        const b = self.request.body orelse return false;
+        return switch (b) {
+            .bytes => false,
+            .body => |body| body.pipe != null,
+        };
+    }
+
+    /// Carry on from the `.request_body` step: the request body's pipe has
+    /// ended. A body that arrived whole is sent as its bytes - still a body
+    /// with no source, a stream's, which HTTP-network fetch sends only on
+    /// HTTP/2 (step 8.3) - and one that failed is a network error: the
+    /// network never gets a body that ended in error. A pipe still open (a
+    /// driver that cannot wait, fetch.zig's) is a network error too.
+    pub fn resumeRequestBody(self: *FetchJob) FetchError!Step {
+        const b = self.request.body orelse return self.httpFetchFromNetwork(self.request_body_preflight);
+        const body = switch (b) {
+            .bytes => return self.httpFetchFromNetwork(self.request_body_preflight),
+            .body => |body| body,
+        };
+        const pipe = body.pipe orelse return self.httpFetchFromNetwork(self.request_body_preflight);
+        if (pipe.state != .closed) {
+            body.pipe = null;
+            pipe.release();
+            return self.mainFetchFetched(try networkError(self.allocator));
+        }
+        body.settlePipe() catch return FetchError.OutOfMemory;
+        return self.httpFetchFromNetwork(self.request_body_preflight);
+    }
+
+    /// HTTP fetch step 3.5.4: "If request's body is non-null, then cancel
+    /// request's body with undefined" - the service worker answered, and the
+    /// request's own branch of a stream body (the worker read its tee's other
+    /// branch, service_worker_fetch.Upload) goes. A byte body has nothing to
+    /// cancel.
+    fn cancelRequestBody(self: *FetchJob) void {
+        const b = self.request.body orelse return;
+        const body = switch (b) {
+            .bytes => return,
+            .body => |body| body,
+        };
+        const pipe = body.pipe orelse return;
+        body.pipe = null;
+        pipe.release();
+    }
+
     /// Carry on from a service worker's answer to the `.service_worker`
     /// step: HTTP fetch step 3.5 - or 3.6, nothing: step 4, the network.
     pub fn resumeServiceWorker(self: *FetchJob, answer: ServiceWorkerAnswer) FetchError!Step {
@@ -520,6 +578,9 @@ pub const FetchJob = struct {
         self.service_worker_call = null;
         self.service_worker_race = false;
         call.release();
+        // 3.5.4: a response (a network error is one) ends the request's
+        // body; nothing (step 4) sends it to the network.
+        if (answer != .fallback) self.cancelRequestBody();
         switch (answer) {
             .fallback => return self.httpFetchFromNetwork(self.service_worker_preflight),
             .network_error => return self.mainFetchFetched(try networkError(self.allocator)),
@@ -575,6 +636,12 @@ pub const FetchJob = struct {
     /// fetch.
     fn httpFetchFromNetwork(self: *FetchJob, make_cors_preflight: bool) FetchError!Step {
         const allocator = self.allocator;
+        // A stream body whose bytes are still arriving: wait for them all
+        // (`.request_body`).
+        if (self.requestBodyArriving()) {
+            self.request_body_preflight = make_cors_preflight;
+            return .request_body;
+        }
         // 4.2. "If request's redirect mode is "follow", then set request's
         // service-workers mode to "none"": redirects from the network are
         // not exposed to a service worker - the recursive main fetch of one
@@ -1394,6 +1461,116 @@ test "HTTP fetch step 3: a fallback answer goes to the network; a network error 
         var result = job.takeResult();
         defer result.deinit();
         try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+    }
+}
+
+/// A stream body's producer that counts its cancels (fetch()'s UploadPump in
+/// production): the request's body still arriving through a pipe.
+const StreamBody = struct {
+    cancels: u32 = 0,
+    source: *@import("../internal/body_pipe.zig").PipeSource = undefined,
+
+    fn cancel(context: *anyopaque) void {
+        const self: *StreamBody = @ptrCast(@alignCast(context));
+        self.cancels += 1;
+    }
+
+    /// Give `request` a POST body of no source whose bytes arrive through a
+    /// pipe of this source.
+    fn attach(self: *StreamBody, request: *InternalRequest) !void {
+        const allocator = std.testing.allocator;
+        self.source = try @import("../internal/body_pipe.zig").PipeSource.create(allocator);
+        self.source.producer = .{ .context = self, .cancel = cancel };
+        const pipe = try self.source.branch();
+        const body = try @import("../internal/body.zig").Body.fromPipe(allocator, pipe);
+        try request.setMethod("POST");
+        request.body = .{ .body = body };
+    }
+};
+
+test "HTTP fetch step 4 waits for a stream request body still arriving, then sends its bytes" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    var stream: StreamBody = .{};
+    try stream.attach(request);
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .request_body);
+    try std.testing.expect(job.requestBodyArriving());
+    stream.source.push("ab");
+    stream.source.push("cd");
+    stream.source.finish();
+    const step = try job.resumeRequestBody();
+    try std.testing.expect(step == .network);
+    try std.testing.expectEqualStrings("abcd", step.network.request.body.?);
+    // Still a stream's body: no source (HTTP-network fetch step 8.3).
+    try std.testing.expect(request.body.?.body.source == .none);
+    try std.testing.expectEqual(@as(u32, 0), stream.cancels);
+}
+
+test "a stream request body that fails before it has arrived is a network error" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    var stream: StreamBody = .{};
+    try stream.attach(request);
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .request_body);
+    stream.source.push("a");
+    stream.source.fail(.{ .kind = .network });
+    try std.testing.expect(try job.resumeRequestBody() == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+}
+
+test "HTTP fetch step 3.5.4: a service worker's response cancels the request's stream body; a fallback keeps it for the network" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    {
+        const request = try InternalRequest.init(allocator, "https://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("https://a.test");
+        request.service_worker = workers.route();
+        var stream: StreamBody = .{};
+        try stream.attach(request);
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        try std.testing.expect(step == .service_worker);
+        workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
+        const answer = step.service_worker.take().?;
+        try std.testing.expect(try job.resumeServiceWorker(.{ .response = answer.response.response }) == .done);
+        // The request's branch went, its last reader: the stream's producer
+        // is cancelled.
+        try std.testing.expectEqual(@as(u32, 1), stream.cancels);
+        try std.testing.expect(!job.requestBodyArriving());
+        var result = job.takeResult();
+        result.deinit();
+    }
+    {
+        const request = try InternalRequest.init(allocator, "https://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("https://a.test");
+        request.service_worker = workers.route();
+        var stream: StreamBody = .{};
+        try stream.attach(request);
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        workers.answer(.fallback);
+        _ = step.service_worker.take().?;
+        // Step 4: the network, once the body has arrived.
+        try std.testing.expect(try job.resumeServiceWorker(.fallback) == .request_body);
+        try std.testing.expectEqual(@as(u32, 0), stream.cancels);
+        stream.source.push("z");
+        stream.source.finish();
+        const sent = try job.resumeRequestBody();
+        try std.testing.expectEqualStrings("z", sent.network.request.body.?);
     }
 }
 

@@ -49,14 +49,29 @@ pub fn fetch(
     var step = try job.start();
     while (true) switch (step) {
         .body => step = try job.resumeBody(),
+        // A stream body still arriving: nothing here can wait for it (a
+        // blocking fetch's request has a byte body), so it is a network
+        // error.
+        .request_body => step = try job.resumeRequestBody(),
         .done => return job.takeResult(),
         .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
-        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(call.wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
+        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(abandonUpload(call).wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
             // No answer within the limit: given up on, a network error.
             call.abandon();
             break :blk .network_error;
         })),
     };
+}
+
+/// A stream body's relay writer, which a blocking fetch cannot pump (its
+/// request's body is bytes, so none is made for it): let go, should there be
+/// one. Returns `call`, for the wait.
+fn abandonUpload(call: *service_worker_fetch.Call) *service_worker_fetch.Call {
+    if (call.takeUpload()) |upload| {
+        var u = upload;
+        u.abandon();
+    }
+    return call;
 }
 
 /// A service worker's answer, waited for: a response's body is its relay's

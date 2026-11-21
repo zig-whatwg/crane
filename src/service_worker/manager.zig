@@ -524,15 +524,54 @@ pub const FetchDispatch = struct {
 
 /// A copy of `request` for another thread (HTTP fetch step 3.1's
 /// requestForServiceWorker): what a Request object reads of it, nothing that
-/// points back at its client. Its body's bytes are copied and owned. Null:
-/// a body this thread cannot copy (a stream's), which goes to the network.
-pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalRequest) Allocator.Error!?*InternalRequest {
+/// points back at its client. Its body's bytes are copied and owned.
+///
+/// A body still arriving through a pipe - a ReadableStream's, as fetch()
+/// hands it on (fetch_body.UploadPump) - is cloned as HTTP fetch step 3.1
+/// clones it, by a tee: with `upload`, the tee's branch and a new relay go to
+/// `upload` (the fetching side's writer end, service_worker_fetch.Upload),
+/// and the copy's body is the relay's reader end - a stream body (no
+/// source) whose bytes the worker's thread reads as they come. Without
+/// `upload` (a caller that cannot stream one) such a request is null: it
+/// goes to the network.
+///
+/// A copy of a copy - the worker's thread copies requestForServiceWorker
+/// into its realm - takes the relay's reader end over from `request`.
+pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalRequest, upload: ?*?service_worker_fetch.Upload) Allocator.Error!?*InternalRequest {
+    // The relay the copy's body reads: one made here (a stream's tee), or
+    // the one `request`'s body reads, which moves to the copy.
+    var relay: ?*service_worker_fetch.BodyRelay = null;
+    var moved_from: ?*fetch.internal.Body = null;
     const body_bytes: ?[]const u8 = if (request.body) |b| switch (b) {
         .bytes => |bytes| bytes,
-        // A body still arriving through a pipe: its bytes are not here.
-        .body => |body| if (body.pipe != null) null else body.getBytes(),
+        .body => |body| blk: {
+            if (body.upload_relay) |r| {
+                relay = r;
+                moved_from = body;
+                break :blk &.{};
+            }
+            // A body still arriving through a pipe: its bytes are not here.
+            if (body.pipe) |pipe| {
+                const out = upload orelse break :blk null;
+                const branch = try pipe.tee();
+                const made = service_worker_fetch.BodyRelay.create(allocator) catch |err| {
+                    branch.release();
+                    return err;
+                };
+                out.* = .{ .pipe = branch, .relay = made };
+                relay = made;
+                break :blk &.{};
+            }
+            break :blk body.getBytes();
+        },
     } else &.{};
     const bytes = body_bytes orelse return null;
+    // A relay made here: if the copy is not made, the reader's end goes with
+    // the writer's (the caller's `upload`, which it abandons).
+    errdefer if (relay != null and moved_from == null) {
+        relay.?.cancel();
+        relay.?.release();
+    };
     // Its URL is the request's current URL - a redirect's next hop is the
     // request the worker sees, its url that hop's: what every browser's
     // fetch event shows (navigation-redirect.https.html's intercepted URLs,
@@ -548,14 +587,24 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
     if (request.body != null) {
         const body = try allocator.create(fetch.internal.Body);
         body.* = fetch.internal.Body.init(allocator);
-        body.data.appendSlice(allocator, bytes) catch |err| {
-            body.deinit();
-            return err;
-        };
-        body.length = bytes.len;
-        // A byte sequence's body: its source is its own bytes (a body with
-        // no source has its bytes only in a stream, which fetch() reads).
-        body.source = .{ .bytes = body.data.items };
+        if (relay) |r| {
+            // A stream body: no source, its bytes through the relay. The
+            // copy owns the reader's end from here.
+            body.upload_relay = r;
+            if (moved_from) |old| old.upload_relay = null;
+            relay = null;
+            moved_from = null;
+        } else {
+            body.data.appendSlice(allocator, bytes) catch |err| {
+                body.deinit();
+                return err;
+            };
+            body.length = bytes.len;
+            // A byte sequence's body: its source is its own bytes (a body
+            // with no source has its bytes only in a stream, which fetch()
+            // reads).
+            body.source = .{ .bytes = body.data.items };
+        }
         copy.body = .{ .body = body };
     }
     copy.mode = request.mode;
@@ -1979,8 +2028,13 @@ pub const Manager = struct {
             preload_header = null;
         };
         // 3.1-3.2 (HTTP fetch): requestForServiceWorker, for the worker's
-        // thread. A body only a stream holds goes to the network (stated).
-        const copy = (try copyRequestForWorker(self.allocator, request)) orelse return .network;
+        // thread. A stream body still arriving is teed: its branch is
+        // written to a relay the worker's realm reads (`upload`, the
+        // fetching side's end, which the call carries to the fetch's
+        // driver).
+        var upload: ?service_worker_fetch.Upload = null;
+        errdefer if (upload) |*u| u.abandon();
+        const copy = (try copyRequestForWorker(self.allocator, request, &upload)) orelse return .network;
         errdefer copy.deinit();
         const replaces = try self.allocator.dupe(u8, request.replaces_client_id);
         errdefer self.allocator.free(replaces);
@@ -2006,6 +2060,10 @@ pub const Manager = struct {
         // A fetch that blocks its thread leaves that thread's window data
         // answerable meanwhile (`beforeBlockingWait`).
         call.blocking = .{ .context = self, .data = blocked, .before_wait = beforeBlockingWait, .after_wait = afterBlockingWait };
+        // The writer's end goes to the fetching side with the call (this
+        // thread's; Call.upload).
+        call.upload = upload;
+        upload = null;
         // 17. Create Fetch Event and Dispatch, from step 15, on the job
         // thread.
         self.report(.{ .fetch = dispatch });
