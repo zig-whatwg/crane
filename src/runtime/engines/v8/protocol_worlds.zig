@@ -495,6 +495,12 @@ pub fn handOnWorldProxies(old_main: Context, new_main: Context) void {
 pub fn destroyWorldRealms(main: Context) void {
     const worlds = worldsOfRealm(main) orelse return;
     if (!worlds.active) return;
+    destroyWorldRealmsIn(worlds, main);
+}
+
+/// `destroyWorldRealms` on the agent's record: `main` leaves `by_main` and
+/// `handed` whatever its world realms' ends do.
+fn destroyWorldRealmsIn(worlds: *AgentWorlds, main: Context) void {
     while (true) {
         const list = worlds.by_main.getPtr(main) orelse break;
         const w = list.pop() orelse {
@@ -593,11 +599,16 @@ pub fn endAgent(isolate: *ffi.Isolate, worlds: *AgentWorlds) void {
 /// realm's, which the agent's end frees.
 pub fn endAllOfAgent(isolate: *ffi.Isolate) void {
     const worlds = protocol_agents.worldsOf(isolate) orelse return;
-    if (!worlds.active) return;
     while (true) {
         var mains = worlds.by_main.keyIterator();
         const main = (mains.next() orelse break).*;
-        destroyWorldRealms(main);
+        destroyWorldRealmsIn(worlds, main);
+    }
+    // Proxies kept for a main realm that never made its world realms again.
+    while (true) {
+        var mains = worlds.handed.keyIterator();
+        const main = (mains.next() orelse break).*;
+        destroyWorldRealmsIn(worlds, main);
     }
 }
 
