@@ -585,49 +585,7 @@ fn prepareScriptElementFor(
                 if (prepareInlineModuleScript(script_element, doc, source_text, start orelse .{}, base_url))
                     return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
             },
-            .importmap => {
-                // Parse and register import map
-                // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
-
-                // Step 1: Check if import map has already been acquired
-                if (document_modules.importMapAcquired(doc)) {
-                    // Only one import map per document is allowed
-                    // Subsequent import maps are ignored with a console warning
-                    log.debug("Import map ignored: document already has an import map\n", .{});
-                    return false;
-                }
-
-                // Step 2: Parse the import map JSON
-                var import_map_result = parseImportMap(allocator, source_text, base_url);
-                // The parse result is this step's: registering it copies
-                // every specifier, scope and URL into the document's map
-                // (Document's add(Scoped)ImportMapping dupe each one). Left,
-                // its maps, keys and resolved URLs leaked per import map.
-                defer import_map_result.deinit(allocator);
-                defer {
-                    if (import_map_result.allocator) |alloc| {
-                        if (import_map_result.error_message) |msg| {
-                            alloc.free(msg);
-                        }
-                    }
-                }
-
-                if (import_map_result.error_message) |err_msg| {
-                    log.debug("Import map parse error: {s}\n", .{err_msg});
-                    return false;
-                }
-
-                // Step 3: Register the import map
-                registerImportMap(doc, import_map_result) catch |err| {
-                    log.debug("Failed to register import map: {}\n", .{err});
-                    return false;
-                };
-
-                // Step 4: Mark import map as acquired
-                document_modules.acquireImportMap(doc);
-
-                return true;
-            },
+            .importmap => return registerInlineImportMap(allocator, doc, source_text, base_url),
             .speculationrules => {
                 // Parse and process speculation rules
                 // Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rules
@@ -1704,6 +1662,51 @@ fn disposeModuleMapEntry(key: []const u8, value: *anyopaque) void {
     module_script.disposeEntry(value);
 }
 
+/// Step 34.2's "importmap" case, for an HTML or an SVG script whose type is
+/// "importmap": parse `source_text` relative to `base_url` and register the
+/// import map with `document`'s. True when it was registered.
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
+fn registerInlineImportMap(allocator: std.mem.Allocator, doc: *runtime.Instance, source_text: []const u8, base_url: []const u8) bool {
+    // Step 1: Check if import map has already been acquired
+    if (document_modules.importMapAcquired(doc)) {
+        // Only one import map per document is allowed
+        // Subsequent import maps are ignored with a console warning
+        log.debug("Import map ignored: document already has an import map\n", .{});
+        return false;
+    }
+
+    // Step 2: Parse the import map JSON
+    var import_map_result = parseImportMap(allocator, source_text, base_url);
+    // The parse result is this step's: registering it copies
+    // every specifier, scope and URL into the document's map
+    // (Document's add(Scoped)ImportMapping dupe each one). Left,
+    // its maps, keys and resolved URLs leaked per import map.
+    defer import_map_result.deinit(allocator);
+    defer {
+        if (import_map_result.allocator) |alloc| {
+            if (import_map_result.error_message) |msg| {
+                alloc.free(msg);
+            }
+        }
+    }
+
+    if (import_map_result.error_message) |err_msg| {
+        log.debug("Import map parse error: {s}\n", .{err_msg});
+        return false;
+    }
+
+    // Step 3: Register the import map
+    registerImportMap(doc, import_map_result) catch |err| {
+        log.debug("Failed to register import map: {}\n", .{err});
+        return false;
+    };
+
+    // Step 4: Mark import map as acquired
+    document_modules.acquireImportMap(doc);
+
+    return true;
+}
+
 // =============================================================================
 // SVG script elements
 // =============================================================================
@@ -1765,7 +1768,10 @@ pub fn processSvgScriptElementWithLoader(
 /// is fetched at insertion and run from a task, as a force-async HTML script
 /// is.
 ///
-/// Deviation, stated: type="module" is not supported for SVG.
+/// Deviation, stated: type="module" is not supported for SVG. An inline
+/// type="importmap" is (step 34.2), as in Chrome 157, Firefox 160 and Safari
+/// 27.2 (trusted-types/script-enforcement-007.html and -009.https.html's
+/// SVGScriptElement importmap cases).
 fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool, loader: ?ParserScriptLoader) void {
     const state = svgScriptState(element) orelse return;
     // Step 1.
@@ -1798,7 +1804,8 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     if (!isConnected(element)) return;
 
     // Steps 8-13: the type. A JavaScript MIME type, or none, is classic.
-    if (determineScriptType(element) != .classic) return;
+    const script_type = determineScriptType(element);
+    if (script_type != .classic and script_type != .importmap) return;
 
     // Step 14.
     if (parser_inserted) state.parser_inserted = true;
@@ -1833,6 +1840,18 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     }
 
     const credentials_mode = scriptCredentialsMode(element);
+
+    if (script_type == .importmap) {
+        // Step 33.1: an external import map is not supported - queue an
+        // element task to fire error at el.
+        if (href != null) return queueErrorEventTask(element);
+        // Step 34.2, "importmap": register it, with the document base URL
+        // (step 34.1).
+        const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+        defer allocator.free(base_url);
+        _ = registerInlineImportMap(allocator, document, source, base_url);
+        return;
+    }
 
     if (href) |raw| {
         // Step 33.3: an empty URL queues an element task to fire error at the

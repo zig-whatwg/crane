@@ -164,3 +164,24 @@ fn modalDialogVisibility() !void {
 test "a modal dialog is visibility: visible from the UA sheet, as in all three browsers" {
     try onFreshThread(modalDialogVisibility);
 }
+
+fn svgImportMap() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser,
+        \\const svg = document.body.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+        \\const script = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+        \\script.setAttribute('type', 'importmap');
+        \\script.textContent = '{ "imports": { "maj6-mapped": "data:text/javascript,export default 42;" } }';
+        \\svg.appendChild(script);
+        \\globalThis.out = 'pending';
+        \\import('maj6-mapped').then((m) => { out = m.default; }, (e) => { out = e.name; });
+        \\0;
+    );
+    _ = try browser.runEventLoopBlocking(50);
+    try expectTrue(browser, "out === 42");
+}
+
+test "an inline SVG script of type importmap registers its import map" {
+    try onFreshThread(svgImportMap);
+}
