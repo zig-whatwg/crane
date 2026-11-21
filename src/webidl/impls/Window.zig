@@ -3763,8 +3763,9 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // opener's active DOCUMENT's ("create a new browsing context and
     // document" step 5.1), which the machinery reads from the document's
     // origin record, not from this Window. A noopener popup's has no
-    // creator (step 8.7: "given null"): an opaque origin and a new policy
-    // container.
+    // creator (step 8.7: "given null"): a new policy container - but its
+    // opener's origin still (HTMLIFrameElement.createAuxiliaryNavigable says
+    // why).
     const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags, noopener) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     const scope = window.ctx.browserScope() orelse {

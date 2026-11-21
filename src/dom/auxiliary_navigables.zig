@@ -124,9 +124,9 @@ pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noo
 /// that document and of every navigation in it. With `noopener` ("the rules
 /// for choosing a navigable" step 8.7: a new top-level traversable "given
 /// null" opener) the initial about:blank document has no creator: a new
-/// opaque origin and a new policy container ("create a new top-level
-/// browsing context and document" step 1, "create a new browsing context and
-/// document" given a null creator). Null when none can be made.
+/// policy container ("create a new browsing context and document" given a
+/// null creator), though it keeps the opener's origin, as the browsers do
+/// (HTMLIFrameElement.createAuxiliaryNavigable). Null when none can be made.
 pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet, noopener: bool) ?Created {
     const impl = implementation.get() orelse return null;
     return impl.create(allocator, opener_browsing_context, is_popup, popup_sandboxing_flags, noopener);

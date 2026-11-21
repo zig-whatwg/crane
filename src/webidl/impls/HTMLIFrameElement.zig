@@ -8517,36 +8517,41 @@ fn createAuxiliaryNavigable(
     // not its opener's, its first navigation to the opener's origin made a
     // new Window, and the onload set on the one open() returned never fired.
     //
-    // With noopener there is no creator: "create a new top-level traversable"
-    // given a null opener makes its document by "create a new top-level
-    // browsing context and document", which runs "create a new browsing
-    // context and document" given a null creator - so step 5's creatorOrigin
-    // stays null and step 7's origin is a new opaque one, and step 19 (the
-    // creator's referrer, policy container and opener policy) does not run:
-    // the document's opener policy is a new one, "unsafe-none". Its first
-    // navigation's opener policy enforcement then compares the response's
-    // policy with "unsafe-none", so a "same-origin-plus-COEP" response
-    // switches to a cross-origin isolated browsing context group (HTML
-    // "obtain a browsing context to use for a navigation response" step 13).
-    // Taking the opener's document as the creator made the two policies
-    // match - no switch, so the popup was never cross-origin isolated
-    // (html/cross-origin-opener-policy/noopener-popup-cross-origin-
-    // isolation.https.html "Same-origin popup with COOP and COEP": C157 and
-    // F160 pass, S27.2 passes).
-    const creator: ?*runtime.Instance = if (noopener) null else @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
-    const creator_record: ?*OriginRecord = if (creator) |document| ((dom_module.document_origin.shareable(document) catch null) orelse return null) else null;
+    // With noopener the popup is a new top-level traversable "given null"
+    // opener, whose initial about:blank HTML makes with a null creator.
+    // Steps 19.1-19.3 are then not run - no referrer, and a new policy
+    // container whose opener policy is "unsafe-none" - so the popup's first
+    // navigation enforces its response's opener policy against
+    // "unsafe-none": a "same-origin-plus-COEP" response switches to a
+    // cross-origin isolated browsing context group (HTML "obtain a browsing
+    // context to use for a navigation response" step 13; html/cross-origin-
+    // opener-policy/noopener-popup-cross-origin-isolation.https.html
+    // "Same-origin popup with COOP and COEP": C157, F160, S27.2 PASS - the
+    // inherited same-origin-plus-COEP policy matched and the popup stayed
+    // unisolated). Deviation, stated (golden rule 2): its origin is still
+    // the opener's document's, where step 7 would give a null creatorOrigin
+    // a new opaque origin. All three browsers keep the popup's name through
+    // its first navigation away from that document, which "finalize a
+    // cross-document navigation" step 4 clears for a top-level navigable
+    // with no opener whose new document is not same origin with it
+    // (html/browsers/windows/clear-window-name.https.html "Window.name is not
+    // reset at the first navigation away from initial about:blank with
+    // noopener": C157, F160, S27.2 PASS; window-open-popup-behavior.html's
+    // noopener cases and named-lookup-noopener.html read the name too).
+    const creator_document: *runtime.Instance = @ptrCast(@alignCast(opener_bc.getActiveDocument() orelse return null));
+    const creator_record = (dom_module.document_origin.shareable(creator_document) catch null) orelse return null;
+    const creator: ?*runtime.Instance = if (noopener) null else creator_document;
 
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
     // The integration's own copy of the creator origin: the creator document
-    // may go first. With no creator, the integration keeps its opaque
-    // container origin.
-    if (creator_record) |record| integration.setCreatorOrigin(record.serialized orelse "null") catch {
+    // may go first.
+    integration.setCreatorOrigin(creator_record.serialized orelse "null") catch {
         integration.deinit();
         allocator.destroy(integration);
         return null;
     };
-    const opener_origin: ?[]const u8 = integration.creator_origin;
+    const opener_origin = integration.creator_origin.?;
     const browsing_context = html_core.BrowsingContext.initAuxiliary(allocator, opener_bc, is_popup) catch {
         integration.deinit();
         allocator.destroy(integration);
