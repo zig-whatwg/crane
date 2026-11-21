@@ -506,6 +506,7 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
     // pool's hosts.
     const gen_snapshot = engine_build.startupRun(b, snapshot_gen_exe, request);
+    expectQuietSuccess(gen_snapshot);
     const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
 
     // Create a build step for manual snapshot generation
@@ -517,6 +518,7 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     // to tests/v8 by path (`request.test_options`, which tests/v8 imports as
     // `facts.startup.test_import`).
     const gen_test_snapshot = engine_build.startupRun(b, snapshot_gen_exe, request);
+    expectQuietSuccess(gen_test_snapshot);
     // Under -Dsanitize-thread the generator shares instrumented modules with
     // the tests: it runs with their suppressions (`request.prepare_run`, and
     // TSAN_OPTIONS through `startupRun`).
@@ -527,6 +529,19 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     }
     request.test_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
     return &install_snapshot.step;
+}
+
+/// A build-time run of the snapshot generator succeeds only by exiting 0
+/// with nothing on stderr. Zig 0.17's build runner prints a Run step's
+/// stderr, and after it a "failed command:" line, even when the step passes
+/// - so the generator's progress lines on stderr made every passing build
+/// print what reads as a failure (tmp/plans/maj5-evidence/snapshot-flake.txt).
+/// A passing generator keeps its log off stderr, and a failing one writes the
+/// whole log there (snapshot_generator_log.zig), which this check then shows
+/// as the step's failure.
+fn expectQuietSuccess(run: *std.Build.Step.Run) void {
+    run.expectStdErrEqual("");
+    run.expectExitCode(0);
 }
 
 /// The adapter's own tests: tests/v8, the one directory whose tests import
@@ -676,7 +691,7 @@ const process_count_subjects = [_]engine_build.DeclaredTest{
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
-    .build_tests = &.{ "src/runtime/engines/v8/build/archives.zig", "src/runtime/engines/v8/build/snapshot_generator_mode.zig" },
+    .build_tests = &.{ "src/runtime/engines/v8/build/archives.zig", "src/runtime/engines/v8/build/snapshot_generator_mode.zig", "src/runtime/engines/v8/snapshot_generator_log.zig" },
     .tests = tests,
     .startup = .{ .test_import = "test_snapshot" },
     // src/runtime/engines/v8/debug.zig: -Ddebug=true -Ddebug-scope=v8.
