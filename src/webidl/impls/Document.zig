@@ -3956,7 +3956,7 @@ fn lifecycleStopLoad(document: *runtime.Instance) void {
     //   its window.stop() page navigates away with a push, and history.back()
     //   returns to it; Firefox 160 and Safari 27.2 ship no notRestoredReasons.
     internal.completely_loaded = true;
-    internal.resources.pruneLoaded();
+    if (@import("dom").document_resources.of(document)) |resources| resources.pruneLoaded();
     const generation = runtime.SlabAllocator.generationOf(document);
     // readystatechange listeners run here, and may take the frame away.
     engine.runInRealm(document.ctx, becomeComplete, document) catch {};
@@ -4781,7 +4781,7 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.render_blocking_elements.clear();
     // Its resources serve no later fetch (the entries live on while a fetch
     // fills or waits on one).
-    internal.resources.clear();
+    if (@import("dom").document_resources.of(document)) |resources| resources.clear();
     internal.salvageable = false;
     internal.destroyed = true;
     internal.kept_in_bfcache = false;
@@ -5359,7 +5359,7 @@ fn completeLoading(document: *runtime.Instance) void {
     // replace (replace-before-load/*-during-pageshow.html).
     internal.completely_loaded = true;
     // What the document kept for its load's reuse goes (dom.document_resources).
-    internal.resources.pruneLoaded();
+    if (@import("dom").document_resources.of(document)) |resources| resources.pruneLoaded();
     // This frame no longer delays its container document: the parent's own
     // load completes now if nothing else delays it (completeLoadingWithChild),
     // after this document's pageshow.

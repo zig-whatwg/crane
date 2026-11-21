@@ -374,9 +374,6 @@ pub const InternalState = struct {
     scripts: dom_document_scripts.Scripts,
     /// HTML 3.1.6: ordered set of elements blocking rendering.
     render_blocking_elements: @import("document_rendering.zig").ElementSet,
-    /// HTML 4.6.8.20: the map of preloaded resources, and the resources the
-    /// document loaded while loading (dom.document_resources).
-    resources: @import("document_resources.zig").DocumentResources,
     /// The document's style engine (dom.style): its sheets and its
     /// elements' computed styles. By value - the engine's type is
     /// dom.style's, the state this document's - and reached through the
@@ -597,7 +594,6 @@ pub const InternalState = struct {
             // Script execution state
             .scripts = dom_document_scripts.Scripts.init(allocator),
             .render_blocking_elements = @import("document_rendering.zig").ElementSet.init(allocator),
-            .resources = @import("document_resources.zig").DocumentResources.init(allocator),
             .style_engine = @import("style/root.zig").StyleEngine.init(allocator),
             .throw_on_dynamic_markup_insertion_counter = 0,
             .unload_counter = 0,
@@ -699,7 +695,6 @@ pub const InternalState = struct {
         // Script execution lists (don't own the script elements, just the list storage)
         self.scripts.deinit();
         self.render_blocking_elements.deinit();
-        self.resources.deinit();
         self.style_engine.deinit();
         self.adopted_style_sheets.deinit();
 

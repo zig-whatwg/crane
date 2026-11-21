@@ -130,7 +130,7 @@ pub const DocumentResources = struct {
             };
             return entry.retain();
         }
-        if (!reusable(request) or load_complete) return null;
+        if (!kept(request) or load_complete) return null;
         // One entry per key: a later fetch reused the first one's.
         if (find(self.loaded.items, request) != null) return null;
         const entry = Entry.create(self.allocator, false) catch return null;
@@ -168,6 +168,19 @@ fn reusable(request: *const InternalRequest) bool {
         .empty, .document, .iframe, .frame, .embed, .object, .report, .worker, .sharedworker, .serviceworker => false,
         else => true,
     };
+}
+
+/// Whether the document keeps `request`'s response for a later fetch of the
+/// same key while it loads: a style sheet's (a link's, an @import's) - the
+/// reuse WPT observes (resource-timing/render-blocking-status-link.html
+/// re-creates every link of its head with `head.innerHTML +=`). The browsers
+/// keep every type of resource that way; Crane's images reuse the list of
+/// available images, and its scripts, fonts and other resources are fetched
+/// again (stated: their bodies would each be held a second time until the
+/// load ends). A preload's response is kept whatever its type once it is
+/// consumed (`consume`).
+fn kept(request: *const InternalRequest) bool {
+    return request.destination == .style;
 }
 
 /// A key and its entry. The key's strings are OWNED.
@@ -229,21 +242,38 @@ pub fn routeFor(document: *runtime.Instance) fetch.internal.request.DocumentReso
     return .{ .context = document, .consume = consumeThrough, .register = registerThrough };
 }
 
-fn resourcesOf(document: *runtime.Instance) ?*DocumentResources {
+/// `document`'s resources, or null when it has kept none (they are rare
+/// data: dom.document_rare_data).
+pub fn of(document: *runtime.Instance) ?*DocumentResources {
     const state = @import("document_state.zig").Registry.get(document) orelse return null;
-    return &state.resources;
+    const rare = state.rareData() orelse return null;
+    return rare.resources;
+}
+
+/// `document`'s resources, made on first use.
+fn ensure(document: *runtime.Instance) ?*DocumentResources {
+    const state = @import("document_state.zig").Registry.get(document) orelse return null;
+    const rare = state.ensureRareData(document) catch return null;
+    if (rare.resources) |resources| return resources;
+    const resources = state.allocator.create(DocumentResources) catch return null;
+    resources.* = .init(state.allocator);
+    rare.resources = resources;
+    return resources;
 }
 
 fn consumeThrough(context: *anyopaque, request: *const InternalRequest) ?*Entry {
     const document: *runtime.Instance = @ptrCast(@alignCast(context));
-    const self = resourcesOf(document) orelse return null;
+    const self = of(document) orelse return null;
     return self.consume(request, @import("document_lifecycle.zig").isCompletelyLoaded(document));
 }
 
 fn registerThrough(context: *anyopaque, request: *const InternalRequest) ?*Entry {
     const document: *runtime.Instance = @ptrCast(@alignCast(context));
-    const self = resourcesOf(document) orelse return null;
-    return self.register(request, @import("document_lifecycle.zig").isCompletelyLoaded(document));
+    const load_complete = @import("document_lifecycle.zig").isCompletelyLoaded(document);
+    // Nothing to keep: no map is made for it.
+    if (!request.link_preload and (!kept(request) or load_complete)) return null;
+    const self = ensure(document) orelse return null;
+    return self.register(request, load_complete);
 }
 
 // ============================================================================

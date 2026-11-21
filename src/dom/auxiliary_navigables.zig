@@ -226,7 +226,7 @@ test "without an installed implementation no navigable is made or closed" {
     try std.testing.expect(!isInstalled());
     // Never dereferenced: with no implementation nothing reads it.
     var opener: u8 = 0;
-    try std.testing.expect(create(std.testing.allocator, &opener, false, .empty) == null);
+    try std.testing.expect(create(std.testing.allocator, &opener, false, .empty, false) == null);
     // Never dereferenced either.
     var window: runtime.Instance = undefined;
     try std.testing.expect(!definitelyClose(&window));

@@ -35,6 +35,11 @@ pub const DocumentRareData = struct {
     /// or null when it is not counted.
     counted_in: ?*runtime.gc.ExternalMemory = null,
 
+    /// HTML 4.6.8.20's map of preloaded resources and the style sheets the
+    /// document loaded while loading (dom.document_resources): made by the
+    /// first fetch that leaves a response for the document. OWNED.
+    resources: ?*@import("document_resources.zig").DocumentResources = null,
+
     // === Import maps (HTML 8.1.5.2) ===
 
     /// The import map's imports: bare specifier -> resolved URL. Keys and
@@ -138,6 +143,11 @@ pub const DocumentRareData = struct {
     /// Free what the block owns, then the block (`allocator` the one it was
     /// made with), and uncount it.
     pub fn destroy(self: *DocumentRareData, allocator: std.mem.Allocator) void {
+        if (self.resources) |resources| {
+            self.resources = null;
+            resources.deinit();
+            allocator.destroy(resources);
+        }
         freeStringMap(allocator, &self.import_map_imports);
         freeStringMap(allocator, &self.import_map_integrity);
         {
