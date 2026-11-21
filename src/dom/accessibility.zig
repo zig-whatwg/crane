@@ -540,7 +540,7 @@ const Name = struct {
         if (case == .none) return try self.allocator.dupe(u8, bytes);
         var points: std.ArrayList(u21) = .empty;
         defer points.deinit(self.allocator);
-        var view = std.unicode.Wtf8View.init(bytes) catch return try self.allocator.dupe(u8, bytes);
+        const view = std.unicode.Wtf8View.init(bytes) catch return try self.allocator.dupe(u8, bytes);
         var it = view.iterator();
         while (it.nextCodepoint()) |cp| try points.append(self.allocator, cp);
         var out: std.ArrayList(u8) = .empty;
