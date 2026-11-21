@@ -2119,3 +2119,26 @@ revisit         = when Chrome, Firefox or Safari changes its result on a newer a
 kind      = needs-renderer
 why       = the drag source is whatever lies under the closed shadow host's centre (Chrome: the draggable shadow child covering it); with no renderer the element-origin hit is the host itself, which is not draggable, so HTML 6.11.5 step 1 starts no drag and no dragenter reaches target1
 assertion = assert_true: dragenter should have fired on target1 expected true got false
+
+# follows-majority (lane edit3, 2026-11-20; main's rulings 3:56 PM ET): proposals tmp/plans/edit3-evidence/exemption-proposals.txt,
+# confirmed by edit3's FULL A/B (server1, tip 8a9728eec vs generation 234).
+
+[editing/other/copy-paste-before-non-editable.html]
+kind            = follows-majority
+why             = Ctrl/Meta+C then Ctrl/Meta+V before a contenteditable=false span. Mechanism by mechanism (golden rule 2): the paste happens in Chrome and Firefox (Safari pastes nothing); where the pasted text goes - Chrome merges it into the existing Text node, Firefox and Crane insert a new Text node (the Editing spec's insertHTML, Range.insertNode), Safari has no data - no majority, so the spec decides, and the spec is Crane's result; Chrome passes the second assertion only by re-creating the span through its markup round-trip (style re-serialized with a semicolon), which no other browser does. Crane fails at the same assertion with the same message as Firefox ("expected 3 but got 5").
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; "assert_equals: expected 3 but got 5")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; no paste)
+matches         = firefox
+ruling          = golden rule 2, mechanisms without a majority -> spec (integrator, 2026-11-20 3:56 PM ET)
+revisit         = when Chrome stops re-creating the span, or Firefox/Safari change where pasted text goes
+
+[editing/other/shadow_root_iteration_in_block_style.html]
+kind            = follows-majority
+why             = removeFormat over a nested `<span contenteditable style="color:red">`. Mechanism 1 - the nested contenteditable is editable content of the outer host - is all three browsers, and Crane now follows them (lane edit3 2c076c99d, scoped to removeFormat); mechanism 2 - what removeFormat does to the span - Chrome empties its style attribute, Safari removes the attribute, Firefox unwraps the span: no majority, so the spec decides, and the spec unwraps it (a span is a removeFormat candidate): Firefox's "helloworld", Crane's result.
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835; style="")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835; "helloworld")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835; keeps the span without its style)
+matches         = firefox
+ruling          = golden rule 2, mechanisms without a majority -> spec (integrator, 2026-11-20 3:56 PM ET)
+revisit         = when two browsers agree on the span's attribute

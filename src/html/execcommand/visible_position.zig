@@ -1590,6 +1590,35 @@ fn previousPositionOf(ctx: *Context, position: Position, rule: Rule) Position {
     });
 }
 
+/// Whether the canonical caret `position` sits in a Text node beside one of
+/// its characters that is not white-space: the character is rendered (the
+/// canonical position is a candidate in that Text, and a character that is
+/// not white-space never collapses), so a caret position lies on its other
+/// side and the caret is not its root's only one. The answer previous- and
+/// next-position give, without their walk - each delete runs this check
+/// (soleCaretRoot), and the walk across a block boundary costs most of a
+/// delete (lane edit3's profile of the delete-join cost row, 2026-11-20).
+fn besideRenderedCharacter(position: Position) bool {
+    if (position.type != .offset_in_anchor) return false;
+    const node = position.anchor orelse return false;
+    if (!isTextNode(node)) return false;
+    var data = editing.textData(node) catch return false;
+    defer data.deinit(node.ctx.allocator);
+    const units = data.asSlice();
+    const sides = [_]?u16{
+        if (position.offset > 0) editing.codeUnitAt(units, position.offset - 1) else null,
+        editing.codeUnitAt(units, position.offset),
+    };
+    for (sides) |side| {
+        const unit = side orelse continue;
+        switch (unit) {
+            ' ', '\t', '\n', '\r', 0x0c => {},
+            else => return true,
+        }
+    }
+    return false;
+}
+
 /// The root editable element of the caret at `point` when the caret is
 /// the only place a caret can be in it - Blink's TypingCommand::
 /// DeleteKeyPressed: PreviousPositionOf and NextPositionOf(visible start,
@@ -1600,6 +1629,7 @@ pub fn soleCaretRoot(allocator: std.mem.Allocator, point: Point) ?*Instance {
     defer ctx.deinit();
     const position = canonicalPosition(&ctx, Position.at(point.node, point.offset));
     if (position.isNull()) return null;
+    if (besideRenderedCharacter(position)) return null;
     if (!previousPositionOf(&ctx, position, .cannot_cross).isNull()) return null;
     if (!nextPositionOf(&ctx, position, .cannot_cross).isNull()) return null;
     return rootEditableElementOf(position);
@@ -1808,7 +1838,7 @@ fn unitsToWtf8(allocator: std.mem.Allocator, units: []const u16) ?[]const u8 {
 // Selection.modify (selection_modifier.cc)
 // ============================================================================
 
-pub const Granularity = enum { character, word };
+pub const Granularity = enum { character, word, lineboundary };
 
 /// How the Position a modify moved the focus to relates to the DOM boundary
 /// point the selection then holds - its parent-anchored equivalent. Blink's
@@ -1912,5 +1942,99 @@ fn computeModifyPosition(ctx: *Context, selection: Selection, extend: bool, forw
                 adjustBackwardToAvoidCrossingEditingBoundaries(ctx, target, focus);
             return canonicalPosition(ctx, adjusted);
         },
+        .lineboundary => {
+            // ModifyMovingForward / Backward: LogicalEndOfLine of the range's
+            // end, LogicalStartOfLine of its start; extending, of the focus.
+            const from = if (!extend and selection.range != null) blk: {
+                const edge = if (forward) selection.range.?.end else selection.range.?.start;
+                break :blk canonicalPosition(ctx, Position.at(edge.node, edge.offset));
+            } else focus;
+            if (from.isNull()) return .none;
+            const target = logicalLineBoundary(ctx, from, forward);
+            if (target.isNull()) return .none;
+            return canonicalPosition(ctx, target);
+        },
     }
+}
+
+/// Blink's LogicalStartOfLine / LogicalEndOfLine (visible_units_line.cc)
+/// where no renderer is needed to answer it. A line ends at a forced break
+/// (a br, a preserved line feed), a block edge or its editing host's edge;
+/// where it ends otherwise - a soft wrap - is the renderer's line boxes
+/// (TODO(renderer)). So the boundary is answered only when no soft wrap can
+/// fall between `from` and that forced end: the text there has no soft wrap
+/// opportunity (CSS Text 3 section 5: a space or tab that may wrap, U+200B, a
+/// hyphen, an ideograph, an atomic inline, a wbr), or does not wrap at all
+/// (white-space nowrap or pre). Otherwise null: the selection stays, as it
+/// did before the line granularities were answered (the integrator's
+/// condition, 2026-11-20 4:35 PM ET: geometry-free cases only).
+fn logicalLineBoundary(ctx: *Context, from: Position, forward: bool) Position {
+    const at = textOffsetOf(ctx, from) orelse return .none;
+    const segment = at.segment;
+    const text = segment.text;
+    const host = rootEditableElementOf(from);
+    var index: usize = at.offset;
+    var boundary: Position = .none;
+    if (forward) {
+        while (index < text.len) : (index += 1) {
+            const unit = segment.units[index];
+            if (host) |h| if (!isInclusiveDescendantOf(unit.node, h)) break;
+            if (text[index] == '\n') break;
+            if (mayWrapAt(unit, text[index])) return .none;
+        }
+        boundary = if (index < text.len) positionBeforeUnit(segment, @intCast(index)) else if (text.len > 0) positionAfterUnit(segment, @intCast(text.len - 1)) else .none;
+        if (boundary.isNull()) return .none;
+        if (wbrBetween(from, boundary)) return .none;
+    } else {
+        while (index > 0) : (index -= 1) {
+            const unit = segment.units[index - 1];
+            if (host) |h| if (!isInclusiveDescendantOf(unit.node, h)) break;
+            if (text[index - 1] == '\n') break;
+            if (mayWrapAt(unit, text[index - 1])) return .none;
+        }
+        boundary = if (index > 0) positionAfterUnit(segment, @intCast(index - 1)) else if (text.len > 0) positionBeforeUnit(segment, 0) else .none;
+        if (boundary.isNull()) return .none;
+        if (wbrBetween(boundary, from)) return .none;
+    }
+    return boundary;
+}
+
+/// Whether a soft wrap may fall at rendered unit `unit` (`char`, its text
+/// content): a space, tab, U+200B, hyphen or ideograph, or an atomic
+/// inline, in text whose white-space wraps - and anywhere when word-break
+/// or overflow-wrap lets a word break.
+fn mayWrapAt(unit: Unit, char: u16) bool {
+    const element = parentOf(unit.node) orelse return true;
+    if (!isElement(element)) return true;
+    switch (editing.whiteSpaceOf(element)) {
+        .nowrap, .pre => return false,
+        else => {},
+    }
+    if (computedStyleOf(element)) |style| {
+        if (style.keyword(.word_break) != .normal and style.keyword(.word_break) != .keep_all) return true;
+        if (style.keyword(.overflow_wrap) != .normal) return true;
+    }
+    if (unit.kind == .object) return true;
+    return switch (char) {
+        ' ', '\t', 0x200B, '-', 0x00AD, 0x2010...0x2014 => true,
+        0x2E80...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF, 0xFF00...0xFFEF, 0xD800...0xDFFF => true,
+        else => false,
+    };
+}
+
+/// Whether a wbr element - a soft wrap opportunity with no text - lies
+/// between the positions `a` and `b` (a before b).
+fn wbrBetween(a: Position, b: Position) bool {
+    const start = pointOf(a) orelse return false;
+    const end = pointOf(b) orelse return false;
+    var node: ?*Instance = start.node;
+    var guard: usize = 0;
+    while (node) |n| : (node = editing.nextInTreeOrder(n) catch null) {
+        guard += 1;
+        if (guard > 100_000) return true;
+        if (isHtml(n, "wbr") and pointLessOrEqual(start, .{ .node = parentOf(n) orelse return true, .offset = indexOf(n) }) and pointLessOrEqual(.{ .node = parentOf(n) orelse return true, .offset = indexOf(n) + 1 }, end)) return true;
+        if (n == end.node) break;
+        if (!pointLessOrEqual(.{ .node = n, .offset = 0 }, end)) break;
+    }
+    return false;
 }

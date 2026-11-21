@@ -6,6 +6,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const common = @import("common.zig");
+const undo = @import("undo.zig");
 const block = @import("block.zig");
 const lists = @import("lists.zig");
 const split_parent = @import("split_parent.zig");
@@ -117,9 +118,13 @@ pub fn indentNodes(edit: *Edit, node_list: []const *Instance) !void {
 /// Unset one CSS property set by `element`'s style attribute.
 fn unsetStyleProperty(edit: *Edit, element: *Instance, name: []const u8) !void {
     if (!try common.isHtmlElement(element)) return;
+    // Recorded as a change of the style attribute (undo.zig).
+    var write = try undo.AttributeWrite.begin(element, "style");
+    errdefer write.abandon();
     const declaration = try interfaces.HTMLElement.get_style(element);
     var removed = try interfaces.CSSStyleDeclaration.call_removeProperty(declaration, DOMString.initInterned(name));
     defer removed.deinit(element.ctx.allocator);
+    try write.end();
     if (removed.asSlice().len > 0) edit.modified = true;
 }
 

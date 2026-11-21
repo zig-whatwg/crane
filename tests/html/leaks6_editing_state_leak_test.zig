@@ -104,7 +104,10 @@ fn reusedAddress() !void {
         const page = browser.current_context orelse return error.NoPage;
         try page.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
         const realm = browser.getRealm() orelse return error.NoRealm;
-        try page.runScript("window.f = document.body.appendChild(document.createElement('iframe')); f.contentDocument.execCommand('undo');");
+        // A configuration command makes the editor state (html_core's executor);
+        // undo with nothing to undo no longer does (lane edit3: execcommand/
+        // undo.zig reads the history only if it exists).
+        try page.runScript("window.f = document.body.appendChild(document.createElement('iframe')); f.contentDocument.execCommand('styleWithCSS', false, 'true');");
         const edited = try frameDocument(page, realm);
         try std.testing.expect(dom.document_internals.editorState(edited) != null);
         const edited_address = @intFromPtr(edited);
