@@ -8,9 +8,10 @@
 //! `post` only queues tasks on the event loops that need the event, through
 //! their TaskSinks, which is what any other thread may touch of a loop.
 //!
-//! Two events are turned into steps so far: the system visibility state of a
-//! tab (`visibility_changed`, HTML 6.2: `systemVisibilityChanged`) and memory
-//! pressure. What the browsers do with memory pressure (read 2026-11-16):
+//! Three events are turned into steps so far: the system visibility state of
+//! a tab (`visibility_changed`, HTML 6.2: `systemVisibilityChanged`), a tab's
+//! window rect (`window_rect_changed`: its viewport, src/browser/viewport.zig)
+//! and memory pressure. What the browsers do with memory pressure (read 2026-11-16):
 //!
 //! - Chromium: every level reaches V8. content/renderer/
 //!   blink_isolates_pressure_listener.cc OnReleaseMemory ->
@@ -135,10 +136,27 @@ pub const PlatformEvents = struct {
                 .warning, .normal => {},
             },
             .visibility_changed => self.postSystemVisibility(event.tab, event.visibility),
+            .window_rect_changed => self.postWindowRect(event.tab, event.rect),
             // Not turned into steps yet (docs/platform-protocol.md 7; no
             // platform posts them).
             else => {},
         }
+    }
+
+    /// `window_rect_changed(tab, rect)`: one task for the window's loop,
+    /// which makes the rect's size the tab's viewport
+    /// (viewport.windowRectChanged). Any thread.
+    fn postWindowRect(self: *PlatformEvents, tab: platform.TabId, rect: platform.Rect) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        const sink = if (self.sink) |held| held.retain() else null;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = sink orelse return;
+        defer held.release();
+        const scope = self.scope orelse return;
+        const change = self.allocator.create(WindowRectChange) catch return;
+        change.* = .{ .allocator = self.allocator, .scope = scope, .tab = tab, .rect = rect };
+        // The sink takes the task whatever happens (see postSystemVisibility).
+        _ = held.post(.{ .run = WindowRectChange.run, .drop = WindowRectChange.drop, .data = change });
     }
 
     /// `visibility_changed(tab, visibility)`: one task for the window's
@@ -193,6 +211,25 @@ pub const PlatformEvents = struct {
     }
 
     fn dropNothing(_: ?*anyopaque) void {}
+};
+
+/// A tab's new window rect, on its way to the window's loop.
+const WindowRectChange = struct {
+    allocator: std.mem.Allocator,
+    scope: *runtime.BrowserScope,
+    tab: platform.TabId,
+    rect: platform.Rect,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *WindowRectChange = @ptrCast(@alignCast(data orelse return));
+        defer self.allocator.destroy(self);
+        @import("viewport.zig").windowRectChanged(self.scope, self.tab, self.rect);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *WindowRectChange = @ptrCast(@alignCast(data orelse return));
+        self.allocator.destroy(self);
+    }
 };
 
 /// A tab's new system visibility state, on its way to the window's loop.

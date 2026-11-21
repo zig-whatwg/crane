@@ -363,6 +363,10 @@ pub const WindowGeometry = struct {
 /// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
 pub const SystemVisibility = enum { visible, hidden };
 
+/// A viewport's size in CSS pixels (CSSOM View innerWidth/innerHeight are
+/// `long`).
+pub const ViewportSize = struct { width: i32, height: i32 };
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -473,6 +477,21 @@ pub const BrowsingContext = struct {
     /// after). Kept on the top-level traversable - every traversable is one -
     /// and read for any navigable through `traversableSystemVisibility`.
     system_visibility: SystemVisibility = .visible,
+
+    /// A top-level traversable's viewport size in CSS pixels, as the
+    /// platform's window reports it (`window_rect_changed(tab, rect)`: a
+    /// headless window has no chrome, so its rect's size is its viewport -
+    /// the integrator's ruling C, 2026-11-21), or null while the platform has
+    /// said nothing (the Window's own size then: its defaults, or what
+    /// window.open's features asked for). CSSOM View's innerWidth/innerHeight,
+    /// and the media queries that read them, read it through
+    /// `traversableViewport`.
+    viewport: ?ViewportSize = null,
+    /// A host's override of that viewport (an automation client's device
+    /// metrics: CDP Emulation.setDeviceMetricsOverride, as Chrome's
+    /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
+    /// page), which wins over the platform's while set.
+    viewport_override: ?ViewportSize = null,
 
     /// HTML's one permitted sandboxed navigator: the browsing context that
     /// opened this one from a document with the sandboxed navigation browsing
@@ -974,6 +993,15 @@ pub const BrowsingContext = struct {
     /// it makes active.
     pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
         return self.getTop().system_visibility;
+    }
+
+    /// The viewport size of this navigable's top-level traversable - a
+    /// host's override, else the platform's window - or null when neither
+    /// is known. Only a top-level traversable's viewport is the window's: a
+    /// child navigable's is its container's box, which a renderer answers.
+    pub fn traversableViewport(self: *BrowsingContext) ?ViewportSize {
+        const top = self.getTop();
+        return top.viewport_override orelse top.viewport;
     }
 
     /// Check if two browsing contexts are same origin

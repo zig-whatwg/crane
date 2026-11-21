@@ -248,6 +248,9 @@ pub const InternalState = struct {
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
     inner_height: i32 = 768,
+    /// CSSOM View "run the resize steps": the viewport size the last run saw
+    /// for this window's document, null before its first.
+    resize_seen: ?[2]i32 = null,
     outer_width: i32 = 1024,
     outer_height: i32 = 768,
     screen_x: i32 = 0,
@@ -390,6 +393,9 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // HTML update the rendering step 8: CSSOM View's resize steps, the
+    // window's (it keeps the size they last saw).
+    @import("dom").update_the_rendering.installStep(.resize, &resizeStep);
     // "Destroy a document" and "unload a document" end the window's idle
     // callbacks and their timeouts (an unloading document cleanup step).
     @import("dom").unloading_cleanup.install(&endIdleCallbacks);
@@ -1219,6 +1225,9 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         // the new document's.
         if (!internal.idle.ended) internal.idle.replaced_pending_end = true;
         internal.idle.ended = false;
+        // The resize steps' "since the last time these steps were run" is
+        // per document: the new one starts with no run.
+        internal.resize_seen = null;
     };
     internal.document = document;
     // The Window holds its document counted from here (refcount step 5i),
@@ -1896,13 +1905,45 @@ pub fn get_visualViewport(instance: *runtime.Instance) anyerror!?*runtime.Instan
 /// Per spec: Returns the viewport width in CSS pixels.
 pub fn get_innerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.width;
     return internal.inner_width;
+}
+
+/// HTML "update the rendering" step 8, CSSOM View "run the resize steps" for
+/// `document`: "If doc's viewport has had its width or height changed (e.g.
+/// as a result of the user resizing the browser window ...) since the last
+/// time these steps were run, fire an event named resize at the Window object
+/// associated with doc." The viewport is innerWidth x innerHeight: a
+/// top-level traversable's window as the platform (window_rect_changed) or a
+/// host's override reports it (src/browser/viewport.zig, which asks for the
+/// frame). The first run for a document records its size, firing nothing.
+fn resizeStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const internal = getInternal(window) orelse return;
+    const size: [2]i32 = .{ get_innerWidth(window) catch return, get_innerHeight(window) catch return };
+    const seen = internal.resize_seen;
+    internal.resize_seen = size;
+    const last = seen orelse return;
+    if (last[0] == size[0] and last[1] == size[1]) return;
+    // "Fire an event named resize": an Event, not bubbling, not cancelable.
+    @import("dom").navigables.fireSimpleEvent(window, "resize");
+}
+
+/// The viewport of a top-level traversable's Window, as the host's override
+/// or the platform's window reports it (BrowsingContext.traversableViewport);
+/// null for a child navigable's Window - its viewport is its container's box
+/// - and while neither is known.
+fn topLevelViewport(internal: *InternalState) ?html_core.window.browsing_context.ViewportSize {
+    if (internal.browsing_context.parent != null) return null;
+    return internal.browsing_context.traversableViewport();
 }
 
 /// Getter for innerHeight
 /// Per spec: Returns the viewport height in CSS pixels.
 pub fn get_innerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.height;
     return internal.inner_height;
 }
 

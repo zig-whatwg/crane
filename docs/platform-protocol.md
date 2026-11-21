@@ -808,7 +808,7 @@ pub const EventSink = extern struct {
 | `position(watch, PositionResult)`, `sensor_reading(sensor, reading)`, `orientation(reading)` | the APIs' events |
 | `device_event(handle, DeviceEvent)` | HID `inputreport`, GATT `characteristicvaluechanged`, NFC `reading`, MIDI `midimessage`, disconnects |
 | `gamepad_connected(index, bool)`, `battery_changed`, `idle_changed`, `pressure_changed`, `connection_changed`, `key_session_message`, `speech_event`, `virtual_keyboard_geometry` | the APIs' events |
-| `window_rect_changed(tab, Rect)` | resize steps |
+| `window_rect_changed(tab, Rect)` | DELIVERED (lane life1; the integrator's ruling C, 2026-11-21: no viewport operation of its own). The rect's size, in CSS pixels, is the tab's top-level viewport - a headless window has no chrome (src/browser/viewport.zig; tab 0: every top-level traversable): innerWidth/innerHeight and the media queries read it, and a change asks for a rendering opportunity, where the resize steps fire `resize` (update the rendering step 8) and the media queries report their changes (step 10). A host's override (`viewport.setOverride`, CDP Emulation.setDeviceMetricsOverride) wins while set. `screen_changed` still reaches nothing |
 
 ## 8. The permission model
 
