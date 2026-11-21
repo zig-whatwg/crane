@@ -1,6 +1,6 @@
-# The shared fixture of two follows-majority forms (lane blk5, 2026-11-20; main's GO 1:37 PM ET), read by both
-# readers of tools/wpt_gate_exemptions.txt - tools/wpt_site/model.zig's tests (@embedFile) and
-# tools/wpt_progress.py --self-test - so they agree on it:
+# The shared fixture of exemption forms - two follows-majority forms (lane blk5, 2026-11-20; main's GO 1:37 PM ET)
+# and the single-shipper kind (lane pscan1, 2026-11-21) - read by both readers of tools/wpt_gate_exemptions.txt -
+# tools/wpt_site/model.zig's tests (@embedFile) and tools/wpt_progress.py --self-test - so they agree on it:
 #   - matches = none, with a ruling that names its golden rule 2 case ("all three differ", "newer spec" or
 #     "timing-bound"): Crane's result is the spec's and equals no browser's;
 #   - renderer-subtests: the subtests that fail in Crane only for want of a renderer, each "<name> :: <why>",
@@ -25,3 +25,20 @@ safari.result     = wpt.fyi run 6479119966273536: 3/3
 matches           = chrome, firefox
 renderer-subtests = the second subtest :: its click lands on an absolutely positioned link || the third subtest :: it reads a box's size
 revisit           = when Chrome or Firefox changes its result
+
+# The sixth kind, single-shipper (the user, 2026-11-21 5:58 AM ET, choice (a)): the file tests a feature only ONE
+# browser ships, and its remaining failures hinge on a mechanism where Crane does what the other two browsers and
+# the spec do. `shipper` names that browser; the other two, which do not ship the feature, have the same result;
+# `mechanism` is what Crane follows, `spec` the spec text of it; revisit reads "when <...> ships <...>": the entry
+# comes off when a second browser ships the feature.
+
+[resource-timing/x/only-one-ships.html]
+kind              = single-shipper
+why               = only Chrome ships the feature, and the one key Crane fails needs a mechanism only Chrome has
+shipper           = chrome
+chrome.result     = wpt.fyi run 4786307730243584: 1/1
+firefox.result    = wpt.fyi run 4877168468033536: 0/1
+safari.result     = wpt.fyi run 6479119966273536: 0/1
+mechanism         = Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do
+spec              = https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing
+revisit           = when Firefox or Safari ships the feature
