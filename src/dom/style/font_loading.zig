@@ -261,6 +261,7 @@ pub const Face = struct {
         const load = try FaceLoad.create(self, null);
         self.load = load;
         self.status = .loading;
+        load.beginLoadEventDelay();
         self.notifySets();
         load.queue(.next_source);
     }
@@ -535,8 +536,8 @@ const FaceLoad = struct {
     queued: bool = false,
     action: Action = .next_source,
     abort_marked: bool = false,
-    /// Whether this load delays its document's load event (startFetch to
-    /// finishPending).
+    /// Whether this load delays its document's load event (start to
+    /// finishPending: beginLoadEventDelay, endLoadEventDelay).
     delaying_load_event: bool = false,
 
     const Action = enum { start_buffer, next_source, success, failure };
@@ -677,19 +678,26 @@ const FaceLoad = struct {
         resource_loading.applyModifiers(&key, resource.modifiers);
         const result = try cache.getOrPut(key);
         try result.entry.attach(self);
-        // A font fetch delays its document's load event until the face has
-        // loaded or failed, as the browsers' do - Gecko's FontFaceSet blocks
-        // onload while it is loading (FontFaceSetDocumentImpl BlockOnload),
-        // Blink's font fetch is a load-blocking request of the document's
-        // ResourceFetcher. No spec says so; so a test that registers its
-        // subtests when document.fonts.load() settles still runs them before
-        // load (css/css-text-decor/parsing/text-decoration-inset-computed
-        // .html ran its first subtest only: Chrome 157 16/16, Firefox 160
-        // 10/16 - the 6 it fails are percentages it does not support).
-        if (!self.delaying_load_event) {
-            @import("../document_lifecycle.zig").delayLoadEvent(document);
-            self.delaying_load_event = true;
-        }
+    }
+
+    /// A URL face's load delays its document's load event from the moment
+    /// it starts (Face.start: the FontFace load() steps, synchronously -
+    /// its fetch begins in a later task, after which the load event may
+    /// already have been queued) until the face has loaded or failed, as the
+    /// browsers' do - Gecko's FontFaceSet blocks onload while it is loading
+    /// (FontFaceSetDocumentImpl BlockOnload), Blink's font fetch is a
+    /// load-blocking request of the document's ResourceFetcher. No spec says
+    /// so; so a test that registers its subtests when document.fonts.load()
+    /// settles still runs them before load
+    /// (css/css-text-decor/parsing/text-decoration-inset-computed.html ran
+    /// its first subtest only: Chrome 157 16/16, Firefox 160 10/16 - the 6
+    /// it fails are percentages it does not support).
+    fn beginLoadEventDelay(self: *FaceLoad) void {
+        if (self.delaying_load_event) return;
+        const document = self.document orelse return;
+        if (document_activity.activity(document, self.document_generation) == .gone) return;
+        @import("../document_lifecycle.zig").delayLoadEvent(document);
+        self.delaying_load_event = true;
     }
 
     /// The end of startFetch's load-event delay, on every path a load ends
