@@ -33,6 +33,10 @@ pub const PageSession = struct {
     link: *outbound.SessionLink,
     /// The message a handler's `fail` set, for the dispatcher.
     failure: dispatch_mod.Failure = .{},
+    /// The current command's arena, set by the dispatcher: a handler's
+    /// result may be allocated from it (it lives until the answer is sent;
+    /// an async handler copies what it keeps).
+    arena: ?Allocator = null,
     /// The Browser's devtools record (null until attached).
     side: ?*BrowserSide = null,
     /// The Browser this session's page lives in (null until attached).

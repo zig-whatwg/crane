@@ -8814,6 +8814,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         devtools_mod.addImport("fetch", fetch_mod);
         devtools_mod.addImport("infra", infra_mod);
         devtools_mod.addOptions("build_options", build_options);
+        // GET /json/protocol serves the pinned definitions (server.zig
+        // protocolJson).
+        devtools_mod.addAnonymousImport("browser_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/browser_protocol.json") });
+        devtools_mod.addAnonymousImport("js_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/js_protocol.json") });
     }
     // New Session's se:cdp capability (W3C WebDriver; Selenium 4).
     webdriver_mod.addImport("devtools", devtools_mod);

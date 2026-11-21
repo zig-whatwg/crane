@@ -19,17 +19,43 @@ fn futexIo() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
 }
 
+/// One queued write.
+pub const Item = struct {
+    /// OWNED (allocated with the queue's allocator).
+    bytes: []u8,
+    kind: Kind,
+
+    pub const Kind = enum {
+        /// A protocol message: the writer frames it for its transport (a
+        /// WebSocket text frame, or the pipe's NUL terminator).
+        message,
+        /// Bytes written as they are (an HTTP response, a control frame).
+        raw,
+    };
+};
+
+/// What `takeAll` found besides the items.
+pub const State = struct {
+    /// Closed: the items were dropped; the writer stops.
+    closed: bool,
+    /// Finishing: write what was taken, then stop once nothing is left.
+    finishing: bool,
+};
+
 /// A connection's outbound messages, oldest first. Any thread may push; one
 /// thread (the connection's writer) takes.
 pub const Outbound = struct {
     /// Thread-safe: messages are made on one thread and freed on another.
     allocator: Allocator,
     mutex: std.Io.Mutex = .init,
-    queue: std.ArrayList([]u8) = .empty,
+    queue: std.ArrayList(Item) = .empty,
     /// Set when the connection ends: pushes are dropped from then on.
     closed: bool = false,
+    /// Set by `finish`: what is queued is written, later pushes dropped.
+    finishing: bool = false,
     refs: std.atomic.Value(u32) = .init(1),
-    /// Bumped by every push and by close: the futex word the writer waits on.
+    /// Bumped by every push, `finish` and `close`: the futex word the writer
+    /// waits on.
     wake: std.atomic.Value(u32) = .init(0),
 
     pub fn create(allocator: Allocator) Allocator.Error!*Outbound {
@@ -45,46 +71,60 @@ pub const Outbound = struct {
 
     pub fn release(self: *Outbound) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
-        for (self.queue.items) |message| self.allocator.free(message);
+        for (self.queue.items) |item| self.allocator.free(item.bytes);
         self.queue.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
-    /// Append `message`, which the queue OWNS from here (allocated with
-    /// `allocator`). Dropped, and freed, once the connection has closed.
+    /// Append a protocol message, which the queue OWNS from here (allocated
+    /// with `allocator`). Dropped, and freed, once the connection is closing.
     pub fn push(self: *Outbound, message: []u8) void {
+        self.pushItem(.{ .bytes = message, .kind = .message });
+    }
+
+    /// Append bytes written as they are (OWNED, as `push`).
+    pub fn pushRaw(self: *Outbound, bytes: []u8) void {
+        self.pushItem(.{ .bytes = bytes, .kind = .raw });
+    }
+
+    fn pushItem(self: *Outbound, item: Item) void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        if (self.closed) {
+        if (self.closed or self.finishing) {
             std.Io.Threaded.mutexUnlock(&self.mutex);
-            self.allocator.free(message);
+            self.allocator.free(item.bytes);
             return;
         }
-        self.queue.append(self.allocator, message) catch {
+        self.queue.append(self.allocator, item) catch {
             std.Io.Threaded.mutexUnlock(&self.mutex);
             // Out of memory: the message is lost, as a write that failed is.
-            self.allocator.free(message);
+            self.allocator.free(item.bytes);
             return;
         };
         std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.wakeWriter();
+    }
+
+    fn wakeWriter(self: *Outbound) void {
         _ = self.wake.fetchAdd(1, .release);
         futexIo().futexWake(u32, &self.wake.raw, 1);
     }
 
-    /// The writer: move every queued message into `out` (in order). The
-    /// caller owns them.
-    pub fn takeAll(self: *Outbound, out: *std.ArrayList([]u8)) Allocator.Error!void {
+    /// The writer: move every queued item into `out` (in order; the caller
+    /// owns them) and say whether the queue is closing.
+    pub fn takeAll(self: *Outbound, out: *std.ArrayList(Item)) Allocator.Error!State {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try out.appendSlice(self.allocator, self.queue.items);
         self.queue.clearRetainingCapacity();
+        return .{ .closed = self.closed, .finishing = self.finishing };
     }
 
-    /// The writer, with nothing to write: block until a push, the close, or
-    /// `timeout_ns` (null: none). Spurious returns are allowed.
+    /// The writer, with nothing to write: block until a push, `finish`,
+    /// `close`, or `timeout_ns` (null: none). Spurious returns are allowed.
     pub fn wait(self: *Outbound, timeout_ns: ?u64) void {
         const seen = self.wake.load(.acquire);
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        const ready = self.queue.items.len != 0 or self.closed;
+        const ready = self.queue.items.len != 0 or self.closed or self.finishing;
         std.Io.Threaded.mutexUnlock(&self.mutex);
         if (ready) return;
         const timeout: std.Io.Timeout = if (timeout_ns) |ns| .{ .duration = .{
@@ -94,15 +134,23 @@ pub const Outbound = struct {
         futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, timeout) catch {};
     }
 
+    /// Write what is queued, then end (an HTTP response, a Browser.close
+    /// reply before the process ends). Later pushes are dropped.
+    pub fn finish(self: *Outbound) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        self.finishing = true;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.wakeWriter();
+    }
+
     /// The connection ended: drop what is queued and every later push.
     pub fn close(self: *Outbound) void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         self.closed = true;
-        for (self.queue.items) |message| self.allocator.free(message);
+        for (self.queue.items) |item| self.allocator.free(item.bytes);
         self.queue.clearRetainingCapacity();
         std.Io.Threaded.mutexUnlock(&self.mutex);
-        _ = self.wake.fetchAdd(1, .release);
-        futexIo().futexWake(u32, &self.wake.raw, 1);
+        self.wakeWriter();
     }
 
     pub fn isClosed(self: *Outbound) bool {
@@ -168,22 +216,39 @@ test "pushed messages come out in order and a closed queue drops pushes" {
     const out = try Outbound.create(std.testing.allocator);
     defer out.release();
     out.push(try std.testing.allocator.dupe(u8, "one"));
-    out.push(try std.testing.allocator.dupe(u8, "two"));
-    var taken: std.ArrayList([]u8) = .empty;
+    out.pushRaw(try std.testing.allocator.dupe(u8, "two"));
+    var taken: std.ArrayList(Item) = .empty;
     defer {
-        for (taken.items) |m| std.testing.allocator.free(m);
+        for (taken.items) |m| std.testing.allocator.free(m.bytes);
         taken.deinit(std.testing.allocator);
     }
-    try out.takeAll(&taken);
+    const state = try out.takeAll(&taken);
+    try std.testing.expect(!state.closed and !state.finishing);
     try std.testing.expectEqual(@as(usize, 2), taken.items.len);
-    try std.testing.expectEqualStrings("one", taken.items[0]);
-    try std.testing.expectEqualStrings("two", taken.items[1]);
+    try std.testing.expectEqualStrings("one", taken.items[0].bytes);
+    try std.testing.expectEqual(Item.Kind.raw, taken.items[1].kind);
     out.close();
     out.push(try std.testing.allocator.dupe(u8, "late"));
-    var after: std.ArrayList([]u8) = .empty;
+    var after: std.ArrayList(Item) = .empty;
     defer after.deinit(std.testing.allocator);
-    try out.takeAll(&after);
+    try std.testing.expect((try out.takeAll(&after)).closed);
     try std.testing.expectEqual(@as(usize, 0), after.items.len);
+}
+
+test "finish keeps what is queued and drops later pushes" {
+    const out = try Outbound.create(std.testing.allocator);
+    defer out.release();
+    out.push(try std.testing.allocator.dupe(u8, "reply"));
+    out.finish();
+    out.push(try std.testing.allocator.dupe(u8, "late"));
+    var taken: std.ArrayList(Item) = .empty;
+    defer {
+        for (taken.items) |m| std.testing.allocator.free(m.bytes);
+        taken.deinit(std.testing.allocator);
+    }
+    const state = try out.takeAll(&taken);
+    try std.testing.expect(state.finishing);
+    try std.testing.expectEqual(@as(usize, 1), taken.items.len);
 }
 
 test "a session link outlives its session; an ended link sends nothing" {
@@ -196,8 +261,8 @@ test "a session link outlives its session; an ended link sends nothing" {
     kept.end();
     kept.send(try std.testing.allocator.dupe(u8, "dropped"));
     kept.release();
-    var taken: std.ArrayList([]u8) = .empty;
+    var taken: std.ArrayList(Item) = .empty;
     defer taken.deinit(std.testing.allocator);
-    try out.takeAll(&taken);
+    _ = try out.takeAll(&taken);
     try std.testing.expectEqual(@as(usize, 0), taken.items.len);
 }

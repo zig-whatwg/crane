@@ -178,6 +178,8 @@ pub const MilestoneEvent = @import("html").navigation.observer.Event;
 const StubEvent = union(enum) {
     tab_created: struct { tab: TabId, opener: ?TabId },
     tab_destroyed: struct { tab: TabId },
+    frame_created: struct { navigable: u64, parent: ?u64 },
+    frame_destroyed: struct { navigable: u64 },
     navigation: *const Milestone,
 };
 const StubListener = struct {

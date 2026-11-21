@@ -30,6 +30,26 @@ pub const Reply = dispatch.Reply;
 pub const PageSession = @import("page_session.zig").PageSession;
 pub const BrowserSide = @import("browser_side.zig").BrowserSide;
 
+pub const http = @import("http.zig");
+pub const websocket_server = @import("websocket_server.zig");
+pub const targets = @import("targets.zig");
+pub const browser_target = @import("browser_target.zig");
+
+/// The remote end's server: the devtools thread, its listener, pipe and
+/// connections (server.zig).
+pub const Server = @import("server.zig").Server;
+pub const ServerOptions = @import("server.zig").Options;
+
 test {
     std.testing.refAllDecls(@This());
+    // Every handler compiles: the two dispatchers, instantiated.
+    _ = &PageSession.handleMessage;
+    _ = &struct {
+        fn devtoolsThread(s: *targets.Session, a: std.mem.Allocator, c: *const json_rpc.Command) void {
+            dispatch.dispatch(browser_target.Handlers, s, a, c);
+        }
+    }.devtoolsThread;
+    _ = &Server.start;
+    _ = &Server.stop;
+    _ = &Server.waitUntilClosed;
 }

@@ -159,6 +159,10 @@ fn invoke(comptime C: type, comptime handler: anytype, session: anytype, arena: 
     const params = std.json.parseFromValueLeaky(C.Params, arena, command.params, .{ .ignore_unknown_fields = true }) catch |err| {
         return sendError(session.link, command.id, @backingInt(Code.invalid_params), "Invalid parameters", @errorName(err));
     };
+    if (comptime @hasField(@TypeOf(session.*), "arena")) session.arena = arena;
+    defer if (comptime @hasField(@TypeOf(session.*), "arena")) {
+        session.arena = null;
+    };
     const info = @typeInfo(@TypeOf(handler)).@"fn";
     switch (info.param_types.len) {
         2 => {
