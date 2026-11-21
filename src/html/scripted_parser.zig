@@ -247,6 +247,8 @@ pub const DocumentParser = struct {
     /// while it is still ahead of the parser (speculative_fetch.Speculation).
     /// Null: none started, or stopped.
     speculation: ?*speculative_fetch.Speculation = null,
+    /// A task to run the speculation's next slice is queued (`SpeculationTask`).
+    speculation_queued: bool = false,
 
     pub fn create(
         allocator: Allocator,
@@ -800,10 +802,57 @@ pub const DocumentParser = struct {
             };
             self.speculation = speculative_fetch.Speculation.create(self.allocator, self.document, options, position, stream.insertions) catch return;
         }
-        const speculation = self.speculation.?;
-        speculation.active = true;
-        speculation.scan();
+        self.speculation.?.active = true;
+        self.queueSpeculationSlice();
     }
+
+    /// The speculative parser reads on in slices, a task each, while the
+    /// parser waits (speculative_fetch.Speculation.scanSlice); with no event
+    /// loop, at once.
+    fn queueSpeculationSlice(self: *DocumentParser) void {
+        const speculation = self.speculation orelse return;
+        if (!speculation.active or self.speculation_queued) return;
+        const loop = self.ctx.getOptionalEventLoop() orelse {
+            _ = speculation.scanSlice(std.math.maxInt(usize));
+            return;
+        };
+        const task = self.allocator.create(SpeculationTask) catch return;
+        task.* = .{ .parser = self };
+        self.speculation_queued = true;
+        self.retain();
+        // A task on the networking task source given the document's relevant
+        // global, as the parser's own reads are (HTML 7.5.1).
+        loop.queueTask(.{
+            .callback = &SpeculationTask.run,
+            .context = task,
+            .drop = &SpeculationTask.drop,
+            .document = self.document,
+            .document_generation = self.document_generation,
+        });
+    }
+
+    const SpeculationTask = struct {
+        parser: *DocumentParser,
+
+        fn run(context: ?*anyopaque) void {
+            const self: *SpeculationTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            parser.allocator.destroy(self);
+            defer parser.release();
+            parser.speculation_queued = false;
+            if (parser.detached or parser.eof_processed or !parser.isCurrent()) return;
+            const speculation = parser.speculation orelse return;
+            if (speculation.scanSlice(speculative_fetch.Speculation.slice_bytes)) parser.queueSpeculationSlice();
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *SpeculationTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            parser.allocator.destroy(self);
+            parser.speculation_queued = false;
+            parser.release();
+        }
+    };
 
     /// The wait is over (step 7): the speculation stops reading. It is kept
     /// while it is ahead of the parser, for the next wait.
@@ -913,7 +962,7 @@ pub const DocumentParser = struct {
         if (self.pump_depth != 0) return;
         const internal = document_internals.getInternal(self.document) orelse return;
         if (internal.scripts.pending_parsing_blocking_script != null) {
-            if (self.speculation) |speculation| speculation.scan();
+            self.queueSpeculationSlice();
             return;
         }
         if (ended) try self.finishIfPossible() else try self.pump();

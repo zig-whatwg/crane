@@ -126,15 +126,24 @@ pub const Speculation = struct {
         self.scanner.complete();
     }
 
-    /// Run the scanner over what it has, fetching each speculative mock
-    /// element's resource ("In parallel, run speculativeParser until it is
-    /// stopped or until it reaches the end of its input stream" - here, on
-    /// the parser's thread, as Blink's synchronous ScanAndPreload does).
-    pub fn scan(self: *Speculation) void {
-        if (self.failed or !self.active) return;
-        if (!self.documentLive()) return;
-        self.scanner.scan(.{ .context = self, .found = foundThrough }) catch {
+    /// The input one slice of the speculative parser reads (`scanSlice`).
+    pub const slice_bytes = 32 * 1024;
+
+    /// Run the scanner over up to `budget` bytes of what it has, fetching each
+    /// speculative mock element's resource: true when input is left for
+    /// another slice. "In parallel, run speculativeParser until it is stopped
+    /// or until it reaches the end of its input stream": here in slices from
+    /// the event loop, while the parser waits (DocumentParser), so a script
+    /// that arrives stops it between two slices - the speculation never
+    /// delays the parser it serves. WebKit scans the whole input at once on
+    /// the main thread (HTMLDocumentParser::pumpTokenizer -> preloadScanner
+    /// ->scan); Blink scans on a background thread (BackgroundHTMLScanner).
+    pub fn scanSlice(self: *Speculation, budget: usize) bool {
+        if (self.failed or !self.active) return false;
+        if (!self.documentLive()) return false;
+        return self.scanner.scanFor(.{ .context = self, .found = foundThrough }, budget) catch {
             self.failed = true;
+            return false;
         };
     }
 

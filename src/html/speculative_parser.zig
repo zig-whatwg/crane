@@ -237,9 +237,18 @@ pub const Scanner = struct {
     /// Read every token there is input for, reporting each speculative fetch
     /// to `sink`. Returns at the end of the input so far.
     pub fn scan(self: *Scanner, sink: Sink) !void {
+        _ = try self.scanFor(sink, std.math.maxInt(usize));
+    }
+
+    /// As `scan`, stopping at the first token boundary after `budget` bytes
+    /// of input: true when it stopped there, with input left to read; false
+    /// at the end of the input so far.
+    pub fn scanFor(self: *Scanner, sink: Sink, budget: usize) !bool {
+        const start = self.tokenizer.nextInputPosition();
         while (true) {
+            if (self.tokenizer.nextInputPosition() - start >= budget) return true;
             self.tokenizer.allow_cdata = self.foreign.items.len != 0;
-            var token = (try self.tokenizer.nextToken()) orelse return;
+            var token = (try self.tokenizer.nextToken()) orelse return false;
             defer token.deinit();
             switch (token) {
                 .start_tag => |*tag| try self.startTag(tag, sink),
@@ -250,7 +259,7 @@ pub const Scanner = struct {
                     const len = std.unicode.utf8Encode(c, &buffer) catch 0;
                     try self.text(buffer[0..len]);
                 },
-                .eof => return,
+                .eof => return false,
                 else => {},
             }
         }
@@ -839,4 +848,15 @@ test "a nonce is passed on only where the element would be nonceable" {
     defer scanner.destroy();
     try scanner.scan(nonces.sink());
     try testing.expectEqualStrings("a.js=n1;b.js=;c.js=;d.css=n4;", nonces.list.items);
+}
+
+test "a scan with a budget stops at a token boundary past it, and the next one goes on from there" {
+    var collected: Collected = .{};
+    defer collected.deinit();
+    const scanner = try Scanner.create(testing.allocator, .{ .input = "<img src=a.png><img src=b.png><img src=c.png>" });
+    defer scanner.destroy();
+    try testing.expect(try scanner.scanFor(collected.sink(), 10));
+    try testing.expectEqualStrings("image a.png\n", collected.lines.items);
+    try testing.expect(!try scanner.scanFor(collected.sink(), 1000));
+    try testing.expectEqualStrings("image a.png\nimage b.png\nimage c.png\n", collected.lines.items);
 }
