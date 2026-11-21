@@ -505,6 +505,14 @@ pub const InternalRequest = struct {
     /// for a later fetch to consume.
     link_preload: bool = false,
 
+    /// HTML 13.2.8 "speculative fetch": the request is the speculative HTML
+    /// parser's, made "as if the element was processed normally" before the
+    /// parser reaches the element. Its response goes into the document's
+    /// map of preloaded resources as a speculative entry, for the element's
+    /// own fetch to consume (Fetch step 11) - Blink's speculative preload,
+    /// which the element's request matches (ResourceFetcher::MatchPreload).
+    speculative_preload: bool = false,
+
     /// SRI policy reports go to the client's global. BORROWED with the CSP
     /// reporter's lifetime: a fetch whose client is gone is terminated, or
     /// kept with this dropped, before it reports. Null for a request whose
@@ -982,6 +990,7 @@ pub const InternalRequest = struct {
             .service_worker = self.service_worker,
             .document_resources = self.document_resources,
             .link_preload = self.link_preload,
+            .speculative_preload = self.speculative_preload,
             .integrity_violation_reporter = self.integrity_violation_reporter,
             .coep_violation_reporter = self.coep_violation_reporter,
             // Cloned below: each request owns its own.

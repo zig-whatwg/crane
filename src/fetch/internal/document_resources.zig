@@ -58,6 +58,11 @@ pub const Entry = struct {
     response: ?*InternalResponse = null,
     /// A preload's entry (HTML "preload"), not a loaded resource's.
     preload: bool,
+    /// A speculative fetch's entry (HTML 13.2.8): in the preload map until the
+    /// element's own fetch consumes it, or the document finishes parsing
+    /// (dom.document_resources.dropSpeculative). A link preload element that
+    /// consumes one makes it its own: no longer speculative.
+    speculative: bool = false,
     /// The preload is consumed by a render-blocking fetch while it is still
     /// in flight: its Resource Timing entry reports "blocking" (Chrome's
     /// ResourceFetcher::MakePreloadedResourceBlockIfNeeded upgrades the

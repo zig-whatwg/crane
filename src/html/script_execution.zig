@@ -413,7 +413,13 @@ fn prepareScriptElementFor(
         const base_url = documentBaseUrlAlloc(allocator, node_document, script_element) orelse
             return ScriptExecutionError.OutOfMemory;
         defer allocator.free(base_url);
-        const parsed_url = parseUrl(script_element, src, base_url) orelse {
+        // With the node document's character encoding for the query, as
+        // all three browsers encode it (html/syntax/speculative-parsing
+        // document-write/meta-charset-script-src: Chrome 157, Firefox 160 and
+        // Safari 27.2 send a windows-1252 document's U+011E as "&#286;") -
+        // and as the speculative HTML parser does, whose request the element's
+        // must equal to take it over.
+        const parsed_url = (dom.encoding_parse.encodingParseAndSerializeAgainst(script_element.ctx.allocator, script_element, src, base_url) catch null) orelse {
             // Step 33.6: If url is failure, queue an element task to fire error
             // at el, and return.
             queueErrorEventTask(script_element);
@@ -1843,7 +1849,9 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         // failure queues the error event too.
         const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
         defer allocator.free(base_url);
-        const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
+        // Encoding-parsed with the node document's encoding, as an HTML
+        // script's src is (step 33.5 above).
+        const url = (dom.encoding_parse.encodingParseAndSerializeAgainst(element.ctx.allocator, element, raw, base_url) catch null) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
         // A script-inserted one is fetched in parallel and runs from the
@@ -2939,8 +2947,14 @@ fn getLanguageAttribute(element: *runtime.Instance) []const u8 {
 /// Determine script type from type attribute
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element (steps 8-13)
 fn determineScriptType(element: *runtime.Instance) ScriptType {
-    const type_attr = getAttribute(element, "type");
+    return scriptTypeAtPrepare(getAttribute(element, "type"), getLanguageAttribute(element));
+}
 
+/// Prepare steps 8-13 for a script element whose type attribute is
+/// `type_attr` (null: none) and whose language attribute is `language` (""
+/// when absent) - the element's, and a speculative script's (HTML 13.2.8:
+/// the speculative HTML parser fetches only what the element would).
+pub fn scriptTypeAtPrepare(type_attr: ?[]const u8, language: []const u8) ScriptType {
     // Prepare step 8 distinguishes a missing type from an explicitly empty
     // one: the latter is classic even when language says something else.
     // WebKit ScriptElement::determineScriptType makes the same distinction.
@@ -2957,7 +2971,6 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
         if (value.len == 0) return .classic;
         break :blk value;
     } else blk: {
-        const language = getLanguageAttribute(element);
         if (language.len == 0) return .classic;
         // Step 8's obsolete language form is exactly "text/" + language;
         // language itself is not stripped. No recognized essence is longer.
@@ -3103,33 +3116,6 @@ fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instan
         } else |_| {}
     }
     return allocator.dupe(u8, documentUrl(document, script_element)) catch null;
-}
-
-/// Parse `input` against `base` with the URL Standard's parser and return the
-/// serialized result, or null on failure.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-a-url
-/// For a UTF-8 document "encoding-parsing a URL" is the URL parser with the
-/// document base URL, which is what `URL.parse(input, base)` runs.
-///
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
-///
-/// Goes through the URL interface because html cannot reach the URL module's
-/// parser directly (and the impls boundary rules out the impl). The temporary
-/// URL object is never exposed to script, so nothing wraps it and nothing else
-/// will free it - `runtime.Instance.deinit` releases its state and its slab
-/// slot here.
-///
-/// The returned slice is owned by `context_instance.ctx.allocator`.
-pub fn parseUrl(context_instance: *runtime.Instance, input: []const u8, base: []const u8) ?[]const u8 {
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const url_instance = (interfaces.URL.call_static_parse(context_instance, input, base_arg) catch
-        return null) orelse return null;
-    defer runtime.Instance.deinit(url_instance);
-    return interfaces.URL.get_href(url_instance) catch null;
 }
 
 /// "Queue an element task on the DOM manipulation task source given el to fire

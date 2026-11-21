@@ -129,6 +129,7 @@ pub const BrowserScope = struct {
         html_select_element,
         html_source_element,
         html_track_element,
+        html_video_element,
         canvas_rendering_context_2d,
         css_style_declaration,
         dom_string_map,

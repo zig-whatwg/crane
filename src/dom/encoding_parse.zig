@@ -37,6 +37,15 @@ pub fn encodingParseAndSerializeWithAllocator(allocator: std.mem.Allocator, node
     return api_parser.encodingParseAndSerialize(allocator, input, base, documentEncoding(node));
 }
 
+/// "Encoding-parse-and-serialize a URL" given `input` with `node`'s node
+/// document's character encoding, against `base` (a serialized URL; null:
+/// none) rather than the document's base URL - the speculative HTML parser's
+/// predicted base URL (HTML 13.2.8: a base element it met acts on its later
+/// speculative fetches). OWNED by `allocator`; null for failure.
+pub fn encodingParseAndSerializeAgainst(allocator: std.mem.Allocator, node: *runtime.Instance, input: []const u8, base: ?[]const u8) error{OutOfMemory}!?[]const u8 {
+    return api_parser.encodingParseAndSerialize(allocator, input, base, documentEncoding(node));
+}
+
 /// "Encoding-parse-and-serialize a URL" given `input`, relative to a worker's
 /// settings object: against its API base URL `api_base_url` (none when null,
 /// or when it does not parse), the query encoded with its API URL character

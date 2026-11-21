@@ -260,8 +260,20 @@ pub const document_abort = @import("document_abort.zig");
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");
+/// HTML 13.2.8 "Speculative HTML parsing": the scanner a waiting parser runs
+/// over the rest of its input, and its look into style elements' @imports.
+pub const speculative_parser = @import("speculative_parser.zig");
+pub const speculative_css = @import("speculative_css.zig");
+/// A waiting parser's speculative HTML parser and its speculative fetches.
+pub const speculative_fetch = @import("speculative_fetch.zig");
 /// HTML "encoding-parse a URL" relative to a Document.
 pub const encoding_parse = @import("dom").encoding_parse;
+/// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection
+/// (the img element's and the speculative HTML parser's).
+pub const image_source_selection = @import("image_source_selection.zig");
+/// A link element's link types and `as`/`type` rules (HTML 4.6.7), the
+/// link element's and the speculative HTML parser's.
+pub const link_types = @import("link_types.zig");
 
 /// Parser script execution callback and context for V8 integration.
 /// Provides the bridge between tree builder's script callback and V8 execution.

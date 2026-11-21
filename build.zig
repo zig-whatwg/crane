@@ -8539,6 +8539,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_mod.addImport("api_parser", url_parser_api_mod);
     // A style sheet's @import rules, for style_sheet_loading.zig.
     html_mod.addImport("css", css_mod);
+    // The img element's and the speculative HTML parser's source and link
+    // type checks (html.image_source_selection, html.link_types).
+    html_mod.addImport("mimesniff", mimesniff_mod);
 
     // The XML parser (XML 1.0 + Namespaces in XML): engine- and DOM-free, no
     // imports. HTML's XML tree builder (src/html/xml_document_parser.zig)

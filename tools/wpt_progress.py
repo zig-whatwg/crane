@@ -170,7 +170,11 @@ def engine_label(engine):
 # kind"); it comes off when the browsers change - and `needs-decoder` - like
 # needs-renderer, the file fails ONLY because the platform WPT runs on has no
 # decoder for its media (the user, 2026-11-18 2:53 PM ET); it comes off when a
-# video-capable platform runs WPT. A listed file that would block is EXEMPT:
+# video-capable platform runs WPT - and `single-shipper` - the file tests a feature
+# only ONE browser ships, and its remaining failures hinge on a mechanism where
+# Crane does what the other two browsers and the spec do (the user, 2026-11-21
+# 5:58 AM ET, choice (a)); it comes off when a second browser ships the feature. A
+# listed file that would block is EXEMPT:
 # counted in its kind's own group, never as blocking. One that does not block keeps its standing. An invalid
 # entry stops the report - an exemption is never applied, or dropped, silently.
 EXEMPTIONS_FILE = os.path.join(REPO, 'tools', 'wpt_gate_exemptions.txt')
@@ -200,9 +204,16 @@ RENDERER_REASON_SEP = ' :: '
 # skipped); `media`: the media file(s) it plays and their type; `assertion`: the
 # failing wait or assertion, as the run reports it.
 NEEDS_DECODER_KEYS = ('kind', 'why', 'media', 'assertion')
+# `shipper`: the one browser that ships the feature (chrome, firefox or safari);
+# every browser's result, the two that do not ship it with the same one;
+# `mechanism`: what Crane follows - what the other two browsers and the spec do;
+# `spec`: the spec text of that mechanism; `revisit`: "when <a second browser>
+# ships <the feature>".
+SINGLE_SHIPPER_KEYS = ('kind', 'why', 'shipper', 'chrome.result', 'firefox.result', 'safari.result', 'mechanism',
+                       'spec', 'revisit')
 KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEYS,
              'needs-renderer': NEEDS_RENDERER_KEYS, 'follows-majority': FOLLOWS_MAJORITY_KEYS,
-             'needs-decoder': NEEDS_DECODER_KEYS}
+             'needs-decoder': NEEDS_DECODER_KEYS, 'single-shipper': SINGLE_SHIPPER_KEYS}
 # The keys of a kind an entry may leave out.
 KIND_OPTIONAL = {'intentional': ('kind',), 'follows-majority': ('ruling', 'renderer-subtests')}
 # What an entry of each kind is missing without one of its keys.
@@ -212,12 +223,15 @@ KIND_NEEDS = {
     'needs-renderer': 'a needs-renderer exemption needs the failing assertion and why it needs a layout box',
     'follows-majority': "a follows-majority exemption needs every browser's result, the browsers Crane matches and when to revisit",
     'needs-decoder': 'a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder',
+    'single-shipper': "a single-shipper exemption needs the browser that ships the feature, every browser's result, "
+                      'the mechanism Crane follows with its spec, and when to revisit',
 }
 ALL_EXEMPTION_KEYS = (set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS) | set(NEEDS_RENDERER_KEYS) | set(FOLLOWS_MAJORITY_KEYS)
-                      | set(NEEDS_DECODER_KEYS))
+                      | set(NEEDS_DECODER_KEYS) | set(SINGLE_SHIPPER_KEYS))
 _WPT_ISSUE = re.compile(r'https://github\.com/web-platform-tests/wpt/(issues|pull)/\d+$')
 _REVISIT = re.compile(r'when (\S+) is resolved$')
 _REVISIT_WHEN = re.compile(r'when \S')
+_REVISIT_SHIPS = re.compile(r'when \S.* ships \S')
 _COUNTS = re.compile(r'wpt\.fyi run \d+: *(\d+/\d+)')
 BROWSERS = (('chrome', 'Chrome'), ('firefox', 'Firefox'), ('safari', 'Safari'))
 _URL = re.compile(r'https?://\S+$')
@@ -317,6 +331,16 @@ def parse_exemptions(text, worklist):
                 shown = ', '.join(f'{label} {counts[b]}' for b, label in BROWSERS if b in counts)
                 raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: the browsers in matches need the same "
                                      f"result ({shown})")
+        if kind == 'single-shipper':
+            if not _REVISIT_SHIPS.match(vals['revisit']):
+                raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
+                                     '"when <a second browser> ships <the feature>"')
+            # The two that do not ship the feature fail it alike.
+            others = [(b, label) for b, label in BROWSERS if b != vals['shipper']]
+            counts = [_COUNTS.match(vals[b + '.result']).group(1) for b, _ in others]
+            if counts[0] != counts[1]:
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: the browsers that do not ship the "
+                                     f"feature need the same result ({others[0][1]} {counts[0]}, {others[1][1]} {counts[1]})")
         out[entry['path']] = dict(vals, kind=kind)
 
     for n, raw in enumerate(text.split('\n'), 1):
@@ -350,7 +374,9 @@ def parse_exemptions(text, worklist):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must be an http(s) URL')
         if key == 'kind' and value not in KIND_KEYS:
             raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional, test-bug, needs-renderer, '
-                                 f'follows-majority or needs-decoder, not "{value}"')
+                                 f'follows-majority, needs-decoder or single-shipper, not "{value}"')
+        if key == 'shipper' and value not in [b for b, _ in BROWSERS]:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: shipper must name chrome, firefox or safari')
         if key == 'upstream' and not _WPT_ISSUE.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: upstream must be a web-platform-tests issue or pull '
                                  'request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)')
@@ -394,6 +420,7 @@ def render_exempt(records, worklist):
     needs_renderer = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'needs-renderer']
     follows_majority = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'follows-majority']
     needs_decoder = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'needs-decoder']
+    single_shipper = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'single-shipper']
     if intentional:
         items = []
         for path, e in intentional:
@@ -504,6 +531,28 @@ def render_exempt(records, worklist):
     majority of Chrome, Firefox and Safari, or the browsers a recorded ruling follows), so no change in Crane can
     clear it (<code>tools/wpt_gate_exemptions.txt</code>; the user, 2026-11-18). When the browsers change, the entry
     comes off. A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
+    if single_shipper:
+        items = []
+        for path, e in single_shipper:
+            st = status_of(records.get(path), path)
+            ev = ''.join(f'<li>{label}: {html.escape(e[key + ".result"])}</li>' for key, label in BROWSERS)
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>ships the feature: {html.escape(engine_label(e["shipper"]))}</li>'
+                f'<li>Crane follows: {html.escape(e["mechanism"])}</li>'
+                f'<li>spec: <a href="{html.escape(e["spec"])}">{html.escape(e["spec"])}</a></li>'
+                f'{ev}<li>revisit: {html.escape(e["revisit"])}</li></ul></li>')
+        n = sum(1 for p, _ in single_shipper if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
+<div class="panel">
+  <h2 class="panelh">Exempt: only one browser ships the feature</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking: each tests a feature only one
+    of Chrome, Firefox and Safari ships, and its remaining failures hinge on a mechanism where Crane does what the
+    other two browsers and the spec do (<code>tools/wpt_gate_exemptions.txt</code>; the user, 2026-11-21). When a
+    second browser ships the feature, the entry comes off. A listed file that does not block keeps its standing.</div>
   <ol>{''.join(items)}</ol>
 </div>"""
     return out
@@ -1659,6 +1708,8 @@ def build(worklist, records, shape=None):
                 areas[a]['exempt_follows_majority'] += 1
             elif EXEMPTIONS[path]['kind'] == 'needs-decoder':
                 areas[a]['exempt_needs_decoder'] += 1
+            elif EXEMPTIONS[path]['kind'] == 'single-shipper':
+                areas[a]['exempt_single_shipper'] += 1
             areas[a]['sub_pass'] += rec.get('passed', 0)
             areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status in GATING:
@@ -2143,6 +2194,7 @@ def record_generation(worklist, records, areas, previous_records=None, reference
         'exempt_needs_renderer': tot['exempt_needs_renderer'],
         'exempt_follows_majority': tot['exempt_follows_majority'],
         'exempt_needs_decoder': tot['exempt_needs_decoder'],
+        'exempt_single_shipper': tot['exempt_single_shipper'],
         # Files the sweep re-ran because they did not fully pass, whose second run
         # disagreed with the first (the runner's --retry-failures: "flaky" in the
         # journal record). The first result is the one counted everywhere else.
@@ -3186,15 +3238,17 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     # renderer answers geometry. And the fourth (the user, 2026-11-18): a file
     # whose result is the browser majority's, the one golden rule 2 says is correct.
     # And the fifth (the user, 2026-11-18): a file that fails only because the
-    # platform has no decoder for its media.
+    # platform has no decoder for its media. And the sixth (the user, 2026-11-21): a
+    # file testing a feature only one browser ships.
     exempt_intentional = (tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']
-                          - tot['exempt_follows_majority'] - tot['exempt_needs_decoder'])
+                          - tot['exempt_follows_majority'] - tot['exempt_needs_decoder'] - tot['exempt_single_shipper'])
     exempt_note = ''.join((
         f' Not counted: {exempt_intentional:,} exempt (all three browsers intentionally deviate).' if exempt_intentional else '',
         f' Not counted: {tot["exempt_test_bug"]:,} exempt until an upstream test bug is fixed.' if tot['exempt_test_bug'] else '',
         f' Not counted: {tot["exempt_needs_renderer"]:,} exempt until a renderer answers geometry.' if tot['exempt_needs_renderer'] else '',
         f' Not counted: {tot["exempt_follows_majority"]:,} exempt: Crane follows the browser majority.' if tot['exempt_follows_majority'] else '',
-        f' Not counted: {tot["exempt_needs_decoder"]:,} exempt until a decoder plays its media.' if tot['exempt_needs_decoder'] else ''))
+        f' Not counted: {tot["exempt_needs_decoder"]:,} exempt until a decoder plays its media.' if tot['exempt_needs_decoder'] else '',
+        f' Not counted: {tot["exempt_single_shipper"]:,} exempt: only one browser ships the feature.' if tot['exempt_single_shipper'] else ''))
     reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -3363,6 +3417,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   {f'<div class="card"><div class="k">Exempt: needs a renderer</div><div class="v">{tot["exempt_needs_renderer"]:,}</div></div>' if any(e['kind'] == 'needs-renderer' for e in EXEMPTIONS.values()) else ''}
   {f'<div class="card"><div class="k">Exempt: follows the browser majority</div><div class="v">{tot["exempt_follows_majority"]:,}</div></div>' if any(e['kind'] == 'follows-majority' for e in EXEMPTIONS.values()) else ''}
   {f'<div class="card"><div class="k">Exempt: needs a decoder</div><div class="v">{tot["exempt_needs_decoder"]:,}</div></div>' if any(e['kind'] == 'needs-decoder' for e in EXEMPTIONS.values()) else ''}
+  {f'<div class="card"><div class="k">Exempt: one browser ships it</div><div class="v">{tot["exempt_single_shipper"]:,}</div></div>' if any(e['kind'] == 'single-shipper' for e in EXEMPTIONS.values()) else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
   <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
@@ -3490,9 +3545,10 @@ def main():
     listed_renderer = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'needs-renderer')
     listed_majority = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'follows-majority')
     listed_decoder = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'needs-decoder')
+    listed_shipper = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'single-shipper')
     print(f"  exempt (all three browsers intentionally deviate; not blocking): "
-          f"{tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer'] - tot['exempt_follows_majority'] - tot['exempt_needs_decoder']:,} "
-          f"of {len(EXEMPTIONS) - listed_bug - listed_renderer - listed_majority - listed_decoder:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+          f"{tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer'] - tot['exempt_follows_majority'] - tot['exempt_needs_decoder'] - tot['exempt_single_shipper']:,} "
+          f"of {len(EXEMPTIONS) - listed_bug - listed_renderer - listed_majority - listed_decoder - listed_shipper:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until an upstream test bug is fixed (not blocking): {tot['exempt_test_bug']:,} "
           f"of {listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until a renderer answers geometry (not blocking): {tot['exempt_needs_renderer']:,} "
@@ -3501,6 +3557,8 @@ def main():
           f"of {listed_majority:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until a decoder plays its media (not blocking): {tot['exempt_needs_decoder']:,} "
           f"of {listed_decoder:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    print(f"  exempt: only one browser ships the feature (not blocking): {tot['exempt_single_shipper']:,} "
+          f"of {listed_shipper:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     stale = stale_follows_majority(records)
     if stale:
         print(f"  follows-majority entries whose Crane result no longer equals the matched browsers' - review: "
@@ -3883,7 +3941,7 @@ def _check_exemption_kinds():
     up = 'upstream = https://github.com/web-platform-tests/wpt/issues/99999'
     rv = 'revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
     for frm, to, needle in (
-            ('kind = test-bug', 'kind = testbug', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
+            ('kind = test-bug', 'kind = testbug', 'kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper'),
             (up, 'upstream = https://bugs.webkit.org/show_bug.cgi?id=1', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt/issues/', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999', 'web-platform-tests issue or pull request'),
@@ -3978,7 +4036,7 @@ def _check_needs_renderer_kind():
             ('why = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ', '"upstream" is not a key of a needs-renderer exemption'),
             ('why = ', 'chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ', '"chrome.result" is not a key of a needs-renderer exemption'),
             ('why = ', 'renderer = none\nwhy = ', 'unknown key "renderer"'),
-            ('kind = needs-renderer', 'kind = needs-a-renderer', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
+            ('kind = needs-renderer', 'kind = needs-a-renderer', 'kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper'),
             ('kind = needs-renderer', 'kind = needs-renderer\nkind = needs-renderer', 'twice'),
             (asrt, 'assertion = \nassertion_ = promise_test', '"assertion" is empty')):
         assert frm in _NEEDS_RENDERER_FIXTURE, frm
@@ -4041,7 +4099,7 @@ def _check_follows_majority_extensions():
     tools/wpt_site/model.zig's tests read too (tools/wpt_site/exemption_fixture.txt): none needs a ruling that
     names its golden rule 2 case and compares nothing; renderer-subtests belongs to follows-majority alone, each
     subtest with its geometry reason, and lets Crane be one pass short of the matched browsers per subtest."""
-    wl = ['html/x/spec-alone.html', 'html/x/renderer-part.html']
+    wl = ['html/x/spec-alone.html', 'html/x/renderer-part.html', 'resource-timing/x/only-one-ships.html']
     fixture = open(SHARED_EXEMPTION_FIXTURE).read()
     parsed = parse_exemptions(fixture, wl)
     alone = parsed['html/x/spec-alone.html']
@@ -4153,7 +4211,7 @@ def _check_follows_majority_kind():
             ('why = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ', '"upstream" is not a key of a follows-majority exemption'),
             ('why = ', 'assertion = promise_test: x\nwhy = ', '"assertion" is not a key of a follows-majority exemption'),
             ('why = ', 'majority = yes\nwhy = ', 'unknown key "majority"'),
-            ('kind = follows-majority', 'kind = majority', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
+            ('kind = follows-majority', 'kind = majority', 'kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper'),
             ('kind = follows-majority', 'kind = follows-majority\nkind = follows-majority', 'twice'),
             (m, m + '\nruling = a\nruling = b', 'twice'),
             (m, m + '\nruling = ', '"ruling" is empty')):
@@ -4264,7 +4322,7 @@ def _check_needs_decoder_kind():
             ('why = ', 'matches = chrome, firefox\nwhy = ', '"matches" is not a key of a needs-decoder exemption'),
             ('why = ', 'decoder = vp8\nwhy = ', 'unknown key "decoder"'),
             ('kind = needs-decoder', 'kind = needs-a-decoder', 'kind must be intentional, test-bug, needs-renderer, '
-             'follows-majority or needs-decoder'),
+             'follows-majority, needs-decoder or single-shipper'),
             ('kind = needs-decoder', 'kind = needs-decoder\nkind = needs-decoder', 'twice'),
             ('media = /media', 'media = \nmedia_ = /media', '"media" is empty')):
         assert frm in _NEEDS_DECODER_FIXTURE, frm
@@ -4302,6 +4360,99 @@ def _check_needs_decoder_kind():
         # Without the kind, the other groups render exactly as before.
         EXEMPTIONS = parse_exemptions(_NEEDS_RENDERER_FIXTURE, wl)
         assert 'decoder' not in render_exempt(recs, wl)
+    finally:
+        EXEMPTIONS = saved
+
+
+def _check_single_shipper_kind():
+    """The sixth exemption kind (the user, 2026-11-21 5:58 AM ET, choice (a)): a file
+    that tests a feature only ONE browser ships, whose remaining failures hinge on a
+    mechanism where Crane does what the other two browsers and the spec do. kind =
+    single-shipper needs `why`, `shipper` (chrome, firefox or safari), every browser's
+    result - the two that do not ship the feature with the same one - `mechanism`
+    (what Crane follows), `spec` (its spec text, a URL) and `revisit` ("when <...>
+    ships <...>": the entry comes off when a second browser ships the feature), and no
+    other key; on the shared fixture tools/wpt_site/model.zig's tests read too."""
+    global EXEMPTIONS
+    path = 'resource-timing/x/only-one-ships.html'
+    wl = ['html/x/spec-alone.html', 'html/x/renderer-part.html', path, 'css/x/other.html']
+    fixture = open(SHARED_EXEMPTION_FIXTURE).read()
+    e = parse_exemptions(fixture, wl)[path]
+    assert e['kind'] == 'single-shipper', e
+    assert e['shipper'] == 'chrome', e
+    assert e['mechanism'] == 'Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do', e
+    assert e['spec'] == 'https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing', e
+    assert e['revisit'] == 'when Firefox or Safari ships the feature', e
+    assert set(e) == {'kind', 'why', 'shipper', 'chrome.result', 'firefox.result', 'safari.result', 'mechanism',
+                      'spec', 'revisit'}, e
+    start = fixture.index('[' + path + ']')
+    entry = fixture[start:]
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    needs = ("a single-shipper exemption needs the browser that ships the feature, every browser's result, the "
+             "mechanism Crane follows with its spec, and when to revisit")
+    for key in ('why', 'shipper', 'chrome.result', 'firefox.result', 'safari.result', 'mechanism', 'spec', 'revisit'):
+        text = '\n'.join(l for l in entry.split('\n') if not l.startswith(key + ' '))
+        invalid(text, f'missing "{key}" - ' + needs)
+    for frm, to, needle in (
+            ('shipper           = chrome', 'shipper           = edge', 'shipper must name chrome, firefox or safari'),
+            ('shipper           = chrome', 'shipper           = chrome, firefox', 'shipper must name chrome, firefox or safari'),
+            ('safari.result     = wpt.fyi run 6479119966273536: 0/1', 'safari.result     = wpt.fyi run 6479119966273536: 1/1',
+             'the browsers that do not ship the feature need the same result (Firefox 0/1, Safari 1/1)'),
+            ('revisit           = when Firefox or Safari ships the feature', 'revisit           = when the browsers change',
+             'revisit must read "when <a second browser> ships <the feature>"'),
+            ('spec              = https://', 'spec              = html.spec.whatwg.org/', 'spec must be an http(s) URL'),
+            ('why               = ', 'matches = chrome\nwhy = ', '"matches" is not a key of a single-shipper exemption'),
+            ('why               = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/1\nwhy = ',
+             '"upstream" is not a key of a single-shipper exemption'),
+            ('kind              = single-shipper', 'kind              = one-shipper',
+             'kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper')):
+        assert frm in entry, frm
+        invalid(entry.replace(frm, to), needle)
+    # Firefox shipping alone: the other two are Chrome and Safari.
+    firefox = (entry.replace('shipper           = chrome', 'shipper           = firefox')
+               .replace('chrome.result     = wpt.fyi run 4786307730243584: 1/1', 'chrome.result     = wpt.fyi run 4786307730243584: 0/1')
+               .replace('firefox.result    = wpt.fyi run 4877168468033536: 0/1', 'firefox.result    = wpt.fyi run 4877168468033536: 1/1'))
+    assert parse_exemptions(firefox, wl)[path]['shipper'] == 'firefox'
+    # Its `shipper` and `mechanism` belong to no other kind.
+    for other, article in ((_EXEMPTION_FIXTURE, 'an intentional'), (_TEST_BUG_FIXTURE, 'a test-bug'),
+                           (_NEEDS_RENDERER_FIXTURE, 'a needs-renderer'), (_FOLLOWS_MAJORITY_FIXTURE, 'a follows-majority'),
+                           (_NEEDS_DECODER_FIXTURE, 'a needs-decoder')):
+        invalid(other.replace('why = ', 'shipper = chrome\nwhy = '), f'"shipper" is not a key of {article} exemption',
+                wl + ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'html/x/decodes-image-data.html',
+                      'html/x/majority.html', 'html/x/plays-video.html'])
+    invalid(entry, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(entry, wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 1}
+        assert gate_status(none_passed, path) == EXEMPT
+        recs = {path: none_passed, 'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        assert tot['gating'] == 1 and tot['exempt'] == 1 and tot['exempt_single_shipper'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        head = 'Exempt: only one browser ships the feature'
+        assert head in html_out, html_out
+        group = html_out.split(head, 1)[1]
+        assert path in group and 'css/x/other.html' not in group
+        assert 'ships the feature: Chrome' in group, group
+        assert 'Crane follows: Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do' in group, group
+        assert 'spec: <a href="https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing">' in group, group
+        assert 'Firefox: wpt.fyi run 4877168468033536: 0/1' in group, group
+        assert 'revisit: when Firefox or Safari ships the feature' in group, group
+        EXEMPTIONS = parse_exemptions(_NEEDS_DECODER_FIXTURE, wl + ['html/x/plays-video.html'])
+        assert 'only one browser ships' not in render_exempt(recs, wl)
     finally:
         EXEMPTIONS = saved
 
@@ -5462,6 +5613,7 @@ if __name__ == '__main__':
         _check_follows_majority_kind()
         _check_follows_majority_extensions()
         _check_needs_decoder_kind()
+        _check_single_shipper_kind()
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()
