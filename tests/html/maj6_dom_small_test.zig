@@ -176,6 +176,12 @@ fn rareDataOf(document: *runtime.Instance) !?*dom.document_rare_data.DocumentRar
     return internal.rareData();
 }
 
+/// The Document's own bit (NodeBase.DocumentBits, dom.heading_offsets).
+fn headingOffsetsSeen(document: *runtime.Instance) !bool {
+    const base = dom.instance_bridge.getNodeBase(document) orelse return error.NoNodeBase;
+    return dom.heading_offsets.seen(base);
+}
+
 const level_of =
     \\globalThis.levelOf = (el) => { for (let n = 1; n <= 9; n++) if (el.matches(':heading(' + n + ')')) return n; return 0; };
     \\0;
@@ -195,6 +201,8 @@ fn headingOffsetsSticky() !void {
         \\0;
     );
     try expectTrue(browser, "levelOf(h) === 4");
+    try run(browser, "globalThis.own = document; 0;");
+    try testing.expect(try headingOffsetsSeen(try documentOf(browser, "own")));
     try expectTrue(browser, "a.removeAttribute('headingoffset'); levelOf(h) === 3");
     try expectTrue(browser, "b.removeAttribute('headingoffset'); levelOf(h) === 1");
     try expectTrue(browser, "a.toggleAttribute('headingreset'); b.setAttribute('headingoffset', '1'); levelOf(h) === 2");
@@ -281,7 +289,9 @@ fn headingOffsetsNeverSeen() !void {
         \\0;
     );
     try expectTrue(browser, "levelOf(document.getElementById('z')) === 2");
-    if (try rareDataOf(try documentOf(browser, "own")) != null) return error.RareDataMade;
+    const own = try documentOf(browser, "own");
+    if (try rareDataOf(own) != null) return error.RareDataMade;
+    try testing.expect(!try headingOffsetsSeen(own));
 }
 
 test "a document that never sets headingoffset or headingreset makes no rare data for :heading" {

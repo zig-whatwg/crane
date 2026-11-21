@@ -2774,9 +2774,7 @@ fn adoptHeld(
         // dom.heading_offsets: the moved elements may have a headingoffset
         // or headingreset attribute - the new document has seen them if the
         // old one had (once per adoption, not per descendant).
-        if (document_instance) |new_document| if (oldDocument) |old_base| if (instance_bridge.getInstance(old_base)) |old_opaque| {
-            try heading_offsets.adopted(@ptrCast(@alignCast(old_opaque)), new_document);
-        };
+        if (oldDocument) |old_base| heading_offsets.adopted(old_base, document);
 
         // Step 3.1: For each shadow-including inclusive descendant in tree order
         for (0..descendants.len) |idx| {

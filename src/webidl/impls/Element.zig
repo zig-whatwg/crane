@@ -1280,9 +1280,8 @@ fn appendAttribute(
     const entry: AttributeEntryIds = .{ .name = name, .value = id };
 
     // dom.heading_offsets: the node document has seen a headingoffset or
-    // headingreset attribute (one static-id compare; before the append, so
-    // that out of memory leaves the list as it was).
-    if (dom.heading_offsets.names(name)) try noteHeadingOffset(instance);
+    // headingreset attribute (one static-id compare).
+    if (dom.heading_offsets.names(name)) noteHeadingOffset(instance);
 
     // Step 1: "Append attribute to element's attribute list." The list may
     // move: it holds ids, and a view's bytes are its records'.
@@ -1476,7 +1475,7 @@ fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.e
         made += 1;
         heading_offset = heading_offset or dom.heading_offsets.names(name);
     }
-    if (heading_offset) try noteHeadingOffset(element);
+    if (heading_offset) noteHeadingOffset(element);
     try internal.data.adoptEntries(scope, entries, cache);
     made = 0;
     handleSetAttributes(element, internal, scope, entries, false);
@@ -1506,17 +1505,17 @@ fn cloneAttributesHook(copy: *runtime.Instance, node: *runtime.Instance) dom.ele
     }
     // dom.heading_offsets: the copy's node document - another document's,
     // for importNode - has seen the attribute now.
-    if (heading_offset) try noteHeadingOffset(copy);
+    if (heading_offset) noteHeadingOffset(copy);
     handleSetAttributes(copy, internal, scope, entries, true);
 }
 
-/// dom.heading_offsets.note for `element`'s node document: it has an element
-/// with a headingoffset or headingreset attribute.
-fn noteHeadingOffset(element: *runtime.Instance) error{OutOfMemory}!void {
+/// dom.heading_offsets.note for `element`'s node document (its NodeBase): it
+/// has an element with a headingoffset or headingreset attribute: a bit set in
+/// place, which cannot fail.
+fn noteHeadingOffset(element: *runtime.Instance) void {
     const base = dom.instance_bridge.getNodeBase(element) orelse return;
-    if (!base.documentIsLive()) return;
-    const document = base.documentInstance() orelse return;
-    try dom.heading_offsets.note(document);
+    const document = base.documentBase() orelse return;
+    dom.heading_offsets.note(document);
 }
 
 /// `dom.element_attributes.count`.

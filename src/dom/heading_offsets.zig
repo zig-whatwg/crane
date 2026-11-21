@@ -4,19 +4,19 @@
 //! it of every heading it tests; while a document never had either, every
 //! walk would add 0, so it is skipped (src/html/pseudo_classes.zig).
 //!
-//! A sticky bit in the Document's rare data (dom.document_rare_data): set by
-//! every path that gives an element one of the two attributes - append
-//! (setAttribute and its kin), the parser's token attributes, a clone's
-//! copied list (src/webidl/impls/Element.zig) - and carried to a new
-//! document by adoption (dom.mutation.adopt); never cleared, so a removal
-//! needs no count. A document that never sets either makes no rare data for
-//! it. Lane maj6 (main's design, 2026-11-21): the walk cost the heading rows
-//! of the lane's cost pair up to 1.86x main's instructions.
+//! A sticky bit of the Document's own (NodeBase.DocumentBits, in its
+//! NodeBase's `element` byte: read with a pointer load, no lookup of the
+//! Document's state): set by every path that gives an element one of the two
+//! attributes - append (setAttribute and its kin), the parser's token
+//! attributes, a clone's copied list (src/webidl/impls/Element.zig) - and
+//! carried to a new document by adoption (dom.mutation.adopt); never cleared,
+//! so a removal needs no count. Lane maj6 (main's design, 2026-11-21; the
+//! user's "fix first" moved it from the Document's rare data, whose lookup
+//! cost a never-seen document 4.3% per :heading match).
 
 const std = @import("std");
-const runtime = @import("runtime");
 const attribute_names = @import("attribute_names.zig");
-const document_state = @import("document_state.zig");
+const NodeBase = @import("node_base.zig").NodeBase;
 
 const NameId = attribute_names.NameId;
 
@@ -34,30 +34,25 @@ pub inline fn names(name: NameId) bool {
     return name == offset_id or name == reset_id;
 }
 
-/// `document` has an element with one of the two attributes now: its bit is
-/// set (its rare data made, when it had none).
-pub fn note(document: *runtime.Instance) error{OutOfMemory}!void {
-    const state = document_state.Registry.get(document) orelse return;
-    if (state.rareData()) |rare| if (rare.heading_offsets_seen) return;
-    const rare = try state.ensureRareData(document);
-    rare.heading_offsets_seen = true;
+/// `document` (its NodeBase) has an element with one of the two attributes
+/// now: its bit is set.
+pub fn note(document: *NodeBase) void {
+    if (document.node_type != NodeBase.DOCUMENT_NODE) return;
+    document.documentBits().heading_offsets_seen = true;
 }
 
-/// Whether `document` ever had an element with one of the two attributes.
-/// A document with no state answers true: the walk then decides.
-pub fn seen(document: *runtime.Instance) bool {
-    const state = document_state.Registry.get(document) orelse return true;
-    const rare = state.rareData() orelse return false;
-    return rare.heading_offsets_seen;
+/// Whether `document` (its NodeBase) ever had an element with one of the two
+/// attributes. A node that is no Document answers true: the walk decides.
+pub inline fn seen(document: *NodeBase) bool {
+    if (document.node_type != NodeBase.DOCUMENT_NODE) return true;
+    return document.documentBits().heading_offsets_seen;
 }
 
 /// DOM "adopt" step 3: nodes moved from `old` to `new` may have the
 /// attributes; `new` has seen them if `old` had.
-pub fn adopted(old: *runtime.Instance, new: *runtime.Instance) error{OutOfMemory}!void {
+pub fn adopted(old: *NodeBase, new: *NodeBase) void {
     if (old == new) return;
-    const state = document_state.Registry.get(old) orelse return;
-    const rare = state.rareData() orelse return;
-    if (rare.heading_offsets_seen) try note(new);
+    if (seen(old)) note(new);
 }
 
 test "headingoffset and headingreset are found by one compare, no other name" {
@@ -67,4 +62,22 @@ test "headingoffset and headingreset are found by one compare, no other name" {
     try std.testing.expect(!names(attribute_names.comptimeLocalId("height")));
     try std.testing.expect(!names(attribute_names.comptimeLocalId("headers")));
     try std.testing.expect(adjacent);
+}
+
+test "a Document's bit lives in its NodeBase's element byte, sticky, carried by adoption" {
+    var a: NodeBase = undefined;
+    a.node_type = NodeBase.DOCUMENT_NODE;
+    a.element = .{};
+    var b: NodeBase = undefined;
+    b.node_type = NodeBase.DOCUMENT_NODE;
+    b.element = .{};
+    try std.testing.expect(!seen(&a) and !seen(&b));
+    adopted(&a, &b);
+    try std.testing.expect(!seen(&b));
+    note(&a);
+    try std.testing.expect(seen(&a));
+    adopted(&a, &b);
+    try std.testing.expect(seen(&b));
+    // The byte is the Document's own: no element flag reads as set.
+    try std.testing.expectEqual(@as(u8, 1), @as(u8, @bitCast(a.element)));
 }
