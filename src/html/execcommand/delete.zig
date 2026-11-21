@@ -1351,9 +1351,16 @@ pub fn deleteAction(edit: *Edit) !bool {
         break;
     }
     // Step 5: a character, or a br, hr or img - or an element whose
-    // contents editing ignores, deleted whole like the img.
+    // contents editing ignores, deleted whole like the img. A br goes even
+    // when an inline element holds the caret (lane edit4, A12): `<div><font>
+    // <table><td>a</table><br>{}<br><table><td>b</table></font></div>` +
+    // delete removes one br in Chrome 157, Firefox 160 and Safari 27.2
+    // (editing/run/delete.html, PPP at wpt.fyi 2358bd4835), where the spec's
+    // steps 5-6 require a block node and do nothing. Golden rule 2, no newer
+    // spec.
     if ((common.isText(point.node) and point.offset != 0) or
-        (common.isBlockNode(point.node) and ((try childBeforeIsNamed(point, &.{ "br", "hr", "img" })) or try childBeforeIsIgnoredContent(point))))
+        (common.isBlockNode(point.node) and ((try childBeforeIsNamed(point, &.{ "br", "hr", "img" })) or try childBeforeIsIgnoredContent(point))) or
+        (common.isInlineNode(point.node) and try childBeforeIsNamed(point, &.{"br"})))
     {
         // A line break that white-space collapsing hides spaces around goes
         // with them (see collapsedLineBreakRun).
@@ -1726,8 +1733,15 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
-    // Step 6.
-    if (common.isInlineNode(point.node)) return true;
+    // Step 6 - but a br right after the caret goes even inside an inline
+    // element, as Backspace's does (lane edit4, A12): `<div><font><table>
+    // <td>a</table>{}<br><br><table><td>b</table></font></div>` +
+    // forwardDelete removes one br in all three browsers (forwarddelete.html,
+    // PPP at wpt.fyi 2358bd4835).
+    if (common.isInlineNode(point.node)) {
+        const child = (try common.childAt(point.node, point.offset)) orelse return true;
+        if (!try isBr(child)) return true;
+    }
     // Step 7: a br, hr or img that is not a collapsed block prop - or an
     // element whose contents editing ignores, deleted whole like the img.
     if (try common.childAt(point.node, point.offset)) |child| {
