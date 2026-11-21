@@ -773,6 +773,11 @@ pub fn insertFromDrop(document: *Instance, text: []const u8, data_transfer: ?*In
     // A beforeinput listener may have moved or removed the selection.
     if (!(isEnabledIn(&edit, .insert_text) catch false)) return true;
     const affected = (affectedEditingHost(&edit) catch null) orelse return true;
+    // A drop is its own step, not typing (Blink's DragController::
+    // ConcludeEditDrag runs a ReplaceSelectionCommand, its own UndoStep;
+    // Gecko's InsertFromDataTransfer is one placeholder batch).
+    const recording = undo.begin(&edit, false, affected);
+    defer if (recording) |r| undo.end(&edit, r, affectedEditingHost(&edit) catch null);
     const result = runAction(&edit, .insert_text, text) catch |err| {
         log.debug("drop: {}", .{err});
         return true;
