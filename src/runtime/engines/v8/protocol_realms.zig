@@ -88,7 +88,40 @@ const WindowRealmState = struct {
     /// reaches it, and ends once the collector takes it.
     detached: ?*Detached = null,
     allocator: std.mem.Allocator,
+    /// WindowRealmOptions.agent_cluster_cross_origin_isolated and
+    /// .from_snapshot, as the realm was made with them: its world realms
+    /// (protocol_worlds.zig) are made the same way.
+    cross_origin_isolated: bool = false,
+    from_snapshot: bool = false,
 };
+
+/// What protocol_worlds.zig needs of a Window realm to make a world realm
+/// of it (`windowRealmFacts`).
+pub const WindowRealmFacts = struct {
+    isolate: *ffi.Isolate,
+    /// The realm's Window, which the world realm's global wraps.
+    window: *engine.Instance,
+    allocator: std.mem.Allocator,
+    cross_origin_isolated: bool,
+    from_snapshot: bool,
+    /// Detached (`detach`): its world realms ended, and no new one is made.
+    detached: bool,
+};
+
+/// `realm`'s facts while it is a Window realm made here with its Window
+/// bound; null for any other realm.
+pub fn windowRealmFacts(realm: Context) ?WindowRealmFacts {
+    const state = stateOf(realm) orelse return null;
+    const window = state.window orelse return null;
+    return .{
+        .isolate = state.isolate,
+        .window = window,
+        .allocator = state.allocator,
+        .cross_origin_isolated = state.cross_origin_isolated,
+        .from_snapshot = state.from_snapshot,
+        .detached = state.detached != null,
+    };
+}
 
 /// What a Window realm whose navigable was destroyed keeps until its end
 /// (`detach`). Its own allocation: the weak callback that announces the
@@ -442,6 +475,8 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
+        .cross_origin_isolated = options.agent_cluster_cross_origin_isolated,
+        .from_snapshot = options.from_snapshot,
     };
     errdefer state.children.deinit(std.heap.c_allocator);
     // Room for a parentless predecessor (E1 below), taken before the realm is
@@ -469,6 +504,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             state.children.appendAssumeCapacity(predecessor_realm.?);
         }
     }
+
+    // A WindowProxy per (navigable, world): the worlds' proxies of the realm
+    // this one took the main world's from go on with it (protocol_worlds).
+    if (predecessor_realm) |old| @import("protocol_worlds.zig").handOnWorldProxies(old, realm);
 
     if (options.parent) |parent| {
         // A frame's window gets the window operations its parent's has, and
@@ -536,7 +575,7 @@ fn appendChild(state: *WindowRealmState, child: Context) error{OutOfMemory}!void
 /// (`frames[i]`, HTML 7.2.3.1) on its instances, as the snapshot generator's
 /// does; one an earlier realm made and used cannot change any more (V8 refuses
 /// to alter an instantiated template).
-fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
+pub fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     if (template_registry.getTemplateForIsolate("Window", isolate)) |made| return made;
     if (template_registry.getTemplateForIsolate("EventTarget", isolate) == null) {
         template_registry.register("EventTarget", interface_bindings.EventTarget.createTemplate(isolate), isolate);
@@ -623,8 +662,10 @@ pub fn windowProxyOf(window: *engine.Instance) ?*ffi.Object {
 }
 
 /// Bind `window` as `global`'s platform object, and give the global what a
-/// Window's global has.
-fn bindWindowToGlobal(
+/// Window's global has - a Window realm's, and a world realm's
+/// (protocol_worlds.zig: the main realm's Window, bound to the world's
+/// global).
+pub fn bindWindowToGlobal(
     isolate: *ffi.Isolate,
     context: *ffi.Context,
     realm: Context,
@@ -780,6 +821,12 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     defer if (stack) |top| {
         top.* = ending.next;
     };
+
+    // Its world realms end now (protocol_worlds.zig): Blink disposes every
+    // world's context of a frame at its navigation or removal
+    // (WindowProxyManager::ClearForNavigation, ClearForClose), and no world
+    // realm is made for a detached realm.
+    @import("protocol_worlds.zig").destroyWorldRealms(realm);
 
     // A child already detached - its iframe was removed before this realm's
     // document went - is left as it is: it ends when the collector takes it,
@@ -965,6 +1012,10 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     defer if (stack) |top| {
         top.* = ending.next;
     };
+
+    // Its world realms end before it (protocol_worlds.zig): each one's
+    // global wraps this realm's Window, which the context manager frees below.
+    @import("protocol_worlds.zig").destroyWorldRealms(realm);
 
     // Its frames' realms that are still alive end first, the same way: a
     // removed frame's frames are destroyed navigables too.

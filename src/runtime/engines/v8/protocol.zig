@@ -40,6 +40,7 @@ const protocol_agents = @import("protocol_agents.zig");
 const protocol_modules = @import("protocol_modules.zig");
 const builtin = @import("builtin");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 /// [repl_mode]: console input in REPL mode, through the agent's inspector
 /// session.
@@ -353,6 +354,42 @@ pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: 
 
 pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!engine.Owned {
     return protocol_realms.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
+// ============================================================================
+// 4.2a Isolated worlds (protocol_worlds.zig)
+// ============================================================================
+
+pub fn createWorldRealm(main: Context, options: *const engine.WorldRealmOptions) Error!Context {
+    return protocol_worlds.createWorldRealm(main, options);
+}
+
+pub fn worldRealmFor(main: Context, world: engine.WorldId) ?Context {
+    return protocol_worlds.worldRealmFor(main, world);
+}
+
+pub fn worldOf(realm: Context) engine.WorldId {
+    return protocol_worlds.worldOf(realm);
+}
+
+pub fn mainRealmOf(realm: Context) Context {
+    return protocol_worlds.mainRealmOf(realm);
+}
+
+pub fn worldInfoOf(realm: Context) ?engine.WorldInfo {
+    return protocol_worlds.worldInfoOf(realm);
+}
+
+pub fn worldRealmsOf(main: Context, out: []Context) usize {
+    return protocol_worlds.worldRealmsOf(main, out);
+}
+
+pub fn destroyWorldRealms(main: Context) void {
+    protocol_worlds.destroyWorldRealms(main);
+}
+
+pub fn installWorldObserver(agent: *Agent, observer: ?*const engine.WorldObserver, host: ?*anyopaque) void {
+    protocol_worlds.installWorldObserver(agent, observer, host);
 }
 
 // ============================================================================

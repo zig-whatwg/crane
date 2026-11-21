@@ -49,6 +49,18 @@ pub fn bind(isolate: *ffi.Isolate, wrapper: *ffi.Object, instance: *runtime.Inst
     return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, holds_nodes);
 }
 
+/// `bind` for a wrapper an isolated world realm's cache will keep (protocol_worlds.zig, WrapperCache.world):
+/// a NODE's too, which is bound to a platform anchor like any other object's - the node's own slot and its
+/// NodeAnchor are the main world's - and its record holds the node's counted reference instead
+/// (wrapper_cache.zig `Bits.world_counted`). A node that holds nodes (a Document's holder trace) gets a holder
+/// anchor, so a reachable world wrapper keeps what it holds as the main world's does.
+pub fn bindInWorld(isolate: *ffi.Isolate, wrapper: *ffi.Object, instance: *runtime.Instance) bool {
+    if (instance.vtable.counted == null) return bind(isolate, wrapper, instance);
+    const holds_nodes = instance.vtable.trace_held_nodes != null;
+    if (holds_nodes) node_wrappers.prepareHolderTracing(isolate);
+    return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, holds_nodes);
+}
+
 /// `wrapper` reaches no instance from here - Blink's V8DOMWrapper::ClearNativeInfo: the wrap that made it
 /// failed, or it is a constructor's receiver its realm's cache did not take. One write on its anchor; the
 /// binding's next read through it answers null, which every member turns into WebIDL's "not a platform object

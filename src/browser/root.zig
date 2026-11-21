@@ -56,6 +56,10 @@ pub const Context = @import("Context.zig").Context;
 pub const back_forward_cache = @import("back_forward_cache.zig");
 pub const ContextType = @import("Context.zig").ContextType;
 
+/// The Browser's isolated worlds (CDP's Page.createIsolatedWorld): the
+/// registry of world ids by navigable and name, and their realms.
+pub const isolated_worlds = @import("isolated_worlds.zig");
+
 pub const storage = @import("storage/Storage.zig");
 pub const Storage = storage.Storage;
 pub const LocalStorage = storage.LocalStorage;
@@ -68,4 +72,5 @@ test {
     _ = @import("rendering.zig");
     _ = @import("memory_release.zig");
     _ = @import("storage/Storage.zig");
+    _ = @import("isolated_worlds.zig");
 }

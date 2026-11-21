@@ -79,7 +79,15 @@ pub fn ownGlobal(at: anytype, value: engine.JSValue) Error!*ffi.Value {
 /// or a host's context with none - has no realm left to be wrapped in but the
 /// one the operation is in, so it is wrapped there. One of another agent is
 /// not this agent's to wrap.
+///
+/// In an isolated world (protocol_worlds.zig) the wrapper is the world's: the
+/// world of the realm the operation entered - the current one, read BEFORE the
+/// relevant realm is entered below - chooses it, so a promise of a world realm
+/// resolves with the world's wrapper and a world's callback is handed the
+/// world's.
 pub fn relevantWrapper(isolate: *ffi.Isolate, instance: *engine.Instance) Error!*ffi.Value {
+    const protocol_worlds = @import("protocol_worlds.zig");
+    const world: u32 = if (protocol_worlds.mayConvertInWorld(instance)) protocol_worlds.convertingWorld(isolate) else 0;
     const relevant = instance.ctx;
     // A realm whose wrapper cache is being torn down wraps nothing more
     // (WrapperCache.set refuses, and its sweep would not meet the entry):
@@ -98,7 +106,7 @@ pub fn relevantWrapper(isolate: *ffi.Isolate, instance: *engine.Instance) Error!
     // wrapper is never undefined, so that answer is this call's to keep. A
     // wrap whose cache could not take the instance is OutOfMemory: it is not
     // wrapped, and the caller's error path must run (Codex row 15 Q22).
-    const wrapper = try conversions.instanceToV8Checked(isolate, instance);
+    const wrapper = try conversions.instanceToV8InWorld(isolate, instance, world);
     if (ffi.v8_Value_IsUndefined(wrapper)) return wrapper;
     return ffi.v8_Global_Clone(wrapper) orelse error.OperationFailed;
 }
