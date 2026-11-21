@@ -1562,22 +1562,9 @@ const Builder = struct {
     /// basis, so even two equal relative units cannot be treated as px.
     fn numericFunction(self: *Builder, root: *Node) Allocator.Error!*Node {
         const first = root.children[0];
-        // §10.10.1 step 4: "all of its children are numeric values with
-        // enough information to compute the operation". mod() and rem() of
-        // percentages alone have it at computed-value time, whatever the
-        // percentages' basis B: mod(aB, bB) = B·mod(a, b), and so for rem()
-        // (a B of 0 is NaN either way, which the used value censors to 0).
-        // An unresolved percentage is otherwise not comparable (it can have
-        // a negative basis). Chrome 157, Firefox 160 and Safari 27.2 give
-        // mod(18%, 5%) the used value of 3%
-        // (css/css-values/round-mod-rem-computed.html). Only when computing
-        // (a context given): the specified value keeps its function, as the
-        // browsers serialize it.
-        const percentages_scale = self.context != null and !self.context_free and (root.function_kind == .mod or root.function_kind == .rem) and
-            first.tag == .numeric and first.numeric.unit == .percent;
         for (root.children) |child| {
             if (child.tag != .numeric or child.numeric.unit.absoluteScale() == null or
-                !(self.comparable(child.numeric) or percentages_scale) or child.numeric.unit != first.numeric.unit) return root;
+                !self.comparable(child.numeric) or child.numeric.unit != first.numeric.unit) return root;
         }
         const a = first.numeric.value;
         const b = if (root.children.len > 1) root.children[1].numeric.value else @as(f64, 0);
