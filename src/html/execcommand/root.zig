@@ -57,6 +57,8 @@ pub const blocks = @import("blocks.zig");
 pub const select_all = @import("select_all.zig");
 pub const clipboard = @import("clipboard.zig");
 pub const clipboard_platform = @import("clipboard_platform.zig");
+/// The undo and redo commands and each command's undo step (undo.zig).
+pub const undo = @import("undo.zig");
 /// Where a caret can be and how Selection.modify moves it (Blink's
 /// VisiblePosition model, layout facts from the style system).
 pub const visible_position = @import("visible_position.zig");
@@ -108,6 +110,9 @@ pub const Command = enum {
     copy,
     cut,
     paste,
+    // The history commands (undo.zig).
+    undo,
+    redo,
 
     const Row = struct { []const u8, Command };
 
@@ -138,6 +143,8 @@ pub const Command = enum {
         .{ "copy", .copy },
         .{ "cut", .cut },
         .{ "paste", .paste },
+        .{ "undo", .undo },
+        .{ "redo", .redo },
     } ++ blockRows();
 
     /// Lane editing4: the block formatting commands' rows, from blocks.zig.
@@ -187,6 +194,9 @@ pub const Command = enum {
             // The clipboard actions fire their own (deleteByCut,
             // insertFromPaste: clipboard.zig).
             .copy, .cut, .paste => "",
+            // Input Events 2's history input types (undo.zig fires them).
+            .undo => "historyUndo",
+            .redo => "historyRedo",
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.inputType(),
         };
     }
@@ -196,7 +206,7 @@ pub const Command = enum {
     /// be enabled if the editing host is in the plaintext-only state".
     pub fn enabledInPlaintextOnly(self: Command) bool {
         return switch (self) {
-            .delete, .forward_delete, .insert_text, .insert_html, .select_all, .copy, .cut, .paste => true,
+            .delete, .forward_delete, .insert_text, .insert_html, .select_all, .copy, .cut, .paste, .undo, .redo => true,
             .insert_image => false,
             .back_color, .bold, .create_link, .font_name, .font_size, .fore_color, .hilite_color, .italic, .remove_format, .strikethrough, .subscript, .superscript, .underline, .unlink => false,
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.enabledInPlaintextOnly(),
@@ -220,7 +230,7 @@ pub const Command = enum {
             .superscript => .superscript,
             .underline => .underline,
             .unlink => .unlink,
-            .delete, .forward_delete, .insert_text, .insert_html, .insert_image, .select_all, .copy, .cut, .paste => null,
+            .delete, .forward_delete, .insert_text, .insert_html, .insert_image, .select_all, .copy, .cut, .paste, .undo, .redo => null,
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => null,
         };
     }
@@ -232,6 +242,17 @@ pub const Command = enum {
         return switch (self) {
             .insert_text => value,
             else => null,
+        };
+    }
+
+    /// The commands Blink runs as TypingCommands - from a key and from
+    /// execCommand alike (editor_command.cc ExecuteInsertText, ExecuteDelete,
+    /// ExecuteForwardDelete, ExecuteInsertLineBreak,
+    /// ExecuteInsertParagraph): their undo steps merge (undo.zig).
+    fn isTyping(self: Command) bool {
+        return switch (self) {
+            .insert_text, .delete, .forward_delete, .insert_line_break, .insert_paragraph => true,
+            else => false,
         };
     }
 };
@@ -290,6 +311,10 @@ pub fn activeHostIsPlaintextOnly(edit: *Edit) !bool {
 
 /// queryCommandEnabled for a command of this module.
 pub fn isEnabled(document: *Instance, command: Command) bool {
+    // undo and redo: enabled while their list has a step (Blink
+    // EnabledUndo / EnabledRedo: Editor::CanUndo / CanRedo).
+    if (command == .undo) return undo.canUndo(document);
+    if (command == .redo) return undo.canRedo(document);
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
     defer arena.deinit();
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
@@ -316,7 +341,11 @@ fn affectedEditingHost(edit: *Edit) !?*Instance {
 
 fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
     return switch (command) {
-        .delete => try delete.deleteAction(edit),
+        // Blink runs execCommand("delete") as the Backspace key's
+        // TypingCommand::DeleteKeyPressed, which empties a root editable
+        // element with one caret position before anything else (see
+        // makeEditableRootEmpty).
+        .delete => (try makeEditableRootEmpty(edit)) or try delete.deleteAction(edit),
         .forward_delete => try delete.forwardDeleteAction(edit),
         .back_color, .bold, .create_link, .font_name, .font_size, .fore_color, .hilite_color, .italic, .remove_format, .strikethrough, .subscript, .superscript, .underline, .unlink => try inline_formatting.action(edit, command.inlineCommand().?, value),
         .insert_text => try insert_text.action(edit, value, insertParagraphAction),
@@ -326,7 +355,18 @@ fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
         .select_all => try select_all.action(edit),
         // Run by clipboard.zig before an Edit exists (execCommand below).
         .copy, .cut, .paste => false,
+        // Run by undo.zig with no Edit (execCommand below).
+        .undo, .redo => false,
     };
+}
+
+/// The action of `command`, recorded into an undo step (undo.zig): its own,
+/// or - a typing command - the open typing step it merges into. `host` is
+/// the affected editing host before it runs.
+fn runRecorded(edit: *Edit, command: Command, value: []const u8, host: *Instance) !bool {
+    const recording = undo.begin(edit, command.isTyping(), host);
+    defer if (recording) |r| undo.end(edit, r, affectedEditingHost(edit) catch null);
+    return try runAction(edit, command, value);
 }
 
 /// insertText step 5's "take the action for the insertParagraph command",
@@ -347,6 +387,10 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
         .copy => return clipboard.execCommand(document, .copy),
         .cut => return clipboard.execCommand(document, .cut),
         .paste => return clipboard.execCommand(document, .paste),
+        // undo and redo: not enabled (nothing on their list) -> false;
+        // else the step replayed, input at its editing hosts (undo.zig).
+        .undo => return undo.undo(document, fireHistoryInput),
+        .redo => return undo.redo(document, fireHistoryInput),
         else => {},
     }
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
@@ -378,7 +422,7 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
     // Step 4.5: the host the input event goes to, computed beforehand.
     const host = (affectedEditingHost(&edit) catch null) orelse return false;
     // Step 5: the action.
-    const result = runAction(&edit, command, value) catch |err| {
+    const result = runRecorded(&edit, command, value, host) catch |err| {
         log.debug("{s}: {}", .{ @tagName(command), err });
         return false;
     };
@@ -484,19 +528,13 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // fire no beforeinput.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", command.inputType(), null)) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), null, null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     // Step 4.4: a beforeinput listener may have moved or removed the
     // selection.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
-    if (command == .delete) {
-        if (makeEditableRootEmpty(&edit) catch false) {
-            if (isConnected(affected)) _ = fireInputEvent(affected, "input", command.inputType(), null);
-            return;
-        }
-    }
-    const result = runAction(&edit, command, "") catch |err| {
+    const result = runRecorded(&edit, command, "", affected) catch |err| {
         log.debug("{s} by key: {}", .{ @tagName(command), err });
         return;
     };
@@ -514,9 +552,11 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
 /// action here). editing/other/fire-selection-change-on-deleting-empty-
 /// element.html: Chrome 157 and Firefox 160 pass (one selectionchange
 /// after "<h1><br></h1>" goes), Safari 27.2 fires none. The Editing
-/// spec's delete action does nothing at the root's start; Backspace is the
-/// browsers' key behaviour (golden rule 2: two of three), and
-/// execCommand("delete") keeps the spec's action. Whether it ran.
+/// spec's delete action does nothing at the root's start; the browsers do
+/// this for the key and for execCommand("delete") alike - Blink's
+/// ExecuteDelete is DeleteKeyPressed too, and all three give `<div><div>{}
+/// <br></div></div>` + delete -> `<br>` (editing/run/delete.html, PPP at
+/// wpt.fyi 2358bd4835). Golden rule 2. Whether it ran.
 fn makeEditableRootEmpty(edit: *Edit) !bool {
     if (!try edit.rangeCollapsed()) return false;
     const caret = (try edit.rangeStart()) orelse return false;
@@ -561,14 +601,14 @@ pub fn deleteWordByKey(target: *Instance, forward: bool) void {
         // No word in that direction: nothing to delete.
         if (edit.rangeCollapsed() catch true) return;
     }
-    if (!fireInputEvent(host, "beforeinput", input_type, null)) {
+    if (!fireInputEventWith(host, "beforeinput", input_type, null, null, selectionTargetRange(&edit))) {
         if (was_collapsed) edit.collapse(original.node, original.offset) catch {};
         return;
     }
     if (!isConnected(host)) return;
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
-    const result = runAction(&edit, command, "") catch |err| {
+    const result = runRecorded(&edit, command, "", affected) catch |err| {
         log.debug("{s} by key: {}", .{ input_type, err });
         return;
     };
@@ -583,6 +623,20 @@ pub fn deleteWordByKey(target: *Instance, forward: bool) void {
 /// events, as deleteByKey fires them.
 pub fn typeByKey(target: *Instance, text: []const u8) void {
     commandByKey(target, .insert_text, text);
+}
+
+/// The undo (`redo` false) or redo binding pressed in an editing host:
+/// when there is a step to replay (the command is enabled - Blink's
+/// EditorCommand::Execute asks before it dispatches anything), a cancelable
+/// beforeinput with inputType historyUndo / historyRedo and no target ranges
+/// (Input Events 2) at the focused editing host, then the command
+/// (undo.zig), which fires its own input.
+pub fn historyByKey(target: *Instance, redo: bool) void {
+    const document = nodeDocument(target) orelse return;
+    if (!(if (redo) undo.canRedo(document) else undo.canUndo(document))) return;
+    const host = (common.editingHostOf(target) catch null) orelse return;
+    if (!fireInputEvent(host, "beforeinput", if (redo) "historyRedo" else "historyUndo", null)) return;
+    _ = if (redo) undo.redo(document, fireHistoryInput) else undo.undo(document, fireHistoryInput);
 }
 
 /// The user's Enter (insertParagraph) or Shift+Enter (insertLineBreak) in
@@ -682,16 +736,19 @@ pub fn insertFromPaste(document: *Instance, markup: ?[]const u8, text: ?[]const 
     const value = markup orelse text orelse "";
     if (!(isEnabledIn(&edit, command) catch false)) return false;
     const host = (affectedEditingHost(&edit) catch null) orelse return false;
-    if (!fireInputEventWith(host, "beforeinput", "insertFromPaste", null, data_transfer)) return true;
+    if (!fireInputEventWith(host, "beforeinput", "insertFromPaste", null, data_transfer, selectionTargetRange(&edit))) return true;
     if (!isConnected(host)) return true;
     // A beforeinput listener may have moved or removed the selection.
     if (!(isEnabledIn(&edit, command) catch false)) return true;
     const affected = (affectedEditingHost(&edit) catch null) orelse return true;
+    // A paste is its own step (Blink's ReplaceSelectionCommand), not typing.
+    const recording = undo.begin(&edit, false, affected);
+    defer if (recording) |r| undo.end(&edit, r, affectedEditingHost(&edit) catch null);
     const result = runAction(&edit, command, value) catch |err| {
         log.debug("paste: {}", .{err});
         return true;
     };
-    if (result and edit.modified and isConnected(affected)) _ = fireInputEventWith(affected, "input", "insertFromPaste", null, data_transfer);
+    if (result and edit.modified and isConnected(affected)) _ = fireInputEventWith(affected, "input", "insertFromPaste", null, data_transfer, null);
     return true;
 }
 
@@ -708,11 +765,14 @@ pub fn deleteByCut(document: *Instance) void {
     if (!(isEnabledIn(&edit, .delete) catch false)) return;
     if (edit.rangeCollapsed() catch true) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", "deleteByCut", null)) return;
+    if (!fireInputEventWith(host, "beforeinput", "deleteByCut", null, null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     if (!(isEnabledIn(&edit, .delete) catch false)) return;
     if (edit.rangeCollapsed() catch true) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
+    // A cut is its own step (Blink's DeleteSelectionCommand), not typing.
+    const recording = undo.begin(&edit, false, affected);
+    defer if (recording) |r| undo.end(&edit, r, affectedEditingHost(&edit) catch null);
     const result = runAction(&edit, .delete, "") catch |err| {
         log.debug("cut: {}", .{err});
         return;
@@ -729,11 +789,11 @@ fn commandByKey(target: *Instance, command: Command, value: []const u8) void {
     var edit = (beginEdit(document, arena.allocator()) catch return) orelse return;
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const host = (affectedEditingHost(&edit) catch null) orelse return;
-    if (!fireInputEvent(host, "beforeinput", command.inputType(), command.inputData(value))) return;
+    if (!fireInputEventWith(host, "beforeinput", command.inputType(), command.inputData(value), null, selectionTargetRange(&edit))) return;
     if (!isConnected(host)) return;
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
-    const result = runAction(&edit, command, value) catch |err| {
+    const result = runRecorded(&edit, command, value, affected) catch |err| {
         log.debug("{s} by key: {}", .{ @tagName(command), err });
         return;
     };
@@ -754,23 +814,57 @@ fn viewOf(target: *Instance) ?*Instance {
     return interfaces.Document.get_defaultView(document) catch null;
 }
 
+/// undo.zig's announcement after an undo or redo: input, inputType
+/// historyUndo / historyRedo, at an editing host the step edited (Blink
+/// UndoStep::Unapply / Reapply -> DispatchInputEventEditableContentChanged).
+fn fireHistoryInput(target: *Instance, input_type: []const u8) void {
+    _ = fireInputEvent(target, "input", input_type, null);
+}
+
 /// Fire a beforeinput or input InputEvent at `target` with `input_type`;
 /// whether it was not cancelled. The event is freed unless a listener kept
 /// it.
 fn fireInputEvent(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8) bool {
-    return fireInputEventWith(target, event_type, input_type, data, null);
+    return fireInputEventWith(target, event_type, input_type, data, null, null);
+}
+
+/// A beforeinput's target range (Input Events 2, "target ranges"): the
+/// content the event will modify if it is not canceled.
+const TargetRange = struct { start: common.Point, end: common.Point };
+
+/// The target range of a key's beforeinput: a selection that is not
+/// collapsed is the content its action replaces or deletes (Chrome and
+/// Firefox: editing/other/delete-without-unwrapping-first-line-of-child-
+/// block.html's getTargetRanges() rows for Backspace and typing over a
+/// selection, wpt.fyi 2358bd4835). A collapsed one gets none: what a caret's
+/// Backspace or Delete removes is the action's to compute (TODO: Blink's
+/// TypingCommand target ranges for a caret).
+fn selectionTargetRange(edit: *Edit) ?TargetRange {
+    if (edit.rangeCollapsed() catch true) return null;
+    const start = (edit.rangeStart() catch return null) orelse return null;
+    const end = (edit.rangeEnd() catch return null) orelse return null;
+    return .{ .start = start, .end = end };
 }
 
 /// fireInputEvent with a dataTransfer (Input Events 2: insertFromPaste,
-/// insertFromDrop, insertReplacementText in an editing host).
-fn fireInputEventWith(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8, data_transfer: ?*Instance) bool {
+/// insertFromDrop, insertReplacementText in an editing host) and a target
+/// range (the event's target ranges, as a StaticRange).
+fn fireInputEventWith(target: *Instance, comptime event_type: []const u8, input_type: []const u8, data: ?[]const u8, data_transfer: ?*Instance, target_range: ?TargetRange) bool {
     const cancelable = comptime std.mem.eql(u8, event_type, "beforeinput");
+    // The StaticRange outlives the event's own release below: an event
+    // never wrapped lets its traced edge go first (InputEvent.deinit).
+    const static_range: ?*Instance = if (target_range) |r| interfaces.StaticRange.call_constructor(target.ctx, .{ .startContainer = r.start.node, .startOffset = r.start.offset, .endContainer = r.end.node, .endOffset = r.end.offset }) catch null else null;
+    const range_generation: u64 = if (static_range) |r| runtime.SlabAllocator.generationOf(r) else 0;
+    defer if (static_range) |r| r.releaseIfUnwrapped(range_generation);
+    var ranges: [1]*Instance = undefined;
+    if (static_range) |r| ranges[0] = r;
     const init: dictionaries.InputEventInit = .{
         .base = .{ .base = .{ .bubbles = true, .cancelable = cancelable, .composed = true }, .view = viewOf(target) },
         .data = if (data) |d| runtime.DOMString.initInterned(d) else null,
         .isComposing = false,
         .inputType = runtime.DOMString.initInterned(input_type),
         .dataTransfer = data_transfer,
+        .targetRanges = if (static_range != null) ranges[0..1] else null,
     };
     const event = interfaces.InputEvent.call_constructor(target.ctx, runtime.DOMString.initInterned(event_type), webidl.Opt(dictionaries.InputEventInit).passed(init)) catch |err| {
         log.debug("{s} not fired: {}", .{ event_type, err });

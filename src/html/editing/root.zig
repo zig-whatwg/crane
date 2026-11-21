@@ -27,7 +27,8 @@
 //! The editing system uses:
 //! - `Command` enum for all supported commands
 //! - `CommandState` for queryCommandState/queryCommandEnabled
-//! - `EditorState` for undo/redo history
+//! - `EditorState` for the configuration flags and the undo history
+//!   (history.zig; the html module's execcommand records and replays it)
 //! - Integration with Selection API for range operations
 //!
 //! ## Usage
@@ -57,8 +58,7 @@ pub const history = @import("history.zig");
 pub const Command = commands.Command;
 pub const CommandResult = executor.CommandResult;
 pub const EditorState = state.EditorState;
-pub const UndoManager = history.UndoManager;
-pub const UndoEntry = history.UndoEntry;
+pub const UndoStack = history.UndoStack;
 
 // Re-export primary functions
 pub const execCommand = executor.execCommand;

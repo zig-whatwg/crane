@@ -4789,13 +4789,17 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
 
 /// dom.document_lifecycle: a destroyed document nothing outside its own work
 /// holds lets go of its own state's references on its nodes (refcount step
-/// 7b): its autofocus candidates and its top layer, as its own teardown
+/// 7b): its autofocus candidates, its editing undo history and its top
+/// layer, as its own teardown
 /// (`deinitOwn`) lets them go - a destroyed document runs no script, so no
 /// event fires. Nothing for a document that was not destroyed.
 fn lifecycleReleaseOwnReferences(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (!internal.destroyed) return;
     if (autofocusState(document, false)) |state| state.clear();
+    // Its editing undo history lets go of the nodes its steps hold
+    // (dom.editor_states): a destroyed document is never edited again.
+    if (internal.editor_state) |editor_state| @import("dom").editor_states.releaseNodes(editor_state);
     // Its dialogs still open or modal let go of the nodes their own state
     // keeps (dom.dialog.releaseSavedNodes) before the top layer that lists
     // them empties.

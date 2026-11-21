@@ -1,469 +1,328 @@
-//! Undo/Redo History Management
+//! The editing undo history of a Document: its undo list and redo list of
+//! undo steps, each the primitive DOM changes one editing command made.
 //!
-//! Implements undo/redo functionality for editing operations.
-//! - UndoManager: Stack-based history with merge support
-//! - UndoEntry: Individual operation records
-//! - executeUndo/executeRedo: Command implementations
+//! The Editing spec leaves the undo and redo commands to the abandoned
+//! UndoManager draft (specs/w3c/execCommand.md, "The undo command"); the
+//! browsers' model is the reference. Blink keeps an UndoStack per frame of
+//! UndoSteps, each a list of SimpleEditCommands - InsertNodeBeforeCommand,
+//! AppendNodeCommand, RemoveNodeCommand, SplitTextNodeCommand,
+//! InsertIntoTextNodeCommand, DeleteFromTextNodeCommand,
+//! SetNodeAttributeCommand - with the starting and ending selections
+//! (third_party/blink/renderer/core/editing/commands/undo_stack.cc,
+//! undo_step.cc, chromium main 2026-11); Gecko keeps a TransactionManager of
+//! EditAggregateTransactions of the same primitives (editor/txmgr,
+//! editor/libeditor). Undo works on the command's own primitives, not on a
+//! diff of the tree: a node script moved after the command is still put back
+//! where the command took it from (editing/other/undo-insertparagraph-after-
+//! moving-split-nodes.html, all three browsers).
 //!
-//! Spec: https://w3c.github.io/editing/docs/execCommand/#the-undo-command
-//! Spec: https://w3c.github.io/editing/docs/execCommand/#the-redo-command
+//! This file owns the history's memory and its lifetime: the steps, the
+//! strings they keep, and one counted hold (dom.node_holds.RefHold) on every
+//! node they name - a node a step removed must outlive its removal for undo
+//! to put it back. What it holds it names to the collector through the
+//! Document's own `traceHeldNodes` (dom.editor_states.trace), as Blink's
+//! UndoStep::Trace traces its commands' Member<Node>s, so a held node's
+//! wrapper - and its expandos - live as long as the step. A destroyed
+//! Document lets go of every hold (`clear`, dom.editor_states.releaseNodes:
+//! refcount step 7b, as its top layer does), and its teardown frees the rest.
 //!
-//! Integration: Each editing command should create an UndoEntry before
-//! modifying the DOM. The entry captures enough state to reverse the change.
+//! The html module records into a step and replays it
+//! (src/html/execcommand/undo.zig); html_core cannot reach the interfaces.
 
 const std = @import("std");
-const commands = @import("commands.zig");
-const executor = @import("executor.zig");
-const clock = @import("clock");
+const dom = @import("dom");
+const runtime = @import("runtime");
 
-pub const Command = commands.Command;
-pub const CommandResult = executor.CommandResult;
-pub const DocumentHandle = executor.DocumentHandle;
+const RefHold = dom.node_holds.RefHold;
+const Instance = runtime.Instance;
+const Tracer = dom.editor_states.Tracer;
 
-// =============================================================================
-// Undo/Redo Command Implementations
-// =============================================================================
+/// Blink's kMaximumUndoStackDepth (undo_stack.cc): the oldest step goes
+/// when a new one would exceed it.
+pub const maximum_depth = 1000;
 
-/// Execute undo command
-/// Reverts the most recent editing operation
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-undo-command
-///
-/// Algorithm:
-/// 1. Get UndoManager for document
-/// 2. If undo stack is empty, return false
-/// 3. Pop entry from undo stack
-/// 4. Apply undo_data to reverse the operation:
-///    - For text insertion: delete the inserted text
-///    - For text deletion: re-insert the deleted text
-///    - For formatting: toggle the format back
-///    - For structure: restore previous structure
-/// 5. Push entry to redo stack
-/// 6. Restore selection to before-operation state
-/// 7. Return true
-pub fn executeUndo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
+/// A node insertion or removal: `node` went into (or came out of) `parent`
+/// before `reference` (null: as its last child).
+pub const ChildChange = struct {
+    parent: RefHold = .{},
+    node: RefHold = .{},
+    reference: RefHold = .{},
 
-    // Algorithm when integrated with DOM:
-    // 1. Get document's UndoManager (stored per document)
-    // 2. Call manager.undo() to get entry
-    // 3. Apply entry.undo_data based on entry_type
-    // 4. Restore selection (anchor_offset, focus_offset)
-    // 5. Return success
+    fn release(self: *ChildChange) void {
+        self.parent.release();
+        self.node.release();
+        self.reference.release();
+    }
 
-    return .{ .success = true };
-}
-
-/// Execute redo command
-/// Re-applies the most recently undone operation
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-redo-command
-///
-/// Algorithm:
-/// 1. Get UndoManager for document
-/// 2. If redo stack is empty, return false
-/// 3. Pop entry from redo stack
-/// 4. Apply redo_data to re-apply the operation:
-///    - For text insertion: insert the text again
-///    - For text deletion: delete the text again
-///    - For formatting: toggle the format
-///    - For structure: apply the structural change
-/// 5. Push entry to undo stack
-/// 6. Restore selection to after-operation state
-/// 7. Return true
-pub fn executeRedo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
-
-    // Algorithm when integrated with DOM:
-    // 1. Get document's UndoManager
-    // 2. Call manager.redo() to get entry
-    // 3. Apply entry.redo_data based on entry_type
-    // 4. Restore selection to post-operation state
-    // 5. Return success
-
-    return .{ .success = true };
-}
-
-/// Query if undo is available
-///
-/// Used by queryCommandEnabled("undo")
-/// This delegates to the executor which has access to the document's EditorState.
-pub fn queryUndoEnabled(document: DocumentHandle) bool {
-    _ = document;
-    // Note: The executor module has the actual implementation with document state
-    // This is kept for API compatibility but should use executor.canUndo() instead
-    return false;
-}
-
-/// Query if redo is available
-///
-/// Used by queryCommandEnabled("redo")
-/// This delegates to the executor which has access to the document's EditorState.
-pub fn queryRedoEnabled(document: DocumentHandle) bool {
-    _ = document;
-    // Note: The executor module has the actual implementation with document state
-    // This is kept for API compatibility but should use executor.canRedo() instead
-    return false;
-}
-
-/// Type of undo entry for different operations
-pub const UndoEntryType = enum {
-    /// Text insertion
-    insert_text,
-    /// Text deletion
-    delete_text,
-    /// Formatting change (bold, italic, etc.)
-    format,
-    /// Structural change (lists, paragraphs)
-    structure,
-    /// Link creation/removal
-    link,
-    /// Content insertion (image, HTML)
-    insert_content,
-    /// Multiple operations grouped together
-    composite,
+    fn trace(self: *const ChildChange, tracer: *Tracer) void {
+        self.parent.hold.trace(tracer);
+        self.node.hold.trace(tracer);
+        self.reference.hold.trace(tracer);
+    }
 };
 
-/// A single undo/redo entry
-pub const UndoEntry = struct {
+/// Text inserted into, or deleted from, a CharacterData node at a UTF-16
+/// offset. `data` is owned by the history's allocator.
+pub const TextChange = struct {
+    node: RefHold = .{},
+    offset: u32 = 0,
+    data: []u8 = &.{},
+};
+
+/// An attribute's value changed from `old` to `new` (null: absent). The
+/// strings are owned by the history's allocator.
+pub const AttributeChange = struct {
+    element: RefHold = .{},
+    name: []u8 = &.{},
+    old: ?[]u8 = null,
+    new: ?[]u8 = null,
+};
+
+/// One primitive DOM change of a step.
+pub const Record = union(enum) {
+    insert_node: ChildChange,
+    remove_node: ChildChange,
+    insert_text: TextChange,
+    delete_text: TextChange,
+    attribute: AttributeChange,
+
+    fn release(self: *Record, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .insert_node, .remove_node => |*change| change.release(),
+            .insert_text, .delete_text => |*change| {
+                change.node.release();
+                allocator.free(change.data);
+            },
+            .attribute => |*change| {
+                change.element.release();
+                allocator.free(change.name);
+                if (change.old) |old| allocator.free(old);
+                if (change.new) |new| allocator.free(new);
+            },
+        }
+    }
+
+    fn trace(self: *const Record, tracer: *Tracer) void {
+        switch (self.*) {
+            .insert_node, .remove_node => |*change| change.trace(tracer),
+            .insert_text, .delete_text => |*change| change.node.hold.trace(tracer),
+            .attribute => |*change| change.element.hold.trace(tracer),
+        }
+    }
+};
+
+/// A boundary point of a recorded selection.
+pub const Point = struct {
+    node: RefHold = .{},
+    offset: u32 = 0,
+};
+
+/// A selection as a step records it: its anchor and focus, or none.
+pub const Selection = struct {
+    present: bool = false,
+    anchor: Point = .{},
+    focus: Point = .{},
+
+    pub fn release(self: *Selection) void {
+        self.anchor.node.release();
+        self.focus.node.release();
+        self.present = false;
+    }
+
+    fn trace(self: *const Selection, tracer: *Tracer) void {
+        self.anchor.node.hold.trace(tracer);
+        self.focus.node.hold.trace(tracer);
+    }
+};
+
+/// One undo step: the primitive changes of one editing command (or of a
+/// run of typing merged into it), in the order they were made, with the
+/// selection before and after and the editing hosts the command edited
+/// (Blink UndoStep's starting/ending selection and root editable elements).
+pub const Step = struct {
+    records: std.ArrayList(Record) = .empty,
+    starting_selection: Selection = .{},
+    ending_selection: Selection = .{},
+    starting_root: RefHold = .{},
+    ending_root: RefHold = .{},
+    /// Made by a typing command (insertText, delete, forwardDelete,
+    /// insertLineBreak, insertParagraph): later typing may merge into it
+    /// while it is still open (UndoStack.open_typing).
+    typing: bool = false,
+
+    /// Let go of every hold and string; the step itself is the caller's.
+    pub fn release(self: *Step, allocator: std.mem.Allocator) void {
+        for (self.records.items) |*record| record.release(allocator);
+        self.records.deinit(allocator);
+        self.records = .empty;
+        self.starting_selection.release();
+        self.ending_selection.release();
+        self.starting_root.release();
+        self.ending_root.release();
+    }
+
+    fn trace(self: *const Step, tracer: *Tracer) void {
+        for (self.records.items) |*record| record.trace(tracer);
+        self.starting_selection.trace(tracer);
+        self.ending_selection.trace(tracer);
+        self.starting_root.hold.trace(tracer);
+        self.ending_root.hold.trace(tracer);
+    }
+};
+
+/// A Document's undo and redo lists (Blink UndoStack).
+pub const UndoStack = struct {
     allocator: std.mem.Allocator,
+    undo_steps: std.ArrayList(*Step) = .empty,
+    redo_steps: std.ArrayList(*Step) = .empty,
+    /// Set while a redo re-registers its step: the redo list is kept.
+    in_redo: bool = false,
+    /// The last undo step while typing may still merge into it (Blink
+    /// TypingCommand's "still open for typing"): set by a typing step's
+    /// registration, cleared by any other step, by undo and by redo.
+    open_typing: ?*Step = null,
+    /// The step the editing command running now records into, or null.
+    recording: ?*Step = null,
 
-    /// Type of operation
-    entry_type: UndoEntryType,
-
-    /// Command that created this entry
-    command: Command,
-
-    /// Data needed to undo the operation
-    undo_data: UndoData,
-
-    /// Data needed to redo the operation
-    redo_data: RedoData,
-
-    /// Timestamp when the entry was created
-    timestamp: i64,
-
-    /// Create an undo entry for a text operation
-    pub fn initTextOperation(
-        allocator: std.mem.Allocator,
-        command: Command,
-        deleted_text: ?[]const u8,
-        inserted_text: ?[]const u8,
-        position: usize,
-    ) !UndoEntry {
-        var entry = UndoEntry{
-            .allocator = allocator,
-            .entry_type = if (deleted_text != null) .delete_text else .insert_text,
-            .command = command,
-            .undo_data = .{},
-            .redo_data = .{},
-            .timestamp = clock.wallSeconds(),
-        };
-
-        // Store deleted text for undo
-        if (deleted_text) |text| {
-            entry.undo_data.text = try allocator.dupe(u8, text);
-        }
-
-        // Store inserted text for redo
-        if (inserted_text) |text| {
-            entry.redo_data.text = try allocator.dupe(u8, text);
-        }
-
-        entry.undo_data.position = position;
-        entry.redo_data.position = position;
-
-        return entry;
+    pub fn init(allocator: std.mem.Allocator) UndoStack {
+        return .{ .allocator = allocator };
     }
 
-    /// Create an undo entry for a formatting operation
-    pub fn initFormatOperation(
-        allocator: std.mem.Allocator,
-        command: Command,
-        was_active: bool,
-    ) UndoEntry {
-        return UndoEntry{
-            .allocator = allocator,
-            .entry_type = .format,
-            .command = command,
-            .undo_data = .{ .format_was_active = was_active },
-            .redo_data = .{ .format_was_active = !was_active },
-            .timestamp = clock.wallSeconds(),
-        };
+    pub fn deinit(self: *UndoStack) void {
+        self.clear();
+        self.undo_steps.deinit(self.allocator);
+        self.redo_steps.deinit(self.allocator);
     }
 
-    /// Clean up undo entry resources
-    pub fn deinit(self: *UndoEntry) void {
-        if (self.undo_data.text) |text| {
-            self.allocator.free(text);
+    /// A new, empty step, owned by the caller until `registerUndoStep`
+    /// takes it (or `destroyStep` frees it).
+    pub fn createStep(self: *UndoStack) error{OutOfMemory}!*Step {
+        const step = try self.allocator.create(Step);
+        step.* = .{};
+        return step;
+    }
+
+    pub fn destroyStep(self: *UndoStack, step: *Step) void {
+        if (self.open_typing == step) self.open_typing = null;
+        if (self.recording == step) self.recording = null;
+        step.release(self.allocator);
+        self.allocator.destroy(step);
+    }
+
+    /// Blink UndoStack::RegisterUndoStep: the step goes on the undo list,
+    /// the oldest dropping off past the maximum depth, and - unless a redo
+    /// is registering it - the redo list empties.
+    pub fn registerUndoStep(self: *UndoStack, step: *Step) error{OutOfMemory}!void {
+        try self.undo_steps.ensureUnusedCapacity(self.allocator, 1);
+        if (self.undo_steps.items.len >= maximum_depth) {
+            const oldest = self.undo_steps.orderedRemove(0);
+            self.destroyStep(oldest);
         }
-        if (self.redo_data.text) |text| {
-            self.allocator.free(text);
-        }
-        if (self.undo_data.html) |html| {
-            self.allocator.free(html);
-        }
-        if (self.redo_data.html) |html| {
-            self.allocator.free(html);
-        }
+        if (!self.in_redo) self.clearRedo();
+        self.undo_steps.appendAssumeCapacity(step);
+        self.open_typing = if (step.typing and !self.in_redo) step else null;
+    }
+
+    /// Blink UndoStack::RegisterRedoStep.
+    pub fn registerRedoStep(self: *UndoStack, step: *Step) error{OutOfMemory}!void {
+        try self.redo_steps.append(self.allocator, step);
+    }
+
+    pub fn canUndo(self: *const UndoStack) bool {
+        return self.undo_steps.items.len > 0;
+    }
+
+    pub fn canRedo(self: *const UndoStack) bool {
+        return self.redo_steps.items.len > 0;
+    }
+
+    /// The last undo step, taken off the list (the caller registers it as
+    /// a redo step after unapplying it, or destroys it).
+    pub fn popUndo(self: *UndoStack) ?*Step {
+        self.open_typing = null;
+        return self.undo_steps.pop();
+    }
+
+    /// The last redo step, taken off the list.
+    pub fn popRedo(self: *UndoStack) ?*Step {
+        self.open_typing = null;
+        return self.redo_steps.pop();
+    }
+
+    /// The step typing may merge into now, or null.
+    pub fn openTypingStep(self: *const UndoStack) ?*Step {
+        const open = self.open_typing orelse return null;
+        const last = self.undo_steps.getLastOrNull() orelse return null;
+        return if (last == open) open else null;
+    }
+
+    /// Typing stops merging (a selection change, another command).
+    pub fn closeTyping(self: *UndoStack) void {
+        self.open_typing = null;
+    }
+
+    fn clearRedo(self: *UndoStack) void {
+        for (self.redo_steps.items) |step| self.destroyStep(step);
+        self.redo_steps.clearRetainingCapacity();
+    }
+
+    /// Both lists empty, every hold let go (Blink UndoStack::Clear).
+    pub fn clear(self: *UndoStack) void {
+        for (self.undo_steps.items) |step| self.destroyStep(step);
+        self.undo_steps.clearRetainingCapacity();
+        self.clearRedo();
+        self.open_typing = null;
+    }
+
+    /// The collector's atomic pause (the Document's `traceHeldNodes`):
+    /// every held node's wrappers. Reads only.
+    pub fn trace(self: *const UndoStack, tracer: *Tracer) void {
+        for (self.undo_steps.items) |step| step.trace(tracer);
+        for (self.redo_steps.items) |step| step.trace(tracer);
     }
 };
 
-/// Data needed for undo operation
-pub const UndoData = struct {
-    /// Text that was deleted/replaced
-    text: ?[]const u8 = null,
-    /// HTML that was deleted/replaced
-    html: ?[]const u8 = null,
-    /// Position in document
-    position: usize = 0,
-    /// End position for range operations
-    end_position: usize = 0,
-    /// For formatting - was the format active before?
-    format_was_active: bool = false,
-    /// Selection anchor before operation
-    anchor_offset: usize = 0,
-    /// Selection focus before operation
-    focus_offset: usize = 0,
-};
-
-/// Data needed for redo operation
-pub const RedoData = struct {
-    /// Text that was inserted
-    text: ?[]const u8 = null,
-    /// HTML that was inserted
-    html: ?[]const u8 = null,
-    /// Position in document
-    position: usize = 0,
-    /// End position for range operations
-    end_position: usize = 0,
-    /// For formatting - was the format active after?
-    format_was_active: bool = false,
-    /// Value passed to command (for valued commands)
-    value: ?[]const u8 = null,
-};
-
-/// Undo history manager
-/// Maintains a stack of undo/redo entries
-pub const UndoManager = struct {
-    allocator: std.mem.Allocator,
-
-    /// Undo stack (most recent at end)
-    undo_stack: std.ArrayList(UndoEntry),
-
-    /// Redo stack (most recent at end)
-    redo_stack: std.ArrayList(UndoEntry),
-
-    /// Maximum number of undo entries to keep
-    max_entries: usize = 100,
-
-    /// Whether to merge consecutive typing operations
-    merge_typing: bool = true,
-
-    /// Timestamp of last entry for merge decisions
-    last_entry_time: i64 = 0,
-
-    /// Create a new undo manager
-    pub fn init(allocator: std.mem.Allocator) UndoManager {
-        return .{
-            .allocator = allocator,
-            .undo_stack = .empty,
-            .redo_stack = .empty,
-        };
-    }
-
-    /// Clean up undo manager
-    pub fn deinit(self: *UndoManager) void {
-        for (self.undo_stack.items) |*entry| {
-            entry.deinit();
-        }
-        self.undo_stack.deinit(self.allocator);
-
-        for (self.redo_stack.items) |*entry| {
-            entry.deinit();
-        }
-        self.redo_stack.deinit(self.allocator);
-    }
-
-    /// Add an undo entry
-    pub fn push(self: *UndoManager, entry: UndoEntry) !void {
-        // Clear redo stack when new action is performed
-        for (self.redo_stack.items) |*redo_entry| {
-            redo_entry.deinit();
-        }
-        self.redo_stack.clearRetainingCapacity();
-
-        // Check if we should merge with previous entry
-        if (self.merge_typing and self.shouldMerge(entry)) {
-            // Merge with last entry
-            if (self.undo_stack.items.len > 0) {
-                // For now, just extend the last entry
-                // Full merge logic would combine text
-            }
-        }
-
-        // Add entry to undo stack
-        try self.undo_stack.append(self.allocator, entry);
-        self.last_entry_time = entry.timestamp;
-
-        // Enforce max entries limit
-        while (self.undo_stack.items.len > self.max_entries) {
-            var oldest = self.undo_stack.orderedRemove(0);
-            oldest.deinit();
-        }
-    }
-
-    /// Check if new entry should be merged with previous
-    fn shouldMerge(self: *const UndoManager, entry: UndoEntry) bool {
-        if (self.undo_stack.items.len == 0) return false;
-
-        const last = &self.undo_stack.items[self.undo_stack.items.len - 1];
-
-        // Only merge text insertions
-        if (entry.entry_type != .insert_text) return false;
-        if (last.entry_type != .insert_text) return false;
-
-        // Only merge if same command
-        if (entry.command != last.command) return false;
-
-        // Only merge if close in time (within 1 second)
-        const time_diff = entry.timestamp - last.timestamp;
-        if (time_diff > 1) return false;
-
-        // Only merge if positions are consecutive
-        const last_end = last.redo_data.position + (last.redo_data.text orelse "").len;
-        if (entry.redo_data.position != last_end) return false;
-
-        return true;
-    }
-
-    /// Check if undo is available
-    pub fn canUndo(self: *const UndoManager) bool {
-        return self.undo_stack.items.len > 0;
-    }
-
-    /// Check if redo is available
-    pub fn canRedo(self: *const UndoManager) bool {
-        return self.redo_stack.items.len > 0;
-    }
-
-    /// Perform undo operation
-    /// Returns the entry that was undone
-    pub fn undo(self: *UndoManager) ?*UndoEntry {
-        if (self.undo_stack.items.len == 0) return null;
-
-        const entry = self.undo_stack.pop() orelse return null;
-        self.redo_stack.append(self.allocator, entry) catch return null;
-
-        return &self.redo_stack.items[self.redo_stack.items.len - 1];
-    }
-
-    /// Perform redo operation
-    /// Returns the entry that was redone
-    pub fn redo(self: *UndoManager) ?*UndoEntry {
-        if (self.redo_stack.items.len == 0) return null;
-
-        const entry = self.redo_stack.pop() orelse return null;
-        self.undo_stack.append(self.allocator, entry) catch return null;
-
-        return &self.undo_stack.items[self.undo_stack.items.len - 1];
-    }
-
-    /// Clear all history
-    pub fn clear(self: *UndoManager) void {
-        for (self.undo_stack.items) |*entry| {
-            entry.deinit();
-        }
-        self.undo_stack.clearRetainingCapacity();
-
-        for (self.redo_stack.items) |*entry| {
-            entry.deinit();
-        }
-        self.redo_stack.clearRetainingCapacity();
-    }
-
-    /// Get number of undo entries
-    pub fn undoCount(self: *const UndoManager) usize {
-        return self.undo_stack.items.len;
-    }
-
-    /// Get number of redo entries
-    pub fn redoCount(self: *const UndoManager) usize {
-        return self.redo_stack.items.len;
-    }
-};
-
-test "UndoManager basic operations" {
-    const allocator = std.testing.allocator;
-    var manager = UndoManager.init(allocator);
-    defer manager.deinit();
-
-    try std.testing.expect(!manager.canUndo());
-    try std.testing.expect(!manager.canRedo());
-
-    // Add an entry
-    const entry = UndoEntry.initFormatOperation(allocator, .bold, false);
-    try manager.push(entry);
-
-    try std.testing.expect(manager.canUndo());
-    try std.testing.expect(!manager.canRedo());
-    try std.testing.expectEqual(@as(usize, 1), manager.undoCount());
-
-    // Undo
-    const undone = manager.undo();
-    try std.testing.expect(undone != null);
-    try std.testing.expect(!manager.canUndo());
-    try std.testing.expect(manager.canRedo());
-
-    // Redo
-    const redone = manager.redo();
-    try std.testing.expect(redone != null);
-    try std.testing.expect(manager.canUndo());
-    try std.testing.expect(!manager.canRedo());
+test "the undo stack registers, pops and clears its steps" {
+    var stack = UndoStack.init(std.testing.allocator);
+    defer stack.deinit();
+    try std.testing.expect(!stack.canUndo());
+    const first = try stack.createStep();
+    first.typing = true;
+    try stack.registerUndoStep(first);
+    try std.testing.expect(stack.canUndo());
+    try std.testing.expectEqual(first, stack.openTypingStep().?);
+    // A step with owned strings: the history frees them.
+    const second = try stack.createStep();
+    try second.records.append(std.testing.allocator, .{ .insert_text = .{ .offset = 3, .data = try std.testing.allocator.dupe(u8, "abc") } });
+    try stack.registerUndoStep(second);
+    try std.testing.expect(stack.openTypingStep() == null);
+    const popped = stack.popUndo().?;
+    try std.testing.expectEqual(second, popped);
+    try stack.registerRedoStep(popped);
+    try std.testing.expect(stack.canRedo());
+    // A new step empties the redo list.
+    try stack.registerUndoStep(try stack.createStep());
+    try std.testing.expect(!stack.canRedo());
+    // A redo keeps it.
+    try stack.registerRedoStep(stack.popUndo().?);
+    const third = try stack.createStep();
+    try stack.registerRedoStep(third);
+    stack.in_redo = true;
+    try stack.registerUndoStep(stack.popRedo().?);
+    stack.in_redo = false;
+    try std.testing.expect(stack.canRedo());
 }
 
-test "UndoManager clear" {
-    const allocator = std.testing.allocator;
-    var manager = UndoManager.init(allocator);
-    defer manager.deinit();
-
-    // Add some entries
-    try manager.push(UndoEntry.initFormatOperation(allocator, .bold, false));
-    try manager.push(UndoEntry.initFormatOperation(allocator, .italic, false));
-
-    try std.testing.expectEqual(@as(usize, 2), manager.undoCount());
-
-    manager.clear();
-
-    try std.testing.expectEqual(@as(usize, 0), manager.undoCount());
-    try std.testing.expect(!manager.canUndo());
-}
-
-test "UndoManager clears redo on new action" {
-    const allocator = std.testing.allocator;
-    var manager = UndoManager.init(allocator);
-    defer manager.deinit();
-
-    // Add and undo
-    try manager.push(UndoEntry.initFormatOperation(allocator, .bold, false));
-    _ = manager.undo();
-    try std.testing.expect(manager.canRedo());
-
-    // New action should clear redo
-    try manager.push(UndoEntry.initFormatOperation(allocator, .italic, false));
-    try std.testing.expect(!manager.canRedo());
-}
-
-test "executeUndo returns success" {
-    const allocator = std.testing.allocator;
-    const result = try executeUndo(allocator, undefined);
-    try std.testing.expect(result.success);
-}
-
-test "executeRedo returns success" {
-    const allocator = std.testing.allocator;
-    const result = try executeRedo(allocator, undefined);
-    try std.testing.expect(result.success);
+test "the undo stack drops its oldest step past the maximum depth" {
+    var stack = UndoStack.init(std.testing.allocator);
+    defer stack.deinit();
+    const oldest = try stack.createStep();
+    try stack.registerUndoStep(oldest);
+    var i: usize = 1;
+    while (i < maximum_depth) : (i += 1) try stack.registerUndoStep(try stack.createStep());
+    const second = stack.undo_steps.items[1];
+    try std.testing.expectEqual(oldest, stack.undo_steps.items[0]);
+    try stack.registerUndoStep(try stack.createStep());
+    try std.testing.expectEqual(@as(usize, maximum_depth), stack.undo_steps.items.len);
+    try std.testing.expectEqual(second, stack.undo_steps.items[0]);
 }
