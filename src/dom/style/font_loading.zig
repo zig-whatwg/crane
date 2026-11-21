@@ -535,6 +535,9 @@ const FaceLoad = struct {
     queued: bool = false,
     action: Action = .next_source,
     abort_marked: bool = false,
+    /// Whether this load delays its document's load event (startFetch to
+    /// finishPending).
+    delaying_load_event: bool = false,
 
     const Action = enum { start_buffer, next_source, success, failure };
 
@@ -576,6 +579,7 @@ const FaceLoad = struct {
         return !self.canceled and self.ownerLive();
     }
     fn finishPending(self: *FaceLoad) void {
+        self.endLoadEventDelay();
         if (self.kept) {
             self.kept = false;
             if (self.ownerLive()) engine.releasePlatformObject(self.owner);
@@ -673,6 +677,29 @@ const FaceLoad = struct {
         resource_loading.applyModifiers(&key, resource.modifiers);
         const result = try cache.getOrPut(key);
         try result.entry.attach(self);
+        // A font fetch delays its document's load event until the face has
+        // loaded or failed, as the browsers' do - Gecko's FontFaceSet blocks
+        // onload while it is loading (FontFaceSetDocumentImpl BlockOnload),
+        // Blink's font fetch is a load-blocking request of the document's
+        // ResourceFetcher. No spec says so; so a test that registers its
+        // subtests when document.fonts.load() settles still runs them before
+        // load (css/css-text-decor/parsing/text-decoration-inset-computed
+        // .html ran its first subtest only: Chrome 157 16/16, Firefox 160
+        // 10/16 - the 6 it fails are percentages it does not support).
+        if (!self.delaying_load_event) {
+            @import("../document_lifecycle.zig").delayLoadEvent(document);
+            self.delaying_load_event = true;
+        }
+    }
+
+    /// The end of startFetch's load-event delay, on every path a load ends
+    /// by (success, failure, cancel): a document that is gone is skipped.
+    fn endLoadEventDelay(self: *FaceLoad) void {
+        if (!self.delaying_load_event) return;
+        self.delaying_load_event = false;
+        const document = self.document orelse return;
+        if (document_activity.activity(document, self.document_generation) == .gone) return;
+        @import("../document_lifecycle.zig").undelayLoadEvent(document);
     }
 };
 
