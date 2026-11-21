@@ -1493,6 +1493,20 @@ fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
 /// The navigable's active document, as its browsing context records it -
 /// not `window.document`, which is script's getter and refuses a
 /// cross-origin reader.
+/// Whether `record`'s navigation reserves a client for Handle Fetch. Not
+/// when the frame's sandboxing flags have the sandboxed origin browsing
+/// context flag (an iframe sandbox without allow-same-origin): the new
+/// document's origin is opaque, so the storage key obtained for its reserved
+/// environment matches no registration - Service Workers 2.5.1: sandboxed
+/// iframes without allow-same-origin "result in having the active service
+/// worker value of null as their origin is an opaque origin". The service
+/// worker handled such a frame's navigation and controlled it
+/// (service-workers/service-worker/sandboxed-iframe-fetch-event.https.html,
+/// 4 subtests; Chrome 157, Firefox 160 and Safari 27.2 pass).
+fn reservesClient(record: *const Navigation) bool {
+    return !record.target_sandboxing_flags.origin;
+}
+
 fn activeDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
     const browsing_context = integration.browsing_context orelse return null;
     const document = browsing_context.getActiveDocument() orelse return null;
@@ -2548,11 +2562,13 @@ fn startFetch(record: *Navigation) void {
         }
         // "Create navigation params by fetching": the request's reserved
         // client, a new environment - which Handle Fetch may make controlled
-        // (Service Workers 2.5.1) and the new document's realm adopts.
-        if (navigationRealmOf(record.integration)) |creator| {
+        // (Service Workers 2.5.1) and the new document's realm adopts. None
+        // for a frame whose sandboxing flags have the sandboxed origin
+        // browsing context flag (`reservesClient`).
+        if (reservesClient(record)) if (navigationRealmOf(record.integration)) |creator| {
             record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
             if (record.reserved_client != null) record.reserved_url = allocator.dupe(u8, url) catch null;
-        }
+        };
         request.reserved_client = record.reserved_client;
         request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
         // The client's ticket is the fetch's from here: its `gone` or
@@ -3155,10 +3171,10 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
                 record.allocator.free(reserved_url);
                 record.reserved_url = null;
                 // 21.2. A new reserved client, for the new URL.
-                if (navigationRealmOf(record.integration)) |creator| {
+                if (reservesClient(record)) if (navigationRealmOf(record.integration)) |creator| {
                     record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, location);
                     if (record.reserved_client != null) record.reserved_url = record.allocator.dupe(u8, location) catch null;
-                }
+                };
             }
         };
     }
