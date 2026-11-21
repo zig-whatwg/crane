@@ -26,9 +26,14 @@ const log = std.log.scoped(.devtools);
 pub const TargetEvent = union(enum) {
     tab_created: struct { tab: host_bridge.TabId, opener: ?host_bridge.TabId, opened_by_page: bool },
     tab_destroyed: struct { tab: host_bridge.TabId },
-    /// A tab's document changed (a top-level commit): its URL and title,
-    /// OWNED by the event (allocated with the side's allocator).
-    tab_changed: struct { tab: host_bridge.TabId, url: []u8, title: []u8 },
+    /// A navigable's URL changed (a commit, or a same-document navigation):
+    /// the devtools thread updates the target whose tab it is
+    /// (Target.targetInfoChanged). `url` is OWNED by the event (allocated
+    /// with the side's allocator).
+    navigated: struct { navigable: u64, url: []u8 },
+    /// A page session's Runtime.runIfWaitingForDebugger: one of the tab's
+    /// waiting sessions is done waiting (the hold is released when all are).
+    run_if_waiting: struct { tab: host_bridge.TabId, session_id: [32]u8 },
 };
 
 /// The devtools thread's door: `post` may be called from any thread and
@@ -112,10 +117,14 @@ pub const BrowserSide = struct {
 
     /// Every attached page session's handlers hear the milestone, in order.
     /// A handler compares the milestone's navigable with its session's tab.
-    /// TODO(life1): once the Milestone type is on this branch, a top-level
-    /// commit also posts `tab_changed` (Target.targetInfoChanged's url and
-    /// title).
+    /// A commit or a same-document navigation also tells the devtools thread
+    /// the navigable's new URL (Target.targetInfoChanged).
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
+        switch (milestone.event) {
+            .committed => |c| self.postNavigated(milestone.navigable_id, c.url),
+            .same_document => |c| self.postNavigated(milestone.navigable_id, c.url),
+            else => {},
+        }
         // A handler may detach its session (a tab's close); walk a copy.
         var copy: [64]*PageSession = undefined;
         const count = @min(self.sessions.items.len, copy.len);
@@ -127,6 +136,11 @@ pub const BrowserSide = struct {
                 if (comptime @hasDecl(H, "onNavigation")) H.onNavigation(session, milestone);
             }
         }
+    }
+
+    fn postNavigated(self: *BrowserSide, navigable: u64, url: []const u8) void {
+        const owned = self.allocator.dupe(u8, url) catch return;
+        self.sink.post(self.sink.context, self, .{ .navigated = .{ .navigable = navigable, .url = owned } });
     }
 
     fn stillAttached(self: *BrowserSide, session: *PageSession) bool {

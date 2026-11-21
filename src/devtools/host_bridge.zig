@@ -170,21 +170,15 @@ pub fn freeTabs(allocator: std.mem.Allocator, tabs: []TabInfo) void {
 pub const HostEvent = if (have_host_events) browser.host_events.Event else StubEvent;
 pub const Listener = if (have_host_events) browser.host_events.Listener else StubListener;
 
-/// Lane life1's navigation milestone, as the host events carry it.
-pub const Milestone = if (have_host_events) blk: {
-    const E = browser.host_events.Event;
-    const info = @typeInfo(E).@"union";
-    for (info.field_names, info.field_types) |name, T| {
-        if (std.mem.eql(u8, name, "navigation")) break :blk @typeInfo(T).pointer.child;
-    }
-    break :blk StubMilestone;
-} else StubMilestone;
+/// Lane life1's navigation milestone (src/html/navigation/observer.zig),
+/// as the host events carry it.
+pub const Milestone = @import("html").navigation.observer.Milestone;
+pub const MilestoneEvent = @import("html").navigation.observer.Event;
 
-const StubMilestone = struct {};
 const StubEvent = union(enum) {
     tab_created: struct { tab: TabId, opener: ?TabId },
     tab_destroyed: struct { tab: TabId },
-    navigation: *const StubMilestone,
+    navigation: *const Milestone,
 };
 const StubListener = struct {
     context: *anyopaque,
