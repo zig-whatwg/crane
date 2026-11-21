@@ -7775,6 +7775,7 @@ bool v8_Context_HasHTMLConstructorFactory(Global<Context>* context) {
     if (!context || context->IsEmpty()) return false;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     Local<Context> realm = context->Get(isolate);
     if (realm->GetNumberOfEmbedderDataFields() <= static_cast<uint32_t>(kHTMLConstructorFactoryIndex)) return false;
     Local<Value> factory = realm->GetEmbedderDataV2(kHTMLConstructorFactoryIndex).As<Value>();
@@ -7870,11 +7871,20 @@ extern "C" {
 /// The template function is reachable from nothing script holds after this.
 /// OWNED; null when the context has no factory or V8 refused a step (the
 /// template function then stays the interface object). Runs no author script:
-/// the factory is the extension's, and every read here is of an own property.
+/// the factory is the extension's, and every read here is of an own property;
+/// and no microtask (NativeStepScope).
 Global<Function>* v8_HTMLConstructor_InterfaceObject(Isolate* isolate, Global<Context>* context, uint32_t index, Global<Function>* template_function,
                                                      Global<Function>* construct) {
     if (!isolate || !context || context->IsEmpty() || !template_function || !construct) return nullptr;
     HandleScope handle_scope(isolate);
+    // Not a script call: an interface object is often built from native code
+    // with no script on the stack - a wrap the parser's tree construction
+    // asks for, a lazy global's getter - and the factory's Call, and every
+    // DefineProperty below, would otherwise end at call depth 0 with a kAuto
+    // microtask checkpoint, running a MutationObserver's callback in the
+    // middle of the parse (shadow-dom/declarative/innerhtml-before-closing-
+    // tag.html; NativeStepScope says why).
+    NativeStepScope native_step(isolate);
     Local<Context> realm = context->Get(isolate);
     if (realm->GetNumberOfEmbedderDataFields() <= static_cast<uint32_t>(kHTMLConstructorFactoryIndex)) return nullptr;
     Local<Value> factory = realm->GetEmbedderDataV2(kHTMLConstructorFactoryIndex).As<Value>();
