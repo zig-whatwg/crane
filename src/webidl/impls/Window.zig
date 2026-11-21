@@ -3373,7 +3373,8 @@ const CloseTask = struct {
         // installed when the first iframe element is made: make one if no
         // page has yet. Nothing sees it.
         const auxiliary_navigables = @import("dom").auxiliary_navigables;
-        _ = auxiliary_navigables.definitelyClose(window);
+        // window.close(): "close" prompts to unload (HTML 7.2.2.1 step 6.2).
+        _ = auxiliary_navigables.definitelyClose(window, .prompt);
     }
 };
 

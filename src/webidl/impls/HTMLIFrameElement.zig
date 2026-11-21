@@ -8358,8 +8358,9 @@ fn pageSwapOfTraversal(integration: *IFrameIntegration, entry_id: u64) ?PageSwap
 }
 
 /// dom.auxiliary_navigables: HTML "definitely close" the top-level
-/// traversable whose active window is `window`; false when `window` is not a
-/// top-level traversable's.
+/// traversable whose active window is `window` - prompting to unload or not
+/// (`prompt`) - and what it came to (.not_top_level when `window` is not a
+/// top-level traversable's).
 ///
 /// "1. Let toUnload be traversable's active document's inclusive descendant
 /// navigables. 2. If the result of checking if unloading is canceled for
@@ -8377,29 +8378,31 @@ fn pageSwapOfTraversal(integration: *IFrameIntegration, entry_id: u64) ?PageSwap
 /// ended once collected or at its Browser's end. The host's own page is
 /// unloaded but not destroyed, stated: the host owns it, and it is the
 /// host's to take down.
-fn definitelyCloseTraversable(window: *runtime.Instance) bool {
-    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return false;
-    if (bc.parent != null) return false;
+fn definitelyCloseTraversable(window: *runtime.Instance, prompt: dom_module.auxiliary_navigables.Prompt) dom_module.auxiliary_navigables.CloseOutcome {
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return .not_top_level;
+    if (bc.parent != null) return .not_top_level;
     // Null for the host's page.
     const integration = integrationOfBrowsingContext(bc);
     if (integration) |made| {
-        if (made.state == .discarded) return true;
+        if (made.state == .discarded) return .closed;
         // Script runs below: the integration stays until this is done with
         // it.
         made.busy += 1;
     }
     defer if (integration) |made| finishBusy(made);
-    if (bc.is_closed) return true;
+    if (bc.is_closed) return .closed;
     const document: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse {
         if (integration != null) bc.close();
-        return true;
+        return .closed;
     }));
     const allocator = std.heap.page_allocator;
 
     // Steps 1-2: beforeunload at each document, parents first. The answer is
     // "continue" unless a prompt was shown and the user stayed; none is
-    // shown without sticky activation.
-    {
+    // shown without sticky activation. A close "without prompting to
+    // unload" (`prompt` .skip: BiDi browsingContext.close step 7, Chrome's
+    // ClosePage) skips them.
+    if (prompt == .prompt) {
         var documents = dom_module.navigables.inclusiveDescendantDocuments(document, allocator);
         defer documents.deinit(allocator);
         var canceled = false;
@@ -8409,17 +8412,17 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
         }
         if (canceled) {
             bc.is_closing = false;
-            return true;
+            return .canceled;
         }
     }
     // The handlers ran script: the traversable may have gone meanwhile.
-    if (bc.is_closed) return true;
-    if (integration) |made| if (made.state == .discarded) return true;
+    if (bc.is_closed) return .closed;
+    if (integration) |made| if (made.state == .discarded) return .closed;
 
     // Step 3: its navigation in flight ends, then "unload a document and its
     // descendants" - pagehide and unload, children first - and, after all
     // unloads, "destroy" it.
-    const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return true));
+    const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return .closed));
     var documents = dom_module.navigables.inclusiveDescendantDocuments(active, allocator);
     defer documents.deinit(allocator);
     const made = integration orelse {
@@ -8436,7 +8439,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
             document_lifecycle.unload(entry.document);
         }
         dom_module.navigables.destroyWindowDocuments(bc, .discarded);
-        return true;
+        return .closed;
     };
     abandonNavigationsOf(made);
     // "Destroy a top-level traversable" destroys every session history
@@ -8466,7 +8469,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     if (ownedByBrowser(made)) {
         if (made.context_cleanup_data) |data| engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .navigable_destroyed);
     }
-    return true;
+    return .closed;
 }
 
 /// Whether the top-level traversable `record` is its Browser's - a popup,

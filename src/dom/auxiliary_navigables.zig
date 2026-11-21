@@ -41,8 +41,8 @@ pub const Created = struct {
 pub const Implementation = struct {
     create: *const fn (allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet, noopener: bool) ?Created,
     /// HTML "definitely close" the top-level traversable whose active window
-    /// is `window`: false when `window` is not a top-level traversable's.
-    definitely_close: *const fn (window: *runtime.Instance) bool,
+    /// is `window` (`definitelyClose`).
+    definitely_close: *const fn (window: *runtime.Instance, prompt: Prompt) CloseOutcome,
     /// The end of a popup's navigable at its Browser's end - "destroy a
     /// top-level traversable": its documents destroyed, its realm ended, its
     /// integration (a `Created.integration`) deinit'd and destroyed.
@@ -132,15 +132,39 @@ pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque,
     return impl.create(allocator, opener_browsing_context, is_popup, popup_sandboxing_flags, noopener);
 }
 
+/// Whether closing a top-level traversable prompts to unload: HTML
+/// "definitely close" step 2, "checking if unloading is canceled" - the
+/// beforeunload event at each of its documents - runs (`prompt`, the
+/// traversable's own window.close() and BiDi browsingContext.close
+/// {promptUnload: true}), or is skipped (`skip`: BiDi's "close navigable
+/// without prompting to unload", step 7 - what Chrome's
+/// WebContentsImpl::ClosePage does for a closed tab and DevTools'
+/// Target.closeTarget: unload handlers run, beforeunload does not).
+pub const Prompt = enum { prompt, skip };
+
+/// What `definitelyClose` came to.
+pub const CloseOutcome = enum {
+    /// `window` is no top-level traversable's, or nothing is installed:
+    /// nothing was done.
+    not_top_level,
+    /// "Checking if unloading is canceled" did not answer "continue" (a
+    /// prompt was shown and the user stayed): the traversable is open, its
+    /// documents untouched.
+    canceled,
+    /// Unloaded - and, for one the page made, destroyed and its browsing
+    /// context closed; the host's own page is left to the host to destroy.
+    closed,
+};
+
 /// HTML "definitely close" the top-level traversable whose active window is
-/// `window`: its documents are asked about unloading and unloaded; one that
-/// window.open() or a link's or form's target made is then destroyed and its
-/// browsing context closed, while the host's own page is left to the host.
-/// False when `window` is not a top-level traversable's or nothing is
-/// installed.
-pub fn definitelyClose(window: *runtime.Instance) bool {
-    const impl = implementation.get() orelse return false;
-    return impl.definitely_close(window);
+/// `window`: its documents are asked about unloading (unless `prompt` is
+/// `skip`) and unloaded; one that window.open() or a link's or form's target
+/// made is then destroyed and its browsing context closed, while the host's
+/// own page - its first page, or a tab it opened (browser Context) - is left
+/// to the host, which destroys it (Context.deinit).
+pub fn definitelyClose(window: *runtime.Instance, prompt: Prompt) CloseOutcome {
+    const impl = implementation.get() orelse return .not_top_level;
+    return impl.definitely_close(window, prompt);
 }
 
 /// The popups of one Browser - the navigables `create` made, each a
@@ -229,5 +253,5 @@ test "without an installed implementation no navigable is made or closed" {
     try std.testing.expect(create(std.testing.allocator, &opener, false, .empty, false) == null);
     // Never dereferenced either.
     var window: runtime.Instance = undefined;
-    try std.testing.expect(!definitelyClose(&window));
+    try std.testing.expectEqual(CloseOutcome.not_top_level, definitelyClose(&window, .prompt));
 }
