@@ -20,6 +20,7 @@ const Allocator = std.mem.Allocator;
 const InMessage = std.zig.Server.Message;
 const sched = @import("scheduler.zig");
 const Slots = @import("slots.zig").Slots;
+const Spawner = @import("spawn.zig").Spawner;
 /// tests/test_runner/poisoning.zig: the CRANE_POISON_FREES switch the Crane
 /// test runner reads, so the launcher reads it the same way.
 const poisoning = @import("poisoning");
@@ -102,6 +103,10 @@ pub const Executor = struct {
     slots: ?*Slots = null,
     procs: []?*Proc,
     held: []?Slots.Slot,
+    /// Every worker starts its processes through this, one at a time
+    /// (spawn.zig: on macOS a spawn racing another's pipe creation inherits
+    /// that pipe, and its reader then waits for the wrong process).
+    spawner: Spawner,
     /// Summed over every child: user + system CPU, and the largest peak RSS.
     cpu_ns: std.atomic.Value(u64) = .init(0),
     peak_rss: std.atomic.Value(u64) = .init(0),
@@ -125,7 +130,7 @@ pub const Executor = struct {
         @memset(procs, null);
         const held = try gpa.alloc(?Slots.Slot, procs.len);
         @memset(held, null);
-        return .{ .gpa = gpa, .io = io, .argv = argv, .test_timeout_ns = test_timeout_ns, .procs = procs, .held = held };
+        return .{ .gpa = gpa, .io = io, .argv = argv, .test_timeout_ns = test_timeout_ns, .procs = procs, .held = held, .spawner = .init(io) };
     }
 
     /// The environment of a process that will run `tests`: without the busy
@@ -169,7 +174,7 @@ pub const Executor = struct {
         errdefer e.releaseSlot(w);
         const p = try e.gpa.create(Proc);
         errdefer e.gpa.destroy(p);
-        p.child = std.process.spawn(e.io, .{
+        p.child = e.spawner.spawn(.{
             .argv = e.argv,
             .stdin = .pipe,
             .stdout = .pipe,

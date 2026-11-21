@@ -135,8 +135,11 @@ pub const NodeBase = extern struct {
     rc_flags: RcFlags = .{},
 
     /// An element's flags (`ElementBits`): the custom element state, where
-    /// its registry is, click()'s in-progress flag. All zero on every other
-    /// node. Element's impl reads and writes them (`elementBits`); they are
+    /// its registry is, click()'s in-progress flag. On a Document, the same
+    /// byte is the Document's own flags (`DocumentBits`, `documentBits`): a
+    /// Document is never an element, and Element's impl reaches this byte
+    /// only through an element's state. All zero on every other node.
+    /// Element's impl reads and writes them (`elementBits`); they are
     /// here, not in Element's own state, because five bytes there cost 8
     /// with its padding and one byte here costs none - Blink keeps the
     /// custom element state in Node::node_flags_ (kCustomElementStateMask),
@@ -335,6 +338,25 @@ pub const NodeBase = extern struct {
             self.custom_element_state = @backingInt(state);
         }
     };
+
+    /// A Document's flags, in NodeBase's `element` byte (which only an
+    /// element's state uses as ElementBits): read where a pointer load must
+    /// do, with no lookup of the Document's state (Blink keeps such document
+    /// facts as bits too, Document::document_classes_ and the like).
+    pub const DocumentBits = packed struct(u8) {
+        /// Whether the document ever had an element with a headingoffset or
+        /// headingreset attribute (dom.heading_offsets; sticky): until it
+        /// has, :heading skips HTML's computed heading offset walk.
+        heading_offsets_seen: bool = false,
+        _unused: u7 = 0,
+    };
+
+    /// A Document's flags (`DocumentBits`), in this node's `element` byte.
+    /// The check is Debug only, as `leafWord`'s.
+    pub inline fn documentBits(self: *NodeBase) *DocumentBits {
+        if (builtin.mode == .debug and self.node_type != DOCUMENT_NODE) @panic("NodeBase.documentBits on a node that is not a Document");
+        return @ptrCast(&self.element);
+    }
 
     /// The address of click()'s in-progress flag in an element's NodeBase
     /// (`&node.element.click_in_progress`): a bit - bit 7 of its one-byte

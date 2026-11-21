@@ -598,6 +598,14 @@ const EnableWhenActive = struct {
     }
 };
 
+/// The closing flag of the WorkerGlobalScope `port` belongs to, which the
+/// worker host keeps (close() and "terminate a worker" set it); a port of a
+/// Window, or of a global no worker host runs, is never closing (as
+/// BroadcastChannel reads it).
+fn workerClosing(port: *runtime.Instance) bool {
+    return @import("html").worker_host.scopeClosing(port.ctx) orelse false;
+}
+
 /// Step 7 of the message port post message steps, in the receiving port's
 /// realm: deserialize, make the transferred objects, fire `message` - or,
 /// at a cross-realm transform's port, run its native message steps.
@@ -605,6 +613,23 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
     const ctx = port.ctx;
     const allocator = ctx.allocator;
     const native = if (getInternal(port)) |internal| internal.native else null;
+
+    // A closing worker dispatches nothing - neither the message nor a
+    // messageerror. HTML 10.2.2: "Once the WorkerGlobalScope's closing flag
+    // is set to true, the event loop's task queues must discard any further
+    // tasks that would be added to them"; "terminate a worker" 1. sets the
+    // closing flag, 2. discards the queued tasks "without processing them",
+    // 3. aborts the script currently running in the worker. Blink checks the
+    // same flag at dispatch (message_port.cc MessagePort::
+    // DispatchMessageEvent: "if (scope->IsClosing()) return;"). A task
+    // already running when step 3 lands can fail to deserialize because of
+    // that abort; it is checked again below, so that the abort never reads
+    // as a messageerror. A cross-realm
+    // transform's messageerror steps post "error" to the other realm: a
+    // stream transferred to a terminated worker would error in the page
+    // (streams/transferable/worker.html, 'terminating a worker should not
+    // error the stream' - Chrome, Firefox and Safari pass it).
+    if (workerClosing(port)) return;
 
     // 7.3-7.4: StructuredDeserializeWithTransfer(serializeWithTransferResult,
     // targetRealm). The transferred objects first (their transfer-receiving
@@ -617,12 +642,16 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
     const holders = message.takeHolders();
     defer message.allocator.free(holders);
     var received = dom.transferables.receiveAll(ctx, holders, allocator) catch {
+        if (workerClosing(port)) return;
         if (native) |receiver| return receiver.message_error(receiver.ctx);
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
     defer received.deinit();
     const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
+        // The worker was terminated while this task ran: its script was
+        // aborted, and the deserialization with it.
+        if (workerClosing(port)) return;
         if (native) |receiver| return receiver.message_error(receiver.ctx);
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;

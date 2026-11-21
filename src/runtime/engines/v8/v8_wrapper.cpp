@@ -10923,6 +10923,21 @@ uintptr_t v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(const FunctionCallba
     return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
 }
 
+// FunctionCallbackInfo - when This() is the current context's global, the
+// context's Crane id (CraneContextIdOf: the key of Crane's realm registry,
+// context_manager.getByKey); 0 for any other receiver. A natively bound Window
+// operation's commonest receiver (page_realm's timers, called contextually or
+// as `frame.setTimeout`: V8 enters the function's creation context, whose
+// global that frame's WindowProxy is). An ID, NOT AN ALLOCATION, as the getter
+// fast path above: Locals only, in the callback's own HandleScope.
+uintptr_t v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return 0;
+    if (!info->This()->StrictEquals(context->Global())) return 0;
+    return reinterpret_cast<uintptr_t>(CraneContextIdOf(context));
+}
+
 // FunctionCallbackInfo - set a primitive return value straight into the
 // return slot (a Smi where it fits, else a heap number made in the callback's
 // HandleScope): no Global for a number or boolean result.
@@ -14376,9 +14391,9 @@ void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* contex
         return;
     }
     
-    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Setting default context\n");
+    // No success line: a passing snapshot generator writes nothing to stderr
+    // (engine_build.zig expectQuietSuccess; snapshot_generator_log.zig).
     sc->SetDefaultContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
-    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Default context set successfully\n");
 }
 
 /// Add context to snapshot at specific index
@@ -14406,9 +14421,8 @@ size_t v8_SnapshotCreator_AddContext(void* creator, Global<Context>* context) {
         return SIZE_MAX;
     }
     
-    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Adding context to snapshot\n");
+    // No success line (as SetDefaultContext): the caller logs the index.
     size_t index = sc->AddContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
-    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Context added at index %zu\n", index);
     return index;
 }
 

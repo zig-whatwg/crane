@@ -200,6 +200,30 @@ pub fn installHooks() void {
     // drops at its next change - the form then answers that it has none -
     // and the list itself ends with the Browser's agent host, right after.
     @import("dom").orphan_states.installRegistrySweep(Registry);
+    // A nested form's submit and reset events stop at this form.
+    dom.local_event_steps.install(.{ .event_type = "submit", .run = &stopNestedFormEvent });
+    dom.local_event_steps.install(.{ .event_type = "reset", .run = &stopNestedFormEvent });
+}
+
+/// A form's own step for a submit or reset event at its place on the path
+/// (dom.local_event_steps): one whose target is another node - a form nested
+/// in this one, by script, since the parser nests none - stops here outside
+/// the capture phase, before this form's listeners run, so an outer form
+/// never handles its inner form's submission or reset. No spec text says so;
+/// all three browsers do it - Blink's and WebKit's
+/// HTMLFormElement::HandleLocalEvents (handleLocalEvents) stop propagation and
+/// return before the form's listeners when "event.eventPhase() !=
+/// kCapturingPhase && target_node != this" for submit and reset, and Gecko's
+/// HTMLFormElement::WillHandleEvent stops it in the bubbling phase when the
+/// original target is not the form ("there is a nested form below us which
+/// received a submit event"). Golden rule 2: Chrome 157, Firefox 160 and
+/// Safari 27.2 pass all of
+/// dom/events/Event-dispatch-single-activation-behavior.html.
+fn stopNestedFormEvent(node: *runtime.Instance, target: *runtime.Instance, phase: u8) dom.local_event_steps.Verdict {
+    if (phase == dom.event_dispatch.Phase.capturing) return .proceed;
+    if (node == target) return .proceed;
+    if (node.stateAs(State) == null) return .proceed;
+    return .stop;
 }
 
 /// HTMLFormElement's own construction steps: the generated chain runs HTMLElement's first.
