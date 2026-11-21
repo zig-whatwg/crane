@@ -332,6 +332,13 @@ fn computedHeadingOffset(element: *Instance) u64 {
     // FastHasAttribute): :heading asks this of every heading it tests.
     var inclusive_ancestor: *Instance = element;
     var node = dom.instance_bridge.getNodeBase(element) orelse return 0;
+    // A document that never had a headingoffset or headingreset attribute
+    // (dom.heading_offsets, sticky) gives every heading an offset of 0: the
+    // walk would find neither. The heading, its ancestors and the hosts up
+    // its shadow-including chain share one node document.
+    if (node.documentIsLive()) if (node.documentInstance()) |document| {
+        if (!dom.heading_offsets.seen(document)) return 0;
+    };
     // Step 3.
     while (true) {
         // "An HTML element": the name record's namespace, one compare.

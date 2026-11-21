@@ -41,6 +41,7 @@ const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
 const custom_elements = @import("custom_elements.zig");
 const tree_ordered_map = @import("tree_ordered_map.zig");
+const heading_offsets = @import("heading_offsets.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -2769,6 +2770,13 @@ fn adoptHeld(
             @ptrCast(@alignCast(opaque_instance))
         else
             null;
+
+        // dom.heading_offsets: the moved elements may have a headingoffset
+        // or headingreset attribute - the new document has seen them if the
+        // old one had (once per adoption, not per descendant).
+        if (document_instance) |new_document| if (oldDocument) |old_base| if (instance_bridge.getInstance(old_base)) |old_opaque| {
+            try heading_offsets.adopted(@ptrCast(@alignCast(old_opaque)), new_document);
+        };
 
         // Step 3.1: For each shadow-including inclusive descendant in tree order
         for (0..descendants.len) |idx| {

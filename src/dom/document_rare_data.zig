@@ -93,6 +93,10 @@ pub const DocumentRareData = struct {
     /// Range the document made for its whole life instead, so it needs no
     /// second hand-out.
     sequential_start_unset: bool = false,
+    /// Whether this document ever had an element with a headingoffset or
+    /// headingreset attribute (dom.heading_offsets; sticky): until it has,
+    /// :heading skips HTML's computed heading offset walk.
+    heading_offsets_seen: bool = false,
     activated_element: ?same_object.Link = null,
 
     /// The pointer lock element (Pointer Lock 2.0) and the

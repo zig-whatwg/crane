@@ -9,6 +9,8 @@ const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 const engine = @import("engine");
+const dom = @import("dom");
+const runtime = @import("runtime");
 
 fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     const Run = struct {
@@ -152,6 +154,138 @@ fn headingLevels() !void {
 
 test "the :heading() level counts the heading offset of the element's ancestors" {
     try onFreshThread(headingLevels);
+}
+
+// :heading skips the offset walk while its document has never had a
+// headingoffset or headingreset attribute (dom.heading_offsets: a sticky bit
+// in the Document's rare data, set by every path that gives an element one of
+// them - main's design 2026-11-21). Each case is a fresh Browser, so its
+// document starts with the bit clear.
+
+/// The Document the page's global `name` names.
+fn documentOf(browser: *browser_mod.Browser, name: []const u8) !*runtime.Instance {
+    var buf: [64]u8 = undefined;
+    const held = try browser.evaluateScript(try std.fmt.bufPrint(&buf, "globalThis.{s}", .{name}));
+    defer held.release();
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    return engine.convertToPlatformObject(realm, held.borrow()) orelse error.NotAPlatformObject;
+}
+
+fn rareDataOf(document: *runtime.Instance) !?*dom.document_rare_data.DocumentRareData {
+    const internal = dom.document_internals.getInternal(document) orelse return error.NoDocumentState;
+    return internal.rareData();
+}
+
+const level_of =
+    \\globalThis.levelOf = (el) => { for (let n = 1; n <= 9; n++) if (el.matches(':heading(' + n + ')')) return n; return 0; };
+    \\0;
+;
+
+fn headingOffsetsSticky() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    // Two offsets; removing one leaves the other counting (the bit is not
+    // cleared by a removal), and a later one elsewhere counts too.
+    try run(browser,
+        \\document.body.innerHTML = '';
+        \\globalThis.a = document.createElement('div'); a.setAttribute('headingoffset', '1');
+        \\globalThis.b = a.appendChild(document.createElement('div')); b.setAttribute('headingoffset', '2');
+        \\globalThis.h = b.appendChild(document.createElement('h1')); document.body.appendChild(a);
+        \\0;
+    );
+    try expectTrue(browser, "levelOf(h) === 4");
+    try expectTrue(browser, "a.removeAttribute('headingoffset'); levelOf(h) === 3");
+    try expectTrue(browser, "b.removeAttribute('headingoffset'); levelOf(h) === 1");
+    try expectTrue(browser, "a.toggleAttribute('headingreset'); b.setAttribute('headingoffset', '1'); levelOf(h) === 2");
+}
+
+test "a document's heading offsets stay seen after their attributes are removed" {
+    try onFreshThread(headingOffsetsSticky);
+}
+
+fn headingOffsetsAdopted() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    // Set in another document, then adopted into this one, which never had
+    // one: by appendChild, and by innerHTML (the fragment parser's document,
+    // then adoption).
+    try run(browser,
+        \\const other = document.implementation.createHTMLDocument('');
+        \\const d = other.createElement('div'); d.setAttribute('headingoffset', '2');
+        \\globalThis.h = d.appendChild(other.createElement('h1'));
+        \\document.body.appendChild(d);
+        \\0;
+    );
+    try expectTrue(browser, "h.ownerDocument === document && levelOf(h) === 3");
+}
+
+test "a heading offset set in another document counts once its element is adopted" {
+    try onFreshThread(headingOffsetsAdopted);
+}
+
+fn headingOffsetsInnerHTML() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    try expectTrue(browser, "document.body.innerHTML = '<div headingoffset=3><h2 id=x></h2></div>'; levelOf(document.getElementById('x')) === 5");
+}
+
+test "a heading offset that innerHTML parses counts" {
+    try onFreshThread(headingOffsetsInnerHTML);
+}
+
+fn headingOffsetsParsed() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    // The document's own parser (the token's attributes, set at once).
+    try expectTrue(browser, "document.open(); document.write('<div headingoffset=1><h3 id=y></h3></div>'); document.close(); levelOf(document.getElementById('y')) === 4");
+}
+
+test "a heading offset the document's own parser sets counts" {
+    try onFreshThread(headingOffsetsParsed);
+}
+
+fn headingOffsetsCloned() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    // Cloned into this document from another (importNode: the clone's list
+    // is the source's, shared).
+    try expectTrue(browser,
+        \\const other = document.implementation.createHTMLDocument('');
+        \\other.body.innerHTML = '<section headingoffset=2><h1></h1></section>';
+        \\const copy = document.importNode(other.body.firstChild, true);
+        \\document.body.appendChild(copy);
+        \\levelOf(copy.firstChild) === 3
+    );
+}
+
+test "a heading offset cloned in from another document counts" {
+    try onFreshThread(headingOffsetsCloned);
+}
+
+fn headingOffsetsNeverSeen() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try run(browser, level_of);
+    // Headings matched and other attributes written: the document makes no
+    // rare data on this path.
+    try run(browser,
+        \\document.body.innerHTML = '<section class=s data-x=1><div id=d title=t><h2 id=z></h2></div></section>';
+        \\const z = document.getElementById('z'); z.setAttribute('lang', 'en'); z.toggleAttribute('hidden');
+        \\for (let i = 0; i < 100; i++) levelOf(z);
+        \\globalThis.own = document;
+        \\0;
+    );
+    try expectTrue(browser, "levelOf(document.getElementById('z')) === 2");
+    if (try rareDataOf(try documentOf(browser, "own")) != null) return error.RareDataMade;
+}
+
+test "a document that never sets headingoffset or headingreset makes no rare data for :heading" {
+    try onFreshThread(headingOffsetsNeverSeen);
 }
 
 fn modalDialogVisibility() !void {

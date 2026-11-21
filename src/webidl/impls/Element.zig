@@ -1273,6 +1273,11 @@ fn appendAttribute(
     errdefer dom.attribute_values.release(scope, id);
     const entry: AttributeEntryIds = .{ .name = name, .value = id };
 
+    // dom.heading_offsets: the node document has seen a headingoffset or
+    // headingreset attribute (one static-id compare; before the append, so
+    // that out of memory leaves the list as it was).
+    if (dom.heading_offsets.names(name)) try noteHeadingOffset(instance);
+
     // Step 1: "Append attribute to element's attribute list." The list may
     // move: it holds ids, and a view's bytes are its records'.
     try internal.data.appendAttribute(scope, entry);
@@ -1454,6 +1459,7 @@ fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.e
     defer if (on_heap) scope.allocator.free(entries);
     var made: usize = 0;
     errdefer for (entries[0..made]) |entry| ElementData.releaseEntry(scope, entry);
+    var heading_offset = false;
     for (attributes, entries) |attribute, *entry| {
         const name = try dom.attribute_names.intern(scope, attribute.namespace, attribute.prefix, attribute.local_name);
         const value = dom.attribute_values.intern(scope, attribute.value) catch |err| {
@@ -1462,7 +1468,9 @@ fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.e
         };
         entry.* = .{ .name = name, .value = value };
         made += 1;
+        heading_offset = heading_offset or dom.heading_offsets.names(name);
     }
+    if (heading_offset) try noteHeadingOffset(element);
     try internal.data.adoptEntries(scope, entries, cache);
     made = 0;
     handleSetAttributes(element, internal, scope, entries, false);
@@ -1485,8 +1493,24 @@ fn cloneAttributesHook(copy: *runtime.Instance, node: *runtime.Instance) dom.ele
     const on_heap = count > stack.len;
     const entries = if (on_heap) try scope.allocator.alloc(AttributeEntryIds, count) else stack[0..count];
     defer if (on_heap) scope.allocator.free(entries);
-    for (entries, 0..) |*entry, i| entry.* = internal.data.storedAt(i).?;
+    var heading_offset = false;
+    for (entries, 0..) |*entry, i| {
+        entry.* = internal.data.storedAt(i).?;
+        heading_offset = heading_offset or dom.heading_offsets.names(entry.name);
+    }
+    // dom.heading_offsets: the copy's node document - another document's,
+    // for importNode - has seen the attribute now.
+    if (heading_offset) try noteHeadingOffset(copy);
     handleSetAttributes(copy, internal, scope, entries, true);
+}
+
+/// dom.heading_offsets.note for `element`'s node document: it has an element
+/// with a headingoffset or headingreset attribute.
+fn noteHeadingOffset(element: *runtime.Instance) error{OutOfMemory}!void {
+    const base = dom.instance_bridge.getNodeBase(element) orelse return;
+    if (!base.documentIsLive()) return;
+    const document = base.documentInstance() orelse return;
+    try dom.heading_offsets.note(document);
 }
 
 /// `dom.element_attributes.count`.
