@@ -2628,6 +2628,18 @@ fn startFetch(record: *Navigation) void {
         // A frame's blob is obtained for its reserved environment, by its
         // storage key (`reservedBlobStorageKey`); a top-level navigation's
         // is not checked.
+        //
+        // Stated, the one fetch still made in the caller (lane life1): HTML
+        // resolves the URL's blob URL entry when the URL is parsed and reads
+        // it "in parallel". Reading it here, at the navigation's start, gives
+        // the same bytes - a blob is immutable, and a URL revoked after the
+        // navigation began still loads. Reading it from the navigation's task
+        // needs the entry captured here (File API "resolve a blob URL"),
+        // which scheme fetch then authorizes strictly by storage key; the
+        // store's navigation lookup keeps its older comparison for a reserved
+        // navigation client's key ("- -" identity, BlobURLStore.
+        // legacyKeysEqual), which moves with streamnav's captured entries
+        // (row 115 Q18).
         const blob_storage_key = if (destination == .document) null else reservedBlobStorageKey(allocator, record.integration, url) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -2651,25 +2663,69 @@ fn startFetch(record: *Navigation) void {
         record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
+    // Navigate step 24.10: "attempt to populate the history entry's
+    // document" runs in parallel - its fetch is not the caller's. data:,
+    // file: and every other scheme this engine answers without the network
+    // are fetched by the navigation's own task (`fetchWithoutNetwork`),
+    // which then goes on as the queued "afterDocumentPopulated" steps do
+    // (`runCommit`): the commit keeps the place in the queue it had when the
+    // fetch was made here, and the caller never waits for a file read.
+    // Chrome (a URLLoader in the network service, or the browser process's
+    // file and data URL loaders), Firefox and Safari (their channels) load
+    // each of these schemes asynchronously.
+    queueNavigationTask(record.integration, record.id, &fetchWithoutNetwork);
+}
+
+/// Navigate step 24.10's fetch for a navigation `startFetch` gave no
+/// network fetch (data:, file:, and the schemes Fetch answers with a
+/// network error), from the navigation's own task: the response, then
+/// runCommit's steps in the same task. Nothing when the navigation ended
+/// before its task ran (a later navigation replaced it, its navigable went).
+fn fetchWithoutNetwork(context: ?*anyopaque) void {
+    const ticket = Ticket.of(context orelse return);
+    if (navigationById(ticket.navigables, ticket.id)) |record| {
+        if (record.response == null and isOngoing(record.integration, record.id)) fetchResourceWithoutNetwork(record);
+    }
+    // Redeems the ticket.
+    runCommit(context);
+}
+
+/// `fetchWithoutNetwork`'s fetch: `record.response`, a network error when
+/// the request cannot be made. Runs no script.
+fn fetchResourceWithoutNetwork(record: *Navigation) void {
+    const allocator = record.allocator;
+    const url = record.url;
+    const scheme = navigate_steps.schemeOf(url);
+    const destination: navigation_fetch.NavigationFetchOptions.Destination = if (record.integration.iframe_element) |element_ptr|
+        switch (dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe) {
+            .iframe => .iframe,
+            .frame => .frame,
+            .object => .object,
+            .embed => .embed,
+        }
+    else
+        .document;
     // data:/file: bypass main fetch. Run its steps 4 and 7 here:
     // monitored policies report, then enforced policies can block.
     if (std.mem.eql(u8, scheme, "data") or std.mem.eql(u8, scheme, "file")) {
         if (record.initiator_policy_container) |*container| {
             if (destination != .document and !container.csp_list.isEmpty()) {
+                // With no response (out of memory even for a network error),
+                // runCommit ends the navigation.
                 const request = navigation_fetch.navigationRequest(allocator, url, .{
                     .destination = destination,
                     .mode = .navigate,
                     .policy_container = container,
                 }) catch {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+                    return;
                 };
                 defer request.deinit();
                 if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
                 fetch_mod.algorithms.csp_check.reportViolationsForRequest(request);
                 if (fetch_mod.algorithms.csp_check.shouldRequestBeBlocked(request)) {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+                    return;
                 }
             }
         }
@@ -2678,8 +2734,7 @@ fn startFetch(record: *Navigation) void {
         .destination = destination,
         .mode = .navigate,
         .redirect = .follow,
-    }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
-    queueNavigationTask(record.integration, record.id, &runCommit);
+    }) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
 }
 
 /// Whether two or more of `integration`'s ancestor navigables show a
