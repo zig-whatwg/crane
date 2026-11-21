@@ -8,7 +8,9 @@
 //!
 //! A27 - insertHTML after an empty line's placeholder br replaces it:
 //! `<p><br>{}</p>` + "abc" gives `<p>abc</p>` (Chrome 157 and Firefox 160;
-//! editing/run/inserthtml.html PPF).
+//! editing/run/inserthtml.html PPF). Only a sole line break goes:
+//! `<p><span><!--foo--><br><!--bar--></span>{}</p>` + "<!--abc-->" keeps the
+//! span and its br (Firefox 160; Crane at generation 235).
 const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 const harness = @import("editing4_harness.zig");
@@ -35,6 +37,10 @@ test "formatBlock does not merge into a block that was already there" {
 const placeholder_cases = [_]harness.Case{
     .{ .input = "<p><br>{}</p>", .commands = &.{.{ "inserthtml", "abc" }}, .expected = "<p>abc</p>" },
     .{ .input = "<p>{}<br></p>", .commands = &.{.{ "inserthtml", "abc" }}, .expected = "<p>abc</p>" },
+    // Only the line break itself: an inline element holding it stays
+    // before the caret (Crane before A27 and Firefox 160 pass this row;
+    // the full A/B against generation 235 lost it).
+    .{ .input = "<p><span><!--foo--><br><!--bar--></span>{}</p>", .commands = &.{.{ "inserthtml", "<!--abc-->" }}, .expected = "<p><span><!--foo--><br><!--bar--></span><!--abc--></p>" },
 };
 
 fn placeholder() !void {
