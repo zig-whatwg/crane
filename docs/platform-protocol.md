@@ -155,6 +155,7 @@ The types are the ownership rule, as in the engine protocol.
 | `Error` | `error{ OutOfMemory, NotSupported, AccessDenied, NotFound, AlreadyExists, NoSpace, Io, Canceled, Busy }` for operations that can fail. `NotSupported` only from an operation whose capability is `.unsupported`. Network failures are `HttpError` (6.7), storage failures `StoreError` (6.6), crypto failures `CryptoError` (6.8). |
 | `BrowserPlatform` | Opaque per-Browser platform state (section 3). OWNED by the Browser: `createBrowserPlatform` / `destroyBrowserPlatform`. Every per-Browser operation takes it first. |
 | `Requester` | Who asks, BORROWED for the call: `request_id: RequestId`, `tab: TabId`, `frame: FrameId`, `origin` and `top_level_origin` (serialized - the permission key's inputs, Permissions 3.2), `secure_context`, `transient_activation`. No realm or engine value crosses. |
+| `TabId` | `u64`: a top-level traversable (a tab) of a Browser, named by its top-level browsing context's id - the id the host lists (`Browser.traversableIds`) and keeps for the tab's life (the integrator's ruling B, 2026-11-21, lane life1). `0` means every top-level traversable of the Browser: an operation asked about tab 0 answers for all of them, and an event posted for tab 0 applies to each (a platform that tracks no tabs, as the headless ones, posts 0). Operations and events that name a tab: `systemVisibility`, `displayRefreshInterval`, `windowRect`/`requestWindowRect`, `cssEnvironmentVariable`, `visibility_changed`, `window_rect_changed`; the DOM providers that still pass 0 are listed where they do. |
 | `RequestId` | `u64`, unique per Browser; names a pending request for `cancelRequest`. |
 | `Reply(T)` | One asynchronous answer (section 4). OWNED by the platform from the call until it calls exactly one of `deliver` / `drop`. |
 | `EventSink` | Crane's receiver for what the platform reports unasked (section 7); given to `createBrowserPlatform`, BORROWED by the platform until `destroyBrowserPlatform` returns. |
@@ -797,7 +798,7 @@ pub const EventSink = extern struct {
 | `online_changed(bool)` | `online` / `offline` at every Window and WorkerGlobalScope (HTML 8.10.1.3) |
 | `languages_changed` | `languagechange` (HTML 8.10.1.2) |
 | `preferences_changed(UserPreferences)` | media query re-evaluation |
-| `visibility_changed(tab, Visibility)` | the document visibility steps |
+| `visibility_changed(tab, Visibility)` | DELIVERED (lane life1). HTML 6.2: the tab's traversable's system visibility state becomes the new one (src/browser/platform_events.zig `systemVisibilityChanged`; tab 0: every top-level traversable), and, when that is a change, each inclusive descendant navigable's active document gets "update the visibility state" from a task on its loop (visibilitychange; a hidden document has no rendering opportunity, a shown one asks for a frame). A document a navigable makes afterwards starts with the traversable's state ("set the initial visibility state", no event). A new traversable's initial state is `systemVisibility(browser, its TabId)` |
 | `memory_pressure(level)` | DELIVERED. `critical`: a task on the window's event loop - `engine.notifyMemoryPressure(.critical)` (a full collection) and then one release of the allocator's free memory at `.pressure` through the loop's gate (src/browser/memory_release.zig) - and a task on every running worker's loop, the same collection in the worker's agent on its own thread. `warning` and `normal`: nothing (WebKit and Firefox collect no script memory at a warning; Chromium alone sends V8 a moderate notice). The evidence is in src/browser/platform_events.zig |
 | `permission_changed(descriptor, origin, top_level_origin, state)` | an OS-governed decision changed (the user changed it in Settings), or a store entry was set; PermissionStatus `change` (Permissions 5.4) |
 | `media_devices_changed` | `devicechange` |
@@ -807,7 +808,7 @@ pub const EventSink = extern struct {
 | `position(watch, PositionResult)`, `sensor_reading(sensor, reading)`, `orientation(reading)` | the APIs' events |
 | `device_event(handle, DeviceEvent)` | HID `inputreport`, GATT `characteristicvaluechanged`, NFC `reading`, MIDI `midimessage`, disconnects |
 | `gamepad_connected(index, bool)`, `battery_changed`, `idle_changed`, `pressure_changed`, `connection_changed`, `key_session_message`, `speech_event`, `virtual_keyboard_geometry` | the APIs' events |
-| `window_rect_changed(tab, Rect)` | resize steps |
+| `window_rect_changed(tab, Rect)` | DELIVERED (lane life1; the integrator's ruling C, 2026-11-21: no viewport operation of its own). The rect's size, in CSS pixels, is the tab's top-level viewport - a headless window has no chrome (src/browser/viewport.zig; tab 0: every top-level traversable): innerWidth/innerHeight and the media queries read it, and a change asks for a rendering opportunity, where the resize steps fire `resize` (update the rendering step 8) and the media queries report their changes (step 10). A host's override (`viewport.setOverride`, CDP Emulation.setDeviceMetricsOverride) wins while set. `screen_changed` still reaches nothing |
 
 ## 8. The permission model
 

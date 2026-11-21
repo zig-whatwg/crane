@@ -47,6 +47,8 @@ These are listed here by reference. Their license texts are kept beside them:
 
 Versions and commits for the image codecs are in `src/platform/kit/image_codecs/README.md`.
 
+- Chrome DevTools Protocol definitions (BSD-3-Clause, Copyright 2014 The Chromium Authors): `specs/devtools-protocol/browser_protocol.json` and `js_protocol.json`, from the `devtools-protocol` npm package 0.0.1717327, license text in `specs/devtools-protocol/LICENSE`, version and checksums in `specs/devtools-protocol/PIN.md`. The types generated from them (`src/devtools/protocol/`, by `tools/devtools_protocol_gen.zig`) carry their descriptions; `GET /json/protocol` serves the definitions.
+
 - curl (the curl license, MIT-style: `COPYING` in its tree), pinned in `build.zig.zon` as Crane's fork, https://github.com/zig-whatwg/curl branch `crane/8.18.0` at `8300fa889e5e2177068328fcf14eec240375cbc1`: curl 8.18.0 (tag `curl-8_18_0`) plus three commits - the Zig packaging of allyourcodebase/curl at `5184bb9ff29cb0878be7983734c6852602570ea5` (MIT License (Expat), Copyright (c) contributors; text in the fork's `zig/LICENSE-allyourcodebase-curl`), a CONNECT_ONLY connection left without curl's HTTP/2 filter, and `CURLOPT_HTTP_LENIENT`. The two curl changes are Crane's own code, drafted for upstream curl.
 
 ## License texts

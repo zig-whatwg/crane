@@ -140,11 +140,6 @@ pub const IFrameState = core.IFrameState;
 pub const IFrameError = core.IFrameError;
 pub const UIBackend = core.UIBackend;
 pub const StubUIBackend = core.StubUIBackend;
-pub const AnimationFrameScheduler = core.AnimationFrameScheduler;
-pub const FrameTimingBackend = core.FrameTimingBackend;
-pub const StubFrameTimingBackend = core.StubFrameTimingBackend;
-pub const MockFrameTimingBackend = core.MockFrameTimingBackend;
-pub const DOMHighResTimeStamp = core.DOMHighResTimeStamp;
 
 // Web Workers (§10)
 pub const workers = core.workers;

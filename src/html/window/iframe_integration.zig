@@ -38,9 +38,7 @@ const encoding_sniffing = html_parser.encoding_sniffing;
 const navigation_fetch = @import("../navigation/fetch_integration.zig");
 const document_type = @import("../navigation/document_type.zig");
 const navigate_steps = @import("../navigation/navigate_steps.zig");
-const clock = @import("clock");
 const infra = @import("infra");
-const platform_host = @import("host");
 
 /// Error types for iframe integration
 pub const IFrameError = error{
@@ -86,6 +84,13 @@ pub const NavigateRequest = struct {
     /// before a step of its own consumed it (window.open()'s choosing a
     /// navigable); null takes navigate step 4's snapshot.
     has_transient_activation: ?bool = null,
+    /// A "browser UI" navigation's request referrer, a URL (a host's: CDP
+    /// Page.navigate `referrer`); with `referrer_policy`. BORROWED.
+    referrer_url: ?[]const u8 = null,
+    /// Where the navigation ID of the cross-document navigation started is
+    /// written, when one started (the navigation observer's navigation_id).
+    /// BORROWED for the call.
+    started_navigation_id: ?*u64 = null,
 };
 
 /// An engine context this integration made for a content navigable it no
@@ -154,64 +159,6 @@ pub const XmlResponse = struct {
     type: []const u8,
 };
 
-/// Result of fetching content from a URL
-pub const FetchedContent = struct {
-    /// The raw bytes fetched
-    bytes: []u8,
-    /// Content-Type header value (null if not available)
-    content_type: ?[]u8,
-    /// Allocator used for bytes (for cleanup)
-    allocator: Allocator,
-
-    pub fn deinit(self: *FetchedContent) void {
-        self.allocator.free(self.bytes);
-        if (self.content_type) |ct| {
-            self.allocator.free(ct);
-        }
-    }
-};
-
-/// Percent-decode a string (simplified URL decoding)
-/// Decodes %XX sequences to their byte values
-fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
-    // Calculate output size (will be <= input size)
-    var output_size: usize = 0;
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            // Check if next two chars are hex digits
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |_| {
-                output_size += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        output_size += 1;
-        i += 1;
-    }
-
-    const output = try allocator.alloc(u8, output_size);
-    errdefer allocator.free(output);
-
-    i = 0;
-    var j: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |byte| {
-                output[j] = byte;
-                j += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        output[j] = input[i];
-        j += 1;
-        i += 1;
-    }
-
-    return output;
-}
-
 /// Integration state for an iframe element
 /// This struct manages the relationship between HTMLIFrameElement and BrowsingContext
 /// How the host page's top-level traversable gets its realms: from the host
@@ -263,18 +210,12 @@ pub const IFrameIntegration = struct {
     /// The parent browsing context (container document's context)
     parent_context: ?*BrowsingContext,
 
-    /// Cached src URL (null if no src attribute)
-    src_url: ?[]const u8,
-
     /// The host bytes of the document origin the last navigation recorded on
-    /// the WindowProxy. `Origin` BORROWS its host, and navigateToSrc used to
-    /// hand it a slice of the URL it was called with - a buffer every caller
-    /// frees once the call returns - so the frame's origin read freed memory
-    /// and `iframe.contentDocument` came back null. Owned here instead.
+    /// the WindowProxy. `Origin` BORROWS its host, and a commit that handed
+    /// it a slice of the URL it was called with - a buffer every caller frees
+    /// once the call returns - made the frame's origin read freed memory, and
+    /// `iframe.contentDocument` came back null. Owned here instead.
     document_origin_host: ?[]u8 = null,
-
-    /// Cached srcdoc content (null if no srcdoc attribute)
-    srcdoc_content: ?[]const u8,
 
     /// MIME type essence of the document the last navigation committed
     /// (e.g. "text/css"). Null until one commits. Owned.
@@ -365,16 +306,11 @@ pub const IFrameIntegration = struct {
     cleanup_in_progress: bool,
 
     // ========================================================================
-    // Script Execution Callbacks (Engine-Agnostic)
+    // Engine Callbacks (Engine-Agnostic)
     // ========================================================================
     //
     // These callbacks are set by modules with V8 access (e.g., HTMLIFrameElement impl)
-    // to allow script execution without directly importing v8 in this module.
-
-    /// Callback to execute a script string in the iframe's realm
-    /// Parameters: (runtime_context - the realm, script_source) -> void
-    /// Set by modules with engine access
-    execute_script_callback: ?*const fn (?*anyopaque, []const u8) void,
+    // so this module reaches the realm without importing v8.
 
     /// Callback to update the Location URL in the iframe's window
     /// Parameters: (runtime_context - the realm, url, same_document) -> void:
@@ -530,6 +466,19 @@ pub const IFrameIntegration = struct {
     /// before a commit, taken when the document is made, cleared after.
     next_document_state: ?u64 = null,
 
+    /// The navigation whose commit runs now (navigate step 7's navigation
+    /// ID; 0 for none: an initial about:blank document, or a commit no
+    /// navigation record drives), and whether its document is a network
+    /// error's error document - what the document factory tells the
+    /// Browser's navigation observer when the new document is made
+    /// (html_core.navigation.observer, `committed`). Set just before a
+    /// commit, cleared after.
+    committing_navigation_id: u64 = 0,
+    committing_error_page: bool = false,
+    /// The navigation whose `committed` milestone the document factory last
+    /// reported: the commit reads it back to know its document was made.
+    committed_navigation_id: u64 = 0,
+
     /// The form control states a back/forward traversal's entry persisted
     /// ("restore persisted state" step 2), BORROWED from the joint history:
     /// the next document this navigable makes takes them when it is made,
@@ -568,8 +517,6 @@ pub const IFrameIntegration = struct {
             .window_proxy = null,
             .state = .uninitialized,
             .parent_context = null,
-            .src_url = null,
-            .srcdoc_content = null,
             .loaded_content_type = null,
             .loaded_url = null,
             .name = "",
@@ -582,8 +529,7 @@ pub const IFrameIntegration = struct {
             .create_document_callback = null,
             .cleanup_callback = null,
             .cleanup_in_progress = false,
-            // Script execution callbacks
-            .execute_script_callback = null,
+            // Engine callbacks
             .update_location_callback = null,
             .parse_html_callback = null,
             .fire_load_callback = null,
@@ -625,16 +571,10 @@ pub const IFrameIntegration = struct {
         }
 
         // Free allocated strings
-        if (self.src_url) |url| {
-            self.allocator.free(url);
-        }
         if (self.document_origin_host) |host| {
             self.allocator.free(host);
         }
         if (self.creator_origin) |origin| self.allocator.free(origin);
-        if (self.srcdoc_content) |content| {
-            self.allocator.free(content);
-        }
         if (self.loaded_content_type) |ct| {
             self.allocator.free(ct);
         }
@@ -749,7 +689,6 @@ pub const IFrameIntegration = struct {
         self.cleanup_callback = null;
         self.parse_html_callback = null;
         self.parse_xml_callback = null;
-        self.execute_script_callback = null;
         self.update_location_callback = null;
         self.navigate_callback = null;
         self.ongoing_navigation = .none;
@@ -955,48 +894,10 @@ pub const IFrameIntegration = struct {
         navigate_fn(self, url, request);
     }
 
-    /// Called when iframe is inserted into a document
-    /// Creates the nested browsing context per HTML §7.5.4
-    pub fn onInsertedIntoDocument(
-        self: *IFrameIntegration,
-        parent_ctx: *BrowsingContext,
-        container_origin: Origin,
-    ) IFrameError!void {
-        if (self.state != .uninitialized) {
-            // Already initialized - this shouldn't happen but handle gracefully
-            return;
-        }
-
-        self.parent_context = parent_ctx;
-        self.container_origin = container_origin;
-
-        // Create the nested browsing context
-        const nested_ctx = BrowsingContext.initChild(self.allocator, parent_ctx) catch {
-            return IFrameError.ContextCreationFailed;
-        };
-
-        log.debug("[IFrameIntegration.onInsertedIntoDocument] Created BC {*} for integration {*} (via onInsertedIntoDocument)\n", .{ nested_ctx, self });
-        self.browsing_context = nested_ctx;
-
-        // Set the target name if we have one
-        if (self.name.len > 0) {
-            nested_ctx.setTargetName(self.name) catch {
-                return IFrameError.OutOfMemory;
-            };
-        }
-
-        // Create the WindowProxy
-        self.window_proxy = WindowProxy.init(self.allocator, nested_ctx);
-
-        self.state = .creating_initial_document;
-
-        // Navigate to initial content
-        try self.navigateToInitialContent();
-    }
-
     /// Lazily ensure the browsing context exists.
-    /// This is called when contentWindow is accessed and the browsing context
-    /// hasn't been created yet (e.g., if onInsertedIntoDocument wasn't called).
+    /// This is called when the navigable is created (HTMLIFrameElement's
+    /// createBrowsingContextAndDocument) or contentWindow is accessed before
+    /// it was.
     ///
     /// Parameters:
     /// - parent_bc_opaque: Opaque pointer to the parent Window's browsing context
@@ -1139,165 +1040,6 @@ pub const IFrameIntegration = struct {
         // integrationOfBrowsingContext, two Browsers in one process).
         if (self.deinit_callback) |gone| gone(self);
         self.state = .discarded;
-    }
-
-    /// Navigate to the initial content based on src/srcdoc attributes
-    fn navigateToInitialContent(self: *IFrameIntegration) IFrameError!void {
-        // Per spec: srcdoc takes precedence over src
-        if (self.srcdoc_content) |content| {
-            try self.navigateToSrcdoc(content);
-            return;
-        }
-
-        if (self.src_url) |url| {
-            try self.navigateToSrc(url);
-            return;
-        }
-
-        // No src or srcdoc - navigate to about:blank
-        try self.navigateToAboutBlank();
-    }
-
-    /// Navigate to about:blank
-    fn navigateToAboutBlank(self: *IFrameIntegration) IFrameError!void {
-        // Set the origin to inherit from container document
-        // Per spec, about:blank inherits origin from container
-        if (self.window_proxy) |*proxy| {
-            proxy.setDocumentOrigin(self.container_origin);
-        }
-
-        self.state = .initial_document_ready;
-        // In a full implementation, we would create the about:blank Document here
-        // For now, we just mark the state
-    }
-
-    /// Navigate to srcdoc content
-    /// Per HTML Standard §4.8.5.1 - srcdoc attribute processing
-    ///
-    /// srcdoc content is always treated as UTF-8 since it comes from the
-    /// parent document's parsing (which normalizes to UTF-8).
-    fn navigateToSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
-        // Debug: trace what content is being parsed
-        const time_ns = clock.wallNanos();
-        const preview_len = @min(150, content.len);
-        log.debug("[navigateToSrcdoc] time={d}ns content_len={d} content={s}...\n", .{ time_ns, content.len, content[0..preview_len] });
-
-        // srcdoc documents inherit origin from container
-        if (self.window_proxy) |*proxy| {
-            proxy.setDocumentOrigin(self.container_origin);
-        }
-
-        self.state = .navigating;
-
-        // Use the parse_html_callback if available - this uses DomTreeAdapter
-        // to properly populate the document with parsed content that JavaScript
-        // can access via DOM APIs like getElementById(), querySelector(), etc.
-        if (self.parse_html_callback) |parse_html| {
-            if (self.browsing_context) |ctx| {
-                _ = parse_html(self.runtime_context, ctx, content, null, .{});
-            }
-
-            // Update the iframe's Location URL to about:srcdoc
-            // Per HTML spec, srcdoc documents have URL "about:srcdoc"
-            self.updateLocationUrl("about:srcdoc");
-
-            self.state = .ready;
-            return;
-        }
-
-        // Fallback: Parse without DOM integration (scripts won't have access to parsed DOM)
-        // This path is only used when parse_html_callback is not set.
-        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content) catch {
-            self.state = .ready;
-            return IFrameError.ParseError;
-        };
-        defer {
-            tree_builder.deinit();
-            self.allocator.destroy(tree_builder);
-        }
-
-        // Create a Document instance using the callback if available.
-        // The callback handles creating the runtime.Instance and linking it
-        // to the BrowsingContext and Window.
-        if (self.create_document_callback) |create_doc| {
-            if (self.browsing_context) |ctx| {
-                _ = create_doc(self.runtime_context, ctx);
-            }
-        }
-
-        // Update the iframe's Location URL to about:srcdoc
-        // Per HTML spec, srcdoc documents have URL "about:srcdoc"
-        self.updateLocationUrl("about:srcdoc");
-
-        // Execute inline scripts in the parsed document
-        // Per HTML Standard §4.12.1.1, scripts execute in document order
-        self.executeScriptsInTree(tree_builder.document);
-
-        self.state = .ready;
-    }
-
-    /// Navigate the iframe's content navigable to `url` - HTML Standard §7.4.6
-    /// "load a document".
-    ///
-    /// `url` must already be absolute. Resolving the src attribute against the
-    /// container document belongs to "process the iframe attributes" on the
-    /// element, which is the only place that knows the container document; this
-    /// function has no access to it and will not guess.
-    ///
-    /// Steps:
-    /// 1. Fetch the resource through the navigation fetch
-    ///    (`navigation/fetch_integration.zig`), which reaches the network via
-    ///    the Fetch algorithm and libcurl.
-    /// 2. Take the essence of the response's Content-Type - the "computed type".
-    /// 3. Select a document class for that type and build the Document the spec
-    ///    names for it.
-    /// 4. Record the committed URL and content type so the element can apply
-    ///    them to the Document and fire the load event.
-    ///
-    /// Returns `IFrameError.ExternalHandoff` when the computed type is one the
-    /// spec hands to external software (a download). That is not a failure, but
-    /// it is not a navigation either: no Document is committed and no load event
-    /// is owed.
-    pub fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
-        self.state = .navigating;
-
-        // javascript: URLs are never fetched. Per HTML §7.4.2 the script runs in
-        // the iframe's own realm; only a string result would replace the
-        // document, which Crane does not yet implement.
-        if (std.mem.startsWith(u8, url, "javascript:")) {
-            const script = url["javascript:".len..];
-            if (self.execute_script_callback) |exec| {
-                exec(self.runtime_context, script);
-            }
-            self.updateLocationUrl(url);
-            try self.recordCommit(url, "text/html");
-            self.state = .ready;
-            return;
-        }
-
-        var response = navigation_fetch.fetchNavigationResource(self.allocator, url, .{
-            .destination = .iframe,
-            .mode = .navigate,
-            .redirect = .follow,
-        }) catch |err| {
-            self.state = .ready;
-            return switch (err) {
-                error.OutOfMemory => IFrameError.OutOfMemory,
-                error.InvalidUrl => IFrameError.InvalidURL,
-                error.SecurityError => IFrameError.SandboxViolation,
-                else => IFrameError.NavigationFailed,
-            };
-        };
-        defer response.deinit();
-
-        // A network error is not a document, and neither is a 204/205. Leaving
-        // the previous document in place is what the synchronous path has
-        // always done.
-        if (response.is_network_error or !navigation_fetch.shouldNavigationProceed(response.status)) {
-            self.state = .ready;
-            return IFrameError.NavigationFailed;
-        }
-        return self.commitResponse(url, &response);
     }
 
     /// Make the document `response` - the fetch of `url` - describes this
@@ -1562,23 +1304,14 @@ pub const IFrameIntegration = struct {
             }
         }
 
-        // Fallback for a navigable with no realm yet: parse into a detached
-        // tree so at least the scripts run. Nothing can reach this DOM.
-        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content) catch {
-            return IFrameError.ParseError;
-        };
-        defer {
-            tree_builder.deinit();
-            self.allocator.destroy(tree_builder);
-        }
-
+        // With no realm to parse in, the document is created empty
+        // (commitXmlDocument does the same): no script can run without one,
+        // and a tree parsed apart from the document is a DOM nothing reaches.
         if (self.create_document_callback) |create_doc| {
             if (self.browsing_context) |ctx| {
                 _ = create_doc(self.runtime_context, ctx);
             }
         }
-
-        self.executeScriptsInTree(tree_builder.document);
         return null;
     }
 
@@ -1672,121 +1405,6 @@ pub const IFrameIntegration = struct {
         }
     }
 
-    /// Fetch content from a file:// URL
-    fn fetchFileContent(self: *IFrameIntegration, url: []const u8) !FetchedContent {
-        // Extract file path from file:// URL
-        var file_path: []const u8 = undefined;
-
-        if (std.mem.startsWith(u8, url, "file:///")) {
-            // file:///path/to/file -> /path/to/file
-            file_path = url[7..];
-        } else if (std.mem.startsWith(u8, url, "file://")) {
-            // file://host/path (network path) - not supported
-            return error.UnsupportedScheme;
-        } else {
-            return error.InvalidURL;
-        }
-
-        // Read the file
-        const io = platform_host.io();
-        const file = platform_host.cwd().openFile(io, file_path, .{}) catch {
-            return error.FileReadError;
-        };
-        defer file.close(io);
-
-        // Read up to 10MB (reasonable limit for iframe content)
-        const max_size = 10 * 1024 * 1024;
-        var file_reader = file.reader(io, &.{});
-        const bytes = file_reader.interface.allocRemaining(self.allocator, .limited(max_size)) catch {
-            return error.FileReadError;
-        };
-
-        // Try to read .headers file for Content-Type
-        var content_type: ?[]u8 = null;
-        const headers_path = std.fmt.allocPrint(self.allocator, "{s}.headers", .{file_path}) catch null;
-        if (headers_path) |hp| {
-            defer self.allocator.free(hp);
-            content_type = self.readContentTypeFromHeadersFile(hp);
-        }
-
-        return FetchedContent{
-            .bytes = bytes,
-            .content_type = content_type,
-            .allocator = self.allocator,
-        };
-    }
-
-    /// Read Content-Type from a .headers file (WPT convention)
-    /// Format: "Content-Type: text/html; charset=big5"
-    fn readContentTypeFromHeadersFile(self: *IFrameIntegration, headers_path: []const u8) ?[]u8 {
-        const io = platform_host.io();
-        const file = platform_host.cwd().openFile(io, headers_path, .{}) catch return null;
-        defer file.close(io);
-
-        // Read headers file (usually small)
-        var buf: [4096]u8 = undefined;
-        const bytes_read = file.readPositional(io, &.{&buf}, 0) catch return null;
-        const content = buf[0..bytes_read];
-
-        // Parse Content-Type header
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, &[_]u8{ ' ', '\t', '\r' });
-            if (std.ascii.startsWithIgnoreCase(trimmed, "content-type:")) {
-                const value = std.mem.trim(u8, trimmed["content-type:".len..], &[_]u8{ ' ', '\t' });
-                return self.allocator.dupe(u8, value) catch null;
-            }
-        }
-
-        return null;
-    }
-
-    /// Parse a data: URL and return the content
-    /// Format: data:[<mediatype>][;base64],<data>
-    fn parseDataUrl(self: *IFrameIntegration, url: []const u8) !FetchedContent {
-        if (!std.mem.startsWith(u8, url, "data:")) {
-            return error.InvalidURL;
-        }
-
-        const rest = url[5..]; // Skip "data:"
-
-        // Find the comma separating metadata from data
-        const comma_idx = std.mem.indexOf(u8, rest, ",") orelse return error.InvalidURL;
-
-        const metadata = rest[0..comma_idx];
-        const data = rest[comma_idx + 1 ..];
-
-        // Check for base64 encoding
-        const is_base64 = std.mem.endsWith(u8, metadata, ";base64");
-
-        // Extract content type
-        var content_type: ?[]u8 = null;
-        const ct_end = if (is_base64) metadata.len - 7 else metadata.len;
-        if (ct_end > 0) {
-            content_type = try self.allocator.dupe(u8, metadata[0..ct_end]);
-        }
-
-        // Decode the data
-        const bytes = if (is_base64) blk: {
-            // Base64 decode
-            const decoded_size = std.base64.standard.Decoder.calcSizeForSlice(data) catch return error.InvalidURL;
-            const decoded = try self.allocator.alloc(u8, decoded_size);
-            errdefer self.allocator.free(decoded);
-            std.base64.standard.Decoder.decode(decoded, data) catch return error.InvalidURL;
-            break :blk decoded;
-        } else blk: {
-            // Percent-decode (simplified: just unescape %XX sequences)
-            const decoded = try percentDecode(self.allocator, data);
-            break :blk decoded;
-        };
-
-        return FetchedContent{
-            .bytes = bytes,
-            .content_type = content_type,
-            .allocator = self.allocator,
-        };
-    }
-
     /// Parse origin from URL (simplified)
     fn parseOriginFromURL(self: *IFrameIntegration, url: []const u8) Origin {
         // Simplified parsing - in real implementation, use full URL parser
@@ -1840,57 +1458,6 @@ pub const IFrameIntegration = struct {
             }
         }
         return Origin.init(scheme, authority, default_port);
-    }
-
-    /// Set the src attribute value
-    /// Per spec, setting src triggers navigation
-    pub fn setSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
-        // Free old URL if any
-        if (self.src_url) |old_url| {
-            self.allocator.free(old_url);
-        }
-
-        // Copy new URL
-        self.src_url = self.allocator.dupe(u8, url) catch {
-            return IFrameError.OutOfMemory;
-        };
-
-        // If we have a browsing context, navigate
-        if (self.browsing_context != null and self.state != .uninitialized and self.state != .discarded) {
-            try self.navigateToSrc(url);
-        }
-    }
-
-    /// Get the src attribute value
-    pub fn getSrc(self: *const IFrameIntegration) ?[]const u8 {
-        return self.src_url;
-    }
-
-    /// Set the srcdoc attribute value
-    /// Per spec, srcdoc takes precedence over src
-    pub fn setSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
-        // Free old content if any
-        if (self.srcdoc_content) |old_content| {
-            self.allocator.free(old_content);
-        }
-
-        // Copy new content - CRITICAL: we must use this copy, not the original!
-        // The original 'content' may be a slice into a DOMString that gets freed
-        // after this function returns.
-        self.srcdoc_content = self.allocator.dupe(u8, content) catch {
-            return IFrameError.OutOfMemory;
-        };
-
-        // If we have a browsing context, navigate
-        // IMPORTANT: Use self.srcdoc_content (the owned copy), NOT content (potentially dangling)
-        if (self.browsing_context != null and self.state != .uninitialized and self.state != .discarded) {
-            try self.navigateToSrcdoc(self.srcdoc_content.?);
-        }
-    }
-
-    /// Get the srcdoc attribute value
-    pub fn getSrcdoc(self: *const IFrameIntegration) ?[]const u8 {
-        return self.srcdoc_content;
     }
 
     /// Set the name attribute value
@@ -1971,74 +1538,6 @@ pub const IFrameIntegration = struct {
         self.iframe_sandboxing_flags = .empty;
     }
 
-    // ============================================================================
-    // Script Execution for Iframes
-    // ============================================================================
-
-    /// Execute inline scripts found in the parsed HTML tree.
-    /// This function walks the tree to find <script> elements and executes their
-    /// content in the iframe's context using the execute_script_callback.
-    ///
-    /// Per HTML Standard §4.12.1.1, scripts should execute in document order.
-    /// For simplicity, we only execute inline scripts (no external src support here).
-    pub fn executeScriptsInTree(self: *IFrameIntegration, document_node: *html_parser.TreeNode) void {
-        // Need both the realm and the script execution callback
-        const realm = self.runtime_context orelse return;
-        const execute_callback = self.execute_script_callback orelse return;
-
-        // Walk the tree and execute scripts
-        self.executeScriptsRecursive(document_node, realm, execute_callback);
-    }
-
-    /// Recursively walk the tree and execute script elements
-    fn executeScriptsRecursive(
-        self: *IFrameIntegration,
-        node: *html_parser.TreeNode,
-        realm: *anyopaque,
-        execute_callback: *const fn (?*anyopaque, []const u8) void,
-    ) void {
-        // Check if this is a script element
-        if (node.node_type == .element) {
-            if (node.local_name) |name| {
-                if (std.mem.eql(u8, name, "script")) {
-                    // No script runs when the navigable is created
-                    // sandboxed without allow-scripts.
-                    if (self.iframe_sandboxing_flags.scripts) return;
-
-                    // Get script text content from child text nodes
-                    const script_text = self.getScriptTextContent(node);
-                    if (script_text.len > 0) {
-                        // Execute via callback (which has V8 access)
-                        execute_callback(realm, script_text);
-                    }
-                }
-            }
-        }
-
-        // Recurse to children (depth-first, document order)
-        var child = node.first_child;
-        while (child) |c| {
-            self.executeScriptsRecursive(c, realm, execute_callback);
-            child = c.next_sibling;
-        }
-    }
-
-    /// Get the text content of a script element (from its child text nodes)
-    fn getScriptTextContent(self: *IFrameIntegration, script_node: *html_parser.TreeNode) []const u8 {
-        _ = self;
-
-        // Script text is in child text nodes
-        var child = script_node.first_child;
-        while (child) |c| {
-            if (c.node_type == .text) {
-                // Return the text content (simplified - doesn't concatenate multiple text nodes)
-                return c.text_content.toSlice();
-            }
-            child = c.next_sibling;
-        }
-        return "";
-    }
-
     /// Update the iframe's Location URL to reflect the navigated URL.
     /// This is called during navigation so that `location.hash`, etc. work correctly.
     fn updateLocationUrl(self: *IFrameIntegration, url: []const u8) void {
@@ -2060,6 +1559,20 @@ pub const IFrameIntegration = struct {
 // ============================================================================
 // Tests
 // ============================================================================
+
+test "IFrameIntegration navigates only through HTML navigate: no synchronous fetch-and-parse of its own" {
+    // Lane life1: a second navigation path lived here - insertion, src and
+    // srcdoc fetched (blocking), committed and parsed inside the caller -
+    // reached only by this file's unit tests, a path no browser has. A
+    // content navigable navigates through the engine's "navigate"
+    // (`navigate`, HTMLIFrameElement), whose fetch is in parallel and whose
+    // commit is a task; this pins that the copy does not come back.
+    inline for (.{ "onInsertedIntoDocument", "navigateToInitialContent", "navigateToSrc", "navigateToSrcdoc", "setSrc", "setSrcdoc", "executeScriptsInTree" }) |name| {
+        try std.testing.expect(!@hasDecl(IFrameIntegration, name));
+    }
+    try std.testing.expect(!@hasField(IFrameIntegration, "execute_script_callback"));
+    try std.testing.expect(@hasDecl(IFrameIntegration, "navigate"));
+}
 
 test "IFrameIntegration - init creates uninitialized state" {
     const allocator = std.testing.allocator;
@@ -2085,7 +1598,7 @@ test "IFrameIntegration - a pending policy container is taken by the commit, or 
     {
         var integration = IFrameIntegration.init(allocator);
         defer integration.deinit();
-        try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+        _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
         integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
         // A second set releases the first.
         integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "origin"));
@@ -2100,13 +1613,13 @@ test "IFrameIntegration - a pending policy container is taken by the commit, or 
     {
         var integration = IFrameIntegration.init(allocator);
         defer integration.deinit();
-        try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+        _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
         integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
         integration.onRemovedFromDocument();
     }
 }
 
-test "IFrameIntegration - insertion creates browsing context" {
+test "IFrameIntegration - the content navigable is a child browsing context of its container's" {
     const allocator = std.testing.allocator;
     var navigables = Navigables.init(allocator);
     defer navigables.deinit();
@@ -2117,9 +1630,8 @@ test "IFrameIntegration - insertion creates browsing context" {
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
 
-    const container_origin = Origin.init("https", "example.com", 443);
-
-    try integration.onInsertedIntoDocument(parent_ctx, container_origin);
+    integration.container_origin = Origin.init("https", "example.com", 443);
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     // Should have created nested browsing context
     try std.testing.expect(integration.browsing_context != null);
@@ -2143,7 +1655,7 @@ test "IFrameIntegration - removal discards browsing context" {
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
 
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     integration.onRemovedFromDocument();
 
@@ -2151,43 +1663,6 @@ test "IFrameIntegration - removal discards browsing context" {
     if (integration.browsing_context) |ctx| {
         try std.testing.expect(ctx.is_closed);
     }
-}
-
-test "IFrameIntegration - setSrc triggers navigation" {
-    const allocator = std.testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer parent_ctx.deinit();
-
-    var integration = IFrameIntegration.init(allocator);
-    defer integration.deinit();
-
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.init("https", "example.com", 443));
-
-    try integration.setSrc("https://example.com/page");
-
-    try std.testing.expect(integration.getSrc() != null);
-    try std.testing.expectEqualStrings("https://example.com/page", integration.getSrc().?);
-}
-
-test "IFrameIntegration - setSrcdoc" {
-    const allocator = std.testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer parent_ctx.deinit();
-
-    var integration = IFrameIntegration.init(allocator);
-    defer integration.deinit();
-
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.init("https", "example.com", 443));
-
-    try integration.setSrcdoc("<html><body>Hello</body></html>");
-
-    try std.testing.expect(integration.getSrcdoc() != null);
 }
 
 test "IFrameIntegration - setName updates browsing context" {
@@ -2201,7 +1676,7 @@ test "IFrameIntegration - setName updates browsing context" {
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
 
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     try integration.setName("myframe");
 
@@ -2231,7 +1706,7 @@ test "IFrameIntegration - getContentWindow returns proxy when initialized" {
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
 
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     try std.testing.expect(integration.getContentWindow() != null);
 }
@@ -2248,7 +1723,8 @@ test "IFrameIntegration - contentDocument access same-origin" {
     defer integration.deinit();
 
     const origin = Origin.init("https", "example.com", 443);
-    try integration.onInsertedIntoDocument(parent_ctx, origin);
+    integration.container_origin = origin;
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     // Same origin should allow access
     try std.testing.expect(integration.isContentDocumentAccessible(origin));
@@ -2294,7 +1770,8 @@ test "IFrameIntegration - about:blank inherits origin" {
     defer integration.deinit();
 
     const container_origin = Origin.init("https", "example.com", 443);
-    try integration.onInsertedIntoDocument(parent_ctx, container_origin);
+    integration.container_origin = container_origin;
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
 
     // about:blank should inherit container origin
     if (integration.window_proxy) |proxy| {
@@ -2340,7 +1817,7 @@ test "IFrameIntegration - the sandbox attribute never touches the browsing conte
     defer integration.deinit();
 
     integration.setSandbox("allow-scripts");
-    try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+    _ = integration.ensureBrowsingContext(parent_ctx) orelse return error.TestUnexpectedResult;
     const ctx = integration.browsing_context orelse return error.TestUnexpectedResult;
     // A child context has no flags of its own: they go to each document as
     // it is created.
@@ -2357,31 +1834,6 @@ test "IFrameIntegration - the next document's flags are handed over once" {
     integration.setNextSandboxingFlags(sandboxing.parseSandboxingDirective("allow-scripts"));
     try std.testing.expect(integration.takeNextSandboxingFlags().eql(sandboxing.parseSandboxingDirective("allow-scripts")));
     try std.testing.expect(integration.takeNextSandboxingFlags().isEmpty());
-}
-
-// ============================================================================
-// Percent Decode Tests (Phase 2)
-// ============================================================================
-
-test "percentDecode - no escapes" {
-    const allocator = std.testing.allocator;
-    const result = try percentDecode(allocator, "hello");
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "percentDecode - simple escape" {
-    const allocator = std.testing.allocator;
-    const result = try percentDecode(allocator, "hello%20world");
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("hello world", result);
-}
-
-test "percentDecode - multiple escapes" {
-    const allocator = std.testing.allocator;
-    const result = try percentDecode(allocator, "%3C%3E");
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("<>", result);
 }
 
 test "IFrameIntegration - an http(s) URL's origin keeps its port and drops the rest" {

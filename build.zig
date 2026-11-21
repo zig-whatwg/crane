@@ -2647,6 +2647,7 @@ const platform_capability_names = [_][]const u8{
     "virtual_keyboard",
     "protocol_handlers",
     "address_space",
+    "devtools_transport",
 };
 
 /// The link-plan items -Dplatform-static may name (contract section 10): a
@@ -2674,6 +2675,17 @@ fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []co
     return names.items;
 }
 
+/// `list` with `capability` added when it is not there already.
+fn withCapability(b: *std.Build, list: []const []const u8, capability: []const u8) []const []const u8 {
+    for (list) |name| {
+        if (std.mem.eql(u8, name, capability)) return list;
+    }
+    const result = b.allocator.alloc([]const u8, list.len + 1) catch @panic("OOM");
+    @memcpy(result[0..list.len], list);
+    result[list.len] = capability;
+    return result;
+}
+
 /// What every module graph shares, decided once in build().
 const ModuleConfig = struct {
     optimize: std.builtin.OptimizeMode,
@@ -2688,6 +2700,9 @@ const ModuleConfig = struct {
     engine: *const engine_build.Engine,
     use_system_curl: bool,
     enable_http2: bool,
+    /// -Dcdp: the `devtools` module's root (src/devtools/root.zig, or
+    /// src/devtools/unavailable.zig when off).
+    cdp: bool,
     /// libcurl and its mbedTLS, built once for every graph (null with
     /// -Dsystem-curl or when the lazy dependencies are not fetched yet).
     static_libcurl: ?StaticLibcurl,
@@ -3050,6 +3065,21 @@ pub fn build(b: *std.Build) void {
         "HTTP/2 via the vendored nghttp2 (default on)",
     ) orelse true;
 
+    // The Chrome DevTools Protocol remote end (src/devtools; CDP part 1,
+    // tmp/plans/cdp-part1-design.md). The user, 2026-11-21: "We also need
+    // CDP to be a compile flag so it is either compiled into the code or
+    // not". Off, the `devtools` module's root is src/devtools/unavailable.zig
+    // (nothing else of src/devtools is reachable), `build_options.cdp` is
+    // false for the code outside it that exists only for CDP, and the
+    // platform's devtools_transport capability is compiled out
+    // (`platform_without`, below): the console's --remote-debugging-port and
+    // WebDriver's se:cdp answer "built without CDP support".
+    const enable_cdp = b.option(
+        bool,
+        "cdp",
+        "The Chrome DevTools Protocol remote end: the console's --remote-debugging-port, WebDriver's se:cdp, the devtools_transport platform capability (default on)",
+    ) orelse true;
+
     // ========================================================================
     // DEBUG OPTIONS
     // ========================================================================
@@ -3078,6 +3108,9 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+    // -Dcdp: code outside src/devtools that exists only for CDP compiles out
+    // behind it (the engine adapter's inspector bridge, among others).
+    build_options.addOption(bool, "cdp", enable_cdp);
     // The refcount zombie audit's hooks (dom.refcount_audit: the checks on
     // the hottest node paths, instance_bridge.getNodeBase and Node's state)
     // compile in only when asked, so a normal build pays nothing for them;
@@ -3164,6 +3197,7 @@ pub fn build(b: *std.Build) void {
         "platform",
         "websocket",
         "browser",
+        "devtools",
         "xhr",
         "xml",
         "wpt_runner",
@@ -3197,7 +3231,9 @@ pub fn build(b: *std.Build) void {
     // same artifacts. A runner graph whose C libraries differ in mode or
     // sanitizer builds its own (runnerGraph); none is ever written to by
     // another graph (checkLinkedC, at the end of build()).
-    const platform_without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    const platform_without_asked = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    // -Dcdp=false compiles the remote end's transport out of the platform too.
+    const platform_without = if (enable_cdp) platform_without_asked else withCapability(b, platform_without_asked, "devtools_transport");
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
@@ -3243,6 +3279,7 @@ pub fn build(b: *std.Build) void {
         .engine = &engine,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
+        .cdp = enable_cdp,
         .static_libcurl = static_libcurl,
         .brotli = brotli,
         .image_codecs = image_codecs,
@@ -4104,6 +4141,30 @@ pub fn build(b: *std.Build) void {
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
         test_step.dependOn(&run_browser_tests.step);
     }
+
+    // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp): its unit
+    // tests, and tests/devtools/ - a Zig CDP client against Crane over
+    // loopback and the pipe (handshake, framing, routing, targets, the
+    // Host/Origin checks, Input/Network/Fetch). Engine-linked: the page
+    // sessions run in Browsers. With -Dcdp=false the directory is recorded
+    // and nothing of it compiles: there is no remote end to test.
+    // `check-devtools` compiles the unit tests without running them.
+    if (enable_cdp) {
+        const devtools_tests = addModuleTestWithEngine(b, testing_graph.devtools, target, tests_engine_link);
+        b.step("check-devtools", "Compile src/devtools and its unit tests (nothing runs)").dependOn(&devtools_tests.step);
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "devtools")) {
+            test_step.dependOn(&addSuiteRun(b, launch, devtools_tests, "src-devtools", null).step);
+            const devtools_imports = [_]std.Build.Module.Import{
+                .{ .name = "devtools", .module = testing_graph.devtools },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "platform", .module = testing_graph.platform },
+            };
+            addTestFilesFromDir(b, test_step, "tests/devtools", target, &devtools_imports, true, test_selection) catch |err| {
+                std.debug.print("Warning: Failed to add devtools test files: {}\n", .{err});
+            };
+        }
+    } else recordSuiteDir(b, test_selection, "tests/devtools");
 
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
@@ -5040,6 +5101,39 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&codegen_check.step);
     }
 
+    // The Chrome DevTools Protocol types (src/devtools/protocol/), generated
+    // from the pinned definitions in specs/devtools-protocol/ by
+    // tools/devtools_protocol_gen.zig: `codegen` writes them beside the
+    // WebIDL tree, `codegen-check` compares the committed tree with a
+    // regeneration. A host tool, as codegen is.
+    const devtools_gen_module = b.createModule(.{
+        .root_source_file = b.path("tools/devtools_protocol_gen.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    const devtools_gen_exe = b.addExecutable(.{
+        .name = "devtools_protocol_gen",
+        .root_module = devtools_gen_module,
+    });
+    const run_devtools_gen = b.addRunArtifact(devtools_gen_exe);
+    // It reads specs/devtools-protocol/ and writes src/devtools/protocol/,
+    // which the build graph does not track.
+    run_devtools_gen.has_side_effects = true;
+    run_devtools_gen.setCwd(b.path("."));
+    run_devtools_gen.addArgs(&.{ "--dest", "src/devtools/protocol" });
+    codegen_step.dependOn(&run_devtools_gen.step);
+    const devtools_gen_check = b.addRunArtifact(devtools_gen_exe);
+    devtools_gen_check.has_side_effects = true;
+    devtools_gen_check.setCwd(b.path("."));
+    devtools_gen_check.addArgs(&.{ "--dest", "src/devtools/protocol", "--check" });
+    codegen_check_step.dependOn(&devtools_gen_check.step);
+    b.step("devtools-protocol", "Regenerate src/devtools/protocol/ from specs/devtools-protocol/ (zig build codegen also does)").dependOn(&run_devtools_gen.step);
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
+        test_step.dependOn(&devtools_gen_check.step);
+        const devtools_gen_tests = b.addTest(.{ .root_module = devtools_gen_module });
+        test_step.dependOn(&addSuiteRun(b, launch, devtools_gen_tests, "tools-devtools_protocol_gen", null).step);
+    }
+
     // IDL scanner tool
     const idl_scanner_exe = b.addExecutable(.{
         .name = "idl-scanner",
@@ -5160,6 +5254,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "console", .module = repl_graph.console },
                 // Real time for the console's deadlines (platform.monotonicNow).
                 .{ .name = "platform", .module = repl_graph.platform },
+                // Chrome's --remote-debugging-port (src/devtools; -Dcdp).
+                .{ .name = "devtools", .module = repl_graph.devtools },
             },
         }),
     });
@@ -7157,6 +7253,7 @@ const CraneModules = struct {
     permissions: *std.Build.Module,
     browser: *std.Build.Module,
     webdriver: *std.Build.Module,
+    devtools: *std.Build.Module,
     intl: *std.Build.Module,
 };
 
@@ -8699,6 +8796,28 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     webdriver_mod.addImport("host", host_mod);
     webdriver_mod.addImport("browser", browser_mod);
 
+    // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp). Off, its
+    // root is src/devtools/unavailable.zig, which imports nothing: the
+    // console and WebDriver keep their one import and answer "built without
+    // CDP support".
+    const devtools_mod = graphModule(b, public, "devtools", .{
+        .root_source_file = b.path(if (config.cdp) "src/devtools/root.zig" else "src/devtools/unavailable.zig"),
+        .target = target,
+    });
+    if (config.cdp) {
+        devtools_mod.addImport("platform", platform_mod);
+        devtools_mod.addImport("browser", browser_mod);
+        devtools_mod.addImport("html", html_mod);
+        devtools_mod.addImport("dom", dom_mod);
+        devtools_mod.addImport("runtime", runtime_mod);
+        devtools_mod.addImport("engine", engine_mod);
+        devtools_mod.addImport("fetch", fetch_mod);
+        devtools_mod.addImport("infra", infra_mod);
+        devtools_mod.addOptions("build_options", build_options);
+    }
+    // New Session's se:cdp capability (W3C WebDriver; Selenium 4).
+    webdriver_mod.addImport("devtools", devtools_mod);
+
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = graphModule(b, public, "intl", .{
         .root_source_file = b.path("src/intl/root.zig"),
@@ -8842,6 +8961,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .permissions = permissions_mod,
         .browser = browser_mod,
         .webdriver = webdriver_mod,
+        .devtools = devtools_mod,
         .intl = intl_mod,
     };
 }

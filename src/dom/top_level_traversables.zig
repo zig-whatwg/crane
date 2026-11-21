@@ -60,6 +60,16 @@ pub const NavigateOptions = struct {
     /// history entry keeps it, so a traversal back re-creates the document
     /// from it. BORROWED for the call.
     markup: ?[]const u8 = null,
+    /// The request's referrer, a URL, and its referrer policy - a host's
+    /// navigation that names them (CDP Page.navigate `referrer` and
+    /// `referrerPolicy`; N5). BORROWED for the call.
+    referrer: ?[]const u8 = null,
+    referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    /// Where the navigation ID of the cross-document navigation the call
+    /// started is written, when one started - the navigation observer's
+    /// navigation_id, so a host can match its milestones (CDP Page.navigate's
+    /// loaderId). Left as it was otherwise. BORROWED for the call.
+    started_navigation_id: ?*u64 = null,
 };
 
 /// What HTMLIFrameElement supplies.

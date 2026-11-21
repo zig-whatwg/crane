@@ -17,7 +17,6 @@
 //! ├── window_proxy.zig       # a navigable's WindowProxy record (no access checks)
 //! ├── iframe_integration.zig # IFrame ↔ BrowsingContext lifecycle
 //! ├── ui_backend.zig         # Pluggable UI (alert, confirm, prompt, print)
-//! ├── animation_frame.zig    # requestAnimationFrame scheduling
 //! └── root.zig               # Module exports (this file)
 //! ```
 //!
@@ -35,14 +34,9 @@
 //! // Create UI backend for prompts
 //! var ui = window.StubUIBackend.init(.{});
 //! ui.backend().showAlert("Hello!");
-//!
-//! // Animation frame scheduling
-//! var timing = window.StubFrameTimingBackend.init();
-//! var scheduler = try window.AnimationFrameScheduler.init(allocator, timing.backend());
-//! defer scheduler.deinit();
-//!
-//! const handle = try scheduler.requestAnimationFrame(callback, context);
 //! ```
+//!
+//! requestAnimationFrame is the Browser's frame clock (src/browser/rendering.zig).
 
 const std = @import("std");
 
@@ -72,15 +66,6 @@ pub const StubUIBackend = ui_backend.StubUIBackend;
 pub const StubUIBackendConfig = ui_backend.StubUIBackendConfig;
 pub const ConsoleUIBackend = ui_backend.ConsoleUIBackend;
 pub const CallbackUIBackend = ui_backend.CallbackUIBackend;
-
-// Animation Frame (§8.14.2)
-pub const animation_frame = @import("animation_frame.zig");
-pub const AnimationFrameScheduler = animation_frame.AnimationFrameScheduler;
-pub const FrameTimingBackend = animation_frame.FrameTimingBackend;
-pub const StubFrameTimingBackend = animation_frame.StubFrameTimingBackend;
-pub const MockFrameTimingBackend = animation_frame.MockFrameTimingBackend;
-pub const FrameRequestCallback = animation_frame.FrameRequestCallback;
-pub const DOMHighResTimeStamp = animation_frame.DOMHighResTimeStamp;
 
 test {
     std.testing.refAllDecls(@This());
