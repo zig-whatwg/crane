@@ -265,6 +265,9 @@ pub const encoding_parse = @import("dom").encoding_parse;
 /// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection
 /// (the img element's and the speculative HTML parser's).
 pub const image_source_selection = @import("image_source_selection.zig");
+/// A link element's link types and `as`/`type` rules (HTML 4.6.7), the
+/// link element's and the speculative HTML parser's.
+pub const link_types = @import("link_types.zig");
 
 /// Parser script execution callback and context for V8 integration.
 /// Provides the bridge between tree builder's script callback and V8 execution.
