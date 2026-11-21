@@ -302,6 +302,21 @@ pub const AsyncFetch = struct {
         self.destroy();
     }
 
+    /// Whether this fetch fills an entry its document keeps
+    /// (FetchJob.keepForDocument) and has not handed its response over: a
+    /// client that lets go of it may leave it running for the document
+    /// (`rebind`) rather than terminate it.
+    pub fn keepsForDocument(self: *const AsyncFetch) bool {
+        return !self.delivered and self.job.document_registration != null;
+    }
+
+    /// The fetch goes on for a new client - one that only drops its response
+    /// (a style sheet fetch its element left, for its document's entry). The
+    /// old client hears nothing more.
+    pub fn rebind(self: *AsyncFetch, client: Client) void {
+        self.client = client;
+    }
+
     /// Whether this fetch goes on without its client once the client is
     /// gone: its request's keepalive is true (Fetch 2.4 "terminated" step 1
     /// terminates only the others) and its response has not been handed

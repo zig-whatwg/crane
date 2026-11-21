@@ -41,6 +41,22 @@ pub const DocumentResources = struct {
         self.loaded.clearRetainingCapacity();
     }
 
+    /// The document has completely loaded: a loaded resource that is in
+    /// serves no later fetch (`consume`), so it goes now; one still being
+    /// fetched may still serve one (Chrome's IsLoading()). The preload map
+    /// is HTML's, kept until a preload is consumed or the document goes.
+    pub fn pruneLoaded(self: *DocumentResources) void {
+        var i: usize = 0;
+        while (i < self.loaded.items.len) {
+            if (self.loaded.items[i].entry.state == .pending) {
+                i += 1;
+                continue;
+            }
+            var item = self.loaded.orderedRemove(i);
+            item.deinit(self.allocator);
+        }
+    }
+
     pub fn deinit(self: *DocumentResources) void {
         self.clear();
         self.preloads.deinit(self.allocator);
@@ -87,7 +103,10 @@ pub const DocumentResources = struct {
         const item = self.loaded.items[index];
         if (!item.entry.reusable()) return null;
         // While the document loads - or the resource is still on its way.
-        if (load_complete and item.entry.state != .pending) return null;
+        if (load_complete and item.entry.state != .pending) {
+            self.pruneLoaded();
+            return null;
+        }
         if (request.integrity_metadata.len != 0 and !std.mem.eql(u8, request.integrity_metadata, item.integrity)) return null;
         return item.entry.retain();
     }
@@ -319,4 +338,29 @@ test "a preload whose integrity metadata differs from the consumer's is not cons
     try consumer.setIntegrityMetadata("sha256-two");
     try testing.expect(resources.consume(consumer, false) == null);
     try testing.expectEqual(@as(usize, 1), resources.preloads.items.len);
+}
+
+test "a completely loaded document lets go of the loaded resources that are in, keeping one still being fetched and its preloads" {
+    var resources = DocumentResources.init(testing.allocator);
+    defer resources.deinit();
+    const done_request = try testRequest("https://a.test/done.css", .style);
+    defer done_request.deinit();
+    const done = resources.register(done_request, false).?;
+    done.fulfill(try fetch.internal.InternalResponse.init(testing.allocator));
+    done.release();
+    const pending_request = try testRequest("https://a.test/pending.css", .style);
+    defer pending_request.deinit();
+    const pending = resources.register(pending_request, false).?;
+    defer pending.release();
+    const preload = try testRequest("https://a.test/later.js", .script);
+    defer preload.deinit();
+    preload.link_preload = true;
+    resources.register(preload, false).?.release();
+
+    resources.pruneLoaded();
+    try testing.expectEqual(@as(usize, 1), resources.loaded.items.len);
+    try testing.expectEqual(@as(usize, 1), resources.preloads.items.len);
+    // The pending one still serves a fetch.
+    const reused = resources.consume(pending_request, true).?;
+    reused.release();
 }

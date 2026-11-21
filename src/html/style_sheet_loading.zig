@@ -902,11 +902,64 @@ fn terminateFetches(load: *Load) void {
     for (load.sheets.items) |sheet| {
         if (sheet.fetch) |f| {
             sheet.fetch = null;
-            f.terminate();
+            // A sheet the loading document keeps (dom.document_resources)
+            // goes on loading for it: an element of the same sheet made next
+            // - `head.innerHTML += ...` re-creates every link of the head -
+            // takes its response, with no fetch and no Resource Timing entry
+            // of its own. All three browsers keep a style sheet's load when
+            // its element goes: Chrome cancels a resource with no client only
+            // from a later task (Resource::AllClientsAndObserversRemoved ->
+            // ResourceLoader::ScheduleCancel), so a client added in the same
+            // turn keeps it; Firefox coalesces a new load with
+            // the one in flight and cancels sheet loads only when the
+            // document stops (layout/style/Loader.cpp
+            // MaybeCoalesceLoadAndNotifyOpen, Loader::Stop); Safari's
+            // CachedResource::allClientsRemoved cancels a link preload's
+            // load alone (loader/cache/CachedResource.cpp) - which is why a
+            // preload's is terminated here, as Safari does.
+            if (load.kind != .preload and f.keepsForDocument()) {
+                if (DetachedFetch.create(load.allocator, load.realm)) |detached| {
+                    f.rebind(detached.client());
+                } else f.terminate();
+            } else f.terminate();
             load.in_flight -= 1;
         }
     }
 }
+
+/// A style sheet fetch whose element went while the loading document keeps
+/// its response (`terminateFetches`): it goes on, its response handed to
+/// nobody but the document's entry (AsyncFetch.keepsForDocument), and ends
+/// with the fetch or with the realm.
+const DetachedFetch = struct {
+    allocator: std.mem.Allocator,
+    realm: runtime.Context,
+
+    fn create(allocator: std.mem.Allocator, realm: runtime.Context) ?*DetachedFetch {
+        const self = allocator.create(DetachedFetch) catch return null;
+        self.* = .{ .allocator = allocator, .realm = realm };
+        return self;
+    }
+
+    fn client(self: *DetachedFetch) AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = ended, .finished = ended };
+    }
+
+    fn done(_: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        var result = outcome catch return;
+        result.deinit();
+    }
+
+    fn alive(context: *anyopaque) bool {
+        const self: *DetachedFetch = @ptrCast(@alignCast(context));
+        return self.realm.engine_ctx != null;
+    }
+
+    fn ended(context: *anyopaque) void {
+        const self: *DetachedFetch = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+};
 
 /// How a load ends, which says whether its document is told.
 const Ending = enum {
