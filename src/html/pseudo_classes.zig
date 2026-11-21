@@ -289,6 +289,9 @@ fn isMedia(element: *Instance) bool {
     return element.stateAs(interfaces.HTMLMediaElement.State) != null;
 }
 
+const element_node: u8 = 1;
+const document_fragment_node: u8 = 11;
+
 /// Selectors 5 :heading / :heading(levels): an element whose HTML computed
 /// heading level is one of `levels` (bit n-1 for level n).
 fn heading(element: *Instance, levels: u9) bool {
@@ -324,12 +327,12 @@ fn computedHeadingOffset(element: *Instance) u64 {
     // Step 1.
     var offset: u64 = 0;
     // Step 2.
-    var inclusive_ancestor: ?*Instance = element;
-    // Step 3.
-    while (inclusive_ancestor) |node| {
+    var inclusive_ancestor: *Instance = element;
+    // Step 3. The walk follows the tree's own links (NodeBase), as selector
+    // matching does: :heading asks it of every heading it tests.
+    while (true) {
         // "An HTML element": the name record's namespace, one compare.
-        const data = dom.element_data.of(node);
-        if (data) |attributes| if (attributes.name.isHtml()) {
+        if (dom.element_data.of(inclusive_ancestor)) |attributes| if (attributes.name.isHtml()) {
             // Steps 3.1-3.3: an HTML element's headingoffset, by the rules
             // for parsing non-negative integers; an error adds 0.
             if (attributes.indexOfQualifiedName("headingoffset")) |index| {
@@ -340,14 +343,19 @@ fn computedHeadingOffset(element: *Instance) u64 {
             // Step 3.4.
             if (attributes.indexOfQualifiedName("headingreset") != null) return offset;
         };
-        const parent = forms.parentOf(node) orelse break;
-        // Step 3.5: a shadow root's host.
-        if (parent.stateAs(interfaces.ShadowRoot.State) != null) {
-            inclusive_ancestor = interfaces.ShadowRoot.get_host(parent) catch null;
-            continue;
+        const node = dom.instance_bridge.getNodeBase(inclusive_ancestor) orelse break;
+        const parent = node.parent_node orelse break;
+        const next: *Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(parent) orelse break));
+        switch (parent.node_type) {
+            // Step 3.6: the parent element.
+            element_node => inclusive_ancestor = next,
+            // Step 3.5: a shadow root's host.
+            document_fragment_node => {
+                if (next.stateAs(interfaces.ShadowRoot.State) == null) break;
+                inclusive_ancestor = (interfaces.ShadowRoot.get_host(next) catch null) orelse break;
+            },
+            else => break,
         }
-        // Step 3.6: the parent element.
-        inclusive_ancestor = if (forms.isElement(parent)) parent else null;
     }
     // Step 4.
     return offset;
