@@ -16,7 +16,7 @@
 //!   (main fetch step 12's preloaded response candidate).
 //! - Every other subresource fetch of a loading document that reads its
 //!   whole body (a style sheet, an @import, a classic script, an image)
-//!   leaves its response in the document's loaded map, where a later fetch
+//!   may leave its response in the document's loaded map, where a later fetch
 //!   of the same URL, destination, mode and credentials mode reuses it while
 //!   the document loads. No spec has this; all three browsers do it - Chrome
 //!   (core/loader resource_fetcher.cc: DetermineRevalidationPolicyInternal
@@ -24,9 +24,11 @@
 //!   cached_resources_map_ while !IsLoadComplete(), or for one still
 //!   loading), Firefox (layout/style/Loader.cpp: a document's style sheets
 //!   of one URL share a load and its sheet - SharedStyleSheetCache) and
-//!   Safari (loader/cache/CachedResourceLoader.cpp: the document's
-//!   m_documentResources reused by determineRevalidationPolicy) - so golden
-//!   rule 2 decides.
+//!   Safari (loader/cache/CachedResourceLoader.cpp: determineRevalidationPolicy
+//!   answers Use for a URL of the loader's m_validatedURLs while the
+//!   document's load event has not finished) - so golden rule 2 decides.
+//!   Which types are kept: dom.document_resources `kept`; which responses
+//!   serve a reuse: `Entry.reusable`.
 //!
 //! A fetch served from an entry reports no Resource Timing entry of its
 //! own: the resource has one, its first fetch's (Chrome reports a memory
@@ -119,12 +121,35 @@ pub const Entry = struct {
     /// Whether the response may serve a later fetch as a loaded resource:
     /// a response its server forbade keeping (`Cache-Control: no-store`) is
     /// fetched again (Chrome: DetermineRevalidationPolicyInternal reloads a
-    /// resource with HasCacheControlNoStoreHeader).
+    /// resource with HasCacheControlNoStoreHeader), and so is an HTTP error -
+    /// a status of 400 or more, read on the internal response, as a
+    /// browser's loader reads it below the filter - which two of the three
+    /// browsers end as a failed load that a later fetch of the document does
+    /// not reuse (golden rule 2):
+    /// - Chrome: resource_loader.cc ResourceLoader::DidReceiveResponseInternal
+    ///   ends a load whose status is >= 400 with ResourceError::HttpError
+    ///   (a script or a style sheet does not ShouldIgnoreHTTPStatusCodeErrors);
+    ///   the failed resource leaves the memory cache, and
+    ///   DetermineRevalidationPolicyInternal reloads one that ErrorOccurred;
+    /// - Firefox: a style sheet's - layout/style/Loader.cpp SheetLoadData::
+    ///   VerifySheetReadyToParse answers NS_ERROR_NOT_AVAILABLE when the HTTP
+    ///   channel's GetRequestSucceeded is false, and SharedStyleSheetCache::
+    ///   InsertIfNeeded never caches a load that failed; a script's is never
+    ///   reused at all (dom.document_resources `kept`);
+    /// - Safari: WebCore/loader/SubresourceLoader.cpp ends it as a LoadError
+    ///   too (responseHasHTTPStatusCodeError), but its errored resource may
+    ///   stay in the memory cache, where CachedResourceLoader::
+    ///   determineRevalidationPolicy answers Use during the load
+    ///   (m_validatedURLs) before its errorOccurred() Reload - the one that
+    ///   may differ.
+    /// A fetch that joined the entry while it was pending is answered with
+    /// its response whatever it is, as Chrome's still-loading kUse and
+    /// Firefox's coalesced load are.
     pub fn reusable(self: *const Entry) bool {
         return switch (self.state) {
             .pending => true,
             .failed, .abandoned => false,
-            .done => !hasNoStore(self.response.?),
+            .done => !hasNoStore(self.response.?) and !isHttpError(self.response.?),
         };
     }
 
@@ -135,6 +160,11 @@ pub const Entry = struct {
         return @import("response.zig").networkError(allocator);
     }
 };
+
+fn isHttpError(response: *const InternalResponse) bool {
+    const internal = response.internal orelse response;
+    return internal.status >= 400;
+}
 
 fn hasNoStore(response: *const InternalResponse) bool {
     const internal = response.internal orelse response;
@@ -223,4 +253,33 @@ test "an entry is fulfilled once, serves clones, and a network error or no-store
     try kept.header_list.append("Cache-Control", "max-age=0, no-store");
     no_store.fulfill(kept);
     try testing.expect(!no_store.reusable());
+
+    // An HTTP error (status 400 or more) is a failed load: fetched again -
+    // the internal response's status, an opaque response's too.
+    const not_found = try Entry.create(testing.allocator, false);
+    defer not_found.release();
+    const missing = try InternalResponse.init(testing.allocator);
+    missing.status = 404;
+    not_found.fulfill(missing);
+    try testing.expectEqual(Entry.State.done, not_found.state);
+    try testing.expect(!not_found.reusable());
+
+    const opaque_error = try Entry.create(testing.allocator, false);
+    defer opaque_error.release();
+    const filtered = try InternalResponse.init(testing.allocator);
+    filtered.response_type = .@"opaque";
+    filtered.status = 0;
+    const opaque_internal = try InternalResponse.init(testing.allocator);
+    opaque_internal.status = 500;
+    filtered.internal = opaque_internal;
+    opaque_error.fulfill(filtered);
+    try testing.expect(!opaque_error.reusable());
+
+    // A redirect's final 2xx or 3xx response is reused.
+    const moved = try Entry.create(testing.allocator, false);
+    defer moved.release();
+    const not_modified = try InternalResponse.init(testing.allocator);
+    not_modified.status = 304;
+    moved.fulfill(not_modified);
+    try testing.expect(moved.reusable());
 }
