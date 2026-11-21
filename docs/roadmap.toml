@@ -768,39 +768,50 @@ progress = []
 
 [[infra]]
 id = "cdp"
-title = "Chrome DevTools Protocol server (0.1 requirement)"
-why = """The user, 2026-11-21: "I want to add the following to 0.1: Chrome Devtools Protocol". \
-Automation clients (Puppeteer, Playwright's Chromium path, chromedp, Lightpanda's users) drive \
-a headless browser through CDP over a WebSocket; Crane's host API and repl reach pages only \
-through browser algorithms (no invented paths), so CDP is a host surface over those same \
-algorithms - Target/Page/Runtime/DOM/Network/Input/Fetch/Emulation commands map onto \
-navigation, script evaluation, the DOM and the fetch layer the way Chromium's \
-content/browser/devtools does, never a side door."""
-done_when = """A CDP endpoint (HTTP /json/version, /json/list and the browser WebSocket) in the \
-release console and the host API, implementing the domains Puppeteer and Playwright need for \
-headless automation without a renderer (Target with flat sessions, Browser, Page lifecycle \
-events and navigation, Runtime evaluate/callFunctionOn/remote objects and console events, \
-DOM and DOMSnapshot reads, Network events and request interception via Fetch, Input key \
-and mouse dispatch, Emulation basics, Storage/cookies); geometry-dependent commands answer \
-as a headless browser without a renderer would; measured by running Puppeteer's and \
-Playwright's own test suites against Crane (as the framework matrix does), with a results \
-page; protocol definitions from the published devtools-protocol JSON (BSD-3), cited."""
+title = "Chrome DevTools Protocol, part 1: what the punted framework suites need (0.1 requirement)"
+why = """The user, 2026-11-21: "I want to add the following to 0.1: Chrome Devtools Protocol", then \
+split it: "For 0.1 it would comprise of the spec necessary to run the js framework testes that we \
+have had to punt on" - React 19's Playwright e2e, Vue 3.5's Puppeteer e2e and Vitest browser mode, \
+Svelte 5's runtime-browser samples, htmx 4's web-test-runner + Playwright suite (and Angular's \
+web-test-runner targets where they need it). CDP is a host surface over Crane's own browser \
+algorithms (no invented paths); Chromium's content/browser/devtools is the reference."""
+done_when = """Each punted suite runs against Crane through its own runner (Playwright/Puppeteer \
+over CDP), with its results on the frameworks page. Part 1 covers what those runners send: \
+Target + Browser (connect, flat sessions, create/attach/close), Page (navigate, frame tree, \
+lifecycle events, addScriptToEvaluateOnNewDocument, createIsolatedWorld - engine isolated \
+worlds, Blink's model), Runtime (evaluate, callFunctionOn, remote objects, execution-context and \
+console events, bindings), Input (mouse/key dispatch), Network + Fetch (events and routing), and \
+the DOM/Emulation/Log basics those runners call, answered as a headless browser without a \
+renderer would. Protocol definitions from devtools-protocol (BSD-3), cited."""
 progress = []
 
   [[infra.items]]
-  name = "Design: transport, session model, domain list from Puppeteer/Playwright usage, mapping onto Crane's browser algorithms (Chromium content/browser/devtools as reference)"
+  name = "Design: transport, sessions, the exact command set the punted suites' runners send, mapping onto Crane's browser algorithms"
   status = "todo"
 
   [[infra.items]]
-  name = "Transport + Target/Browser/Page/Runtime core: connect, create targets, navigate, evaluate, lifecycle events"
+  name = "Isolated worlds in the engine (several JS worlds over one DOM, each with its own globals and wrappers; Blink's DOMWrapperWorld)"
   status = "todo"
 
   [[infra.items]]
-  name = "DOM, Network/Fetch interception, Input, Emulation, Storage domains"
+  name = "Transport + Target/Browser/Page/Runtime, then Input, Network/Fetch, DOM/Emulation/Log basics"
   status = "todo"
 
   [[infra.items]]
-  name = "Puppeteer and Playwright suites against Crane, results page"
+  name = "The punted suites run against Crane by their own runners; frameworks page updated"
+  status = "todo"
+
+[[infra]]
+id = "cdp-part-2"
+title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
+why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
+punted framework suites need."""
+done_when = """DOMSnapshot, full DOM/CSS, Storage, Emulation beyond the basics, Debugger, \
+Profiler, Tracing and the remaining domains Puppeteer/Playwright/chromedp users rely on."""
+progress = []
+
+  [[infra.items]]
+  name = "Domains beyond part 1"
   status = "todo"
 
 [[parallel]]
