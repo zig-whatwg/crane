@@ -658,6 +658,16 @@ fn hasDoctypeChild(parent: anytype) bool {
     return false;
 }
 
+/// Whether `parent` has a doctype child other than `exclude`.
+fn hasDoctypeChildOtherThan(parent: anytype, exclude: anytype) bool {
+    var children = parent.children();
+    while (children.next()) |child| {
+        if (child == exclude) continue;
+        if (isDocumentType(child)) return true;
+    }
+    return false;
+}
+
 /// Check if parent has an element child (optionally excluding one node)
 fn hasElementChild(parent: *NodeBase, exclude: ?*NodeBase) bool {
     var children = parent.children();
@@ -1381,7 +1391,13 @@ pub fn replace(
                 return error.HierarchyRequestError;
             }
         } else if (isDocumentType(node)) {
-            if (hasDoctypeChild(parent) or isElementPreceding(parent, child)) {
+            // "parent has a doctype child that is not child, or an element
+            // is preceding child." Any doctype child counted, child
+            // included, so replacing a document's doctype with another
+            // threw (dom/nodes/Node-replaceChild.html "inserting a new
+            // doctype should work"; Chrome 157, Firefox 160 and Safari 27.2
+            // pass).
+            if (hasDoctypeChildOtherThan(parent, child) or isElementPreceding(parent, child)) {
                 return error.HierarchyRequestError;
             }
         }

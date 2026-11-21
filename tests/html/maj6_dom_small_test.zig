@@ -204,3 +204,30 @@ fn styleTypeChange() !void {
 test "a style element's type change updates its style block" {
     try onFreshThread(styleTypeChange);
 }
+
+fn replaceDoctype() !void {
+    const browser = try open();
+    defer browser.deinit();
+    try expectTrue(browser,
+        \\(() => {
+        \\  const doc = document.implementation.createHTMLDocument('a');
+        \\  const doc2 = document.implementation.createHTMLDocument('b');
+        \\  const old = doc.doctype, next = doc2.doctype;
+        \\  doc.replaceChild(next, old);
+        \\  return doc.firstChild === next && old.parentNode === null && doc2.firstChild === doc2.documentElement;
+        \\})()
+    );
+    // A second doctype beside the one replaced still throws.
+    try expectTrue(browser,
+        \\(() => {
+        \\  const doc = document.implementation.createHTMLDocument('a');
+        \\  const comment = doc.insertBefore(doc.createComment('c'), doc.doctype);
+        \\  try { doc.replaceChild(document.implementation.createDocumentType('x', '', ''), comment); return false; }
+        \\  catch (e) { return e.name === 'HierarchyRequestError'; }
+        \\})()
+    );
+}
+
+test "a document's doctype can be replaced with another doctype" {
+    try onFreshThread(replaceDoctype);
+}
