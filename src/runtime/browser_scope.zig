@@ -74,6 +74,14 @@ pub const BrowserScope = struct {
     /// (startMonitoring) when a navigation gives a top-level context a new
     /// virtual browsing context group ID, and never cleared.
     window_access_monitored: std.atomic.Value(bool) = .init(false),
+    /// Whether one of this Browser's realms has an isolated world realm (the
+    /// engine's createWorldRealm; CDP's Page.createIsolatedWorld): until
+    /// then a conversion of a platform object asks no world - two loads, no
+    /// lookup - as `window_access_monitored` gates its path. Set by the
+    /// engine adapter when it makes the Browser's first world realm, never
+    /// cleared. Read by every thread of the Browser (a worker's conversions
+    /// read their realm's), hence atomic.
+    isolated_worlds_active: std.atomic.Value(bool) = .init(false),
     /// Protects `supplements` and the making of tables. Never held across a
     /// supplement's own steps beyond its `init`.
     mutex: std.Io.Mutex = .init,

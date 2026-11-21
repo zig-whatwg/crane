@@ -163,6 +163,14 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         conv.throwError(isolate, "Failed to get runtime context");
         return;
     };
+    // A constructor of an isolated world (protocol_worlds.zig): the object it
+    // makes is the page's - its relevant realm the world realm's main realm,
+    // as Blink's isolated world shares the frame's ExecutionContext - and the
+    // receiver is its wrapper in the WORLD, kept by the world realm's cache.
+    // Two loads decide it for a Browser that has made no world.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    const in_world = protocol_worlds.realmMayHaveWorlds(ctx) and protocol_worlds.worldOf(ctx) != 0;
+    const instance_realm = if (in_world) protocol_worlds.mainRealmOf(ctx) else ctx;
 
     // Get 'this' object (the newly created instance). Owned, like
     // every getThis(), until the wrapper cache takes it: from a
@@ -183,6 +191,16 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // the agent's host hook, the construction is HTML's - the element
     // a custom element class's super() gets, new or upgrading.
     if (self.html_constructor) {
+        // Custom elements are the main world's: an isolated world has no
+        // custom element registry, so an HTML element constructor there is
+        // an illegal constructor - Blink's V8HTMLConstructor::HtmlConstructor
+        // throws it for a non-main world (third_party/blink/renderer/
+        // bindings/core/v8/v8_html_constructor.cc; customElements is null in
+        // a Chrome extension's content script).
+        if (in_world) {
+            conv.throwTypeErrorFromContext(isolate, constructor_context, "Illegal constructor");
+            return;
+        }
         if (protocol_agents.htmlConstructorHookOf(isolate)) |hook| {
             // It binds or releases the receiver itself.
             receiver_taken = true;
@@ -210,7 +228,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     if (self.traces_construction) {
         log.debug("[CTOR_CALLBACK] {s} calling callConstructorWithArgs\n", .{self.interface_name});
     }
-    const instance = self.construct(info, allocator, ctx, current_context, isolate) catch |err| {
+    const instance = self.construct(info, allocator, instance_realm, current_context, isolate) catch |err| {
         // ExceptionPending means an exception was already rethrown during conversion
         // (e.g., from toString() throwing) - don't throw a second error
         if (self.traces_construction) {
@@ -237,14 +255,15 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // the result - binding `this_obj` instead would replace it, and
     // every edge drawn on it with it (WrapperCache.set refuses). The
     // receiver is then bound to nothing, and released.
-    if (interface.adoptExistingWrapper(info, this_obj, instance, constructor_context)) return;
+    if (interface.adoptExistingWrapperIn(info, this_obj, instance, constructor_context, ctx)) return;
 
     // The link: `this` reaches the instance through its anchor
     // (platform_anchor.zig; a node's is made when the cache takes it). A
     // receiver that cannot be bound - no API object, which V8 never makes
     // for an interface's constructor - reaches nothing: the construction
     // fails, the instance is freed, and the error is thrown.
-    if (!interface.setInstance(isolate, this_obj, instance)) {
+    const bound = if (in_world) interface.setInstanceInWorld(isolate, this_obj, instance) else interface.setInstance(isolate, this_obj, instance);
+    if (!bound) {
         instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
         const function_ctx_owned = info.getFunctionCreationContext();
         defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);

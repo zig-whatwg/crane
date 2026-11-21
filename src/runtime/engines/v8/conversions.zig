@@ -4766,6 +4766,22 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
 /// (Codex row 15 Q22). Every other failure to wrap (no template for the
 /// interface, no context) is still undefined.
 pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) error{OutOfMemory}!*v8.Value {
+    // The world of the realm converting it (protocol_worlds.zig): the main
+    // world's - two loads - until the object's Browser made a world.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    const world: u32 = if (@intFromPtr(instance) >= 0x1000 and protocol_worlds.mayConvertInWorld(instance))
+        protocol_worlds.convertingWorld(isolate)
+    else
+        0;
+    return instanceToV8InWorld(isolate, instance, world);
+}
+
+/// `instanceToV8Checked` in `world` (engine.WorldId; protocol_worlds.zig):
+/// the object's wrapper in its relevant realm's world realm for `world` - the
+/// relevant realm itself for the main world. An object with no realm in that
+/// world (its realm was detached, or a world realm could not be made) is
+/// undefined there: never another world's wrapper.
+pub fn instanceToV8InWorld(isolate: *v8.Isolate, instance: *runtime.Instance, world: u32) error{OutOfMemory}!*v8.Value {
     const template_registry = @import("template_registry.zig");
 
     // Safety check: if instance pointer looks invalid, return undefined
@@ -4787,6 +4803,7 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     // an Array.prototype.indexOf over a NodeList, with the same test in
     // wrapInstanceAsV8Object). Same answer: only "Window" has both.
     if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
+        if (world != 0) return worldWindowProxyOrNull(isolate, instance, world);
         return windowProxyOrNull(isolate, instance);
     }
 
@@ -4805,7 +4822,10 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     // and that handle, from v8_Isolate_GetCurrentContext, is this call's.
     // (It used to be released on the other branch too, which disposed the
     // realm's own context handle.)
-    const relevant = relevantContext(isolate, instance);
+    const relevant = if (world != 0)
+        (worldContext(isolate, instance, world) orelse return v8.v8_Undefined(isolate) orelse unreachable)
+    else
+        relevantContext(isolate, instance);
     const current: ?*v8.Context = if (relevant == null) v8.v8_Isolate_GetCurrentContext(isolate) else null;
     defer if (current) |c| v8.v8_Context_Dispose(c);
     const context: *v8.Context = relevant orelse current orelse return v8.v8_Undefined(isolate) orelse unreachable;
@@ -4869,6 +4889,28 @@ fn windowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance) *v8.Value 
 /// conversion never takes that branch.
 fn borrowedNull(isolate: *v8.Isolate) *v8.Value {
     return v8.v8_Isolate_BorrowedNull(isolate) orelse v8.v8_Null(isolate) orelse unreachable;
+}
+
+/// A Window as script of isolated world `world` sees it: the global of its
+/// realm's world realm for `world` - made on first need (`frames[0]`,
+/// `parent`, an event's `view` read in the world) - BORROWED from that realm's
+/// cache, or null as `windowProxyOrNull` answers it.
+fn worldWindowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance, world: u32) *v8.Value {
+    if (!window.ctx.hasEngine()) return borrowedNull(isolate);
+    const realm = @import("protocol_worlds.zig").wrapperRealm(window.ctx, world) orelse return borrowedNull(isolate);
+    const storage = realm.getV8WrapperCacheStorage() orelse return borrowedNull(isolate);
+    const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
+    const global = cache.get(window) orelse return borrowedNull(isolate);
+    return @ptrCast(global);
+}
+
+/// The context of `instance`'s relevant realm's world realm for `world`,
+/// BORROWED from its record - or null when it has none of `isolate`'s.
+fn worldContext(isolate: *v8.Isolate, instance: *runtime.Instance, world: u32) ?*v8.Context {
+    const relevant = instance.ctx;
+    if (relevant.engine_ctx == null) return null;
+    if (@import("realm_entry.zig").agentOf(relevant) != isolate) return null;
+    return @import("protocol_worlds.zig").wrapperContext(relevant, world);
 }
 
 /// `instance`'s relevant realm's context, BORROWED from the realm record -

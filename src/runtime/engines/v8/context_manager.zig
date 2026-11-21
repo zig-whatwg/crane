@@ -126,6 +126,13 @@ pub const ContextEntry = struct {
     /// The interface objects a wrap in this realm has built, or found built
     /// (`InterfaceObjects`).
     interface_objects: InterfaceObjects = .{},
+
+    /// The realm's world (engine.WorldId; protocol_worlds.zig): 0 for every
+    /// realm but a world realm, whose global wraps ANOTHER realm's Window -
+    /// its main realm's, which frees it. A world realm's end takes the
+    /// Window's entry out of its cache and leaves the Window alone
+    /// (`removeContextByKey`). Set once, when the world realm is recorded.
+    world: u32 = 0,
 };
 
 /// [interface_prototypes] A wrapper's [[Prototype]] is the realm's interface
@@ -280,6 +287,9 @@ pub fn useAllocator(isolate: *v8.Isolate, allocator: std.mem.Allocator) !void {
 /// race conditions between context teardown and GC-driven cleanup.
 pub fn endAgentRealms(isolate: *v8.Isolate) void {
     const state = protocol_agents.realmsOf(isolate) orelse return;
+    // Its world realms first: each one's global wraps a main realm's Window,
+    // which that realm's end frees (protocol_worlds.zig).
+    @import("protocol_worlds.zig").endAllOfAgent(isolate);
     endRealms(state, protocol_agents.deferredTeardownOf(isolate));
 }
 
@@ -780,12 +790,20 @@ pub fn removeContextByKey(key: usize) void {
             // context's Global(), which a navigation's reused proxy points at
             // the NEXT realm's Window.
             const window_instance_dom = entry.window_instance;
-            if (window_instance_dom) |wi| {
+            if (window_instance_dom) |wi| teardown_window: {
                 // Remove Window from wrapper cache FIRST to prevent double-free
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     _ = cache_ptr.remove(wi);
                 }
+
+                // A world realm's global wraps its main realm's Window, which
+                // that realm's end frees (protocol_worlds.zig: a world realm
+                // always ends first) - Blink's isolated world contexts share
+                // the frame's LocalDOMWindow and dispose only their own
+                // per-context data (LocalWindowProxy::DisposeContext). Only the
+                // wrapper went, above.
+                if (entry.world != 0) break :teardown_window;
 
                 // Now call Window.deinit which will clean up Location, Document, and DOM tree.
                 //
@@ -1482,7 +1500,13 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
 pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
     // A node's wrapper is its agent's, in its own slot: severed and ended
     // now, its reference with it (node_wrappers.nodeDestroyed).
-    if (instance.vtable.counted != null) return @import("node_wrappers.zig").nodeDestroyed(instance);
+    if (instance.vtable.counted != null) {
+        // And each world's wrapper of it (protocol_worlds.zig), once its
+        // Browser has a world.
+        const protocol_worlds = @import("protocol_worlds.zig");
+        if (protocol_worlds.mayConvertInWorld(instance)) protocol_worlds.nodeDestroyed(instance);
+        return @import("node_wrappers.zig").nodeDestroyed(instance);
+    }
     // Get the context from the instance
     const ctx_data = instance.ctx;
 

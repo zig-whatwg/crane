@@ -198,6 +198,45 @@ pub const TaskSink = struct {
     }
 };
 
+/// A one-shot completion: one thread waits (`wait`) until another sets it
+/// (`set`) - a host thread blocked on a command it posted to a Browser's
+/// loop (browser.BrowserHost.call), released when the command's task ran or
+/// was dropped. Set once; never reset. The waiter may free it as soon as
+/// `wait` returns: `set` touches nothing of it after the store but the
+/// futex wake, which only names the address (as std.Thread.ResetEvent).
+pub const Signal = struct {
+    state: std.atomic.Value(u32) = .init(0),
+
+    pub fn set(self: *Signal) void {
+        self.state.store(1, .release);
+        futexIo().futexWake(u32, &self.state.raw, std.math.maxInt(u32));
+    }
+
+    pub fn isSet(self: *const Signal) bool {
+        return self.state.load(.acquire) != 0;
+    }
+
+    /// Block until `set`. Spurious wakes are waited out.
+    pub fn wait(self: *Signal) void {
+        while (self.state.load(.acquire) == 0) {
+            futexIo().futexWaitTimeout(u32, &self.state.raw, 0, .none) catch {};
+        }
+    }
+
+    /// Block until `set` or for about `timeout_ns`, whichever comes first
+    /// (a spurious wake may return sooner: the caller that keeps a deadline
+    /// asks again with what is left). Whether it is set.
+    pub fn waitTimeout(self: *Signal, timeout_ns: u64) bool {
+        if (self.state.load(.acquire) != 0) return true;
+        const timeout: std.Io.Timeout = .{ .duration = .{
+            .raw = .fromNanoseconds(timeout_ns),
+            .clock = .awake,
+        } };
+        futexIo().futexWaitTimeout(u32, &self.state.raw, 0, timeout) catch {};
+        return self.state.load(.acquire) != 0;
+    }
+};
+
 /// The futex calls' `Io`. A futex wait and wake are plain system calls on an
 /// address, the same through any `Io.Threaded`; the process's own (the
 /// `host` module's) is reserved for its filesystem bridge, so this uses the
