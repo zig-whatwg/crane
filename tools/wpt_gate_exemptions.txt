@@ -2190,63 +2190,63 @@ revisit         = when Firefox or Safari ships PerformanceResourceTiming.renderB
 [html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-nomatch-media.tentative.html]
 kind            = follows-majority
 why             = a stylesheet link whose media is "not all" is not fetched speculatively, but the element fetches it all the same (HTML fetches a style sheet whatever its media), so the non-speculative half of the test fails with all three browsers' assertion: "non-speculative case incorrectly fetched"
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\""; Safari sends no Accept header)
 matches         = chrome, firefox, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-nomatch-media.tentative.sub.html]
 kind            = follows-majority
 why             = as its page-load twin: the element fetches a "not all" style sheet, and all three browsers and Crane fail the non-speculative half ("non-speculative case incorrectly fetched")
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\""; Safari sends no Accept header)
 matches         = chrome, firefox, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/page-load/link-rel-alternate-stylesheet.tentative.html]
 kind            = follows-majority
 why             = a rel="alternate stylesheet" link with no title is a preferred style sheet's link (HTML: an alternative style sheet needs a title), which Crane's element fetches as Chrome's and Safari's do, so the non-speculative half fails with their assertion ("non-speculative case incorrectly fetched"; Safari sends no Accept header, otherwise the same request); Firefox does not fetch it and passes
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
 firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\""; Safari sends no Accept header)
 matches         = chrome, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/document-write/link-rel-alternate-stylesheet.tentative.sub.html]
 kind            = follows-majority
 why             = as its page-load twin: Crane, Chrome and Safari fetch a title-less rel="alternate stylesheet" from the element ("non-speculative case incorrectly fetched"); Firefox passes
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
 firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\""; Safari sends no Accept header)
 matches         = chrome, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/document-write/meta-viewport-link-stylesheet-media.tentative.sub.html]
 kind            = follows-majority
 why             = the test is valid only where a meta viewport changes the viewport (a mobile one); on a desktop environment the "(min-width: 401px)" style sheet matches, so Crane, like all three desktop browsers, fetches it speculatively ("speculative case incorrectly fetched")
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: FAIL "assert_equals: speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
 matches         = chrome, firefox, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/page-load/meta-charset-script-src.tentative.html]
 kind            = follows-majority
 why             = the framed document's meta charset lies past the first 1024 bytes, so the document is decoded as windows-1254 while the non-speculative frame stays windows-1252: the speculative request's query is %D0 and the non-speculative one's &#286;, in Crane as in all three browsers ("expected %26%23286%3B but got %D0")
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: expected `param-encodingcheck` values to match between speculative and non-speculative expected \"%26%23286%3B\" but got \"%D0\"")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: FAIL "assert_equals: expected `param-encodingcheck` values to match between speculative and non-speculative expected \"%26%23286%3B\" but got \"%D0\"")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: expected `param-encodingcheck` values to match between speculative and non-speculative expected \"%26%23286%3B\" but got \"%D0\"")
 matches         = chrome, firefox, safari
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
 [html/syntax/speculative-parsing/generated/page-load/meta-viewport-link-stylesheet-media.tentative.html]
 kind            = follows-majority
 why             = all three browsers fail the non-speculative half (the element fetches the style sheet whatever its media: "non-speculative case incorrectly fetched"); with no renderer Crane fails one step earlier, its subtest named below
-chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\"")
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: FAIL "assert_equals: non-speculative case incorrectly fetched expected \"\" but got \"param-encodingcheck: %C4%9E\\r\\n...\""; Safari sends no Accept header)
 matches         = chrome, firefox, safari
 renderer-subtests = Speculative parsing, page load: meta-viewport-link-stylesheet-media :: the style sheet's "(min-width: 401px)" is evaluated against the framed document's viewport, its iframe's content box (300 px wide by default, so the browsers fetch nothing speculatively); with no renderer Crane's iframe viewport is not the box's width, the query matches and the speculative fetch happens ("speculative case incorrectly fetched")
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
