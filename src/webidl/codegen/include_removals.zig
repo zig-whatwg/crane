@@ -44,9 +44,12 @@ pub fn indexOf(entries: []const Removal, target: []const u8, mixin: []const u8) 
 
 /// The first entry no includes statement matched (`matched[i]` for
 /// `entries[i]`), among those whose interface AND mixin the sources define
-/// (`defined`): a source set without either - a test's own IDL, which
-/// defines an SVGSVGElement of its own and no WindowEventHandlers - says
-/// nothing about the statement.
+/// (`defined`). Both, because an includes statement can exist only where
+/// both of its definitions do: a source set without either says nothing
+/// about the statement, and calling the entry stale there would be wrong.
+/// Requiring only the interface failed codegen's own fixture
+/// tests/codegen/fixtures/svg_geometry_aliases, which defines an
+/// SVGSVGElement of its own and no WindowEventHandlers (lane fw2's gate).
 pub fn firstStale(entries: []const Removal, matched: []const bool, context: anytype, comptime defined: fn (@TypeOf(context), []const u8) bool) ?Removal {
     for (entries, matched) |entry, was_matched| {
         if (was_matched) continue;
