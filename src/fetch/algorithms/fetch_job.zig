@@ -109,6 +109,11 @@ pub const FetchJob = struct {
     /// it was handed over.
     network_request: ?NetworkRequest = null,
     network_start_time: f64 = 0,
+    /// The Browser's fetch observer heard this fetch begin, and heard it end
+    /// (loading_finished or loading_failed): a job destroyed between the two
+    /// was canceled, and says so.
+    observed_start: bool = false,
+    observed_end: bool = false,
     /// Whether `network_request` is a CORS-preflight fetch's: its answer
     /// decides whether the request itself goes out.
     network_request_is_preflight: bool = false,
@@ -254,6 +259,12 @@ pub const FetchJob = struct {
 
     pub fn destroy(self: *FetchJob) void {
         const allocator = self.allocator;
+        // A fetch its observer saw begin and never saw end: canceled (its
+        // client went, or it was aborted).
+        if (self.observed_start and !self.observed_end) {
+            self.observed_end = true;
+            if (self.observer()) |o| if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_ABORTED", true);
+        }
         if (self.authentication_realm) |realm| allocator.free(realm);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
         if (self.cache_transaction) |*transaction| transaction.deinit();
@@ -430,6 +441,7 @@ pub const FetchJob = struct {
         const will_send = o.will_send_request orelse return;
         const id = will_send(o.context, self.request);
         if (self.request.request_id == 0) self.request.request_id = id;
+        self.observed_start = true;
     }
 
     /// A response handed over: response_received, and loading_finished when
@@ -438,11 +450,13 @@ pub const FetchJob = struct {
     fn observeHandover(self: *FetchJob, response: *const InternalResponse) void {
         const o = self.observer() orelse return;
         if (response.response_type == .@"error") {
+            self.observed_end = true;
             if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_FAILED", response.aborted);
             return;
         }
         if (o.response_received) |received| received(o.context, self.request, response);
         if (!bodyArriving(response)) {
+            self.observed_end = true;
             if (o.loading_finished) |finished| finished(o.context, self.request, if (response.body) |b| b.length orelse 0 else 0);
         }
     }
@@ -450,6 +464,8 @@ pub const FetchJob = struct {
     /// The driver's word that the handed-over response's body ended, with
     /// `encoded_length` bytes as they came over the network, or failed.
     pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failed: bool) void {
+        if (self.observed_end) return;
+        self.observed_end = true;
         const o = self.observer() orelse return;
         if (failed) {
             if (o.loading_failed) |f| f(o.context, self.request, "net::ERR_FAILED", false);

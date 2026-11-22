@@ -61,6 +61,12 @@ pub const State = struct {
     redirects: std.AutoHashMapUnmanaged(u64, Head) = .empty,
     /// Requests a session holds (Fetch.requestPaused), by interception id.
     paused: std.AutoHashMapUnmanaged(u64, Paused) = .empty,
+    /// Each navigable's subresource fetches in flight (Page.lifecycleEvent's
+    /// networkAlmostIdle / networkIdle: Blink's IdlenessDetector counts a
+    /// frame's active requests), and which navigable each counted request is
+    /// a fetch of.
+    in_flight: std.AutoHashMapUnmanaged(u64, u32) = .empty,
+    counted: std.AutoHashMapUnmanaged(u64, u64) = .empty,
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         self.navigations.deinit(allocator);
@@ -74,8 +80,43 @@ pub const State = struct {
         var held = self.paused.valueIterator();
         while (held.next()) |p| p.interception.decide(.{ .@"continue" = .{} });
         self.paused.deinit(allocator);
+        self.in_flight.deinit(allocator);
+        self.counted.deinit(allocator);
     }
 };
+
+/// `navigable`'s subresource fetches in flight now.
+pub fn inFlight(side: *BrowserSide, navigable: u64) u32 {
+    return side.fetch_state.in_flight.get(navigable) orelse 0;
+}
+
+/// A navigable's in-flight count moved: every page session of its tab hears
+/// it (`onNetworkActivity(session, navigable_id, in_flight)` in a handler
+/// module - Page's lifecycle events networkAlmostIdle at 2 or fewer and
+/// networkIdle at 0, each after its quiet period, as Blink's
+/// IdlenessDetector).
+fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void {
+    const state = &side.fetch_state;
+    const entry = state.in_flight.getOrPut(side.allocator, navigable) catch return;
+    if (!entry.found_existing) entry.value_ptr.* = 0;
+    if (delta > 0) entry.value_ptr.* += 1 else entry.value_ptr.* -|= 1;
+    const now = entry.value_ptr.*;
+    if (now == 0) _ = state.in_flight.remove(navigable);
+    const page_domains = @import("domains/page_domains.zig");
+    var buffer: [16]*PageSession = undefined;
+    var n: usize = 0;
+    for (side.sessions.items) |s| {
+        if (s.tab != tab or n == buffer.len) continue;
+        buffer[n] = s;
+        n += 1;
+    }
+    for (buffer[0..n]) |s| {
+        inline for (@typeInfo(page_domains.Handlers).@"struct".decl_names) |name| {
+            const H = @field(page_domains.Handlers, name);
+            if (comptime @hasDecl(H, "onNetworkActivity")) H.onNetworkActivity(s, navigable, now);
+        }
+    }
+}
 
 const DocumentLoader = struct {
     generation: u64,
@@ -363,6 +404,12 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
         break :blk n | counter_bit;
     };
     const who = attribute(side, request) orelse return id;
+    // A subresource fetch's first hop: one more in flight for its frame.
+    if (request.request_id == 0 and request.navigation_id == 0) {
+        if (side.fetch_state.counted.put(side.allocator, id, who.frame)) |_| {
+            countInFlight(side, who.tab, who.frame, 1);
+        } else |_| {}
+    }
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
     var redirect = side.fetch_state.redirects.fetchRemove(id);
@@ -442,9 +489,16 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
     for (sessions) |s| s.emit(N.responseReceived, params);
 }
 
+/// A counted fetch ended: one fewer in flight for its frame.
+fn uncount(side: *BrowserSide, request: *const InternalRequest, tab: u64) void {
+    const removed = side.fetch_state.counted.fetchRemove(request.request_id) orelse return;
+    countInFlight(side, tab, removed.value, -1);
+}
+
 fn loadingFinished(context: *anyopaque, request: *const InternalRequest, encoded_length: u64) void {
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse return;
+    uncount(side, request, who.tab);
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
@@ -458,7 +512,12 @@ fn loadingFinished(context: *anyopaque, request: *const InternalRequest, encoded
 
 fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_text: []const u8, canceled: bool) void {
     const side = sideOf(context) orelse return;
-    const who = attribute(side, request) orelse return;
+    const who = attribute(side, request) orelse {
+        // Its frame went: the count goes with the frame.
+        _ = side.fetch_state.counted.remove(request.request_id);
+        return;
+    };
+    uncount(side, request, who.tab);
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
