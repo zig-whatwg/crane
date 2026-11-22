@@ -23,6 +23,7 @@ const fetch_observer = @import("fetch_observer.zig");
 const log_domain = @import("domains/log.zig");
 const page_domain = @import("domains/page.zig");
 const fetch_interception = @import("fetch_interception.zig");
+const held_commands = @import("held_commands.zig");
 const fetch = @import("fetch");
 
 const log = std.log.scoped(.devtools);
@@ -84,6 +85,11 @@ pub const BrowserSide = struct {
     /// Any thread (locked): the requests a session holds
     /// (fetch_interception.zig) - the devtools thread answers them.
     interceptions: fetch_interception.Table = .{},
+    /// Browser thread only: each navigable's cross-document navigations in
+    /// flight, whose sessions hold the commands the page answers until they
+    /// end (held_commands.zig; Chrome's RenderFrameDevToolsAgentHost::
+    /// navigation_requests_). domains/page.zig onBrowserMilestone keeps it.
+    navigations: held_commands.InFlight = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -143,6 +149,8 @@ pub const BrowserSide = struct {
         // The detectors' armed checks are cancelled on this, the timers'
         // thread, while the Browser's loop still runs.
         self.idle.deinit(self);
+        // No session is left to hold for a navigation still in flight.
+        self.navigations.deinit(self.allocator);
     }
 
     fn listener(self: *BrowserSide) host_bridge.Listener {
@@ -159,6 +167,9 @@ pub const BrowserSide = struct {
             } }),
             .tab_destroyed => |destroyed| {
                 log_domain.tabGone(self, destroyed.tab);
+                // A tab closed while it navigated: its navigations go with
+                // it (its sessions detach, dropping what they held).
+                self.navigations.forget(destroyed.tab);
                 self.sink.post(self.sink.context, self, .{ .tab_destroyed = .{ .tab = destroyed.tab } });
             },
             .navigation => |milestone| self.fanOutNavigation(milestone),

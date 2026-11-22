@@ -2155,6 +2155,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 /// (`resumeHeldNavigations`). A traversal's or reload's population is never
 /// held - the apply running it waits for it.
 fn startFetchUnlessHeld(record: *Navigation) void {
+    // Its request starts - past beforeunload, before the hold below: the
+    // observer hears it (Chrome's DidStartNavigation, which comes before
+    // the DevTools throttle's WillStartRequest; CDP holds a page's commands
+    // from here, devtools/held_commands.zig). Only a navigation that
+    // reported its start: it reports its commit or its end too.
+    if (record.started_reported) if (record.integration.browsing_context) |bc| {
+        observer.notify(record.navigables, .{ .navigable_id = bc.id, .navigation_id = record.id, .event = .request_started });
+    };
     if (record.traversal_entry == 0) if (record.integration.browsing_context) |bc| {
         if (observer.holds(record.navigables, bc.id)) {
             record.held = true;
