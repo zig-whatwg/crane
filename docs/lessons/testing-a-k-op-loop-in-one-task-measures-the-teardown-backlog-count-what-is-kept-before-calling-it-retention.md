@@ -7,6 +7,8 @@
 
 **What Happened**: gc_bench's new columns (lane mem1: `--batch=K` runs K operations per script, `--settle` drains the queue before each reading, `--live-types` lists the live objects by interface) on server1: the teardown queue held 1,000-5,700 nodes at the end of a 1,000-op task, 53,000-63,000 at 8,000 and 99,500 (the bound) at 16,000; the Zig-side peak went 7.6 -> 47 -> 81 MB; but once drained, the live nodes were the undo history's 7,000 at every K. The one real retention (one CSSStyleProperties per element A04 read, architecture-a-hand-outs-edge-on-an-unwrapped-owner-is-a-strong-hold-until-its-teardown-ends-it.md) showed only in the census, as the one interface whose count differed between the two builds.
 
+Spreading the same joins over tasks settles it (both fixes in, --settle): 8,000 joins in one task kept 53.5 MB resident, 7.6 MB of state arena; in two tasks 38.9 / 5.0; 16,000 joins in 160 tasks of 100 stayed flat at 11.8-13.3 MB with 1.0 MB of arena, and in tasks of 1,000 flat at 24.7-28.7 MB - the residue follows the largest task, not the number of operations.
+
 **Fix**: `gc_bench --batch=<K> --settle --live-types --c-alloc` on both builds, at two K: a type whose count grows with K after the drain is retention; a peak that grows with K while the census stays flat is the in-task backlog and the allocators' residue (whether 100,000 queued nodes is the right in-task bound is a separate question - V8 bounds Blink's dead DOM by its global limit, cppgc sweeping on allocation).
 
 **Takeaway**: **Before naming a structure that grows per operation, drain the teardown queue and diff the live objects by interface between the two builds; a curve read once per page of one task measures that task's peak.**
