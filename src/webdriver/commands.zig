@@ -162,9 +162,47 @@ fn handleNewSession(ctx: CommandContext) !CommandResult {
         return errorResponse(ctx.allocator, .session_not_created, "Failed to create browser session");
     };
 
-    const info = protocol.SessionInfo{
+    // se:cdp (Selenium 4) and goog:chromeOptions.debuggerAddress
+    // (chromedriver): the session's Browser over the Chrome DevTools
+    // Protocol, as Playwright's SELENIUM_REMOTE_URL route takes it
+    // (devtools_endpoint.zig). A build without CDP answers neither.
+    session.cdp.start(ctx.allocator, session.host) catch |err| switch (err) {
+        error.CdpNotBuilt => {},
+        else => std.log.warn("WebDriver: the session's CDP endpoint did not start: {}", .{err}),
+    };
+    var url_buffer: [160]u8 = undefined;
+    var address_buffer: [32]u8 = undefined;
+    const cdp_url = session.cdp.url(&url_buffer);
+    const debugger_address = session.cdp.debuggerAddress(&address_buffer);
+
+    const Capabilities = struct {
+        base: protocol.SessionInfo.SessionCapabilities = .{},
+        @"se:cdp": ?[]const u8 = null,
+        @"goog:chromeOptions": ?struct { debuggerAddress: []const u8 } = null,
+
+        pub fn jsonStringify(self: @This(), jws: anytype) !void {
+            try jws.beginObject();
+            inline for (@typeInfo(protocol.SessionInfo.SessionCapabilities).@"struct".field_names) |name| {
+                try jws.objectField(name);
+                try jws.write(@field(self.base, name));
+            }
+            if (self.@"se:cdp") |v| {
+                try jws.objectField("se:cdp");
+                try jws.write(v);
+            }
+            if (self.@"goog:chromeOptions") |v| {
+                try jws.objectField("goog:chromeOptions");
+                try jws.write(v);
+            }
+            try jws.endObject();
+        }
+    };
+    const info = .{
         .sessionId = session.id,
-        .capabilities = .{},
+        .capabilities = Capabilities{
+            .@"se:cdp" = cdp_url,
+            .@"goog:chromeOptions" = if (debugger_address) |a| .{ .debuggerAddress = a } else null,
+        },
     };
 
     return .{
