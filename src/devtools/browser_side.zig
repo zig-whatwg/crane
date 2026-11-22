@@ -279,6 +279,21 @@ pub const InstallTask = struct {
 };
 
 /// Attach an allocated session.
+///
+/// A session's attach (AttachTask), its messages (MessageTask) and its
+/// detach (DetachTask) all go as session messages (host_bridge.
+/// postSessionMessage), so they run in the order they were posted - and
+/// inside a debugger pause, whose nested loop runs session messages and no
+/// other task. Posted as ordinary tasks, an attach or a detach waited out the
+/// pause while the session's messages and the server's uninstall ran inside
+/// it: a message found its session not attached yet and went unanswered, and
+/// a detach ran after the uninstall had freed its session (CDP part 1 gap 6).
+/// Blink orders them the same way: "devtools relies on a disconnect handler
+/// for detaching and is sensitive to reordering of detach and attach", so a
+/// session's attach goes to the task runner its messages use, through the
+/// InspectorTaskRunner that interrupts a paused or busy V8
+/// (third_party/blink/renderer/core/inspector/devtools_agent.cc,
+/// IOAgent::AttachDevToolsSession, DevToolsAgent::AttachDevToolsSessionImpl).
 pub const AttachTask = struct {
     session: *PageSession,
     side: *BrowserSide,
@@ -286,7 +301,7 @@ pub const AttachTask = struct {
     pub fn post(side: *BrowserSide, session: *PageSession) !void {
         const task = try side.allocator.create(AttachTask);
         task.* = .{ .session = session, .side = side };
-        if (!side.host.post(task, run, drop)) return error.BrowserGone;
+        if (!host_bridge.postSessionMessage(side.host, task, run, drop)) return error.BrowserGone;
     }
 
     fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
@@ -334,7 +349,8 @@ pub const MessageTask = struct {
     }
 };
 
-/// Detach and free a session.
+/// Detach and free a session: a session message, after the session's own
+/// (AttachTask says why).
 pub const DetachTask = struct {
     session: *PageSession,
     allocator: Allocator,
@@ -346,7 +362,7 @@ pub const DetachTask = struct {
             return;
         };
         task.* = .{ .session = session, .allocator = side.allocator };
-        _ = side.host.post(task, run, drop);
+        _ = host_bridge.postSessionMessage(side.host, task, run, drop);
     }
 
     fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
