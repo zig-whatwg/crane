@@ -17,7 +17,9 @@ const cdp = @import("cdp_client.zig");
 const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 pub const BrowserHost = browser_mod.BrowserHost;
-pub const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+/// Leak-checking and poisoning on free (the Crane test runner's allocator:
+/// a bare std.heap.DebugAllocator is refused in tests).
+pub const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 pub const Message = std.json.Parsed(std.json.Value);
 
 /// A field of a message and the text its value must print as (a string's
