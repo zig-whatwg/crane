@@ -94,19 +94,20 @@ pub const HostOverrides = struct {
     }
 
     /// Replace the user agent override with copies of `user_agent`,
-    /// `platform` and `accept_language` (empty strings: not overridden); a
-    /// null `user_agent` clears it.
+    /// `platform` and `accept_language`. Each null or empty one is not
+    /// overridden - an empty user agent with an Accept-Language overrides
+    /// the languages alone (Chrome's EmulationHandler::ApplyOverrides and
+    /// Blink's InspectorEmulationAgent apply each field only when it is
+    /// non-empty; Playwright sends `userAgent: ""` with every locale). All
+    /// three empty clears it.
     pub fn setUserAgent(self: *HostOverrides, allocator: Allocator, owner: Owner, user_agent: ?[]const u8, platform: ?[]const u8, accept_language: ?[]const u8) Allocator.Error!void {
-        const ua = user_agent orelse {
-            self.freeUserAgent(allocator);
-            return;
-        };
-        const ua_copy = try allocator.dupe(u8, ua);
-        errdefer allocator.free(ua_copy);
+        const ua_copy: ?[]u8 = if (user_agent) |u| (if (u.len > 0) try allocator.dupe(u8, u) else null) else null;
+        errdefer if (ua_copy) |u| allocator.free(u);
         const platform_copy: ?[]u8 = if (platform) |p| (if (p.len > 0) try allocator.dupe(u8, p) else null) else null;
         errdefer if (platform_copy) |p| allocator.free(p);
         const language_copy: ?[]u8 = if (accept_language) |l| (if (l.len > 0) try allocator.dupe(u8, l) else null) else null;
         self.freeUserAgent(allocator);
+        if (ua_copy == null and platform_copy == null and language_copy == null) return;
         self.user_agent = ua_copy;
         self.platform = platform_copy;
         self.accept_language = language_copy;
@@ -203,6 +204,19 @@ test "a worker's user agent snapshot is a copy: the tab's override changing late
     var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
     defer none.deinit(allocator);
     try std.testing.expect(none.user_agent == null);
+}
+
+test "an empty user agent overrides the languages alone (Playwright's locale call)" {
+    const allocator = std.testing.allocator;
+    var overrides: HostOverrides = .{};
+    defer overrides.deinit(allocator);
+    try overrides.setUserAgent(allocator, 1, "", null, "fr-FR,fr");
+    try std.testing.expect(overrides.user_agent == null);
+    try std.testing.expectEqualStrings("fr-FR", overrides.language().?);
+    try std.testing.expectEqual(@as(Owner, 1), overrides.user_agent_owner);
+    try overrides.setUserAgent(allocator, 1, "", "", "");
+    try std.testing.expect(overrides.accept_language == null);
+    try std.testing.expectEqual(@as(Owner, 0), overrides.user_agent_owner);
 }
 
 test "a setter that goes clears only what it set; strings are owned" {

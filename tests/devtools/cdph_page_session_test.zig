@@ -346,6 +346,17 @@ test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's D
     try testing.expectEqualStrings("init", h.seen.items[init_index].value.object.get("params").?.object.get("name").?.string);
 }
 
+test "setUserAgentOverride with an empty userAgent overrides the languages alone (Playwright's locale call)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"fr-FR\"}");
+    const seen = try h.host.evaluate(h.allocator, h.tab, "[navigator.userAgent.length > 0, navigator.language].join('|')", .{}, 5_000);
+    defer seen.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"true|fr-FR\"}", seen.json);
+}
+
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
     var h: Harness = undefined;
     try h.init(testing.allocator);

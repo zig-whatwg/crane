@@ -188,7 +188,12 @@ pub fn setTouchEmulationEnabled(session: *PageSession, params: E.setTouchEmulati
 /// Accept-Language headers are lane cdpt's (Network, P5).
 pub fn setUserAgentOverride(session: *PageSession, params: E.setUserAgentOverride.Params) !E.setUserAgentOverride.Result {
     const bc = tabOf(session) orelse return session.fail("Target is not a page");
-    if (params.userAgent.len == 0 and params.acceptLanguage == null and params.platform == null) {
+    // Each field applies only when non-empty (EmulationHandler::
+    // ApplyOverrides): `userAgent: ""` with an acceptLanguage - Playwright's
+    // call for every locale - overrides the languages and leaves the user
+    // agent the Browser's. All empty clears this session's override.
+    const all_empty = params.userAgent.len == 0 and (params.acceptLanguage orelse "").len == 0 and (params.platform orelse "").len == 0;
+    if (all_empty) {
         if (bc.host_overrides.user_agent_owner == owner(session)) try bc.host_overrides.setUserAgent(bc.allocator, 0, null, null, null);
         return .{};
     }
