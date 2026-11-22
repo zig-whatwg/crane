@@ -313,10 +313,16 @@ fn documentUrlOf(arena: Allocator, who: Attribution, request: *const InternalReq
 /// (frames.loaderToken - Chrome's loaderId IS the navigation request's
 /// requestId), any other a counter in Chrome's "<n>.<counter>" form.
 fn requestIdText(session: *const PageSession, id: u64, buffer: *[48]u8) []const u8 {
+    return requestIdTextFor(session.side.?.token, id, buffer);
+}
+
+/// requestIdText from the Browser's devtools token alone (the Log entries'
+/// call sites hold the BrowserSide, not a session).
+fn requestIdTextFor(browser_token: u64, id: u64, buffer: *[48]u8) []const u8 {
     if (id & counter_bit != 0) {
-        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ session.side.?.token % 100000, id & ~counter_bit }) catch "";
+        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ browser_token % 100000, id & ~counter_bit }) catch "";
     }
-    const token = frames.loaderToken(session, id);
+    const token = frames.loaderTokenOf(browser_token, id);
     @memcpy(buffer[0..32], token.slice());
     return buffer[0..32];
 }
@@ -484,7 +490,7 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
     // DidReceiveResponse, status >= 400) - whether or not Network is on.
     if (response.status >= 400) {
         var log_id_buffer: [48]u8 = undefined;
-        @import("domains/log.zig").errorResponse(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &log_id_buffer), response.status, response.status_message);
+        @import("domains/log.zig").errorResponse(side, who.tab, request.getUrl(), requestIdTextFor(side.token, request.request_id, &log_id_buffer), response.status, response.status_message);
     }
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
@@ -550,7 +556,7 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
     // Log.entryAdded "Failed to load resource: ..." for the tab's Log
     // sessions - not for a cancellation (lane cdph's domains/log.zig;
     // Blink's FrameConsole::DidFailLoading).
-    if (!canceled) @import("domains/log.zig").loadingFailed(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &id_buffer), error_text);
+    if (!canceled) @import("domains/log.zig").loadingFailed(side, who.tab, request.getUrl(), requestIdTextFor(side.token, request.request_id, &id_buffer), error_text);
 }
 
 /// Network.setCacheDisabled: a tab whose session disabled the cache sends
