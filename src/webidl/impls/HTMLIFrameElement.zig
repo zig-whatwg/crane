@@ -7447,6 +7447,10 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // works correctly for cross-realm scenarios.
     if (navigableContext(internal.integration)) |realm| {
         if (windowOfRealm(realm)) |window| {
+            // contentWindow (and contentDocument, which reads it) reaches
+            // the child's Window: a host announces its context now
+            // (BrowsingContext.touchedByScript).
+            if (internal.integration.browsing_context) |bc| bc.touchedByScript();
             // WindowProxy typedef is *runtime.Instance
             return window;
         }

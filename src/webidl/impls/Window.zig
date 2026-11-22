@@ -1592,6 +1592,8 @@ pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtim
     // Get the child browsing context's Window
     const child_ctx = children.items[index].browsing_context;
     const child_window = child_ctx.getActiveWindow() orelse return null;
+    // window[i] reaches the child's Window: a host announces its context now.
+    child_ctx.touchedByScript();
 
     // Cast the InstancePtr (anyopaque) to runtime.Instance
     return @ptrCast(@alignCast(child_window));
@@ -4503,7 +4505,10 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
     } else return null;
     var children = documentTreeChildNavigables(window, internal, internal.allocator);
     defer children.deinit(internal.allocator);
-    return childNavigableNamedIn(window, internal, children.items, name);
+    const found = childNavigableNamedIn(window, internal, children.items, name);
+    // A named frame reaches the child's Window: a host announces its context.
+    if (found) |child| if (@import("dom").browser_state.browsingContextOf(child)) |bc| bc.touchedByScript();
+    return found;
 }
 
 /// The first same-named child decides visibility, even when its origin

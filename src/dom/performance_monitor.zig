@@ -61,7 +61,7 @@ pub const Violation = enum(u8) {
     }
 };
 
-const violation_count = @typeInfo(Violation).@"enum".fields.len;
+const violation_count = @typeInfo(Violation).@"enum".field_names.len;
 
 /// Who hears a violation: a host (a CDP session's Log domain), for the
 /// documents of one tab.

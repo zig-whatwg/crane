@@ -435,6 +435,73 @@ test "Log violations: document.write and a slow listener and timer are reported 
     _ = try h.call("Log.stopViolationsReport", "{}");
 }
 
+/// A fresh iframe named `name` on its initial about:blank, then `touch` run
+/// in the page: its main world context is announced only then (Blink's lazy
+/// LocalWindowProxy::Initialize), carrying its frameId.
+fn expectContextOnTouch(h: *Harness, name: []const u8, touch: []const u8) !void {
+    const from = h.seen.items.len;
+    const make = try std.fmt.allocPrint(h.allocator, "const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); 1", .{ name, name });
+    defer h.allocator.free(make);
+    const made = try h.host.evaluate(h.allocator, h.tab, make, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const before_touch = h.seen.items.len;
+    for (h.seen.items[attached..before_touch]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Runtime.executionContextCreated")) {
+            const aux = parsed.value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+            if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return error.AnnouncedBeforeTouch;
+        }
+    }
+    const touched = try h.host.evaluate(h.allocator, h.tab, touch, .{}, 5_000);
+    defer touched.deinit(h.allocator);
+    var at = before_touch;
+    while (true) {
+        const index = try h.waitEvent("Runtime.executionContextCreated", at);
+        at = index + 1;
+        const aux = h.seen.items[index].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+        if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return;
+    }
+}
+
+test "a fresh iframe's main world context is announced when script first reaches it, by every route" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    try expectContextOnTouch(&h, "a", "void document.getElementById('a').contentWindow; 1");
+    try expectContextOnTouch(&h, "b", "void document.getElementById('b').contentDocument; 1");
+    try expectContextOnTouch(&h, "c", "void window[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "d", "void window.frames[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "e", "void window.e; 1");
+    try expectContextOnTouch(&h, "g", "void window.open('', 'g'); 1");
+}
+
+test "a session targeting a fresh iframe (Page.createIsolatedWorld) announces its main world first" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"frameId\":\"{s}\",\"worldName\":\"util\"}}", .{frame_id});
+    defer h.allocator.free(params);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.createIsolatedWorld", params);
+    const first = try h.waitEvent("Runtime.executionContextCreated", before);
+    const aux = h.seen.items[first].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+    try testing.expect(aux.get("isDefault").?.bool);
+    try testing.expectEqualStrings(frame_id, aux.get("frameId").?.string);
+}
+
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
     var h: Harness = undefined;
     try h.init(testing.allocator);

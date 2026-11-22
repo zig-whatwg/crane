@@ -88,6 +88,11 @@ pub const Event = union(enum) {
     /// and navigable, the URL, the name and the features. tab_created
     /// follows when the window is made. BORROWED for the call.
     window_open: *const WindowOpen,
+    /// Script reached, for the first time, the Window of a child navigable
+    /// still on its initial about:blank (html_core BrowsingContext.
+    /// touchedByScript): a host announces its main world context now, as
+    /// Blink makes it lazily (LocalWindowProxy::Initialize on first access).
+    frame_touched: struct { navigable: u64 },
 
     pub const TabCreated = struct {
         tab: TabId,

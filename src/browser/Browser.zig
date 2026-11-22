@@ -460,6 +460,8 @@ pub const Browser = struct {
         navigables.user_prompts = .{ .context = browser, .opening = dialogOpening, .closed = dialogClosed };
         // And its new-window hook (html.navigation.window_open).
         navigables.window_open = .{ .context = browser, .opened = windowOpened };
+        // And its first-touch hook for frames on their initial about:blank.
+        navigables.frame_touched = .{ .context = browser, .touched = frameTouched };
         // The agent's inspector client (the engine protocol's
         // inspector_protocol): Runtime.runIfWaitingForDebugger releases the
         // tab's start hold, and a debugger pause runs the Browser's nested
@@ -1811,6 +1813,13 @@ pub const Browser = struct {
     fn dialogClosed(context: *anyopaque, closed: *const html_mod.navigation.user_prompts.Closed) void {
         const self: *Browser = @ptrCast(@alignCast(context));
         self.listeners.emit(.{ .dialog_closed = closed });
+    }
+
+    /// html_core BrowsingContext.touchedByScript: script reached a frame's
+    /// initial about:blank Window for the first time.
+    fn frameTouched(context: *anyopaque, navigable: u64) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .frame_touched = .{ .navigable = navigable } });
     }
 
     /// html.navigation.window_open: a page asks for a new window, before it

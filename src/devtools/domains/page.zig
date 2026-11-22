@@ -129,6 +129,7 @@ fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events
         .dialog_opening => |opening| dialogOpening(session, opening),
         .dialog_closed => |closed| dialogClosed(session, closed),
         .window_open => |opened| windowOpened(session, opened),
+        .frame_touched => |touched| frameTouched(session, touched.navigable),
         else => {},
     }
 }
@@ -167,6 +168,16 @@ fn dialogClosed(session: *PageSession, closed: *const @import("browser").host_ev
         .result = closed.accepted,
         .userInput = closed.user_input,
     });
+}
+
+/// Script reached a frame of the tab still on its initial about:blank: its
+/// main world context is announced now (Blink makes it then:
+/// LocalWindowProxy::Initialize -> DidCreateMainWorldContext), by the last
+/// session on the tab, as a commit's are (contexts.zig).
+fn frameTouched(session: *PageSession, navigable: u64) void {
+    if (!frames.inTab(session, navigable) or !contexts.isEdgeSession(session, .last)) return;
+    const bc = frames.navigable(session, navigable) orelse return;
+    contexts.registerNavigable(session, bc);
 }
 
 /// A page of the session's tab asks for a new window, before it is made:
@@ -455,6 +466,12 @@ pub fn removeScriptToEvaluateOnNewDocument(session: *PageSession, params: P.remo
 pub fn createIsolatedWorld(session: *PageSession, params: P.createIsolatedWorld.Params) !P.createIsolatedWorld.Result {
     const bc = frames.frameNamed(session, params.frameId) orelse return session.fail("No frame for given id found");
     const main = frames.mainRealmOf(bc) orelse return session.fail("No frame for given id found");
+    // A session targeting a frame on its initial about:blank: its main world
+    // is announced first, if it was not (a lazy context, as Blink's).
+    if (bc.inspector_pending) {
+        bc.inspector_pending = false;
+        _ = contexts.register(session, main, bc);
+    }
     const realm = worldRealm(main, bc.id, params.worldName orelse "", params.grantUniveralAccess orelse false) catch
         return session.fail("Could not create isolated world");
     const id = contexts.register(session, realm, bc) orelse return session.fail("Could not create isolated world");
@@ -729,6 +746,9 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             // sends its lifecycle init and no frameNavigated (lane cdpr's
             // vue-e2e-browser log l.392-405).
             const initial_child = milestone.navigation_id == 0 and navigable != session.tab;
+            // Its context waits for the first script to reach it
+            // (BrowsingContext.touchedByScript) or a session to target it.
+            if (initial_child) bc.inspector_pending = true;
             if (s.enabled and !initial_child) {
                 var arena_state = std.heap.ArenaAllocator.init(session.allocator);
                 defer arena_state.deinit();
