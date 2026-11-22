@@ -298,6 +298,53 @@ test "Emulation overrides reach the page and a detaching session takes its own a
     try testing.expectError(error.CommandFailed, h.call("Emulation.setLocaleOverride", "{\"locale\":\"fr-FR\"}"));
 }
 
+test "setDeviceMetricsOverride emulates the device's screen, scale and orientation; clearing gives the platform's back" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var h: Harness = undefined;
+    try h.init(gpa.allocator());
+    defer h.deinit();
+
+    // Playwright's phone: a screen, a scale, an orientation.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":390,\"height\":664,\"deviceScaleFactor\":3,\"mobile\":true,\"screenWidth\":390,\"screenHeight\":844,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":0}}");
+    const phone = try h.host.evaluate(h.allocator, h.tab, "[innerWidth, screen.width, screen.height, screen.availHeight, devicePixelRatio, screen.orientation.type, screen.orientation.angle, matchMedia('(resolution: 3dppx)').matches].join('|')", .{}, 5_000);
+    defer phone.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"390|390|844|844|3|portrait-primary|0|true\"}", phone.json);
+    // Puppeteer's: no screen size on a desktop device keeps the real screen.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":2,\"mobile\":false}");
+    const desktop = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio, screen.orientation.type].join('|')", .{}, 5_000);
+    defer desktop.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|2|landscape-primary\"}", desktop.json);
+    // Chrome's checks.
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":-1,\"mobile\":false}"));
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":360}}"));
+    _ = try h.call("Emulation.clearDeviceMetricsOverride", "{}");
+    const cleared = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio].join('|')", .{}, 5_000);
+    defer cleared.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|1\"}", cleared.json);
+}
+
+test "Page.windowOpen tells the opener's session of window.open before the window exists" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var h: Harness = undefined;
+    try h.init(gpa.allocator());
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "void window.open('about:blank#p', 'named', 'width=300,height=200')", .{ .user_activation = true }, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.windowOpen", from);
+    const params = h.seen.items[index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("about:blank#p", params.get("url").?.string);
+    try testing.expectEqualStrings("named", params.get("windowName").?.string);
+    try testing.expect(params.get("userGesture").?.bool);
+    const features = params.get("windowFeatures").?.array.items;
+    try testing.expectEqualStrings("width=300", features[0].string);
+    try testing.expectEqualStrings("height=200", features[1].string);
+}
+
 test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not found" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
