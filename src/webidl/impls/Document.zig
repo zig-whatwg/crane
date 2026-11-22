@@ -158,6 +158,31 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
         };
         values.forced_colors = preferences.forced_colors;
     }
+    // A host's overrides for the tab win over the platform's answers
+    // (html.window.host_overrides: CDP Emulation.setEmulatedMedia, as
+    // Blink's InspectorEmulationAgent overrides the page's media type and
+    // features).
+    if (@import("dom").browser_state.browsingContextOf(window)) |bc| if (bc.getTop().host_overrides.media) |media| {
+        if (media.media_type) |media_type| values.media_type = switch (media_type) {
+            .screen => .screen,
+            .print => .print,
+        };
+        if (media.color_scheme) |scheme| values.prefers_color_scheme = switch (scheme) {
+            .light => .light,
+            .dark => .dark,
+        };
+        if (media.reduced_motion) |motion| values.prefers_reduced_motion = switch (motion) {
+            .no_preference => .no_preference,
+            .reduce => .reduce,
+        };
+        if (media.contrast) |contrast| values.prefers_contrast = switch (contrast) {
+            .no_preference => .no_preference,
+            .more => .more,
+            .less => .less,
+            .custom => .custom,
+        };
+        if (media.forced_colors) |forced| values.forced_colors = forced;
+    };
     return values;
 }
 

@@ -1776,6 +1776,9 @@ pub const WrapperCache = struct {
     /// A record the cache holds strongly stays held: its Global is strong.
     fn toWeakHandle(self: *Self, entry: *Cell) void {
         if (entry.bits.boxed or entry.bits.weak_handle or entry.bits.collected or !entry.bits.in_use) return;
+        // An isolated world's node wrapper stays traced (`setConstructed`):
+        // the walk keeps it with its node's tree.
+        if (entry.bits.world_counted) return;
         const was_strong = entry.bits.strong;
         self.dropStrongHandle(entry);
         // Armed weak in the same call, unless the cache keeps the wrapper.
@@ -2621,7 +2624,12 @@ pub const WrapperCache = struct {
         // reference otherwise. Anything else (a realm's global) is held by
         // the caller's Global.
         const facts = wrapperFactsOf(instance);
-        if (self.anchors and heldByWeakHandle(facts)) {
+        // An isolated world's node wrapper is always held by a traced
+        // reference: the walk keeps it with its node's tree
+        // (`traceWorldEntry`), which a weak handle would not let it - it
+        // waits for a full collection, as every main-world node wrapper does
+        // since the wrapper redesign.
+        if (self.anchors and !counted and heldByWeakHandle(facts)) {
             // Armed weak from here; `wrapper`, the caller's box, holds the
             // object until this function's end.
             if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
