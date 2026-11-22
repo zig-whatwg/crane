@@ -1975,6 +1975,21 @@ fn addTestFilesFromDir(
     runs_engine: bool,
     select: TestSelection,
 ) !void {
+    _ = try addTestFilesFromDirCompile(builder, step, dir_path, target, modules, runs_engine, select);
+}
+
+/// `addTestFilesFromDir`, answering the directory's test executable (null
+/// when it has none of its own: no test files, or -Dtest-binaries=engine
+/// joined it) - what a compile-only step (check-storage-tests) builds.
+fn addTestFilesFromDirCompile(
+    builder: *std.Build,
+    step: *std.Build.Step,
+    dir_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    modules: []const std.Build.Module.Import,
+    runs_engine: bool,
+    select: TestSelection,
+) !?*std.Build.Step.Compile {
     const allocator = builder.allocator;
     const io = builder.graph.io;
     recordSuiteDir(builder, select, dir_path);
@@ -1983,15 +1998,14 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
-        return;
+        return addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
     }
 
     var dir = builder.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         // Directory might not exist yet, skip silently - until it does.
         if (err == error.FileNotFound) {
             select.inputs.absent(builder, dir_path);
-            return;
+            return null;
         }
         return err;
     };
@@ -2009,7 +2023,7 @@ fn addTestFilesFromDir(
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         try files.append(allocator, try allocator.dupe(u8, entry.path));
     }
-    if (files.items.len == 0) return;
+    if (files.items.len == 0) return null;
     std.mem.sort([]const u8, files.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -2053,10 +2067,11 @@ fn addTestFilesFromDir(
             .runs_engine = runs_engine,
             .target = target,
         });
-        return;
+        return null;
     };
     const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, runs_engine, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
+    return test_exe;
 }
 
 /// -Dtest-binaries=engine, at the end of the build: the members that link the engine,
@@ -3443,6 +3458,11 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+    // The storage engines' test executables, compiled and not run (lane
+    // prof1, the integrator 2026-11-21 9:03 PM ET: a compile break in a test
+    // hides where no step builds it): src/storage, tests/storage,
+    // src/cookiestore, src/platform, tests/platform and tests/browser.
+    const check_storage_tests = b.step("check-storage-tests", "Compile the storage, cookie, platform and browser test executables (nothing runs)");
 
     // tools/test_launcher runs EVERY test executable (addSuiteRun): seeded
     // batches of child processes over the Zig test runner's protocol, a
@@ -4368,6 +4388,7 @@ pub fn build(b: *std.Build) void {
         const storage_tests = b.addTest(.{ .root_module = testing_graph.storage });
         const run_storage_tests = addSuiteRun(b, launch, storage_tests, "src-storage", null);
         test_step.dependOn(&run_storage_tests.step);
+        check_storage_tests.dependOn(&storage_tests.step);
 
         // Add dedicated test files from tests/storage/
         const storage_imports = [_]std.Build.Module.Import{
@@ -4377,14 +4398,16 @@ pub fn build(b: *std.Build) void {
             // infra.tombstones: the slot counts of storage's long-lived maps.
             .{ .name = "infra", .module = testing_graph.infra },
         };
-        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
     }
 
     // CookieStore tests (WHATWG Cookie Store API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
         const cookiestore_tests = b.addTest(.{ .root_module = testing_graph.cookiestore });
+        check_storage_tests.dependOn(&cookiestore_tests.step);
         const run_cookiestore_tests = addSuiteRun(b, launch, cookiestore_tests, "src-cookiestore", null);
         test_step.dependOn(&run_cookiestore_tests.step);
 
@@ -4529,6 +4552,7 @@ pub fn build(b: *std.Build) void {
     // Platform tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
+        check_storage_tests.dependOn(&platform_tests.step);
         const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
         test_step.dependOn(&run_platform_tests.step);
 
@@ -4570,9 +4594,10 @@ pub fn build(b: *std.Build) void {
                 break :stack_overflow_fixtures options.createModule();
             } },
         };
-        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
 
         // TRANSITIONAL: the old platform code step 0 keeps, compiled until each
         // recipes step that replaces it retires it (tests/platform/
@@ -4745,9 +4770,10 @@ pub fn build(b: *std.Build) void {
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
     };
-    addTestFilesFromDir(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| {
+    if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
-    };
+        break :blk null;
+    }) |exe| check_storage_tests.dependOn(&exe.step);
 
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
