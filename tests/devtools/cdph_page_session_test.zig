@@ -643,7 +643,9 @@ test "a javascript: URL's document keeps the page's Log entries: only a regular 
 /// LocalWindowProxy::Initialize), carrying its frameId.
 fn expectContextOnTouch(h: *Harness, name: []const u8, touch: []const u8) !void {
     const from = h.seen.items.len;
-    const make = try std.fmt.allocPrint(h.allocator, "const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); 1", .{ name, name });
+    // A block: each call's `f` is its own (a second top-level `const f`
+    // would be a redeclaration, a SyntaxError).
+    const make = try std.fmt.allocPrint(h.allocator, "{{ const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); }} 1", .{ name, name });
     defer h.allocator.free(make);
     const made = try h.host.evaluate(h.allocator, h.tab, make, .{}, 5_000);
     defer made.deinit(h.allocator);
