@@ -42,6 +42,7 @@ const log = std.log.scoped(.v8_interface);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const dom_algorithm = @import("dom_algorithm.zig");
@@ -168,7 +169,6 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // as Blink's isolated world shares the frame's ExecutionContext - and the
     // receiver is its wrapper in the WORLD, kept by the world realm's cache.
     // Two loads decide it for a Browser that has made no world.
-    const protocol_worlds = @import("protocol_worlds.zig");
     const in_world = protocol_worlds.realmMayHaveWorlds(ctx) and protocol_worlds.worldOf(ctx) != 0;
     const instance_realm = if (in_world) protocol_worlds.mainRealmOf(ctx) else ctx;
 
@@ -1250,6 +1250,9 @@ pub fn finishGetter(
     result: PayloadType,
     cleanup_allocator: std.mem.Allocator,
     same_object: ?SameObjectEdge,
+    /// The realm of the object whose attribute this is: its Browser's
+    /// isolated-world flag gates the conversion across worlds (two loads).
+    gate_realm: ?runtime.Context,
 ) void {
     const isolate_inner = info.getIsolate();
     // For string types that allocate memory, free after V8 conversion.
@@ -1432,6 +1435,22 @@ pub fn finishGetter(
             const v8_converted = conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
                 break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
             };
+            // A value the impl kept (a stored or traced JSValue) never
+            // reaches another world's script as that world's object
+            // (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference).
+            // THE FAST PATH: a non-handle result, or an object of a Browser
+            // with no isolated world - one branch, two loads, no lookup.
+            if (result == .handle) {
+                if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+                    if (protocol_worlds.acrossWorlds(isolate_inner, v8_converted, current_context)) |converted| {
+                        // The impl's handle is the binding's (released as
+                        // a result is): released now, the converted one
+                        // set and released in its place.
+                        v8.v8_Global_Dispose(v8_converted);
+                        break :comptime_convert converted;
+                    }
+                };
+            }
             break :comptime_convert v8_converted;
         } else if (comptime isOptionalCallbackType(PayloadType)) {
             // An optional callback function type (EventHandler is
@@ -2142,7 +2161,7 @@ pub fn finishOperation(
     // for object creation - asked of the frame only by the results made in
     // it (a union's or a dictionary's object): a void, a wrapper or a handle
     // makes no context (perf3 phase 1b: every void operation made one).
-    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned);
+    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned, instance.ctx);
 }
 
 /// Convert Zig return value to V8 Value
@@ -2154,6 +2173,9 @@ pub fn convertReturnValue(
     isolate: *v8.Isolate,
     frame: *CallFrame,
     owned: *bool,
+    /// The realm of the object whose operation this is: its Browser's
+    /// isolated-world flag gates the conversion across worlds (two loads).
+    gate_realm: ?runtime.Context,
 ) !?*v8.Value {
     // Suppress unused parameter warning - allocator used only in recursive calls
     _ = allocator;
@@ -2173,7 +2195,7 @@ pub fn convertReturnValue(
     // Handle error union - unwrap it
     if (type_info == .error_union) {
         const PayloadType = type_info.error_union.payload;
-        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned);
+        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned, gate_realm);
     }
 
     // Handle void return
@@ -2190,7 +2212,7 @@ pub fn convertReturnValue(
     if (type_info == .optional) {
         if (result) |value| {
             const ChildType = type_info.optional.child;
-            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned);
+            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned, gate_realm);
         } else {
             owned.* = true;
             return @ptrCast(v8.v8_Null(isolate));
@@ -2266,8 +2288,23 @@ pub fn convertReturnValue(
                 }
                 break :blk @ptrCast(conv.newStringFromWtf8(isolate, s.data) orelse return v8.v8_Undefined(isolate));
             },
-            // A Global<Value>*, set as the result as it is.
-            .handle => |h| @ptrCast(h.ptr),
+            // A Global<Value>*, set as the result as it is - unless it is
+            // an object of another isolated world than the operation's
+            // (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference):
+            // then its value in this world, the impl's handle released (the
+            // binding's, `owned`). THE FAST PATH: a Browser with no world -
+            // one branch, two loads, no lookup.
+            .handle => |h| blk: {
+                if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+                    if (frame.currentContext()) |current| {
+                        if (protocol_worlds.acrossWorlds(isolate, @ptrCast(@alignCast(h.ptr)), current)) |converted| {
+                            v8.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
+                            break :blk converted;
+                        }
+                    }
+                };
+                break :blk @ptrCast(h.ptr);
+            },
             // Its wrapper in its relevant realm, as above.
             .instance => |i| blk: {
                 const wrapper = conv.instanceToV8(isolate, @ptrCast(@alignCast(i)));
