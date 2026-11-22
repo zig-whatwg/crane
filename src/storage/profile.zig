@@ -91,11 +91,18 @@ const hour_ms: i64 = std.time.ms_per_hour;
 /// makes one from the Browser's EventLoop.
 pub const CommitTimer = struct {
     context: *anyopaque,
-    /// Run `run(data)` after `ms`, on the Browser's window thread, or
-    /// `drop(data)` if the loop ends first. 0: nothing was armed.
+    /// The window thread only: run `run(data)` after `ms`, on the Browser's
+    /// window thread, or `drop(data)` if the loop ends first. 0: nothing
+    /// was armed (the caller still owns `data`).
     arm: *const fn (context: *anyopaque, ms: u64, run: *const fn (?*anyopaque) void, data: ?*anyopaque, drop: *const fn (?*anyopaque) void) u64,
-    /// Cancel `id`; true only when it will never run.
+    /// The window thread only: cancel `id`; true only when it will never
+    /// run.
     cancel: *const fn (context: *anyopaque, id: u64) bool,
+    /// Any thread of the Browser (a worker's fetch stores cookies): run
+    /// `run(data)` on the window thread `ms` after the loop takes the post,
+    /// or `drop(data)` - on any thread - if it never will. Takes `data`
+    /// whatever happens; it cannot be cancelled.
+    post: *const fn (context: *anyopaque, ms: u64, run: *const fn (?*anyopaque) void, data: ?*anyopaque, drop: *const fn (?*anyopaque) void) void,
 };
 
 /// StorageAreaImpl::RateLimiter: the time `samples` need at `rate` per

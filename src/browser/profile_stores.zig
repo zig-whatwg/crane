@@ -16,6 +16,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const platform = @import("platform");
 const storage = @import("storage");
+const cookiestore = @import("cookiestore");
 const EventLoop = @import("event_loop.zig").EventLoop;
 
 /// Hand `browser` - the Browser's platform state, whose stores are under
@@ -26,11 +27,16 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     // batches (storage/profile.zig).
     const user_agent_storage = try scope.of(storage.UserAgentStorage);
     try user_agent_storage.attachProfile(browser, commitTimer(loop));
+    // Cookies (D6 step 3): the jar's persistent cookies read now, its
+    // changes committed in batches (cookiestore/storage_integration.zig).
+    const jar = try scope.of(cookiestore.CookieJar);
+    try jar.attachProfile(browser, commitTimer(loop));
 }
 
 /// Write what is pending to the profile: the Browser's end.
 pub fn flush(scope: *runtime.BrowserScope) void {
     if (scope.existing(storage.UserAgentStorage)) |user_agent_storage| user_agent_storage.flushProfile();
+    if (scope.existing(cookiestore.CookieJar)) |jar| jar.flush();
 }
 
 /// The Browser's event loop's timers as storage's commit timer: an owned
@@ -39,7 +45,7 @@ pub fn flush(scope: *runtime.BrowserScope) void {
 /// after `flush`.
 fn commitTimer(loop: *EventLoop) ?storage.profile.CommitTimer {
     if (loop.timerInterface() == null) return null;
-    return .{ .context = loop, .arm = arm, .cancel = cancel };
+    return .{ .context = loop, .arm = arm, .cancel = cancel, .post = post };
 }
 
 fn loopOf(context: *anyopaque) *EventLoop {
@@ -54,4 +60,44 @@ fn arm(context: *anyopaque, ms: u64, run: *const fn (?*anyopaque) void, data: ?*
 fn cancel(context: *anyopaque, id: u64) bool {
     const timers = loopOf(context).timerInterface() orelse return false;
     return timers.clearTimeout(id);
+}
+
+/// A `post`: what to arm once the loop runs it.
+const Posted = struct {
+    loop: *EventLoop,
+    ms: u64,
+    run: *const fn (?*anyopaque) void,
+    data: ?*anyopaque,
+    drop: *const fn (?*anyopaque) void,
+
+    /// On the window thread: arm it there.
+    fn runPosted(context: ?*anyopaque) void {
+        const self: *Posted = @ptrCast(@alignCast(context orelse return));
+        const loop = self.loop;
+        const ms = self.ms;
+        const run_it = self.run;
+        const data = self.data;
+        const drop_it = self.drop;
+        loop.allocator.destroy(self);
+        if (arm(loop, ms, run_it, data, drop_it) == 0) drop_it(data);
+    }
+
+    /// Never run (the loop ended): any thread.
+    fn dropPosted(context: ?*anyopaque) void {
+        const self: *Posted = @ptrCast(@alignCast(context orelse return));
+        const data = self.data;
+        const drop_it = self.drop;
+        self.loop.allocator.destroy(self);
+        drop_it(data);
+    }
+};
+
+/// Any thread: the loop's task sink takes the post, and its run arms the
+/// timer on the window thread (the timer manager is the loop's thread's
+/// alone). The loop's allocator is thread-safe, as the sink's tasks need.
+fn post(context: *anyopaque, ms: u64, run: *const fn (?*anyopaque) void, data: ?*anyopaque, drop: *const fn (?*anyopaque) void) void {
+    const loop = loopOf(context);
+    const posted = loop.allocator.create(Posted) catch return drop(data);
+    posted.* = .{ .loop = loop, .ms = ms, .run = run, .data = data, .drop = drop };
+    _ = loop.taskSink().post(.{ .run = Posted.runPosted, .drop = Posted.dropPosted, .data = posted });
 }

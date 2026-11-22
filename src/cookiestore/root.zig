@@ -104,7 +104,7 @@ pub const DeleteCookieOptions = algorithms.DeleteCookieOptions;
 
 // Storage integration
 pub const storage_integration = @import("storage_integration.zig");
-pub const CookieStorageArea = storage_integration.CookieStorageArea;
+pub const CookiePersistence = storage_integration.CookiePersistence;
 
 // Change observer
 pub const change_observer = @import("change_observer.zig");
