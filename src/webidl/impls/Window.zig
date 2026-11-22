@@ -3640,6 +3640,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // entry global. Step 8: with its sandboxed auxiliary navigation browsing
     // context flag set no new top-level traversable is made, and (step 14)
     // "if targetNavigable is null, then return null".
+    // Step 8.4's opener policy check (below) decides the new window's name
+    // and noopener, which a host is told first.
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
+    // A host hears that a new window is asked for (CDP's Page.windowOpen,
+    // html_core.navigation.window_open) before the sandbox's check and
+    // before the window exists: Blink's probe::WindowOpen in
+    // CreateNewWindow (core/page/create_window.cc) runs there, after the
+    // target name found no frame. Its user gesture is the activation before
+    // step 13 consumes it.
+    notifyWindowOpen(this, url_record orelse "", if (coop_noopener) "_blank" else target_str, window_features.geometry, window_features.popup and !(noopener or coop_noopener), noopener or coop_noopener, source_activated);
     const current_flags = sandboxingFlagsOfWindow(this);
     if (current_flags.auxiliary_navigation) return null;
 
@@ -3657,7 +3667,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // that are cross-origin with their top-level browsing context's active
     // document always set noopener to true" (currentDocument: this's
     // navigable's active document).
-    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
     const new_noopener = noopener or coop_noopener;
     const new_target = if (coop_noopener) "_blank" else target_str;
     const is_popup = window_features.popup and !new_noopener;
@@ -3845,6 +3854,26 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     return .{ .integration = integration, .window = created.window };
 }
 
+/// Tell the opener's Browser that a page asks for a new window
+/// (html_core.navigation.window_open; CDP's Page.windowOpen): `opener`'s
+/// tab and navigable, the URL (empty: none), the name the window gets, and
+/// the features Blink's InspectorPageAgent lists.
+fn notifyWindowOpen(opener: *runtime.Instance, url: []const u8, name: []const u8, geometry: html_core.window.browsing_context.WindowGeometry, is_popup: bool, noopener: bool, user_gesture: bool) void {
+    const bc = @import("dom").browser_state.browsingContextOf(opener) orelse return;
+    const window_open = html_core.navigation.window_open;
+    if (bc.navigables == null or bc.navigables.?.window_open == null) return;
+    var features: window_open.FeatureList = .{};
+    features.fill(geometry, is_popup, noopener);
+    window_open.opened(bc.navigables, &.{
+        .tab = bc.getTop().id,
+        .navigable = bc.id,
+        .url = url,
+        .name = name,
+        .features = features.slice(),
+        .user_gesture = user_gesture,
+    });
+}
+
 /// `window`'s associated Document's active sandboxing flag set: what "the
 /// rules for choosing a navigable" read as sandboxingFlagSet for the
 /// navigable whose active window `window` is. Empty with no document.
@@ -3858,7 +3887,7 @@ fn sandboxingFlagsOfWindow(window: *runtime.Instance) @import("dom").sandboxing.
 /// for a hyperlink or a form whose target names no frame of its page - an
 /// open popup of that name in the page's group (step 7), else a new
 /// top-level traversable (step 8).
-fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?@import("dom").auxiliary_navigables.Chosen {
+fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool, url: []const u8) ?@import("dom").auxiliary_navigables.Chosen {
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (popupByName(current_window, target)) |found| return .{
             .integration = if (found.integration) |integration| @ptrCast(integration) else null,
@@ -3868,10 +3897,14 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     // Step 8: no new top-level traversable for a document whose active
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
     // context flag set.
-    if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
     // Step 8.4: a nested document cross-origin with its top-level origin
     // under "same-origin" opens with noopener, named "_blank".
     const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(current_window);
+    // A host hears the new window asked for, before the sandbox's check
+    // (Blink's probe::WindowOpen, as in open() above). A link or form names
+    // no features; its user gesture is the window's transient activation.
+    notifyWindowOpen(current_window, url, if (coop_noopener) "_blank" else target, .{}, false, noopener or coop_noopener, @import("html").user_activation.hasTransientActivation(current_window));
+    if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
     const created = (newTopLevelTraversable(current_window, if (coop_noopener) "_blank" else target, noopener or coop_noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }

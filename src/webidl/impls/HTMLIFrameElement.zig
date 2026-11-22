@@ -6681,7 +6681,7 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
         // window).
         .none => {
             const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
-            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener) orelse return;
+            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener, request.url) orelse return;
             const opaque_integration = chosen_top.integration orelse {
                 var host_request = request;
                 host_request.target = "_self";

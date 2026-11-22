@@ -472,6 +472,8 @@ pub const Browser = struct {
         // And its user prompt hook (html.navigation.user_prompts): each
         // simple dialog's opening and closing.
         navigables.user_prompts = .{ .context = browser, .opening = dialogOpening, .closed = dialogClosed };
+        // And its new-window hook (html.navigation.window_open).
+        navigables.window_open = .{ .context = browser, .opened = windowOpened };
         // The agent's inspector client (the engine protocol's
         // inspector_protocol): Runtime.runIfWaitingForDebugger releases the
         // tab's start hold, and a debugger pause runs the Browser's nested
@@ -1829,6 +1831,13 @@ pub const Browser = struct {
     fn dialogClosed(context: *anyopaque, closed: *const html_mod.navigation.user_prompts.Closed) void {
         const self: *Browser = @ptrCast(@alignCast(context));
         self.listeners.emit(.{ .dialog_closed = closed });
+    }
+
+    /// html.navigation.window_open: a page asks for a new window, before it
+    /// is made.
+    fn windowOpened(context: *anyopaque, opened: *const html_mod.navigation.window_open.Opened) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .window_open = opened });
     }
 
     /// The inspector client's runIfWaitingForDebugger: group `group` is a

@@ -191,6 +191,11 @@ pub const Navigables = struct {
     /// opened and closed). One slot, which the Browser sets to its own
     /// dispatcher.
     user_prompts: ?@import("../navigation/user_prompts.zig").Hook = null,
+    /// The Browser's new-window hook (navigation/window_open.zig): told as a
+    /// page asks for a new top-level traversable, before it is made (CDP's
+    /// Page.windowOpen). One slot, which the Browser sets to its own
+    /// dispatcher.
+    window_open: ?@import("../navigation/window_open.zig").Hook = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };

@@ -88,6 +88,7 @@ fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events
         .document_start => |start| documentStarted(session, start),
         .dialog_opening => |opening| dialogOpening(session, opening),
         .dialog_closed => |closed| dialogClosed(session, closed),
+        .window_open => |opened| windowOpened(session, opened),
         else => {},
     }
 }
@@ -125,6 +126,20 @@ fn dialogClosed(session: *PageSession, closed: *const @import("browser").host_ev
         .frameId = frame_id.slice(),
         .result = closed.accepted,
         .userInput = closed.user_input,
+    });
+}
+
+/// A page of the session's tab asks for a new window, before it is made:
+/// Page.windowOpen (Blink's InspectorPageAgent::WindowOpen, from
+/// probe::WindowOpen in CreateNewWindow), so it precedes the new tab's
+/// Target events. Playwright reads its features for the popup's size.
+fn windowOpened(session: *PageSession, opened: *const @import("browser").host_events.WindowOpen) void {
+    if (!state(session).enabled or opened.tab != session.tab) return;
+    session.emit(P.windowOpen, .{
+        .url = opened.url,
+        .windowName = opened.name,
+        .windowFeatures = opened.features,
+        .userGesture = opened.user_gesture,
     });
 }
 
