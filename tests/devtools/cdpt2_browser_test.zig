@@ -72,8 +72,7 @@ test "G18: Target.createBrowserContext makes an off-the-record context - it neve
     defer context.deinit();
     // Chrome's answer, not "Failed to create browser context" (ProfileInUse).
     try testing.expect(cdp.stringAt(context.value, "result.browserContextId") != null);
-    // And it shares no storage with the default Browser: a key set in one
-    // is not in the other.
+    // And it runs: a page opens in it.
     var params_buffer: [192]u8 = undefined;
     const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"about:blank\",\"browserContextId\":\"{s}\"}}", .{cdp.stringAt(context.value, "result.browserContextId").?}), "");
     defer created.deinit();
