@@ -67,13 +67,19 @@ pub fn register(session: *const PageSession, realm: runtime.Context, bc: *frames
 /// `register` with the engine's inspector operations (lane cdpw's bridge):
 /// analysed only when the engine protocol has them.
 fn registerLive(session: *const PageSession, realm: runtime.Context, bc: *frames.BrowsingContext) ?i64 {
+    return registerWithToken(session.side.?.token, realm, bc);
+}
+
+/// `registerLive` for a Browser whose devtools token is `token` (ids.zig:
+/// the first half of its frame ids).
+fn registerWithToken(token: u64, realm: runtime.Context, bc: *frames.BrowsingContext) ?i64 {
     if (engine.inspectorContextId(realm)) |id| return id;
     var buffer: [512]u8 = undefined;
     var arena_state = std.heap.FixedBufferAllocator.init(&buffer);
     const arena = arena_state.allocator();
     const world_name = worldNameOf(realm);
     const is_default = world_name == null;
-    const frame_id = session.frameId(bc.id);
+    const frame_id = @import("ids.zig").frameId(token, bc.id);
     const aux = std.fmt.allocPrint(arena, "{{\"isDefault\":{},\"type\":\"{s}\",\"frameId\":\"{s}\"}}", .{
         is_default, if (is_default) "default" else "isolated", frame_id.slice(),
     }) catch return null;
@@ -184,4 +190,67 @@ pub fn isEdgeSession(session: *const PageSession, comptime which: enum { first, 
         last = s;
     }
     return last == session;
+}
+
+// ============================================================================
+// World realms made on demand (the engine's world observer)
+// ============================================================================
+
+/// What the page side keeps per Browser to register world realms as they
+/// are made: a world realm can be made without anything of CDP asking -
+/// script of a world reaching another frame's Window makes that frame's
+/// realm of the world - and Chrome announces it then
+/// (Runtime.executionContextCreated, from MainThreadDebugger::ContextCreated
+/// as Blink's WindowProxyManager makes an isolated world's context). The
+/// engine's world observer (engine.installWorldObserver) tells it; explicit
+/// registration at a commit or Runtime.enable stays, and a realm already
+/// known is not registered twice. A supplement of the Browser's scope.
+pub const WorldWatch = struct {
+    /// The Browser's devtools token (ids.zig), set when the first page
+    /// session attaches.
+    token: u64 = 0,
+    installed: bool = false,
+    observer: engine.WorldObserver = .{ .created = worldCreated, .destroyed = worldDestroyed },
+
+    pub fn init(allocator: std.mem.Allocator) WorldWatch {
+        _ = allocator;
+        return .{};
+    }
+
+    pub fn deinit(self: *WorldWatch) void {
+        _ = self;
+    }
+};
+
+/// The session's Browser has its world realms registered as they are made,
+/// from now on (installed once, by the first page session that attaches).
+pub fn watchWorlds(session: *const PageSession) void {
+    if (comptime !have_inspector or !@hasDecl(engine, "installWorldObserver")) return;
+    const browser = session.browser orelse return;
+    const agent = browser.agent orelse return;
+    const watch = browser.scope.of(WorldWatch) catch return;
+    watch.token = session.side.?.token;
+    if (watch.installed) return;
+    engine.installWorldObserver(agent, &watch.observer, watch);
+    watch.installed = true;
+}
+
+fn worldCreated(host: ?*anyopaque, world_realm: runtime.Context) void {
+    if (comptime have_inspector) worldCreatedLive(host, world_realm);
+}
+
+fn worldCreatedLive(host: ?*anyopaque, world_realm: runtime.Context) void {
+    const watch: *WorldWatch = @ptrCast(@alignCast(host orelse return));
+    const main = engine.mainRealmOf(world_realm);
+    const record = main.getRealm() orelse return;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    _ = registerWithToken(watch.token, world_realm, bc);
+}
+
+fn worldDestroyed(host: ?*anyopaque, world_realm: runtime.Context) void {
+    _ = host;
+    if (comptime have_inspector) {
+        if (engine.inspectorContextId(world_realm) != null) engine.inspectorContextDestroyed(world_realm);
+    }
 }

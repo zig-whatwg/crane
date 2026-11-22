@@ -4099,6 +4099,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         result,
                         cleanup_allocator,
                         if (comptime same_object) .{ .owner = this_handle.?, .prop_name = prop_name } else null,
+                        instance.ctx,
                     );
                 }
             };
@@ -8292,7 +8293,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 binding_plumbing.getterFailed(info, err, error_realm);
                 return;
             };
-            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null);
+            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null, instance.ctx);
         }
 
         /// The attribute setter: the value converted to a

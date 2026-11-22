@@ -452,6 +452,9 @@ fn reportToWindow(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The realm that threw (an isolated world's: its error event is that
+        // world's only - report_exception).
+        .realm = info.realm,
     };
     _ = html_mod.report_exception.reportErrorInfo(window, &extracted, .{});
 }
@@ -1296,7 +1299,38 @@ fn initializeTimer(realm: runtime.Context, converted: runtime.WindowTimerHandler
     // once, as the engines do.
     switch (handler) {
         .function => {},
-        .trusted_script, .string => |value| if (realmWindow(realm)) |window| {
+        .trusted_script, .string => |value| if (html_mod.code_generation.WorldPolicy.of(realm)) |world_policy| {
+            // An isolated world with a Content Security Policy of its own
+            // (engine section 4.2a; Blink's IsolatedWorldCSP): steps 1.4-1.5
+            // against that policy instead of the page's. A world has no
+            // default Trusted Types policy of the page's, so a string where
+            // the world's policy requires TrustedScript is the TypeError, and
+            // its violations are reported to no one
+            // (html.code_generation.WorldPolicy). A world with none - every
+            // DevTools world - takes the page's steps below.
+            var policy = world_policy;
+            defer policy.deinit();
+            const allocator = realm.allocator;
+            const text: []u8 = switch (handler) {
+                .string => engine.convertToDOMString(realm, value, allocator) catch return 0,
+                else => blk: {
+                    const object = engine.convertToPlatformObject(realm, value) orelse return 0;
+                    const data = dom_mod.trusted_types.dataOf(object, .script) orelse return 0;
+                    break :blk allocator.dupe(u8, data) catch return 0;
+                },
+            };
+            const trusted = handler == .trusted_script;
+            if (!trusted and policy.requiresTrustedScript()) {
+                allocator.free(text);
+                return error.TypeError;
+            }
+            if (policy.compileStrings(text, true) != .allowed) {
+                allocator.free(text);
+                return 0;
+            }
+            releaseTimerHandler(handler, allocator);
+            handler = .{ .string = .{ .string = .{ .data = text, .owned = true } } };
+        } else if (realmWindow(realm)) |window| {
             const allocator = realm.allocator;
             // 1.1-1.3: "Window setTimeout" or "Window setInterval".
             const sink: []const u8 = if (repeat) "Window setInterval" else "Window setTimeout";

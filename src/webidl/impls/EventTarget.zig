@@ -442,6 +442,7 @@ pub fn installHooks() void {
         .dispatch_trusted = dispatchTrusted,
         .dispatch_trusted_legacy_target_override = dispatchTrustedLegacyTargetOverride,
         .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
+        .dispatch_trusted_in_world = dispatchTrustedInWorld,
     });
     dom_module.event_handlers.install(.{
         .get = getHandlerAddress,
@@ -1410,7 +1411,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    return dispatchEventWithTrust(instance, event, false, null, null);
+    return dispatchEventWithTrust(instance, event, false, null, null, dom_module.event_dispatch.DispatchPath.any_world);
 }
 
 /// DOM 2.10 "fire an event", for an event the user agent has already created
@@ -1418,7 +1419,14 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 /// is the only thing that makes an event untrusted. Everything reaches it
 /// through `dom.fire_event`, which this installs.
 fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    return dispatchEventWithTrust(target, event, true, null, null);
+    return dispatchEventWithTrust(target, event, true, null, null, dom_module.event_dispatch.DispatchPath.any_world);
+}
+
+/// dom.fire_event.dispatchTrustedInWorld: a trusted dispatch whose listeners
+/// are isolated world `world`'s only - an error report's (Blink's
+/// ErrorEvent::CanBeDispatchedInWorld).
+fn dispatchTrustedInWorld(target: *runtime.Instance, event: *runtime.Instance, world: u32) anyerror!bool {
+    return dispatchEventWithTrust(target, event, true, null, null, world);
 }
 
 /// "Fire an event" at the Window `window` "with legacy target override flag
@@ -1435,16 +1443,16 @@ fn dispatchTrustedLegacyTargetOverride(window: *runtime.Instance, event: *runtim
     var document_hold: dom_module.node_holds.RefHold = .{};
     defer document_hold.release();
     document_hold.set(document);
-    return dispatchEventWithTrust(window, event, true, null, document);
+    return dispatchEventWithTrust(window, event, true, null, document, dom_module.event_dispatch.DispatchPath.any_world);
 }
 
 fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance, did_throw: *bool) anyerror!bool {
-    return dispatchEventWithTrust(target, event, true, did_throw, null);
+    return dispatchEventWithTrust(target, event, true, did_throw, null, dom_module.event_dispatch.DispatchPath.any_world);
 }
 
 /// dispatchEvent()'s steps with isTrusted given: false for script (DOM 2.8
 /// step 2), true when the user agent fires the event.
-fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool, target_override: ?*runtime.Instance) anyerror!bool {
+fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool, target_override: ?*runtime.Instance, only_world: u32) anyerror!bool {
     // The event's dispatch state, taken once: every step below works on it.
     // An event with none never ran Event's constructing steps, so its
     // initialized flag is unset.
@@ -1464,7 +1472,7 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
     state.is_trusted = trusted;
 
     // Step 3: Return the result of dispatching event to this
-    return dispatchWithThrowFlag(instance, event, state, did_throw, target_override);
+    return dispatchWithThrowFlag(instance, event, state, did_throw, target_override, only_world);
 }
 
 // ============================================================================
@@ -1493,7 +1501,7 @@ const ListenerPhase = enum { capturing, bubbling };
 /// step 9, which every exit of `dispatchOnPath` runs; a nested dispatch -
 /// another event's, or this one's again from its activation behaviour - has
 /// a frame and a path of its own.
-fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
+fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance, only_world: u32) !bool {
     // Runtime safety off for the declaration only: ReleaseSafe would fill
     // the path's inline items with 0xaa on every dispatch, and `init` writes
     // every field that is read before it is written (the approved form:
@@ -1501,6 +1509,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     @setRuntimeSafety(false);
     var path: dom_module.event_dispatch.DispatchPath = undefined;
     path.init(runtime.allocatorOf(event));
+    path.only_world = only_world;
     defer path.deinit();
     // Whatever way the dispatch left, the event does not point at this
     // frame once it is gone.
@@ -1722,6 +1731,10 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     var list = listeners.current();
     var cursor = list.clone() orelse return false;
 
+    // The world an error report is for (`skippedForWorld`), read once for
+    // the walk: `any_world` for every other dispatch.
+    const only_world: u32 = if (state.path) |path| path.only_world else dom_module.event_dispatch.DispatchPath.any_world;
+
     // Step 1: "Let found be false."
     var found = false;
 
@@ -1756,8 +1769,8 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // list's - borrowed until callListener takes a hold of its own, before
         // any script runs - or, for a once listener, this call's.
         switch (listener.bits.kind) {
-            .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw),
-            .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw),
+            .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw, only_world),
+            .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw, only_world),
         }
 
         // The callback ran: the list may have moved, grown or gone.
@@ -1798,7 +1811,7 @@ fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?eng
 /// `callback` is BORROWED: the record's, or the detached once listener's. The
 /// call holds a value of its own, since the callback can remove its listener
 /// and so release the record's.
-fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool) void {
+fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool, only_world: u32) void {
     const realm = current_target.ctx;
     const object = engine.retainValue(realm, callback.object.value) catch |err| {
         log.debug("listener not called: {}", .{err});
@@ -1811,7 +1824,14 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     // has the event as its current event for the duration of the call
     // (`window.event`) - unless invocationTargetInShadowTree, when it keeps
     // the one it has - and step 2.15 restores whatever it was before.
-    const listener_window = windowOfRealm(associatedRealm(held.object.value) orelse held.context orelse realm);
+    const listener_realm = associatedRealm(held.object.value) orelse held.context orelse realm;
+    const listener_window = windowOfRealm(listener_realm);
+
+    // An error report reaches the listeners of its throwing script's world
+    // only (`skippedForWorld`).
+    if (only_world != dom_module.event_dispatch.DispatchPath.any_world) {
+        if (skippedForWorld(only_world, listener_realm)) return;
+    }
 
     // Steps 2.6-2.8: "If targetGlobal or listenerGlobal is a Window object
     // whose associated Document is not fully active, then continue."
@@ -1855,10 +1875,26 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     }
 }
 
+/// Whether a listener whose callback is of `listener_realm` is skipped
+/// because the dispatch is an error report of another isolated world
+/// (engine section 4.2a; dom.event_dispatch.DispatchPath.only_world):
+/// Blink's ErrorEvent keeps the world of the script that threw, and
+/// JSBasedEventListener::Invoke returns for a listener of another world
+/// (ErrorEvent::CanBeDispatchedInWorld; third_party/blink/renderer/core/
+/// events/error_event.h, bindings/core/v8/js_based_event_listener.cc; BSD-3 -
+/// reproduced, not copied) - after a once listener was removed, as there.
+/// The fast path is the callers': every dispatch but an error report's has
+/// `any_world` - one predictable branch at each call, no lookup, the
+/// listener's realm not even computed - and engine.worldOf answers the main
+/// world with no lookup for a Browser that made no isolated world.
+fn skippedForWorld(only_world: u32, listener_realm: runtime.Context) bool {
+    return engine.worldOf(listener_realm) != only_world;
+}
+
 /// The event handler processing algorithm (HTML §8.1.8.1) for `instance`'s
 /// event handler for `event`'s type - the callback of the event handler's
 /// listener, run by inner invoke.
-fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool) void {
+fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool, only_world: u32) void {
     const realm = instance.ctx;
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
@@ -1875,6 +1911,13 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // [LegacyTreatNonObjectAsNull] keeps one - is invoked as nothing (WebIDL
     // "invoke a callback function" step 4).
     if (!engine.isCallable(realm, callback.function.value)) return;
+
+    // An error report reaches the handlers of its throwing script's world
+    // only (`skippedForWorld`): a page's onerror never sees an isolated
+    // world's error.
+    if (only_world != dom_module.event_dispatch.DispatchPath.any_world) {
+        if (skippedForWorld(only_world, associatedRealm(callback.function.value) orelse callback.context orelse realm)) return;
+    }
 
     // Step 3: special error event handling - an ErrorEvent named "error" whose
     // currentTarget is a global (WindowOrWorkerGlobalScope). Brand checks go
@@ -2112,6 +2155,9 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The callback's realm: an isolated world's error event is that
+        // world's only (report_exception).
+        .realm = realm,
     };
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
