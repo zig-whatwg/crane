@@ -168,6 +168,10 @@ fn endRequest(side: *BrowserSide, request_id: u64, tab: ?u64) void {
     state.requests_guard.noteRemoval(&state.requests);
     removed.value.deinit(side.allocator);
     if (removed.value.counted_frame) |frame| if (tab) |t| countInFlight(side, t, frame, -1);
+    // A navigation's request (its id is the navigation's): nothing of it
+    // is looked up again, whether its document committed already (a body
+    // that outlived the commit, `settleNavigation`) or will.
+    if (request_id & counter_bit == 0) forgetNavigation(state, request_id);
 }
 
 /// A response's head, OWNED copies.
@@ -363,11 +367,30 @@ pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) 
             // before any handler, so a subresource fetch of the new
             // document finds it whether or not a session has Page on.
             if (side.browser) |b| if (frames.of(b)) |f| f.noteCommitted(milestone.navigable_id, c.document.document, c.document.generation, milestone.navigation_id);
-            if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations);
+            settleNavigation(state, milestone.navigation_id);
         },
-        .aborted => if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations),
+        .aborted => settleNavigation(state, milestone.navigation_id),
         else => {},
     }
+}
+
+/// The navigation committed or was aborted: its navigable stops being
+/// looked up - unless its request is still in flight. A document commits
+/// at its response's head, so a streamed document's body (React's SSR,
+/// Next.js) still arrives after the commit, and its dataReceived and
+/// loadingFinished find their frame through this entry (`attribute`): it
+/// goes with the request then (`endRequest`). It went at the commit, so
+/// a document whose body outlived the commit never reported its end -
+/// Playwright's page.goto(waitUntil: 'networkidle') waited on it forever
+/// (lane tpf, React's compiler playground; Chrome reports the document's
+/// loadingFinished when its body ends).
+fn settleNavigation(state: *State, navigation_id: u64) void {
+    if (state.requests.contains(navigation_id)) return;
+    forgetNavigation(state, navigation_id);
+}
+
+fn forgetNavigation(state: *State, navigation_id: u64) void {
+    if (state.navigations.remove(navigation_id)) state.navigations_guard.noteRemoval(&state.navigations);
 }
 
 /// Whom a request is for: its tab, frame and document's loader, and the

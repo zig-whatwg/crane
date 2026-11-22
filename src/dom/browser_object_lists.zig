@@ -5,6 +5,8 @@
 //! - `.intersection_observers`: the IntersectionObservers that observe
 //!   something, which a node's teardown tells it is gone
 //!   (dom.intersection_targets);
+//! - `.resize_observers`: the ResizeObservers that observe something, which
+//!   "update the rendering" runs for their documents (dom.resize_observations);
 //! - `.navigations`: the Navigation objects, which a Window's navigation
 //!   hooks and a traversable's removed entries look up (dom.navigation_api);
 //! - `.processing_instructions`: the ProcessingInstructions not yet
@@ -110,7 +112,7 @@ pub const ObjectSet = struct {
 /// What each tag holds.
 pub fn Of(comptime tag: BrowserScope.Table) type {
     return switch (tag) {
-        .intersection_observers, .navigations => ObjectList,
+        .intersection_observers, .resize_observers, .navigations => ObjectList,
         .processing_instructions => ObjectSet,
         else => @compileError("dom.browser_object_lists keeps no list " ++ @tagName(tag)),
     };

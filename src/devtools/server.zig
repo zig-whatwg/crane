@@ -152,8 +152,10 @@ pub const Server = struct {
         // The JavaScript engine's version, as the engine reports it.
         if (self.options.js_version.len == 0) self.options.js_version = @import("engine").engineVersion() catch "";
 
-        // The default context: the embedder's Browser.
-        const default_context = try self.addContext(options.default_host, false);
+        // The default context: the embedder's Browser, installed before a
+        // connection can come, with its tabs announced
+        // (browser_side.installAndWait).
+        const default_context = try self.addContextWith(options.default_host, false, .wait);
         self.default_context = default_context;
 
         if (options.port) |port| {
@@ -332,7 +334,16 @@ pub const Server = struct {
     // ------------------------------------------------------------------
 
     /// Devtools thread (or `start`, before it runs): a context for `host`.
+    /// A context for `host`'s Browser - a new context's, which has no tab
+    /// yet: the remote end's listener is posted to it.
     pub fn addContext(self: *Server, host: *host_bridge.BrowserHost, owned: bool) !*targets.Context {
+        return self.addContextWith(host, owned, .post);
+    }
+
+    /// A context for `host`'s Browser. `install`: `.wait` installs the
+    /// remote end's listener and returns once it has (Server.start, off the
+    /// Browser thread); `.post` posts it.
+    fn addContextWith(self: *Server, host: *host_bridge.BrowserHost, owned: bool, install: enum { wait, post }) !*targets.Context {
         const context = try self.allocator.create(targets.Context);
         errdefer self.allocator.destroy(context);
         const id = self.freshToken();
@@ -340,7 +351,10 @@ pub const Server = struct {
         errdefer side.destroy();
         context.* = .{ .id = id, .host = host, .side = side, .owned = owned };
         try self.contexts.append(self.allocator, context);
-        browser_side.InstallTask.post(side) catch |err| log.warn("devtools: the Browser did not take the remote end's listener: {t}", .{err});
+        switch (install) {
+            .wait => browser_side.installAndWait(side),
+            .post => browser_side.InstallTask.post(side) catch |err| log.warn("devtools: the Browser did not take the remote end's listener: {t}", .{err}),
+        }
         return context;
     }
 

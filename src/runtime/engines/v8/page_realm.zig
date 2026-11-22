@@ -475,16 +475,19 @@ fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv
     const isolate = info.getIsolate();
     const realm = receiverWindowRealm(info) orelse return;
 
-    // A missing or non-callable argument is a TypeError per WebIDL, but these
-    // natives report argument problems by returning the 0 sentinel rather than
-    // throwing, and a lone thrower here would be the odd one out.
-    if (info.length() < 1) return setIntegerReturn(info, isolate, 0);
+    // WebIDL: `FrameRequestCallback callback` is required and not nullable,
+    // so a call without it, or with anything not callable (null, a number, a
+    // plain object), throws a TypeError - as setTimeout's missing handler
+    // does - with Chrome's messages; Firefox and Safari throw too. It used to
+    // return the 0 sentinel, which zone.js's own suite (Angular's) asserts
+    // against ("should be tolerant of invalid arguments": toThrow()).
+    if (info.length() < 1) return throwTypeError(isolate, "Failed to execute 'requestAnimationFrame' on 'Window': 1 argument required, but only 0 present.");
 
     // OWNED from here: handed to the host, or disposed on the way out.
     const callback_value = info.get(0);
     if (!ffi.v8_Value_IsFunction(callback_value)) {
         ffi.v8_Global_Dispose(callback_value);
-        return setIntegerReturn(info, isolate, 0);
+        return throwTypeError(isolate, "Failed to execute 'requestAnimationFrame' on 'Window': The callback provided as parameter 1 is not a function.");
     }
     // The receiver's realm: its window's map of animation frame callbacks.
     const operations = realm.window_operations orelse {

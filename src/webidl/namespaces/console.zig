@@ -34,9 +34,12 @@ pub const console = struct {
             .{ "timeLog", "call_timeLog", 0 },
             .{ "dir", "call_dir", 0 },
             .{ "warn", "call_warn", 0 },
+            .{ "timeStamp", "call_timeStamp", 0 },
+            .{ "profile", "call_profile", 0 },
             .{ "dirxml", "call_dirxml", 0 },
             .{ "timeEnd", "call_timeEnd", 0 },
             .{ "group", "call_group", 0 },
+            .{ "profileEnd", "call_profileEnd", 0 },
         };
 
         pub const has_constructor = false;
@@ -109,6 +112,14 @@ pub const console = struct {
         return try console_impl.call_warn(ctx, data);
     }
 
+    pub fn call_timeStamp(ctx: runtime.Context, data: webidl.Opt(runtime.JSValue)) anyerror!void {
+        return try console_impl.call_timeStamp(ctx, data);
+    }
+
+    pub fn call_profile(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+        return try console_impl.call_profile(ctx, data);
+    }
+
     pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_dirxml(ctx, data);
     }
@@ -119,5 +130,9 @@ pub const console = struct {
 
     pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_group(ctx, data);
+    }
+
+    pub fn call_profileEnd(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+        return try console_impl.call_profileEnd(ctx, data);
     }
 };

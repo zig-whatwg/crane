@@ -1,0 +1,12 @@
+# Architecture: A remote end knows its existing targets before it accepts its first connection
+
+**Date**: 2026-11-22
+**Lesson**: State a client reads in its first command must be in place before the server accepts that client. An install the server posts to another thread and does not wait for races the client's first message.
+
+**Why**: The devtools Server learns the Browser's existing tabs from the Browser thread: `BrowserSide.install` lists them and posts a `tab_created` for each to the devtools inbox. `Server.start` posted that install (`InstallTask`) and opened the acceptor at once. A client that connected quickly, as every replay test and Playwright's `connectOverCDP` do, could get its `Target.setAutoAttach {waitForDebuggerOnStart: true}` processed before the tab's `tab_created`. `addTab` then treated the console's first tab as a NEW target: attached `waitingForDebugger: true`, held, and announced after setAutoAttach's reply. Chrome's browser process knows its tabs when the client connects, so the existing page arrives attached, not waiting, before the reply.
+
+**What Happened**: In tests/devtools/cdpr_playwright_replay_test.zig all 5 tests failed (dt3, chat2). 2 failed in `connect` on the existing page's `waitingForDebugger`, and 3 in `newPage`, where the page's lifecycle replay never came. cdpr_puppeteer_replay_test's setRequestInterception and page.close() flaked alone (3/5, 2/5). None of these failures named the cause. Each one looked like its own CDP gap until the order of the first three messages was read.
+
+**Fix**: `Server.start` installs the default context and WAITS (`browser_side.installAndWait`, a session message so a Browser already in a dialog's or a pause's nested loop runs it), and only then spawns the acceptor or opens the pipe. The `tab_created` events are in the inbox ahead of any connection. This is safe because every caller (repl, the WebDriver endpoint, the fixtures) starts the server off the Browser thread. A new context's Browser has no tab yet, so it still posts. After the fix, test-verify passed for all 5 Playwright tests and the 5 Puppeteer tests: batched 10/10 and alone 5/5, the two flakes included.
+
+**Takeaway**: **When a protocol's first answer depends on state another thread delivers, deliver it before accepting connections. A posted, unawaited setup step is a race against the fastest client, and its failures look like unrelated protocol gaps.**
