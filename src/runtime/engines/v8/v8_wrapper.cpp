@@ -6903,8 +6903,9 @@ Isolate* v8_Isolate_New() {
 
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
     // Thread-safe, and a no-op once V8 has started. ffi.zig's v8_Isolate_New
-    // starts it first with the runtime flags; this is the net below it.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    // starts it first with the runtime flags and ICU's default locale; this is
+    // the net below it.
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
@@ -14251,7 +14252,7 @@ struct V8StartupData {
 void* v8_SnapshotCreator_New(const intptr_t* external_references) {
     // The snapshot generator starts V8 first, with its flags
     // (snapshot_loader.initializePlatformForSnapshots); this is the net.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     // Create isolate params with external references
     Isolate::CreateParams params;
@@ -14620,7 +14621,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     const CraneIsolateOptions* options
 ) {
     // As v8_Isolate_New: the net below ffi.zig's start.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     if (!snapshot_data || snapshot_size <= 0) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Invalid snapshot data\n");
