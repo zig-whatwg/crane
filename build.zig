@@ -6438,6 +6438,45 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
+    // LINT: @hasDecl probes that can never see their declaration
+    // ========================================================================
+    // Zig 0.17's @hasDecl is false for every declaration that is not `pub`,
+    // in the probe's own file too, so a generic's optional hook declared
+    // without `pub` is silently compiled out (lane tpf: the devtools tasks'
+    // drop; lane tpg: a state's deinit). tools/lint_hasdecl.zig resolves each
+    // @hasDecl / std.meta.hasFn / hasMethod probe's container - through
+    // scopes, @import, aliases, field chains and a generic's call sites - and
+    // fails, with no baseline, on a probed name declared only without `pub`;
+    // a probe it cannot resolve needs a `// hasdecl: <why>` line, and the
+    // unannotated ones are a ratchet in tools/hasdecl_baseline.txt (only goes
+    // down: `zig build lint-hasdecl -- --update`; `-- --list` shows each).
+    // `zig build test` depends on it.
+    const lint_hasdecl_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_hasdecl.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_hasdecl_exe = b.addExecutable(.{
+        .name = "lint_hasdecl",
+        .root_module = lint_hasdecl_module,
+    });
+    const lint_hasdecl_step = b.step("lint-hasdecl", "Fail on an @hasDecl probe whose container declares the name only without pub (use -- --update after annotating unresolved probes, -- --list to see them)");
+    const lint_hasdecl = b.addRunArtifact(lint_hasdecl_exe);
+    // It reads src/, tools/, tests/, build.zig and the baseline, which the
+    // build graph does not track.
+    lint_hasdecl.has_side_effects = true;
+    lint_hasdecl.setCwd(b.path("."));
+    lint_hasdecl.addPassthruArgs();
+    lint_hasdecl_step.dependOn(&lint_hasdecl.step);
+    const lint_hasdecl_check = b.addRunArtifact(lint_hasdecl_exe);
+    lint_hasdecl_check.has_side_effects = true;
+    lint_hasdecl_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_hasdecl_check.step);
+    const lint_hasdecl_tests = b.addTest(.{ .root_module = lint_hasdecl_module });
+    test_step.dependOn(&addSuiteRun(b, launch, lint_hasdecl_tests, "tools-lint_hasdecl", null).step);
+
+    // ========================================================================
     // LINT: the CSS module's two import boundaries
     // ========================================================================
     // Two cold Typed OM entries stay off CSS's parsing and computation paths
