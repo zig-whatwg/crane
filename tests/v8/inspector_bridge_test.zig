@@ -52,7 +52,7 @@ const Received = struct {
     }
 
     fn channel(self: *Received) engine.InspectorChannel {
-        return .{ .host = self, .send = send };
+        return .{ .context = self, .send = send };
     }
 
     fn deinit(self: *Received) void {

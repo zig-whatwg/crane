@@ -76,6 +76,11 @@ pub const Inspector = struct {
     realms: std.ArrayListUnmanaged(*Registered) = .empty,
     /// The host sessions connected.
     sessions: std.ArrayListUnmanaged(*Session) = .empty,
+    /// The host's groups (engine.InspectorGroup, a tab's id) as V8's int
+    /// group ids, numbered from 1 in the order the host first names them
+    /// (`v8Group`); never `repl_group`.
+    groups: std.AutoHashMapUnmanaged(engine.InspectorGroup, c_int) = .empty,
+    next_group: c_int = 1,
     /// `end` ran: nothing is registered or connected any more.
     ended: bool = false,
 
@@ -123,7 +128,27 @@ pub const Inspector = struct {
         ffi.v8_Inspector_Delete(self.native);
         self.realms.deinit(self.allocator);
         self.sessions.deinit(self.allocator);
+        self.groups.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    /// V8's group id for the host's `group`, numbered on first use.
+    pub fn v8Group(self: *Inspector, group: engine.InspectorGroup) Error!c_int {
+        if (self.groups.get(group)) |known| return known;
+        if (self.next_group >= repl_group) return error.OperationFailed;
+        const id = self.next_group;
+        try self.groups.put(self.allocator, group, id);
+        self.next_group += 1;
+        return id;
+    }
+
+    /// The host's group of V8's `id`, if it is one (not the console's).
+    fn hostGroup(self: *const Inspector, id: c_int) ?engine.InspectorGroup {
+        var it = self.groups.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* == id) return entry.key_ptr.*;
+        }
+        return null;
     }
 
     fn registeredOf(self: *Inspector, realm: Context) ?*Registered {
@@ -261,7 +286,7 @@ fn sessionOf(session: *engine.InspectorSession) *Session {
 /// A session's message out (CraneInspectorSession's channel): to the host.
 fn onSend(host: ?*anyopaque, utf8: [*]const u8, length: usize) callconv(.c) void {
     const session: *Session = @ptrCast(@alignCast(host orelse return));
-    session.channel.send(session.channel.host, utf8[0..length]);
+    session.channel.send(session.channel.context, utf8[0..length]);
 }
 
 // ---- V8InspectorClient's answers (CraneInspectorHooks) ----
@@ -274,14 +299,14 @@ fn runIfWaiting(host: ?*anyopaque, group: c_int) callconv(.c) void {
     const inspector = inspectorOfHost(host) orelse return;
     const client = inspector.client orelse return;
     const steps = client.runIfWaitingForDebugger orelse return;
-    steps(client.host, @intCast(group));
+    steps(client.host, inspector.hostGroup(group) orelse return);
 }
 
 fn runMessageLoopOnPause(host: ?*anyopaque, group: c_int) callconv(.c) void {
     const inspector = inspectorOfHost(host) orelse return;
     const client = inspector.client orelse return;
     const steps = client.runMessageLoopOnPause orelse return;
-    steps(client.host, @intCast(group));
+    steps(client.host, inspector.hostGroup(group) orelse return);
 }
 
 fn quitMessageLoopOnPause(host: ?*anyopaque) callconv(.c) void {
@@ -331,8 +356,9 @@ pub fn inspectorConnect(agent: *engine.Agent, group: engine.InspectorGroup, chan
     const session = try inspector.allocator.create(Session);
     errdefer inspector.allocator.destroy(session);
     try inspector.sessions.ensureUnusedCapacity(inspector.allocator, 1);
-    session.* = .{ .inspector = inspector, .native = null, .channel = channel, .group = @intCast(group) };
-    session.native = ffi.v8_InspectorSession_New(inspector.native, @intCast(group), onSend, session) orelse return error.OperationFailed;
+    const v8_group = try inspector.v8Group(group);
+    session.* = .{ .inspector = inspector, .native = null, .channel = channel, .group = v8_group };
+    session.native = ffi.v8_InspectorSession_New(inspector.native, v8_group, onSend, session) orelse return error.OperationFailed;
     inspector.sessions.appendAssumeCapacity(session);
     return @ptrCast(session);
 }
@@ -370,7 +396,7 @@ pub fn inspectorContextCreated(context: *const engine.InspectorContext) Error!i6
     const inspector = protocol_agents.inspectorOf(isolate) orelse return error.OperationFailed;
     const id = try inspector.register(.{
         .realm = context.realm,
-        .group = @intCast(context.group),
+        .group = try inspector.v8Group(context.group),
         .name = context.name,
         .origin = context.origin,
         .aux_data = context.aux_data,
@@ -389,7 +415,9 @@ pub fn inspectorContextDestroyed(realm: Context) void {
 /// engine.inspectorResetGroup.
 pub fn inspectorResetGroup(agent: *engine.Agent, group: engine.InspectorGroup) void {
     const inspector = protocol_agents.existingInspectorOf(isolateOfAgent(agent)) orelse return;
-    inspector.resetGroup(@intCast(group));
+    // A group the host never named has no context to clear.
+    const v8_group = inspector.groups.get(group) orelse return;
+    inspector.resetGroup(v8_group);
 }
 
 /// engine.inspectorContextId.

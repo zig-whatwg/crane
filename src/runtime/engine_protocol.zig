@@ -1695,9 +1695,10 @@ pub inline fn installWorldObserver(agent: *Agent, observer: ?*const WorldObserve
 pub const InspectorSession = opaque {};
 
 /// A host's group of contexts: what a session sees and what
-/// `inspectorResetGroup` clears - CDP's tab (Blink: a local root frame's
-/// group). The host's numbering, nonzero.
-pub const InspectorGroup = u32;
+/// `inspectorResetGroup` clears - CDP's tab, by its id (Blink: a local root
+/// frame's group). The host's numbering, nonzero; the adapter maps it to the
+/// engine's own group ids.
+pub const InspectorGroup = u64;
 
 /// Where a session's messages go: each a complete CDP message - a response or
 /// an event - as UTF-8 JSON, BORROWED for the call. Called on the agent's
@@ -1705,8 +1706,8 @@ pub const InspectorGroup = u32;
 /// checkpoint): the host queues the message and calls no engine operation of
 /// this session from it.
 pub const InspectorChannel = struct {
-    host: ?*anyopaque,
-    send: *const fn (host: ?*anyopaque, message: []const u8) void,
+    context: ?*anyopaque,
+    send: *const fn (context: ?*anyopaque, message: []const u8) void,
 };
 
 /// A realm the host makes known to the agent's inspector
