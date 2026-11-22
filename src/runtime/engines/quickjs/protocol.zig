@@ -105,6 +105,12 @@ pub fn initializeEngine(_: engine.EngineOptions) Error!void {
     return error.NotSupported;
 }
 pub fn deinitializeEngine() void {}
+
+/// engine.engineVersion: the adapter links no QuickJS yet (engine_build.zig),
+/// so there is no library to ask; when it does, quickjs-ng's JS_GetVersion.
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return error.NotSupported;
+}
 pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }

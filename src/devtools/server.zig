@@ -60,7 +60,10 @@ pub const Options = struct {
     product: []const u8 = "Crane/0.1",
     /// Browser.getVersion's and /json/version's user agent: Crane's own.
     user_agent: []const u8 = "",
-    /// Browser.getVersion's jsVersion and /json/version's V8-Version.
+    /// Browser.getVersion's jsVersion and /json/version's V8-Version; empty:
+    /// the engine's own (engine.engineVersion - V8's v8::V8::GetVersion, as
+    /// Chrome reports V8_VERSION_STRING), or "" from an engine that names
+    /// none.
     js_version: []const u8 = "",
     /// Browser.getVersion's revision.
     revision: []const u8 = "",
@@ -139,6 +142,8 @@ pub const Server = struct {
         // Browser.getVersion's user agent: the Browser's, Crane's default
         // when the embedder gave none.
         if (self.options.user_agent.len == 0) self.options.user_agent = @import("fetch").internal.user_agent.default_user_agent;
+        // The JavaScript engine's version, as the engine reports it.
+        if (self.options.js_version.len == 0) self.options.js_version = @import("engine").engineVersion() catch "";
 
         // The default context: the embedder's Browser.
         const default_context = try self.addContext(options.default_host, false);

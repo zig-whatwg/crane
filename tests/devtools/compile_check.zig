@@ -10,5 +10,5 @@ test {
     _ = @import("cdpt_queue_test.zig");
     _ = @import("cdpt2_target_lifecycle_test.zig");
     _ = @import("cdpt2_input_test.zig");
-    _ = @import("cdph_page_session_test.zig");
+    _ = @import("cdpt2_browser_test.zig");
 }

@@ -315,7 +315,6 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
         .allowed_origins = origins[0..origin_count],
         .user_data_dir = options.user_data_dir,
         .user_agent = options.user_agent orelse "",
-        .js_version = engine.name,
         .default_host = host,
         .context_config = config,
     }) catch |err| {

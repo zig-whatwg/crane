@@ -90,6 +90,11 @@ pub fn initializeEngine(_: engine.EngineOptions) Error!void {
     return error.NotSupported;
 }
 pub fn deinitializeEngine() void {}
+
+/// No engine, no version.
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return error.NotSupported;
+}
 pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }

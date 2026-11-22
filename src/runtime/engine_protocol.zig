@@ -1260,6 +1260,18 @@ pub inline fn initializeBeforeThreadCreation() void {
     impl.initializeBeforeThreadCreation();
 }
 
+/// The engine's own version string, as the engine reports it (V8:
+/// v8::V8::GetVersion, e.g. "13.1.203.24"): what a host reports as its
+/// JavaScript engine's version - CDP's Browser.getVersion jsVersion and
+/// /json/version's V8-Version (Chrome: content/browser/devtools/protocol/
+/// browser_handler.cc GetVersion and devtools_http_handler.cc, both
+/// V8_VERSION_STRING, the same string). Static: BORROWED for the process's
+/// life. Any thread, before or after `initializeEngine`. NotSupported: an
+/// engine whose public API names no version (JavaScriptCore's C API).
+pub inline fn engineVersion() error{NotSupported}![]const u8 {
+    return impl.engineVersion();
+}
+
 /// Initialize the process-wide engine: platform, flags, snapshot blob. Once,
 /// before any agent.
 pub inline fn initializeEngine(options: EngineOptions) Error!void {
