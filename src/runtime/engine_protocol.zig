@@ -547,8 +547,19 @@ pub const AgentOptions = struct {
     from_snapshot: bool,
     /// BORROWED for the agent's life.
     hooks: *const HostHooks,
-    /// Passed to every hook.
+    /// Passed to every hook, BORROWED for the agent's life; handed back by
+    /// `agentHost`. Its type is only its creator's - a Browser's or worker
+    /// host's AgentHost, a test's own struct - so nothing but the code that
+    /// made the agent (and the hooks it installed with it) reads it.
     host: ?*anyopaque = null,
+    /// The embedder's state for the agent (`HostState`: html's AgentHost,
+    /// for every agent a Browser or worker host makes), BORROWED for the
+    /// agent's life and handed back by `hostStateOf` - what the DOM and
+    /// html read when they reach the agent from a realm or a node. Null (a
+    /// test's own agent, whatever its `host`): they find no state, as for an
+    /// agent with no host. html sets it and `host` together, to the same
+    /// AgentHost (dom.agent_hosts.agentOptions).
+    host_state: ?*HostState = null,
     /// What the engine allocates for the agent itself (its caches, what
     /// destroyAgent frees), BORROWED for the agent's life.
     allocator: std.mem.Allocator = std.heap.c_allocator,
@@ -1327,6 +1338,23 @@ pub inline fn agentRestoredFromSnapshot(agent: *Agent) bool {
 /// make.
 pub inline fn agentHost(agent: *Agent) ?*anyopaque {
     return impl.agentHost(agent);
+}
+
+/// The embedder's state for an agent (AgentOptions.host_state): html's
+/// AgentHost, which only the DOM's agent_hosts turns a `*HostState` back into
+/// (dom.agent_hosts.ofAgent). A type the protocol names, so that code reaching an
+/// agent from a realm or a node never casts `agentHost`, whose type is only
+/// its creator's (lesson architecture-a-host-pointer-an-agent-was-given-is-
+/// only-its-creators-type.md: a test's agent with a struct of its own as its
+/// host was read as reaction queues).
+pub const HostState = opaque {};
+
+/// The `host_state` `agent` was created with (AgentOptions.host_state),
+/// BORROWED: the embedder's own pointer handed back, no engine handle. Null
+/// when none was given (a test's own agent), once the agent is destroyed,
+/// or for an agent the adapter did not make.
+pub inline fn hostStateOf(agent: *Agent) ?*HostState {
+    return impl.hostStateOf(agent);
 }
 
 /// The deferred teardown queue `agent` was created with

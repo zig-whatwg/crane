@@ -97,10 +97,16 @@ const mocha_skip_marker = "a hook failed earlier in its suite";
 pub const rendering_statement =
     "Crane draws nothing, so tests whose result depends on layout geometry or pixels are not run. Computed style, events, timers and animations do run.";
 
+/// Why a test whose failure golden rule 2 decides is counted in neither
+/// column (AGENTS.md golden rule 2; the WPT gate's follows-majority
+/// exemption, the user 2026-11-18).
+pub const rulings_statement =
+    "Some tests fail in Crane because Crane does what the browser majority does, or what the newer spec says and a shipping browser does, where the test expects another browser's behaviour. Like rendering tests, they are counted in neither column.";
+
 /// Where Node runs (the user, 2026-11-11 5:43 PM ET: "we can run node for
 /// the purposes of these tests").
 pub const node_note =
-    "Node runs only the projects' own build steps, test servers and test runners, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies; Angular's are built by its own Bazel and served by its own web-test-runner, one target per page. htmx's test page and the TodoMVC apps are static files, served as they are.";
+    "Node runs only the projects' own build steps, test servers and test runners, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies. Angular, htmx, React, Svelte and Vue are run by their own test runners, which drive Crane over the Chrome DevTools Protocol as they drive Chrome: Playwright through Crane's WebDriver server (htmx's web-test-runner, React's suites, Svelte's and Vue's Vitest), Puppeteer by launching Crane's console (Vue's e2e tests, Angular's Bazel web-test-runner). The TodoMVC apps are static files, served as they are.";
 
 /// The runs in `journals` grouped by suite, each suite's runs ordered by
 /// generation (lane runs, with none, after) then label.
@@ -776,9 +782,11 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
     const rendering = sumOver(suites, .project, countOf(.rendering));
     const skipped = sumOver(suites, .project, countOf(.project_skip));
     const app_skips = sumOver(suites, .todomvc_port, countOf(.project_skip));
+    const majority = sumOver(suites, .project, countOf(.follows_majority));
+    const newer_spec = sumOver(suites, .project, countOf(.follows_spec));
     try w.writeAll("<details class=\"fold fw-sec\" id=\"not-run\">\n<summary><h2><span class=\"secno\">3</span>What is not run, and why</h2><span class=\"fold-meta\">");
     var parts: u32 = 0;
-    for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
+    for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ majority + newer_spec, "following a ruling" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
         if (parts > 0) try w.writeAll(" &middot; ");
         parts += 1;
         try w.print("{s} ", .{p[1]});
@@ -795,6 +803,24 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
         try w.writeAll(", each listed with its reason in the project&#39;s exclusion list (<code>tools/fw_matrix/excluded/</code>).");
     }
     try w.writeAll("</li>\n");
+    // A test whose failure is the result golden rule 2 picks.
+    if (majority + newer_spec > 0) {
+        try w.writeAll("<li><strong>Crane follows the browsers or the newer spec.</strong> ");
+        try html.text(w, rulings_statement);
+        if (majority > 0) {
+            try w.writeAll(" The browser majority, by a recorded ruling: ");
+            try html.plural(w, majority, "test", "tests");
+            _ = try perFramework(arena, w, suites, countOf(.follows_majority));
+            try w.writeAll(".");
+        }
+        if (newer_spec > 0) {
+            try w.writeAll(" The newer spec, which a shipping browser follows: ");
+            try html.plural(w, newer_spec, "test", "tests");
+            _ = try perFramework(arena, w, suites, countOf(.follows_spec));
+            try w.writeAll(".");
+        }
+        try w.writeAll(" Each is listed with its evidence in the project&#39;s exclusion list (<code>tools/fw_matrix/excluded/</code>).</li>\n");
+    }
     // The frameworks that wait, and their suites.
     var waiting: u32 = 0;
     for (rows) |r| waiting += @intFromBool(r.waits != null);
@@ -1310,6 +1336,32 @@ fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
     const j: journal.Journal = .{ .tests = f.tests.items, .pages = f.pages.items };
     const files = [_][]const exclusions.Entry{ &.{}, &.{.{ .id = "test/a.js", .file = true, .kind = .node_runner_only, .why = "only its Node runner loads it", .line = 1 }}, &.{}, &.{}, &.{}, &.{} };
     return .{ .m = m, .suites = try collect(a, m, &.{j}, &files) };
+}
+
+test "what is not run: tests golden rule 2 decides, by kind and framework, apart from rendering" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const flight = suiteOf("react-flight", "react", "React", "19.3.1", .project, &.{.{ .id = "flight", .path = "fixtures/flight" }});
+    const ng = suiteOf("angular-jasmine", "angular", "Angular", "22.2.6", .project, &.{.{ .id = "zone", .path = "?z" }});
+    const m: manifest.Manifest = .{ .frameworks = &.{ .{ .id = "angular", .title = "Angular" }, .{ .id = "react", .title = "React" } }, .suites = try a.dupe(manifest.Suite, &.{ flight, ng }) };
+    var f: Fixture = .{};
+    try f.testRec(a, "fw2-1", null, flight, "flight", "smoke test", .NOTRUN, .{ .not_run = .follows_majority, .reason = "fetch() cancelled at a navigation's start (integrator ruling 2026-11-14)" });
+    try f.pageRec(a, "fw2-1", null, flight, "flight", .{});
+    try f.testRec(a, "fw2-1", null, ng, "zone", "Zone should surface", .NOTRUN, .{ .not_run = .follows_spec, .reason = "PromiseRejectionEventInit.promise is object (angular/angular#72159)" });
+    try f.testRec(a, "fw2-1", null, ng, "zone", "Zone passes", .PASS, .{});
+    try f.pageRec(a, "fw2-1", null, ng, "zone", .{});
+    const j: journal.Journal = .{ .tests = f.tests.items, .pages = f.pages.items };
+    const suites = try collect(a, m, &.{j}, &.{ &.{}, &.{} });
+    var out: Io.Writer.Allocating = .init(a);
+    try writeNotRun(a, &out.writer, m, suites, try chartRows(a, m, suites));
+    const h = out.written();
+    try testing.expect(std.mem.indexOf(u8, h, "following a ruling 2 tests") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<strong>Crane follows the browsers or the newer spec.</strong>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "The browser majority, by a recorded ruling: 1 test (React 1).") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "The newer spec, which a shipping browser follows: 1 test (Angular 1).") != null);
+    // Not rendering: that bullet counts none of them.
+    try testing.expect(std.mem.indexOf(u8, h, "Not run for this reason") == null);
 }
 
 test "the chart's rows: the frameworks Crane runs A to Z, TodoMVC's apps as one row, then those that wait A to Z; every number from the journals" {

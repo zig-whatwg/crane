@@ -238,6 +238,8 @@ pub fn processFiles(
     // the order the files were read in.
     std.mem.sort(IncludesStatement, includes.items, {}, IncludesStatement.lessThan);
     for (includes.items) |inc| try ir.processIncludes(&.{inc.statement});
+    // An include_removals.zig entry no statement matched is stale.
+    try ir.checkIncludeRemovals();
 
     // Stage 1.6: a union argument the binding must convert in argument order
     // becomes a named union typedef (argument_unions.zig) - after the

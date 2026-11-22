@@ -1,0 +1,90 @@
+# Vue 3.5.45 (tag v3.5.45, 8b479a894458): the tests of its e2e-browser project (Transition.spec.ts and
+# TransitionGroup.spec.ts, Vitest 4 browser mode with its Playwright provider, which drives the browser over
+# CDP) the matrix does not count, each with its reason (tools/fw_matrix/exclusions.zig documents the format).
+# Ids are Vitest's: the describe blocks and the test, joined by " > " (fw_matrix import --reader=vitest-json).
+# Read by hand at the tag from lane fw2's run on the console of 6be959af4 (vue-browser-crane-fw2c).
+# Chrome for Testing 157 passes them by the same runner.
+#
+# TransitionGroup's move transition is FLIP: Vue records each child's getBoundingClientRect() before and
+# after the update and moves a child only when its position changed (runtime-dom TransitionGroup.ts,
+# callPendingCbs / recordPosition / applyTranslation). With no layout every box is 0x0 at the origin, so no
+# child moves: no move class, no inline transform, no transition events, and every position the test reads
+# is 0.
+
+[e2e: TransitionGroup > move]
+kind      = rendering
+why       = no child moved (FLIP compares getBoundingClientRect() before and after), so no move class or transform
+assertion = expect(html('#container')) - the children's move classes are missing
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:263
+
+[e2e: TransitionGroup > v-show enter does not also run move transition]
+kind      = rendering
+why       = whether 'c' moves depends on 'b' taking space in a flex row (FLIP positions)
+assertion = toStrictEqual: c lacks show-group-move
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:313
+
+[e2e: TransitionGroup > move while entering]
+kind      = rendering
+why       = the moving element's offset is read from getBoundingClientRect() during the move
+assertion = expected 0 to be greater than 0
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:405
+
+[e2e: TransitionGroup > dynamic name]
+kind      = rendering
+why       = no child moved (FLIP positions), so no group-move class
+assertion = expect(html('#container')) - '<div>a</div>...' without group-move
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:497
+
+[e2e: TransitionGroup > with scale]
+kind      = rendering
+why       = it waits for the move's transitionstart, and compares getBoundingClientRect().top before and after; with no position change no move transition runs and the wait never ends
+assertion = Test timed out (the transitionstart promise never resolves)
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:849
+
+[e2e: TransitionGroup > nested group moving along with its outer item]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:960
+
+[e2e: TransitionGroup > nested group moving along with an outer item that has no move transition]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:988
+
+[e2e: TransitionGroup > nested group pushed down by an earlier outer item growing]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1011
+
+[e2e: TransitionGroup > nested group updating on its own while its outer item moves]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1042
+
+[e2e: TransitionGroup > nested group three levels deep with a middle group that does not move]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1181
+
+[e2e: TransitionGroup > nested group three levels deep with every group moving]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops all +0 - expected [+0, +0, 30, 60, ...]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1209
+
+[e2e: TransitionGroup > nested group updating on its own inside a moving outer item]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected tops +0 - expected the items' laid-out tops
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1236
+
+[e2e: TransitionGroup > nested group teleported across the outer item]
+kind      = rendering
+why       = the nested groups' positions are getBoundingClientRect().top of laid-out rows (30px apart)
+assertion = expected [+0, +0] - expected [100, 130]
+source    = packages/vue/__tests__/e2e/TransitionGroup.spec.ts:1292

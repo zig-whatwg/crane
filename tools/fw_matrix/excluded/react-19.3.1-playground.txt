@@ -1,0 +1,112 @@
+# React 19.3.1 (tag v19.3.1, 61aa00df822d): the React compiler playground's own Playwright e2e tests
+# (compiler/apps/playground, its CI's `CI=true yarn test`, run with --retries=0; Playwright drives the browser
+# over CDP), the tests the matrix does not count, each with its reason (tools/fw_matrix/exclusions.zig
+# documents the format). Ids are Playwright's: describe blocks and the test, joined by " > ". Lane fw2's runs
+# on the console of 6be959af4 (react-playground-crane-fw2c); since the V8 ICU build every test gets past
+# `goto` and waitForFunction(isMonacoLoaded) and stops at the step named. Chrome for Testing 157 passes all 17.
+#
+# What follows a screenshot reads the Monaco output editor's rendered lines (allInnerTexts), which Monaco
+# lays out from its container's size: with no layout its editor is 5x5 px and renders one partial line, so
+# those assertions need a renderer too (lane fw2's probe without the screenshot: the output editor's text "i").
+
+[editor should open successfully]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:124
+
+[editor should compile from hash successfully]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:133
+
+[reset button works]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:156
+
+[defaults load when only source is in Store]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:189
+
+[show internals button toggles correctly]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:218
+
+[error is displayed when config has syntax error]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:237
+
+[error is displayed when config has validation error]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:262
+
+[error is displayed when source has syntax error]
+kind      = rendering
+why       = Playwright's click waits for the element to be visible, enabled and stable, and counts it visible only with a non-empty bounding box
+assertion = locator.click - waiting for element to be visible, enabled and stable: element is not visible (test timeout)
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:286
+
+[playground compiles: module-scope-use-memo]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: module-scope-use-no-memo]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: use-memo]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: use-no-memo]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: todo-function-scope-does-not-beat-module-scope]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: parse-typescript]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: parse-flow]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: compilationMode-infer]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317
+
+[playground compiles: compilationMode-all]
+kind      = rendering
+why       = page.screenshot captures pixels (Page.captureScreenshot), which need a renderer; the snapshot checks after it read Monaco's rendered lines, laid out from the editor's size
+assertion = page.screenshot - Protocol error (Page.captureScreenshot): Unable to capture screenshot
+source    = compiler/apps/playground/__tests__/e2e/page.spec.ts:317

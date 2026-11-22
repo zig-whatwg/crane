@@ -161,6 +161,12 @@ pub fn agentRestoredFromSnapshot(_: *Agent) bool {
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;
 }
+/// No agent is made here (createAgent is NotSupported): none has host state.
+/// When agents are made, the adapter keeps AgentOptions.host_state beside
+/// the host and answers it, as agentHost does.
+pub fn hostStateOf(_: *Agent) ?*engine.HostState {
+    return null;
+}
 /// No agent is made here (createAgent is NotSupported, so the adapter has no
 /// agent record to keep AgentOptions.deferred_teardown in): none has a queue.
 /// When agents are made, the adapter keeps the option beside the host and

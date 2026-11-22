@@ -1276,7 +1276,7 @@ const max_drain_depth = 16;
 /// realm is a window realm: its agent is its Browser's window agent).
 fn drainStateOf(document: *runtime.Instance) ?*ScriptDrain {
     const agent = document.ctx.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     return &host.script_drain;
 }
 
@@ -1613,7 +1613,7 @@ const ClassicScripts = @import("html_core").agent_host.ClassicScripts;
 /// host - an engine-less test's, or an adapter's that keeps none.
 fn classicScriptsOf(realm: runtime.Context) ?*ClassicScripts {
     const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     return &host.classic_scripts;
 }
 

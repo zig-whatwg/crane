@@ -75,13 +75,12 @@ fn check(scenario: Scenario) !void {
             try engine.initializeEngine(.{});
             var agent_host = AgentHost.init(allocator);
             defer agent_host.deinit();
-            const agent = try engine.createAgent(.{
+            const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&agent_host, .{
                 .can_block = false,
                 .from_snapshot = false,
                 .allocator = allocator,
                 .hooks = &.{},
-                .host = &agent_host,
-            });
+            }));
             defer engine.destroyAgent(agent);
             const fetches = &agent_host.fetches;
             const timers = try runtime.native_timer.NativeTimerManager.init(allocator);

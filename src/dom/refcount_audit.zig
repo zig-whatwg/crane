@@ -268,7 +268,7 @@ fn agentHostOf(instance: *runtime.Instance) ?*AgentHost {
     var current: ?runtime.Context = instance.ctx;
     while (current) |realm| : (current = realm.principal_realm) {
         const agent = realm.agent orelse continue;
-        return @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+        return @import("agent_hosts.zig").ofAgent(agent);
     }
     return null;
 }

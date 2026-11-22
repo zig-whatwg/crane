@@ -274,6 +274,10 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
 }
 
+pub fn hostStateOf(agent: *Agent) ?*engine.HostState {
+    return protocol_agents.hostStateOf(agent);
+}
+
 pub fn deferredTeardownOf(agent: *Agent) ?*engine.DeferredTeardown {
     return protocol_agents.deferredTeardownOf(isolateOf(agent));
 }

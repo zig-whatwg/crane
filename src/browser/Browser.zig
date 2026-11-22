@@ -338,11 +338,11 @@ pub const Browser = struct {
             agent_host.deinit();
             allocator.destroy(agent_host);
         }
-        const agent = engine.createAgent(.{
+        // The agent's host and host state: the Browser's AgentHost.
+        const agent = engine.createAgent(@import("dom").agent_hosts.agentOptions(agent_host, .{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &window_agent_hooks,
-            .host = agent_host,
             .allocator = allocator,
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
@@ -354,7 +354,7 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
-        }) catch return error.V8InitFailed;
+        })) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without
         // it while the process's live isolates were made without it (V8 keeps

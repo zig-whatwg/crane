@@ -1,0 +1,170 @@
+# Vue 3.5.45 (tag v3.5.45, 8b479a894458): the tests of its e2e project (packages/vue/__tests__/e2e/*.spec.ts,
+# Vitest with Puppeteer 25.11, which drives the browser over CDP) the matrix does not count, each with its
+# reason (tools/fw_matrix/exclusions.zig documents the format). Ids are Vitest's: the describe blocks and the
+# test, joined by " > " (fw_matrix import --reader=vitest-json).
+# Read by hand at the tag from lane fw2's run on the console of 6be959af4 (vue-e2e-crane-fw2c); every test
+# below passed every step before the one named. Chrome for Testing 157 passes all 36 by the same runner.
+# What a test does after its first geometry step is not proved here (docs/lessons/testing-a-needs-renderer-
+# file-hides-the-assertions-after-the-geometry.md): it waits for a renderer to say.
+
+[e2e: commits > classic]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/commits.spec.ts:42
+
+[e2e: commits > composition]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/commits.spec.ts:42
+
+[e2e: grid > classic]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/grid.spec.ts:43
+
+[e2e: grid > composition]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/grid.spec.ts:43
+
+[async component hydration strategies > idle]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:22
+
+[async component hydration strategies > visible]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:22
+
+[async component hydration strategies > visible (with rootMargin)]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:22
+
+[async component hydration strategies > visible (fragment)]
+kind      = rendering
+why       = the 'visible' hydration strategy hydrates when an IntersectionObserver sees the component, which the test places below the fold until it scrolls; with no layout every box is 0x0 at the viewport's origin, so it intersects at once and hydrates before the test scrolls
+assertion = expect(window.isHydrated).toBe(false) - expected true to be false
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:63
+
+[async component hydration strategies > visible (root with display: contents)]
+kind      = rendering
+why       = the 'visible' hydration strategy hydrates when an IntersectionObserver sees the component, which the test places below the fold until it scrolls; with no layout every box is 0x0 at the viewport's origin, so it intersects at once and hydrates before the test scrolls
+assertion = expect(window.isHydrated).toBe(false) - expected true to be false
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:74
+
+[async component hydration strategies > media query]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:22
+
+[async component hydration strategies > media query (patched before hydration)]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:117
+
+[async component hydration strategies > interaction]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:136
+
+[async component hydration strategies > interaction (fragment)]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:147
+
+[async component hydration strategies > custom]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:158
+
+[async component hydration strategies > visible (display: contents root gains a box after a media query)]
+kind      = rendering
+why       = the 'visible' hydration strategy hydrates when an IntersectionObserver sees the component, which the test places below the fold until it scrolls; with no layout every box is 0x0 at the viewport's origin, so it intersects at once and hydrates before the test scrolls
+assertion = expect(window.isHydrated).toBe(false) - expected true to be false
+source    = packages/vue/__tests__/e2e/hydrationStrategies.spec.ts:193
+
+[not leaking > cached text vnodes should not retaining detached DOM nodes]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/memory-leak.spec.ts:68
+
+[not leaking > cached array vnodes should not retaining detached DOM nodes]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/memory-leak.spec.ts:129
+
+[not leaking > cached text nodes in Fragment should not retaining detached DOM nodes]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/memory-leak.spec.ts:197
+
+[not leaking > Transition out-in with Suspense inside template v-if should not leak DOM]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/memory-leak.spec.ts:288
+
+[ssr custom element hydration]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/ssr-custom-element.spec.ts:73
+
+[e2e: svg > classic]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/svg.spec.ts:97
+
+[e2e: svg > composition]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/svg.spec.ts:97
+
+[e2e: todomvc > classic]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/todomvc.spec.ts:57
+
+[e2e: todomvc > composition]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/todomvc.spec.ts:57
+
+[e2e: tree > classic]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/tree.spec.ts:21
+
+[e2e: tree > composition]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/tree.spec.ts:21
+
+[checkbox click with v-model]
+kind      = rendering
+why       = Puppeteer's page.click clicks at a point inside the element's layout box (ElementHandle.clickablePoint: DOM.getContentQuads, then Input.dispatchMouseEvent at that point); with no renderer the element has no box, and nothing is at any point (CDP decision D7, the user 2026-11-21)
+assertion = page.click(...) - Error: Node is either not clickable or not an Element (CdpElementHandle.clickablePoint)
+source    = packages/vue/__tests__/e2e/vModel.spec.ts:53

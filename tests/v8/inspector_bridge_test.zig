@@ -365,6 +365,12 @@ const RejectionSites = struct {
     const hooks: engine.HostHooks = .{ .promiseRejectionTracker = tracker };
 };
 
+/// The realm adapter state of the page's realm (its WrapperCache).
+fn realmCache(page: *const Page) !*v8.wrapper_cache_mod.WrapperCache {
+    const storage = page.realm.getV8WrapperCacheStorage() orelse return error.NoWrapperCache;
+    return @ptrCast(@alignCast(storage));
+}
+
 /// How many stack captures the agent's inspector asked of V8.
 fn captureAsks(page: *const Page) u64 {
     const inspector = v8.protocol_agents.existingInspectorOf(@ptrCast(@alignCast(page.agent))) orelse return 0;
@@ -384,18 +390,45 @@ fn captureOnlyForRegisteredRealms() !void {
     const reject = "function rejectHere() { Promise.reject(new Error('site')).catch(() => {}); }\nrejectHere(); 'ok'";
     // Not registered: V8 would capture nothing (V8Debugger::captureStackTrace
     // returns nullptr for context group 0), so nothing is asked of it.
+    // Nor is the agent's inspector looked up: whether the realm is
+    // registered is read from the realm itself, with no lock (the agent
+    // registry's lookup cost every unhandled rejection about 127 ns).
+    const cache = try realmCache(&page);
     const first = try eval(page.realm, reject);
     testing.allocator.free(first);
     try testing.expectEqual(@as(u64, 0), captureAsks(&page));
+    try testing.expectEqual(@as(u32, 0), cache.inspector_registrations);
+    try testing.expectEqual(@as(u64, 0), cache.inspector_lookups);
 
     // Registered: the rejection's stack is asked of V8 (which also shows the
     // tracker ran for the first rejection's twin).
     _ = try registerMain(&page);
+    try testing.expectEqual(@as(u32, 1), cache.inspector_registrations);
     const second = try eval(page.realm, reject);
     testing.allocator.free(second);
     try testing.expectEqual(@as(u64, 1), captureAsks(&page));
+    try testing.expectEqual(@as(u64, 1), cache.inspector_lookups);
+
+    // A console call and a reported exception of the registered realm look
+    // the inspector up too; of an unregistered one (below), neither does.
+    engine.inspectorConsoleMessage(page.realm, "log", &.{});
+    try testing.expectEqual(@as(u64, 2), cache.inspector_lookups);
+    _ = engine.inspectorExceptionThrown(page.realm, runtime.JSValue.jsUndefined, &.{ .message = "Uncaught" });
+    try testing.expectEqual(@as(u64, 3), cache.inspector_lookups);
+
+    // A reset of its group forgets the realm, and its count with it: no
+    // lookup again - for a rejection's stack, a console call, a reported
+    // exception.
+    engine.inspectorResetGroup(page.agent, 1);
+    try testing.expectEqual(@as(u32, 0), cache.inspector_registrations);
+    const third = try eval(page.realm, reject);
+    testing.allocator.free(third);
+    engine.inspectorConsoleMessage(page.realm, "log", &.{});
+    try testing.expectEqual(@as(u32, 0), engine.inspectorExceptionThrown(page.realm, runtime.JSValue.jsUndefined, &.{ .message = "Uncaught" }));
+    try testing.expectEqual(@as(u64, 1), captureAsks(&page));
+    try testing.expectEqual(@as(u64, 3), cache.inspector_lookups);
 }
 
-test "a rejection's stack is asked of V8 only for a realm the inspector registered (V8 captures none for group 0)" {
+test "a rejection's stack is asked of V8 only for a realm the inspector registered (V8 captures none for group 0); an unregistered realm's rejection, console call or reported exception does no registry lookup" {
     if (supported) try captureOnlyForRegisteredRealms() else return error.SkipZigTest;
 }
