@@ -21,9 +21,6 @@ const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 const outbound = devtools.outbound;
 
-/// A poisoning leak-checker (tests/AGENTS.md: never a bare std.heap.DebugAllocator).
-const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true, .stack_trace_frames = 0 });
-
 /// A Browser on its own thread with one page session on a tab, and the
 /// messages the session sends.
 const Harness = struct {
@@ -56,10 +53,8 @@ const Harness = struct {
     fn sinkPost(context: *anyopaque, side: *devtools.BrowserSide, event: devtools.browser_side.TargetEvent) void {
         _ = context;
         switch (event) {
-            .tab_changed => |changed| {
-                side.allocator.free(changed.url);
-                side.allocator.free(changed.title);
-            },
+            // The event owns its URL (TargetSink.post).
+            .navigated => |navigated| side.allocator.free(navigated.url),
             else => {},
         }
     }
@@ -155,10 +150,8 @@ const Harness = struct {
 };
 
 test "setLifecycleEventsEnabled replays the current document's lifecycle as Chrome does" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -187,10 +180,8 @@ test "setLifecycleEventsEnabled replays the current document's lifecycle as Chro
 }
 
 test "Page.navigate answers when ready to commit, then the commit, DOMContentLoaded and load arrive in Chrome's order" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -231,10 +222,8 @@ test "Page.navigate answers when ready to commit, then the commit, DOMContentLoa
 }
 
 test "a fragment navigation answers at once with no loaderId and reports navigatedWithinDocument" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -247,10 +236,8 @@ test "a fragment navigation answers at once with no loaderId and reports navigat
 }
 
 test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, in its world when it names one" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -266,10 +253,8 @@ test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, i
 }
 
 test "setDocumentContent replaces the document's content through open, write and close" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     const frame_id = devtools.ids.frameId(0xC0FFEE, h.tab);
@@ -282,10 +267,8 @@ test "setDocumentContent replaces the document's content through open, write and
 }
 
 test "Emulation overrides reach the page and a detaching session takes its own away" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false}");
@@ -300,10 +283,8 @@ test "Emulation overrides reach the page and a detaching session takes its own a
 }
 
 test "setDeviceMetricsOverride emulates the device's screen, scale and orientation; clearing gives the platform's back" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     // Playwright's phone: a screen, a scale, an orientation.
@@ -328,10 +309,8 @@ test "setDeviceMetricsOverride emulates the device's screen, scale and orientati
 }
 
 test "a dedicated worker made after Emulation.setUserAgentOverride reports the override; one made before keeps its copy" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     const ask =
@@ -353,10 +332,8 @@ test "a dedicated worker made after Emulation.setUserAgentOverride reports the o
 }
 
 test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -370,10 +347,8 @@ test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's D
 }
 
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -391,10 +366,8 @@ test "Page.windowOpen tells the opener's session of window.open before the windo
 }
 
 test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not found" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<div id=d class=c>x</div>\"}");

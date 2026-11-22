@@ -7,4 +7,5 @@ test {
     _ = @import("cdpt_targets_test.zig");
     _ = @import("cdpt_input_network_fetch_test.zig");
     _ = @import("cdpt_queue_test.zig");
+    _ = @import("cdph_page_session_test.zig");
 }
