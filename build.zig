@@ -17,6 +17,7 @@ const platform_build = @import("src/platform/platform_build_protocol.zig");
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
 const zig_toolchain = @import("tools/zig_toolchain.zig");
+const thread_local_size_scope = @import("tools/thread_local_size_scope.zig");
 
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
 // (0.17.1-dev+77c319a0f0) until 0.17.1 ships, and refuses every other Zig by
@@ -1014,6 +1015,11 @@ const TestLaunch = struct {
     /// Every test executable `addSuiteRun` runs, for the instrumentation
     /// pass at the end of `build` (`instrumentForThreadSanitizer`).
     test_exes: *std.ArrayList(*std.Build.Step.Compile),
+    /// The suite run of each of `test_exes`, at the same index: the
+    /// thread-local block check of an executable hangs off its own suite's
+    /// run, so it is made exactly when that suite is - by whichever step,
+    /// -Dspec and -Dtest-file selecting it with the suite.
+    test_runs: *std.ArrayList(*std.Build.Step.Run),
     /// `zig build test-verify`: the changed test files and their step
     /// (`TestVerify`).
     verify: *TestVerify,
@@ -1184,6 +1190,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // recorded, the step passes (`VariantMode`).
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
+    launch.test_runs.append(b.allocator, run) catch @panic("OOM");
     // -Dtest-filter: run-time selection, so the executable stays the cached
     // one.
     for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
@@ -3543,6 +3550,11 @@ pub fn build(b: *std.Build) void {
                 list.* = .empty;
                 break :test_exes list;
             },
+            .test_runs = test_runs: {
+                const list = b.allocator.create(std.ArrayList(*std.Build.Step.Run)) catch @panic("OOM");
+                list.* = .empty;
+                break :test_runs list;
+            },
             .verify = testVerifySelection(b, build_probe),
             .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
@@ -4841,8 +4853,19 @@ pub fn build(b: *std.Build) void {
 
     // The C ABI's own tests - a browser created and destroyed through it under
     // std.testing.allocator - run with the browser tests: nothing else compiles
-    // this module for the host.
-    const lib_exports_test = b.addTest(.{ .root_module = lib_exports_mod });
+    // this module for the host. On a module of their own, with the tests'
+    // engine link (addModuleTestWithEngine), never libwhatwg_full's own
+    // module: that one carries the PRODUCT link - v8_wrapper.cpp compiled in
+    // the module - and under -Dsanitize-thread the instrumentation pass
+    // (instrumentForThreadSanitizer, over every suite's executable)
+    // instrumented it, so the wrapper compiled in an instrumented compilation,
+    // where Zig puts its own libc++'s -D_LIBCPP_* macros beside the engine's
+    // libc++'s: "'_LIBCPP_HARDENING_MODE' macro redefined" and 23 more errors
+    // (lane flk4, 2026-11-22). The tests' link compiles the wrapper apart in
+    // a sanitizer build, as every other test executable's does.
+    const lib_exports_test = addModuleTestWithEngine(b, lib_exports_mod, target, tests_engine_link);
+    // In the library's own mode, as it was tested on the library's module.
+    lib_exports_test.root_module.optimize = lib_exports_mod.optimize;
     test_browser_step.dependOn(&addSuiteRun(b, launch, lib_exports_test, "lib-exports", null).step);
 
     // Build step for the full browser runtime library
@@ -7098,14 +7121,30 @@ pub fn build(b: *std.Build) void {
     // thread did, a fatal check on every console.profile, while the test
     // runner kept Zig std's 256 KB thread-local signal stack (lane tpf,
     // 2026-11-22; tests/test_runner/runner.zig's std_options).
-    for (launch.test_exes.items) |test_exe| {
-        const thread_local_check = b.addRunArtifact(thread_local_size_exe);
-        thread_local_check.setName(b.fmt("thread-local block {s}", .{test_exe.name}));
-        thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
-        thread_local_check.addArg(b.fmt("--name={s}", .{test_exe.name}));
-        thread_local_check.addFileArg(test_exe.getEmittedBin());
-        thread_local_check.expectExitCode(0);
-        test_step.dependOn(&thread_local_check.step);
+    //
+    // Each check hangs off its executable's own suite run, not off `test`:
+    // hung off `test` for every executable any step runs, it made
+    // `zig build test -Dtest-file=X` compile every suite the selection had
+    // skipped - test-browser's libwhatwg_full test executable, a whole
+    // engine link, among them (lane flk4, 2026-11-22).
+    //
+    // Not under -Dsanitize-thread: an instrumented executable carries
+    // ThreadSanitizer's runtime's own thread-local block
+    // (`__tsan::cur_thread_placeholder`, 1,856 of its 1,992 bytes on server1),
+    // not production's layout, which is what the budget holds; held to it,
+    // every suite of the sanitizer build failed its check
+    // (tools/thread_local_size_scope.zig, pinned by the tool's tests). The
+    // plain build checks the same executables against the budget.
+    if (thread_local_size_scope.checksTestExecutables(.{ .sanitize_thread = launch.sanitize_thread })) {
+        for (launch.test_exes.items, launch.test_runs.items) |test_exe, run| {
+            const thread_local_check = b.addRunArtifact(thread_local_size_exe);
+            thread_local_check.setName(b.fmt("thread-local block {s}", .{test_exe.name}));
+            thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
+            thread_local_check.addArg(b.fmt("--name={s}", .{test_exe.name}));
+            thread_local_check.addFileArg(test_exe.getEmittedBin());
+            thread_local_check.expectExitCode(0);
+            run.step.dependOn(&thread_local_check.step);
+        }
     }
 
     // No Run step replays the configure-time environment from a cached
