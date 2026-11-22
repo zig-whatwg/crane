@@ -240,6 +240,9 @@ pub const same_object_cache = @import("same_object_cache.zig");
 pub const same_object = @import("same_object.zig");
 pub const performance_monitor = @import("performance_monitor.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
+/// The realm a callback's sequence or dictionary argument is made in (WebIDL
+/// invoke steps 5 and 10: F's associated realm, and its world).
+pub const callback_sequences = @import("callback_sequences.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");
 pub const live_collections = @import("live_collections.zig");

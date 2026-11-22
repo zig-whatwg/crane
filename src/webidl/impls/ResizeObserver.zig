@@ -420,10 +420,12 @@ fn invokeCallback(observer: *runtime.Instance, internal: *InternalState, entries
         return;
     };
     const realm = observer.ctx;
-    // Wrapping hands each entry to the wrapper cache, which owns them from
-    // here; until the sequence holds them they are traced from the observer.
+    // The sequence is made in the callback's realm and world (WebIDL invoke
+    // steps 5 and 10: dom.callback_sequences). Wrapping hands each entry to
+    // the wrapper cache, which owns them from here; until the sequence holds
+    // them they are traced from the observer.
     internal.delivering = entries;
-    const made = engine.createSequenceOfPlatformObjects(realm, entries);
+    const made = engine.createSequenceOfPlatformObjects(dom.callback_sequences.argumentRealm(realm, &callback), entries);
     internal.delivering = &.{};
     const sequence = made catch |err| {
         for (entries) |entry| runtime.Instance.deinit(entry);
