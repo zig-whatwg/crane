@@ -12,7 +12,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
 const SVGFitToViewBox = @import("mixins").SVGFitToViewBox;
-const WindowEventHandlers = @import("mixins").WindowEventHandlers;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -50,14 +49,14 @@ const SVGTransform = @import("interfaces").SVGTransform;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const SVGAnimatedTransformList = @import("interfaces").SVGAnimatedTransformList;
 const DOMString = @import("typedefs").DOMString;
-const DOMRectList = @import("interfaces").DOMRectList;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const SVGPoint = @import("typedefs").SVGPoint;
 const SVGMatrix = @import("typedefs").SVGMatrix;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
@@ -70,13 +69,12 @@ const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOp
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
-const EventHandler = @import("typedefs").EventHandler;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
+const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
-const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
-const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
+const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
 const SVGAnimatedPreserveAspectRatio = @import("interfaces").SVGAnimatedPreserveAspectRatio;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
@@ -104,7 +102,6 @@ pub const SVGSVGElement = struct {
         pub const ParentInterface = SVGGraphicsElement;
         pub const MixinTypes = &.{
             SVGFitToViewBox,
-            WindowEventHandlers,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -123,27 +120,6 @@ pub const SVGSVGElement = struct {
             .{ "currentTranslate", "get_currentTranslate", null },
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
-            .{ "onafterprint", "get_onafterprint", "set_onafterprint" },
-            .{ "onbeforeprint", "get_onbeforeprint", "set_onbeforeprint" },
-            .{ "onbeforeunload", "get_onbeforeunload", "set_onbeforeunload" },
-            .{ "onhashchange", "get_onhashchange", "set_onhashchange" },
-            .{ "onlanguagechange", "get_onlanguagechange", "set_onlanguagechange" },
-            .{ "onmessage", "get_onmessage", "set_onmessage" },
-            .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
-            .{ "onoffline", "get_onoffline", "set_onoffline" },
-            .{ "ononline", "get_ononline", "set_ononline" },
-            .{ "onpagehide", "get_onpagehide", "set_onpagehide" },
-            .{ "onpagereveal", "get_onpagereveal", "set_onpagereveal" },
-            .{ "onpageshow", "get_onpageshow", "set_onpageshow" },
-            .{ "onpageswap", "get_onpageswap", "set_onpageswap" },
-            .{ "onpopstate", "get_onpopstate", "set_onpopstate" },
-            .{ "onrejectionhandled", "get_onrejectionhandled", "set_onrejectionhandled" },
-            .{ "onstorage", "get_onstorage", "set_onstorage" },
-            .{ "onunhandledrejection", "get_onunhandledrejection", "set_onunhandledrejection" },
-            .{ "onunload", "get_onunload", "set_onunload" },
-            .{ "ongamepadconnected", "get_ongamepadconnected", "set_ongamepadconnected" },
-            .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
-            .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
 
         /// [SameObject] attributes whose child the owner keeps (in its State, its rare
@@ -340,27 +316,6 @@ pub const SVGSVGElement = struct {
             .{ "currentTranslate", "get_currentTranslate", null },
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
-            .{ "onafterprint", "get_onafterprint", "set_onafterprint" },
-            .{ "onbeforeprint", "get_onbeforeprint", "set_onbeforeprint" },
-            .{ "onbeforeunload", "get_onbeforeunload", "set_onbeforeunload" },
-            .{ "onhashchange", "get_onhashchange", "set_onhashchange" },
-            .{ "onlanguagechange", "get_onlanguagechange", "set_onlanguagechange" },
-            .{ "onmessage", "get_onmessage", "set_onmessage" },
-            .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
-            .{ "onoffline", "get_onoffline", "set_onoffline" },
-            .{ "ononline", "get_ononline", "set_ononline" },
-            .{ "onpagehide", "get_onpagehide", "set_onpagehide" },
-            .{ "onpagereveal", "get_onpagereveal", "set_onpagereveal" },
-            .{ "onpageshow", "get_onpageshow", "set_onpageshow" },
-            .{ "onpageswap", "get_onpageswap", "set_onpageswap" },
-            .{ "onpopstate", "get_onpopstate", "set_onpopstate" },
-            .{ "onrejectionhandled", "get_onrejectionhandled", "set_onrejectionhandled" },
-            .{ "onstorage", "get_onstorage", "set_onstorage" },
-            .{ "onunhandledrejection", "get_onunhandledrejection", "set_onunhandledrejection" },
-            .{ "onunload", "get_onunload", "set_onunload" },
-            .{ "ongamepadconnected", "get_ongamepadconnected", "set_ongamepadconnected" },
-            .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
-            .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -388,27 +343,6 @@ pub const SVGSVGElement = struct {
         .get_currentScale = &get_currentScale,
         .get_currentTranslate = &get_currentTranslate,
         .get_height = &get_height,
-        .get_onafterprint = &get_onafterprint,
-        .get_onbeforeprint = &get_onbeforeprint,
-        .get_onbeforeunload = &get_onbeforeunload,
-        .get_ongamepadconnected = &get_ongamepadconnected,
-        .get_ongamepaddisconnected = &get_ongamepaddisconnected,
-        .get_onhashchange = &get_onhashchange,
-        .get_onlanguagechange = &get_onlanguagechange,
-        .get_onmessage = &get_onmessage,
-        .get_onmessageerror = &get_onmessageerror,
-        .get_onoffline = &get_onoffline,
-        .get_ononline = &get_ononline,
-        .get_onpagehide = &get_onpagehide,
-        .get_onpagereveal = &get_onpagereveal,
-        .get_onpageshow = &get_onpageshow,
-        .get_onpageswap = &get_onpageswap,
-        .get_onpopstate = &get_onpopstate,
-        .get_onportalactivate = &get_onportalactivate,
-        .get_onrejectionhandled = &get_onrejectionhandled,
-        .get_onstorage = &get_onstorage,
-        .get_onunhandledrejection = &get_onunhandledrejection,
-        .get_onunload = &get_onunload,
         .get_preserveAspectRatio = &get_preserveAspectRatio,
         .get_viewBox = &get_viewBox,
         .get_width = &get_width,
@@ -416,27 +350,6 @@ pub const SVGSVGElement = struct {
         .get_y = &get_y,
 
         .set_currentScale = &set_currentScale,
-        .set_onafterprint = &set_onafterprint,
-        .set_onbeforeprint = &set_onbeforeprint,
-        .set_onbeforeunload = &set_onbeforeunload,
-        .set_ongamepadconnected = &set_ongamepadconnected,
-        .set_ongamepaddisconnected = &set_ongamepaddisconnected,
-        .set_onhashchange = &set_onhashchange,
-        .set_onlanguagechange = &set_onlanguagechange,
-        .set_onmessage = &set_onmessage,
-        .set_onmessageerror = &set_onmessageerror,
-        .set_onoffline = &set_onoffline,
-        .set_ononline = &set_ononline,
-        .set_onpagehide = &set_onpagehide,
-        .set_onpagereveal = &set_onpagereveal,
-        .set_onpageshow = &set_onpageshow,
-        .set_onpageswap = &set_onpageswap,
-        .set_onpopstate = &set_onpopstate,
-        .set_onportalactivate = &set_onportalactivate,
-        .set_onrejectionhandled = &set_onrejectionhandled,
-        .set_onstorage = &set_onstorage,
-        .set_onunhandledrejection = &set_onunhandledrejection,
-        .set_onunload = &set_onunload,
 
         .call_animationsPaused = &call_animationsPaused,
         .call_checkEnclosure = &call_checkEnclosure,
@@ -651,69 +564,6 @@ pub const SVGSVGElement = struct {
         return value;
     }
 
-    pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;
-    pub const set_onafterprint = mixins.WindowEventHandlers.set_onafterprint;
-
-    pub const get_onbeforeprint = mixins.WindowEventHandlers.get_onbeforeprint;
-    pub const set_onbeforeprint = mixins.WindowEventHandlers.set_onbeforeprint;
-
-    pub const get_onbeforeunload = mixins.WindowEventHandlers.get_onbeforeunload;
-    pub const set_onbeforeunload = mixins.WindowEventHandlers.set_onbeforeunload;
-
-    pub const get_onhashchange = mixins.WindowEventHandlers.get_onhashchange;
-    pub const set_onhashchange = mixins.WindowEventHandlers.set_onhashchange;
-
-    pub const get_onlanguagechange = mixins.WindowEventHandlers.get_onlanguagechange;
-    pub const set_onlanguagechange = mixins.WindowEventHandlers.set_onlanguagechange;
-
-    pub const get_onmessage = mixins.WindowEventHandlers.get_onmessage;
-    pub const set_onmessage = mixins.WindowEventHandlers.set_onmessage;
-
-    pub const get_onmessageerror = mixins.WindowEventHandlers.get_onmessageerror;
-    pub const set_onmessageerror = mixins.WindowEventHandlers.set_onmessageerror;
-
-    pub const get_onoffline = mixins.WindowEventHandlers.get_onoffline;
-    pub const set_onoffline = mixins.WindowEventHandlers.set_onoffline;
-
-    pub const get_ononline = mixins.WindowEventHandlers.get_ononline;
-    pub const set_ononline = mixins.WindowEventHandlers.set_ononline;
-
-    pub const get_onpagehide = mixins.WindowEventHandlers.get_onpagehide;
-    pub const set_onpagehide = mixins.WindowEventHandlers.set_onpagehide;
-
-    pub const get_onpagereveal = mixins.WindowEventHandlers.get_onpagereveal;
-    pub const set_onpagereveal = mixins.WindowEventHandlers.set_onpagereveal;
-
-    pub const get_onpageshow = mixins.WindowEventHandlers.get_onpageshow;
-    pub const set_onpageshow = mixins.WindowEventHandlers.set_onpageshow;
-
-    pub const get_onpageswap = mixins.WindowEventHandlers.get_onpageswap;
-    pub const set_onpageswap = mixins.WindowEventHandlers.set_onpageswap;
-
-    pub const get_onpopstate = mixins.WindowEventHandlers.get_onpopstate;
-    pub const set_onpopstate = mixins.WindowEventHandlers.set_onpopstate;
-
-    pub const get_onrejectionhandled = mixins.WindowEventHandlers.get_onrejectionhandled;
-    pub const set_onrejectionhandled = mixins.WindowEventHandlers.set_onrejectionhandled;
-
-    pub const get_onstorage = mixins.WindowEventHandlers.get_onstorage;
-    pub const set_onstorage = mixins.WindowEventHandlers.set_onstorage;
-
-    pub const get_onunhandledrejection = mixins.WindowEventHandlers.get_onunhandledrejection;
-    pub const set_onunhandledrejection = mixins.WindowEventHandlers.set_onunhandledrejection;
-
-    pub const get_onunload = mixins.WindowEventHandlers.get_onunload;
-    pub const set_onunload = mixins.WindowEventHandlers.set_onunload;
-
-    pub const get_ongamepadconnected = mixins.WindowEventHandlers.get_ongamepadconnected;
-    pub const set_ongamepadconnected = mixins.WindowEventHandlers.set_ongamepadconnected;
-
-    pub const get_ongamepaddisconnected = mixins.WindowEventHandlers.get_ongamepaddisconnected;
-    pub const set_ongamepaddisconnected = mixins.WindowEventHandlers.set_ongamepaddisconnected;
-
-    pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
-    pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
-
     pub fn call_getEnclosureList(instance: *runtime.Instance, rect: SVGRect, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
@@ -822,9 +672,6 @@ pub const SVGSVGElement = struct {
     pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: SVGRect) anyerror!bool {
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
-
-    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
-    pub const legacy_treat_non_object_as_null = .{ "set_onafterprint", "set_onbeforeprint", "set_onbeforeunload", "set_onhashchange", "set_onlanguagechange", "set_onmessage", "set_onmessageerror", "set_onoffline", "set_ononline", "set_onpagehide", "set_onpagereveal", "set_onpageshow", "set_onpageswap", "set_onpopstate", "set_onrejectionhandled", "set_onstorage", "set_onunhandledrejection", "set_onunload", "set_ongamepadconnected", "set_ongamepaddisconnected", "set_onportalactivate" };
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute

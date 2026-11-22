@@ -46,6 +46,7 @@ const interfaces = @import("interfaces");
 const fire_event = @import("fire_event.zig");
 const document_activity = @import("document_activity.zig");
 const Hook = @import("hook.zig").Hook;
+const callback_sequences = @import("callback_sequences.zig");
 
 const Instance = runtime.Instance;
 
@@ -811,11 +812,13 @@ fn notifyObserver(timeline: *Timeline, realm: runtime.Context, po: *Observer) !v
         &.{.{ .name = "droppedEntriesCount", .value = .{ .number = @floatFromInt(count) } }}
     else
         &.{};
-    const callback_options = try engine.createDictionaryObject(realm, members);
+    const callback = po.callback orelse return;
+    // Made in the callback's realm and world, where WebIDL invoke steps 5 and
+    // 10 convert the callback's arguments (dom.callback_sequences).
+    const callback_options = try engine.createDictionaryObject(callback_sequences.argumentRealm(realm, &callback), members);
     defer callback_options.release();
     // 3.3.9. Invoke po's observer callback with « observerEntryList, po,
     // callbackOptions », "report", and po.
-    const callback = po.callback orelse return;
     const observer_value: runtime.JSValue = .{ .instance = po.instance };
     const completion = try engine.invokeCallbackFunction(realm, &callback, .{ .value = observer_value }, &.{ .{ .instance = observer_entry_list }, observer_value, callback_options.value }, .{
         .report = .{ .report = reportException, .host = realm },

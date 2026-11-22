@@ -1,0 +1,10 @@
+# React 19.3.1 (tag v19.3.1, 61aa00df822d): fixtures/flight's own Playwright e2e test (its CI's
+# `yarn test`, Playwright driving the browser over CDP), the test the matrix does not count, with its reason
+# (tools/fw_matrix/exclusions.zig documents the format). Ids are Playwright's: describe blocks and the test,
+# joined by " > " (fw_matrix import --reader=playwright-json). Lane fw2's runs on the console of 6be959af4.
+
+[smoke test]
+kind      = follows-majority
+why       = the page fetch() the first page started is cancelled with a TypeError when the test's page.goto('/prerender') starts the next navigation (the document's unload aborts its fetches), as Firefox and Safari do; Chrome lets it finish. React reports the rejection as an uncaught error, and the test asserts the page raised none (expect(pageErrors).toEqual([]) after the second navigation). Whether the fetch is still in flight depends on timing: the runner's retries pass it some runs
+ruling    = integrator ruling 2026-11-14 8:53 PM ET (follows-majority: Firefox and Safari; lane tpf's handoff)
+source    = fixtures/flight/__tests__/__e2e__/smoke.test.js:28

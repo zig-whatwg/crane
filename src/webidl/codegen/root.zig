@@ -28,6 +28,7 @@ pub const maplike = @import("maplike.zig");
 pub const duplicates = @import("duplicates.zig");
 pub const member_overrides = @import("member_overrides.zig");
 pub const member_removals = @import("member_removals.zig");
+pub const include_removals = @import("include_removals.zig");
 pub const adapter = @import("adapter.zig");
 pub const overload = @import("overload.zig");
 pub const special_operations = @import("special_operations.zig");
