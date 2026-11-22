@@ -4675,6 +4675,11 @@ pub fn build(b: *std.Build) void {
     const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
+        // The Browser's storage sequence and its platform state's stores,
+        // which the storage sequence tests hold (tests/browser/
+        // prof2_storage_sequence_test.zig).
+        .{ .name = "storage", .module = testing_graph.storage },
+        .{ .name = "platform", .module = testing_graph.platform },
     };
     if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
