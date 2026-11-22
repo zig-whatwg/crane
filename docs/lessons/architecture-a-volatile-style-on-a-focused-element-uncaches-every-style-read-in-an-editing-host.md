@@ -1,0 +1,15 @@
+# Architecture: A volatile style on a focused element uncaches every style read in an editing host
+
+**Date**: 2026-11-22
+**Lesson**: A selector state marked "volatile" (resolved again on every read) must never be one that a whole subtree inherits on the common path: matching :focus-visible marked a FOCUSED element's style volatile, an editing host is always focused, and every computed-style read inside it - each editing command's queries - resolved its lineage again.
+
+**Why**: The style engine keys a cached style on the tree version, its generation and the focus/hover/active/target elements; state that can change with none of those moving was flagged volatile at match time. :focus-visible reads input modality, which changes with no mutation, so the focused element's style was volatile - and a volatile parent makes every descendant resolve again too (engine.zig `parent_volatile`). Correct, but it turned every read in a focused subtree into a full cascade.
+
+**What Happened**: Lane tpc profiled edit4's formatblock-value row (1.76x instructions) and a delete-join loop: `sample` showed selector matching and cascade (matchesSimple, matchContents, resolveOne, focus.matchesFocus) on top with the DOM unchanged between reads. The cause was selector_matching.zig matchesPseudoClassRead marking FocusVisible volatile for the focused element. Fixed (a66e4e9a3) the way :fullscreen's top-layer state already was: what :focus-visible reads beyond the tree and the focused element (input modality, a focus() call's focusVisible, designMode) moves a revision on the top-level traversable, which the engine pulls per style read (StyleEngine.observeFocusVisible) and which bumps the generation only on a change. A designMode switch, which had invalidated nothing (so :read-write was stale too), moves it as well. Red/green: tests/html/tpc_focus_visible_style_cache_test.zig (the cached style's serial holds across reads in a focused host; a modality flip and a designMode switch still recompute); editing/, css/selectors/ and html/interaction/focus/ identical (114,577 result entries, 0 differing). The cost pair on chat.local (with the formatBlock and range-capacity fixes beside it) read style.focused-host-reads 0.300x time / 0.326x instructions, formatblock-value 0.186x / 0.195x, bold-toggle 0.409x / 0.381x, insert-text 0.831x / 0.895x - and the cached styles cost memory: delete-join steady 1.102x (collected 1.063x), insert-text 1.069x (1.037x).
+
+**Fix**:
+1. When a pseudo-class depends on state that is not a tree mutation, pull a revision of that state into the style key or generation (observeTopLayer, observeFocusVisible) instead of marking the matched style volatile.
+2. Move the revision only on a real change (a key press after a key press keeps every cached style).
+3. Count it: a test that reads the element's cached style serial before and after repeated reads.
+
+**Takeaway**: **"Volatile" is for state no revision can track; on a focused element it uncached the whole editing host - pull a revision of the state instead.**

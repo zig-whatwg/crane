@@ -83,6 +83,9 @@ pub const Inspector = struct {
     next_group: c_int = 1,
     /// `end` ran: nothing is registered or connected any more.
     ended: bool = false,
+    /// How many stacks `inspectorCaptureStack` asked V8 to capture (tests
+    /// read it: tests/v8/inspector_bridge_test.zig).
+    capture_asks: u64 = 0,
 
     pub fn create(allocator: std.mem.Allocator, isolate: *ffi.Isolate) Error!*Inspector {
         const self = try allocator.create(Inspector);
@@ -601,6 +604,23 @@ const CapturedStack = struct {
 pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
     const inspector = existingOfRealm(realm) orelse return null;
     if (inspector.ended) return null;
+    // Nothing for a realm the inspector does not know (no contextCreated):
+    // V8 captures nothing for it - V8Debugger::captureStackTrace returns
+    // nullptr when the current context's group is 0 (src/inspector/
+    // v8-debugger.cc:1431 at 15.7.112.43; V8InspectorImpl::contextGroupId
+    // answers 0 for a context id contextCreated never named) - and the
+    // report the stack was for is dropped too (V8InspectorImpl::
+    // exceptionThrown returns 0 for group 0, v8-inspector-impl.cc:379). The
+    // realm is the current one (protocol_agents.onPromiseReject), the
+    // context V8 asks about, and every registration goes through
+    // Inspector.register. Blink's V8Initializer::PromiseRejectHandler
+    // captures at every rejection because every Blink context is in a group
+    // (MainThreadDebugger::ContextCreated); a Browser with no session
+    // registers none, and paid the call, the handle scope and V8's group
+    // lookup for nothing on every unhandled rejection (lane tpc cost pass:
+    // promises.unhandled 1.049x time, 1.033x instructions).
+    if (inspector.registeredOf(realm) == null) return null;
+    inspector.capture_asks += 1;
     const native = ffi.v8_Inspector_CaptureStack(inspector.native) orelse return null;
     const captured = realm.allocator.create(CapturedStack) catch {
         ffi.v8_InspectorStack_Delete(native);
