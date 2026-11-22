@@ -213,6 +213,12 @@ pub const InternalState = struct {
     last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
+    /// The window's load event is under way: set as "the end" step 9.5 fires
+    /// load at the window, cleared when page showing becomes true (step 9.10)
+    /// or the document unloads. "Unload a document" step 10 reads it beside
+    /// page showing - a document unloaded inside its own load listeners
+    /// hears pagehide and visibilitychange, as in all three browsers.
+    in_load_event: bool = false,
     /// HTML 7.4.6.3 "has been revealed": pagereveal fires once per
     /// activation - at the first rendering opportunity after the document is
     /// shown, and again after each reactivation (`revealStep`).
