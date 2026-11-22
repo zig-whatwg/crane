@@ -374,6 +374,9 @@ fn stopIdleness(side: *BrowserSide, navigable: u64) void {
 /// each frame's detector starts at its document's DOMContentLoaded and goes
 /// with the document (a commit) or the frame.
 pub fn onBrowserMilestone(side: *BrowserSide, milestone: *const frames.Milestone) void {
+    // A served tab with no session keeps its contexts known, as Chrome's
+    // inspector does (contexts.zig onServedCommit).
+    contexts.onServedCommit(side, milestone);
     const navigable = milestone.navigable_id;
     switch (milestone.event) {
         .committed, .navigable_destroyed => stopIdleness(side, navigable),
