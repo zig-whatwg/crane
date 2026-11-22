@@ -306,7 +306,8 @@ fn innerParent(session: *PageSession, node: *runtime.Instance) ?*runtime.Instanc
     if (node_type == 9) {
         const bc = frameOfDocument(session, node) orelse return null;
         const container = bc.container orelse return null;
-        return @ptrCast(@alignCast(container));
+        const owner: *runtime.Instance = @ptrCast(@alignCast(container));
+        return owner;
     }
     if (node.implements(interfaces.ShadowRoot.State)) return interfaces.ShadowRoot.get_host(node) catch null;
     return interfaces.Node.get_parentNode(node) catch null;
@@ -366,7 +367,7 @@ fn pushNodePath(session: *PageSession, node: *runtime.Instance) !i64 {
 /// Blink's BuildObjectForNode. With `map` the node and what is built under it
 /// are bound (pushed to the client); without one a node's id is the one the
 /// client has, if any.
-fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, depth_in: i64, pierce: bool, map: ?*NodeMap) !D.Node {
+fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, depth_in: i64, pierce: bool, map: ?*NodeMap) Allocator.Error!D.Node {
     var depth = depth_in;
     const ids = nodeIds(session) orelse return error.OutOfMemory;
     const node_id: i64 = if (map) |m| try m.bind(node) else if (session.states.DOM.map) |m| m.boundId(node) else 0;
@@ -484,7 +485,7 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
 /// BuildArrayForContainerChildren: `container`'s children to `depth`, each
 /// with its parentId. At depth 0 with a node map, an only text child is
 /// pushed anyway, as if the container's children had been asked for.
-fn buildChildren(session: *PageSession, arena: Allocator, container: *runtime.Instance, depth: i64, pierce: bool, map: ?*NodeMap) ![]const D.Node {
+fn buildChildren(session: *PageSession, arena: Allocator, container: *runtime.Instance, depth: i64, pierce: bool, map: ?*NodeMap) Allocator.Error![]const D.Node {
     var children: std.ArrayListUnmanaged(D.Node) = .empty;
     if (depth == 0) {
         const m = map orelse return children.items;
@@ -512,11 +513,11 @@ fn buildChildren(session: *PageSession, arena: Allocator, container: *runtime.In
 }
 
 /// Blink kMaxTextSize: a longer value is cut, with an ellipsis (U+2026).
-fn truncatedText(arena: Allocator, value: []const u8) ![]const u8 {
+fn truncatedText(arena: Allocator, value: []const u8) Allocator.Error![]const u8 {
     const max_text_size = 10_000;
     // The limit counts UTF-16 code units in Blink; count code points here,
     // the same for every character in the BMP.
-    var view = std.unicode.Utf8View.init(value) catch return arena.dupe(u8, value);
+    const view = std.unicode.Utf8View.init(value) catch return arena.dupe(u8, value);
     var it = view.iterator();
     var count: usize = 0;
     while (it.nextCodepointSlice()) |_| {
@@ -556,7 +557,7 @@ fn isHtmlElementNamed(element: *runtime.Instance, comptime name: []const u8) boo
 }
 
 /// An element's attributes, flattened [name, value, ...] in order.
-fn attributesOf(arena: Allocator, element: *runtime.Instance) !?[]const []const u8 {
+fn attributesOf(arena: Allocator, element: *runtime.Instance) Allocator.Error!?[]const []const u8 {
     const attributes = interfaces.Element.get_attributes(element) catch return null;
     const length = interfaces.NamedNodeMap.get_length(attributes) catch 0;
     if (length == 0) return &.{};
