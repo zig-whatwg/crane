@@ -11,4 +11,7 @@ test {
     _ = @import("cdpt2_target_lifecycle_test.zig");
     _ = @import("cdpt2_input_test.zig");
     _ = @import("cdpt2_browser_test.zig");
+    _ = @import("cdpr_playwright_replay_test.zig");
+    _ = @import("cdpr_puppeteer_replay_test.zig");
+    _ = @import("cdpr_vitest_cdp_replay_test.zig");
 }
