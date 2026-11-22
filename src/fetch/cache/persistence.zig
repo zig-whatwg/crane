@@ -214,8 +214,8 @@ pub const Persistence = struct {
             self.disk_bytes += entry.size;
         }
         // A smaller cap than the last Browser's (less free space now).
-        lock(&self.mutex);
-        defer unlock(&self.mutex);
+        self.lock();
+        defer self.unlock();
         self.evictIfNeeded();
     }
 
@@ -232,8 +232,8 @@ pub const Persistence = struct {
             entry.release();
             return self.recordDelete(entry.partition, entry.url, entry.credentialed);
         }
-        lock(&self.mutex);
-        defer unlock(&self.mutex);
+        self.lock();
+        defer self.unlock();
         self.queue(key, .{ .put = entry }) catch return;
         self.setIndex(key, .{ .size = size, .last_used = nowSeconds() }) catch {};
         self.evictIfNeeded();
@@ -243,15 +243,15 @@ pub const Persistence = struct {
     pub fn recordDelete(self: *Persistence, partition: []const u8, url: []const u8, credentialed: bool) void {
         const key = cacheKey(self.allocator, partition, url, credentialed) catch return;
         defer self.allocator.free(key);
-        lock(&self.mutex);
-        defer unlock(&self.mutex);
+        self.lock();
+        defer self.unlock();
         self.deleteLocked(key);
     }
 
     /// Every response whose URL `matches` (Clear Site Data's cache type).
     pub fn deleteMatching(self: *Persistence, context: anytype, comptime matches: fn (@TypeOf(context), []const u8) bool) void {
-        lock(&self.mutex);
-        defer unlock(&self.mutex);
+        self.lock();
+        defer self.unlock();
         var doomed: std.ArrayListUnmanaged([]const u8) = .empty;
         defer doomed.deinit(self.allocator);
         var keys = self.index.keyIterator();
@@ -355,8 +355,8 @@ pub const Persistence = struct {
         const key = cacheKey(self.allocator, partition, url, credentialed) catch return null;
         defer self.allocator.free(key);
         {
-            lock(&self.mutex);
-            defer unlock(&self.mutex);
+            self.lock();
+            defer self.unlock();
             if (self.pending.get(key)) |what| switch (what) {
                 .put => |entry| {
                     entry.retain();
@@ -396,8 +396,8 @@ pub const Persistence = struct {
     }
 
     fn touch(self: *Persistence, key: []const u8) void {
-        lock(&self.mutex);
-        defer unlock(&self.mutex);
+        self.lock();
+        defer self.unlock();
         const entry = self.index.getPtr(key) orelse return;
         const now = nowSeconds();
         // Whole seconds: a second use within one changes nothing.
@@ -436,8 +436,8 @@ pub const Persistence = struct {
         var index_now: std.ArrayListUnmanaged(struct { key: []const u8, entry: ?IndexEntry }) = .empty;
         defer index_now.deinit(self.allocator);
         {
-            lock(&self.mutex);
-            defer unlock(&self.mutex);
+            self.lock();
+            defer self.unlock();
             taken = self.pending;
             self.pending = .empty;
             self.commit_posted = false;
@@ -457,8 +457,8 @@ pub const Persistence = struct {
             // would have written leaves the index, so the index never names
             // a response the disk lacks.
             log.warn("an HTTP cache commit to the profile failed: {s}", .{@errorName(err)});
-            lock(&self.mutex);
-            defer unlock(&self.mutex);
+            self.lock();
+            defer self.unlock();
             var entries = taken.iterator();
             while (entries.next()) |entry| {
                 if (entry.value_ptr.* != .put) continue;
