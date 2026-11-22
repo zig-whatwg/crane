@@ -218,7 +218,10 @@ test "Intl.PluralRules', RelativeTimeFormat's and ListFormat's operations releas
         "try { " ++ rtf ++ ".format(1, 'fortnight'); } catch (e) {}",
         rtf ++ ".resolvedOptions()",
         "Intl.RelativeTimeFormat.supportedLocalesOf('en')",
-        lf ++ ".format(['a', 'b', k])",
+        // A list's elements are strings (ECMA-402 StringListFromIterable:
+        // anything else is a TypeError, Chrome 157's "Iterable yielded 3
+        // which is not a string"); Crane's own binding took numbers.
+        lf ++ ".format(['a', 'b', String(k)])",
         lf ++ ".format([])",
         lf ++ ".resolvedOptions()",
         "Intl.ListFormat.supportedLocalesOf('en')",
