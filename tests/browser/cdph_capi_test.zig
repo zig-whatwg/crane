@@ -125,6 +125,7 @@ const Heard = struct {
             @backingInt(capi.EventKind.dialog_opening) => {
                 self.dialog_message_len = copy(&self.dialog_message, event.message);
                 _ = self.dialogs_opened.fetchAdd(1, .acq_rel);
+                testing.io.futexWake(u32, &self.dialogs_opened.raw, std.math.maxInt(u32));
                 if (self.answer_inside) |text| _ = capi.crane_tab_answer_dialog(self.handle, event.tab, true, text);
             },
             @backingInt(capi.EventKind.dialog_closed) => self.dialog_closed_accepted.store(event.flag, .release),
@@ -188,8 +189,12 @@ test "a C embedder that answers dialogs answers a prompt from another thread; th
     const source = "globalThis.answer = prompt('Name?', 'nobody')";
     var result: capi.EvaluateResult = .{};
     try testing.expectEqual(capi.Status.user_prompt_open, capi.crane_tab_evaluate(heard.handle, tab, source.ptr, source.len, 0, &result));
-    var waited: u32 = 0;
-    while (heard.dialogs_opened.load(.acquire) == 0 and waited < 5000) : (waited += 5) std.Thread.sleep(5 * std.time.ns_per_ms);
+    // The callback wakes the count it bumps: no polling.
+    var tries: u32 = 0;
+    while (heard.dialogs_opened.load(.acquire) == 0 and tries < 50) : (tries += 1) {
+        const timeout: std.Io.Timeout = .{ .duration = .{ .raw = .fromMilliseconds(100), .clock = .awake } };
+        testing.io.futexWaitTimeout(u32, &heard.dialogs_opened.raw, 0, timeout) catch {};
+    }
     try testing.expectEqual(@as(u32, 1), heard.dialogs_opened.load(.acquire));
     try testing.expectEqualStrings("Name?", heard.dialog_message[0..heard.dialog_message_len]);
     try testing.expectEqual(capi.Status.ok, capi.crane_tab_answer_dialog(heard.handle, tab, true, "Crane"));

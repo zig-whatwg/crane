@@ -21,7 +21,8 @@ const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 const outbound = devtools.outbound;
 
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+/// A poisoning leak-checker (tests/AGENTS.md: never a bare std.heap.DebugAllocator).
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true, .stack_trace_frames = 0 });
 
 /// A Browser on its own thread with one page session on a tab, and the
 /// messages the session sends.
