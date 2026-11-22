@@ -1,7 +1,13 @@
 //! No Intl call keeps a handle once it has returned, and no Intl object keeps
 //! one once it is collected.
 //!
-//! intl_binding.zig is native glue over the pure Zig Intl library, and every
+//! Since lane icu1 Intl and the built-ins' toLocaleString are V8's own, from
+//! ICU, with no Crane glue between script and ICU: these tests now hold that
+//! nothing of the adapter's comes back between them (an interceptor, a
+//! wrapper, a host-side Intl) that makes a global handle per call or per
+//! object. The history below is the binding they were written against.
+//!
+//! intl_binding.zig was native glue over the pure Zig Intl library, and every
 //! `v8_*` call that returns a pointer allocates a Global the caller owns: the
 //! receiver (`info.getThis()`), each argument (`info.get(i)`), the context,
 //! every key, every `Object::Get` result and every value made for the result
@@ -212,7 +218,10 @@ test "Intl.PluralRules', RelativeTimeFormat's and ListFormat's operations releas
         "try { " ++ rtf ++ ".format(1, 'fortnight'); } catch (e) {}",
         rtf ++ ".resolvedOptions()",
         "Intl.RelativeTimeFormat.supportedLocalesOf('en')",
-        lf ++ ".format(['a', 'b', k])",
+        // A list's elements are strings (ECMA-402 StringListFromIterable:
+        // anything else is a TypeError, Chrome 157's "Iterable yielded 3
+        // which is not a string"); Crane's own binding took numbers.
+        lf ++ ".format(['a', 'b', String(k)])",
         lf ++ ".format([])",
         lf ++ ".resolvedOptions()",
         "Intl.ListFormat.supportedLocalesOf('en')",
@@ -242,14 +251,16 @@ test "Intl.DisplayNames' and Intl.Segmenter's operations release what they take 
 test "Intl.Locale's accessors and operations release what they take and make" {
     const page = try Page.open();
     defer page.close();
+    // ECMA-402 14.3: baseName ... numeric are accessors (the binding had
+    // made them methods); the Locale Info API's are methods (getCalendars...).
     const locale = "(globalThis.locale ||= new Intl.Locale('en-US', { calendar: 'gregory', numeric: true }))";
     try page.expectNoHandleLeftByEach(&.{
-        locale ++ ".baseName()",
-        locale ++ ".language()",
-        locale ++ ".script()",
-        locale ++ ".region()",
-        locale ++ ".calendar()",
-        locale ++ ".numeric()",
+        locale ++ ".baseName",
+        locale ++ ".language",
+        locale ++ ".script",
+        locale ++ ".region",
+        locale ++ ".calendar",
+        locale ++ ".numeric",
         locale ++ ".toString()",
         locale ++ ".maximize()",
         locale ++ ".minimize()",

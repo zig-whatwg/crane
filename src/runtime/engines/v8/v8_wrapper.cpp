@@ -26,6 +26,10 @@
 #include <v8-metrics.h>  // GCPhaseRecorder (lane wr1 batch 8)
 #include <cppgc/explicit-management.h>  // freeDroppedAnchors (lane wr1 batch 8)
 #include <v8-external-memory-accounter.h>  // external_memory.zig: one accounter per agent
+// ICU's C API, for its default locale at V8's start (setIcuDefaultLocale). ICU is in V8's archive -
+// code and data (scripts/build-v8-15.7.sh, "ICU") - and its headers and consumer defines beside it
+// (icu/include, icu/flags.txt: engine_build.zig wrapperFlags).
+#include <unicode/uloc.h>
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
 #include <cppgc/heap.h>
@@ -2863,9 +2867,33 @@ enum PlatformStartResult : int {
     kPlatformStartedNow = 1,
 };
 
-/// Start V8 - `flags` (null: none), then its platform - unless it has
+/// ICU's default locale, from the BCP 47 tag `tag`: what V8's Intl and the
+/// locale-sensitive String methods use when a script names no locale
+/// (Isolate::DefaultLocale reads icu::Locale::getDefault once per isolate,
+/// src/execution/isolate.cc). Chrome sets it to the browser's locale before
+/// its renderer runs script (base/i18n/rtl.cc SetICUDefaultLocale, from
+/// content's renderer start), d8 to its --icu-locale (src/d8/d8.cc, after
+/// InitializeICUDefaultLocation); without it ICU takes the process's LANG /
+/// LC_ALL / LC_MESSAGES, which navigator.language does not follow. ICU's
+/// default is process-wide and not to be changed while another thread uses
+/// ICU, so it is set once, in the start, before any isolate exists. A tag ICU
+/// cannot read whole leaves ICU's own default; false then.
+static bool setIcuDefaultLocale(const char* tag) {
+    char locale_id[ULOC_FULLNAME_CAPACITY] = {0};
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t parsed = 0;
+    int32_t length = uloc_forLanguageTag(tag, locale_id, sizeof(locale_id), &parsed, &status);
+    if (U_FAILURE(status) || length <= 0 || static_cast<size_t>(parsed) != std::strlen(tag)) return false;
+    uloc_setDefault(locale_id, &status);
+    return U_SUCCESS(status);
+}
+
+/// Start V8 - `flags` (null: none), ICU's default locale `default_locale` (a
+/// BCP 47 tag; null: ICU's own), then its platform - unless it has
 /// started: exactly once per process, from any thread, by whichever caller
-/// is first. A caller that comes while the start is under way waits for it,
+/// is first. ffi.zig's v8_Platform_Start calls it with the platform's
+/// preferred language (snapshot_loader.zig icuDefaultLocale), so every start
+/// sets the same default. A caller that comes while the start is under way waits for it,
 /// so every caller returns with V8 started; one whose `flags` are not the
 /// start's is told so (kPlatformStartedWithOtherFlags), never silently
 /// given the other set.
@@ -2881,7 +2909,7 @@ enum PlatformStartResult : int {
 /// too: two threads making a process's first isolates at once both read it
 /// false and the second V8::InitializePlatform aborted ("Wrong
 /// initialization order": tests/v8/platform_start_once_test.zig).
-int v8_Platform_Start(const char* flags) {
+int v8_Platform_StartWithDefaultLocale(const char* flags, const char* default_locale) {
     if (!g_platform.started.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> guard(g_platform.mutex);
         if (g_platform.disposed) return kPlatformDisposed;
@@ -2893,7 +2921,12 @@ int v8_Platform_Start(const char* flags) {
             // makes its first random number generator; an isolate without
             // one gets V8's own entropy, as before (craneEntropySource).
             V8::SetEntropySource(craneEntropySource);
+            // ICU's data is linked into V8's archive (icu_use_data_file =
+            // false), so there is no icudtl.dat to find: V8 answers true at
+            // once (src/init/icu_util.cc, ICU_UTIL_DATA_STATIC). Then ICU's
+            // default locale, as d8 sets it after this call.
             V8::InitializeICUDefaultLocation("");
+            if (default_locale && *default_locale) setIcuDefaultLocale(default_locale);
             V8::InitializeExternalStartupData("");
             // The process start's platform when it made one
             // (v8_Platform_InitializeBeforeThreadCreation), else one made
@@ -6873,8 +6906,9 @@ Isolate* v8_Isolate_New() {
 
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
     // Thread-safe, and a no-op once V8 has started. ffi.zig's v8_Isolate_New
-    // starts it first with the runtime flags; this is the net below it.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    // starts it first with the runtime flags and ICU's default locale; this is
+    // the net below it.
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
@@ -8142,7 +8176,7 @@ void v8_String_Dispose(Global<String>* str) {
 
 /// V8 13.1's `String::WriteUtf8(isolate, buffer, capacity)` - no options - the
 /// contract `v8_String_WriteUtf8`'s callers read (helpers.writtenUtf8,
-/// intl_binding, observable_array, conversions, protocol_values): as many
+/// intl_binding until lane icu1, observable_array, conversions, protocol_values): as many
 /// whole characters as fit; then, if every character was written and a byte
 /// is left, a NUL, COUNTED in the result; a capacity of -1 is unbounded
 /// (13.1 src/api/api.cc WriteUtf8Impl: "Only null-terminate if there's
@@ -14224,7 +14258,7 @@ struct V8StartupData {
 void* v8_SnapshotCreator_New(const intptr_t* external_references) {
     // The snapshot generator starts V8 first, with its flags
     // (snapshot_loader.initializePlatformForSnapshots); this is the net.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     // Create isolate params with external references
     Isolate::CreateParams params;
@@ -14593,7 +14627,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     const CraneIsolateOptions* options
 ) {
     // As v8_Isolate_New: the net below ffi.zig's start.
-    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+    if (v8_Platform_StartWithDefaultLocale(nullptr, nullptr) == kPlatformDisposed) return nullptr;
 
     if (!snapshot_data || snapshot_size <= 0) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Invalid snapshot data\n");

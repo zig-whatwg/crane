@@ -340,17 +340,13 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // The context: restored from the snapshot, whose global already has the
     // WebIDL interfaces (~2 ms), or made afresh with them defined below
     // (~40 ms) - always on an engine without snapshots.
-    var restored = false;
     const context: *ffi.Context = blk: {
         if (options.from_snapshot and @import("protocol.zig").capabilities.restores_snapshots != .unsupported) {
             const made = if (reused_proxy) |proxy|
                 ffi.v8_Context_NewFromSnapshotWithGlobal(isolate, proxy)
             else
                 ffi.v8_Context_NewFromSnapshot(isolate);
-            if (made) |c| {
-                restored = true;
-                break :blk c;
-            }
+            if (made) |c| break :blk c;
             log.debug("the snapshot's context could not be made; building the realm afresh", .{});
         }
         // The global object is an instance of the Window interface object's
@@ -425,10 +421,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // ConstructorForType). Every Window realm, a page's as a frame's, takes
     // this one path: until lane tmpl1 a restored realm deserialized every
     // interface object of the snapshot and replaced them all - eagerly for a
-    // page - keeping both (tmp/plans/tmpl1-measure.md).
-    // A fresh context gets what the generator put in the snapshot's beside
-    // the template's: Crane's Intl and the built-ins' toLocaleString.
-    if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
+    // page - keeping both (tmp/plans/tmpl1-measure.md). Intl and the
+    // built-ins' toLocaleString are V8's own, from ICU, in every context
+    // (lane icu1): a fresh context needs nothing the snapshot's has beside
+    // the template's.
     // The constructs only some Window realms expose: the [SecureContext]
     // ones, in a realm that is a secure context (recorded above) - decided
     // here, as the realm is made; never installed and then hidden.

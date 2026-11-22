@@ -284,10 +284,6 @@ pub fn registerAllExternalReferences() void {
     const zig_callbacks = @import("zig_callbacks.zig");
     registerCallbackRuntime(zig_callbacks.genericZigCallback);
 
-    // Register Intl callbacks
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerExternalReferences();
-
     // Register window properties callbacks
     const window_properties = @import("window_properties.zig");
     window_properties.registerExternalReferences();

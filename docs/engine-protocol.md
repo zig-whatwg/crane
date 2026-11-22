@@ -794,7 +794,7 @@ The V8 adapter's build file declares:
 | Option | What it does |
 |---|---|
 | `-Dv8-build=<static\|official>` | Which build of the V8 to link. `official` has none for 15.7: `resolve` answers `unavailable`. |
-| `-Dv8=<version>` | Which V8 to link: 15.7 (15.7.112.43, the default). 13.1 is refused: `unavailable`. |
+| `-Dv8=<version>` | Which V8 to link: 15.7 (15.7.112.43 with ICU, jsengines/v8/15.7.112.43-icu, the default). 13.1 is refused: `unavailable`. |
 | `-Djitless` | V8 without its JIT compilers: required on iOS (its default there), a large slowdown elsewhere. |
 | `-Dv8-compilation-cache` | A measurement switch: start V8 WITH its compilation cache (default off). |
 | `-Dv8-extra-flags="<flags>"` | A measurement route: V8 flags appended to the set V8 starts with. |

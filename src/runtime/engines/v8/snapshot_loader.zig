@@ -45,8 +45,9 @@ const adapter_options = @import("adapter_options");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const host = @import("host");
-const intl_binding = @import("intl_binding.zig");
 const memory_pool = @import("memory_pool.zig");
+/// The platform protocol: its preferred languages, for ICU's default locale.
+const platform = @import("platform");
 const clock = @import("clock");
 
 /// Tracked snapshot data for cleanup
@@ -181,6 +182,36 @@ pub const measurement_v8_flags: []const u8 = adapter_options.v8_extra_flags;
 /// Whether this is a measurement build that starts V8 WITH its compilation
 /// cache (-Dv8-compilation-cache; off by default).
 pub const compilation_cache_measurement = adapter_options.v8_compilation_cache;
+
+/// Room for ICU's default locale tag at V8's start, NUL-terminated. A BCP 47
+/// tag a browser offers as its language ("en-US", "zh-Hant-TW",
+/// "sr-Latn-RS") is far shorter; a longer one leaves ICU's default to the
+/// fallback.
+pub const LocaleTag = [64:0]u8;
+
+/// The locale V8's Intl and the locale-sensitive String methods default to,
+/// written into `tag`: the platform's most preferred language
+/// (platform.preferredLanguages, HTML 8.10.1.2) - the language
+/// navigator.language reports (html.window.host_overrides.platformLanguages
+/// reads the same list, sanitized the same way: whitespace trimmed, '_' as
+/// '-'), as Chrome sets ICU's default to the browser's locale
+/// (base/i18n/rtl.cc SetICUDefaultLocale) - or "en-US" when the platform
+/// has no list, as navigator.language then answers. v8_Platform_Start
+/// passes it to V8's start, which sets it before any isolate exists
+/// (v8_wrapper.cpp setIcuDefaultLocale): never the host process's LANG.
+pub fn icuDefaultLocale(tag: *LocaleTag) [*:0]const u8 {
+    const fallback = "en-US";
+    const allocator = std.heap.c_allocator;
+    const list = platform.preferredLanguages(allocator) catch return fallback;
+    defer allocator.free(list);
+    defer for (list) |language| allocator.free(language.slice());
+    if (list.len == 0) return fallback;
+    const first = std.mem.trim(u8, list[0].slice(), " \t\n\r\x0b\x0c");
+    if (first.len == 0 or first.len >= tag.len) return fallback;
+    for (first, 0..) |c, i| tag[i] = if (c == '_') '-' else c;
+    tag[first.len] = 0;
+    return tag[0..first.len :0].ptr;
+}
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

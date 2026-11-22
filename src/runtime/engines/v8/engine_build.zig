@@ -111,12 +111,13 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         ) orelse archives.Build.default,
         // -Dv8: the V8 version (build/archives.zig Version). One value: 15.7
         // is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
-        // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/. 13.1,
+        // tmp/plans/v8-update-plan.md), built with ICU (the user,
+        // 2026-11-22), from jsengines/v8/15.7.112.43-icu/. 13.1,
         // which the adapter no longer compiles against, is not a value any more
         // (the integrator's ruling Q5 on the build migration: dead pieces are
         // deleted): `zig build` itself refuses -Dv8=13.1 as it refuses any
         // value an option does not list.
-        .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh)") orelse archives.Version.default,
+        .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (15.7.112.43, Chrome 157's, with ICU - jsengines/v8/15.7.112.43-icu, scripts/build-v8-15.7.sh)") orelse archives.Version.default,
         // Phase 8 (mobile): iOS forbids JIT outright - no W^X exception for third-party
         // apps - so V8 must run in its interpreter-only mode there or the process is
         // killed on first code generation. Defaults ON for iOS targets and OFF everywhere
@@ -215,14 +216,19 @@ pub fn isDefaultFor(target: std.Target) bool {
 
 /// What this build links: the archives -Dv8, -Dv8-build and the target's OS
 /// select (build/archives.zig) and what `resolve` reads from beside them at
-/// configure time - the archive is built against Chromium's libc++, and
-/// keeps that libc++'s consumer flags and the system libraries its own link
-/// names in two files. Resolved once, so every artifact links the same V8.
+/// configure time - the archive is built against Chromium's libc++ and with
+/// ICU, and keeps that libc++'s consumer flags, ICU's consumer defines and
+/// the system libraries its own link names in three files. Resolved once,
+/// so every artifact links the same V8.
 pub const Resolved = struct {
     archives: archives.Archives,
     /// libcxx/flags.txt's -D defines and -nostdinc++ (its directories are
     /// added by `addSourceTo`, relative and as -I).
     libcxx_flags: []const []const u8,
+    /// icu/flags.txt's -D defines: what ICU's headers must see in
+    /// v8_wrapper.cpp, which calls ICU's C API (its directory is added by
+    /// `addSourceTo`).
+    icu_flags: []const []const u8,
     /// system-libs.txt's `-framework X` entries.
     frameworks: []const []const u8,
     /// system-libs.txt's `-lX` entries.
@@ -254,10 +260,16 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
     const chromium = selected.chromium;
     const flags_text = readTracked(b, chromium.libcxx_flags) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
     const libs_text = readTracked(b, chromium.system_libs) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
+    const icu_text = readTracked(b, selected.icu.flags) catch |err| return .{ .unavailable = noArchive(b, selected.icu.flags, err) };
     var flags: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
     while (lines.next()) |line| {
         if (std.mem.startsWith(u8, line, "-D") or std.mem.eql(u8, line, "-nostdinc++")) flags.append(b.allocator, line) catch @panic("OOM");
+    }
+    var icu_flags: std.ArrayList([]const u8) = .empty;
+    lines = std.mem.tokenizeScalar(u8, icu_text, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "-D")) icu_flags.append(b.allocator, line) catch @panic("OOM");
     }
     var frameworks: std.ArrayList([]const u8) = .empty;
     var system_libs: std.ArrayList([]const u8) = .empty;
@@ -269,7 +281,7 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
             system_libs.append(b.allocator, line[2..]) catch @panic("OOM");
         }
     }
-    return .{ .ready = .{ .archives = selected, .libcxx_flags = flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items } };
+    return .{ .ready = .{ .archives = selected, .libcxx_flags = flags.items, .icu_flags = icu_flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items } };
 }
 
 /// `path` (relative to the build root) read at configure time as a tracked
@@ -302,7 +314,7 @@ fn dependOnAbsence(b: *std.Build, path: []const u8) void {
 /// Why a host that lacks `path`, a file the archive keeps beside itself, can
 /// link no V8, and how to get the archive.
 fn noArchive(b: *std.Build, path: []const u8, err: anyerror) []const u8 {
-    return b.fmt("-Dv8=15.7 needs {s} ({s}) on this host: build the archive with scripts/build-v8-15.7.sh, or copy jsengines/v8/15.7.112.43 from a host of the same OS and check it with its SHA256SUMS", .{ path, @errorName(err) });
+    return b.fmt("-Dv8=15.7 needs {s} ({s}) on this host: build the archive with scripts/build-v8-15.7.sh, or copy jsengines/v8/15.7.112.43-icu from a host of the same OS and check it with its SHA256SUMS", .{ path, @errorName(err) });
 }
 
 /// The adapter's V8-facing C++, relative to the build root.
@@ -321,14 +333,16 @@ const wrapper_source = "src/runtime/engines/v8/v8_wrapper.cpp";
 /// include/ holds the build's v8-gn.h, which v8config.h includes under
 /// -DV8_GN_HEADER (V8 BUILD.gn v8_generate_external_defines_header), and its
 /// libcxx/flags.txt the defines GN compiles every consumer of its libc++ with
-/// (`Resolved.libcxx_flags`, read by `resolve`). (13.1.203's archive said
-/// neither, and its seven defines were listed here by hand until the value
-/// -Dv8=13.1 was deleted.)
+/// (`Resolved.libcxx_flags`, read by `resolve`), and its icu/flags.txt the
+/// defines GN compiles ICU's consumers with (`Resolved.icu_flags`): the
+/// wrapper includes ICU's unicode/uloc.h to set ICU's default locale.
+/// (13.1.203's archive said none of it, and its seven defines were listed
+/// here by hand until the value -Dv8=13.1 was deleted.)
 ///
 /// `extra`: flags of the artifact's own.
 fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const u8) []const []const u8 {
     const from_archive = [_][]const u8{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_GN_HEADER" };
-    return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, resolved.libcxx_flags, extra }) catch @panic("OOM");
+    return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, resolved.libcxx_flags, resolved.icu_flags, extra }) catch @panic("OOM");
 }
 
 /// Link V8 into `module`, one artifact's own root module (the protocol's
@@ -371,8 +385,9 @@ pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved,
 /// (addIncludePath): Zig puts its own -isystem directories (clang's builtins,
 /// the C library's) before any a module adds, so as -isystem they would follow
 /// the C library's and <cstdio> would find its <stdio.h> instead of libc++'s
-/// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/. Zig's own
-/// libc++ is not linked: the binary holds Chromium's, alone.
+/// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/, then ICU's
+/// headers (icu/include, for unicode/uloc.h). Zig's own libc++ is not
+/// linked: the binary holds Chromium's, alone.
 ///
 /// `apart` (a thread-sanitized artifact): Zig links
 /// its ThreadSanitizer runtime with its own libc++ (std::__1) into every
@@ -425,6 +440,7 @@ fn addSourceTo(b: *std.Build, module: *std.Build.Module, resolved: *const Resolv
     });
     for (resolved.archives.chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
     module.addIncludePath(.{ .cwd_relative = resolved.archives.include });
+    module.addIncludePath(.{ .cwd_relative = resolved.archives.icu.include });
     module.link_libc = true;
 }
 
@@ -645,6 +661,8 @@ const snapshot_first = [_]engine_build.DeclaredTest{
     .{ .name = "wh_wasm_address_descriptor_test.test.snapshot realm: a Window realm restored from Crane's snapshot takes address i64", .reason = snapshot_first_reason },
     .{ .name = "wj1_wasm_constructor_test.test.snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics", .reason = snapshot_first_reason },
     .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
+    .{ .name = "icu1_native_intl_snapshot_test.test.snapshot agent: a Window realm restored from the snapshot has V8's own Intl", .reason = snapshot_first_reason },
+    .{ .name = "icu1_native_intl_snapshot_test.test.snapshot agent: a pattern attribute takes a Unicode property escape", .reason = snapshot_first_reason },
 };
 
 /// context_counter_test: the subject of each is the balance of the adapter's
@@ -738,11 +756,9 @@ pub const facts: engine_build.Facts = .{
         // operations (streams, promises).
         "event_loop",
         "streams_async_promise",
-        // The platform protocol: the adapter's Intl asks it for local time
-        // (intl_binding.zig, platform.localDateTime).
+        // The platform protocol: V8's start reads the platform's preferred
+        // languages for ICU's default locale (snapshot_loader.zig).
         "platform",
-        // For the pure Zig Intl.DateTimeFormat implementation.
-        "intl",
         // For ES module loading from HTTP URLs.
         "fetch",
     },

@@ -614,16 +614,6 @@ pub fn makeConstruct(index: i32, isolate: *v8.Isolate, context: *v8.Context) ?*v
     return constructs[@intCast(index)].make(isolate, context);
 }
 
-/// What a Window realm's context has beside its template's: Crane's Intl
-/// (the pure-Zig i18n binding) and the built-ins' toLocaleString methods -
-/// put in the snapshot's context by the generator, and on a context made
-/// without it by its realm (createWindowRealm).
-pub fn installSnapshotIntrinsics(isolate: *v8.Isolate, context: *v8.Context) void {
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerGlobal(isolate, context);
-    intl_binding.registerToLocaleStringMethods(isolate, context);
-}
-
 /// The templates the snapshot generator attaches to the isolate snapshot
 /// (v8_SnapshotCreator_AddFunctionTemplate), in this order, and createAgent
 /// takes back into a restored isolate's registry by the same index: the
@@ -702,19 +692,14 @@ pub fn initializeBindings(
     // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
     registerLegacyFactoryFunctions(isolate, context);
 
-    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerGlobal(isolate, context);
-
-    // Step 5: Register toLocaleString methods on built-in prototypes
-    intl_binding.registerToLocaleStringMethods(isolate, context);
-
-    // Step 6: Register legacy interface aliases
+    // Step 4: Register legacy interface aliases
     // These are historical aliases that map to other interfaces
     // e.g., HTMLDocument is an alias for Document per HTML spec
+    // (Intl and the built-ins' toLocaleString are V8's own, from ICU: lane
+    // icu1 retired the Zig binding these steps installed.)
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: SKIP namespace registration during snapshot creation!
+    // Step 5: SKIP namespace registration during snapshot creation!
     //
     // Namespaces (console, CSS, WebAssembly, etc.) contain function callbacks
     // with memory addresses specific to the snapshot creator binary.
@@ -728,7 +713,7 @@ pub fn initializeBindings(
     // about them during snapshot creation for interface method callbacks that
     // might reference namespace types.
 
-    // Step 8: WindowProperties insertion is deferred.
+    // Step 6: WindowProperties insertion is deferred.
     // WindowProperties must be inserted AFTER the Window instance is created and bound
     // to the global's internal field. This is done in context_manager.zig after Window.init().
     // See createChildContext() for the call to window_properties.insertIntoPrototypeChain().
@@ -772,22 +757,16 @@ pub fn initializeBindingsWithGlobalTemplate(
     // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
     registerLegacyFactoryFunctions(isolate, context);
 
-    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerGlobal(isolate, context);
-
-    // Step 5: Register toLocaleString methods on built-in prototypes
-    intl_binding.registerToLocaleStringMethods(isolate, context);
-
-    // Step 6: Register legacy interface aliases
+    // Step 4: Register legacy interface aliases
     // These are historical aliases that map to other interfaces
     // e.g., HTMLDocument is an alias for Document per HTML spec
+    // (Intl and toLocaleString are V8's own: see initializeBindings.)
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // Step 5: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
     // (See comment in initializeBindings for explanation)
 
-    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
+    // Step 6: WindowProperties insertion is deferred (same as initializeBindings)
 }
 
 /// Initialize bindings for a specific scope context (used by snapshot generator)
@@ -820,22 +799,16 @@ pub fn initializeBindingsForScope(
     // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
     registerLegacyFactoryFunctions(isolate, context);
 
-    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerGlobal(isolate, context);
-
-    // Step 5: Register toLocaleString methods on built-in prototypes
-    intl_binding.registerToLocaleStringMethods(isolate, context);
-
-    // Step 6: Register legacy interface aliases
+    // Step 4: Register legacy interface aliases
     // These are historical aliases that map to other interfaces
     // e.g., HTMLDocument is an alias for Document per HTML spec
+    // (Intl and toLocaleString are V8's own: see initializeBindings.)
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // Step 5: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
     // (See comment in initializeBindings for explanation)
 
-    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
+    // Step 6: WindowProperties insertion is deferred (same as initializeBindings)
 }
 
 /// Initialize only core DOM interface bindings for a scope.

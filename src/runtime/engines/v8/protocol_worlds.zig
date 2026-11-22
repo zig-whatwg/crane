@@ -396,17 +396,13 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     defer if (reused_proxy) |proxy| ffi.v8_Object_Dispose(proxy);
 
     // The context, as createWindowRealm makes one.
-    var restored = false;
     const context: *ffi.Context = blk: {
         if (facts.from_snapshot and @import("protocol.zig").capabilities.restores_snapshots != .unsupported) {
             const made = if (reused_proxy) |proxy|
                 ffi.v8_Context_NewFromSnapshotWithGlobal(isolate, proxy)
             else
                 ffi.v8_Context_NewFromSnapshot(isolate);
-            if (made) |c| {
-                restored = true;
-                break :blk c;
-            }
+            if (made) |c| break :blk c;
         }
         const global_template = ffi.v8_FunctionTemplate_InstanceTemplate(protocol_realms.windowTemplate(isolate));
         defer ffi.v8_ObjectTemplate_Dispose(global_template);
@@ -457,7 +453,6 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     // Kept after the realm ends (runtime.ContextData.world).
     realm.world = world;
 
-    if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
     interface_bindings.installConditionalConstructs(.Window, context);
     interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
     shared_array_buffer_exposure.apply(isolate, context, facts.cross_origin_isolated);

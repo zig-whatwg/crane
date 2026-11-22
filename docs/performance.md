@@ -281,7 +281,7 @@ zig build repl-exe -j2 -Dwpt-runner-release-fast -Dcpu=apple_m1 # the ReleaseFas
 # Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
 # and `target_cpu` are the build's own repl.modes lines. For the ReleaseFast build:
 # name=crane_fast, <fast>/. `v8` is the LINKED archive's version - the directory -Dv8 selects,
-# jsengines/v8/15.7.112.43/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
+# jsengines/v8/15.7.112.43-icu/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
 # linked by nothing) - checked in the console's own bytes before the pin is written:
 LC_ALL=C grep -a -q -F 15.7.112.43 <safe>/repl
 cat > crane.pin <<PIN
