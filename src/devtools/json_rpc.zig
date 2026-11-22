@@ -72,8 +72,13 @@ pub fn parse(arena: Allocator, raw: []const u8) Allocator.Error!Parsed {
         .string => |text| text,
         else => return .{ .failure = .{ .code = .invalid_request, .message = "Message must have string 'method' property", .id = id, .session_id = session_id } },
     } else return .{ .failure = .{ .code = .invalid_request, .message = "Message must have string 'method' property", .id = id, .session_id = session_id } };
+    // "params": an object, absent, or null - crdtp's Dispatchable::
+    // MaybeParseParams takes a CBOR null as no params (Chrome answered
+    // Vitest's `"params":null` HeapProfiler.collectGarbage, cdp1-evidence
+    // vue-e2e-browser.protocol.log); anything else is refused.
     const params: json.Value = if (object.get("params")) |v| switch (v) {
         .object => v,
+        .null => .{ .object = .empty },
         else => return .{ .failure = .{ .code = .invalid_request, .message = "Message has property 'params' but it is not an object", .id = id, .session_id = session_id } },
     } else .{ .object = .empty };
     return .{ .command = .{ .id = id, .method = method, .params = params, .session_id = session_id, .raw = raw } };
