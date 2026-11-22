@@ -642,7 +642,8 @@ pub const IR = struct {
     /// After the last processIncludes of a whole source set: an
     /// include_removals.zig entry no includes statement matched is stale -
     /// the snapshot update that dropped the statement drops the entry too.
-    /// Sources without the entry's interface (a test's own IDL) say nothing.
+    /// Sources without the entry's interface or mixin (a test's own IDL)
+    /// say nothing.
     pub fn checkIncludeRemovals(self: *const IR) !void {
         const Defined = struct {
             fn f(ir: *const IR, name: []const u8) bool {

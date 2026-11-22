@@ -43,12 +43,14 @@ pub fn indexOf(entries: []const Removal, target: []const u8, mixin: []const u8) 
 }
 
 /// The first entry no includes statement matched (`matched[i]` for
-/// `entries[i]`), among those whose target the sources define (`defined`):
-/// a source set without the interface - a test's own IDL - says nothing.
+/// `entries[i]`), among those whose interface AND mixin the sources define
+/// (`defined`): a source set without either - a test's own IDL, which
+/// defines an SVGSVGElement of its own and no WindowEventHandlers - says
+/// nothing about the statement.
 pub fn firstStale(entries: []const Removal, matched: []const bool, context: anytype, comptime defined: fn (@TypeOf(context), []const u8) bool) ?Removal {
     for (entries, matched) |entry, was_matched| {
         if (was_matched) continue;
-        if (!defined(context, entry.target)) continue;
+        if (!defined(context, entry.target) or !defined(context, entry.mixin)) continue;
         return entry;
     }
     return null;
@@ -77,12 +79,15 @@ test "an entry no includes statement matched is stale, when the sources define i
             return false;
         }
     };
-    const both: []const []const u8 = &.{ "A", "B" };
+    const all: []const []const u8 = &.{ "A", "M", "B", "N" };
     // Every entry matched: nothing stale.
-    try std.testing.expectEqual(@as(?Removal, null), firstStale(&entries, &.{ true, true }, both, Defined.f));
-    // B's statement is gone from sources that define B: B is stale.
-    try std.testing.expectEqualStrings("B", firstStale(&entries, &.{ true, false }, both, Defined.f).?.target);
-    // Sources without B (a test's own IDL) say nothing about it.
-    const only_a: []const []const u8 = &.{"A"};
-    try std.testing.expectEqual(@as(?Removal, null), firstStale(&entries, &.{ true, false }, only_a, Defined.f));
+    try std.testing.expectEqual(@as(?Removal, null), firstStale(&entries, &.{ true, true }, all, Defined.f));
+    // B's statement is gone from sources that define B and N: B is stale.
+    try std.testing.expectEqualStrings("B", firstStale(&entries, &.{ true, false }, all, Defined.f).?.target);
+    // Sources without B, or without N (a test's own IDL with a B of its
+    // own), say nothing about the statement.
+    const no_b: []const []const u8 = &.{ "A", "M", "N" };
+    try std.testing.expectEqual(@as(?Removal, null), firstStale(&entries, &.{ true, false }, no_b, Defined.f));
+    const no_n: []const []const u8 = &.{ "A", "M", "B" };
+    try std.testing.expectEqual(@as(?Removal, null), firstStale(&entries, &.{ true, false }, no_n, Defined.f));
 }
