@@ -9,7 +9,7 @@
 //! - about: Returns about:blank response or network error
 //! - blob: Resolves blob URL and returns blob data (stubbed)
 //! - data: Processes data URLs
-//! - file: Implementation-defined (returns network error)
+//! - file: implementation-defined; the browsers' answer (file_fetch.zig)
 //! - http/https: Delegates to HTTP fetch (stubbed)
 
 const std = @import("std");
@@ -23,6 +23,7 @@ const ResponseType = internal_response.ResponseType;
 const Body = @import("../internal/body.zig").Body;
 const InternalRequest = @import("../internal/request.zig").InternalRequest;
 const parsing = @import("../internal/parsing.zig");
+const file_fetch = @import("file_fetch.zig");
 
 const log = std.log.scoped(.scheme_fetch);
 
@@ -193,7 +194,37 @@ pub fn schemeFetchRequest(allocator: Allocator, request: *const InternalRequest)
             error.OutOfMemory => SchemeFetchError.OutOfMemory,
         };
     }
+    if (std.ascii.eqlIgnoreCase(scheme, "file")) return fileFetchRequest(allocator, request);
     return schemeFetch(allocator, scheme, url);
+}
+
+/// Scheme fetch, "file" - implementation-defined (Fetch 4.3); Crane answers
+/// as the three browsers do (file_fetch.zig): a request whose client may
+/// load local files, or with no client, gets the file with its extension's
+/// MIME type; any other - a web page's - a network error.
+fn fileFetchRequest(allocator: Allocator, request: *const InternalRequest) SchemeFetchError!SchemeFetchResult {
+    // A page's request names its client's origin (populate request from
+    // client); one still "client" has none.
+    if (!request.local_file_access and request.origin != .client) return .{ .network_error = "Not allowed to load local resource" };
+    const found = file_fetch.read(allocator, request.currentUrl(), file_fetch.max_file_bytes) catch return SchemeFetchError.OutOfMemory;
+    const file = switch (found) {
+        .file => |f| f,
+        .not_found, .bad_host => return .{ .network_error = "file not found" },
+    };
+    defer allocator.free(file.bytes);
+    defer allocator.free(file.path);
+    const response = InternalResponse.init(allocator) catch return SchemeFetchError.OutOfMemory;
+    errdefer response.deinit();
+    response.status = 200;
+    response.setStatusMessage("OK") catch return SchemeFetchError.OutOfMemory;
+    response.header_list.append("Content-Type", file.mime_type) catch return SchemeFetchError.OutOfMemory;
+    const body = Body.fromBytes(allocator, file.bytes) catch return SchemeFetchError.OutOfMemory;
+    // fromBytes copies the bytes but keeps `source` on the caller's slice,
+    // which is freed above: the source is the body's own copy (as
+    // http_fetch.zig and cache/transaction.zig repoint theirs).
+    body.source = .{ .bytes = body.data.items };
+    response.body = body;
+    return .{ .response = response };
 }
 
 /// Scheme fetch, "blob".

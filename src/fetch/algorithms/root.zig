@@ -32,6 +32,7 @@ const std = @import("std");
 
 pub const data_url = @import("data_url.zig");
 pub const scheme_fetch = @import("scheme_fetch.zig");
+pub const file_fetch = @import("file_fetch.zig");
 pub const main_fetch = @import("main_fetch.zig");
 pub const csp_check = @import("csp_check.zig");
 pub const fetch_metadata = @import("fetch_metadata.zig");
