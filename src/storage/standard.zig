@@ -40,6 +40,8 @@
 const std = @import("std");
 const fs = @import("fs");
 const infra = @import("infra");
+const platform = @import("platform");
+const profile_mod = @import("profile.zig");
 
 // ============================================================================
 // Storage Types (Phase 3.1)
@@ -340,6 +342,13 @@ pub const StorageProxyMap = struct {
     /// Allocator for value allocations
     allocator: std.mem.Allocator,
 
+    /// The area's link to its Browser's profile directory (a localStorage
+    /// bottle of a Browser that has one; profile.zig): every change is
+    /// recorded in its commit batch BEFORE the map changes, as Chromium's
+    /// StorageAreaImpl records a key and then updates its map. Null: the
+    /// map is all there is.
+    area: ?*profile_mod.Area = null,
+
     const Self = @This();
 
     /// Get a value from the map
@@ -349,6 +358,7 @@ pub const StorageProxyMap = struct {
 
     /// Set a value in the map
     pub fn set(self: Self, key: []const u8, value: []const u8) !void {
+        if (self.area) |area| area.recordKey(key);
         // Remove the old entry if it exists: its key copy too - the put below
         // stores a new one (freeing only the value leaked a key per overwrite).
         if (self.backing_map.fetchRemove(key)) |old| {
@@ -368,6 +378,9 @@ pub const StorageProxyMap = struct {
 
     /// Delete a key from the map
     pub fn delete(self: Self, key: []const u8) bool {
+        if (self.area) |area| {
+            if (self.backing_map.contains(key)) area.recordKey(key);
+        }
         if (self.backing_map.fetchRemove(key)) |old| {
             self.allocator.free(old.key);
             self.allocator.free(old.value);
@@ -388,6 +401,7 @@ pub const StorageProxyMap = struct {
 
     /// Clear all entries
     pub fn clear(self: Self) void {
+        if (self.area) |area| area.recordClear();
         var iter = self.backing_map.iterator();
         while (iter.next()) |entry| {
             self.allocator.free(entry.key_ptr.*);
@@ -417,6 +431,11 @@ pub const StorageBottle = struct {
     /// Allocator for this bottle
     allocator: std.mem.Allocator,
 
+    /// The bottle's area in its Browser's profile directory, when it is a
+    /// localStorage bottle of a Browser that has one (profile.zig): its
+    /// proxy maps record their changes there. Owned by the Profile.
+    area: ?*profile_mod.Area = null,
+
     const Self = @This();
 
     /// Create a new storage bottle
@@ -431,6 +450,8 @@ pub const StorageBottle = struct {
 
     /// Free the storage bottle's resources
     pub fn deinit(self: *Self) void {
+        // Its area lets go of the map; the Browser's end flushed it already.
+        if (self.area) |area| area.detachMap();
         // Free all map entries
         var iter = self.map.iterator();
         while (iter.next()) |entry| {
@@ -446,6 +467,7 @@ pub const StorageBottle = struct {
         return StorageProxyMap{
             .backing_map = &self.map,
             .allocator = self.allocator,
+            .area = self.area,
         };
     }
 
@@ -742,6 +764,10 @@ pub const UserAgentStorage = struct {
     shed: StorageShed,
     /// The bucket file systems (navigator.storage.getDirectory()).
     buckets: fs.BucketManager,
+    /// The Browser's profile directory, when it has one (`attachProfile`):
+    /// its localStorage areas are read from it and their changes committed
+    /// to it (profile.zig). Null: every area is in memory alone.
+    profile: ?*profile_mod.Profile = null,
 
     pub fn init(allocator: std.mem.Allocator) UserAgentStorage {
         return .{
@@ -751,10 +777,32 @@ pub const UserAgentStorage = struct {
         };
     }
 
-    /// With its Browser: every storage area of it is gone.
+    /// With its Browser: every storage area of it is gone. Its bottles let
+    /// go of their profile areas first; nothing touches a store here (the
+    /// Browser flushed - `flushProfile` - while its platform state lived).
     pub fn deinit(self: *UserAgentStorage) void {
         self.shed.deinit();
         self.buckets.deinit();
+        if (self.profile) |profile| profile.destroy();
+        self.profile = null;
+    }
+
+    /// The Browser has a profile directory (D6, the user's ruling
+    /// 2026-11-21): its local storage persists through `browser`'s stores,
+    /// committing on `timer`. Browser.init's (src/browser/profile_stores.zig),
+    /// before any realm obtains a shelf; never for a Browser with none.
+    pub fn attachProfile(self: *UserAgentStorage, browser: *platform.BrowserPlatform, timer: ?profile_mod.CommitTimer) std.mem.Allocator.Error!void {
+        std.debug.assert(self.profile == null and self.shed.count() == 0);
+        self.profile = try profile_mod.Profile.create(self.allocator, browser, timer);
+    }
+
+    /// Commit every pending localStorage change to the profile now
+    /// (Chromium LocalStorageImpl::ShutDown). Browser.deinit's, before its
+    /// event loop and its platform state end; nothing without a profile.
+    /// On the window thread, as every localStorage map is read and written.
+    pub fn flushProfile(self: *UserAgentStorage) void {
+        const profile = self.profile orelse return;
+        profile.flush();
     }
 
     pub fn lock(self: *UserAgentStorage) void {
@@ -768,9 +816,31 @@ pub const UserAgentStorage = struct {
     /// "Obtain a local storage shelf" for `key`, a key "obtain a storage key"
     /// gave (the caller holds the lock, or is the window thread reaching a
     /// shelf only it uses). Null - failure - for a key it would have refused.
+    ///
+    /// With a profile directory, a shelf made here has its localStorage
+    /// read from the profile into its bottle, which records its changes for
+    /// it from then on (profile.zig).
     pub fn obtainLocalShelfLocked(self: *UserAgentStorage, key: StorageKey) !?*StorageShelf {
         const storage_key = obtainStorageKey(key) orelse return null;
-        return try self.shed.obtainShelf(storage_key);
+        const profile = self.profile orelse return try self.shed.obtainShelf(storage_key);
+        if (self.shed.getShelf(storage_key)) |shelf| return shelf;
+        const shelf = try self.shed.obtainShelf(storage_key);
+        self.loadLocalStorage(profile, storage_key, shelf) catch |err| {
+            // Nothing half-read stays: the next obtain reads again.
+            self.shed.removeShelf(storage_key);
+            return err;
+        };
+        return shelf;
+    }
+
+    /// A new shelf's localStorage, read from the profile.
+    fn loadLocalStorage(self: *UserAgentStorage, profile: *profile_mod.Profile, key: StorageKey, shelf: *StorageShelf) !void {
+        const bucket = shelf.getDefaultBucket() orelse return;
+        const bottle = bucket.getBottle(.localStorage) orelse return;
+        std.debug.assert(bottle.area == null and bottle.map.count() == 0);
+        const serialized = try key.serialize(self.allocator);
+        defer self.allocator.free(serialized);
+        bottle.area = try profile.load(serialized, &bottle.map, bottle.quota orelse FIVE_MEBIBYTES);
     }
 
     /// The local storage shelf of `origin` alone, with no top-level site:

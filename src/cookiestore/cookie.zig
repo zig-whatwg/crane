@@ -136,6 +136,12 @@ pub const Cookie = struct {
     /// Partition key for CHIPS (null if not partitioned)
     partition_key: ?PartitionKey = null,
 
+    /// The last access time last written to the Browser's profile directory
+    /// (cookiestore/storage_integration.zig): an access is written only
+    /// once it is Chromium's 60 s threshold past this one. Unused without a
+    /// profile.
+    persisted_access_time: i64 = 0,
+
     /// Allocator used for owned memory
     allocator: ?std.mem.Allocator = null,
 
