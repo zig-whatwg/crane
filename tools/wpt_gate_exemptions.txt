@@ -2261,3 +2261,19 @@ safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835; "a
 matches         = chrome
 ruling          = the user, 2026-11-21 12:43 PM ET: "I want to make this the responsibility of the js engine protocol" - the adapter owns the receiver and steps 10-11 (engine.HostHooks.htmlConstructor); the V8 adapter follows Chrome's order (relayed by the integrator 12:44 PM ET)
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves (an adapter that reads the prototype in spec order)
+
+
+[resize-observer/eventloop.html]
+kind            = needs-renderer
+why             = test0 observes three nested divs, takes the initial notification, then sets each one's style.width to 101px and waits for the second notification; with no layout box every observed size stays 0x0 (platform.layoutBox answers nothing), so no resize is seen, the wait times out, and the helper's chain stops (its next step_timeout runs on the finished test), leaving test1, test2 and guard unrun and the file TIMEOUT
+assertion       = test0: multiple notifications inside same event loop: assert_unreached: Timed out waiting for notification. (1000ms) Reached unreachable code
+
+[resize-observer/notify.html]
+kind            = needs-renderer
+why             = test1 (display:none) and test2 (removeChild/appendChild) wait for the notification a 100x100 box going to no box sends; with no layout box the target is 0x0 before and after, so neither change is a resize, both waits time out, and test2's stalled chain leaves test3-test12 and guard unrun and the file TIMEOUT
+assertion       = test1: display:none triggers notification: assert_unreached: Timed out waiting for notification. (1000ms) Reached unreachable code
+
+[resize-observer/svg.html]
+kind            = needs-renderer
+why             = each test observes an SVG element, takes the initial notification, then changes an attribute that moves its bounding box (circle r, ellipse rx, rect width, text font-size, ...) and waits for the second notification; with no layout box every SVG bounding box stays 0x0, so each wait times out (1 s per test) until the harness timeout ends test9 and leaves test10-test17 and guard unrun
+assertion       = test0: observe svg:circle: assert_unreached: Timed out waiting for notification. (1000ms) Reached unreachable code
