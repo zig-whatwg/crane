@@ -63,6 +63,7 @@ pub const capabilities: engine.Capabilities = .{
     .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign's P5): QuickJS wraps no node yet (its gc_mark would call the hook, design 3.3).
     .wrapper_tracing = .unsupported,
+    .inspector_protocol = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -215,6 +216,42 @@ pub fn worldRealmsOf(_: Context, _: []Context) usize {
 }
 pub fn destroyWorldRealms(_: Context) void {}
 pub fn installWorldObserver(_: *Agent, _: ?*const engine.WorldObserver, _: ?*anyopaque) void {}
+// [inspector_protocol] (engine section 4.2b): unsupported - no inspector, no
+// JavaScript domains of CDP.
+pub fn installInspectorClient(_: *Agent, _: ?*const engine.InspectorClient) void {}
+pub fn inspectorConnect(_: *Agent, _: engine.InspectorGroup, _: engine.InspectorChannel) Error!*engine.InspectorSession {
+    return error.NotSupported;
+}
+pub fn inspectorDisconnect(_: *engine.InspectorSession) void {}
+pub fn inspectorDispatch(_: *engine.InspectorSession, _: []const u8) void {}
+pub fn inspectorCanDispatch(_: []const u8) bool {
+    return false;
+}
+pub fn inspectorContextCreated(_: *const engine.InspectorContext) Error!i64 {
+    return error.NotSupported;
+}
+pub fn inspectorContextDestroyed(_: Context) void {}
+pub fn inspectorResetGroup(_: *Agent, _: engine.InspectorGroup) void {}
+pub fn inspectorContextId(_: Context) ?i64 {
+    return null;
+}
+pub fn inspectorRealmOfContextId(_: *Agent, _: i64) ?Context {
+    return null;
+}
+pub fn inspectorWrap(_: *engine.InspectorSession, _: Context, _: JSValue, _: []const u8, _: std.mem.Allocator) Error![]u8 {
+    return error.NotSupported;
+}
+pub fn inspectorUnwrap(_: *engine.InspectorSession, _: []const u8) Error!?engine.InspectorUnwrapped {
+    return error.NotSupported;
+}
+pub fn inspectorConsoleMessage(_: Context, _: []const u8, _: []const JSValue) void {}
+pub fn inspectorExceptionThrown(_: Context, _: JSValue, _: *const engine.InspectorExceptionDetails) u32 {
+    return 0;
+}
+pub fn inspectorExceptionRevoked(_: Context, _: u32, _: []const u8) void {}
+pub fn inspectorStackTrace(_: *Agent, _: u32, _: std.mem.Allocator) Error!?[]u8 {
+    return null;
+}
 
 // 4.3 Running script
 /// Runs no script yet. Once linked, an `.embedded` source runs as its text

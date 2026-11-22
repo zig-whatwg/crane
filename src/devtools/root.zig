@@ -29,6 +29,9 @@ pub const page_domains = @import("domains/page_domains.zig");
 pub const Reply = dispatch.Reply;
 pub const PageSession = @import("page_session.zig").PageSession;
 pub const BrowserSide = @import("browser_side.zig").BrowserSide;
+/// The Browser-side record's tasks (install, attach, message, detach): what
+/// the devtools thread posts, and a test drives a page session with.
+pub const browser_side = @import("browser_side.zig");
 
 pub const http = @import("http.zig");
 pub const websocket_server = @import("websocket_server.zig");

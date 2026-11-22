@@ -7,9 +7,15 @@
 //! DevTools protocol's Runtime.evaluate with `replMode: true`, dispatched to
 //! a V8InspectorSession (v8-inspector.h). That is Chrome DevTools' console
 //! and Deno's REPL (deno cli/tools/repl/session.rs, an in-process session the
-//! same way). The session and its inspector are the AGENT's: made on the
-//! console's first use (protocol_agents.replSessionOf), ended with the agent
-//! (protocol_agents.endAgent) - never process-wide, never per thread.
+//! same way). The session is the AGENT's, on the agent's inspector
+//! (protocol_inspector.zig, lane cdpw - V8 allows one inspector per isolate,
+//! which a host's CDP sessions share): made on the console's first use
+//! (protocol_agents.replSessionOf), ended with the agent
+//! (protocol_agents.endAgent) - never process-wide, never per thread. A realm
+//! a host registered with the inspector is evaluated in the host's group (a
+//! context belongs to one group); any other is registered in the console's
+//! own (protocol_inspector.replContextOf), and the inspector forgets it at
+//! its end.
 //!
 //! A REPL script always completes through a promise (of {".repl_result":
 //! value}), so the inspector answers when that settles - from a promise job,
@@ -39,6 +45,7 @@ const support = @import("protocol_support.zig");
 const realm_finalizers = @import("realm_finalizers.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 const protocol_agents = @import("protocol_agents.zig");
+const protocol_inspector = @import("protocol_inspector.zig");
 
 const Context = engine.Context;
 const Error = engine.Error;
@@ -52,6 +59,9 @@ const Kind = enum(c_int) { completed = 0, threw = 1, failed = 2 };
 pub const Session = struct {
     allocator: std.mem.Allocator,
     isolate: *ffi.Isolate,
+    /// The agent's inspector, which outlives this session (protocol_agents
+    /// ends this first).
+    inspector: *protocol_inspector.Inspector,
     native: *ffi.ReplSession,
     /// The next protocol call id.
     next_id: c_int = 1,
@@ -59,9 +69,6 @@ pub const Session = struct {
     /// one input waiting, and a few more only when it stopped waiting for
     /// some (their realm's end or the agent's drops them).
     evaluations: std.ArrayListUnmanaged(*Evaluation) = .empty,
-    /// The realms made known to the inspector, each on its realm's list
-    /// (its end tells the inspector).
-    realms: std.ArrayListUnmanaged(*KnownRealm) = .empty,
     /// The call `evaluateReplScript` is dispatching (0: none), and what its
     /// answer came to when it came inside the dispatch.
     dispatching: c_int = 0,
@@ -74,18 +81,18 @@ pub const Session = struct {
     /// A session for `isolate` (entered), its state allocated with
     /// `allocator`.
     pub fn create(allocator: std.mem.Allocator, isolate: *ffi.Isolate) Error!*Session {
+        const inspector = protocol_agents.inspectorOf(isolate) orelse return error.OperationFailed;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .isolate = isolate, .native = undefined };
-        self.native = ffi.v8_ReplSession_New(isolate, onOutcome, self) orelse return error.OperationFailed;
+        self.* = .{ .allocator = allocator, .isolate = isolate, .inspector = inspector, .native = undefined };
+        self.native = ffi.v8_ReplSession_New(inspector.native, onOutcome, self) orelse return error.OperationFailed;
         return self;
     }
 
     /// The agent's end begins (before protocol_agents.forgetAgent): every
-    /// evaluation still waiting is dropped - its host's `dropped` runs - and
-    /// every realm still known is forgotten by the inspector, while the
-    /// realms' contexts still exist. Answers that come after this find no
-    /// record.
+    /// evaluation still waiting is dropped - its host's `dropped` runs.
+    /// Answers that come after this find no record. (The agent's inspector
+    /// forgets every context it knows right after: Inspector.end.)
     pub fn end(self: *Session) void {
         self.ended = true;
         while (self.evaluations.pop()) |evaluation| {
@@ -93,22 +100,16 @@ pub const Session = struct {
             const host = evaluation.take();
             if (host.steps.dropped) |dropped| dropped(host.data);
         }
-        for (self.realms.items) |known| {
-            known.node.unlink();
-            self.allocator.destroy(known);
-        }
-        self.realms.clearRetainingCapacity();
-        ffi.v8_ReplSession_DetachContexts(self.native);
     }
 
     /// The agent's end, last (protocol_agents.endAgent: after its final
     /// microtask checkpoints, before its isolate is disposed, with the
-    /// isolate entered): the inspector is deleted, then this.
+    /// isolate entered): the console's V8 sessions go - before the agent's
+    /// inspector does - then this.
     pub fn destroy(self: *Session) void {
         if (!self.ended) self.end();
         ffi.v8_ReplSession_Delete(self.native);
         self.evaluations.deinit(self.allocator);
-        self.realms.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -119,50 +120,6 @@ pub const Session = struct {
             if (evaluation.id == id) return self.evaluations.swapRemove(i);
         }
         return null;
-    }
-
-    /// The inspector's context id for `realm` (whose context is entered as
-    /// `context`), made known to it on first use - and then put on the
-    /// realm's list, so that its end tells the inspector.
-    fn contextIdOf(self: *Session, context: *ffi.Context, list: ?*realm_finalizers.List) Error!c_int {
-        const id = ffi.v8_ReplSession_Register(self.native, context);
-        if (id <= 0) return error.OperationFailed;
-        for (self.realms.items) |known| if (known.context_id == id) return id;
-        const l = list orelse return id;
-        const known = try self.allocator.create(KnownRealm);
-        errdefer self.allocator.destroy(known);
-        known.* = .{ .session = self, .context_id = id };
-        try self.realms.append(self.allocator, known);
-        l.add(&known.node) catch {
-            _ = self.realms.pop();
-            return error.OperationFailed;
-        };
-        return id;
-    }
-};
-
-/// A realm the inspector knows: on the realm's list until it ends.
-const KnownRealm = struct {
-    session: *Session,
-    context_id: c_int,
-    node: realm_finalizers.Node = .{ .drop = ended },
-
-    /// The realm ended (realm_finalizers.List.drain; unlinked already): the
-    /// inspector forgets its context now, while it exists - any evaluation
-    /// of it still waiting is answered as failed, and its own record, on the
-    /// same list, is dropped by the drain.
-    fn ended(node: *realm_finalizers.Node) void {
-        const self: *KnownRealm = @fieldParentPtr("node", node);
-        const session = self.session;
-        for (session.realms.items, 0..) |known, i| {
-            if (known == self) {
-                _ = session.realms.swapRemove(i);
-                break;
-            }
-        }
-        const id = self.context_id;
-        session.allocator.destroy(self);
-        ffi.v8_ReplSession_ContextEnded(session.native, id);
     }
 };
 
@@ -201,7 +158,10 @@ pub fn evaluateReplScript(realm: Context, source: []const u8, steps: *const engi
     const list = realm_finalizers.listOf(realm);
     if (list) |l| if (l.ended) return error.OperationFailed;
     const session = protocol_agents.replSessionOf(entered.isolate) orelse return error.OperationFailed;
-    const context_id = try session.contextIdOf(entered.context(), list);
+    // The realm's context id and group: the host's registration, or the
+    // console's own group's (protocol_inspector.replContextOf).
+    const known = try protocol_inspector.replContextOf(session.inspector, realm);
+    const context_id = known.id;
 
     const id = session.next_id;
     session.next_id +%= 1;
@@ -228,7 +188,7 @@ pub fn evaluateReplScript(realm: Context, source: []const u8, steps: *const engi
     session.dispatched = .waiting;
     defer session.dispatching = 0;
     const written = message.written();
-    ffi.v8_ReplSession_Dispatch(session.native, written.ptr, written.len);
+    ffi.v8_ReplSession_Dispatch(session.native, known.group, written.ptr, written.len);
     return switch (session.dispatched) {
         .waiting, .answered => .evaluating,
         .incomplete => .incomplete,

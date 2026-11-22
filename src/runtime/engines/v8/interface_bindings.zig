@@ -1087,6 +1087,14 @@ pub fn registerNamespacesGeneric(
     const ns_decls = zig017DeclsOf(@typeInfo(namespaces_mod).@"struct".decl_names);
     const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
+    // [inspector_protocol] (-Dcdp): V8's own console object, kept on the
+    // realm's global object before the Console Standard's namespace replaces
+    // it, so a host's inspector session hears the realm's console calls from
+    // V8 itself (protocol_inspector.consoleMessage). Its cost: one private
+    // property per realm, holding the object and the builtin functions V8
+    // already made with the context - nothing is allocated for it.
+    if (comptime build_options.cdp and @hasDecl(namespaces_mod, "console")) v8.v8_Context_KeepEngineConsole(context);
+
     inline for (ns_decls) |decl| {
         install_namespace: {
             const NamespaceType = @field(namespaces_mod, decl.name);

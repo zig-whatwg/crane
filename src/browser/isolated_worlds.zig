@@ -170,6 +170,32 @@ pub fn realmsOf(main: runtime.Context, out: []runtime.Context) usize {
     return engine.worldRealmsOf(main, out);
 }
 
+/// The inspector's description of `realm` - a main-world realm or one of its
+/// isolated world realms - for CDP's Runtime.executionContextCreated
+/// (engine.inspectorContextCreated): the main world's name is "" and its
+/// auxData `{"isDefault":true,"type":"default","frameId":...}`; an isolated
+/// world's name is the world's and its auxData
+/// `{"isDefault":false,"type":"isolated","frameId":...}` - Chrome's
+/// (MainThreadDebugger::ContextCreated / InspectorPageAgent; the measured
+/// sequences in tmp/plans/cdp1-evidence/). `frame_id` and `origin` BORROWED;
+/// the auxData is written into `aux` (the caller's: 128 bytes hold any
+/// frame id CDP makes), which the answer borrows.
+pub fn inspectorContext(realm: runtime.Context, group: engine.InspectorGroup, frame_id: []const u8, origin: []const u8, aux: []u8) error{NoSpaceLeft}!engine.InspectorContext {
+    const info = engine.worldInfoOf(realm);
+    const aux_data = if (info == null)
+        try std.fmt.bufPrint(aux, "{{\"isDefault\":true,\"type\":\"default\",\"frameId\":\"{s}\"}}", .{frame_id})
+    else
+        try std.fmt.bufPrint(aux, "{{\"isDefault\":false,\"type\":\"isolated\",\"frameId\":\"{s}\"}}", .{frame_id});
+    return .{
+        .realm = realm,
+        .group = group,
+        .name = if (info) |world| world.name else "",
+        .origin = origin,
+        .aux_data = aux_data,
+        .is_default = info == null,
+    };
+}
+
 test "a world per (navigable, name), ids from 1, kept across lookups and forgotten with the navigable" {
     var registry: IsolatedWorlds = .init(std.testing.allocator);
     defer registry.deinit();

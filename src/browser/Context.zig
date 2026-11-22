@@ -82,8 +82,14 @@ const TimerMap = struct {
         }
     };
 
+    /// The map of the Window whose method `realm`'s function is: an isolated
+    /// world's realm (engine section 4.2a) keeps no map of its own - its
+    /// global wraps its main realm's Window, whose one map holds every
+    /// world's timers (Blink's DOMTimerCoordinator is the window's, and
+    /// clearTimeout from any world clears any of its ids). A timer still
+    /// runs in the realm that set it (`WindowTimerData.realm`).
     fn of(realm: runtime.Context) TimerMap {
-        return .{ .realm = realm };
+        return .{ .realm = engine.mainRealmOf(realm) };
     }
 
     fn ids(self: TimerMap) *Ids {
@@ -576,7 +582,33 @@ fn isTrustedScript(instance: *runtime.Instance) bool {
 /// The engine's end of a window realm: the window goes with its last
 /// document (`clearWindowState`).
 fn clearDiscardedWindowState(realm: runtime.Context) void {
+    // An isolated world realm's end (engine.destroyWorldRealms; the engine
+    // ends every world realm before its main realm): only what that world
+    // set goes - its timers, from its Window's map, and its animation frame
+    // callbacks. The Window, its document and its unloading cleanup steps
+    // are the main realm's, which a world's end must not run (Blink disposes
+    // an isolated world's context and leaves the frame's DOMWindow alone).
+    if (engine.worldOf(realm) != engine.main_world) return clearWorldState(realm);
     clearWindowState(realm, .discarded);
+}
+
+/// `clearDiscardedWindowState` for an isolated world realm: the timers it
+/// set (its records in its Window's map name it as their realm) and its
+/// animation frame callbacks (rendering keeps them by realm).
+fn clearWorldState(world_realm: runtime.Context) void {
+    const map = TimerMap.of(world_realm);
+    if (map.count() != 0) {
+        var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
+        defer doomed.deinit(world_realm.allocator);
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            if (entry.wrapper.getData().realm != world_realm) continue;
+            doomed.append(world_realm.allocator, entry.id) catch break;
+        }
+        for (doomed.items) |id| unregisterTimerContext(world_realm, id);
+    }
+    map.releaseIfEmpty();
+    rendering.windowDestroyed(world_realm);
 }
 
 /// The hooks the browser layer owns (src/dom), installed once, at process
