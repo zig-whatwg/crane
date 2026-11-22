@@ -19,4 +19,5 @@ test {
     _ = @import("cdph_page_session_test.zig");
     _ = @import("tpf_remote_objects_test.zig");
     _ = @import("tpf_resize_observer_test.zig");
+    _ = @import("tpf_streamed_document_test.zig");
 }
