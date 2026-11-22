@@ -42,7 +42,13 @@ pub const State = struct {
 };
 
 pub fn sessionStarted(session: *PageSession) void {
-    if (comptime !have_sessions) return;
+    if (comptime have_sessions) return sessionStartedLive(session);
+    return;
+}
+
+/// `sessionStarted` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn sessionStartedLive(session: *PageSession) void {
     const browser = session.browser orelse return;
     const agent = browser.agent orelse return;
     session.states.Runtime.inspector = engine.inspectorConnect(agent, contexts.groupOf(session.tab), .{ .context = session, .send = sendToClient }) catch |err| blk: {
@@ -52,7 +58,13 @@ pub fn sessionStarted(session: *PageSession) void {
 }
 
 pub fn sessionEnded(session: *PageSession) void {
-    if (comptime !have_sessions) return;
+    if (comptime have_sessions) return sessionEndedLive(session);
+    return;
+}
+
+/// `sessionEnded` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn sessionEndedLive(session: *PageSession) void {
     if (session.states.Runtime.inspector) |inspector| engine.inspectorDisconnect(inspector);
     session.states.Runtime.inspector = null;
 }
@@ -84,7 +96,13 @@ pub fn dispatchRaw(session: *PageSession, method: []const u8, raw: []const u8) b
 /// method the engine's inspector implements. False when it has none: the
 /// dispatcher answers "'<method>' wasn't found".
 pub fn passToInspector(session: *PageSession, method: []const u8, raw: []const u8) bool {
-    if (comptime !have_sessions) return false;
+    if (comptime have_sessions) return passToInspectorLive(session, method, raw);
+    return false;
+}
+
+/// `passToInspector` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn passToInspectorLive(session: *PageSession, method: []const u8, raw: []const u8) bool {
     const inspector = session.states.Runtime.inspector orelse return false;
     if (@hasDecl(engine, "inspectorCanDispatch") and !engine.inspectorCanDispatch(method)) return false;
     engine.inspectorDispatch(inspector, raw);

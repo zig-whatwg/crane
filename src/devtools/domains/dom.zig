@@ -61,15 +61,21 @@ fn nodeNamed(session: *PageSession, backend_node_id: ?i64, object_id: ?[]const u
         return ids.nodeOf(id) orelse session.fail("No node with given id found");
     }
     if (object_id) |id| {
-        if (comptime !have_remote_objects) return session.fail("Could not find node with given id");
-        const inspector = session.states.Runtime.inspector orelse return session.fail("Could not find node with given id");
-        const unwrapped = (engine.inspectorUnwrap(inspector, id) catch null) orelse return session.fail("Could not find node with given id");
-        defer unwrapped.value.release();
-        const instance = engine.convertToPlatformObject(unwrapped.realm, unwrapped.value.borrow()) orelse return session.fail("Object id doesn't reference a Node");
-        if (!instance.implements(interfaces.Node.State)) return session.fail("Object id doesn't reference a Node");
-        return instance;
+        if (comptime have_remote_objects) return nodeOfObject(session, id);
+        return session.fail("Could not find node with given id");
     }
     return session.fail("Either nodeId, backendNodeId or objectId must be specified");
+}
+
+/// The node a remote object id names, unwrapped by the session's inspector
+/// session (lane cdpw's bridge: analysed only when the engine has it).
+fn nodeOfObject(session: *PageSession, id: []const u8) !*runtime.Instance {
+    const inspector = session.states.Runtime.inspector orelse return session.fail("Could not find node with given id");
+    const unwrapped = (engine.inspectorUnwrap(inspector, id) catch null) orelse return session.fail("Could not find node with given id");
+    defer unwrapped.value.release();
+    const instance = engine.convertToPlatformObject(unwrapped.realm, unwrapped.value.borrow()) orelse return session.fail("Object id doesn't reference a Node");
+    if (!instance.implements(interfaces.Node.State)) return session.fail("Object id doesn't reference a Node");
+    return instance;
 }
 
 /// Describe a node (InspectorDOMAgent::describeNode): its kind, names and
@@ -214,7 +220,12 @@ fn findByDocument(bc: *frames.BrowsingContext, document: *runtime.Instance) ?*fr
 pub fn resolveNode(session: *PageSession, params: D.resolveNode.Params, reply: Reply(D.resolveNode)) !void {
     if (params.nodeId) |id| if (id != 0) return session.fail("No node with given id found");
     const node = try nodeNamed(session, params.backendNodeId, null);
-    if (comptime !have_remote_objects) return session.fail("Node with given id does not belong to the document");
+    if (comptime have_remote_objects) return resolveNodeLive(session, params, reply, node);
+    return session.fail("Node with given id does not belong to the document");
+}
+
+/// `resolveNode` with the inspector's remote objects (lane cdpw's bridge).
+fn resolveNodeLive(session: *PageSession, params: D.resolveNode.Params, reply: Reply(D.resolveNode), node: *runtime.Instance) !void {
     const inspector = session.states.Runtime.inspector orelse return session.fail("Node with given id does not belong to the document");
     const realm: runtime.Context = if (params.executionContextId) |context_id| blk: {
         const browser = session.browser orelse return session.fail("Cannot find context with specified id");

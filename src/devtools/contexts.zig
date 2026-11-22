@@ -60,7 +60,13 @@ fn worldNameOf(realm: runtime.Context) ?[]const u8 {
 /// Register `realm` - `bc`'s main world, or one of its world realms - with
 /// the inspector, unless it is already. Its execution context id, or null.
 pub fn register(session: *const PageSession, realm: runtime.Context, bc: *frames.BrowsingContext) ?i64 {
-    if (comptime !have_inspector) return null;
+    if (comptime have_inspector) return registerLive(session, realm, bc);
+    return null;
+}
+
+/// `register` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn registerLive(session: *const PageSession, realm: runtime.Context, bc: *frames.BrowsingContext) ?i64 {
     if (engine.inspectorContextId(realm)) |id| return id;
     var buffer: [512]u8 = undefined;
     var arena_state = std.heap.FixedBufferAllocator.init(&buffer);
@@ -99,7 +105,13 @@ fn originOf(bc: *frames.BrowsingContext, buffer: []u8) []const u8 {
 /// made known to the inspector (Runtime.enable replays what is known, so it
 /// asks this first).
 pub fn registerTree(session: *const PageSession, bc: *frames.BrowsingContext) void {
-    if (comptime !have_inspector) return;
+    if (comptime have_inspector) return registerTreeLive(session, bc);
+    return;
+}
+
+/// `registerTree` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn registerTreeLive(session: *const PageSession, bc: *frames.BrowsingContext) void {
     registerNavigable(session, bc);
     for (bc.children.items) |child| {
         if (child.is_closed or child.active_window == null) continue;
@@ -109,7 +121,13 @@ pub fn registerTree(session: *const PageSession, bc: *frames.BrowsingContext) vo
 
 /// `bc`'s main world realm, then its world realms, made known.
 pub fn registerNavigable(session: *const PageSession, bc: *frames.BrowsingContext) void {
-    if (comptime !have_inspector) return;
+    if (comptime have_inspector) return registerNavigableLive(session, bc);
+    return;
+}
+
+/// `registerNavigable` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn registerNavigableLive(session: *const PageSession, bc: *frames.BrowsingContext) void {
     const main = frames.mainRealmOf(bc) orelse return;
     _ = register(session, main, bc);
     if (comptime @hasDecl(engine, "worldRealmsOf")) {
@@ -126,7 +144,13 @@ pub fn registerNavigable(session: *const PageSession, bc: *frames.BrowsingContex
 /// each) - Blink's DidClearContextsForFrame. Asked by the FIRST session on
 /// the tab only.
 pub fn beforeCommit(session: *const PageSession, navigable: u64, old_realms: []const runtime.Context) void {
-    if (comptime !have_inspector) return;
+    if (comptime have_inspector) return beforeCommitLive(session, navigable, old_realms);
+    return;
+}
+
+/// `beforeCommit` with the engine's inspector operations (lane cdpw's bridge):
+/// analysed only when the engine protocol has them.
+fn beforeCommitLive(session: *const PageSession, navigable: u64, old_realms: []const runtime.Context) void {
     const browser = session.browser orelse return;
     const agent = browser.agent orelse return;
     if (navigable == session.tab) {
