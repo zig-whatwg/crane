@@ -307,6 +307,10 @@ pub fn main(init: std.process.Init) !void {
             fail("--reader={s}: jtr, wtr-summary, wtr-tree, vitest-json, playwright-json or cypress", .{reader});
         const log_sha = fetch.sha256Hex(log);
         const who = importWho(&args);
+        const list_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.get("excluded-dir") orelse default_excluded, s.excluded });
+        const list = Io.Dir.cwd().readFileAlloc(io, list_path, arena, .limited(16 << 20)) catch |err| fail("{s}: {t}", .{ list_path, err });
+        var pf: exclusions.ParseFailure = .{};
+        const entries = exclusions.parse(arena, list, &pf) catch |err| fail("{s}:{d}: {t}", .{ list_path, pf.line, err });
         const text = importRecords(arena, s, .{
             .label = args.need("label"),
             .browser = who.browser,
@@ -317,7 +321,7 @@ pub fn main(init: std.process.Init) !void {
             .log_sha256 = &log_sha,
             .date = args.need("date"),
             .page = args.get("page"),
-        }, pages) catch |err| fail("import: {t}", .{err});
+        }, pages, entries) catch |err| fail("import: {t}", .{err});
         const out_dir = args.need("out");
         try Io.Dir.cwd().createDirPath(io, out_dir);
         try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
@@ -578,10 +582,14 @@ fn pageForTarget(s: manifest.Suite, label: []const u8) ?[]const u8 {
     return null;
 }
 
-/// A browser's run, read from its runner's log, as journal lines: a page
-/// record per log page (its counts, the failures it does not name as
-/// unnamed), a test record per failure it names.
-pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, pages: []const readers.LogPage) ImportError![]const u8 {
+/// A run by the project's runner, read from its log, as journal lines: a
+/// page record per log page (its counts, the failures it does not name as
+/// unnamed), a test record per failure it names. A named failure the suite's
+/// list names is classified after the run with the entry's kind and reason,
+/// as `fw_matrix run` classifies a page that takes no filter (run.zig): it
+/// ran and failed, and counts as what the list says - rendering, or a test
+/// Crane's result follows a ruling for - in neither column.
+pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, pages: []const readers.LogPage, entries: []const exclusions.Entry) ImportError![]const u8 {
     if (!journal.isSha256(o.browser_sha256) or !journal.isSha256(o.log_sha256)) return error.BadSha256;
     if (!journal.isDate(o.date)) return error.BadDate;
     if (o.page != null and pages.len != 1) return error.BadPage;
@@ -591,23 +599,32 @@ pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, page
     for (pages) |lp| {
         const page_id = o.page orelse pageForTarget(s, lp.where) orelse return error.UnknownTarget;
         const named: u32 = @intCast(lp.failures.len);
-        for (lp.failures) |f| try journal.writeTest(&out.writer, .{
-            .label = o.label,
-            .crane_commit = commit,
-            .console_sha256 = o.browser_sha256,
-            .framework = s.framework,
-            .version = s.version,
-            .suite = s.id,
-            .suite_kind = s.kind,
-            .source_sha256 = s.source.sha256,
-            .page = page_id,
-            .module = f.module,
-            .name = f.name,
-            .id = f.id,
-            .status = .FAIL,
-            .message = f.message,
-            .browser = o.browser,
-        });
+        var counted: u32 = 0;
+        for (lp.failures) |f| {
+            const classified: ?exclusions.Entry = for (entries) |e| {
+                if (!e.file and std.mem.eql(u8, e.id, f.id)) break e;
+            } else null;
+            if (classified == null) counted += 1;
+            try journal.writeTest(&out.writer, .{
+                .label = o.label,
+                .crane_commit = commit,
+                .console_sha256 = o.browser_sha256,
+                .framework = s.framework,
+                .version = s.version,
+                .suite = s.id,
+                .suite_kind = s.kind,
+                .source_sha256 = s.source.sha256,
+                .page = page_id,
+                .module = f.module,
+                .name = f.name,
+                .id = f.id,
+                .status = if (classified != null) .NOTRUN else .FAIL,
+                .not_run = if (classified) |e| e.kind.notRun() else null,
+                .reason = if (classified) |e| try classifiedReason(arena, e) else null,
+                .message = f.message,
+                .browser = o.browser,
+            });
+        }
         // A target its runner failed with no failing test: its errors were
         // outside any test (zone.js's browser_test in Chrome).
         const failed_outside = lp.runner_status != null and std.mem.eql(u8, lp.runner_status.?, "FAILED") and lp.failed == 0;
@@ -627,7 +644,7 @@ pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, page
             .wall_ms = lp.wall_ms,
             .reported_total = lp.passed + lp.failed,
             .reported_failed = lp.failed,
-            .ran = named,
+            .ran = counted,
             .records = named,
             .unnamed_passed = lp.passed,
             .unnamed_failed = if (lp.failed > named) lp.failed - named else null,
@@ -638,6 +655,13 @@ pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, page
         });
     }
     return out.written();
+}
+
+/// Why a test the list names counts as it says: the list's reason, and a
+/// ruling kind's evidence.
+fn classifiedReason(arena: Allocator, e: exclusions.Entry) ![]const u8 {
+    if (e.ruling) |r| return std.fmt.allocPrint(arena, "ran and failed; classified after the run: {s} ({s})", .{ e.why, r });
+    return std.fmt.allocPrint(arena, "ran and failed; classified after the run: {s}", .{e.why});
 }
 
 /// A project's own runner's per-test report - web-test-runner's tree
@@ -686,7 +710,7 @@ pub fn importRunnerReport(arena: Allocator, s: manifest.Suite, o: ImportOptions,
             .id = t.id,
             .status = status,
             .not_run = if (excluded) |e| e.kind.notRun() else if (t.state == .skipped) .project_skip else null,
-            .reason = if (excluded) |e| e.why else null,
+            .reason = if (excluded) |e| (if (e.ruling) |r| try std.fmt.allocPrint(arena, "{s} ({s})", .{ e.why, r }) else e.why) else null,
             .message = if (status == .FAIL) t.message orelse "failed in the runner's report" else null,
             .browser = o.browser,
         });
@@ -927,6 +951,38 @@ test "import Cypress: every test of each app a record, the app found by Cypress'
     try std.testing.expectEqualStrings("Could not find Cypress test run results", jc.pages[0].message.?);
 }
 
+test "import: a named failure the suite's list names is classified after the run with the list's kind and reason" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    const suite: manifest.Suite = .{ .id = "angular-jasmine", .framework = "angular", .title = "Angular", .version = "22.2.6", .kind = .project, .repository = "https://github.com/angular/angular", .tag = "v22.2.6", .commit = "c", .licence = "MIT", .runner = "Jasmine", .reader = .jasmine_console, .source = .{ .url = "https://x", .sha256 = &sha }, .pages = &.{
+        .{ .id = "zone", .path = "?z", .target = "//packages/zone.js/test:browser_test_debug" },
+    }, .excluded = "x.txt" };
+    const failures = [_]readers.Reported{
+        .{ .module = "Zone", .name = "should surface", .id = "Zone should surface", .status = .FAIL, .message = "Expected null not to be null." },
+        .{ .module = "bootstrap", .name = "should restore the scrolling position", .id = "bootstrap should restore the scrolling position", .status = .FAIL, .message = "Expected 0 to be 100." },
+        .{ .module = "Zone", .name = "other", .id = "Zone other", .status = .FAIL, .message = "a counted failure" },
+    };
+    const entries = [_]exclusions.Entry{
+        .{ .id = "Zone should surface", .kind = .follows_spec, .why = "PromiseRejectionEventInit.promise is object", .ruling = "angular/angular#72159", .line = 1 },
+        .{ .id = "bootstrap should restore the scrolling position", .kind = .rendering, .why = "scroll position", .assertion = "scrollY", .line = 5 },
+    };
+    const pages = [_]readers.LogPage{.{ .where = "//packages/zone.js/test:browser_test_chromium", .runner_status = "FAILED", .passed = 500, .failed = 3, .skipped = 2, .failures = &failures }};
+    const o: ImportOptions = .{ .label = "fw2-ng", .browser = null, .crane_commit = "6be959af4", .browser_sha256 = &sha, .runner = "bazel test <target>_chromium", .log = "tmp/ng.log", .log_sha256 = &sha, .date = "2026-11-22" };
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, try importRecords(a, suite, o, &pages, &entries), &failure);
+    try std.testing.expectEqual(@as(usize, 3), j.tests.len);
+    try std.testing.expectEqual(journal.NotRun.follows_spec, j.tests[0].not_run.?);
+    try std.testing.expect(std.mem.indexOf(u8, j.tests[0].reason.?, "angular/angular#72159") != null);
+    try std.testing.expectEqual(journal.NotRun.rendering, j.tests[1].not_run.?);
+    try std.testing.expectEqual(journal.Status.FAIL, j.tests[2].status);
+    // Only the counted failure ran; the page still holds the runner's counts.
+    try std.testing.expectEqual(@as(u32, 1), j.pages[0].ran);
+    try std.testing.expectEqual(@as(u32, 3), j.pages[0].records);
+    try std.testing.expectEqual(@as(u32, 3), j.pages[0].reported_failed.?);
+}
+
 test "import: a runner's log as a browser's journal - named failures as test records, the rest as counts, pages by target" {
     var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena_state.deinit();
@@ -941,7 +997,7 @@ test "import: a runner's log as a browser's journal - named failures as test rec
         .{ .where = "//packages/core/test/acceptance:acceptance_web_chromium", .runner_status = "FAILED", .passed = 2777, .failed = 1, .skipped = 4, .wall_ms = 15_200 },
         .{ .where = "//packages/zone.js/test:browser_test_chromium", .runner_status = "FAILED", .passed = 513, .failed = 0, .skipped = 24 },
     };
-    const text = try importRecords(a, suite, o, &pages);
+    const text = try importRecords(a, suite, o, &pages, &.{});
     var failure: journal.Failure = .{};
     const j = try journal.parseJournal(a, text, &failure);
     try std.testing.expectEqual(@as(usize, 0), j.tests.len);
@@ -963,16 +1019,16 @@ test "import: a runner's log as a browser's journal - named failures as test rec
     var one = o;
     one.page = "test";
     const failures = [_]readers.Reported{.{ .module = "core", .name = "parseXML", .id = "core: parseXML", .status = .FAIL, .message = "expected 11" }};
-    const jt = try journal.parseJournal(a, try importRecords(a, suite, one, &.{.{ .where = "http://localhost:1/test/", .passed = 1144, .failed = 1, .skipped = 0, .failures = &failures }}), &failure);
+    const jt = try journal.parseJournal(a, try importRecords(a, suite, one, &.{.{ .where = "http://localhost:1/test/", .passed = 1144, .failed = 1, .skipped = 0, .failures = &failures }}, &.{}), &failure);
     try std.testing.expectEqual(@as(usize, 1), jt.tests.len);
     try std.testing.expectEqualStrings("core: parseXML", jt.tests[0].id);
     try std.testing.expectEqualStrings("expected 11", jt.tests[0].message.?);
     try std.testing.expectEqual(@as(?u32, null), jt.pages[0].unnamed_failed);
     // A target the suite has no page for, a bad hash or date: refused.
-    try std.testing.expectError(error.UnknownTarget, importRecords(a, suite, o, &.{.{ .where = "//x:y_chromium", .passed = 1, .failed = 0, .skipped = 0 }}));
+    try std.testing.expectError(error.UnknownTarget, importRecords(a, suite, o, &.{.{ .where = "//x:y_chromium", .passed = 1, .failed = 0, .skipped = 0 }}, &.{}));
     var bad = o;
     bad.date = "Nov 14";
-    try std.testing.expectError(error.BadDate, importRecords(a, suite, bad, &pages));
+    try std.testing.expectError(error.BadDate, importRecords(a, suite, bad, &pages, &.{}));
 }
 
 test {

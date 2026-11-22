@@ -4,9 +4,17 @@
 //!
 //!     [<id>]
 //!     kind      = rendering | needs-server | needs-node-build | node-runner-only
+//!                 | follows-majority | follows-spec
 //!     why       = <why it is not run>
 //!     assertion = <the assertion that needs layout>   (rendering: required)
+//!     ruling    = <the ruling or issue that decides it>  (follows-*: required)
 //!     source    = <file:line of the test's definition>
+//!
+//! `follows-majority` and `follows-spec` name a test that fails although
+//! Crane's result is the one golden rule 2 picks (AGENTS.md): the browser
+//! majority's, by a recorded ruling, or the newer spec a shipping browser
+//! follows - the WPT gate's follows-majority exemption, for a framework's
+//! test. Like rendering, such a test counts in neither column.
 //!
 //! `<id>` is the name the framework's own filter matches: QUnit
 //! "<module>: <test name>" (QUnit's `fullName` in Test.valid), Mocha the
@@ -31,6 +39,8 @@ pub const Kind = enum {
     needs_server,
     needs_node_build,
     node_runner_only,
+    follows_majority,
+    follows_spec,
 
     pub fn notRun(k: Kind) journal.NotRun {
         return switch (k) {
@@ -38,7 +48,14 @@ pub const Kind = enum {
             .needs_server => .needs_server,
             .needs_node_build => .needs_node_build,
             .node_runner_only => .node_runner_only,
+            .follows_majority => .follows_majority,
+            .follows_spec => .follows_spec,
         };
+    }
+
+    /// A ruling kind: its entry names its evidence (`ruling`).
+    pub fn isRuling(k: Kind) bool {
+        return k == .follows_majority or k == .follows_spec;
     }
 
     fn parse(s: []const u8) ?Kind {
@@ -47,6 +64,8 @@ pub const Kind = enum {
             .{ "needs-server", .needs_server },
             .{ "needs-node-build", .needs_node_build },
             .{ "node-runner-only", .node_runner_only },
+            .{ "follows-majority", .follows_majority },
+            .{ "follows-spec", .follows_spec },
         };
         for (names) |n| if (std.mem.eql(u8, s, n[0])) return n[1];
         return null;
@@ -61,11 +80,13 @@ pub const Entry = struct {
     why: []const u8,
     assertion: ?[]const u8 = null,
     source: ?[]const u8 = null,
+    /// A ruling kind's evidence: the ruling, or the issue that decides it.
+    ruling: ?[]const u8 = null,
     /// 1-based line of the `[...]` header, for messages.
     line: usize,
 };
 
-pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
+pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, MissingRuling, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
 
 pub const ParseFailure = struct {
     line: usize = 0,
@@ -106,6 +127,8 @@ pub fn parse(arena: Allocator, text: []const u8, failure: *ParseFailure) ParseEr
             c.assertion = value;
         } else if (std.mem.eql(u8, key, "source")) {
             c.source = value;
+        } else if (std.mem.eql(u8, key, "ruling")) {
+            c.ruling = value;
         } else return error.UnknownKey;
     }
     if (current) |c| try finish(arena, &entries, c, kind_seen, failure);
@@ -117,6 +140,7 @@ fn finish(arena: Allocator, entries: *std.ArrayList(Entry), e: Entry, kind_seen:
     if (!kind_seen) return error.MissingKind;
     if (e.why.len == 0) return error.MissingWhy;
     if (e.kind == .rendering and (e.assertion == null or e.assertion.?.len == 0)) return error.MissingAssertion;
+    if (e.kind.isRuling() and (e.ruling == null or e.ruling.?.len == 0)) return error.MissingRuling;
     if (e.file != (e.kind == .node_runner_only)) return error.FileEntryNotNodeRunnerOnly;
     for (entries.items) |o| if (o.file == e.file and std.mem.eql(u8, o.id, e.id)) return error.DuplicateEntry;
     try entries.append(arena, e);
@@ -266,6 +290,33 @@ test "parse: entries, kinds, file entries; comments skipped" {
     try testing.expect(entries[2].file);
     try testing.expectEqualStrings("test/tests/unit/logger.js", entries[2].id);
     try testing.expectEqual(@as(usize, 13), entries[2].line);
+}
+
+test "parse: a test Crane's result follows a ruling for - the browser majority or the newer spec - names its evidence" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[smoke.test.js > smoke test]
+        \\kind   = follows-majority
+        \\why    = fetch() cancelled with a TypeError at a navigation's start, as Firefox and Safari do
+        \\ruling = integrator ruling 2026-11-14 8:53 PM ET
+        \\
+        \\[Zone should surface]
+        \\kind   = follows-spec
+        \\why    = PromiseRejectionEventInit.promise is `object` (whatwg/html#9897), as Firefox ships it
+        \\ruling = angular/angular#72159
+        \\
+    , &f);
+    try testing.expectEqual(@as(usize, 2), entries.len);
+    try testing.expectEqual(Kind.follows_majority, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.follows_majority, entries[0].kind.notRun());
+    try testing.expectEqualStrings("integrator ruling 2026-11-14 8:53 PM ET", entries[0].ruling.?);
+    try testing.expectEqual(journal.NotRun.follows_spec, entries[1].kind.notRun());
+    // A ruling kind with no evidence is refused.
+    try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-spec\nwhy = w\n", &f));
+    try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\n", &f));
 }
 
 test "parse refuses what would exclude without a reason" {

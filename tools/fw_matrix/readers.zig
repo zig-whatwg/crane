@@ -1058,13 +1058,18 @@ pub fn parseWtrSummary(arena: Allocator, log: []const u8) ParseError![]const Log
             const message = fields.next() orelse return error.BadReport;
             if (label.len == 0 or full.len == 0 or message.len == 0 or fields.next() != null) return error.BadReport;
             const cut = std.mem.lastIndexOf(u8, full, " > ");
-            try named.append(arena, .{ label, .{
-                .module = if (cut) |c| full[0..c] else "",
-                .name = if (cut) |c| full[c + " > ".len ..] else full,
-                .id = full,
-                .status = .FAIL,
-                .message = message,
-            } });
+            try named.append(arena, .{
+                label,
+                .{
+                    .module = if (cut) |c| full[0..c] else "",
+                    .name = if (cut) |c| full[c + " > ".len ..] else full,
+                    // Jasmine's fullName: its suites and spec joined by spaces,
+                    // as the jasmine_console reader and the exclusion list name it.
+                    .id = try std.mem.replaceOwned(u8, arena, full, " > ", " "),
+                    .status = .FAIL,
+                    .message = message,
+                },
+            });
             continue;
         }
         if (!std.mem.startsWith(u8, line, "//")) continue;
@@ -1211,7 +1216,9 @@ test "Bazel's web-test-runner lines with the failures each target's log names: m
     const f = pages[1].failures[0];
     try testing.expectEqualStrings("acceptance > console", f.module);
     try testing.expectEqualStrings("should call console.timeStamp", f.name);
-    try testing.expectEqualStrings("acceptance > console > should call console.timeStamp", f.id);
+    // The id is Jasmine's fullName - its suites and spec joined by spaces - as
+    // the jasmine_console reader and the suite's exclusion list name it.
+    try testing.expectEqualStrings("acceptance console should call console.timeStamp", f.id);
     try testing.expectEqualStrings("TypeError: console.timeStamp is not a function", f.message.?);
     try testing.expectEqual(journal.Status.FAIL, f.status);
     try testing.expectEqual(@as(usize, 0), pages[0].failures.len);

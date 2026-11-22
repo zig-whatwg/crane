@@ -60,6 +60,12 @@ pub const NotRun = enum {
     node_runner_only,
     /// The project skips it itself (QUnit.skip, Mocha's pending).
     project_skip,
+    /// It fails although Crane does what the browser majority does, by a
+    /// recorded ruling (golden rule 2). Added in fw2.
+    follows_majority,
+    /// It fails although Crane follows the newer spec, as a shipping browser
+    /// does (golden rule 2). Added in fw2.
+    follows_spec,
 
     pub fn label(k: NotRun) []const u8 {
         return switch (k) {
@@ -68,6 +74,8 @@ pub const NotRun = enum {
             .needs_node_build => "needs the project's Node build",
             .node_runner_only => "runs only through the project's Node test runner",
             .project_skip => "skipped by the project",
+            .follows_majority => "Crane follows the browser majority",
+            .follows_spec => "Crane follows the newer spec",
         };
     }
 };
