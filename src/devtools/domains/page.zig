@@ -15,7 +15,7 @@
 //! seq-svelte.txt):
 //! - Page.navigate answers when the navigation is ready to commit, before
 //!   frameNavigated (Chrome answers from NavigationRequest's ready-to-commit);
-//! - at a cross-document commit: executionContextsCleared, lifecycle "init",
+//! - at a cross-document commit: lifecycle "init", executionContextsCleared,
 //!   frameNavigated, then executionContextCreated (contexts.zig);
 //! - DOMContentLoaded: domContentEventFired, then lifecycle
 //!   "DOMContentLoaded"; load: loadEventFired, then lifecycle "load"; then
@@ -647,9 +647,13 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
         },
         .started => |started| if (s.enabled) {
             const loader_id = frames.loaderToken(session, milestone.navigation_id);
+            // A frame's first navigation away from its initial about:blank
+            // is Chrome's kInitialFrameNavigation (an iframe's src as it is
+            // inserted: HTMLFrameOwnerElement::LoadOrRedirectSubframe).
+            const initial_frame = navigable != session.tab and if (frames.navigable(session, navigable)) |bc| (if (frames.documentOf(bc)) |document| @import("dom").document_lifecycle.isInitialAboutBlank(document) else true) else false;
             if (started.initiator == .document) session.emit(P.frameRequestedNavigation, .{
                 .frameId = frame_id.slice(),
-                .reason = .scriptInitiated,
+                .reason = if (initial_frame) .initialFrameNavigation else .scriptInitiated,
                 .url = started.url,
                 .disposition = .currentTab,
             });
@@ -665,11 +669,17 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             // A new document: the old one's idleness is over.
             stopIdleness(session, navigable);
             if (frames.of(session.browser.?)) |f| f.noteCommitted(navigable, committed.document.document, committed.document.generation, milestone.navigation_id);
-            // The tab's contexts cleared before any session's Page events
-            // (contexts.zig: Chrome's order) - by the first session only.
-            if (contexts.isEdgeSession(session, .first)) contexts.beforeCommit(session, navigable, &.{});
             const bc = frames.navigable(session, navigable) orelse return;
-            if (s.lifecycle_events) emitLifecycle(session, bc, "init");
+            // Chrome's order (its Puppeteer log, lane cdpr): lifecycle
+            // "init" for every session of the tab, then the tab's contexts
+            // cleared (contexts.zig), then each session's frameNavigated -
+            // the first session does the first two for all.
+            if (contexts.isEdgeSession(session, .first)) {
+                if (session.side) |side| for (side.sessions.items) |other| {
+                    if (other.tab == session.tab and state(other).lifecycle_events) emitLifecycle(other, bc, "init");
+                };
+                contexts.beforeCommit(session, navigable, &.{});
+            }
             if (s.enabled) {
                 var arena_state = std.heap.ArenaAllocator.init(session.allocator);
                 defer arena_state.deinit();
@@ -734,10 +744,12 @@ fn answerPending(session: *PageSession, navigation_id: u64, outcome: @import("ht
         const frame_id = session.frameId(pending.navigable);
         const loader_id = frames.loaderToken(session, navigation_id);
         switch (outcome) {
-            .document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice() }),
-            .network_error => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = if (error_text.len > 0) error_text else "net::ERR_FAILED" }),
+            // isDownload always present, as Chrome's PageHandler::Navigate
+            // answers.
+            .document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .isDownload = false }),
+            .network_error => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = if (error_text.len > 0) error_text else "net::ERR_FAILED", .isDownload = false }),
             // A 204/205: no document, the navigation ends without one.
-            .no_document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED" }),
+            .no_document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED", .isDownload = false }),
             .download => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED", .isDownload = true }),
         }
     }
@@ -764,7 +776,10 @@ fn runScriptInTree(session: *PageSession, bc: *frames.BrowsingContext, script: S
 
 fn runScript(session: *PageSession, bc: *frames.BrowsingContext, main: runtime.Context, script: Script) void {
     const realm = if (script.world_name) |name| blk: {
-        const made = worldRealm(main, bc.id, name, false) catch |err| {
+        // With universal access, as InspectorPageAgent::
+        // EvaluateScriptOnNewDocument asks EnsureDOMWrapperWorld(frame,
+        // world_name, /*grant_universal_access=*/true).
+        const made = worldRealm(main, bc.id, name, true) catch |err| {
             log.debug("the world '{s}' of a new-document script was not made: {}", .{ name, err });
             return;
         };

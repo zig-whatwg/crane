@@ -166,10 +166,13 @@ pub fn describe(session: *const PageSession, arena: Allocator, bc: *BrowsingCont
     const url = if (document) |d| try documentUrl(arena, d) else "about:blank";
     // The URL without its fragment, and the fragment with its '#'.
     const hash = std.mem.indexOfScalar(u8, url, '#');
+    // An opaque origin reads "://", as Chrome's SecurityOrigin::ToRawString
+    // of an opaque origin gives (contexts.zig the same).
     const origin: []const u8 = blk: {
-        const window = windowOf(bc) orelse break :blk "null";
-        const text = interfaces.Window.get_origin(window) catch break :blk "null";
+        const window = windowOf(bc) orelse break :blk "://";
+        const text = interfaces.Window.get_origin(window) catch break :blk "://";
         defer window.ctx.allocator.free(text);
+        if (std.mem.eql(u8, text, "null")) break :blk "://";
         break :blk try arena.dupe(u8, text);
     };
     const mime: []const u8 = blk: {

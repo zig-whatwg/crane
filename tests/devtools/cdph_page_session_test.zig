@@ -190,6 +190,8 @@ test "Page.navigate answers when ready to commit, then the commit, DOMContentLoa
     const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<title>t</title><p>x\"}");
     const answer = try h.result(id);
     try testing.expectEqual(@as(usize, 32), answer.object.get("loaderId").?.string.len);
+    // isDownload is always in the answer, as Chrome's.
+    try testing.expect(!answer.object.get("isDownload").?.bool);
     _ = try h.waitEvent("Page.frameStoppedLoading", before);
     var lines: std.ArrayList(u8) = .empty;
     defer lines.deinit(h.allocator);
@@ -343,7 +345,11 @@ test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's D
     defer opened.deinit(h.allocator);
     const index = try h.waitEvent("Page.documentOpened", from);
     const init_index = try h.waitEvent("Page.lifecycleEvent", index);
-    try testing.expectEqualStrings("init", h.seen.items[init_index].value.object.get("params").?.object.get("name").?.string);
+    const init_params = h.seen.items[init_index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("init", init_params.get("name").?.string);
+    // The same loader as the frame documentOpened carries.
+    const frame = h.seen.items[index].value.object.get("params").?.object.get("frame").?.object;
+    try testing.expectEqualStrings(frame.get("loaderId").?.string, init_params.get("loaderId").?.string);
 }
 
 test "setUserAgentOverride with an empty userAgent overrides the languages alone (Playwright's locale call)" {
@@ -386,4 +392,84 @@ test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not 
     // No inspector session yet (lane cdpw's bridge): by an unknown id.
     try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", "{\"backendNodeId\":999999}"));
     try testing.expectError(error.CommandFailed, h.call("DOM.getContentQuads", "{\"backendNodeId\":999999}"));
+    // With no depth: childNodeCount, no children (Chrome's depth.value_or(0)).
+    _ = try h.call("Runtime.enable", "{}");
+    const object = try h.call("Runtime.evaluate", "{\"expression\":\"document.getElementById('d')\"}");
+    const object_id = object.object.get("result").?.object.get("objectId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"objectId\":\"{s}\"}}", .{object_id});
+    defer h.allocator.free(params);
+    const described = try h.call("DOM.describeNode", params);
+    const node = described.object.get("node").?.object;
+    try testing.expectEqual(@as(i64, 1), node.get("childNodeCount").?.integer);
+    try testing.expect(node.get("children") == null);
+}
+
+test "lifecycle init comes before executionContextsCleared at a commit (Chrome's order)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const before = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>o\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.transcript(before, &lines);
+    const init_at = std.mem.indexOf(u8, lines.items, "Page.lifecycleEvent:init") orelse return error.NoInit;
+    const cleared_at = std.mem.indexOf(u8, lines.items, "Runtime.executionContextsCleared") orelse return error.NoCleared;
+    const navigated_at = std.mem.indexOf(u8, lines.items, "Page.frameNavigated") orelse return error.NoNavigated;
+    try testing.expect(init_at < cleared_at and cleared_at < navigated_at);
+}
+
+test "an opaque origin's frame reports securityOrigin \"://\", as Chrome" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>opaque\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const tree = try h.call("Page.getFrameTree", "{}");
+    try testing.expectEqualStrings("://", tree.object.get("frameTree").?.object.get("frame").?.object.get("securityOrigin").?.string);
+}
+
+test "a frame's first navigation is requested as initialFrameNavigation" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "const f = document.createElement('iframe'); f.src = 'data:text/html,<p>child'; document.body.append(f); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const index = try h.waitEvent("Page.frameRequestedNavigation", from);
+    try testing.expectEqualStrings("initialFrameNavigation", h.seen.items[index].value.object.get("params").?.object.get("reason").?.string);
+}
+
+test "a new-document script's world has universal access, as EnsureDOMWrapperWorld(frame, name, true)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"1\",\"worldName\":\"cdph-world\"}");
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>w\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const Check = struct {
+        universal: bool = false,
+        found: bool = false,
+        fn run(ctx: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            const worlds = browser_mod.isolated_worlds.of(b.scope) catch return;
+            for (worlds.worlds.items) |world| if (std.mem.eql(u8, world.name, "cdph-world")) {
+                self.found = true;
+                self.universal = world.universal_access;
+            };
+        }
+    };
+    var check: Check = .{};
+    try h.host.call(&check, Check.run);
+    try testing.expect(check.found and check.universal);
 }
