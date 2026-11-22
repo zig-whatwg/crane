@@ -131,6 +131,12 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             if (traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
             if (!traced) if (rare_data.get(a.holder.*, .element_internals)) |internals| runtime.Instance.deinit(internals);
             rare_data.clear(a.holder, .element_internals);
+            // element.style's edge, the same way: an element script never
+            // wrapped - whose style editing read natively - left its style
+            // object's wrapper held strongly until its realm ended (lane
+            // mem1). Here and not in releaseRare, which the Browser's exit
+            // sweep also runs, after the engine is gone.
+            rare_data.keptEndHandOut(a.holder.*, .style, instance);
             releaseRare(instance, runtime.allocatorOf(instance));
         }
     }

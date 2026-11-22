@@ -11,6 +11,7 @@ const browser_mod = @import("browser");
 const engine = @import("engine");
 const dom = @import("dom");
 const runtime = @import("runtime");
+const loop_settle = @import("loop_settle.zig");
 
 fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     const Run = struct {
@@ -328,7 +329,9 @@ fn svgImportMap() !void {
         \\import('maj6-mapped').then((m) => { out = m.default; }, (e) => { out = e.name; });
         \\0;
     );
-    _ = try browser.runEventLoopBlocking(50);
+    // Until the loop is idle, not 50 ms of wall time: the import() is a module
+    // fetch in flight, then the tasks that evaluate it (loop_settle.zig).
+    try loop_settle.settle(browser);
     try expectTrue(browser, "out === 42");
 }
 

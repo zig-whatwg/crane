@@ -12,6 +12,7 @@ const lists = @import("lists.zig");
 const split_parent = @import("split_parent.zig");
 const overrides = @import("overrides.zig");
 const wrap_mod = @import("wrap.zig");
+const style_values = @import("style_values.zig");
 
 const Edit = common.Edit;
 const Point = common.Point;
@@ -52,13 +53,10 @@ pub fn isSimpleIndentationElement(node: *Instance) !bool {
         defer name.deinit(allocator);
         if (!std.mem.eql(u8, name.asSlice(), "style") and !std.mem.eql(u8, name.asSlice(), "dir")) return false;
     }
-    const declaration = try interfaces.HTMLElement.get_style(node);
-    const length = try interfaces.CSSStyleDeclaration.get_length(declaration);
-    var j: u32 = 0;
-    while (j < length) : (j += 1) {
-        var property = try interfaces.CSSStyleDeclaration.call_item(declaration, j);
-        defer property.deinit(allocator);
-        if (!isBoxProperty(property.asSlice())) return false;
+    // Read natively (style_values.inlineItem), never through element.style.
+    var j: usize = 0;
+    while (try style_values.inlineItem(node, j)) |property| : (j += 1) {
+        if (!isBoxProperty(property)) return false;
     }
     return true;
 }

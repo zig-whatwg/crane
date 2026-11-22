@@ -3,6 +3,7 @@
 //! nodes of the same type (`collectNow()`), on a thread of its own.
 const std = @import("std");
 const browser_mod = @import("browser");
+const loop_settle = @import("loop_settle.zig");
 
 pub fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     const Run = struct {
@@ -62,5 +63,13 @@ pub const Page = struct {
     /// Leave the job that made a WeakRef, so its target can be collected.
     pub fn turn(self: Page) !void {
         _ = try self.browser.runEventLoopBlocking(20);
+    }
+
+    /// Turn the event loop until it has nothing left to do - every task the
+    /// script queued has run, and what those tasks queued (a fetch, the task
+    /// its end queues, the run that task makes): loop_settle.zig. A fixed
+    /// short turn (`turn`) is wall time, not work.
+    pub fn settle(self: Page) !void {
+        try loop_settle.settle(self.browser);
     }
 };

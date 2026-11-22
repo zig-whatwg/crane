@@ -4,8 +4,11 @@
 //! - resolved values: dom.style.computedStyle and the css layer's
 //!   ComputedStyle.serializeResolved, the same strings getComputedStyle()
 //!   returns (CSSOM "resolved value");
-//! - the style attribute: the element's own CSSStyleDeclaration through the
-//!   generated interfaces (HTMLElement.style), as a script would;
+//! - the style attribute: READ natively, from the element's inline
+//!   declaration block (dom.style.inline_style, the block element.style's
+//!   getters read), as Blink's editing reads Element::InlineStyle(); WRITTEN
+//!   through the element's own CSSStyleDeclaration (HTMLElement.style's
+//!   setProperty and removeProperty), as a script would;
 //! - colors: the css layer's <color> parser ("valid CSS color", the RGBA
 //!   components compared by the color commands' equivalent values, and the
 //!   simple color serialization <font color> takes);
@@ -96,28 +99,61 @@ pub fn containsWord(value: []const u8, word: []const u8) bool {
 // ============================================================================
 
 /// `element`'s inline CSSStyleDeclaration, or null for an element that is
-/// not an HTML element (the commands only write HTML elements' styles).
+/// not an HTML element (the commands only write HTML elements' styles):
+/// for the writes, which go through CSSOM's setProperty and removeProperty.
 fn declarationOf(element: *Instance) !?*Instance {
     if (!try common.isHtmlElement(element)) return null;
     return try interfaces.HTMLElement.get_style(element);
+}
+
+/// `element`'s inline declaration block - its style attribute's, the one
+/// element.style reads (dom.style.inline_style.blockOf, which that object's
+/// getters read too) - or null for an element that is not an HTML element.
+/// The READS take it natively, as Blink's editing reads Element::
+/// InlineStyle() (EditingStyle, editing_style.cc) and never the CSSOM
+/// object: element.style made through the interface is a platform object,
+/// and its hand-out makes it a wrapper, kept by the element (lane mem1:
+/// the typing-style reads of every join made one per element read).
+pub fn inlineBlockOf(element: *Instance) !?*css.declarations.DeclarationBlock {
+    if (!try common.isHtmlElement(element)) return null;
+    return try dom.style.inline_style.blockOf(element);
 }
 
 /// The value the style attribute sets `name` to (a longhand or a
 /// shorthand, as CSSStyleDeclaration.getPropertyValue serializes it), or ""
 /// when it does not set it. Allocated with `allocator` when non-empty.
 pub fn inlineValue(allocator: Allocator, element: *Instance, name: []const u8) ![]const u8 {
-    const declaration = (try declarationOf(element)) orelse return "";
-    var value = try interfaces.CSSStyleDeclaration.call_getPropertyValue(declaration, DOMString.initInterned(name));
-    defer value.deinit(element.ctx.allocator);
-    if (value.asSlice().len == 0) return "";
-    return try allocator.dupe(u8, value.asSlice());
+    if (!try common.isHtmlElement(element)) return "";
+    return (try dom.style.inlineValue(element, name, allocator)) orelse "";
 }
 
 /// The number of declarations in the style attribute (longhands, as
 /// CSSStyleDeclaration.length counts them).
 pub fn inlineCount(element: *Instance) !u32 {
-    const declaration = (try declarationOf(element)) orelse return 0;
-    return try interfaces.CSSStyleDeclaration.get_length(declaration);
+    const block = (try inlineBlockOf(element)) orelse return 0;
+    return @intCast(block.length());
+}
+
+/// The property name of the style attribute's declaration at `index` (as
+/// CSSStyleDeclaration.item(index) answers it), or null past the last one -
+/// of any element, as element.style reads an SVG or MathML element's too.
+/// Borrowed from the element's block until its style attribute next
+/// changes.
+pub fn inlineItem(element: *Instance, index: usize) !?[]const u8 {
+    if (!common.isElement(element)) return null;
+    const block = (try dom.style.inline_style.blockOf(element)) orelse return null;
+    return block.item(index);
+}
+
+/// The style attribute's declarations, serialized (CSSStyleDeclaration's
+/// cssText getter): "" when it has none. Owned by `allocator`.
+pub fn inlineCssText(allocator: Allocator, element: *Instance) ![]u8 {
+    const block = (try inlineBlockOf(element)) orelse return allocator.dupe(u8, "");
+    // The block appends with its own allocator (as cssText's getter reads it).
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(block.allocator);
+    try block.serialize(&out);
+    return allocator.dupe(u8, out.items);
 }
 
 /// Whether the style attribute sets exactly one CSS property, `name`: every
@@ -125,15 +161,14 @@ pub fn inlineCount(element: *Instance) !u32 {
 /// least one. (The spec counts properties as written; CSSOM expands a
 /// shorthand into its longhands, so they are grouped back here.)
 pub fn inlineSetsOnly(element: *Instance, name: []const u8) !bool {
-    const declaration = (try declarationOf(element)) orelse return false;
-    const count = try interfaces.CSSStyleDeclaration.get_length(declaration);
+    const block = (try inlineBlockOf(element)) orelse return false;
+    const count = block.length();
     if (count == 0) return false;
     const property = css.properties.lookup(name) orelse return false;
-    var i: u32 = 0;
+    var i: usize = 0;
     while (i < count) : (i += 1) {
-        var item = try interfaces.CSSStyleDeclaration.call_item(declaration, i);
-        defer item.deinit(element.ctx.allocator);
-        if (!belongsTo(item.asSlice(), property)) return false;
+        const item = block.item(i) orelse return false;
+        if (!belongsTo(item, property)) return false;
     }
     return true;
 }

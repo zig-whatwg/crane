@@ -213,9 +213,9 @@ pub fn setUserAgentOverride(session: *PageSession, params: E.setUserAgentOverrid
 /// in Crane one process holds several isolated Browsers, so changing the
 /// process default for one tab would change Intl in every other Browser (the
 /// user's ruling, 2026-11-22 10:43 AM ET: no process-wide setter). Until V8
-/// has a per-isolate setter - the feature request drafted in
-/// tmp/plans/v8-feature-request-isolate-default-locale.md, for
-/// issues.chromium.org - a locale other than the default is refused with
+/// has a per-isolate setter - requested in
+/// https://issues.chromium.org/issues/589285004 (filed 2026-11-22) - a
+/// locale other than the default is refused with
 /// Chrome's own message for a second override (design risk R13), which
 /// Playwright tolerates; the navigator's languages follow
 /// setUserAgentOverride's acceptLanguage.
