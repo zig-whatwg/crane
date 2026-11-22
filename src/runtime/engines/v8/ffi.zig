@@ -855,6 +855,9 @@ pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
 /// How many times v8_SetFlagsFromString has set flags in this process (a
 /// start's own flags are not counted). Diagnostics only.
 pub extern fn v8_Platform_FlagWrites() i64;
+/// v8::V8::GetVersion: the linked V8's version ("13.1.203.24"), a static
+/// string V8 owns - never freed.
+pub extern fn v8_V8_GetVersion() [*:0]const u8;
 
 // Isolate management
 

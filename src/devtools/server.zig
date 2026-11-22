@@ -60,7 +60,10 @@ pub const Options = struct {
     product: []const u8 = "Crane/0.1",
     /// Browser.getVersion's and /json/version's user agent: Crane's own.
     user_agent: []const u8 = "",
-    /// Browser.getVersion's jsVersion and /json/version's V8-Version.
+    /// Browser.getVersion's jsVersion and /json/version's V8-Version; empty:
+    /// the engine's own (engine.engineVersion - V8's v8::V8::GetVersion, as
+    /// Chrome reports V8_VERSION_STRING), or "" from an engine that names
+    /// none.
     js_version: []const u8 = "",
     /// Browser.getVersion's revision.
     revision: []const u8 = "",
@@ -139,6 +142,8 @@ pub const Server = struct {
         // Browser.getVersion's user agent: the Browser's, Crane's default
         // when the embedder gave none.
         if (self.options.user_agent.len == 0) self.options.user_agent = @import("fetch").internal.user_agent.default_user_agent;
+        // The JavaScript engine's version, as the engine reports it.
+        if (self.options.js_version.len == 0) self.options.js_version = @import("engine").engineVersion() catch "";
 
         // The default context: the embedder's Browser.
         const default_context = try self.addContext(options.default_host, false);
@@ -337,12 +342,11 @@ pub const Server = struct {
     pub fn disposeContext(self: *Server, context: *targets.Context) void {
         if (context.disposed) return;
         context.disposed = true;
-        var i: usize = self.target_list.items.len;
-        while (i > 0) {
-            i -= 1;
-            const target = self.target_list.items[i];
-            if (target.context == context) self.removeTarget(target, true);
-        }
+        // One target at a time, found afresh: a removal takes a tab's pair
+        // (and their sessions) out of the lists at once, so no index into
+        // them survives it (lane cdpr's G12: the backward walk read past the
+        // list's end on Target.disposeBrowserContext).
+        while (self.lastTargetOf(context)) |target| self.removeTarget(target, true);
         browser_side.uninstallAndWait(context.side);
         if (context.owned) context.host.stop();
     }
@@ -361,6 +365,40 @@ pub const Server = struct {
     // ------------------------------------------------------------------
     // Targets
     // ------------------------------------------------------------------
+
+    /// The newest target of `context`, or null.
+    fn lastTargetOf(self: *Server, context: *targets.Context) ?*targets.Target {
+        var i = self.target_list.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (self.target_list.items[i].context == context) return self.target_list.items[i];
+        }
+        return null;
+    }
+
+    /// The newest session that `matches(session, key)`, or null: what a
+    /// removal loop asks again after each removal (`detach` takes a
+    /// session's children with it, so no index survives one).
+    fn lastSessionWhere(self: *Server, key: anytype, comptime matches: fn (*targets.Session, @TypeOf(key)) bool) ?*targets.Session {
+        var i = self.sessions.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (matches(self.sessions.items[i], key)) return self.sessions.items[i];
+        }
+        return null;
+    }
+
+    fn sessionOnTarget(s: *targets.Session, target: *targets.Target) bool {
+        return s.target == target;
+    }
+
+    fn sessionChildOf(s: *targets.Session, parent: *targets.Session) bool {
+        return s.parent == parent;
+    }
+
+    fn sessionOfConnection(s: *targets.Session, connection_id: u32) bool {
+        return s.connection_id == connection_id;
+    }
 
     pub fn findTarget(self: *Server, id: []const u8) ?*targets.Target {
         for (self.target_list.items) |t| if (t.id.eql(id)) return t;
@@ -461,19 +499,29 @@ pub const Server = struct {
         }
     }
 
-    /// Devtools thread: a tab's targets go. Their sessions detach
-    /// (detachedFromTarget to each parent), then targetDestroyed.
+    /// Devtools thread: a tab's targets go - with `with_partner`, both of
+    /// them, the PAGE target first: its sessions detach (the page child's
+    /// detachedFromTarget goes to the tab session it was auto-attached on)
+    /// and its targetDestroyed goes, then the tab target's sessions detach
+    /// (detachedFromTarget on the browser session) and its targetDestroyed.
+    /// Chrome's order (tmp/plans/cdp1-evidence/vue-e2e.protocol.log.gz, a
+    /// tab closing: targetInfoChanged page attached:false, detachedFromTarget
+    /// of the page session on the tab session, targetDestroyed page,
+    /// targetInfoChanged tab attached:false, detachedFromTarget of the tab
+    /// session on the browser session): the page's WebContents goes before
+    /// its tab's agent host (content/browser/devtools/protocol/
+    /// target_handler.cc DevToolsAgentHostDestroyed per host). Removing the
+    /// tab first detached the page child with its parent, unannounced, and
+    /// Puppeteer kept its CDPSession (lane cdpr's G7).
     pub fn removeTarget(self: *Server, target: *targets.Target, with_partner: bool) void {
-        if (with_partner) if (target.partner) |p| {
-            p.partner = null;
-            self.removeTarget(p, false);
+        if (with_partner) if (target.partner) |partner| {
+            const page = if (target.type == .page) target else partner;
+            const tab = if (target.type == .page) partner else target;
+            self.removeTarget(page, false);
+            self.removeTarget(tab, false);
+            return;
         };
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            const s = self.sessions.items[i];
-            if (s.target == target) self.detach(s, true);
-        }
+        while (self.lastSessionWhere(target, sessionOnTarget)) |s| self.detach(s, true);
         for (self.sessions.items) |s| {
             const filter = s.discover orelse continue;
             if (filter.matches(target.type)) s.emit(protocol.Target.targetDestroyed, .{ .targetId = target.id.slice() });
@@ -516,7 +564,13 @@ pub const Server = struct {
         errdefer link.release();
         const session = try self.allocator.create(targets.Session);
         errdefer self.allocator.destroy(session);
-        const wait_now = waiting and target.held;
+        // What holds is the tab's first navigation, kept on its page target:
+        // a session on the tab target waits for its page's hold. Chrome
+        // reports the TAB attached waitingForDebugger: true and its page
+        // child false (vue-e2e protocol log: Puppeteer's tab session, then
+        // its runIfWaitingForDebugger releases the tab - lane cdpr's G1).
+        const hold = holdOf(target);
+        const wait_now = waiting and hold.held;
         session.* = .{
             .id = id,
             .implicit = false,
@@ -533,8 +587,8 @@ pub const Server = struct {
             .server = self,
         };
         try self.sessions.append(self.allocator, session);
-        target.attached_sessions += 1;
-        if (wait_now) target.waiting.append(self.allocator, id) catch {};
+        self.noteAttached(target);
+        if (wait_now) hold.waiting.append(self.allocator, id) catch {};
         // The event that creates the session goes before anything on it.
         parent.emit(protocol.Target.attachedToTarget, .{
             .sessionId = id.slice(),
@@ -580,7 +634,7 @@ pub const Server = struct {
             .server = self,
         };
         try self.sessions.append(self.allocator, session);
-        target.attached_sessions += 1;
+        self.noteAttached(target);
         connection.implicit_session = session;
         self.attachPage(session, target);
     }
@@ -598,13 +652,15 @@ pub const Server = struct {
     /// goes to its parent (`notify`), and the sessions it auto-attached
     /// detach with it.
     pub fn detach(self: *Server, session: *targets.Session, notify: bool) void {
-        // Its children first.
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            if (i >= self.sessions.items.len) continue;
-            const child = self.sessions.items[i];
-            if (child.parent == session) self.detach(child, false);
+        // Its children first (each found afresh: a child's own children go
+        // with it).
+        while (self.lastSessionWhere(session, sessionChildOf)) |child| self.detach(child, false);
+        // The target's last session going: targetInfoChanged (attached
+        // false) to the discoverers, before the detachedFromTarget (Chrome's
+        // order in the vue-e2e log, removeTarget).
+        if (session.target) |t| {
+            t.attached_sessions -|= 1;
+            if (t.attached_sessions == 0) self.targetChanged(t);
         }
         if (notify) if (session.parent) |parent| {
             if (session.target) |t| parent.emit(protocol.Target.detachedFromTarget, .{ .sessionId = session.id.slice(), .targetId = t.id.slice() });
@@ -614,10 +670,27 @@ pub const Server = struct {
             break;
         };
         if (session.target) |t| {
-            t.attached_sessions -|= 1;
             if (session.waiting) self.doneWaiting(t, session.id);
         }
         self.freeSession(session);
+    }
+
+    /// A session attached to `target`: its first makes it `attached`, which
+    /// the discoverers hear (targetInfoChanged) before the attachedToTarget
+    /// (Chrome: TargetHandler::DevToolsAgentHostAttached; the vue-e2e log's
+    /// targetInfoChanged attached:true, then attachedToTarget).
+    fn noteAttached(self: *Server, target: *targets.Target) void {
+        target.attached_sessions += 1;
+        if (target.attached_sessions == 1) self.targetChanged(target);
+    }
+
+    /// The target whose `held` and `waiting` decide a session's wait on
+    /// `target`: the tab's page target for a tab target (the hold is the
+    /// tab's first navigation, kept on its page), else `target`. A tab whose
+    /// page is gone holds nothing.
+    fn holdOf(target: *targets.Target) *targets.Target {
+        if (target.type == .tab) return target.partner orelse target;
+        return target;
     }
 
     fn freeSession(self: *Server, session: *targets.Session) void {
@@ -641,15 +714,18 @@ pub const Server = struct {
 
     /// One of `target`'s waiting sessions has run: at zero, the tab's hold
     /// is released (life1's `release`, through the host's releaseTab).
+    /// `target` may be the tab target: its waiting is its page's (`holdOf`),
+    /// on runIfWaitingForDebugger and on detach alike.
     pub fn doneWaiting(self: *Server, target: *targets.Target, session_id: ids.Token) void {
         _ = self;
-        for (target.waiting.items, 0..) |w, at| if (std.mem.eql(u8, &w.text, &session_id.text)) {
-            _ = target.waiting.swapRemove(at);
+        const hold = holdOf(target);
+        for (hold.waiting.items, 0..) |w, at| if (std.mem.eql(u8, &w.text, &session_id.text)) {
+            _ = hold.waiting.swapRemove(at);
             break;
         };
-        if (target.waiting.items.len != 0 or !target.held) return;
-        target.held = false;
-        ReleaseTask.post(target.context.side, target.tab);
+        if (hold.waiting.items.len != 0 or !hold.held) return;
+        hold.held = false;
+        ReleaseTask.post(hold.context.side, hold.tab);
     }
 
     // ------------------------------------------------------------------
@@ -698,13 +774,7 @@ pub const Server = struct {
     /// Devtools thread: a connection ended. Its sessions detach, and the
     /// contexts it made with disposeOnDetach are disposed.
     fn connectionClosed(self: *Server, connection: *Connection) void {
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            if (i >= self.sessions.items.len) continue;
-            const s = self.sessions.items[i];
-            if (s.connection_id == connection.id) self.detach(s, false);
-        }
+        while (self.lastSessionWhere(connection.id, sessionOfConnection)) |s| self.detach(s, false);
         for (self.contexts.items) |c| {
             if (c.dispose_with == connection.id) self.disposeContext(c);
         }
@@ -1119,13 +1189,7 @@ const ReleaseTask = struct {
 /// A connection's end for the server's own stop: as `connectionClosed`,
 /// without the pipe's close request, and with what is queued still written.
 fn closeConnectionForStop(server: *Server, connection: *Connection) void {
-    var i: usize = server.sessions.items.len;
-    while (i > 0) {
-        i -= 1;
-        if (i >= server.sessions.items.len) continue;
-        const s = server.sessions.items[i];
-        if (s.connection_id == connection.id) server.detach(s, false);
-    }
+    while (server.lastSessionWhere(connection.id, Server.sessionOfConnection)) |s| server.detach(s, false);
     connection.implicit_session = null;
     // The writer writes what is queued (a Browser.close reply) and then
     // shuts the connection, which ends the reader.

@@ -4101,6 +4101,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
         }));
         tests_engine_link.into(b, devtools_client_check.root_module);
+        // The Crane test runner, as the suite's own executable has: the
+        // tests' allocators are its `poisoning.DebugAllocator`
+        // (@import("root").poisoning; tests/AGENTS.md), which std's default
+        // runner does not declare. Compiled only - never run here.
+        _ = useCraneTestRunner(b, devtools_client_check, launch.engine, "devtools_compile_check", .fail, .per_test, &.{}, false, launch.log_level);
         check_devtools.dependOn(&devtools_client_check.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "devtools")) {
             test_step.dependOn(&addSuiteRun(b, launch, devtools_tests, "src-devtools", null).step);

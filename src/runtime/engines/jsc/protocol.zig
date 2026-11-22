@@ -137,6 +137,13 @@ pub fn initializeBeforeThreadCreation() void {}
 /// JSC has no process-wide state to set up.
 pub fn initializeEngine(_: engine.EngineOptions) Error!void {}
 pub fn deinitializeEngine() void {}
+
+/// engine.engineVersion: JavaScriptCore's public C API names no version
+/// (the integrator's ruling, 2026-11-21: NotSupported until the adapter
+/// exists).
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return error.NotSupported;
+}
 pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }

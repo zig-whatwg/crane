@@ -2305,6 +2305,13 @@ int64_t v8_Platform_FlagWrites() {
     return g_platform.flag_writes;
 }
 
+/// The linked V8's version (engine.engineVersion): V8::GetVersion's static
+/// string - V8_VERSION_STRING, what Chrome reports as its jsVersion. Any
+/// thread, before or after the platform starts; the caller never frees it.
+const char* v8_V8_GetVersion() {
+    return V8::GetVersion();
+}
+
 // Foreground tasks retain their wake target, never their isolate. The platform
 // still owns execution; this layer records deadlines and posts a loop wake.
 // V8 TaskRunner's public contract permits posting from any thread, but obtaining

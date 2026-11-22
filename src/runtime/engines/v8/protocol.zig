@@ -222,6 +222,12 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     return protocol_agents.initializeEngine(options);
 }
 
+/// engine.engineVersion: v8::V8::GetVersion, the version of the V8 this
+/// binary links (a static string of V8's).
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return std.mem.span(ffi.v8_V8_GetVersion());
+}
+
 pub fn deinitializeEngine() void {
     protocol_agents.deinitializeEngine();
 }
