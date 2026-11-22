@@ -145,13 +145,12 @@ const EngineRealm = struct {
     fn open(self: *EngineRealm, allocator: std.mem.Allocator) !void {
         self.host = @import("html_core").agent_host.AgentHost.init(allocator);
         errdefer self.host.deinit();
-        self.agent = try engine.createAgent(.{
+        self.agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&self.host, .{
             .can_block = false,
             .from_snapshot = false,
             .allocator = allocator,
-            .host = &self.host,
             .hooks = &.{},
-        });
+        }));
         errdefer engine.destroyAgent(self.agent);
         self.capture = .{};
         self.realm = try engine.createWindowRealm(&.{
@@ -252,13 +251,12 @@ fn expectDocumentTracedParser() !void {
     try engine.initializeEngine(.{});
     var host = @import("html_core").agent_host.AgentHost.init(allocator);
     defer host.deinit();
-    const agent = try engine.createAgent(.{
+    const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&host, .{
         .can_block = false,
         .from_snapshot = false,
         .allocator = allocator,
-        .host = &host,
         .hooks = &.{},
-    });
+    }));
     defer engine.destroyAgent(agent);
     var capture = WindowCapture{};
     const realm = try engine.createWindowRealm(&.{

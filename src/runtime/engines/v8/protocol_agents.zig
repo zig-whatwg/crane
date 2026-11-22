@@ -181,6 +181,9 @@ const AgentRecord = struct {
     entered_for_life: bool = false,
     hooks: *const engine.HostHooks,
     host: ?*anyopaque,
+    /// AgentOptions.host_state: the embedder's state for the agent, BORROWED
+    /// for its life (engine.hostStateOf).
+    host_state: ?*engine.HostState = null,
     /// AgentOptions.allocator: the agent's own state.
     allocator: std.mem.Allocator,
     /// The isolate was restored from the engine's snapshot, whose bytes it
@@ -539,6 +542,14 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return record.host;
 }
 
+/// engine.hostStateOf: the host state `agent` was made with; null when none
+/// was given, once endAgent has forgotten it, or for an isolate createAgent
+/// did not make.
+pub fn hostStateOf(agent: *Agent) ?*engine.HostState {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
+    return record.host_state;
+}
+
 /// The deferred teardown queue of the agent whose isolate this is: the one
 /// the host gave it (AgentOptions.deferred_teardown), else the agent's own
 /// (AgentRecord.own_deferred_teardown); null for an isolate createAgent did
@@ -689,7 +700,7 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .host_state = options.host_state, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);

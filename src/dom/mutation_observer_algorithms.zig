@@ -117,7 +117,7 @@ pub const SignalSlot = struct {
 /// notify is queued.
 pub fn agentOf(realm: runtime.Context) ?*MutationObserverAgent {
     const agent = realm.agent orelse return null;
-    const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *AgentHost = @import("agent_hosts.zig").ofAgent(agent) orelse return null;
     return &host.mutation_observers;
 }
 
@@ -365,7 +365,7 @@ pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, na
         // createIfNeeded ask before walking (Document::
         // HasMutationObserversOfType / hasMutationObserversOfType). Asked
         // only past `walk_before_asking` ancestors: finding the agent takes
-        // the engine's agent-registry lock (engine.agentHost), which costs
+        // the engine's agent-registry lock (engine.hostStateOf), which costs
         // what a walk of about 33 ancestors does (measured below).
         visited += 1;
         if (visited == walk_before_asking and !anyObserverMade(target)) return false;
@@ -376,7 +376,7 @@ pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, na
 /// How many ancestors a walk for registered observers visits before it asks
 /// the agent whether any observer exists (`anyObserverMade`). Measured (lane
 /// crash1 batch 3, server1 x86-64, ReleaseSafe, a Browser's page, medians of
-/// 5 x 2,000,000 calls): `anyObserverMade` - engine.agentHost's registry lock
+/// 5 x 2,000,000 calls): `anyObserverMade` - the agent registry's lock (then engine.agentHost, now engine.hostStateOf)
 /// and lookup - 127 ns; walking 64 ancestors' registered observer lists 245
 /// ns, 3.8 ns an ancestor. So the lookup is worth about 33 ancestors: a tree
 /// up to 32 deep pays only its walk, a deeper one 32 ancestors and one

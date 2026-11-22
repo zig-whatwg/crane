@@ -86,3 +86,30 @@ kind      = rendering
 why       = restores a scroll position after navigation and reads it back: layout geometry
 assertion = window.pageYOffset after back(): expected >= 5900, got 0
 source    = packages/router/test/bootstrap.spec.ts:470
+
+# Added by lane fw2 (2026-11-22), from Angular's own Bazel run with Crane as its headless shell
+# (angular-crane-fw2c), where the zone.js targets run.
+
+[Zone Common invoking tasks __zone_symbol__enable_native_microtask_draining should surface unhandled promise rejections via unhandledrejection event (if the flag is enabled)]
+kind   = follows-spec
+why    = zone.js's own dispatch to an unhandledrejection listener throws in every browser (findPromiseRejectionHandler calls the static ZoneTask.invokeTask with the event as its task); Chrome and Safari pass only because their PromiseRejectionEventInit.promise is still Promise<any>, so zone's event construction makes a native promise that rejects unhandled. The spec's is `object` (whatwg/html#9897), as Firefox 159 ships it, and Firefox fails this test as Crane does (lane fw2's probe; tmp/plans/lane-fw2-handoff.md)
+ruling = angular/angular#72159; whatwg/html#9897 (golden rule 2: a newer spec one browser ships); main 11:12 AM ET 2026-11-22
+source = packages/zone.js/test/common/zone.spec.ts:504
+
+[Zone Browser hooks HTMLCanvasElement.toBlob should be a ZoneAware MacroTask]
+kind      = rendering
+why       = it draws on a 2D canvas before toBlob; canvas pixels are 0.2 rendering (the user's ruling, 2026-11-21), and Crane's 2D context throws NotSupportedError
+assertion = ctx.beginPath() - NotSupportedError: This feature is not yet implemented
+source    = packages/zone.js/test/browser/browser.spec.ts:3819
+
+[fetch macroTask cancel fetch should invoke onCancelTask]
+kind   = follows-majority
+why    = Crane's zone task log for a fetch aborted through its signal is the browsers' own: Chrome 157, Firefox 159, Safari 27 and Crane all log 10 entries (scheduleTask:fetch, then the Promise.then hops, invokeTask:fetch) where the spec expects 8 with a cancelTask that nothing calls on this path (lib/common/fetch.ts aborts its own controller; no zone cancel). The spec skips itself where the user agent says "Safari" (Chrome's and Safari's do), and Firefox, which runs it, fails it as Crane does
+ruling = lane fw2's probe 2026-11-22 (the spec's steps without its isSafari() skip, in all three browsers and Crane; tmp/plans/lane-fw2-handoff.md); main 12:38 PM ET: two of three ordering it like Crane is follows-majority
+source = packages/zone.js/test/common/fetch.spec.ts:229
+
+[fetch macroTask cancel fetchTask should trigger abort]
+kind   = follows-majority
+why    = the same probe with the fetch task cancelled through its zone: all three browsers and Crane log 10 entries (cancelTask:fetch, then four Promise.then hops) where the spec expects 8; skipped where the user agent says "Safari", failed alike in Firefox
+ruling = lane fw2's probe 2026-11-22 (tmp/plans/lane-fw2-handoff.md); main 12:38 PM ET
+source = packages/zone.js/test/common/fetch.spec.ts:266

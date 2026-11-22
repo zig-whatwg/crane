@@ -362,13 +362,31 @@ const FailSite = struct {
     }
 };
 
-/// A loopback port nothing listens on: one a listener had, then gave back.
-fn closedPort() !u16 {
-    var listener = try LoopbackListener.open(.{});
-    const port = listener.port();
-    listener.stop();
-    listener.close();
-    return port;
+/// A loopback port nothing listens on when the fetch is made: the first one
+/// from 20000 up that this test can bind, closed again before the fetch -
+/// network_integration_test.zig's refusingPort. It lies below every
+/// ephemeral range (macOS hands out 49152-65535, Linux 32768-60999), so no
+/// other process's port-0 listener can take it while the fetch connects or
+/// retries. The port this test used to take - one a port-0 listener had,
+/// then gave back - is in the ephemeral range: under the whole suite's
+/// processes another listener could take it in between, and the fetch then
+/// ended as anything but refused (lane fw2: "expected net::ERR_CONNECTION_
+/// REFUSED, got net::ERR_ABORTED", 1 of 20 runs beside 16 processes churning
+/// port-0 loopback listeners). It is not held bound while the fetch is made:
+/// on macOS a SYN to a port whose socket is bound but not listening is
+/// dropped, not refused, and the connect times out (lane fixes1).
+fn refusingPort() !u16 {
+    var port: u16 = 20000;
+    while (port < 30000) : (port += 1) {
+        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(port) };
+        const socket = address.bind(std.testing.io, .{ .mode = .stream, .protocol = .tcp }) catch |err| switch (err) {
+            error.AddressInUse => continue,
+            else => return err,
+        };
+        socket.close(std.testing.io);
+        return port;
+    }
+    return error.NoFreeLoopbackPort;
 }
 
 test "loadingFailed's errorText is Chrome's net error: refused, unsafe port, empty response, reset, redirect loop, bad content coding, invalid data: URL, aborted" {
@@ -386,7 +404,7 @@ test "loadingFailed's errorText is Chrome's net error: refused, unsafe port, emp
     try page.navigate(try site.url(&buffer, "/page.html"));
     _ = try page.eventsUntilEnded(arena, 1);
 
-    const refused = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/", .{try closedPort()});
+    const refused = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/", .{try refusingPort()});
     const Case = struct { url: []const u8, expected: []const u8 };
     const cases = [_]Case{
         .{ .url = refused, .expected = "net::ERR_CONNECTION_REFUSED" },

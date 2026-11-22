@@ -23,7 +23,7 @@ pub fn of(realm: runtime.Context) ?*AgentFetches {
     var current: ?runtime.Context = realm;
     while (current) |r| : (current = r.principal_realm) {
         const agent = r.agent orelse continue;
-        const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+        const host: *AgentHost = @import("agent_hosts.zig").ofAgent(agent) orelse return null;
         return &host.fetches;
     }
     return null;

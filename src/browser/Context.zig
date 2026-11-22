@@ -415,7 +415,7 @@ fn resetNestingMicrotask(data: ?*anyopaque) void {
 /// realm), whose level is always 0.
 fn timerNestingLevel(realm: runtime.Context) ?*u32 {
     const agent = realm.agent orelse return null;
-    const host: *html_mod.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *html_mod.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     return &host.timer_nesting_level;
 }
 

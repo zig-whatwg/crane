@@ -19,7 +19,7 @@ pub const decoding = @import("decoding.zig");
 /// The one registry lookup: the relevant realm's agent, never thread-local state.
 pub fn liveRegistry(ctx: runtime.Context) ?*Registry {
     const agent = ctx.agent orelse return null;
-    const host: *core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     return &host.media_elements;
 }
 pub fn globalOf(ctx: runtime.Context) ?*runtime.Instance {

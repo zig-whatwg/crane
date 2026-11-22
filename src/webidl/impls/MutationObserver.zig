@@ -666,12 +666,13 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
         return;
     };
 
-    // The records as a sequence<MutationRecord>. Wrapping hands each to the
-    // wrapper cache, which owns them from here. Traced from the observer
-    // until the sequence holds them (P6): a collection the wrapping starts
-    // finds them nowhere else.
+    // The records as a sequence<MutationRecord>, made in the callback's realm
+    // and world (WebIDL invoke steps 5 and 10: dom.callback_sequences).
+    // Wrapping hands each to the wrapper cache, which owns them from here.
+    // Traced from the observer until the sequence holds them (P6): a
+    // collection the wrapping starts finds them nowhere else.
     internal.delivering = records;
-    const made = engine.createSequenceOfPlatformObjects(realm, records);
+    const made = engine.createSequenceOfPlatformObjects(dom_module.callback_sequences.argumentRealm(realm, &callback), records);
     internal.delivering = &.{};
     const sequence = made catch |err| {
         freeUnwrapped(records);

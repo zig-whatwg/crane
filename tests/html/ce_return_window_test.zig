@@ -29,13 +29,12 @@ fn exercise() !void {
     var host = AgentHost.init(testing.allocator);
     defer host.deinit();
     const hooks: engine.HostHooks = .{ .htmlConstructor = html.custom_element_constructor.hooks };
-    const agent = try engine.createAgent(.{
+    const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&host, .{
         .can_block = false,
         .from_snapshot = false,
         .allocator = testing.allocator,
-        .host = &host,
         .hooks = &hooks,
-    });
+    }));
     defer engine.destroyAgent(agent);
     defer host.custom_elements.releasePending();
     var capture = Capture{};

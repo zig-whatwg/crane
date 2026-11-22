@@ -17,6 +17,7 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const same_object = @import("dom").same_object;
+const dom = @import("dom");
 const clock = @import("clock");
 const browser_object_lists = @import("dom").browser_object_lists;
 
@@ -884,11 +885,13 @@ fn invokeCallback(internal: *InternalState) !void {
         return;
     };
 
-    // queue as a sequence<IntersectionObserverEntry>. Wrapping hands each
-    // entry to the wrapper cache, which owns them from here; until the
-    // sequence holds them they are traced from the observer (P6).
+    // queue as a sequence<IntersectionObserverEntry>, made in the callback's
+    // realm and world (WebIDL invoke steps 5 and 10: dom.callback_sequences).
+    // Wrapping hands each entry to the wrapper cache, which owns them from
+    // here; until the sequence holds them they are traced from the observer
+    // (P6).
     internal.delivering = queue;
-    const made = engine.createSequenceOfPlatformObjects(realm, queue);
+    const made = engine.createSequenceOfPlatformObjects(dom.callback_sequences.argumentRealm(realm, &callback), queue);
     internal.delivering = &.{};
     const entries = made catch |err| {
         for (queue) |entry| runtime.Instance.deinit(entry);

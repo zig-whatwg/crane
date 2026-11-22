@@ -14,6 +14,7 @@ const engine = @import("engine");
 const platform = @import("platform");
 const csp = @import("csp");
 const global_settings = @import("global_settings.zig");
+const callback_sequences = @import("callback_sequences.zig");
 const keepalive_fetch = @import("keepalive_fetch.zig");
 
 /// Reporting §2.1: native immutable report data shared by the delivery
@@ -362,9 +363,11 @@ const ObserverTask = struct {
         const active = try engine.retainValue(realm, .{ .instance = self.link.instance });
         defer active.release();
         const observer = self.observer;
-        const records = try observer.takeRecords(realm);
-        defer records.release();
         const callback = observer.callback orelse return;
+        // The reports are made in the callback's realm and world (WebIDL
+        // invoke steps 5 and 10: dom.callback_sequences), not the observer's.
+        const records = try observer.takeRecords(callback_sequences.argumentRealm(realm, &callback));
+        defer records.release();
         const completion = try engine.invokeCallbackFunction(realm, &callback, .{ .value = active.value }, &.{ records.value, active.value }, .{
             .report = .{ .report = observer.exception_reporter, .host = realm },
         });

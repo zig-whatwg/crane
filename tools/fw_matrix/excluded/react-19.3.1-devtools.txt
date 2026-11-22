@@ -1,0 +1,65 @@
+# React 19.3.1 (tag v19.3.1, 61aa00df822d): react-devtools-inline's own Playwright e2e tests (its CI's
+# scripts/ci/run_devtools_e2e_tests.js, RELEASE_CHANNEL=experimental; Playwright drives the browser over
+# CDP), the tests the matrix does not count, each with its reason (tools/fw_matrix/exclusions.zig documents
+# the format). Ids are Playwright's: describe blocks and the test, joined by " > ". Lane fw2's runs on the
+# console of 6be959af4 (react-devtools-crane-fw2c).
+#
+# Every test's beforeEach waits for the shell's #iframe to be visible (page.waitForSelector, state
+# 'visible'): Playwright counts an element visible only with a non-empty bounding box, and with no layout
+# every box is 0x0 ("locator resolved to hidden <iframe id="iframe">"). Five of the nine skip themselves
+# inside their body for the experimental React version (runOnlyForReactRange, after the beforeEach), as they
+# do in Chrome for Testing 157, which passes the other four.
+
+[Components > Should display initial React components]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:28
+
+[Components > Should display newly added React components]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:46
+
+[Components > Should allow elements to be inspected]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:53
+
+[Components > Should allow inspecting source of the element]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:119
+
+[Components > should allow props to be edited]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:143
+
+[Components > should load and parse hook names for the inspected element]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:178
+
+[Components > should allow searching for component by name]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, components.test.js:23)
+source    = packages/react-devtools-inline/__tests__/__e2e__/components.test.js:216
+
+[Profiler > should record renders and commits when active]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, profiler.test.js:20)
+source    = packages/react-devtools-inline/__tests__/__e2e__/profiler.test.js:25
+
+[Profiler > should allow searching for a component within the selected commit]
+kind      = rendering
+why       = its beforeEach waits for the #iframe to be visible, which Playwright decides by a non-empty bounding box
+assertion = page.waitForSelector('#iframe') - locator resolved to hidden <iframe id="iframe"> (beforeEach, profiler.test.js:20)
+source    = packages/react-devtools-inline/__tests__/__e2e__/profiler.test.js:105

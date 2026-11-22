@@ -33,7 +33,7 @@ pub fn installDocumentAbort() void {
 
 fn livePings(realm: runtime.Context) ?*LivePings {
     const agent = realm.agent orelse return null;
-    const host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(@import("engine").agentHost(agent) orelse return null));
+    const host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     return &host.hyperlink_pings;
 }
 
