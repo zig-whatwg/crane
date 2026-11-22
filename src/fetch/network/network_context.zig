@@ -43,6 +43,7 @@
 //! behind it (docs/platform-protocol.md 3.3). This file names no curl.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.network_context);
 const backend = @import("backend.zig");
@@ -492,6 +493,13 @@ pub const ConnectionSlots = struct {
     waiting: std.ArrayListUnmanaged(Slot) = .empty,
     /// Destinations that answered over HTTP/2.
     multiplexed: std.ArrayListUnmanaged(Key) = .empty,
+    /// Unit tests only: how many entries the operations looked at (each
+    /// list entry inspected, each map lookup) - the scaling test's measure.
+    probes: usize = 0,
+
+    inline fn probe(self: *ConnectionSlots) void {
+        if (builtin.is_test) self.probes += 1;
+    }
 
     const Key = struct {
         bytes: [max_host_key]u8,
@@ -522,12 +530,16 @@ pub const ConnectionSlots = struct {
     /// waiters older than it - with every release handing its slot on,
     /// that is when it has no waiters at all.
     pub fn tryTake(self: *ConnectionSlots, allocator: Allocator, destination: []const u8, holder: *const anyopaque) Allocator.Error!bool {
-        for (self.multiplexed.items) |*key| if (key.is(destination)) {
-            self.stopWaiting(holder);
-            return true;
-        };
+        for (self.multiplexed.items) |*key| {
+            self.probe();
+            if (key.is(destination)) {
+                self.stopWaiting(holder);
+                return true;
+            }
+        }
         var used: usize = 0;
         for (self.taken.items) |*slot| {
+            self.probe();
             if (!slot.key.is(destination)) continue;
             if (slot.holder == holder) return true;
             used += 1;
@@ -537,6 +549,7 @@ pub const ConnectionSlots = struct {
         var older: usize = 0;
         var waits = false;
         for (self.waiting.items) |*waiter| {
+            self.probe();
             if (waiter.holder == holder) {
                 waits = true;
                 break;
@@ -559,10 +572,12 @@ pub const ConnectionSlots = struct {
     pub fn release(self: *ConnectionSlots, holder: *const anyopaque) void {
         self.stopWaiting(holder);
         for (self.taken.items, 0..) |*slot, i| {
+            self.probe();
             if (slot.holder != holder) continue;
             // The oldest waiter of the slot's destination takes its place
             // (nothing is allocated: the slot is the same one).
             for (self.waiting.items, 0..) |*waiter, w| {
+                self.probe();
                 if (!waiter.key.is(slot.key.bytes[0..slot.key.len])) continue;
                 slot.holder = waiter.holder;
                 _ = self.waiting.orderedRemove(w);
@@ -583,6 +598,7 @@ pub const ConnectionSlots = struct {
 
     fn stopWaiting(self: *ConnectionSlots, holder: *const anyopaque) void {
         for (self.waiting.items, 0..) |waiter, i| {
+            self.probe();
             if (waiter.holder != holder) continue;
             _ = self.waiting.orderedRemove(i);
             return;
@@ -765,6 +781,38 @@ test "a cancelled waiter is handed nothing; a waiter cancelled after it was hand
     try std.testing.expect(!context.slots.holds(&others[6]));
     context.releaseConnectionSlot(&others[0]);
     try std.testing.expect(context.slots.holds(&others[6]));
+}
+
+test "a slot's bookkeeping costs the same with thousands of transfers waiting: a pump that asks for every waiter is linear, not quadratic (Chromium's per-group queue)" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    const n = 4000;
+    const holders = try std.testing.allocator.alloc(u8, n);
+    defer std.testing.allocator.free(holders);
+    var others: [8]u8 = undefined;
+    const a = "http://a.test:80";
+    const b = "http://b.test:80";
+    // A page's burst to one destination, a few transfers to another.
+    for (0..n) |i| try std.testing.expectEqual(i < max_connections_per_host, try context.tryTakeConnectionSlot(a, &holders[i]));
+    for (&others, 0..) |*other, i| try std.testing.expectEqual(i < max_connections_per_host, try context.tryTakeConnectionSlot(b, other));
+    // One pump: every waiting transfer asks again (NetworkScheduler.pump).
+    // A constant number of entries looked at per ask, not one per waiter
+    // ahead of it.
+    context.slots.probes = 0;
+    for (max_connections_per_host..n) |i| try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[i]));
+    try std.testing.expect(context.slots.probes <= 8 * n);
+    // Every transfer ends, oldest first: each release hands its slot to the
+    // oldest waiter at a constant cost, and each waiter, asking after its
+    // hand-off, holds the slot.
+    context.slots.probes = 0;
+    for (0..n) |i| {
+        try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[i]));
+        context.releaseConnectionSlot(&holders[i]);
+    }
+    try std.testing.expect(context.slots.probes <= 16 * n);
+    // The other destination was never handed one of a's slots.
+    try std.testing.expect(!context.slots.holds(&others[max_connections_per_host]));
+    try std.testing.expect(context.slots.holds(&others[0]));
 }
 
 test "a destination that multiplexes takes no connection slots" {
