@@ -964,6 +964,10 @@ const TestLaunch = struct {
     /// `zig build test-launch`: the test executables alone, without the
     /// lints and checks `test` also runs.
     step: *std.Build.Step,
+    /// `zig build check-tests`: every test executable compiled, none run
+    /// (addSuiteRunWith adds each; lane cdpr, the integrator 2026-11-21
+    /// 10:05 PM ET: a test file no step builds hides its compile breaks).
+    check_tests: *std.Build.Step,
     launcher: *std.Build.Step.Compile,
     /// The launcher's own tests run by the build runner directly: they test
     /// the launcher, so they cannot run through it. The one exception
@@ -1125,6 +1129,8 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// each of `groups` keeps its own row of suite_configs, keyed by its tests'
 /// name prefix (`addGroupArgs`).
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
+    // `check-tests` compiles what the launcher would run.
+    launch.check_tests.dependOn(&test_exe.step);
     const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links the engine and the browser module. The
@@ -3511,9 +3517,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&launcher_tests.step);
         b.step("test-launcher", "Run tools/test_launcher's own tests").dependOn(&launcher_tests.step);
 
+        // Every test executable compiled, none run: tests/ directories and
+        // src's in-file test roots alike (addSuiteRunWith), and the
+        // launcher's own tests.
+        const check_tests_step = b.step("check-tests", "Compile every test executable - the tests/ directories and src's in-file test roots - without running them");
+        check_tests_step.dependOn(&own_tests.step);
         const l = b.allocator.create(TestLaunch) catch @panic("OOM");
         l.* = .{
             .step = launch_step,
+            .check_tests = check_tests_step,
             .launcher = launcher,
             .own_tests = own_tests,
             .batch = b.option(u32, "launch-batch", "Tests per child process for every suite, overriding build.zig's suite_configs (1 = a process per test; 0 = the whole suite in one process)"),

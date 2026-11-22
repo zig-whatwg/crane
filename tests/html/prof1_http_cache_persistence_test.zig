@@ -82,11 +82,11 @@ const Run = struct {
 
     /// One Browser, start to end, on a thread of its own.
     fn once(server: *http.Server, profile: ?[]const u8) ![]const u8 {
-        var run: Run = .{ .server = server, .profile = profile };
-        const thread = try std.Thread.spawn(.{}, main, .{&run});
+        var state: Run = .{ .server = server, .profile = profile };
+        const thread = try std.Thread.spawn(.{}, main, .{&state});
         thread.join();
-        if (run.failure) |err| return err;
-        try std.testing.expectEqualStrings("fresh,stale", run.answer[0..run.answer_len]);
+        if (state.failure) |err| return err;
+        try std.testing.expectEqualStrings("fresh,stale", state.answer[0..state.answer_len]);
         return "fresh,stale";
     }
 };

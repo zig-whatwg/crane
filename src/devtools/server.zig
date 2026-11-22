@@ -36,7 +36,14 @@ const browser_side = @import("browser_side.zig");
 const browser_target = @import("browser_target.zig");
 const protocol = @import("protocol/root.zig");
 const PageSession = @import("page_session.zig").PageSession;
+const fetch_interception = @import("fetch_interception.zig");
 const BrowserSide = browser_side.BrowserSide;
+
+/// The Fetch commands the devtools thread answers (dispatch.zig's handler
+/// set: domains/fetch.zig DevtoolsThread).
+pub const FetchDevtoolsHandlers = struct {
+    pub const Fetch = @import("domains/fetch.zig").DevtoolsThread;
+};
 
 const log = std.log.scoped(.devtools);
 
@@ -440,7 +447,10 @@ pub const Server = struct {
             .type = .tab,
             .context = context,
             .tab = tab,
-            .url = self.allocator.dupe(u8, "about:blank") catch return,
+            // Chrome's new tab target has no URL until its page commits
+            // (vue-e2e protocol log l.103: url ""); its page target's is
+            // about:blank from the start.
+            .url = self.allocator.alloc(u8, 0) catch return,
             .title = &.{},
             .opener = opener,
             .opened_by_page = opened_by_page,
@@ -695,7 +705,13 @@ pub const Server = struct {
 
     fn freeSession(self: *Server, session: *targets.Session) void {
         if (session.page) |page| {
-            if (session.target) |t| browser_side.DetachTask.post(t.context.side, page) else page.discard();
+            if (session.target) |t| {
+                // A detach lets go of what the session holds (Chrome's
+                // interceptor Detach); a blocking fetch's hold here, as its
+                // Browser thread waits in it.
+                fetch_interception.release(t.context.side, page, .blocking);
+                browser_side.DetachTask.post(t.context.side, page);
+            } else page.discard();
             session.page = null;
         }
         session.link.end();
@@ -960,6 +976,19 @@ pub const Server = struct {
         if (std.mem.eql(u8, command.method, protocol.Page.handleJavaScriptDialog.method)) {
             return self.answerDialog(session, arena, &command);
         }
+        // The Fetch commands that answer a held request: answered here, as
+        // Chrome's browser-side FetchHandler answers them while the
+        // renderer may be blocked in a synchronous fetch the request
+        // belongs to (fetch_interception.zig).
+        if (fetch_interception.isDevtoolsThreadCommand(command.method)) {
+            return dispatch.dispatch(FetchDevtoolsHandlers, session, arena, &command);
+        }
+        // Fetch.disable: the session's blocking holds are let go here first
+        // (the Browser thread may be waiting in one); the message then
+        // disables the patterns on the Browser thread.
+        if (std.mem.eql(u8, command.method, protocol.Fetch.disable.method)) {
+            if (session.page) |page| if (session.target) |t| fetch_interception.release(t.context.side, page, .blocking);
+        }
         // A page session's message: to its Browser's thread.
         const page = session.page orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "Target is closing", null);
         const target = session.target.?;
@@ -1004,13 +1033,32 @@ pub const Server = struct {
         switch (event) {
             .tab_created => |e| self.addTab(context, e.tab, e.opener, e.opened_by_page),
             .tab_destroyed => |e| if (self.pageTargetOf(context, e.tab)) |t| self.removeTarget(t, true),
+            // A commit: the new document's URL, its title not known yet (the
+            // URL stands for it, Chrome's fallback); a same-document
+            // navigation keeps the title.
             .navigated => |e| if (self.pageTargetOf(context, e.navigable)) |page| {
                 for ([_]?*targets.Target{ page, page.partner }) |maybe| {
                     const t = maybe orelse continue;
                     const url = self.allocator.dupe(u8, e.url) catch continue;
                     self.allocator.free(t.url);
                     t.url = url;
+                    t.committed = true;
+                    if (e.cross_document and t.title.len > 0) {
+                        self.allocator.free(t.title);
+                        t.title = &.{};
+                    }
                     self.targetChanged(t);
+                }
+            },
+            // Only the page target carries the title (Chrome's tab target
+            // reports "").
+            .title_changed => |e| if (self.pageTargetOf(context, e.tab)) |page| {
+                if (!std.mem.eql(u8, page.title, e.title)) {
+                    if (self.allocator.dupe(u8, e.title)) |title| {
+                        self.allocator.free(page.title);
+                        page.title = title;
+                        self.targetChanged(page);
+                    } else |_| {}
                 }
             },
             .dialog_opening => |e| if (self.pageTargetOf(context, e.tab)) |t| {
@@ -1158,6 +1206,7 @@ const TargetEventTask = struct {
     fn drop(self: *TargetEventTask, allocator: Allocator) void {
         switch (self.event) {
             .navigated => |e| allocator.free(e.url),
+            .title_changed => |e| allocator.free(e.title),
             else => {},
         }
     }

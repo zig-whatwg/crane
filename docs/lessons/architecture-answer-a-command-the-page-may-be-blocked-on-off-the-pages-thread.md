@@ -1,0 +1,12 @@
+# Architecture: Answer a command the page may be blocked on off the page's thread
+
+**Date**: 2026-11-21
+**Lesson**: A CDP command that releases something the page's thread is waiting in - a held request of a synchronous fetch, an open dialog, a debugger pause - must be answered on the devtools thread (or through a pause's own nested loop), never queued as an ordinary page-session message.
+
+**Why**: Page-session messages run on the Browser thread between tasks. A synchronous XMLHttpRequest, a classic script's synchronous fetch, or a navigation's blocking fetch waits on that same thread; if the release command (Fetch.continueRequest, fulfillRequest, ...) is queued behind the block, the page never resumes. Chrome avoids this by design: its FetchHandler and DevToolsURLLoaderInterceptor live in the browser process, below the renderer (content/browser/devtools/protocol/fetch_handler.cc), as does PageHandler::HandleJavaScriptDialog.
+
+**What Happened**: Lane cdpt's interception held only the event loop's fetches (AsyncFetch) and answered every Fetch command on the page session. Holding a sync XHR the same way would have deadlocked: the requestPaused event goes out, the client's continueRequest is posted to the Browser thread, which is the thread waiting for it. The same shape made Server.stop block while a dialog was open (its uninstall was an ordinary command).
+
+**Fix**: (1) The held requests live in a locked per-Browser table (src/devtools/fetch_interception.zig); the devtools thread answers the deciding commands itself (server.zig routes them to domains/fetch.zig DevtoolsThread). (2) A blocking driver's hold waits on a futex and its `Interception.any_thread` lets the holder decide from any thread, copying the decision before returning; an event-loop hold's decision is posted to the fetch's thread, which looks the hold up again (the fetch may have been dropped). (3) Detach, Fetch.disable and the server's stop release blocking holds on the devtools thread before anything is queued to the page. (4) The uninstall at stop goes through postSessionMessage (it runs inside a debugger pause's nested loop) and dismisses an open dialog while it waits.
+
+**Takeaway**: **Before putting a CDP command on the page session, ask whether the page's thread can be waiting for exactly that command; if it can, answer it where Chrome's browser process does - on the devtools thread, through state the page's thread only writes under a lock.**

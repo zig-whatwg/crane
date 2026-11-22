@@ -341,7 +341,14 @@ test "Playwright page.goto (htmx, React, Vue browser mode): one loaderId for the
     const received = rec.eventIndex("Network.responseReceived", page.session, sent, &.{.{ .path = "params.requestId", .equals = loader }}) orelse return error.NoResponseReceived;
     try testing.expect(received < reply);
     try testing.expectEqual(@as(i64, 200), cdp.at(rec.at(received), "params.response.status").?.integer);
-    try testing.expect(!cdp.at(rec.at(received), "params.hasExtraInfo").?.bool);
+    // A response that came over the network: its ExtraInfo first, then
+    // responseReceived with hasExtraInfo (seq-vue-e2e-one.txt; Puppeteer
+    // holds a hasExtraInfo response until its ExtraInfo has come, so the
+    // two must agree - gap G16's ExtraInfo).
+    try testing.expect(cdp.at(rec.at(received), "params.hasExtraInfo").?.bool);
+    const extra = rec.eventIndex("Network.responseReceivedExtraInfo", page.session, sent, &.{.{ .path = "params.requestId", .equals = loader }}) orelse return error.NoResponseExtraInfo;
+    try testing.expect(extra < received);
+    try testing.expect(rec.eventIndex("Network.requestWillBeSentExtraInfo", page.session, sent, &.{.{ .path = "params.requestId", .equals = loader }}) != null);
 
     // The commit: executionContextsCleared, lifecycle init, frameNavigated,
     // then the new document's contexts - main and utility (l.190-207).

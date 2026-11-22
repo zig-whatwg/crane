@@ -48,6 +48,10 @@ pub const PageSession = struct {
     /// Each domain's per-session state (domains/page_domains.zig States).
     states: page_domains.States = .{},
     attached: bool = false,
+    /// Fetch.enable is in force (written on the Browser thread, read by the
+    /// devtools thread, which answers the Fetch commands that decide a
+    /// held request: fetch_interception.zig).
+    fetch_enabled: std.atomic.Value(bool) = .init(false),
 
     /// Devtools thread: a session for `tab`, not yet attached. `link` is
     /// retained.
