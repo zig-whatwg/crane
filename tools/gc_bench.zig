@@ -229,6 +229,15 @@ const Sample = struct {
     /// Bytes outstanding in the general-purpose allocator - everything that is
     /// neither arena state nor a slab slot.
     gpa_outstanding: usize,
+    /// The most `gpa_outstanding` was since the reading before: what the
+    /// batches in between held at their highest, garbage included. A reading
+    /// is taken after the collection and the loop's turns, so it shows what
+    /// is KEPT; this shows what a task piled up before the loop freed it.
+    gpa_peak: usize = 0,
+    /// The most nodes the agent's deferred-teardown queue held at the end of
+    /// a batch's script since the reading before (before the collection and
+    /// the loop's turns): dead trees a task left for the loop to free.
+    queued_after_script: usize = 0,
     /// The engine's heap accounting (used, total, external), where the engine
     /// reports one. Distinguishes objects genuinely retained (`used` climbs) from
     /// the engine simply not handing pages back (`used` flat while RSS climbs).
@@ -314,12 +323,15 @@ fn takeSample(cycle: usize) Sample {
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
         .bridge_entries = if (browser_scope) |scope| instance_bridge.entryCount(scope) else 0,
         .gpa_outstanding = counting.outstanding,
+        .gpa_peak = counting.peak,
         .heap = readHeap(),
         .counter_storage = undefined,
         .counter_count = 0,
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .malloc_heap = memory.mallocHeapBytes() orelse 0,
     };
+    // The next reading's peak is the highest since this one.
+    counting.peak = counting.outstanding;
     sample.counter_count = readCounters(&sample.counter_storage);
     return sample;
 }
@@ -444,7 +456,16 @@ pub fn main(init: std.process.Init) !void {
     // one un-GC'd 200,000-iteration script and reported 756 B/element, while
     // `300000 25000` ran twelve and reported 476 - same build, same work, a
     // difference that was entirely an artefact of how often the numbers printed.
-    const gc_batch: usize = 5000;
+    // `--batch=<n>` changes it on purpose: one batch is one task of the page,
+    // and what dies inside a task is torn down only after it, so a workload
+    // that runs K operations in one task is read with `--batch=K` (lane mem1).
+    const gc_batch: usize = options.batchSize(args);
+    std.debug.print("gc_bench: {d} cycles per script (--batch=)\n", .{gc_batch});
+
+    // The trees the agent's collections and counts found dead, which its
+    // event loop frees between tasks (runtime.gc.DeferredTeardown).
+    const teardown_queue = &browser.agent_host.deferred_teardown;
+    var queued_after_script: usize = 0;
 
     var done: usize = 0;
     var next_sample: usize = every;
@@ -469,6 +490,7 @@ pub fn main(init: std.process.Init) !void {
         // (clean up after running script), so that anything the cycle queued
         // has finished before the next reading.
         try page.runScript(source);
+        queued_after_script = @max(queued_after_script, teardown_queue.pendingNodes());
 
         // What the batch queued - timers, port messages, tasks - runs now,
         // turn after turn, until the loop has nothing left to do; bounded,
@@ -486,7 +508,10 @@ pub fn main(init: std.process.Init) !void {
 
         done += batch;
         if (done >= next_sample or done >= cycles) {
-            try samples.append(allocator, takeSample(done));
+            var sample = takeSample(done);
+            sample.queued_after_script = queued_after_script;
+            queued_after_script = 0;
+            try samples.append(allocator, sample);
             while (next_sample <= done) next_sample += every;
         }
     }
@@ -525,9 +550,13 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
         if (gc_was_forced) ", engine GC forced" else "",
         if (loop_turned) ", event loop turned after each batch" else "",
     });
-    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
-        "cycle",   "resident MB", "since start",
-        "B/cycle", "malloc MB",   "zig-side MB",
+    // The last two columns are the batches' highest since the reading before:
+    // the Zig-side peak (garbage a task piled up included) and the dead nodes
+    // the teardown queue held when a batch's script ended.
+    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>14}\n", .{
+        "cycle",       "resident MB",  "since start",
+        "B/cycle",     "malloc MB",    "zig-side MB",
+        "zig peak MB", "queued nodes",
     });
 
     const first = samples[0].resident;
@@ -557,7 +586,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                     }
                 }
             }
-            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}\n", .{
+            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}  {d:>12.1}  {d:>14}\n", .{
                 s.cycle,
                 mb,
                 growth,
@@ -571,6 +600,8 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                 // `mstats` can no longer separate Crane's allocations from the C++
                 // wrapper's; this can.
                 @as(f64, @floatFromInt(s.gpa_outstanding)) / (1024.0 * 1024.0),
+                @as(f64, @floatFromInt(s.gpa_peak)) / (1024.0 * 1024.0),
+                s.queued_after_script,
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });

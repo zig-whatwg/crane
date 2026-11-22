@@ -317,6 +317,28 @@ pub fn countArg(args: []const [:0]const u8, index: usize, default: usize) usize 
     return std.fmt.parseInt(usize, args[index], 10) catch default;
 }
 
+const batch_flag = "--batch=";
+
+/// The cycles one fresh script runs when `--batch=` does not say.
+pub const default_batch: usize = 5000;
+
+/// The cycles each fresh script runs - one script is one task of the page,
+/// with the collection and the loop's turns (`--gc`, `--loop`) after it:
+/// the last `--batch=<n>` with a positive `n`, else `default_batch`. A
+/// workload that runs K operations in one task (a benchmark page's timed
+/// `run(K)`) is read with `--batch=K`: what dies inside a task is torn down
+/// only after it (runtime.gc.DeferredTeardown), so the batch decides the
+/// peak (lane mem1).
+pub fn batchSize(args: []const [:0]const u8) usize {
+    var size: usize = default_batch;
+    for (args[@min(1, args.len)..]) |arg| {
+        if (!std.mem.startsWith(u8, arg, batch_flag)) continue;
+        const n = std.fmt.parseInt(usize, arg[batch_flag.len..], 10) catch continue;
+        if (n > 0) size = n;
+    }
+    return size;
+}
+
 /// Whether each batch's script is followed by turns of the page's event
 /// loop until it has nothing left to do (`--loop`): without it nothing a
 /// cycle queues - a timer, a port's message, a task - ever runs, since the
@@ -372,6 +394,19 @@ test "--loop turns the event loop after each batch, wherever it is given; nothin
     // The program name is never read as a flag.
     try std.testing.expect(!drivesLoop(&.{"--loop"}));
     try std.testing.expect(!drivesLoop(&.{}));
+}
+
+test "--batch= sets the cycles one script runs; anything but a positive count leaves the default" {
+    try std.testing.expectEqual(default_batch, batchSize(&.{"gc_bench"}));
+    try std.testing.expectEqual(@as(usize, 8000), batchSize(&.{ "gc_bench", "16000", "8000", "--batch=8000" }));
+    // The last one given wins, as --body='s does.
+    try std.testing.expectEqual(@as(usize, 250), batchSize(&.{ "gc_bench", "--batch=1000", "--batch=250" }));
+    try std.testing.expectEqual(default_batch, batchSize(&.{ "gc_bench", "--batch=0" }));
+    try std.testing.expectEqual(default_batch, batchSize(&.{ "gc_bench", "--batch=x" }));
+    try std.testing.expectEqual(default_batch, batchSize(&.{ "gc_bench", "--batch=" }));
+    // Inside a body it is the body's text; the program name is never a flag.
+    try std.testing.expectEqual(default_batch, batchSize(&.{ "gc_bench", "--body=--batch=7" }));
+    try std.testing.expectEqual(default_batch, batchSize(&.{"--batch=7"}));
 }
 
 test "an empty --body= is ignored" {
