@@ -275,3 +275,83 @@ test "G3: one loaderId per document - a navigation's requestId is its loaderId a
     try testing.expectEqualStrings(nav_loader, cdp.stringAt(frame.value, "params.frame.loaderId").?);
     try testing.expect(!std.mem.eql(u8, nav_loader, blank_loader));
 }
+
+test "G12: disposing a context with several tabs removes every tab and page target, each session detached, and nothing reads past the target list" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer server.stop();
+    const client = try connectBrowser(allocator, server);
+    defer client.close();
+
+    const discover = try client.call("Target.setDiscoverTargets", "{\"discover\":true,\"filter\":[{}]}", "");
+    discover.deinit();
+    // Playwright's: auto-attach to pages, waiting.
+    const auto = try client.call("Target.setAutoAttach", "{\"autoAttach\":true,\"waitForDebuggerOnStart\":true,\"flatten\":true}", "");
+    auto.deinit();
+    const context = try client.call("Target.createBrowserContext", "{}", "");
+    defer context.deinit();
+    const context_id = cdp.stringAt(context.value, "result.browserContextId").?;
+    var params_buffer: [192]u8 = undefined;
+    // Three tabs: six targets the disposal removes, pair by pair.
+    for (0..3) |_| {
+        const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"about:blank\",\"browserContextId\":\"{s}\"}}", .{context_id}), "");
+        created.deinit();
+    }
+    const dispose = try client.call("Target.disposeBrowserContext", try std.fmt.bufPrint(&params_buffer, "{{\"browserContextId\":\"{s}\"}}", .{context_id}), "");
+    defer dispose.deinit();
+    try testing.expect(cdp.at(dispose.value, "result") != null);
+    // Every page session detached and all six targets destroyed.
+    var detached: usize = 0;
+    var destroyed: usize = 0;
+    while (detached < 3 or destroyed < 6) {
+        const event = try client.nextEventOf(&.{ "Target.detachedFromTarget", "Target.targetDestroyed" });
+        defer event.deinit();
+        if (std.mem.eql(u8, cdp.stringAt(event.value, "method").?, "Target.detachedFromTarget")) detached += 1 else destroyed += 1;
+    }
+    // The registry holds none of them.
+    const left = try client.call("Target.getTargets", "{}", "");
+    defer left.deinit();
+    for (cdp.at(left.value, "result.targetInfos").?.array.items) |info| {
+        try testing.expect(!std.mem.eql(u8, context_id, cdp.stringAt(info, "browserContextId") orelse ""));
+    }
+}
+
+test "G12: a disposeOnDetach context with tabs goes with its connection, without reading past the target list" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer server.stop();
+    {
+        const client = try connectBrowser(allocator, server);
+        defer client.close();
+        const context = try client.call("Target.createBrowserContext", "{\"disposeOnDetach\":true}", "");
+        defer context.deinit();
+        const context_id = cdp.stringAt(context.value, "result.browserContextId").?;
+        var params_buffer: [192]u8 = undefined;
+        for (0..2) |_| {
+            const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"about:blank\",\"browserContextId\":\"{s}\"}}", .{context_id}), "");
+            created.deinit();
+        }
+    }
+    // A second connection soon sees the context gone (the first one's end
+    // reaches the devtools thread on its own; each call is a round trip).
+    const watcher = try connectBrowser(allocator, server);
+    defer watcher.close();
+    var gone = false;
+    for (0..2000) |_| {
+        const contexts = try watcher.call("Target.getBrowserContexts", "{}", "");
+        defer contexts.deinit();
+        if (cdp.at(contexts.value, "result.browserContextIds").?.array.items.len == 0) {
+            gone = true;
+            break;
+        }
+    }
+    try testing.expect(gone);
+}

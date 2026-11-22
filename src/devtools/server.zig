@@ -342,12 +342,11 @@ pub const Server = struct {
     pub fn disposeContext(self: *Server, context: *targets.Context) void {
         if (context.disposed) return;
         context.disposed = true;
-        var i: usize = self.target_list.items.len;
-        while (i > 0) {
-            i -= 1;
-            const target = self.target_list.items[i];
-            if (target.context == context) self.removeTarget(target, true);
-        }
+        // One target at a time, found afresh: a removal takes a tab's pair
+        // (and their sessions) out of the lists at once, so no index into
+        // them survives it (lane cdpr's G12: the backward walk read past the
+        // list's end on Target.disposeBrowserContext).
+        while (self.lastTargetOf(context)) |target| self.removeTarget(target, true);
         browser_side.uninstallAndWait(context.side);
         if (context.owned) context.host.stop();
     }
@@ -366,6 +365,40 @@ pub const Server = struct {
     // ------------------------------------------------------------------
     // Targets
     // ------------------------------------------------------------------
+
+    /// The newest target of `context`, or null.
+    fn lastTargetOf(self: *Server, context: *targets.Context) ?*targets.Target {
+        var i = self.target_list.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (self.target_list.items[i].context == context) return self.target_list.items[i];
+        }
+        return null;
+    }
+
+    /// The newest session that `matches(session, key)`, or null: what a
+    /// removal loop asks again after each removal (`detach` takes a
+    /// session's children with it, so no index survives one).
+    fn lastSessionWhere(self: *Server, key: anytype, comptime matches: fn (*targets.Session, @TypeOf(key)) bool) ?*targets.Session {
+        var i = self.sessions.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (matches(self.sessions.items[i], key)) return self.sessions.items[i];
+        }
+        return null;
+    }
+
+    fn sessionOnTarget(s: *targets.Session, target: *targets.Target) bool {
+        return s.target == target;
+    }
+
+    fn sessionChildOf(s: *targets.Session, parent: *targets.Session) bool {
+        return s.parent == parent;
+    }
+
+    fn sessionOfConnection(s: *targets.Session, connection_id: u32) bool {
+        return s.connection_id == connection_id;
+    }
 
     pub fn findTarget(self: *Server, id: []const u8) ?*targets.Target {
         for (self.target_list.items) |t| if (t.id.eql(id)) return t;
@@ -488,12 +521,7 @@ pub const Server = struct {
             self.removeTarget(tab, false);
             return;
         };
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            const s = self.sessions.items[i];
-            if (s.target == target) self.detach(s, true);
-        }
+        while (self.lastSessionWhere(target, sessionOnTarget)) |s| self.detach(s, true);
         for (self.sessions.items) |s| {
             const filter = s.discover orelse continue;
             if (filter.matches(target.type)) s.emit(protocol.Target.targetDestroyed, .{ .targetId = target.id.slice() });
@@ -624,14 +652,9 @@ pub const Server = struct {
     /// goes to its parent (`notify`), and the sessions it auto-attached
     /// detach with it.
     pub fn detach(self: *Server, session: *targets.Session, notify: bool) void {
-        // Its children first.
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            if (i >= self.sessions.items.len) continue;
-            const child = self.sessions.items[i];
-            if (child.parent == session) self.detach(child, false);
-        }
+        // Its children first (each found afresh: a child's own children go
+        // with it).
+        while (self.lastSessionWhere(session, sessionChildOf)) |child| self.detach(child, false);
         // The target's last session going: targetInfoChanged (attached
         // false) to the discoverers, before the detachedFromTarget (Chrome's
         // order in the vue-e2e log, removeTarget).
@@ -751,13 +774,7 @@ pub const Server = struct {
     /// Devtools thread: a connection ended. Its sessions detach, and the
     /// contexts it made with disposeOnDetach are disposed.
     fn connectionClosed(self: *Server, connection: *Connection) void {
-        var i: usize = self.sessions.items.len;
-        while (i > 0) {
-            i -= 1;
-            if (i >= self.sessions.items.len) continue;
-            const s = self.sessions.items[i];
-            if (s.connection_id == connection.id) self.detach(s, false);
-        }
+        while (self.lastSessionWhere(connection.id, sessionOfConnection)) |s| self.detach(s, false);
         for (self.contexts.items) |c| {
             if (c.dispose_with == connection.id) self.disposeContext(c);
         }
@@ -1172,13 +1189,7 @@ const ReleaseTask = struct {
 /// A connection's end for the server's own stop: as `connectionClosed`,
 /// without the pipe's close request, and with what is queued still written.
 fn closeConnectionForStop(server: *Server, connection: *Connection) void {
-    var i: usize = server.sessions.items.len;
-    while (i > 0) {
-        i -= 1;
-        if (i >= server.sessions.items.len) continue;
-        const s = server.sessions.items[i];
-        if (s.connection_id == connection.id) server.detach(s, false);
-    }
+    while (server.lastSessionWhere(connection.id, Server.sessionOfConnection)) |s| server.detach(s, false);
     connection.implicit_session = null;
     // The writer writes what is queued (a Browser.close reply) and then
     // shuts the connection, which ends the reader.
