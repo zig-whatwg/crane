@@ -197,6 +197,7 @@ pub const Listener = if (have_host_events) browser.host_events.Listener else Stu
 /// as the host events carry it.
 pub const Milestone = @import("html").navigation.observer.Milestone;
 pub const MilestoneEvent = @import("html").navigation.observer.Event;
+pub const MilestoneDocument = @import("html").navigation.observer.DocumentRef;
 
 const StubEvent = union(enum) {
     tab_created: struct { tab: TabId, opener: ?TabId },
@@ -227,6 +228,18 @@ pub const DialogAnswer = if (have_host_events and @hasDecl(browser.host_events, 
 pub fn answerUserPrompt(host: *BrowserHost, tab: TabId, accept: bool, prompt_text: []const u8) ?bool {
     if (comptime @hasDecl(BrowserHost, "answerUserPrompt")) return host.answerUserPrompt(tab, accept, prompt_text);
     return null;
+}
+
+/// Dismiss the simple dialog open in the Browser, if any (any thread): the
+/// answer a closing remote end gives one nobody else will (Chrome's
+/// PageHandler::Disable answers a pending dialog false when no dialog
+/// manager takes it).
+pub fn dismissUserPrompt(host: *BrowserHost, allocator: std.mem.Allocator) void {
+    if (comptime @hasDecl(BrowserHost, "userPromptOf") and @hasDecl(BrowserHost, "answerUserPrompt")) {
+        const info = (host.userPromptOf(allocator) catch return) orelse return;
+        defer info.deinit(allocator);
+        _ = host.answerUserPrompt(info.tab, false, "");
+    }
 }
 
 /// Browser thread. Start delivering host events to `listener`.

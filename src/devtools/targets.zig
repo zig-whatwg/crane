@@ -76,6 +76,10 @@ pub const Target = struct {
     /// OWNED; empty until the page has a title (then targetInfo.title is
     /// the URL, as Chrome's when a page has none).
     title: []u8,
+    /// Whether the tab has committed a document the remote end heard of
+    /// (`navigated`): before it, Chrome reports the title "" - and a new
+    /// tab's tab target the URL "" (vue-e2e protocol log l.2-18, l.103).
+    committed: bool = false,
     opener: ?ids.Token = null,
     opened_by_page: bool = false,
     /// The tab target of a page target, the page target of a tab target.
@@ -200,17 +204,21 @@ pub const Session = struct {
 };
 
 /// The TargetInfo of `target` (Target domain). Its slices borrow from it.
+/// Chrome 157's (vue-e2e protocol log l.2-18, lane cdpr's G15): the title
+/// is "" until the tab commits, then the document's title or, with none,
+/// the URL (WebContents::GetTitle's fallback); a page target names no
+/// parentId (Chrome sets it for a frame or worker target under a page, not
+/// for a tab's page).
 pub fn targetInfo(target: *const Target) protocol.Target.TargetInfo {
     return .{
         .targetId = target.id.slice(),
         .type = target.type.name(),
-        .title = if (target.title.len != 0) target.title else target.url,
+        .title = if (target.title.len != 0) target.title else if (target.committed) target.url else "",
         .url = target.url,
         .attached = target.attached_sessions != 0,
         .openerId = if (target.opener) |*o| o.slice() else null,
         .canAccessOpener = target.opener != null and target.opened_by_page,
         .browserContextId = target.context.id.slice(),
-        .parentId = if (target.type == .page) (if (target.partner) |p| p.id.slice() else null) else null,
     };
 }
 

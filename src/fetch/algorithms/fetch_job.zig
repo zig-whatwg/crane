@@ -39,6 +39,7 @@ const scheme_fetch = @import("scheme_fetch.zig");
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const document_resources = @import("../internal/document_resources.zig");
 const cache_transaction = @import("../cache/transaction.zig");
+const origins = @import("../internal/origins.zig");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -114,9 +115,20 @@ pub const FetchJob = struct {
     /// was canceled, and says so.
     observed_start: bool = false,
     observed_end: bool = false,
+    /// The driver reported body bytes to the observer (`observeData`): a
+    /// body whole at its handover is not reported again.
+    observed_data: bool = false,
     /// Whether `network_request` is a CORS-preflight fetch's: its answer
     /// decides whether the request itself goes out.
     network_request_is_preflight: bool = false,
+    /// Whether `network_request` is HTTP-network-or-cache fetch's own retry
+    /// of the request it sent - with credentials (steps 15.4, 16.5) or on a
+    /// new connection (17.2): the same request to its observer, which held
+    /// it once already (Chrome's net stack restarts such a transaction
+    /// under the URLLoader the interceptor sees once).
+    network_request_is_retry: bool = false,
+    /// The next HTTP-network-or-cache fetch run is such a retry.
+    retrying: bool = false,
     /// HTTP-network-or-cache fetch's use of the HTTP cache while the network
     /// answers `network_request` (steps 11.3-11.5 run on the answer).
     cache_transaction: ?cache_transaction.Transaction = null,
@@ -129,6 +141,20 @@ pub const FetchJob = struct {
     /// progress: true once a 421 sent it again on a new connection (step 17).
     is_new_connection_fetch: bool = false,
     authentication_realm: ?[]u8 = null,
+    /// A challenge whose prompt is asked (the `.auth` step) until
+    /// `resumeAuth` - its response and realm, and the challenger's origin
+    /// the step names. OWNED.
+    pending_prompt: ?http_fetch.Prompt = null,
+    prompt_origin: ?[]u8 = null,
+    /// What a prompt answered (Fetch.continueWithAuth ProvideCredentials):
+    /// the authentication fetch's credentials, and step 16.4's
+    /// proxy-authentication entry. OWNED.
+    prompted: ?OwnedCredentials = null,
+    proxy_credentials: ?OwnedCredentials = null,
+    /// The answer to the next prompt, given before Fetch reached it: the
+    /// driver asked as the challenge arrived (`promptFor`,
+    /// `answerPromptEarly`), and the prompt takes it at once. OWNED.
+    early_answer: ?EarlyAnswer = null,
     /// HTTP fetch step 3's call to a service worker, while its answer is
     /// awaited (the job's reference), with step 3.3's serviceWorkerStartTime
     /// and whether step 4 would make a CORS-preflight request.
@@ -210,6 +236,10 @@ pub const FetchJob = struct {
         /// with resumeDocumentResource once it is not
         /// (`documentResourceReady`).
         document_resource,
+        /// HTTP-network-or-cache fetch prompts the end user for a username
+        /// and password (a 401's or a 407's challenge): resume with
+        /// `resumeAuth` and the answer - `.default` when nobody answers.
+        auth: AuthStep,
         /// Fetch has its response; `takeResult` hands it over.
         done,
     };
@@ -219,6 +249,74 @@ pub const FetchJob = struct {
     /// answer's (algorithms/cookies.zig).
     pub const NetworkStep = struct {
         request: *const NetworkRequest,
+    };
+
+    /// A username and password a prompt gave, OWNED by the job.
+    pub const OwnedCredentials = struct {
+        username: []u8,
+        password: []u8,
+
+        fn of(allocator: Allocator, username: []const u8, password: []const u8) Allocator.Error!OwnedCredentials {
+            const user = try allocator.dupe(u8, username);
+            errdefer allocator.free(user);
+            return .{ .username = user, .password = try allocator.dupe(u8, password) };
+        }
+
+        fn deinit(self: OwnedCredentials, allocator: Allocator) void {
+            allocator.free(self.username);
+            allocator.free(self.password);
+        }
+
+        fn borrowed(self: OwnedCredentials) http_fetch.Credentials {
+            return .{ .username = self.username, .password = self.password };
+        }
+    };
+
+    /// A prompt's answer given early (`answerPromptEarly`), OWNED.
+    const EarlyAnswer = union(enum) {
+        default,
+        cancel,
+        provide: OwnedCredentials,
+
+        fn deinit(self: EarlyAnswer, allocator: Allocator) void {
+            switch (self) {
+                .provide => |c| c.deinit(allocator),
+                else => {},
+            }
+        }
+
+        fn borrowed(self: *const EarlyAnswer) network.observer.AuthAnswer {
+            return switch (self.*) {
+                .default => .default,
+                .cancel => .cancel,
+                .provide => |c| .{ .provide = .{ .username = c.username, .password = c.password } },
+            };
+        }
+    };
+
+    /// A challenge a network answer carries that HTTP-network-or-cache
+    /// fetch will prompt for (`promptFor`). OWNED.
+    pub const OwnedChallenge = struct {
+        source: @FieldType(network.observer.AuthChallenge, "source"),
+        origin: []u8,
+        realm: []u8,
+
+        pub fn challenge(self: *const OwnedChallenge) network.observer.AuthChallenge {
+            return .{ .source = self.source, .origin = self.origin, .scheme = "basic", .realm = self.realm };
+        }
+
+        pub fn deinit(self: OwnedChallenge, allocator: Allocator) void {
+            allocator.free(self.origin);
+            allocator.free(self.realm);
+        }
+    };
+
+    /// HTTP-network-or-cache fetch's prompt (steps 15.3.2, 16.4): ask for
+    /// a username and password for `challenge` - a host's handler
+    /// (network/observer.zig `intercept_auth`), or nobody - and hand the
+    /// answer to `resumeAuth`. Borrowed from the job until then.
+    pub const AuthStep = struct {
+        challenge: network.observer.AuthChallenge,
     };
 
     /// A service worker's answer, as `resumeServiceWorker` takes it: a
@@ -266,6 +364,11 @@ pub const FetchJob = struct {
             if (self.observer()) |o| if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_ABORTED", true);
         }
         if (self.authentication_realm) |realm| allocator.free(realm);
+        if (self.pending_prompt) |prompt| prompt.deinit(allocator);
+        if (self.prompt_origin) |origin| allocator.free(origin);
+        if (self.prompted) |c| c.deinit(allocator);
+        if (self.proxy_credentials) |c| c.deinit(allocator);
+        if (self.early_answer) |a| a.deinit(allocator);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
         if (self.cache_transaction) |*transaction| transaction.deinit();
         // A service worker still answering: its answer is freed when it comes.
@@ -456,9 +559,89 @@ pub const FetchJob = struct {
         }
         if (o.response_received) |received| received(o.context, self.request, response);
         if (!bodyArriving(response)) {
+            // A body whole at its handover (scheme fetch's, the HTTP cache's,
+            // the blocking driver's, a fulfilled one): its bytes, unless the
+            // driver reported them as they came.
+            if (!self.observed_data) if (o.data_received) |data| {
+                const internal = response.internal orelse response;
+                if (internal.body orelse response.body) |b| if (b.pipe == null and b.getBytes().len > 0) data(o.context, self.request, b.getBytes());
+            };
             self.observed_end = true;
             if (o.loading_finished) |finished| finished(o.context, self.request, if (response.body) |b| b.length orelse 0 else 0);
         }
+    }
+
+    /// Whether the request the last `.network` step asked for is a
+    /// CORS-preflight request's (its observer hears nothing of it: Chrome
+    /// reports a preflight as no request of the page's).
+    pub fn isPreflight(self: *const FetchJob) bool {
+        return self.network_request_is_preflight;
+    }
+
+    /// Whether the waiting request is HTTP-network-or-cache fetch's retry
+    /// of one it sent already (`network_request_is_retry`).
+    pub fn isRetry(self: *const FetchJob) bool {
+        return self.network_request_is_retry;
+    }
+
+    /// The challenge HTTP-network-or-cache fetch will prompt for when it
+    /// reads `head` - the network's answer to the waiting request, asked
+    /// as it arrives (http_fetch.wouldPrompt) - so the driver can ask whoever
+    /// answers prompts BEFORE anything holds the response: Chrome raises
+    /// OnAuthRequired (DevTools' Fetch.authRequired) before the response
+    /// reaches its interceptor's response stage. Null: no prompt. OWNED by
+    /// the job's allocator.
+    pub fn promptFor(self: *FetchJob, head: *const NetworkResponse) Allocator.Error!?OwnedChallenge {
+        if (self.network_request_is_preflight) return null;
+        const found = (try http_fetch.wouldPrompt(self.allocator, self.params, self.networkOrCacheOptions(), head.status, head.headers)) orelse return null;
+        const origin = origins.serializedOriginOf(self.allocator, self.request.currentUrl()) catch |err| {
+            self.allocator.free(found.realm);
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => null,
+            };
+        };
+        return .{ .source = if (found.source == .proxy) .proxy else .server, .origin = origin, .realm = found.realm };
+    }
+
+    /// The answer to the prompt `promptFor` foresaw, given now: the prompt
+    /// takes it when Fetch reaches it (no `.auth` step then).
+    pub fn answerPromptEarly(self: *FetchJob, answer: network.observer.AuthAnswer) Allocator.Error!void {
+        const early: EarlyAnswer = switch (answer) {
+            .default => .default,
+            .cancel => .cancel,
+            .provide => |given| .{ .provide = try OwnedCredentials.of(self.allocator, given.username, given.password) },
+        };
+        if (self.early_answer) |old| old.deinit(self.allocator);
+        self.early_answer = early;
+    }
+
+    /// The driver hands the waiting network request to the network now:
+    /// its observer hears the headers it goes with (request_sent).
+    pub fn observeRequestSent(self: *FetchJob) void {
+        if (self.network_request_is_preflight) return;
+        const request = if (self.network_request) |*r| r else return;
+        const o = self.observer() orelse return;
+        if (o.request_sent) |sent| sent(o.context, self.request, request);
+    }
+
+    /// The network answered the waiting request with `head`, as it came:
+    /// its observer hears it (response_head_received).
+    pub fn observeResponseHead(self: *FetchJob, head: *const NetworkResponse) void {
+        if (self.network_request_is_preflight) return;
+        const o = self.observer() orelse return;
+        if (o.response_head_received) |received| received(o.context, self.request, head);
+    }
+
+    /// More of the response's body, as the driver delivers it (the
+    /// network's, a service worker's): its observer hears the bytes
+    /// (data_received).
+    pub fn observeData(self: *FetchJob, bytes: []const u8) void {
+        if (self.network_request_is_preflight or bytes.len == 0) return;
+        const o = self.observer() orelse return;
+        const received = o.data_received orelse return;
+        self.observed_data = true;
+        received(o.context, self.request, bytes);
     }
 
     /// The driver's word that the handed-over response's body ended, with
@@ -925,13 +1108,20 @@ pub const FetchJob = struct {
 
     /// HTTP fetch step 4.3: HTTP-network-or-cache fetch, as far as it can go.
     /// Main fetch passes HTTP fetch no options.
-    fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
-        const allocator = self.allocator;
-        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{
+    /// HTTP-network-or-cache fetch's options for the run in progress.
+    fn networkOrCacheOptions(self: *const FetchJob) http_fetch.HttpFetchOptions {
+        return .{
             .is_authentication_fetch = self.is_authentication_fetch,
             .authentication_realm = self.authentication_realm,
             .is_new_connection_fetch = self.is_new_connection_fetch,
-        }) catch |err| {
+            .prompted = if (self.prompted) |c| c.borrowed() else null,
+            .proxy_credentials = if (self.proxy_credentials) |c| c.borrowed() else null,
+        };
+    }
+
+    fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
+        const allocator = self.allocator;
+        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, self.networkOrCacheOptions()) catch |err| {
             return self.httpFetchFailed(err);
         };
         switch (network_start) {
@@ -942,6 +1132,8 @@ pub const FetchJob = struct {
             },
             .network => |needed| {
                 self.network_request = needed.request;
+                self.network_request_is_retry = self.retrying;
+                self.retrying = false;
                 self.cache_transaction = needed.cache;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
                 return .{ .network = .{ .request = &self.network_request.? } };
@@ -951,16 +1143,85 @@ pub const FetchJob = struct {
 
     /// HTTP fetch, once HTTP-network-or-cache fetch has returned `response`.
     fn httpNetworkOrCacheFetchReturned(self: *FetchJob, network_response: *InternalResponse) FetchError!Step {
-        // The rest of HTTP-network-or-cache fetch (step 14, a 401).
-        const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, .{
-            .is_authentication_fetch = self.is_authentication_fetch,
-            .authentication_realm = self.authentication_realm,
-            .is_new_connection_fetch = self.is_new_connection_fetch,
-        }, network_response) catch |err| {
+        // The rest of HTTP-network-or-cache fetch (steps 15-17: a 401, a
+        // 407, a 421).
+        const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, self.networkOrCacheOptions(), network_response) catch |err| {
             return self.httpFetchFailed(err);
         };
+        return self.networkOrCacheFinished(finished);
+    }
+
+    /// Steps 15.3.2-15.4 and 16.4-16.5 with the prompt's answer: the
+    /// challenge's response handed on (`.default`, `.cancel`), or the
+    /// request sent again with the credentials given (`.provide`: an
+    /// authentication fetch for a 401, the proxy-authentication entry for a
+    /// 407).
+    pub fn resumeAuth(self: *FetchJob, answer: network.observer.AuthAnswer) FetchError!Step {
+        const allocator = self.allocator;
+        const prompt = self.pending_prompt orelse return FetchError.NetworkError; // no prompt was asked
+        self.pending_prompt = null;
+        if (self.prompt_origin) |origin| allocator.free(origin);
+        self.prompt_origin = null;
+        const http_answer: http_fetch.PromptAnswer = switch (answer) {
+            .default => .none,
+            .cancel => .cancel,
+            .provide => |given| blk: {
+                const owned = OwnedCredentials.of(allocator, given.username, given.password) catch {
+                    prompt.deinit(allocator);
+                    return FetchError.OutOfMemory;
+                };
+                const slot = if (prompt.source == .proxy) &self.proxy_credentials else &self.prompted;
+                if (slot.*) |old| old.deinit(allocator);
+                slot.* = owned;
+                break :blk .{ .credentials = owned.borrowed() };
+            },
+        };
+        const source = prompt.source;
+        const finished = http_fetch.promptAnswered(allocator, self.params, self.networkOrCacheOptions(), prompt, http_answer) catch |err| {
+            return self.httpFetchFailed(err);
+        };
+        // 16.5: a 407's retry is "HTTP-network-or-cache fetch given
+        // fetchParams" - no authentication fetch; its entry goes as
+        // Proxy-Authorization (step 8.22).
+        if (source == .proxy) switch (finished) {
+            .authentication_retry => |realm| {
+                allocator.free(realm);
+                self.retrying = true;
+                return self.httpNetworkOrCacheFetch();
+            },
+            else => {},
+        };
+        return self.networkOrCacheFinished(finished);
+    }
+
+    /// HTTP fetch, from what the end of HTTP-network-or-cache fetch decided.
+    fn networkOrCacheFinished(self: *FetchJob, finished: http_fetch.HttpNetworkFinish) FetchError!Step {
         const response = switch (finished) {
             .response => |r| r,
+            .prompt => |prompt| {
+                // Steps 15.3.2 / 16.4: the prompt - whoever can answer is
+                // asked (the driver's `.auth` step), nobody: `.default`.
+                const origin = origins.serializedOriginOf(self.allocator, self.request.currentUrl()) catch {
+                    prompt.deinit(self.allocator);
+                    return FetchError.OutOfMemory;
+                };
+                if (self.pending_prompt) |old| old.deinit(self.allocator);
+                if (self.prompt_origin) |old| self.allocator.free(old);
+                self.pending_prompt = prompt;
+                self.prompt_origin = origin;
+                // Answered already, as the challenge arrived.
+                if (self.early_answer) |early| {
+                    self.early_answer = null;
+                    defer early.deinit(self.allocator);
+                    return self.resumeAuth(early.borrowed());
+                }
+                return .{ .auth = .{ .challenge = .{
+                    .source = if (prompt.source == .proxy) .proxy else .server,
+                    .origin = origin,
+                    .scheme = "basic",
+                    .realm = prompt.realm,
+                } } };
+            },
             .authentication_retry => |realm| {
                 if (self.authentication_realm) |old| self.allocator.free(old);
                 self.authentication_realm = realm;
@@ -968,6 +1229,7 @@ pub const FetchJob = struct {
                 // Step 15.4's run is given fetchParams and true: its
                 // isNewConnectionFetch is the default, false.
                 self.is_new_connection_fetch = false;
+                self.retrying = true;
                 // The normal network step: both drivers schedule it in the
                 // same way as the first request, never inside a curl callback.
                 return self.httpNetworkOrCacheFetch();
@@ -977,6 +1239,7 @@ pub const FetchJob = struct {
                 // fetchParams, isAuthenticationFetch, and true - on a new
                 // connection, scheduled as the first request was.
                 self.is_new_connection_fetch = true;
+                self.retrying = true;
                 return self.httpNetworkOrCacheFetch();
             },
         };
@@ -996,6 +1259,9 @@ pub const FetchJob = struct {
                 self.is_new_connection_fetch = false;
                 if (self.authentication_realm) |realm| self.allocator.free(realm);
                 self.authentication_realm = null;
+                // A prompt's answer was for that URL's challenge.
+                if (self.prompted) |c| c.deinit(self.allocator);
+                self.prompted = null;
                 // HTTP-redirect fetch steps 20-22: main fetch again, one deeper.
                 self.depth += 1;
                 // The same fetch goes on to the new URL.

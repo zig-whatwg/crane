@@ -52,6 +52,11 @@ fn finish(case: Case) !Outcome {
             allocator.free(realm);
             return error.UnexpectedAuthenticationRetry;
         },
+        // A 401's or 407's prompt (steps 15.3.2, 16.4): no case here has one.
+        .prompt => |prompt| {
+            prompt.deinit(allocator);
+            return error.UnexpectedPrompt;
+        },
         .response => |r| {
             defer r.deinit();
             if (r.response_type == .@"error") return .network_error;
