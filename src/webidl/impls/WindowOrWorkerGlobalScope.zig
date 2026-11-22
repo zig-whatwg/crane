@@ -131,17 +131,23 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
         allocator.free(i.message);
         allocator.free(i.filename);
     };
+    // The realm of the script that called reportError(): an isolated world's
+    // report is that world's only (Blink's WindowOrWorkerGlobalScope::
+    // reportError makes the ErrorEvent for the caller's ScriptState's world).
+    const reporting_realm = engine.currentRealm();
     const extracted: runtime.ErrorInfo = if (info) |i| .{
         .message = i.message,
         .filename = i.filename,
         .lineno = i.lineno,
         .colno = i.colno,
         .error_value = i.error_value,
+        .realm = reporting_realm,
     } else .{
         .message = "",
         .filename = "",
         .lineno = 0,
         .colno = 0,
+        .realm = reporting_realm,
         .error_value = e,
     };
     // Steps 4–7: the host reporter applies the reporting-mode guard, fires
@@ -476,6 +482,9 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The callback's realm: an isolated world's error event is that
+        // world's only (report_exception).
+        .realm = realm,
     };
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }

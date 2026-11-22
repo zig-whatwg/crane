@@ -42,6 +42,16 @@ pub const Result = csp.code_generation.Result;
 /// bodyString, codeString, compilationType, parameterArgs, bodyArg)."
 pub fn ensureCanCompileStrings(host: ?*anyopaque, realm: runtime.Context, compilation: *const engine.StringCompilation) engine.StringCompilationVerdict {
     _ = host;
+    // An isolated world with a policy of its own: that policy, not the
+    // page's (`WorldPolicy`).
+    if (WorldPolicy.of(realm)) |world_policy| {
+        var policy = world_policy;
+        defer policy.deinit();
+        return switch (policy.compileStrings(compilation.code_string, compilation.arguments_are_code_like)) {
+            .allowed => .allowed,
+            .blocked => .blocked,
+        };
+    }
     const global = trusted_types.globalOf(realm) orelse return .allowed;
     const compilation_type: CompilationType = switch (compilation.compilation_type) {
         .eval => .eval,
@@ -68,6 +78,12 @@ pub fn getCodeForEval(host: ?*anyopaque, realm: runtime.Context, argument: engin
 /// WebAssembly.CompileError the engine throws.
 pub fn ensureCanCompileWasmBytes(host: ?*anyopaque, realm: runtime.Context) bool {
     _ = host;
+    // An isolated world with a policy of its own: that policy (`WorldPolicy`).
+    if (WorldPolicy.of(realm)) |world_policy| {
+        var policy = world_policy;
+        defer policy.deinit();
+        return csp.code_generation.ensureDoesNotBlockWasmByteCompilation(&policy.list, null) == .allowed;
+    }
     // 1. "Let global be realm's global object."
     const global = trusted_types.globalOf(realm) orelse return true;
     const list = trusted_types.cspListOf(global) orelse return true;
@@ -110,6 +126,63 @@ pub fn ensureCSPDoesNotBlockStringCompilation(global: *runtime.Instance, code_st
 pub fn timerHandlerAllowed(global: *runtime.Instance, handler: []const u8) bool {
     return ensureCSPDoesNotBlockStringCompilation(global, handler, .timer, false) == .allowed;
 }
+
+/// An isolated world's own Content Security Policy (engine section 4.2a,
+/// engine.WorldInfo.content_security_policy): Blink's IsolatedWorldCSP. The
+/// script of a world that has one is checked against it INSTEAD of the page's
+/// - ContentSecurityPolicy::ShouldBypassMainWorld, LocalDOMWindow::
+/// GetContentSecurityPolicyForWorld (third_party/blink/renderer/core/frame/
+/// csp/content_security_policy.cc, isolated_world_csp.cc; BSD-3 - reproduced,
+/// not copied) - and its violations are reported to no one (Blink's
+/// isolated-world delegate reports to the console only). A world with none -
+/// every DevTools world - is governed by the page's policies, as
+/// GetContentSecurityPolicyForWorld answers the main world's for it: `of`
+/// answers null then, and the page's checks run. Trusted Types: a world has
+/// no default policy of the page's (Blink's TrustedTypePolicyFactory is per
+/// world), so a world policy that requires TrustedScript blocks a string
+/// outright.
+pub const WorldPolicy = struct {
+    list: csp.CSPList,
+
+    /// `realm`'s world's own policy, parsed for one check (OWNED: `deinit`);
+    /// null when it has none - the page's governs it - and for a realm that
+    /// is no world realm (no lookup without worlds: engine.worldInfoOf). Out
+    /// of memory, a list that blocks everything: a policy that cannot be
+    /// read fails closed.
+    pub fn of(realm: runtime.Context) ?WorldPolicy {
+        const info = engine.worldInfoOf(realm) orelse return null;
+        const text = info.content_security_policy orelse return null;
+        const allocator = realm.allocator;
+        var list = csp.CSPList.init(allocator);
+        const policy = csp.parsing.parseSerializedCSP(allocator, text, .header, .enforce) catch {
+            list.markUnenforceable();
+            return .{ .list = list };
+        };
+        list.append(policy) catch {
+            var dropped = policy;
+            dropped.deinit();
+            list.markUnenforceable();
+        };
+        return .{ .list = list };
+    }
+
+    pub fn deinit(self: *WorldPolicy) void {
+        self.list.deinit();
+    }
+
+    /// Whether the policy requires TrustedScript for script sinks.
+    pub fn requiresTrustedScript(self: *const WorldPolicy) bool {
+        return csp.directives.doesSinkTypeRequireTrustedTypes(&self.list, trusted_types.script_sink_group, true);
+    }
+
+    /// CSP 4.4.1 against the world's policy: a string the policy requires
+    /// to be trusted, and is not, is blocked (no default policy runs in the
+    /// world); then the policy's string compilation check, unreported.
+    pub fn compileStrings(self: *const WorldPolicy, code_string: []const u8, is_trusted: bool) Result {
+        if (!is_trusted and self.requiresTrustedScript()) return .blocked;
+        return csp.code_generation.ensureDoesNotBlockStringCompilation(&self.list, code_string, null);
+    }
+};
 
 /// CSP 4.4.1 steps 2.4.1-2.4.3: "Set sourceString to the result of executing
 /// the get trusted type compliant string algorithm, with TrustedScript,

@@ -1575,6 +1575,17 @@ pub const WorldRealmOptions = struct {
     /// CDP's Page.createIsolatedWorld {grantUniveralAccess} sets. Recorded
     /// with the world, as `name` is.
     universal_access: bool = false,
+    /// The world's own Content Security Policy (a serialized policy), or
+    /// null: Blink's IsolatedWorldCSP. Null - every DevTools world - and the
+    /// page's policy governs the world's script, as Blink's
+    /// GetContentSecurityPolicyForWorld answers the main world's for an
+    /// isolated world with none; a string, and the world's script is
+    /// checked against it INSTEAD of the page's (Blink's
+    /// ContentSecurityPolicy::ShouldBypassMainWorld: an extension's content
+    /// script world) - "" checks nothing. A world policy's violations are
+    /// reported to no one but a console (Blink's isolated-world CSP
+    /// delegate). BORROWED for the call; recorded with the world.
+    content_security_policy: ?[]const u8 = null,
 };
 
 /// What a world realm is (`worldInfoOf`).
@@ -1583,6 +1594,9 @@ pub const WorldInfo = struct {
     /// BORROWED until the realm ends.
     name: []const u8,
     universal_access: bool,
+    /// The world's own policy (WorldRealmOptions.content_security_policy),
+    /// BORROWED until the agent ends; null: the page's governs it.
+    content_security_policy: ?[]const u8 = null,
     /// The main-world realm whose Window the world realm's global wraps.
     main: Context,
 };

@@ -101,6 +101,9 @@ pub const UserAgentStorage = standard.UserAgentStorage;
 /// The storage sheds of a Browser's traversable navigables (session
 /// storage): its navigables', on its window thread.
 pub const TraversableStorageSheds = standard.TraversableStorageSheds;
+/// A Browser's profile directory, as its local storage persists there
+/// (the user's ruling D6, 2026-11-21).
+pub const profile = @import("profile.zig");
 
 // StorageManager interface (Phase 3.10)
 pub const storage_manager = @import("storage_manager.zig");
@@ -138,4 +141,5 @@ test {
     _ = quota;
     _ = persistence;
     _ = indexeddb;
+    _ = profile;
 }

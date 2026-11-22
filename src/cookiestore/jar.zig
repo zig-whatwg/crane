@@ -13,6 +13,10 @@ const PartitionKey = @import("cookie.zig").PartitionKey;
 const domain_matching = @import("domain_matching.zig");
 const clock = @import("clock");
 const ChangeType = @import("change_observer.zig").ChangeType;
+const platform = @import("platform");
+const storage = @import("storage");
+const CookiePersistence = @import("storage_integration.zig").CookiePersistence;
+const persistence_log = std.log.scoped(.cookie_persistence);
 
 fn nowMillis() i64 {
     // TODO(platform R1): platform.wallMillis() once the retained old platform
@@ -105,6 +109,11 @@ pub const CookieJar = struct {
     /// the hook by `unlock` after releasing the lock.
     pending: std.ArrayListUnmanaged(PendingChange) = .empty,
 
+    /// The jar's persistence in its Browser's profile directory, when it
+    /// has one (`attachProfile`; storage_integration.zig): every change to
+    /// `cookies` is recorded there. Null: the jar is in memory alone.
+    persistence: ?*CookiePersistence = null,
+
     const PendingChange = struct {
         change_type: ChangeType,
         cookie: Cookie,
@@ -150,7 +159,8 @@ pub const CookieJar = struct {
         self.pending.append(self.allocator, .{ .change_type = change_type, .cookie = copy }) catch copy.deinit();
     }
 
-    /// Free all resources
+    /// Free all resources. Nothing is written to the profile here: the
+    /// Browser flushed (`flush`) while its platform state lived.
     pub fn deinit(self: *Self) void {
         for (self.cookies.items) |*cookie| {
             cookie.deinit();
@@ -158,6 +168,32 @@ pub const CookieJar = struct {
         self.cookies.deinit(self.allocator);
         for (self.pending.items) |*change| change.cookie.deinit();
         self.pending.deinit(self.allocator);
+        if (self.persistence) |persistence| persistence.destroy();
+        self.persistence = null;
+    }
+
+    /// The Browser has a profile directory (D6, the user's ruling
+    /// 2026-11-21): the jar's persistent cookies are read from `browser`'s
+    /// store "cookies" now, and its changes committed to it from here on
+    /// (storage_integration.zig), arming commits on `timer`. Browser.init's
+    /// (src/browser/profile_stores.zig), before any realm; the jar is empty.
+    /// A store that cannot be read leaves the jar with what was read, and
+    /// is logged; the jar still persists what changes.
+    pub fn attachProfile(self: *Self, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer) std.mem.Allocator.Error!void {
+        std.debug.assert(self.persistence == null and self.cookies.items.len == 0);
+        const persistence = try CookiePersistence.create(self.allocator, browser, timer, self);
+        self.persistence = persistence;
+        persistence.load() catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => persistence_log.err("the profile's cookies could not be read ({s}); the jar starts with what was read", .{@errorName(err)}),
+        };
+    }
+
+    /// Commit what the jar has queued for its profile now: the Browser's
+    /// end, before its loop and its platform state end. Nothing without a
+    /// profile. Never under the jar's lock.
+    pub fn flush(self: *Self) void {
+        if (self.persistence) |persistence| persistence.flush();
     }
 
     /// Store a cookie, replacing any existing cookie with the same identity
@@ -187,9 +223,11 @@ pub const CookieJar = struct {
                 owned_cookie.creation_time = self.cookies.items[index].creation_time;
                 self.cookies.items[index].deinit();
                 self.cookies.items[index] = owned_cookie;
+                if (self.persistence) |persistence| persistence.recordStored(&self.cookies.items[index]);
                 self.notify(.changed, &self.cookies.items[index]);
             } else {
                 try self.cookies.append(self.allocator, owned_cookie);
+                if (self.persistence) |persistence| persistence.recordStored(&self.cookies.items[self.cookies.items.len - 1]);
                 self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
             }
         }
@@ -208,6 +246,7 @@ pub const CookieJar = struct {
     /// Remove and free the cookie at `index`.
     pub fn removeAt(self: *Self, index: usize) void {
         var removed = self.cookies.orderedRemove(index);
+        if (self.persistence) |persistence| persistence.recordRemoved(&removed);
         removed.deinit();
     }
 
@@ -216,6 +255,7 @@ pub const CookieJar = struct {
     fn collectAt(self: *Self, index: usize) void {
         var removed = self.cookies.orderedRemove(index);
         defer removed.deinit();
+        if (self.persistence) |persistence| persistence.recordRemoved(&removed);
         self.notify(.deleted, &removed);
     }
 
@@ -237,6 +277,7 @@ pub const CookieJar = struct {
             if (cookieMatches(cookie, options)) {
                 // 4. Set the last-access-time of each cookie to now.
                 cookie.touch();
+                if (self.persistence) |persistence| persistence.recordAccess(cookie);
                 var cloned = try cookie.clone(self.allocator);
                 errdefer cloned.deinit();
                 try result.append(self.allocator, cloned);
@@ -280,6 +321,7 @@ pub const CookieJar = struct {
             cookie.deinit();
         }
         self.cookies.clearRetainingCapacity();
+        if (self.persistence) |persistence| persistence.recordCleared();
     }
 
     /// Get the number of cookies

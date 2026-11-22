@@ -33,6 +33,7 @@ const callback_interfaces = @import("callback_interfaces.zig");
 const V8CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
 const support = @import("protocol_support.zig");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -115,6 +116,14 @@ const CallbackRealm = struct {
         return @import("dom").document_activity.activity(global, runtime.SlabAllocator.generationOf(global)) != .gone;
     }
 
+    /// Whether the callback's arguments are checked across worlds
+    /// (`Arguments.across_worlds`): its realm's Browser made an isolated
+    /// world. Two loads, no lookup - the fast path for every other Browser.
+    fn acrossWorlds(self: CallbackRealm) bool {
+        const realm = self.realm orelse return false;
+        return protocol_worlds.realmMayHaveWorlds(realm);
+    }
+
     /// "Clean up after running script".
     fn leave(self: CallbackRealm) void {
         self.scope.deinit();
@@ -130,6 +139,12 @@ const Arguments = struct {
     values: [max_arguments]realm_entry.EngineValue = undefined,
     pointers: [max_arguments]*ffi.Value = undefined,
     count: usize = 0,
+    /// The callback's realm is of a Browser that made an isolated world
+    /// (`CallbackRealm.acrossWorlds`): an object argument of another world is converted
+    /// into the callback's (protocol_worlds.acrossWorlds) - an event's
+    /// detail a world's script stored, handed to a page listener. Off - the
+    /// fast path, every Browser with no world - nothing is compared.
+    across_worlds: bool = false,
 
     fn convert(self: *Arguments, isolate: *ffi.Isolate, context: *ffi.Context, args: []const JSValue) Error!void {
         if (args.len > max_arguments) return error.OperationFailed;
@@ -137,7 +152,19 @@ const Arguments = struct {
         for (args) |arg| {
             self.values[self.count] = switch (arg) {
                 .instance => |instance| .{ .ptr = try support.relevantWrapper(isolate, instance), .made = true },
-                else => realm_entry.EngineValue.of(isolate, context, arg) catch |err| return support.protocolError(err),
+                else => converted: {
+                    const value = realm_entry.EngineValue.of(isolate, context, arg) catch |err| return support.protocolError(err);
+                    // A held value of another world than the callback's:
+                    // its value in the callback's world, never the other
+                    // world's object. One branch when no world exists.
+                    if (self.across_worlds and arg == .handle) {
+                        if (protocol_worlds.acrossWorlds(isolate, value.ptr, context)) |across| {
+                            value.release();
+                            break :converted .{ .ptr = across, .made = true };
+                        }
+                    }
+                    break :converted value;
+                },
             };
             self.pointers[self.count] = self.values[self.count].ptr;
             self.count += 1;
@@ -325,7 +352,7 @@ pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const eng
     // The callback this value, from where it was read.
     const receiver = try Receiver.of(entered, this_arg);
     defer receiver.release();
-    var js_args: Arguments = .{};
+    var js_args: Arguments = .{ .across_worlds = callback_realm.acrossWorlds() };
     defer js_args.release();
 
     var body: struct {
@@ -413,7 +440,7 @@ pub fn constructCallbackFunction(realm: Context, callback: *const engine.Callbac
     // As for invokeCallbackFunction (`CallbackRealm.runnable`).
     if (!callback_realm.runnable()) return error.OperationFailed;
 
-    var js_args: Arguments = .{};
+    var js_args: Arguments = .{ .across_worlds = callback_realm.acrossWorlds() };
     defer js_args.release();
 
     var body: struct {
@@ -496,7 +523,7 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
 
     const receiver = try Receiver.of(entered, this_arg);
     defer receiver.release();
-    var js_args: Arguments = .{};
+    var js_args: Arguments = .{ .across_worlds = callback_realm.acrossWorlds() };
     defer js_args.release();
 
     var body: struct {

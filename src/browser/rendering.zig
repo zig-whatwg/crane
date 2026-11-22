@@ -337,20 +337,35 @@ fn cancelAnimationFrameIn(frames: *Frames, realm: runtime.Context, handle: u32) 
     // A handle names a callback in THIS target's map only (each document
     // numbers its own from 1), so another window's callback with that
     // handle - or the previous document's of a reused Window - is not
-    // cancelled.
+    // cancelled. The map is the document's whatever world asked: an
+    // isolated world's realm (engine section 4.2a) is its main realm's
+    // Window, and cancelAnimationFrame from any world cancels the document's
+    // callback of that id - Blink's FrameRequestCallbackCollection is the
+    // document's ScriptedAnimationController's, one per document for every
+    // world (third_party/blink/renderer/core/dom/
+    // frame_request_callback_collection.cc, BSD-3 - reproduced, not copied).
     const target = targetDocument(realm);
     for (frames.running) |*entry| {
-        if (!entry.consumed and entry.handle == handle and entry.realm == realm and entry.target_document == target) {
+        if (!entry.consumed and entry.handle == handle and sameWindow(entry.realm, realm) and entry.target_document == target) {
             entry.cancelled = true;
             return;
         }
     }
     for (frames.pending.items) |*entry| {
-        if (entry.handle == handle and entry.realm == realm and entry.target_document == target) {
+        if (entry.handle == handle and sameWindow(entry.realm, realm) and entry.target_document == target) {
             entry.cancelled = true;
             return;
         }
     }
+}
+
+/// Whether two realms are one Window's: the same realm - the fast path, and
+/// the only answer with no isolated world - or a Window's main realm and one
+/// of its world realms, or two of its world realms (engine.mainRealmOf, which
+/// asks nothing for a Browser that made no world).
+fn sameWindow(a: runtime.Context, b: runtime.Context) bool {
+    if (a == b) return true;
+    return engine.mainRealmOf(a) == engine.mainRealmOf(b);
 }
 
 // ============================================================================
