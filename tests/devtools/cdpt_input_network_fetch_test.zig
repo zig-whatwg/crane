@@ -152,8 +152,12 @@ test "Fetch: a request the patterns match pauses before the network; fulfillRequ
     const id = cdp.stringAt(paused.value, "params.requestId").?;
     try testing.expect(std.mem.startsWith(u8, id, "interception-job-"));
     var params_buffer: [256]u8 = undefined;
-    // body: base64("hi")
-    const fulfilled = try page.call("Fetch.fulfillRequest", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\",\"responseCode\":201,\"responseHeaders\":[{{\"name\":\"x-crane\",\"value\":\"yes\"}}],\"body\":\"aGk=\"}}", .{id}));
+    // body: base64("hi"). The page is a data: document - an opaque origin -
+    // so its fetch is cross-origin, and a fulfilled response is held to CORS
+    // as any other (Chrome too: the renderer checks what the interceptor
+    // answered): without Access-Control-Allow-Origin the fetch failed, and
+    // x-crane is read only when exposed.
+    const fulfilled = try page.call("Fetch.fulfillRequest", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\",\"responseCode\":201,\"responseHeaders\":[{{\"name\":\"x-crane\",\"value\":\"yes\"}},{{\"name\":\"Access-Control-Allow-Origin\",\"value\":\"*\"}},{{\"name\":\"Access-Control-Expose-Headers\",\"value\":\"x-crane\"}}],\"body\":\"aGk=\"}}", .{id}));
     defer fulfilled.deinit();
     try testing.expect(cdp.at(fulfilled.value, "result") != null);
     const answer = try page.evaluate("window.answer.then(async s => s)");
