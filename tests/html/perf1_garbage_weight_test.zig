@@ -192,10 +192,16 @@ fn joinPeak(shape: JoinShape) !JoinRun {
 /// this, nothing was freed until the callback returned: 8,000 joins in one
 /// timer callback peaked at 56.6 MB Zig-side against 5.8 MB spread over 80
 /// callbacks (gc_bench, chat2), with 56,000 Ranges and 57,000 queued nodes
-/// waiting at the callback's end. Here (server1, Debug): 42,075 objects in
-/// one callback against 12,750 spread (3.3x); 40,290 with the trees' rule
-/// alone (the deleted trees hold wrapped nodes, whose wrappers' releases
-/// wait for depth zero); 24,225 (1.9x) with the finalizers' too.
+/// waiting at the callback's end. Here (server1, Debug, slab objects at the
+/// peak): 42,075 in one callback against 12,750 spread (3.3x); 40,290 with
+/// the trees' rule alone; 24,225 (1.9x) with the finalizers' too - and the
+/// same with the fresh node wrappers' releases (tests/v8/
+/// mem1_fresh_node_release_test pins those), and the same again with the
+/// queue's byte bound at half the live DOM instead of all of it, with 2,560
+/// nodes freed inside the callback in every variant. The bound is 2.5x on
+/// those measurements. What the remaining 1.9x is made of is under
+/// investigation (lane mem1's handoff: the census of live objects by
+/// interface, one callback against spread).
 fn oneCallbackStaysNearTheSpreadPeak() !void {
     const spread = try joinPeak(.spread);
     const one = try joinPeak(.one_callback);
