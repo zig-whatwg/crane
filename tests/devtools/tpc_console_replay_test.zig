@@ -18,25 +18,24 @@ const BrowserHost = browser_mod.BrowserHost;
 const outbound = devtools.outbound;
 
 /// A Browser on its own thread that a devtools server serves (its
-/// BrowserSide installed), one tab, and a page session attached only when
-/// the test says so.
+/// BrowserSide installed), one tab, and up to two page sessions (SESSION1,
+/// SESSION2), each attached only when the test says so.
 const Harness = struct {
     allocator: std.mem.Allocator,
     host: *BrowserHost,
     queue: *outbound.Outbound,
-    link: *outbound.SessionLink,
+    links: [2]?*outbound.SessionLink = .{ null, null },
     side: *devtools.BrowserSide,
-    session: ?*devtools.PageSession = null,
+    sessions: [2]?*devtools.PageSession = .{ null, null },
     tab: u64,
     next_id: i64 = 1,
     /// Messages read so far, parsed, OWNED.
     seen: std.ArrayList(std.json.Parsed(std.json.Value)) = .empty,
 
     fn init(self: *Harness, allocator: std.mem.Allocator) !void {
-        self.* = .{ .allocator = allocator, .host = undefined, .queue = undefined, .link = undefined, .side = undefined, .tab = 0 };
+        self.* = .{ .allocator = allocator, .host = undefined, .queue = undefined, .side = undefined, .tab = 0 };
         self.host = try BrowserHost.start(allocator, .{});
         self.queue = try outbound.Outbound.create(allocator);
-        self.link = try outbound.SessionLink.create(allocator, self.queue, "SESSION1");
         var context_id: [32]u8 = undefined;
         @memset(&context_id, 'C');
         var sink_context: u8 = 0;
@@ -61,32 +60,37 @@ const Harness = struct {
         self.allocator.free(at);
     }
 
-    /// Attach the page session to the tab now.
-    fn attach(self: *Harness) !void {
-        const session = try devtools.PageSession.allocate(self.allocator, self.link, self.tab, devtools.ids.frameId(0xC0FFEE, self.tab));
+    const session_names = [2][]const u8{ "SESSION1", "SESSION2" };
+
+    /// Attach page session `which` (0: SESSION1, 1: SESSION2) to the tab now.
+    fn attach(self: *Harness, which: usize) !void {
+        const link = try outbound.SessionLink.create(self.allocator, self.queue, session_names[which]);
+        self.links[which] = link;
+        const session = try devtools.PageSession.allocate(self.allocator, link, self.tab, devtools.ids.frameId(0xC0FFEE, self.tab));
         try devtools.browser_side.AttachTask.post(self.side, session);
-        self.session = session;
+        self.sessions[which] = session;
     }
 
     fn deinit(self: *Harness) void {
-        if (self.session) |session| devtools.browser_side.DetachTask.post(self.side, session);
+        for (self.sessions) |maybe| if (maybe) |session| devtools.browser_side.DetachTask.post(self.side, session);
         devtools.browser_side.uninstallAndWait(self.side);
         self.host.stop();
         self.side.destroy();
-        self.link.release();
+        for (self.links) |maybe| if (maybe) |link| link.release();
         self.drain();
         self.queue.release();
         for (self.seen.items) |*parsed| parsed.deinit();
         self.seen.deinit(self.allocator);
     }
 
-    /// Send `method` with `params_json` on the session; returns the call's id.
-    fn send(self: *Harness, method: []const u8, params_json: []const u8) !i64 {
+    /// Send `method` with `params_json` on session `which`; returns the
+    /// call's id (unique across both sessions).
+    fn send(self: *Harness, which: usize, method: []const u8, params_json: []const u8) !i64 {
         const id = self.next_id;
         self.next_id += 1;
-        const message = try std.fmt.allocPrint(self.allocator, "{{\"id\":{d},\"method\":\"{s}\",\"params\":{s},\"sessionId\":\"SESSION1\"}}", .{ id, method, params_json });
+        const message = try std.fmt.allocPrint(self.allocator, "{{\"id\":{d},\"method\":\"{s}\",\"params\":{s},\"sessionId\":\"{s}\"}}", .{ id, method, params_json, session_names[which] });
         defer self.allocator.free(message);
-        try devtools.browser_side.MessageTask.post(self.side, self.session.?, message);
+        try devtools.browser_side.MessageTask.post(self.side, self.sessions[which].?, message);
         return id;
     }
 
@@ -119,11 +123,17 @@ const Harness = struct {
         return error.Timeout;
     }
 
-    /// The first argument's string value of each Runtime.consoleAPICalled in
-    /// `seen[from..to]`, joined by '\n'.
-    fn loggedStrings(self: *Harness, from: usize, to: usize, out: *std.ArrayList(u8)) !void {
+    /// Each Runtime.consoleAPICalled session `which` was sent in
+    /// `seen[from..to]`, one line each: its type, its first argument's string
+    /// value, and the context it was logged in as the session's
+    /// Runtime.executionContextCreated in the same range describes it - its
+    /// auxData type, and its name for a world ("log tpc default",
+    /// "log tpc isolated tpc-utility frame=tab").
+    fn logged(self: *Harness, which: usize, from: usize, to: usize, out: *std.ArrayList(u8)) !void {
+        const frame_id = devtools.ids.frameId(0xC0FFEE, self.tab);
         for (self.seen.items[from..to]) |parsed| {
             const object = parsed.value.object;
+            if (!fromSession(object, which)) continue;
             const m = object.get("method") orelse continue;
             if (m != .string or !std.mem.eql(u8, m.string, "Runtime.consoleAPICalled")) continue;
             const params = object.get("params").?.object;
@@ -131,11 +141,43 @@ const Harness = struct {
             if (args.len == 0) continue;
             const value = args[0].object.get("value") orelse continue;
             if (value != .string) continue;
-            try out.appendSlice(self.allocator, params.get("type").?.string);
-            try out.append(self.allocator, ' ');
-            try out.appendSlice(self.allocator, value.string);
-            try out.append(self.allocator, '\n');
+            try out.print(self.allocator, "{s} {s}", .{ params.get("type").?.string, value.string });
+            const context_id = params.get("executionContextId").?.integer;
+            const context = self.contextIn(which, from, to, context_id) orelse {
+                try out.appendSlice(self.allocator, " unknown-context\n");
+                continue;
+            };
+            const aux = context.get("auxData").?.object;
+            try out.print(self.allocator, " {s}", .{aux.get("type").?.string});
+            const name = context.get("name").?.string;
+            if (name.len > 0) try out.print(self.allocator, " {s}", .{name});
+            const frame_matches = std.mem.eql(u8, aux.get("frameId").?.string, frame_id.slice());
+            try out.print(self.allocator, " frame={s}\n", .{if (frame_matches) "tab" else aux.get("frameId").?.string});
         }
+    }
+
+    /// The `context` of the Runtime.executionContextCreated session `which`
+    /// was sent in `seen[from..to]` for execution context `id`.
+    fn contextIn(self: *Harness, which: usize, from: usize, to: usize, id: i64) ?std.json.ObjectMap {
+        for (self.seen.items[from..to]) |parsed| {
+            const object = parsed.value.object;
+            if (!fromSession(object, which)) continue;
+            const m = object.get("method") orelse continue;
+            if (m != .string or !std.mem.eql(u8, m.string, "Runtime.executionContextCreated")) continue;
+            const context = object.get("params").?.object.get("context").?.object;
+            if (context.get("id").?.integer == id) return context;
+        }
+        return null;
+    }
+
+    fn fromSession(object: std.json.ObjectMap, which: usize) bool {
+        const sid = object.get("sessionId") orelse return false;
+        return sid == .string and std.mem.eql(u8, sid.string, session_names[which]);
+    }
+
+    /// The response to `id`'s "result".
+    fn resultOf(self: *Harness, index: usize) std.json.ObjectMap {
+        return self.seen.items[index].value.object.get("result").?.object;
     }
 };
 
@@ -146,14 +188,15 @@ test "a session that attaches after the page logged gets the message on Runtime.
 
     // Logged while the Browser is served and nothing is attached.
     try h.load("data:text/html,<script>console.log('tpc-before-attach',7)</script>");
-    try h.attach();
+    try h.attach(0);
     const from = h.seen.items.len;
-    const enabled = try h.responseIndex(try h.send("Runtime.enable", "{}"));
-    // V8 replays the stored messages before it answers Runtime.enable.
+    const enabled = try h.responseIndex(try h.send(0, "Runtime.enable", "{}"));
+    // V8 replays the contexts and the stored messages before it answers
+    // Runtime.enable.
     var lines: std.ArrayList(u8) = .empty;
     defer lines.deinit(h.allocator);
-    try h.loggedStrings(from, enabled, &lines);
-    try testing.expectEqualStrings("log tpc-before-attach\n", lines.items);
+    try h.logged(0, from, enabled, &lines);
+    try testing.expectEqualStrings("log tpc-before-attach default frame=tab\n", lines.items);
 }
 
 test "a top-level navigation with no session attached drops the earlier document's messages (Blink resets the context group: DidClearContextsForFrame)" {
@@ -163,11 +206,46 @@ test "a top-level navigation with no session attached drops the earlier document
 
     try h.load("data:text/html,<script>console.log('tpc-first-document')</script>");
     try h.load("data:text/html,<script>console.info('tpc-second-document')</script>");
-    try h.attach();
+    try h.attach(0);
     const from = h.seen.items.len;
-    const enabled = try h.responseIndex(try h.send("Runtime.enable", "{}"));
+    const enabled = try h.responseIndex(try h.send(0, "Runtime.enable", "{}"));
     var lines: std.ArrayList(u8) = .empty;
     defer lines.deinit(h.allocator);
-    try h.loggedStrings(from, enabled, &lines);
-    try testing.expectEqualStrings("info tpc-second-document\n", lines.items);
+    try h.logged(0, from, enabled, &lines);
+    try testing.expectEqualStrings("info tpc-second-document default frame=tab\n", lines.items);
+}
+
+test "an isolated world's console call before a session attaches replays in the world's own context (auxData type isolated, its name and frame)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // The page logs with nothing attached.
+    try h.load("data:text/html,<script>console.log('tpc-main-world')</script>");
+    // A first client makes a utility world (Playwright's, Puppeteer's) and
+    // logs in it, without Runtime.enable.
+    try h.attach(0);
+    const frame_id = devtools.ids.frameId(0xC0FFEE, h.tab);
+    const world_params = try std.fmt.allocPrint(h.allocator, "{{\"frameId\":\"{s}\",\"worldName\":\"tpc-utility\"}}", .{frame_id.slice()});
+    defer h.allocator.free(world_params);
+    const made = try h.responseIndex(try h.send(0, "Page.createIsolatedWorld", world_params));
+    const world_context = h.resultOf(made).get("executionContextId").?.integer;
+    const evaluate_params = try std.fmt.allocPrint(h.allocator, "{{\"expression\":\"console.log('tpc-world')\",\"contextId\":{d}}}", .{world_context});
+    defer h.allocator.free(evaluate_params);
+    _ = try h.responseIndex(try h.send(0, "Runtime.evaluate", evaluate_params));
+    // A second client attaches after both calls: its Runtime.enable replays
+    // each message in the context it was logged in.
+    try h.attach(1);
+    const from = h.seen.items.len;
+    const enabled = try h.responseIndex(try h.send(1, "Runtime.enable", "{}"));
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.logged(1, from, enabled, &lines);
+    try testing.expectEqualStrings(
+        \\log tpc-main-world default frame=tab
+        \\log tpc-world isolated tpc-utility frame=tab
+        \\
+    , lines.items);
+    // The world's message is the world's context, the one createIsolatedWorld named.
+    try testing.expect(h.contextIn(1, from, enabled, world_context) != null);
 }
