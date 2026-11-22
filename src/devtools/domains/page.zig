@@ -595,6 +595,10 @@ fn reportToPage(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The realm whose script threw: a world's new-document script's
+        // exception is that world's, and fires no error event at the page
+        // (engine section 4.2a; lane cdpw's world-scoped error events).
+        .realm = info.realm,
     };
     _ = @import("html").report_exception.reportErrorInfo(window, &extracted, .{});
 }
