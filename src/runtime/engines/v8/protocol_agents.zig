@@ -244,6 +244,12 @@ const AgentRecord = struct {
     /// frames' own stacks, innermost first. Read and written on the agent's
     /// own thread only, its end included. It was a `threadlocal`.
     ending_window_realms: ?*const protocol_realms.EndingRealm = null,
+    /// The agent's isolated worlds (protocol_worlds.zig): its world realms,
+    /// by realm and by main realm, the worlds' options, the WindowProxies a
+    /// navigation kept for them, and the host's observer. Read and written on
+    /// the agent's own thread only (the walk reads it in a collection's
+    /// atomic pause); freed with the record (removeAgent).
+    worlds: @import("protocol_worlds.zig").AgentWorlds = .{},
     /// [webassembly_streaming]: the compilations handed to the host's
     /// compilePotentialWebAssemblyResponse that it has not ended
     /// (protocol_webassembly.zig); the agent's end ends and frees them,
@@ -461,6 +467,17 @@ pub fn realmsOf(isolate: *ffi.Isolate) ?*context_manager.Realms {
     const record = agents.get(isolate) orelse return null;
     if (record.realms.allocator == null) record.realms.allocator = record.allocator;
     return &record.realms;
+}
+
+/// The isolated worlds of the agent whose isolate this is
+/// (`AgentRecord.worlds`), until its record goes - through its end too, as
+/// `realmsOf`; null for an isolate createAgent did not make. Called on the
+/// agent's own thread only.
+pub fn worldsOf(isolate: *ffi.Isolate) ?*@import("protocol_worlds.zig").AgentWorlds {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.worlds;
 }
 
 /// HostHooks.agentClusterOf for `realm` of the agent whose isolate this is:
@@ -1068,6 +1085,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
         break :blk kv.value;
     };
     std.debug.assert(record.ending);
+    @import("protocol_worlds.zig").endAgent(isolate, &record.worlds);
     callback_registry.endAgent(&record.callbacks);
     protocol_modules.endAgent(&record.modules);
     worker_realm.endAgent(&record.worker_realms);

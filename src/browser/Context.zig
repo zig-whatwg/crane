@@ -1457,6 +1457,18 @@ pub const Context = struct {
     /// history and WindowProxy record across every Window its loads make.
     /// OWNED; null for a worker page, or when no record could be made.
     traversable: ?*anyopaque = null,
+    /// Whether the page's realms stay the agent's entered realm for their
+    /// life (engine.WindowRealmOptions.entered_for_life): true for the
+    /// Browser's first page, false for a tab the host opened beside it
+    /// (Browser.createTab), whose every realm - this one and each later
+    /// document's - is entered per call, so that tabs end in any order.
+    entered_for_life: bool = true,
+
+    /// What `initWithOptions` takes beyond `init`'s arguments.
+    pub const InitOptions = struct {
+        /// `entered_for_life`.
+        entered_for_life: bool = true,
+    };
 
     /// Make the page's realm in `agent` and give it what a page's Window has.
     ///
@@ -1474,6 +1486,23 @@ pub const Context = struct {
         context_type: ContextType,
         from_snapshot: bool,
         browser_scope: ?*runtime.BrowserScope,
+    ) !*Context {
+        return initWithOptions(allocator, agent, storage, cookie_jar, url, event_loop, context_type, from_snapshot, browser_scope, .{});
+    }
+
+    /// `init` with `options`: a tab the host opens beside its first page
+    /// passes `.entered_for_life = false` (Browser.createTab).
+    pub fn initWithOptions(
+        allocator: std.mem.Allocator,
+        agent: anytype,
+        storage: *Storage,
+        cookie_jar: ?*cookiestore.CookieJar,
+        url: []const u8,
+        event_loop: anytype,
+        context_type: ContextType,
+        from_snapshot: bool,
+        browser_scope: ?*runtime.BrowserScope,
+        options: InitOptions,
     ) !*Context {
         log.debug("[Context.init] {s}", .{url});
 
@@ -1495,6 +1524,7 @@ pub const Context = struct {
             .from_snapshot = from_snapshot,
             .browser_scope = browser_scope,
             .task_sink = if (event_loop) |ev| ev.taskSink() else null,
+            .entered_for_life = options.entered_for_life,
         };
 
         // A realm, or a traversable, made before a later step failed ends
@@ -1572,6 +1602,9 @@ pub const Context = struct {
             // navigation committed in - a switch to a "same-origin-plus-COEP"
             // response sets the mode before this realm is made.
             .agent_cluster_cross_origin_isolated = if (self.browsing_context) |bc| bc.groupIsCrossOriginIsolated() else false,
+            // Every realm of a tab the host opened beside its first page is
+            // entered per call, its later documents' too.
+            .entered_for_life = self.entered_for_life,
         };
     }
 

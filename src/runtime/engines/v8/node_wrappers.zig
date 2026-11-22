@@ -247,6 +247,11 @@ pub const Registry = struct {
     trace_check_failures: u64 = 0,
     /// Debug: a walk is running (inside the collector): no wrap may start.
     in_walk: bool = false,
+    /// The agent's isolated worlds (protocol_worlds.AgentWorlds), BORROWED
+    /// from its record from its first world realm until its end: the walk
+    /// keeps every world's wrapper of a node it names (`traceNodeWrapper`).
+    /// Null - the walk asks nothing more - while the agent has no world.
+    worlds: ?*const @import("protocol_worlds.zig").AgentWorlds = null,
 
     /// Release what the collections recorded - unless a walk holds the
     /// agent's teardowns: its last resume drains (`drainOf`).
@@ -613,9 +618,34 @@ pub const Tracer = struct {
 /// traced through the collection's visitor (v8_NodeTracer_TraceSlot), which
 /// marks the TracedNode and the wrapper and, through it, its anchor.
 pub fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
+    // And the node's wrappers in the agent's other worlds (protocol_worlds:
+    // a world's wrapper lives while the walk keeps its node's tree, as
+    // Blink's DOMDataStore for a non-main world keeps it by an ephemeron),
+    // whether or not the main world wrapped the node.
+    if (tracer.registry.worlds) |worlds| traceWorldWrappersOfSlot(worlds, tracer, slot);
     if (slot.isEmpty()) return;
     if (wrapper_trace_check) tracer.registry.traced.put(std.heap.c_allocator, @intFromPtr(slot), {}) catch {};
     ffi.v8_NodeTracer_TraceSlot(tracer.visitor, @ptrCast(@constCast(slot)));
+}
+
+/// `traceNodeWrapper`'s world half: the node whose slot `slot` is, and its
+/// wrapper in each world realm of its relevant realm.
+fn traceWorldWrappersOfSlot(worlds: *const @import("protocol_worlds.zig").AgentWorlds, tracer: *Tracer, slot: *const NodeWrapperSlot) void {
+    const instance = instanceOfTarget(runtime.lifetime.targetOfSlot(@constCast(slot))) orelse return;
+    @import("protocol_worlds.zig").traceWorldWrappers(worlds, instance, tracer.visitor);
+}
+
+/// The agent whose isolate this is has isolated worlds (`worlds`, from its
+/// record), or - null, its end - no longer: its walks keep world wrappers
+/// from now on (`Registry.worlds`). The registry is made if the agent has
+/// none yet; without one (no memory) world wrappers are only script's.
+pub fn noteWorlds(isolate: *ffi.Isolate, worlds: ?*const @import("protocol_worlds.zig").AgentWorlds) void {
+    if (worlds == null) {
+        if (registryOf(isolate)) |registry| registry.worlds = null;
+        return;
+    }
+    const registry = ensureRegistry(isolate) catch return;
+    registry.worlds = worlds;
 }
 
 /// engine.traceVisitOnce: true the first time `key` is offered in this
@@ -643,6 +673,9 @@ fn traceAnchor(raw_registry: ?*anyopaque, raw_slot: ?*anyopaque, visitor: ?*anyo
     const slot: *NodeWrapperSlot = @ptrCast(@alignCast(raw_slot orelse return));
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
     walk(registry, runtime.lifetime.targetOfSlot(slot), &tracer);
+    // The anchor's own node's world wrappers: the walk names a lone root's
+    // other nodes, never the anchor's own (its slot is traced by the anchor).
+    if (registry.worlds) |worlds| traceWorldWrappersOfSlot(worlds, &tracer, slot);
 }
 
 /// One walk from `target`, the registry's diagnostics around it.

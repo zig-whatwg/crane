@@ -346,7 +346,18 @@ fn setIntervalCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void 
 fn receiverWindowRealm(info: *const ffi.FunctionCallbackInfo) ?runtime.Context {
     const isolate = info.getIsolate();
     const own_id = ffi.FunctionCallbackInfo.v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(info);
-    if (own_id != 0) return context_manager.getByKey(own_id);
+    if (own_id != 0) {
+        const realm = context_manager.getByKey(own_id) orelse return null;
+        // An isolated world's global (protocol_worlds.zig) is its main
+        // realm's Window: the timers and animation frames it asks for are
+        // that Window's - one map of active timers, one list of animation
+        // frame callbacks, whatever world calls (Blink keeps them on the
+        // DOMWindow, which every world's global wraps) - and their callbacks
+        // still run in the world, their own realm.
+        const protocol_worlds = @import("protocol_worlds.zig");
+        if (protocol_worlds.realmMayHaveWorlds(realm)) return protocol_worlds.mainRealmOf(realm);
+        return realm;
+    }
     const this_obj = info.getThis();
     defer ffi.v8_Object_Dispose(this_obj);
     if (@import("binding_plumbing.zig").windowOf(isolate, this_obj)) |found| {

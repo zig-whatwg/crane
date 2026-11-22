@@ -997,6 +997,20 @@ pub const WindowRealmOptions = struct {
     /// True: the global keeps it. No default: every caller decides (a
     /// default would keep the constructor wherever a caller forgot).
     agent_cluster_cross_origin_isolated: bool,
+    /// For a realm with no `parent` that is not `auxiliary` - a top-level
+    /// traversable the host made: whether it stays the agent's entered realm
+    /// for its life (true, the default: the Browser's first page, as before)
+    /// or is entered only for the calls that run in it, as a frame's and a
+    /// popup's are (false: a tab the host opened beside it - Browser.createTab,
+    /// CDP's Target.createTarget). An engine can exit entered realms only in
+    /// the reverse order of entering them, and two host tabs end in any order:
+    /// every tab after the first is entered per call, so ending one never
+    /// leaves another's context entered under it (lane console's HOST-OPENED
+    /// TABS design, step 1; lane cdph). A navigation's next realm for the same
+    /// tab passes the same value. Ignored for a realm with a parent or an
+    /// auxiliary one (always per call), and by an engine that enters no realm
+    /// for its life.
+    entered_for_life: bool = true,
 };
 
 /// An agent's heap, for the diagnostics tier.
@@ -1491,6 +1505,140 @@ pub inline fn defineBuiltinFunction(realm: Context, function_name: []const u8, l
 /// error.NotSupported.
 pub inline fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const BuiltinFunction) Error!Owned {
     return impl.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
+// ============================================================================
+// 4.2a Isolated worlds (CDP part 1, tmp/plans/cdp-part1-design.md 3.5)
+// ============================================================================
+//
+// Several JavaScript worlds over one DOM - Blink's DOMWrapperWorld model
+// (third_party/blink/renderer/platform/bindings/dom_wrapper_world.h,
+// dom_data_store.h, script_state.h; core/frame/window_proxy_manager.h,
+// local_window_proxy.cc; BSD-3, reproduced, not copied). A WORLD REALM is a
+// realm per (Window realm, world): its own global object, WindowProxy,
+// intrinsics, interface objects and prototypes, over the SAME Window and the
+// same DOM - Blink's ScriptState per (frame, world). The main world is world
+// 0: every Window realm createWindowRealm makes is its main-world realm.
+//
+// - A platform object's relevant realm (`instance.ctx`) is always a
+//   main-world realm: an object made by code in a world belongs to the page
+//   (`document.createElement` from a world makes an element of the page).
+// - A platform object has one wrapper PER WORLD: a conversion chooses the
+//   wrapper by the world of the realm converting it - the world realm of
+//   the object's relevant realm for that world, made on first need. In the
+//   main world nothing changes.
+// - A world realm ends before its main realm does, and whenever its main
+//   realm ends or is detached (navigation, frame removal, page close) -
+//   Blink's WindowProxyManager disposes every world's context with the
+//   frame's. A WindowProxy is kept per (navigable, world) across a
+//   navigation, as the main world's is.
+// - The world's options (a name, universal access - Playwright's utility
+//   world, Blink's isolated world security origin) are the world's, per
+//   agent: the first realm made for a world id records them.
+//
+// No capability: an engine that cannot make world realms answers
+// createWorldRealm with error.NotSupported, and the host has no worlds
+// (no Playwright or Puppeteer utility world).
+
+/// A world's id: 0 is the main world; the host allocates the others.
+pub const WorldId = u32;
+
+/// The main world: every realm createWindowRealm makes.
+pub const main_world: WorldId = 0;
+
+/// `createWorldRealm`'s options.
+pub const WorldRealmOptions = struct {
+    /// The world (never `main_world`).
+    world: WorldId,
+    /// The world's name (CDP's `worldName`; the inspector's context name).
+    /// BORROWED for the call: the engine keeps a copy, recorded with the
+    /// world the first time a realm of it is made.
+    name: []const u8 = "",
+    /// The world may reach every origin's objects: the cross-origin checks
+    /// (HTML IsPlatformObjectSameOrigin) pass for script of this world -
+    /// Blink's isolated world security origin with universal access, which
+    /// CDP's Page.createIsolatedWorld {grantUniveralAccess} sets. Recorded
+    /// with the world, as `name` is.
+    universal_access: bool = false,
+};
+
+/// What a world realm is (`worldInfoOf`).
+pub const WorldInfo = struct {
+    world: WorldId,
+    /// BORROWED until the realm ends.
+    name: []const u8,
+    universal_access: bool,
+    /// The main-world realm whose Window the world realm's global wraps.
+    main: Context,
+};
+
+/// The host's view of an agent's world realms coming and going
+/// (`installWorldObserver`) - for a host that registers each realm with a
+/// debugger (CDP: Runtime.executionContextCreated with auxData {frameId,
+/// isDefault: false, type: "isolated", name}). Called on the agent's
+/// thread, with no script running in the realm; neither may run script.
+pub const WorldObserver = struct {
+    /// `world_realm` was made - by `createWorldRealm`, or on first need, when
+    /// code of the world reached another Window realm's objects. BORROWED.
+    created: *const fn (host: ?*anyopaque, world_realm: Context) void,
+    /// `world_realm` is about to end. BORROWED; it may only be compared
+    /// after the call.
+    destroyed: *const fn (host: ?*anyopaque, world_realm: Context) void,
+};
+
+/// The world realm of `main`'s Window for `options.world` - made from the
+/// engine's snapshot like any Window realm (HTML "create a new realm" with
+/// the existing Window as its global object's platform object, and a new
+/// WindowProxy, or the one the world had for `main`'s navigable before a
+/// navigation), or the one already made. Its settings object, event loop,
+/// Browser, origin and document are `main`'s. It is not entered for its
+/// life; it is entered for each call that runs in it. OWNED by `main`: it
+/// ends with it (`destroyWorldRealms`). Fails when `main` is no live
+/// Window realm, or with error.NotSupported on an engine without worlds.
+pub inline fn createWorldRealm(main: Context, options: *const WorldRealmOptions) Error!Context {
+    return impl.createWorldRealm(main, options);
+}
+
+/// The world realm of `main` for `world` if it was made; null otherwise.
+/// `main` itself for `main_world`.
+pub inline fn worldRealmFor(main: Context, world: WorldId) ?Context {
+    return impl.worldRealmFor(main, world);
+}
+
+/// The world `realm` belongs to: `main_world` for every realm that is no
+/// world realm.
+pub inline fn worldOf(realm: Context) WorldId {
+    return impl.worldOf(realm);
+}
+
+/// The main-world realm of a world realm; `realm` itself for any other.
+pub inline fn mainRealmOf(realm: Context) Context {
+    return impl.mainRealmOf(realm);
+}
+
+/// What `realm` is as a world realm; null for any other realm.
+pub inline fn worldInfoOf(realm: Context) ?WorldInfo {
+    return impl.worldInfoOf(realm);
+}
+
+/// The world realms of `main` that were made and have not ended, in the
+/// order they were made: the first `out.len` of them copied into `out`.
+/// Answers how many there are.
+pub inline fn worldRealmsOf(main: Context, out: []Context) usize {
+    return impl.worldRealmsOf(main, out);
+}
+
+/// End every world realm of `main` (the observer told first). Implied by
+/// `destroyWindowRealm` of `main` - and by the detach it may make - so a
+/// host calls it only to drop its worlds while `main` lives on.
+pub inline fn destroyWorldRealms(main: Context) void {
+    impl.destroyWorldRealms(main);
+}
+
+/// Install (or, with null, remove) `agent`'s world observer. `observer` and
+/// `host` BORROWED until removed or the agent ends.
+pub inline fn installWorldObserver(agent: *Agent, observer: ?*const WorldObserver, host: ?*anyopaque) void {
+    impl.installWorldObserver(agent, observer, host);
 }
 
 // ============================================================================
@@ -2864,7 +3012,10 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 
 /// Inside runtime.lifetime's `traceTree` hook only (`tracer` is the one the
 /// engine passed it): the engine keeps `slot`'s wrapper, if the slot holds
-/// one, as reachable as the wrapper being traced. Allocates nothing, runs
+/// one, as reachable as the wrapper being traced - and the node's wrapper in
+/// each isolated world of its relevant realm (section 4.2a), which the slot
+/// does not hold: the walk names every node it visits, an empty slot
+/// included. Allocates nothing, runs
 /// no script, and no other operation may be called while the hook runs.
 /// V8: `cppgc::Visitor::Trace` of the slot's TracedReference (Blink's
 /// ScriptWrappable::Trace of `wrapper_`); WebKit: `visitor.append` of the

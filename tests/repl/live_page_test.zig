@@ -271,5 +271,39 @@ test "window.open's popup is a tab: .tabs lists it, .tab selects it, .close clos
     _ = try f.run(".close 2");
     try expectContains(try f.run(".tabs"), "* 1  ");
     try testing.expectEqualStrings("'A'\n", try f.run("document.title"));
-    try expectContains(try f.run(".newtab"), "not supported yet");
+    try expectContains(try f.run(".newtab"), "(the console evaluates in the new tab: about:blank)\n");
+}
+
+test ".newtab opens a tab of the host's own beside the first: it loads, evaluates on its own, and closes before or after the first's work (lane cdph)" {
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    _ = try f.open("/a.html");
+    const b = try f.url("/b.html");
+    defer testing.allocator.free(b);
+    // A new tab at a URL: selected, its load waited for as .open's.
+    try expectContains(try f.runf(".newtab {s}", .{b}), "Navigated to");
+    const tabs = try f.run(".tabs");
+    try expectContains(tabs, "  1  ");
+    try expectContains(tabs, "* 2  ");
+    // Not a popup: no "(popup" annotation, no opener.
+    try testing.expect(std.mem.indexOf(u8, tabs, "(popup") == null);
+    try testing.expectEqualStrings("true\n", try f.run("window.opener === null"));
+    _ = try f.run("globalThis.inSecond = 2");
+
+    // The first tab's realm is not the second's.
+    _ = try f.run(".tab 1");
+    try testing.expectEqualStrings("'undefined'\n", try f.run("typeof inSecond"));
+    try testing.expectEqualStrings("'A'\n", try f.run("document.title"));
+
+    // A second host tab, then the first host tab closes while it lives.
+    _ = try f.run(".newtab");
+    _ = try f.run(".close 2");
+    const after = try f.run(".tabs");
+    try expectContains(after, "  1  ");
+    try expectContains(after, "* 2  ");
+    try testing.expectEqualStrings("'about:blank'\n", try f.run("document.URL"));
+    _ = try f.run(".close");
+    try expectContains(try f.run(".tabs"), "* 1  ");
+    try testing.expectEqualStrings("'A'\n", try f.run("document.title"));
 }
