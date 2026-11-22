@@ -5,6 +5,11 @@
 //! V8 deletes the rest of its queue, which is what a WPT timeout does) never
 //! tells the host, and the data leaked (lane leaks1 found the class). The
 //! update goes through engine.queueRealmMicrotask, whose dropped end frees it.
+//! Since lane tpw (2026-11-22) observe() queues no microtask at all: the
+//! update is HTML "update the rendering" step 19's, and its notification a
+//! task with a dropped end (IntersectionObserver queueIntersectionObserverTask)
+//! - the test still pins that an observe() whose checkpoint is terminated
+//! leaks nothing.
 //!
 //! The queue, in order: a native microtask that aborts the running script, a
 //! script job that loops (its back edges see the interrupt, and V8 discards

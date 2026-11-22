@@ -96,6 +96,13 @@ pub const InternalState = struct {
     /// Context for creating entries
     ctx: runtime.Context = undefined,
 
+    /// A queued "notify intersection observers" task will deliver this
+    /// observer's [[QueuedEntries]]: the document's
+    /// IntersectionObserverTaskQueued flag, kept per observer (an impl
+    /// keeps no state on the Document) - set when the task is queued for
+    /// it, cleared when the task runs (`queueIntersectionObserverTask`).
+    notify_task_queued: bool = false,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -155,6 +162,12 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 pub fn installHooks() void {
     // A node torn down stops being observed (dom.intersection_targets).
     @import("dom").intersection_targets.install(.{ .target_destroyed = &targetDestroyed });
+    // HTML "update the rendering" step 19: "For each doc of docs, run the
+    // update intersection observations steps for doc, passing in the
+    // relative high resolution time given now and doc's relevant global
+    // object as the timestamp" - Intersection Observer's, which owns the
+    // observers' state.
+    @import("dom").update_the_rendering.installStep(.intersection_observations, &updateIntersectionObservationsStep);
 }
 
 /// Initialize instance (creates the instance)
@@ -361,9 +374,15 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anye
     });
     holdWhileObserving(instance, internal);
 
-    // Schedule intersection computation via microtask
-    std.log.debug("[IntersectionObserver] Scheduling intersection update", .{});
-    try scheduleIntersectionUpdate(instance, internal);
+    // The new registration is processed by the next "run the update
+    // intersection observations steps" (HTML "update the rendering" step
+    // 19), which also delivers the observer's first notification - from a
+    // task, after that update's Resize Observer step (16) has run its
+    // callbacks. Crane renders on demand: the document whose step processes
+    // this observer asks for that rendering opportunity, as Blink's
+    // IntersectionObserver::observe schedules an animation frame
+    // (core/intersection_observer/intersection_observer.cc).
+    if (observingDocument(internal)) |document| @import("dom").update_the_rendering.requestFrame(document);
 }
 
 /// Operation: unobserve
@@ -513,88 +532,169 @@ fn forgetCollectedTargets(instance: *runtime.Instance, internal: *InternalState)
     if (forgot) holdWhileObserving(instance, internal);
 }
 
-/// Context for the intersection observer microtask callback. The observer is
-/// held as (address, slab generation): nothing keeps an observer alive while
-/// it observes (the spec's lifetime rule is not implemented), so it may have
-/// been collected, and its slot reused, by the time the microtask runs.
-const IntersectionMicrotaskContext = struct {
-    allocator: std.mem.Allocator,
+/// One observer, as a step or a task took it: callbacks run script, and may
+/// drop the last reference to another observer (it disconnects, so its keep
+/// goes) and a collection free it before its turn.
+const Held = struct {
     observer: *runtime.Instance,
     generation: u64,
+
+    /// The observer's state, if it is still the observer that was taken.
+    fn live(self: Held) ?*InternalState {
+        if (runtime.SlabAllocator.generationOf(self.observer) != self.generation) return null;
+        if (self.observer.getState(State).own._internal == null) return null;
+        return getInternal(self.observer);
+    }
 };
 
-/// The update microtask's ends (engine.queueRealmMicrotask): exactly one
-/// runs, once, and owns the context - its steps when the microtask runs, or
-/// `dropped` when it never will (its realm ended, the agent ended, or a
-/// terminated checkpoint discarded the queue), which only frees it.
-/// engine.queueMicrotask has no dropped end, and its data leaked when the
-/// microtask never ran (lane leaks1's class; the integrator, 2026-10-29).
-const intersection_microtask_steps: engine.PromiseReactionSteps = .{
-    .fulfilled = intersectionMicrotaskRan,
-    .dropped = intersectionMicrotaskDropped,
-};
-
-fn intersectionMicrotaskRan(data: ?*anyopaque, _: runtime.JSValue) void {
-    intersectionMicrotask(data);
+/// The Document whose "run the update intersection observations steps"
+/// processes the observer: an explicit root's node document ("whose root is
+/// in the DOM tree of document"), else - an implicit root observer - the
+/// associated Document of the Window the observer was made in. Stated
+/// deviation: the spec lists implicit root observers in the TOP-LEVEL
+/// browsing context's document; Crane takes them in their own document,
+/// which the same "update the rendering" processes (its documents in the
+/// spec's order), so the delivery task is queued in the same frame. Null for
+/// an observer of a realm with no Window (nothing renders there).
+fn observingDocument(internal: *InternalState) ?*runtime.Instance {
+    if (internal.root) |root| return (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
+    const record = internal.ctx.realm orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.vtable != &interfaces.Window.vtable) return null;
+    return interfaces.Window.get_document(global) catch null;
 }
 
-fn intersectionMicrotaskDropped(data: ?*anyopaque) void {
-    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    ctx.allocator.destroy(ctx);
-}
-
-/// The microtask's steps: compute the intersections, then notify.
-fn intersectionMicrotask(data: ?*anyopaque) void {
-    std.log.debug("[IntersectionObserver] Microtask callback invoked", .{});
-    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    const observer = ctx.observer;
-    const generation = ctx.generation;
-    ctx.allocator.destroy(ctx);
-    if (runtime.SlabAllocator.generationOf(observer) != generation) return;
-    const state = observer.getState(State);
-    if (state.own._internal == null) return;
-    const internal = getInternal(observer);
-    forgetCollectedTargets(observer, internal);
-
-    std.log.debug("[IntersectionObserver] Computing intersections for {} targets", .{internal.observations.items.len});
-
-    // Compute intersections for all observed targets
-    computeIntersections(internal) catch |err| {
-        std.log.err("IntersectionObserver: computeIntersections failed: {}", .{err});
-        return;
+/// "Run the update intersection observations steps" step 1 and "notify
+/// intersection observers" step 2: the IntersectionObservers of `document`
+/// that observe something (dom.browser_object_lists `.intersection_observers`,
+/// in the order they began observing). A snapshot: callbacks may add or
+/// remove observers. OWNED by `allocator`.
+fn observersOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]Held {
+    const observing = browser_object_lists.existing(document, .intersection_observers) orelse return null;
+    var list: std.ArrayListUnmanaged(Held) = .empty;
+    for (observing.slice()) |observer| {
+        if (observer.getState(State).own._internal == null) continue;
+        if (observingDocument(getInternal(observer)) != document) continue;
+        list.append(allocator, .{ .observer = observer, .generation = runtime.SlabAllocator.generationOf(observer) }) catch {
+            list.deinit(allocator);
+            return null;
+        };
+    }
+    return list.toOwnedSlice(allocator) catch {
+        list.deinit(allocator);
+        return null;
     };
+}
 
-    std.log.debug("[IntersectionObserver] Computed intersections, {} queued entries", .{internal.queued_entries.items.len});
+/// HTML "update the rendering" step 19 for `document`: Intersection Observer
+/// "run the update intersection observations steps" (3.2.10). The observers'
+/// callbacks do not run here: "queue an IntersectionObserverEntry" step 3
+/// queues a task to notify them (`queueIntersectionObserverTask`).
+///
+/// Spec: https://w3c.github.io/IntersectionObserver/#run-the-update-intersection-observations-steps
+fn updateIntersectionObservationsStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    // The entries' time keeps computeIntersections' clock (not yet the
+    // frame's relative high resolution time).
+    _ = frame;
+    const allocator = document.ctx.allocator;
+    // 1. Let observer list be the IntersectionObservers whose root is in the
+    //    DOM tree of document.
+    const observers = observersOf(document, allocator) orelse return;
+    defer allocator.free(observers);
+    var newly_queued: std.ArrayListUnmanaged(Held) = .empty;
+    defer newly_queued.deinit(allocator);
+    // 2. For each observer in observer list: for each target, compute its
+    //    intersection and queue an IntersectionObserverEntry when its
+    //    threshold index or intersecting state changed (computeIntersections).
+    for (observers) |held| {
+        const internal = held.live() orelse continue;
+        forgetCollectedTargets(held.observer, internal);
+        computeIntersections(internal) catch |err| {
+            std.log.err("IntersectionObserver: computeIntersections failed: {}", .{err});
+            continue;
+        };
+        // "Queue an IntersectionObserverEntry" step 3, for the observers
+        // whose entries no queued task will deliver yet.
+        if (internal.queued_entries.items.len > 0 and !internal.notify_task_queued) {
+            newly_queued.append(allocator, held) catch continue;
+        }
+    }
+    if (newly_queued.items.len > 0) queueIntersectionObserverTask(document, newly_queued.items);
+}
 
-    // If there are queued entries, invoke the callback
-    if (internal.queued_entries.items.len > 0) {
-        std.log.debug("[IntersectionObserver] Invoking callback with {} entries", .{internal.queued_entries.items.len});
+/// A queued "notify intersection observers" task: the observers it
+/// delivers, and their document (the task's document: a task of a document
+/// that can never be fully active again is dropped).
+const NotifyTask = struct {
+    allocator: std.mem.Allocator,
+    observers: []Held,
+};
+
+/// Intersection Observer "queue an intersection observer task" (3.2.4) for
+/// `document`, for `observers`: 1-2. the IntersectionObserverTaskQueued
+/// flag - each observer's `notify_task_queued` - set; 3. a task on the
+/// IntersectionObserver task source of the document's event loop to notify
+/// intersection observers.
+///
+/// Spec: https://w3c.github.io/IntersectionObserver/#queue-intersection-observer-task
+fn queueIntersectionObserverTask(document: *runtime.Instance, observers: []const Held) void {
+    const loop = document.ctx.getOptionalEventLoop() orelse return;
+    const allocator = document.ctx.allocator;
+    const task = allocator.create(NotifyTask) catch return;
+    task.* = .{ .allocator = allocator, .observers = allocator.dupe(Held, observers) catch {
+        allocator.destroy(task);
+        return;
+    } };
+    for (observers) |held| if (held.live()) |internal| {
+        internal.notify_task_queued = true;
+    };
+    loop.queueTask(.{
+        .callback = notifyIntersectionObservers,
+        .context = task,
+        .drop = dropNotifyTask,
+        .document = document,
+        .document_generation = runtime.SlabAllocator.generationOf(document),
+    });
+}
+
+/// The task never runs (its loop ends, or its document can never be fully
+/// active again): only its context goes. An observer it named delivers its
+/// entries from the next task an update queues for it.
+fn dropNotifyTask(data: ?*anyopaque) void {
+    const task: *NotifyTask = @ptrCast(@alignCast(data orelse return));
+    for (task.observers) |held| if (held.live()) |internal| {
+        internal.notify_task_queued = false;
+    };
+    task.allocator.free(task.observers);
+    task.allocator.destroy(task);
+}
+
+/// Intersection Observer "notify intersection observers" (3.2.5), for the
+/// observers the task was queued for. Step 2's notify list is the document's
+/// observers when the task runs; this task's are those whose entries were
+/// queued when it was queued - one observer that queues entries while the
+/// task waits has its own task queued by that update, so each observer's
+/// callback still runs once per task with all of its entries.
+///
+/// Spec: https://w3c.github.io/IntersectionObserver/#notify-intersection-observers-algo
+fn notifyIntersectionObservers(data: ?*anyopaque) void {
+    const task: *NotifyTask = @ptrCast(@alignCast(data orelse return));
+    defer {
+        task.allocator.free(task.observers);
+        task.allocator.destroy(task);
+    }
+    // 1. Set the IntersectionObserverTaskQueued flag to false.
+    for (task.observers) |held| if (held.live()) |internal| {
+        internal.notify_task_queued = false;
+    };
+    // 3. For each observer: 3.1-3.5 (invokeCallback). A callback may end
+    //    another observer, which `live` sees.
+    for (task.observers) |held| {
+        const internal = held.live() orelse continue;
         invokeCallback(internal) catch |err| {
             std.log.err("IntersectionObserver: invokeCallback failed: {}", .{err});
         };
     }
-}
-
-/// Schedule an intersection update via microtask, in the agent of the
-/// observer's relevant realm. (The spec runs the observation steps in "update
-/// the rendering" and notifies from a task; a microtask is this engine's
-/// stand-in, with no rendering loop.)
-fn scheduleIntersectionUpdate(instance: *runtime.Instance, internal: *InternalState) !void {
-    const ctx = try internal.allocator.create(IntersectionMicrotaskContext);
-    ctx.* = .{ .allocator = internal.allocator, .observer = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
-    // A microtask of the observer's relevant realm, with a dropped end; a
-    // realm with no engine behind it has no microtask queue.
-    const queued: engine.Error!void = if (internal.ctx.agent != null) engine.queueRealmMicrotask(internal.ctx, &intersection_microtask_steps, ctx) else error.NotSupported;
-    queued catch |err| {
-        internal.allocator.destroy(ctx);
-        if (err == error.OutOfMemory) return error.OutOfMemory;
-        // A realm that has ended notifies nothing.
-        if (err != error.NotSupported) return;
-        // No engine (or no realm microtasks) behind the realm, so no
-        // microtask queue: compute now.
-        try computeIntersections(internal);
-        if (internal.queued_entries.items.len > 0) try invokeCallback(internal);
-    };
 }
 
 /// Compute intersections for all observed targets
