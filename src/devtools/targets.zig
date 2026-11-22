@@ -88,6 +88,9 @@ pub const Target = struct {
     waiting: std.ArrayList(ids.Token) = .empty,
     /// Created held (its first navigation waits for the debugger).
     held: bool = false,
+    /// The simple dialog open in the tab, while its Browser thread waits in
+    /// it (a page target's).
+    dialog: ?host_bridge.DialogAnswer = null,
     attached_sessions: u32 = 0,
 };
 

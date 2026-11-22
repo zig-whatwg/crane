@@ -116,8 +116,8 @@ const WorldRealm = struct {
     /// The world's WindowProxy went on to the next world realm of the same
     /// navigable (`handOnWorldProxies`): this realm's end leaves it alone.
     window_proxy_handed_on: bool = false,
-    /// The promises of other worlds this realm's promise for is kept on
-    /// (`mirrorPromise`), as WEAK handles OWNED: each mirror is taken off its
+    /// The promises and FrozenArrays of other worlds this realm's own for
+    /// them is kept on (`mirrorPromise`, `mirrorFrozenArray`), as WEAK handles OWNED: each mirror is taken off its
     /// source at the realm's end (`dropMirrors`), so a source that outlives
     /// the realm keeps nothing of it alive. Handles whose source was
     /// collected are swept as the list grows (`mirrored_sweep_at`).
@@ -191,6 +191,14 @@ fn find(worlds: *const AgentWorlds, main: Context, world: WorldId) ?*WorldRealm 
 /// own tests), and with none has no world.
 pub inline fn mayConvertInWorld(instance: *engine.Instance) bool {
     return realmMayHaveWorlds(instance.ctx);
+}
+
+/// Whether `isolate`'s agent has made a world realm (`noteActive` tells its
+/// node wrapper registry): one call into the isolate's record, no lock - the
+/// gate of a conversion with no realm at hand (conversions.memberAcrossWorlds).
+pub fn agentHasWorlds(isolate: *ffi.Isolate) bool {
+    const registry = node_wrappers.registryOf(isolate) orelse return false;
+    return registry.worlds != null;
 }
 
 pub fn realmMayHaveWorlds(realm: Context) bool {
@@ -438,6 +446,8 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     realm.secure_context = main.secure_context;
     realm.task_sink = main.task_sink;
     realm.principal_realm = main;
+    // Kept after the realm ends (runtime.ContextData.world).
+    realm.world = world;
 
     if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
     interface_bindings.installConditionalConstructs(.Window, context);
@@ -721,6 +731,65 @@ pub fn acrossWorlds(isolate: *ffi.Isolate, value: *ffi.Value, context: *ffi.Cont
     return clone.result orelse jsNull(isolate);
 }
 
+/// `value`, the array a FrozenArray<T> attribute's getter returned - the
+/// binding knows the IDL type at compile time (codegen's
+/// `Meta.frozen_array_attributes`, binding_plumbing.finishGetter) - as script
+/// of `context`'s realm reads it: an array of another world becomes that
+/// realm's own frozen array of the same elements, each across worlds
+/// (`acrossWorlds`: a node or a port is its wrapper there). Blink's
+/// FrozenArray makes its JS array per world (third_party/blink/renderer/
+/// bindings/core/v8/frozen_array_base.cc, FrozenArrayBase::ToV8; BSD-3 -
+/// reproduced, not copied). One per (array, world realm), kept on the array
+/// as a promise's mirror is (`keepMirror`; taken off at the realm's end):
+/// the world reads one array until the attribute's value changes - the
+/// impl hands out a new array - as the page does. A value that is no array
+/// goes as `acrossWorlds` takes it. OWNED; null when `value` is kept as it is.
+pub fn frozenArrayAcrossWorlds(isolate: *ffi.Isolate, value: *ffi.Value, context: *ffi.Context) ?*ffi.Value {
+    if (!ffi.v8_Value_IsArray(value)) return acrossWorlds(isolate, value, context);
+    const target_world = worldOfContext(context);
+    const creation = ffi.v8_Object_GetCreationContext(@ptrCast(value)) orelse return null;
+    defer ffi.v8_Context_Dispose(creation);
+    if (worldOfContext(creation) == target_world) return null;
+    return mirrorFrozenArray(isolate, value, creation, context);
+}
+
+/// `frozenArrayAcrossWorlds`'s array for `context`'s realm: kept (a world
+/// realm's), or made - each element of `source` across worlds, then frozen
+/// (WebIDL 3.2.36: "SetIntegrityLevel(array, "frozen")").
+fn mirrorFrozenArray(isolate: *ffi.Isolate, source: *ffi.Value, source_context: *ffi.Context, context: *ffi.Context) *ffi.Value {
+    const target_realm = context_manager.get(context) orelse return jsNull(isolate);
+    const state = stateOf(target_realm);
+    var key_buffer: [48]u8 = undefined;
+    const key: ?[]const u8 = if (state) |w| mirrorKey(&key_buffer, w) else null;
+    if (key) |k| if (ffi.v8_Object_GetPrivateRef(@ptrCast(source), k.ptr, @intCast(k.len))) |kept| {
+        if (madeIn(kept, context)) return kept;
+        ffi.v8_Global_Dispose(kept);
+    };
+    const length = ffi.v8_Array_Length(@ptrCast(source));
+    const array = ffi.v8_Array_NewInContext(context, @intCast(length)) orelse return jsNull(isolate);
+    const made: *ffi.Value = @ptrCast(array);
+    var index: u32 = 0;
+    while (index < length) : (index += 1) {
+        const element = ffi.v8_Array_Get(source_context, @ptrCast(source), index) orelse {
+            ffi.v8_Global_Dispose(made);
+            return jsNull(isolate);
+        };
+        defer ffi.v8_Global_Dispose(element);
+        const across = acrossWorlds(isolate, element, context);
+        defer if (across) |converted| ffi.v8_Global_Dispose(converted);
+        if (!ffi.v8_Array_Set(array, context, index, across orelse element)) {
+            ffi.v8_Global_Dispose(made);
+            return jsNull(isolate);
+        }
+    }
+    if (!ffi.v8_Object_Freeze(@ptrCast(array), context)) {
+        ffi.v8_Global_Dispose(made);
+        return jsNull(isolate);
+    }
+    if (state) |w| keepMirror(w, source, key.?, made);
+    return made;
+}
+
 /// `acrossWorlds`'s structured clone of `value` from `source_realm` into
 /// `target_realm`, run under a TryCatch: what cannot be cloned - a function,
 /// a node inside, a getter that throws - answers null with nothing left
@@ -808,25 +877,26 @@ fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Contex
     return promise;
 }
 
-/// The private key `w`'s promise for another world's is kept under on it:
-/// one per realm (the context manager's key, unique while the realm lives,
+/// The private key `w`'s value for another world's - its promise for a
+/// promise, its frozen array for a FrozenArray - is kept under on it: one per
+/// realm (the context manager's key, unique while the realm lives,
 /// and deleted from every source at its end).
 fn mirrorKey(buffer: *[48]u8, w: *const WorldRealm) []const u8 {
-    return std.fmt.bufPrint(buffer, "crane:world-promise:{x}", .{w.key}) catch unreachable;
+    return std.fmt.bufPrint(buffer, "crane:world-mirror:{x}", .{w.key}) catch unreachable;
 }
 
-/// Keep `promise`, `w`'s promise for `source`, on `source` under `key` -
+/// Keep `kept`, `w`'s value for `source` (`mirrorKey`), on `source` under `key` -
 /// and a weak handle of `source` on `w`, to take it off at `w`'s end. When
 /// there is no room for the handle the promise is not kept (the next read
 /// makes another).
-fn keepMirror(w: *WorldRealm, source: *ffi.Value, key: []const u8, promise: *ffi.Value) void {
+fn keepMirror(w: *WorldRealm, source: *ffi.Value, key: []const u8, kept: *ffi.Value) void {
     const weak = ffi.v8_Global_Clone(source) orelse return;
     w.mirrored.append(std.heap.c_allocator, weak) catch {
         ffi.v8_Global_Dispose(weak);
         return;
     };
     ffi.v8_Global_SetWeak(@ptrCast(weak), null, noteSourceCollected);
-    ffi.v8_Object_SetPrivateRef(@ptrCast(source), key.ptr, @intCast(key.len), promise);
+    ffi.v8_Object_SetPrivateRef(@ptrCast(source), key.ptr, @intCast(key.len), kept);
     if (w.mirrored.items.len < w.mirrored_sweep_at) return;
     // The sources the collector took: their handles are empty.
     var i: usize = 0;

@@ -3347,7 +3347,10 @@ pub fn toV8Sequence(
         // Asked of the type alone, runtime.JSValue read as a union of its arms
         // and released a sequence<any> element's handle, the impl's.
         defer if (memberValueIsOwned(T, item)) v8.v8_Value_Dispose(v8_value);
-        _ = v8.v8_Array_Set(array, context, @intCast(i), v8_value);
+        // Another world's object as this world's (`memberAcrossWorlds`).
+        const across = memberAcrossWorlds(T, item, isolate, context, v8_value);
+        defer if (across) |made| v8.v8_Value_Dispose(made);
+        _ = v8.v8_Array_Set(array, context, @intCast(i), across orelse v8_value);
     }
 
     return array;
@@ -3378,7 +3381,10 @@ pub fn toV8Record(
             toV8String(isolate, runtime.DOMString.initInterned(entry.key));
 
         const value_v8 = try toV8Value(V, isolate, context, entry.value);
-        _ = v8.v8_Object_Set(object, context, @ptrCast(key_str), value_v8);
+        // Another world's object as this world's (`memberAcrossWorlds`).
+        const across = memberAcrossWorlds(V, entry.value, isolate, context, value_v8);
+        defer if (across) |made| v8.v8_Value_Dispose(made);
+        _ = v8.v8_Object_Set(object, context, @ptrCast(key_str), across orelse value_v8);
     }
 
     return object;
@@ -3706,6 +3712,56 @@ fn memberDefaultToV8(comptime M: type, comptime default: anytype, isolate: *v8.I
     @compileError("unknown dictionary member default " ++ @typeName(D));
 }
 
+/// A held value - an `any` or `object` member of a dictionary, an element
+/// of a sequence, a record's value, an attribute of a [Default] toJSON
+/// result - about to be put into an object of `context`'s realm: another
+/// isolated world's object as this world's (protocol_worlds.acrossWorlds;
+/// engine section 4.2a), as a `.handle` result is at the binding
+/// (binding_plumbing). Only a member typed a runtime.JSValue - through an
+/// optional or a webidl.Opt - asks at all, decided at compile time; of
+/// those, only a `.handle` value of an agent that made a world realm
+/// (protocol_worlds.agentHasWorlds: one call, no lock). THE FAST PATH: every
+/// other member pays nothing, and a held value of an agent with no world
+/// one predictable branch. OWNED by the caller when not null - released once
+/// the object holds it; null: `converted` itself goes in.
+fn memberAcrossWorlds(comptime M: type, value: M, isolate: *v8.Isolate, context: *v8.Context, converted: *v8.Value) ?*v8.Value {
+    if (comptime !holdsEngineValue(M)) return null;
+    if (!isHeldHandle(M, value)) return null;
+    const protocol_worlds = @import("protocol_worlds.zig");
+    if (!protocol_worlds.agentHasWorlds(isolate)) return null;
+    return protocol_worlds.acrossWorlds(isolate, converted, context);
+}
+
+/// Whether a member typed `M` can hold an engine value (`memberAcrossWorlds`).
+fn holdsEngineValue(comptime M: type) bool {
+    comptime {
+        if (M == runtime.JSValue or M == runtime.OptionalJSValue) return true;
+        const info = @typeInfo(M);
+        if (info == .optional) return holdsEngineValue(info.optional.child);
+        if (isOptValue(M) and @hasField(M, "value")) return holdsEngineValue(@FieldType(M, "value"));
+        return false;
+    }
+}
+
+/// Whether `value` is a held engine value (a `.handle`), through an optional
+/// or a webidl.Opt - the shape `releaseReturnedMember` reads.
+fn isHeldHandle(comptime M: type, value: M) bool {
+    if (comptime M == runtime.JSValue) return value == .handle;
+    if (comptime M == runtime.OptionalJSValue) return switch (value) {
+        .passed => |passed| passed == .handle,
+        .not_passed => false,
+    };
+    if (comptime @typeInfo(M) == .optional) {
+        const child = value orelse return false;
+        return isHeldHandle(@typeInfo(M).optional.child, child);
+    }
+    if (comptime isOptValue(M)) {
+        if (!value.wasPassed()) return false;
+        return isHeldHandle(@TypeOf(value.getValue()), value.getValue());
+    }
+    return false;
+}
+
 /// WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value, steps 2-3:
 /// the members of D and of every dictionary it inherits, "in order from least
 /// to most derived", each dictionary's "in lexicographical order" - written
@@ -3743,7 +3799,10 @@ fn writeDictionaryMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.C
                 // (`memberValueIsOwned`: a union member by its active member,
                 // an Opt by its inner value, an `any` by its arm).
                 defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
-                try defineMember(isolate, context, obj, field.name, field_v8);
+                // Another world's object as this world's (`memberAcrossWorlds`).
+                const across = memberAcrossWorlds(field.type, field_value, isolate, context, field_v8);
+                defer if (across) |made| v8.v8_Value_Dispose(made);
+                try defineMember(isolate, context, obj, field.name, across orelse field_v8);
             } else if (comptime default_index != null) {
                 // Every default is made for this member: released once defined.
                 const default_v8 = try memberDefaultToV8(field.type, T.member_defaults[default_index.?][1], isolate, context);
@@ -3765,7 +3824,9 @@ fn writeDefaultToJsonMembers(comptime T: type, isolate: *v8.Isolate, context: *v
         const field_v8 = try toV8Value(field_type, isolate, context, field_value);
         // A null is the Null toV8Null made (`memberValueIsOwned`).
         defer if (memberValueIsOwned(field_type, field_value)) v8.v8_Value_Dispose(field_v8);
-        try defineMember(isolate, context, obj, field_name, field_v8);
+        const across = memberAcrossWorlds(field_type, field_value, isolate, context, field_v8);
+        defer if (across) |made| v8.v8_Value_Dispose(made);
+        try defineMember(isolate, context, obj, field_name, across orelse field_v8);
     }
 }
 
@@ -3942,7 +4003,10 @@ pub fn toV8Value(
                     // by its active member), go once CreateDataProperty has
                     // copied them into the object.
                     defer if (is_string_pointer or memberValueIsOwned(ValueType, entry.value)) v8.v8_Value_Dispose(val_v8);
-                    _ = v8.v8_Object_CreateDataProperty(obj, context, @ptrCast(key_v8), val_v8);
+                    // Another world's object as this world's (`memberAcrossWorlds`).
+                    const across = memberAcrossWorlds(ValueType, entry.value, isolate, context, val_v8);
+                    defer if (across) |made| v8.v8_Value_Dispose(made);
+                    _ = v8.v8_Object_CreateDataProperty(obj, context, @ptrCast(key_v8), across orelse val_v8);
                 }
                 return @ptrCast(obj);
             }

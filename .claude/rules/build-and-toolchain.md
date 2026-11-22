@@ -12,6 +12,8 @@ Moved verbatim from AGENTS.md (2026-11-03), section "Before every commit". The c
 
 `zig build test` also includes `crane-check` (crane compiled without linking); the integrator's merge check runs `zig build check-linux -j2` and the full `zig build crane -j2`.
 
+**CDP is a compile flag** (`-Dcdp`, default on; the user, 2026-11-21): `zig build check-cdp-off -j2` compiles crane (src/webdriver) and the console with `-Dcdp=false` in a sub-build (nothing runs), and `zig build check-devtools -j2` compiles src/devtools, its unit tests and tests/devtools. A batch that touches src/devtools, the devtools_transport capability or a `build_options.cdp` site runs both before it merges (src/devtools/README.md).
+
 **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
 deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
 cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on

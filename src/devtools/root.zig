@@ -37,6 +37,7 @@ pub const http = @import("http.zig");
 pub const websocket_server = @import("websocket_server.zig");
 pub const targets = @import("targets.zig");
 pub const browser_target = @import("browser_target.zig");
+pub const fetch_observer = @import("fetch_observer.zig");
 
 /// The remote end's server: the devtools thread, its listener, pipe and
 /// connections (server.zig).

@@ -1243,6 +1243,37 @@ pub const SameObjectEdge = struct {
 /// string, when it is one the impl allocated, is freed with
 /// `cleanup_allocator` - captured before the getter ran, as a collection the
 /// conversion triggers may free the instance's context.
+/// A JSValue result's V8 value for its getter (`finishGetter`), converted in
+/// the current context. A value the impl kept (a stored or traced JSValue)
+/// never reaches another world's script as that world's object
+/// (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference) - and a
+/// FrozenArray attribute's array reaches it as one frozen array per world
+/// (protocol_worlds.frozenArrayAcrossWorlds; Blink's FrozenArray, a JS array
+/// per world). THE FAST PATH: a non-handle result, or an object of a Browser
+/// with no isolated world - one branch, two loads, no lookup. A handle the
+/// impl returned is the binding's, as every result's: converted, the
+/// impl's goes now, the converted one is released as the result is.
+fn jsValueGetterResult(comptime frozen_array: bool, isolate: *v8.Isolate, value: runtime.JSValue, gate_realm: ?runtime.Context) *v8.Value {
+    const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return v8.v8_Undefined(isolate) orelse unreachable;
+    // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+    defer v8.v8_Context_Dispose(current_context);
+    const v8_converted = conv.toV8Value(runtime.JSValue, isolate, current_context, value) catch
+        return v8.v8_Undefined(isolate) orelse unreachable;
+    if (value == .handle) {
+        if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+            const converted = if (comptime frozen_array)
+                protocol_worlds.frozenArrayAcrossWorlds(isolate, v8_converted, current_context)
+            else
+                protocol_worlds.acrossWorlds(isolate, v8_converted, current_context);
+            if (converted) |made| {
+                v8.v8_Global_Dispose(v8_converted);
+                return made;
+            }
+        };
+    }
+    return v8_converted;
+}
+
 pub fn finishGetter(
     comptime PayloadType: type,
     comptime byte_string: bool,
@@ -1253,6 +1284,10 @@ pub fn finishGetter(
     /// The realm of the object whose attribute this is: its Browser's
     /// isolated-world flag gates the conversion across worlds (two loads).
     gate_realm: ?runtime.Context,
+    /// The attribute's IDL type is a FrozenArray<T> (codegen's
+    /// `Meta.frozen_array_attributes`): another world reads it as a frozen
+    /// array of its own (`jsValueGetterResult`).
+    comptime frozen_array: bool,
 ) void {
     const isolate_inner = info.getIsolate();
     // For string types that allocate memory, free after V8 conversion.
@@ -1425,33 +1460,12 @@ pub fn finishGetter(
             // TODO: Implement proper Promise creation for [NewObject] methods
             break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
         } else if (PayloadType == runtime.JSValue) {
-            // JSValue - use conv.toV8Value to convert to V8 Value
-            // This handles all JSValue variants: undefined, null, boolean, number, string, handle, instance
-            const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
-                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-            };
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
-            defer v8.v8_Context_Dispose(current_context);
-            const v8_converted = conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
-                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-            };
-            // A value the impl kept (a stored or traced JSValue) never
-            // reaches another world's script as that world's object
-            // (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference).
-            // THE FAST PATH: a non-handle result, or an object of a Browser
-            // with no isolated world - one branch, two loads, no lookup.
-            if (result == .handle) {
-                if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
-                    if (protocol_worlds.acrossWorlds(isolate_inner, v8_converted, current_context)) |converted| {
-                        // The impl's handle is the binding's (released as
-                        // a result is): released now, the converted one
-                        // set and released in its place.
-                        v8.v8_Global_Dispose(v8_converted);
-                        break :comptime_convert converted;
-                    }
-                };
-            }
-            break :comptime_convert v8_converted;
+            break :comptime_convert jsValueGetterResult(frozen_array, isolate_inner, result, gate_realm);
+        } else if (PayloadType == ?runtime.JSValue) {
+            // A nullable any, object or FrozenArray: null, or the value as
+            // a JSValue result is (`jsValueGetterResult`).
+            const value = result orelse break :comptime_convert (v8.v8_Null(isolate_inner) orelse unreachable);
+            break :comptime_convert jsValueGetterResult(frozen_array, isolate_inner, value, gate_realm);
         } else if (comptime isOptionalCallbackType(PayloadType)) {
             // An optional callback function type (EventHandler is
             // ?EventHandlerNonNull, a function pointer): the value
@@ -2357,7 +2371,19 @@ pub fn convertReturnValue(
     // Handle Promise(T) types - extract the handle and return the V8 Promise
     if (@typeInfo(ReturnType) == .@"struct") {
         if (@hasDecl(ReturnType, "ResultType") and @hasField(ReturnType, "handle")) {
-            // This is a Promise(T) type - extract the V8 Promise handle
+            // This is a Promise(T) type - extract the V8 Promise handle -
+            // unless it is another isolated world's promise: then the
+            // world's own promise for it (protocol_worlds.acrossWorlds,
+            // ScriptPromiseProperty per world), a new handle the binding
+            // releases. THE FAST PATH as for a JSValue result: two loads.
+            if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+                if (frame.currentContext()) |current| {
+                    if (protocol_worlds.acrossWorlds(isolate, @ptrCast(@alignCast(result.handle)), current)) |converted| {
+                        owned.* = true;
+                        return converted;
+                    }
+                }
+            };
             return @ptrCast(result.handle);
         }
         // A dictionary (URLPatternResult, NavigationResult): its object

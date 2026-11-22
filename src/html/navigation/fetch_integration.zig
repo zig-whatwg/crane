@@ -366,6 +366,11 @@ pub const NavigationFetchOptions = struct {
     /// Request method (GET, POST, etc.)
     method: []const u8 = "GET",
 
+    /// HTML navigate step 7's navigation ID: the request carries it
+    /// (InternalRequest.navigation_id) for its Browser's fetch observer,
+    /// which names a navigation's fetch by it (CDP's loaderId = requestId).
+    navigation_id: u64 = 0,
+
     /// Request body for POST
     body: ?[]const u8 = null,
 
@@ -575,6 +580,9 @@ pub fn navigationRequest(
             return NavigationFetchError.OutOfMemory;
         };
     }
+
+    // The navigation this fetch is (the fetch observer's name for it).
+    internal_request.navigation_id = options.navigation_id;
 
     // Set destination based on navigation options
     internal_request.destination = switch (options.destination) {

@@ -203,6 +203,18 @@ pub const Element = struct {
             "children",
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "ariaControlsElements",
+            "ariaDescribedByElements",
+            "ariaDetailsElements",
+            "ariaErrorMessageElements",
+            "ariaFlowToElements",
+            "ariaLabelledByElements",
+            "ariaOwnsElements",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{

@@ -258,6 +258,17 @@ const Listeners = struct {
         return self.current().indexOfHandler(key);
     }
 
+    /// The event handler listener for `key` of `world` (`HandlerWorld`):
+    /// with no world scope - every Browser that made no isolated world - the
+    /// one handler of the type, as `indexOfHandler`.
+    fn indexOfHandlerIn(self: Listeners, key: EventTypeKey, world: HandlerWorld) ?usize {
+        const scope = world orelse return self.indexOfHandler(key);
+        for (self.view(), 0..) |listener, i| {
+            if (listener.bits.kind == .handler and listener.type.matches(key) and handlerListenerWorld(listener) == scope) return i;
+        }
+        return null;
+    }
+
     inline fn clone(self: Listeners) ?listener_list.Cursor {
         return self.current().clone();
     }
@@ -448,6 +459,7 @@ pub fn installHooks() void {
         .get = getHandlerAddress,
         .set = setHandlerAddress,
         .set_raw = setRawEventHandler,
+        .deactivate_content_attribute = deactivateContentAttributeHandler,
         .erase = eraseAllEventListenersAndHandlers,
         .has_listeners = hasListeners,
         .release_node_listeners = releaseNodeListeners,
@@ -1037,6 +1049,57 @@ const NewHandlerValue = union(enum) {
     }
 };
 
+// ============================================================================
+// Event handlers per isolated world
+// ============================================================================
+
+/// Which world's event handler a step reads or writes (engine section 4.2a):
+/// null - THE FAST PATH, one load (`worldsActive`): the target's Browser
+/// made no isolated world, a type has one event handler, and every lookup
+/// is the one it always was - or the id of a world. Blink keeps an event
+/// handler per world: EventTarget::GetAttributeRegisteredEventListener
+/// answers the handler listener that BelongsToTheCurrentWorld, and
+/// SetAttributeEventListener replaces or removes that one only
+/// (third_party/blink/renderer/core/dom/events/event_target.cc; BSD-3 -
+/// reproduced, not copied) - so a world's `onclick = f` never replaces the
+/// page's handler, the page's never a world's, and each reads its own.
+const HandlerWorld = ?u32;
+
+/// Whether `target`'s Browser made an isolated world.
+fn worldsActive(target: *runtime.Instance) bool {
+    const scope = target.ctx.browserScope() orelse return false;
+    return scope.isolated_worlds_active.load(.monotonic);
+}
+
+/// The IDL attribute's world: the world of the script getting or setting it
+/// (the current realm's; none running - a host's read - the main world's).
+fn currentHandlerWorld(target: *runtime.Instance) HandlerWorld {
+    if (!worldsActive(target)) return null;
+    const realm = engine.currentRealm() orelse return engine.main_world;
+    return realm.world;
+}
+
+/// A content attribute's world: the main world's - its handler is compiled
+/// in the element's document's realm (HTML 8.1.8.1, "getting the current
+/// value of the event handler" step 3), Blink's JSEventHandlerForContent
+/// Attribute's main-world assumption.
+fn mainHandlerWorld(target: *runtime.Instance) HandlerWorld {
+    if (!worldsActive(target)) return null;
+    return engine.main_world;
+}
+
+/// The world an event handler listener is of: its compiled value's callback
+/// context's - the realm of the script that set it (the IDL attribute
+/// converts the function with the incumbent realm as its callback context),
+/// read from the realm's record so that a world realm that ended keeps its
+/// handlers (runtime.ContextData.world) - and the main world for a raw
+/// (content attribute) handler or one with no value.
+fn handlerListenerWorld(listener: Listener) u32 {
+    if (listener.bits.value != .compiled) return engine.main_world;
+    const context = listener.context orelse return engine.main_world;
+    return context.world;
+}
+
 /// HTML 8.1.8.1: "set eventHandler's value to" `value`, "then activate an
 /// event handler given eventTarget and name" - the IDL attribute setter's
 /// step 4, the content attribute's change steps 5.2-5.6 and "getting the
@@ -1046,14 +1109,14 @@ const NewHandlerValue = union(enum) {
 ///
 /// "Activate an event handler":
 /// https://html.spec.whatwg.org/multipage/webappapis.html#activate-an-event-handler
-fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8, value: NewHandlerValue) !void {
+fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8, value: NewHandlerValue, world: HandlerWorld) !void {
     const allocator = runtime.allocatorOf(target);
     // Activate step 3: "If eventHandler's listener is not null, then
     // return": the listener stays where it is - only the value changes,
     // which is how a handler set again keeps its place among the listeners
     // (Gecko's SetEventHandlerInternal, WebKit's setAttributeEventListener
     // and Servo's set_inline_event_listener replace it in place).
-    if (listeners.indexOfHandler(EventTypeKey.of(event_type))) |index| {
+    if (listeners.indexOfHandlerIn(EventTypeKey.of(event_type), world)) |index| {
         var updated = listeners.at(index);
         value.keepIn(&updated);
         const old = listeners.replaceAt(index, updated);
@@ -1088,8 +1151,8 @@ fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type
 /// for `event_type`, steps 3-6: its value becomes null and its listener is
 /// removed, so a later non-null value activates a NEW listener, at the end.
 /// https://html.spec.whatwg.org/multipage/webappapis.html#deactivate-an-event-handler
-fn deactivateEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8) void {
-    const index = listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return;
+fn deactivateEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8, world: HandlerWorld) void {
+    const index = listeners.indexOfHandlerIn(EventTypeKey.of(event_type), world) orelse return;
     // Step 3: "Set eventHandler's value to null." Steps 4-6: "Let listener
     // be eventHandler's listener. If listener is not null, then remove an
     // event listener with eventTarget and listener. Set eventHandler's
@@ -1124,7 +1187,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 /// compile a raw content-attribute handler on first use, in the target's
 /// current document, or return the already compiled value.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (currentHandlerValue(target, event_type) orelse return null).address;
+    const address = (currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null).address;
     // The address is the function's Global (conversions.zig stores it
     // untagged, aligned as a function pointer must be). No pointer cast turns
     // it into the callback type, so it is copied byte for byte, as
@@ -1141,10 +1204,12 @@ pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_typ
 /// handler's value, which is then activated.
 pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, value: Handler) !void {
     const listeners = listenersOf(target) orelse return error.InvalidStateError;
+    // The script's world's handler (`HandlerWorld`).
+    const world = currentHandlerWorld(target);
     // Step 3: "If the given value is null, then deactivate an event handler
     // given eventTarget and name."
     const handler = value orelse {
-        deactivateEventHandler(target, listeners, event_type);
+        deactivateEventHandler(target, listeners, event_type, world);
         return;
     };
     // Step 4: set eventHandler's value to the given value, then activate it.
@@ -1156,11 +1221,11 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     const callback = engine.takeCallbackFunction(@ptrFromInt(address));
     const new_value: NewHandlerValue = .{ .compiled = callback };
     errdefer new_value.release(runtime.allocatorOf(target));
-    try storeEventHandler(target, listeners, event_type, new_value);
+    try storeEventHandler(target, listeners, event_type, new_value, world);
 }
 
 fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
-    return (currentHandlerValue(target, event_type) orelse return null).address;
+    return (currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null).address;
 }
 
 /// Content attribute change steps 5.2-5.6: store an owned raw body and
@@ -1169,7 +1234,16 @@ fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source:
     const listeners = listenersOf(target) orelse return error.InvalidStateError;
     const new_value: NewHandlerValue = .{ .raw = try RawHandler.create(runtime.allocatorOf(target), source) };
     errdefer new_value.release(runtime.allocatorOf(target));
-    try storeEventHandler(target, listeners, event_type, new_value);
+    // A content attribute's handler is the main world's (`mainHandlerWorld`).
+    try storeEventHandler(target, listeners, event_type, new_value, mainHandlerWorld(target));
+}
+
+/// dom.event_handlers.deactivateForContentAttribute: the content attribute
+/// was removed - "deactivate an event handler" for the main world's handler
+/// (`mainHandlerWorld`), whatever world's script removed it.
+fn deactivateContentAttributeHandler(target: *runtime.Instance, event_type: []const u8) void {
+    const listeners = listenersOf(target) orelse return;
+    deactivateEventHandler(target, listeners, event_type, mainHandlerWorld(target));
 }
 
 /// "Getting the current value of the event handler" (HTML 8.1.8.1) given
@@ -1185,10 +1259,10 @@ fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source:
 /// The handler stops being raw BEFORE it is compiled: compiling reports
 /// errors, which can run script that reads this handler again, and that read must find it
 /// settled rather than compile it a second time.
-fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
+fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8, world: HandlerWorld) ?HandlerValue {
     const listeners = listenersOf(target) orelse return null;
     const key = EventTypeKey.of(event_type);
-    const index = listeners.indexOfHandler(key) orelse return null;
+    const index = listeners.indexOfHandlerIn(key, world) orelse return null;
     const listener = listeners.at(index);
     switch (listener.bits.value) {
         .none => return null,
@@ -1223,14 +1297,14 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?Handl
                         callback.release();
                         return null;
                     };
-                    storeEventHandler(target, current, event_type, .{ .compiled = callback }) catch {
+                    storeEventHandler(target, current, event_type, .{ .compiled = callback }, world) catch {
                         callback.release();
                         return null;
                     };
                 },
             }
             // Compilation may have changed the handler (or erased the target).
-            return eventHandlerValue(target, event_type);
+            return eventHandlerValue(target, event_type, world);
         },
     }
 }
@@ -1269,9 +1343,9 @@ fn handlerValueOf(listener: Listener) HandlerValue {
 
 /// `target`'s event handler's compiled value for `event_type`, for the
 /// getter and for dispatch.
-fn eventHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
+fn eventHandlerValue(target: *runtime.Instance, event_type: []const u8, world: HandlerWorld) ?HandlerValue {
     const listeners = listenersOf(target) orelse return null;
-    const index = listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return null;
+    const index = listeners.indexOfHandlerIn(EventTypeKey.of(event_type), world) orelse return null;
     const listener = listeners.at(index);
     if (listener.bits.value != .compiled) return null;
     return handlerValueOf(listener);
@@ -1734,6 +1808,9 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     // The world an error report is for (`skippedForWorld`), read once for
     // the walk: `any_world` for every other dispatch.
     const only_world: u32 = if (state.path) |path| path.only_world else dom_module.event_dispatch.DispatchPath.any_world;
+    // Whether event handlers are per world here (`HandlerWorld`), read once
+    // for the walk: false - one load - for a Browser with no isolated world.
+    const handlers_per_world = worldsActive(current_target);
 
     // Step 1: "Let found be false."
     var found = false;
@@ -1770,7 +1847,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // any script runs - or, for a once listener, this call's.
         switch (listener.bits.kind) {
             .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw, only_world),
-            .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw, only_world),
+            .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw, only_world, if (handlers_per_world) handlerListenerWorld(listener) else null),
         }
 
         // The callback ran: the list may have moved, grown or gone.
@@ -1894,7 +1971,7 @@ fn skippedForWorld(only_world: u32, listener_realm: runtime.Context) bool {
 /// The event handler processing algorithm (HTML §8.1.8.1) for `instance`'s
 /// event handler for `event`'s type - the callback of the event handler's
 /// listener, run by inner invoke.
-fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool, only_world: u32) void {
+fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool, only_world: u32, handler_world: HandlerWorld) void {
     const realm = instance.ctx;
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
@@ -1902,7 +1979,8 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // event handler given eventTarget and name." Run a value of our own: the
     // handler can replace or clear its own attribute, which releases the
     // map's.
-    const value = currentHandlerValue(instance, event_type_str.asSlice()) orelse return;
+    // The invoked listener's world's handler (`HandlerWorld`).
+    const value = currentHandlerValue(instance, event_type_str.asSlice(), handler_world) orelse return;
     const function = engine.retainValue(realm, value.callback.function.value) catch return;
     const callback: engine.CallbackFunction = .{ .function = function, .context = value.callback.context };
     defer callback.release();

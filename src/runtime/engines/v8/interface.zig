@@ -4100,6 +4100,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         cleanup_allocator,
                         if (comptime same_object) .{ .owner = this_handle.?, .prop_name = prop_name } else null,
                         instance.ctx,
+                        comptime frozenArrayAttribute(getter_name["get_".len..]),
                     );
                 }
             };
@@ -4114,6 +4115,18 @@ pub fn V8Interface(comptime Interface: type) type {
         /// each realm that reads it, and one shared key let each realm's read
         /// cut the edge to the other realm's wrapper.
         const recordSameObjectEdge = binding_plumbing.recordSameObjectEdge;
+
+        /// Whether attribute `attribute_name` (its getter's name less `get_`) is typed
+        /// FrozenArray<T>: the generated list (codegen
+        /// `Meta.frozen_array_attributes`), for binding_plumbing.finishGetter's
+        /// conversion across isolated worlds.
+        fn frozenArrayAttribute(comptime attribute_name: []const u8) bool {
+            if (!@hasDecl(Interface, "Meta") or !@hasDecl(Interface.Meta, "frozen_array_attributes")) return false;
+            inline for (Interface.Meta.frozen_array_attributes) |attribute| {
+                if (comptime std.mem.eql(u8, attribute, attribute_name)) return true;
+            }
+            return false;
+        }
 
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
             // The generated list (codegen `Meta.same_object_attributes`): an
@@ -8293,7 +8306,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 binding_plumbing.getterFailed(info, err, error_realm);
                 return;
             };
-            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null, instance.ctx);
+            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null, instance.ctx, false);
         }
 
         /// The attribute setter: the value converted to a

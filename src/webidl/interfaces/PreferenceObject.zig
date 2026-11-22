@@ -45,6 +45,12 @@ pub const PreferenceObject = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "validValues",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clearOverride", "call_clearOverride", 0 },

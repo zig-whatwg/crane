@@ -75,7 +75,16 @@ pub fn onNavigation(session: *PageSession, milestone: *const host_bridge.Milesto
                                                        // compare its navigable with session.tab
 pub fn dispatchRaw(session: *PageSession, method: []const u8, raw: []const u8) bool {}
                                                        // methods with no function (V8's inspector)
+pub fn onNetworkActivity(session: *PageSession, navigable_id: u64, in_flight: u32) void {}
+                                                       // a frame's subresource fetches in flight moved
+                                                       // (fetch_observer.zig; Page's networkAlmostIdle /
+                                                       // networkIdle after their quiet period)
 ```
+
+Page-session messages reach the Browser thread through `host_bridge.postSessionMessage`: inside the
+nested loop while V8 is paused (runMessageLoopOnPause), queued behind a simple dialog. The devtools
+thread answers Page.handleJavaScriptDialog itself through the dialog's `DialogAnswer` (Chrome's
+browser process: page_handler.cc PageHandler::HandleJavaScriptDialog); no page domain defines it.
 
 What the dispatcher answers (dispatch.zig): no function for the command and no `dispatchRaw`
 taking it - -32601 "'Page.foo' wasn't found" (Chrome's text); params that do not parse - -32602
