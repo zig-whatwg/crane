@@ -60,9 +60,23 @@ pub const poisoning = @import("poisoning.zig");
 /// Whether this process poisons what its tests free (`poisoning.enabled`).
 pub var poison_frees: bool = poisoning.by_default;
 
+/// No thread-local signal stack, as every production root (tools/repl.zig,
+/// src/webdriver/main.zig, tests/wpt_runner/main.zig, src/lib_exports.zig,
+/// tools/gc_bench.zig): Zig std's default (`signal_stack_size`, 1 << 18) is
+/// a 256 KB thread-local array, so a test executable carried a ~257 KB
+/// static TLS block where production's is under 1 KB
+/// (tools/thread_local_size_budget.txt). On Linux glibc puts a thread's
+/// static TLS inside its stack, so a thread made with a small stack fails to
+/// start: V8's CPU profiler makes its ProfilerEventsProcessor thread with a
+/// 64 KB stack, and console.profile with the Profiler domain on was a fatal
+/// "Check failed: processor_->StartSynchronously()" in every test executable
+/// on Linux, never in production (lane tpf, server1, 2026-11-22). Test
+/// executables share production's thread-local layout: build.zig holds them
+/// to the same budget.
 pub const std_options: std.Options = .{
     .logFn = log,
     .log_level = compiled_log_level,
+    .signal_stack_size = null,
 };
 
 /// -Dtest-log-level (build.zig, useCraneTestRunner), or null. Public for

@@ -4403,7 +4403,17 @@ pub extern fn v8_Inspector_ResetGroup(inspector: *Inspector, group: c_int) void;
 pub extern fn v8_Inspector_DetachContexts(inspector: *Inspector) void;
 pub extern fn v8_Inspector_GroupOf(inspector: *Inspector, context_id: c_int) c_int;
 pub extern fn v8_Inspector_CanDispatch(method: [*]const u8, length: usize) bool;
-pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint) c_uint;
+/// Runtime.exceptionThrown for `exception` (BORROWED; null: undefined) in
+/// `context`. Its stack: an object exception's own, else `stack`'s (a copy;
+/// BORROWED) - whose top frame then gives the URL, line, column and script
+/// when `url` is empty - else the current one.
+pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint, stack: ?*const InspectorStack) c_uint;
+/// A captured JavaScript stack (v8_inspector::V8StackTrace).
+pub const InspectorStack = opaque {};
+/// The current stack as the inspector captures one; OWNED (null outside
+/// script or on failure) - free with v8_InspectorStack_Delete.
+pub extern fn v8_Inspector_CaptureStack(inspector: *Inspector) ?*InspectorStack;
+pub extern fn v8_InspectorStack_Delete(stack: ?*InspectorStack) void;
 pub extern fn v8_Inspector_ExceptionRevoked(inspector: *Inspector, context: *Context, exception_id: c_uint, message: [*]const u8, length: usize) void;
 /// The current stack as CDP's Runtime.StackTrace JSON, to `sink`; false outside script.
 pub extern fn v8_Inspector_StackTrace(inspector: *Inspector, max_frames: c_uint, sink: InspectorSend, sink_host: ?*anyopaque) bool;

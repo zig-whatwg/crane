@@ -577,7 +577,44 @@ pub fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *co
     defer entered.leave();
     const held = support.ownGlobal(entered, exception) catch null;
     defer if (held) |h| ffi.v8_Global_Dispose(h);
-    return ffi.v8_Inspector_ExceptionThrown(inspector.native, entered.context(), held, details.message.ptr, details.message.len, details.url.ptr, details.url.len, details.line, details.column);
+    const stack: ?*const ffi.InspectorStack = if (details.stack) |captured| CapturedStack.of(captured).native else null;
+    return ffi.v8_Inspector_ExceptionThrown(inspector.native, entered.context(), held, details.message.ptr, details.message.len, details.url.ptr, details.url.len, details.line, details.column, stack);
+}
+
+/// What engine.inspectorCaptureStack hands out: V8's stack (C++, freed by
+/// v8_InspectorStack_Delete) in a record of the realm's allocator, so a
+/// capture its holder never releases is the allocator's leak - the Browser's
+/// leak-checking allocator in a test names it.
+const CapturedStack = struct {
+    allocator: std.mem.Allocator,
+    native: *ffi.InspectorStack,
+
+    fn of(stack: *const engine.InspectorStack) *const CapturedStack {
+        return @ptrCast(@alignCast(stack));
+    }
+};
+
+/// engine.inspectorCaptureStack: the running script's stack, as V8's
+/// inspector captures one (V8Inspector::captureStackTrace) - for a report
+/// made after the call returned, as Blink's V8Initializer::
+/// PromiseRejectHandler captures its SourceLocation.
+pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
+    const inspector = existingOfRealm(realm) orelse return null;
+    if (inspector.ended) return null;
+    const native = ffi.v8_Inspector_CaptureStack(inspector.native) orelse return null;
+    const captured = realm.allocator.create(CapturedStack) catch {
+        ffi.v8_InspectorStack_Delete(native);
+        return null;
+    };
+    captured.* = .{ .allocator = realm.allocator, .native = native };
+    return @ptrCast(captured);
+}
+
+/// engine.inspectorReleaseStack.
+pub fn inspectorReleaseStack(stack: *engine.InspectorStack) void {
+    const captured: *CapturedStack = @ptrCast(@alignCast(stack));
+    ffi.v8_InspectorStack_Delete(captured.native);
+    captured.allocator.destroy(captured);
 }
 
 /// engine.inspectorExceptionRevoked.
