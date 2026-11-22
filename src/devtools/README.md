@@ -85,6 +85,24 @@ Page-session messages reach the Browser thread through `host_bridge.postSessionM
 nested loop while V8 is paused (runMessageLoopOnPause), queued behind a simple dialog. The devtools
 thread answers Page.handleJavaScriptDialog itself through the dialog's `DialogAnswer` (Chrome's
 browser process: page_handler.cc PageHandler::HandleJavaScriptDialog); no page domain defines it.
+It also answers the Fetch commands that decide a held request - continueRequest, fulfillRequest,
+failRequest, continueResponse, continueWithAuth, getResponseBody (`domains/fetch.zig`
+DevtoolsThread, through `fetch_interception.zig`'s locked table) - as Chrome's browser-side
+FetchHandler does, so a page blocked in a synchronous fetch is still answered; Fetch.enable and
+Fetch.disable stay on the page session.
+
+## Network and Fetch (fetch_observer.zig, fetch_interception.zig, network_resources.zig)
+
+- The Browser's fetch observer (`fetch.network.observer`) reports every window-agent fetch:
+  requestWillBeSent / responseReceived / dataReceived / loadingFinished / loadingFailed at Blink's
+  probe points, and requestWillBeSentExtraInfo / responseReceivedExtraInfo with what went over the
+  network (Chrome's split: the headers HTTP-network-or-cache fetch adds are in the ExtraInfo).
+- Each Network-enabled session keeps bodies in a NetworkResources (Blink's NetworkResourcesData:
+  Network.enable's maxTotalBufferSize / maxResourceBufferSize, oldest evicted first, cleared but
+  for the committing navigation at a main-frame commit) for getResponseBody / getRequestPostData.
+- Interception holds a request at the request stage, its answer at the response stage, and
+  HTTP-network-or-cache fetch's prompt at the auth stage, in both fetch drivers (the event loop's
+  and the blocking one's); ids are Chrome's `interception-job-<job>.<redirects>`.
 
 What the dispatcher answers (dispatch.zig): no function for the command and no `dispatchRaw`
 taking it - -32601 "'Page.foo' wasn't found" (Chrome's text); params that do not parse - -32602

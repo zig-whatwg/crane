@@ -20,6 +20,7 @@ const host_bridge = @import("host_bridge.zig");
 const page_domains = @import("domains/page_domains.zig");
 const PageSession = @import("page_session.zig").PageSession;
 const fetch_observer = @import("fetch_observer.zig");
+const fetch_interception = @import("fetch_interception.zig");
 const fetch = @import("fetch");
 
 const log = std.log.scoped(.devtools);
@@ -73,6 +74,9 @@ pub const BrowserSide = struct {
     wait_for_debugger: std.atomic.Value(bool) = .init(false),
     /// Browser thread only: the fetch observer's state (fetch_observer.zig).
     fetch_state: fetch_observer.State = .{},
+    /// Any thread (locked): the requests a session holds
+    /// (fetch_interception.zig) - the devtools thread answers them.
+    interceptions: fetch_interception.Table = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -123,6 +127,9 @@ pub const BrowserSide = struct {
         }
         self.fetch_state.deinit(self.allocator);
         self.fetch_state = .{};
+        // Every session detached (its holds let go); none is left.
+        fetch_interception.release(self, null, .any);
+        self.interceptions.deinit(self.allocator);
     }
 
     fn listener(self: *BrowserSide) host_bridge.Listener {

@@ -36,7 +36,14 @@ const browser_side = @import("browser_side.zig");
 const browser_target = @import("browser_target.zig");
 const protocol = @import("protocol/root.zig");
 const PageSession = @import("page_session.zig").PageSession;
+const fetch_interception = @import("fetch_interception.zig");
 const BrowserSide = browser_side.BrowserSide;
+
+/// The Fetch commands the devtools thread answers (dispatch.zig's handler
+/// set: domains/fetch.zig DevtoolsThread).
+pub const FetchDevtoolsHandlers = struct {
+    pub const Fetch = @import("domains/fetch.zig").DevtoolsThread;
+};
 
 const log = std.log.scoped(.devtools);
 
@@ -698,7 +705,13 @@ pub const Server = struct {
 
     fn freeSession(self: *Server, session: *targets.Session) void {
         if (session.page) |page| {
-            if (session.target) |t| browser_side.DetachTask.post(t.context.side, page) else page.discard();
+            if (session.target) |t| {
+                // A detach lets go of what the session holds (Chrome's
+                // interceptor Detach); a blocking fetch's hold here, as its
+                // Browser thread waits in it.
+                fetch_interception.release(t.context.side, page, .blocking);
+                browser_side.DetachTask.post(t.context.side, page);
+            } else page.discard();
             session.page = null;
         }
         session.link.end();
@@ -962,6 +975,19 @@ pub const Server = struct {
         // to close (host_bridge.postSessionMessage queues them).
         if (std.mem.eql(u8, command.method, protocol.Page.handleJavaScriptDialog.method)) {
             return self.answerDialog(session, arena, &command);
+        }
+        // The Fetch commands that answer a held request: answered here, as
+        // Chrome's browser-side FetchHandler answers them while the
+        // renderer may be blocked in a synchronous fetch the request
+        // belongs to (fetch_interception.zig).
+        if (fetch_interception.isDevtoolsThreadCommand(command.method)) {
+            return dispatch.dispatch(FetchDevtoolsHandlers, session, arena, &command);
+        }
+        // Fetch.disable: the session's blocking holds are let go here first
+        // (the Browser thread may be waiting in one); the message then
+        // disables the patterns on the Browser thread.
+        if (std.mem.eql(u8, command.method, protocol.Fetch.disable.method)) {
+            if (session.page) |page| if (session.target) |t| fetch_interception.release(t.context.side, page, .blocking);
         }
         // A page session's message: to its Browser's thread.
         const page = session.page orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "Target is closing", null);
