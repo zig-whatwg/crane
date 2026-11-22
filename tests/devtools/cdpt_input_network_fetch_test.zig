@@ -15,7 +15,7 @@ const cdp = @import("cdp_client.zig");
 
 const BrowserHost = browser_mod.BrowserHost;
 const Browser = browser_mod.Browser;
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 
 const Page = struct {
     host: *BrowserHost,

@@ -15,7 +15,7 @@ const devtools = @import("devtools");
 const cdp = @import("cdp_client.zig");
 
 const BrowserHost = browser_mod.BrowserHost;
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 
 fn connectBrowser(allocator: std.mem.Allocator, server: *devtools.Server) !*cdp.Client {
     var path_buffer: [96]u8 = undefined;

@@ -13,7 +13,7 @@ const devtools = @import("devtools");
 
 const Outbound = devtools.outbound.Outbound;
 const SessionLink = devtools.outbound.SessionLink;
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 
 const producers = 4;
 const per_producer = 500;
