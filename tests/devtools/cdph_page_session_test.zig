@@ -366,6 +366,28 @@ test "a dedicated worker made after Emulation.setUserAgentOverride reports the o
     try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
 }
 
+test "a dedicated worker made after setUserAgentOverride's acceptLanguage reports it as navigator.language and languages" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    const ask =
+        \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
+        \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.language + "|" + navigator.languages.join(","))'], { type: 'text/javascript' })));
+        \\1
+    ;
+    const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    // Playwright's locale call: an empty userAgent overrides the languages
+    // alone. The worker copies its tab's override as it is made (Chrome's
+    // NavigatorLanguage::EnsureUpdatedLanguage reads the override "to allow
+    // for workers to respect the override").
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de-DE,de;q=0.9\"}");
+    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer after.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE\"}", after.json);
+}
+
 test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
     var h: Harness = undefined;
     try h.init(testing.allocator);
