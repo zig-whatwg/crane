@@ -529,6 +529,10 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
             .canceled = if (canceled) true else null,
         });
     }
+    // Log.entryAdded "Failed to load resource: ..." for the tab's Log
+    // sessions - not for a cancellation (lane cdph's domains/log.zig;
+    // Blink's FrameConsole::DidFailLoading).
+    if (!canceled) @import("domains/log.zig").loadingFailed(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &id_buffer), error_text);
 }
 
 /// Network.setCacheDisabled: a tab whose session disabled the cache sends
