@@ -1,12 +1,13 @@
 //! Implementation for ResizeObserverSize interface
+//!
+//! Spec: https://drafts.csswg.org/resize-observer-1/#resizeobserversize
+//!
+//! A box size its ResizeObserverEntry made ("calculate box size"): two
+//! numbers, given at construction and read-only.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const ResizeObserverSize = interfaces.ResizeObserverSize;
 
 pub const State = ResizeObserverSize.State;
@@ -15,38 +16,46 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// What a size is made with (`interfaces.ResizeObserverSize.initWith`).
+pub const construction_args = .{ "inline_size", "block_size" };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub const InternalState = struct {
+    inline_size: f64 = 0,
+    block_size: f64 = 0,
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+/// The size's own construction: its two lengths.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = .{ allocator, StateType };
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{};
+    const Args = @TypeOf(args);
+    if (@hasField(Args, "inline_size")) internal.inline_size = args.inline_size;
+    if (@hasField(Args, "block_size")) internal.block_size = args.block_size;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Getter for inlineSize
+/// The size's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    runtime.arenaOf(instance).destroy(InternalState, internal);
+    state.own._internal = null;
+}
+
+/// Getter for inlineSize: the box's length in the inline axis.
 pub fn get_inlineSize(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.inline_size;
 }
 
-/// Getter for blockSize
+/// Getter for blockSize: the box's length in the block axis.
 pub fn get_blockSize(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.block_size;
 }

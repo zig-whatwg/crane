@@ -143,6 +143,7 @@ pub const navigation_api = @import("navigation_api.zig");
 pub const navigation_objects = @import("navigation_objects.zig");
 pub const top_level_traversables = @import("top_level_traversables.zig");
 pub const intersection_targets = @import("intersection_targets.zig");
+pub const resize_observations = @import("resize_observations.zig");
 pub const navigation_history_entries = @import("navigation_history_entries.zig");
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
