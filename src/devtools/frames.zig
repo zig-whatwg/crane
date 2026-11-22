@@ -45,6 +45,8 @@ pub const Frames = struct {
     /// By navigable id: the document last seen committed there, and its
     /// loader id.
     records: std.AutoHashMapUnmanaged(u64, Record) = .empty,
+    /// Navigables come and go (infra.tombstones).
+    records_guard: @import("infra").tombstones.TombstoneGuard = .{},
     next_synthetic: u64 = 1,
 
     const Record = struct {
@@ -70,15 +72,17 @@ pub const Frames = struct {
             if (self.records.get(navigable_id)) |record| {
                 if (record.document == document and record.generation == generation) return;
             }
+            self.records_guard.beforeInsert(&self.records);
             self.records.put(self.allocator, navigable_id, .{ .document = document, .generation = generation, .loader = self.synthetic() }) catch {};
             return;
         }
+        self.records_guard.beforeInsert(&self.records);
         self.records.put(self.allocator, navigable_id, .{ .document = document, .generation = generation, .loader = navigation_id }) catch {};
     }
 
     /// The navigable is gone.
     pub fn forget(self: *Frames, navigable_id: u64) void {
-        _ = self.records.remove(navigable_id);
+        if (self.records.remove(navigable_id)) self.records_guard.noteRemoval(&self.records);
     }
 
     /// The loader id of `bc`'s active document.
@@ -89,6 +93,7 @@ pub const Frames = struct {
             if (record.document == document and record.generation == generation) return record.loader;
         }
         const loader = self.synthetic();
+        self.records_guard.beforeInsert(&self.records);
         self.records.put(self.allocator, bc.id, .{ .document = document, .generation = generation, .loader = loader }) catch {};
         return loader;
     }
