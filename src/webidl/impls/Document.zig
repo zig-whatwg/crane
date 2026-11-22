@@ -4824,9 +4824,23 @@ fn unloadSteps(data: ?*anyopaque) void {
     // Step 9: "If intendToKeepInBfcache is false, then set oldDocument's
     // salvageable state to false."
     if (!intend_to_keep) internal.salvageable = false;
-    // Step 10: pagehide and hidden, if the page was showing.
-    if (internal.page_showing) {
+    // Step 10: pagehide and hidden, if the page was showing - or, golden
+    // rule 2, if its window's load event is under way (pageshow has not
+    // fired yet: page showing becomes true after the load listeners, "the
+    // end" step 9.10). HTML gates on page showing alone, so a document its
+    // own load listeners unload (they remove its frame) would hear neither;
+    // all three browsers fire them: page-visibility/onvisibilitychange.html
+    // and iframe-unload.html, which remove the frame from inside its load
+    // event, pass in Chrome 158, Firefox 160 and Safari 27.2 (wpt.fyi
+    // a3830cd8f7). Blink's Document::DispatchUnloadEvents
+    // (core/dom/document.cc; algorithm reproduced, not copied) skips them
+    // only while load_event_progress_ is kLoadEventNotRun, then fires
+    // pagehide and, if the page was visible, visibilitychange; WebKit's
+    // FrameLoader::dispatchUnloadEvents gates on m_didCallImplicitClose, set
+    // just before the load event.
+    if (internal.page_showing or internal.in_load_event) {
         internal.page_showing = false;
+        internal.in_load_event = false;
         firePageTransition(document, window, "pagehide", internal.salvageable);
         updateVisibilityState(document, ._hidden_);
     }
@@ -5430,7 +5444,11 @@ fn completeLoading(document: *runtime.Instance) void {
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_start);
     // Step 9.5: "Fire an event named load at window, with legacy target
     // override flag set" - the event's target is this document (DOM
-    // dispatch step 5).
+    // dispatch step 5). The load event is under way until page showing
+    // (step 9.10): a load listener that unloads this document (it removes
+    // the document's frame) gets pagehide and visibilitychange
+    // (`unloadSteps` step 10).
+    if (getInternal(document)) |loading| loading.in_load_event = true;
     fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
@@ -5465,6 +5483,7 @@ fn completeLoading(document: *runtime.Instance) void {
     const container = @import("dom").navigable_container.of(window);
     const was_showing = internal.page_showing;
     internal.page_showing = true;
+    internal.in_load_event = false;
     if (container) |element| runContainerLoadEventSteps(element);
     // Step 9.11: pageshow, persisted false - unless the document was showing
     // already, or the container's listeners left it not fully active (they
