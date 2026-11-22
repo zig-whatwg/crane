@@ -112,7 +112,7 @@ const Pending = union(enum) {
 };
 
 fn nowSeconds() u32 {
-    const seconds = @import("clock").wallSeconds();
+    const seconds = platform.wallSeconds();
     return if (seconds <= 1) 1 else @intCast(@min(seconds, std.math.maxInt(u32)));
 }
 

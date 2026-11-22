@@ -54,7 +54,6 @@
 const std = @import("std");
 const platform = @import("platform");
 const storage = @import("storage");
-const clock = @import("clock");
 const cookie_mod = @import("cookie.zig");
 const Cookie = cookie_mod.Cookie;
 const SameSite = cookie_mod.SameSite;
@@ -533,7 +532,7 @@ fn testCookie(name: []const u8, value: []const u8, max_age_ms: ?i64) !Cookie {
     var cookie = try Cookie.init(std.testing.allocator, name, value);
     errdefer cookie.deinit();
     try cookie.setDomain("example.test");
-    if (max_age_ms) |age| cookie.expiry_time = clock.wallMillis() + age;
+    if (max_age_ms) |age| cookie.expiry_time = platform.wallMillis() + age;
     return cookie;
 }
 
