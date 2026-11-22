@@ -58,7 +58,7 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     if (scope.existing(fetch.network.NetworkContext)) |network| {
         if (network.http_cache) |cache| {
             const space: ?platform.VolumeSpace = platform.volumeSpace(platform.Str.from(profile_dir)) catch null;
-            try cache.attachProfile(browser, commitTimer(loop), if (space) |s| s.available else null);
+            try cache.attachProfile(browser, commitTimer(loop), sequence, if (space) |s| s.available else null);
         }
     }
     // Cache Storage (D6 step 5): it keeps its caches in the store already;
