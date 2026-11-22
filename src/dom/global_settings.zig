@@ -166,7 +166,39 @@ pub fn storageKeyForNonStoragePurposesOf(global: *runtime.Instance) error{OutOfM
 /// https://storage.spec.whatwg.org/#obtain-a-storage-key
 pub fn storageKeyOf(global: *runtime.Instance) error{OutOfMemory}!?storage.StorageKey {
     const key = (try storageKeyForNonStoragePurposesOf(global)) orelse return null;
-    return storage.obtainStorageKey(key);
+    if (storage.obtainStorageKey(key)) |obtained| return obtained;
+    // A file: document's: the spec's path is failure - a file: URL's origin
+    // is opaque here (URL "origin": "left as an exercise to the reader ...
+    // when in doubt, return a new opaque origin"), and "obtain a storage key"
+    // fails for an opaque origin, so localStorage and sessionStorage throw a
+    // SecurityError. All three browsers give a file: document storage
+    // (golden rule 2: the browsers decide where they and the spec text
+    // differ, no newer spec involved): Chrome 157, measured by lane tpf
+    // (2026-11-21), shares ONE localStorage across every file: page - Blink's
+    // SecurityOrigin for file: is the tuple "file://", serialized "null"
+    // under BlockLocalAccessFromLocalOrigin, and CanAccessLocalStorage asks
+    // only IsOpaque; WebKit's file: SecurityOrigin is non-unique; Gecko's file:
+    // principals have storage. So a file: document's key is the tuple origin
+    // ("file", "", null), one key for every file: document, as Chrome's
+    // StorageKey of url::Origin("file://"). Only the storage key: the
+    // document's origin stays opaque (self.origin "null", as Chrome's), and
+    // no same-origin check changes. The document is the Window's (a srcdoc
+    // document's, its ancestor's: the referrer source requestClient uses).
+    if (isFileDocumentWindow(global)) return storage.StorageKey.initBorrowed(file_storage_origin, file_storage_origin, false);
+    return null;
+}
+
+/// The serialized tuple origin ("file", "", null) - a file: document's
+/// storage key's origin and site (`storageKeyOf`).
+const file_storage_origin = "file://";
+
+/// Whether `global` is a Window whose document - a srcdoc document's
+/// ancestor's - has a file: URL.
+fn isFileDocumentWindow(global: *runtime.Instance) bool {
+    if (!std.mem.eql(u8, global.vtable.name, "Window")) return false;
+    const settings = of(global) orelse return false;
+    const url: []const u8 = (if (settings.referrer_source) |source_of| source_of(global) else global.ctx.documentUrl()) orelse return false;
+    return std.ascii.startsWithIgnoreCase(url, "file:");
 }
 
 pub fn topLevelOriginOf(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
