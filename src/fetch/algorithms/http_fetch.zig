@@ -13,6 +13,7 @@
 //! 5. If CORS flag and response is not a network error, run CORS check
 
 const std = @import("std");
+const Hook = @import("process").Hook;
 const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
@@ -1232,8 +1233,48 @@ pub const default_user_agent = @import("../internal/user_agent.zig").default_use
 /// Browser's (its network context's), or the default for a request no
 /// Browser made. BORROWED for the Browser's life.
 fn userAgentOf(request: *const InternalRequest) []const u8 {
+    if (userAgentOverrideOf(request).user_agent) |ua| return ua;
     const context = request.network orelse return default_user_agent;
     return context.userAgent();
+}
+
+/// A tab's user agent override - a host's emulation of another browser
+/// (CDP's Emulation.setUserAgentOverride and Network.setUserAgentOverride;
+/// WebDriver BiDi's emulation.setUserAgentOverride): the `User-Agent` and
+/// `Accept-Language` its requests send instead of the Browser's. Chrome
+/// applies it to every request the tab makes, its workers' included where
+/// the request carries the client (content/browser/devtools/protocol/
+/// emulation_handler.cc ApplyOverrides; the network service's request
+/// headers). Null fields: no override.
+pub const UserAgentOverride = struct {
+    user_agent: ?[]const u8 = null,
+    accept_language: ?[]const u8 = null,
+};
+
+/// Reads the override of the tab a Window client (`traversable`: the
+/// request's traversable for user prompts, a Window standing for its
+/// navigable's traversable) is in. The tab's state is HTML's - its
+/// top-level traversable's - which fetch does not import, so its owner
+/// installs the reader once, at process start. BORROWED strings, valid for
+/// the request's step.
+pub const UserAgentOverrideReader = *const fn (traversable: *anyopaque) UserAgentOverride;
+
+/// The same for every Browser: installed once, while the process starts (a
+/// Hook slot: the process module - fetch sits below html).
+var user_agent_override_reader: Hook(?UserAgentOverrideReader) = .init(null);
+
+/// Install the reader at process start. Idempotent.
+pub fn installUserAgentOverrideReader(reader: UserAgentOverrideReader) void {
+    user_agent_override_reader.install(reader);
+}
+
+/// `request`'s tab's override, if it has one.
+pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
+    const reader = user_agent_override_reader.get() orelse return .{};
+    return switch (request.traversable_for_user_prompts) {
+        .traversable => |traversable| reader(traversable),
+        else => .{},
+    };
 }
 
 /// The proxy `request` goes through: its Browser's for its URL (null: the

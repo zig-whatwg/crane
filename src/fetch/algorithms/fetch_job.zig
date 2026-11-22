@@ -323,6 +323,11 @@ pub const FetchJob = struct {
         // Step 14: supply a default only when the caller supplied none,
         // including an explicitly empty value. Use the most preferred tag
         // alone, without disclosing the rest of the platform's language list.
+        // A tab's Accept-Language override (a host's emulation,
+        // http_fetch.userAgentOverrideOf) stands for the platform's list.
+        if (!self.request.header_list.contains("Accept-Language")) if (http_fetch.userAgentOverrideOf(self.request).accept_language) |language| {
+            self.request.header_list.append("Accept-Language", language) catch return FetchError.OutOfMemory;
+        };
         if (!self.request.header_list.contains("Accept-Language")) {
             const languages: ?[]platform.Str = platform.preferredLanguages(self.allocator) catch |err| switch (err) {
                 error.OutOfMemory => return FetchError.OutOfMemory,
