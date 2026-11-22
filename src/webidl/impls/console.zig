@@ -31,6 +31,28 @@ const clock = @import("clock");
 const printer = @import("console").printer;
 const developer_console = @import("dom").developer_console;
 const Level = developer_console.Level;
+const engine = @import("engine");
+
+/// The console call reaches the agent's inspector too (engine section 4.2b
+/// [inspector_protocol]; CDP part 1, design 3.4 "Console"): V8's own console
+/// `method` with the call's own arguments (engine.inspectorConsoleMessage), so
+/// a debugger session with Runtime enabled gets Runtime.consoleAPICalled - its
+/// arguments wrapped, its stack and timestamp - as Chrome's does, and a later
+/// Runtime.enable the stored message. A second consumer beside the Printer's
+/// developer console (dom.developer_console, which takes text). Compiled out
+/// where the engine has no inspector protocol (-Dcdp=false, JavaScriptCore);
+/// one lookup for an agent with no inspector.
+fn toInspector(ctx: runtime.Context, comptime method: []const u8, args: []const runtime.JSValue) void {
+    if (engine.capabilities.inspector_protocol != .unsupported) engine.inspectorConsoleMessage(ctx, method, args);
+}
+
+/// A label argument for the inspector: the one passed, or none (V8's console
+/// then uses "default", as the Standard does).
+fn labelArguments(label: webidl.Opt(runtime.DOMString), buffer: *[1]runtime.JSValue) []const runtime.JSValue {
+    if (!label.wasPassed()) return &.{};
+    buffer[0] = stringArgument(label.value.asSlice());
+    return buffer[0..1];
+}
 
 /// The group stack's size: how many levels a message is indented.
 fn groupDepth(ctx: runtime.Context) usize {
@@ -113,6 +135,7 @@ fn stringArgument(text: []const u8) runtime.JSValue {
 ///
 /// WHATWG Console Standard: Logger("log", data)
 pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "log", data);
     printConsoleValues(ctx, .log, data);
 }
 
@@ -120,6 +143,7 @@ pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!vo
 ///
 /// WHATWG Console Standard: Logger("info", data)
 pub fn call_info(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "info", data);
     printConsoleValues(ctx, .info, data);
 }
 
@@ -127,6 +151,7 @@ pub fn call_info(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!v
 ///
 /// WHATWG Console Standard: Logger("debug", data)
 pub fn call_debug(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "debug", data);
     printConsoleValues(ctx, .debug, data);
 }
 
@@ -134,6 +159,7 @@ pub fn call_debug(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!
 ///
 /// WHATWG Console Standard: Logger("warn", data)
 pub fn call_warn(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "warn", data);
     printConsoleValues(ctx, .warn, data);
 }
 
@@ -141,6 +167,7 @@ pub fn call_warn(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!v
 ///
 /// WHATWG Console Standard: Logger("error", data)
 pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "error", data);
     printConsoleValues(ctx, .@"error", data);
 }
 
@@ -148,6 +175,7 @@ pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!
 ///
 /// WHATWG Console Standard: Log with stack trace
 pub fn call_trace(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "trace", data);
     if (data.len > 0) {
         printConsoleValues(ctx, .trace, data);
     } else {
@@ -163,6 +191,16 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
     // 1. If condition is true, return.
     const cond = if (condition.wasPassed()) condition.value else false;
     if (cond) return;
+    // V8's console.assert(false, ...data): its own "Assertion failed" message.
+    {
+        const changed = ctx.allocator.alloc(runtime.JSValue, data.len + 1) catch null;
+        defer if (changed) |c| ctx.allocator.free(c);
+        if (changed) |c| {
+            c[0] = .{ .boolean = false };
+            @memcpy(c[1..], data);
+            toInspector(ctx, "assert", c);
+        }
+    }
     // 2. Let message be a string without any formatting specifiers
     //    indicating generically an assertion failure.
     const message = "Assertion failed";
@@ -195,6 +233,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
 ///
 /// WHATWG Console Standard: Push new group onto stack
 pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "group", data);
     // Print group header with data
     if (data.len > 0) {
         printConsoleValues(ctx, .group, data);
@@ -209,14 +248,22 @@ pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!
 ///
 /// WHATWG Console Standard: Same as group() but collapsed by default
 pub fn call_groupCollapsed(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    // Same implementation as group (collapsed state is UI concern)
-    return call_group(ctx, data);
+    // Same implementation as group (collapsed state is UI concern) - but the
+    // inspector is told it was collapsed (CDP's startGroupCollapsed).
+    toInspector(ctx, "groupCollapsed", data);
+    if (data.len > 0) {
+        printConsoleValues(ctx, .group, data);
+    } else {
+        printIndented(ctx, .group, "Group", .{});
+    }
+    ctx.console_state.group_stack.append(ctx.allocator, 0) catch {};
 }
 
 /// console.groupEnd()
 ///
 /// WHATWG Console Standard: Pop group from stack
 pub fn call_groupEnd(ctx: runtime.Context) anyerror!void {
+    toInspector(ctx, "groupEnd", &.{});
     if (ctx.console_state.group_stack.items.len > 0) {
         _ = ctx.console_state.group_stack.pop();
     }
@@ -226,6 +273,8 @@ pub fn call_groupEnd(ctx: runtime.Context) anyerror!void {
 ///
 /// WHATWG Console Standard: Start timer with label
 pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
+    var label_argument: [1]runtime.JSValue = undefined;
+    toInspector(ctx, "time", labelArguments(label, &label_argument));
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     const gop = ctx.console_state.timer_table.getOrPut(label_str) catch return;
@@ -247,6 +296,15 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
 ///
 /// WHATWG Console Standard: Log elapsed time for label
 pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const runtime.JSValue) anyerror!void {
+    {
+        const changed = ctx.allocator.alloc(runtime.JSValue, data.len + 1) catch null;
+        defer if (changed) |c| ctx.allocator.free(c);
+        if (changed) |c| {
+            c[0] = if (label.wasPassed()) stringArgument(label.value.asSlice()) else stringArgument("default");
+            @memcpy(c[1..], data);
+            toInspector(ctx, "timeLog", c);
+        }
+    }
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     if (ctx.console_state.timer_table.get(label_str)) |start_time| {
@@ -271,6 +329,8 @@ pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), 
 ///
 /// WHATWG Console Standard: Log elapsed time and remove timer
 pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
+    var label_argument: [1]runtime.JSValue = undefined;
+    toInspector(ctx, "timeEnd", labelArguments(label, &label_argument));
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     if (ctx.console_state.timer_table.fetchRemove(label_str)) |entry| {
@@ -288,6 +348,8 @@ pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) 
 ///
 /// WHATWG Console Standard: Increment and log count for label
 pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
+    var label_argument: [1]runtime.JSValue = undefined;
+    toInspector(ctx, "count", labelArguments(label, &label_argument));
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     const gop = ctx.console_state.count_map.getOrPut(label_str) catch return;
@@ -311,6 +373,8 @@ pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) an
 ///
 /// WHATWG Console Standard: Reset count for label
 pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
+    var label_argument: [1]runtime.JSValue = undefined;
+    toInspector(ctx, "countReset", labelArguments(label, &label_argument));
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     // Console 1.2.2 step 2 retains zero, but Chrome and Firefox remove the
@@ -328,7 +392,7 @@ pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString
 ///
 /// WHATWG Console Standard: Clear console (implementation-specific)
 pub fn call_clear(ctx: runtime.Context) anyerror!void {
-    _ = ctx;
+    toInspector(ctx, "clear", &.{});
     // Clear is UI concern - no-op in this implementation
 }
 
@@ -338,7 +402,11 @@ pub fn call_clear(ctx: runtime.Context) anyerror!void {
 /// it can't be parsed as tabular" - no table is constructed yet, so the
 /// argument is logged (Logger("log", « tabularData »)).
 pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = properties;
+    if (tabularData.wasPassed() and properties.wasPassed()) {
+        toInspector(ctx, "table", &.{ tabularData.value, properties.value });
+    } else if (tabularData.wasPassed()) {
+        toInspector(ctx, "table", &.{tabularData.value});
+    } else toInspector(ctx, "table", &.{});
     printConsoleValues(ctx, .table, &.{if (tabularData.wasPassed()) tabularData.value else runtime.JSValue.jsUndefined});
 }
 
@@ -349,6 +417,7 @@ pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue)
 /// « object », options).
 pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = options;
+    if (item.wasPassed()) toInspector(ctx, "dir", &.{item.value}) else toInspector(ctx, "dir", &.{});
     printValuesOnly(ctx, .dir, &.{if (item.wasPassed()) item.value else runtime.JSValue.jsUndefined});
 }
 
@@ -358,5 +427,6 @@ pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options
 /// where it is a node (the Printer prints a node as its markup), else with
 /// optimally useful formatting; then Logger("dirxml", finalList).
 pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "dirxml", data);
     printConsoleValues(ctx, .dirxml, data);
 }

@@ -33,6 +33,8 @@ const protocol_realms = @import("protocol_realms.zig");
 const protocol_webassembly = @import("protocol_webassembly.zig");
 /// [repl_mode]: the agent's console session (AgentRecord `repl`).
 const protocol_repl = @import("protocol_repl.zig");
+/// The agent's inspector (AgentRecord `inspector`; engine section 4.2b).
+const protocol_inspector = @import("protocol_inspector.zig");
 /// An agent's WebAssembly streaming compilations (AgentRecord
 /// `webassembly_compilations`), named for tests/v8.
 pub const WebAssemblyCompilations = protocol_webassembly.Compilations;
@@ -206,6 +208,12 @@ const AgentRecord = struct {
     /// the agent's end in two steps (endAgent says when). Never made for an
     /// agent no console evaluates in.
     repl: ?*protocol_repl.Session = null,
+    /// THE agent's inspector (protocol_inspector.Inspector; engine section
+    /// 4.2b): its V8Inspector - one per isolate - which the console's REPL
+    /// sessions and a host's inspector sessions share. Made on the first need
+    /// (`inspectorOf`), on the agent's thread; ended by the agent's end in the
+    /// console session's two steps, after it (endAgent).
+    inspector: ?*protocol_inspector.Inspector = null,
     /// AgentOptions.deferred_teardown: the host's queue a garbage tree's
     /// teardown goes to (dom.refcount_teardown, refcount step 7), BORROWED;
     /// the agent's end drains and closes it. For an agent made without one,
@@ -321,6 +329,23 @@ pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
     const record = recordOf(isolate) orelse return null;
     if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
     return record.pattern_matcher;
+}
+
+/// The agent's inspector (protocol_inspector.zig), made on its first need
+/// with the agent's allocator; null for an isolate createAgent did not make,
+/// for an agent whose end has begun, or when V8 could not make one. Called
+/// on the agent's own thread only, with its isolate entered.
+pub fn inspectorOf(isolate: *ffi.Isolate) ?*protocol_inspector.Inspector {
+    const record = recordOf(isolate) orelse return null;
+    if (record.inspector == null) record.inspector = protocol_inspector.Inspector.create(record.allocator, isolate) catch null;
+    return record.inspector;
+}
+
+/// The agent's inspector if one was made (never makes one): what an
+/// operation that has nothing to do without one asks.
+pub fn existingInspectorOf(isolate: *ffi.Isolate) ?*protocol_inspector.Inspector {
+    const record = recordOf(isolate) orelse return null;
+    return record.inspector;
 }
 
 /// [repl_mode] The agent's console session, made on its first use with the
@@ -769,6 +794,7 @@ pub fn endAgent(agent: *Agent) void {
     const intl_objects = if (record) |r| r.intl_objects else null;
     const observable_arrays = if (record) |r| r.observable_arrays else null;
     const repl = if (record) |r| r.repl else null;
+    const inspector = if (record) |r| r.inspector else null;
     // The compilations the host never ended: V8's side of each holds a
     // WasmStreaming, which must not outlive the isolate, and its record is
     // the agent's. Ended before the record goes with forgetAgent.
@@ -786,6 +812,9 @@ pub fn endAgent(agent: *Agent) void {
     //    thenCallback reads v8::debug::GetInspector). Answers that arrive in
     //    between find no evaluation and are released.
     if (repl) |session| session.end();
+    // And the agent's inspector, the same step: its host sessions
+    // disconnected, every context it knows forgotten while it exists.
+    if (inspector) |i| i.end();
     // Its node wrappers end, every one's reference let go (engine.
     // releaseNodeWrappers, idempotent: a host that called it before its last
     // drain left nothing here) - before the agent is forgotten, while the
@@ -851,6 +880,8 @@ pub fn endAgent(agent: *Agent) void {
     // [repl_mode] Step 2 of the console session's end (above): the
     // inspector goes, with the isolate still entered and not yet disposed.
     if (repl) |session| session.destroy();
+    // Then the agent's inspector itself: every V8 session of it went first.
+    if (inspector) |i| i.destroy();
     // The agent's own queue (a host gave none): drained and closed above,
     // freed now - after the last collections, before the isolate is
     // disposed and its C++ heap freed (worker_realm.destroyAgent). What

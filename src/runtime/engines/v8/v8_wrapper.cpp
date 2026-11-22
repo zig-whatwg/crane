@@ -21034,78 +21034,153 @@ void v8_WasmResponseCompilation_Abort(CraneWasmResponseCompilation* compilation,
 
 } // extern "C"
 // ---- end lane: wasmweb1 ----
-// ---- lane: console1 (engine.evaluateReplScript: REPL mode through the inspector) ----
+// ---- lane: cdpw (the agent's inspector: engine section 4.2b; REPL mode folded onto it) ----
 
-/// What an agent's console keeps of V8's inspector (engine.evaluateReplScript,
-/// protocol_repl.zig): an inspector of the agent's isolate, the client it
-/// asks, and one session whose responses come back here.
-///
-/// REPL mode is Chrome DevTools' console evaluation - Runtime.evaluate with
-/// `replMode` (js_protocol.pdl: "enables `let` re-declaration and top-level
-/// `await`"). V8 13.1 compiles such a script with v8::debug::EvaluateGlobal's
-/// repl flag, which is not public API (src/debug/debug-interface.h); its one
-/// public door is the inspector. Deno's REPL, an embedder like Crane, goes
-/// through it the same way: an in-process session that dispatches
-/// Runtime.evaluate with replMode (deno cli/tools/repl/session.rs). A REPL
-/// script always completes through a promise of {".repl_result": value}, and
-/// the inspector answers once that settles (13.1 injected-script.cc,
-/// ProtocolPromiseHandler::thenCallback unwraps `.repl_result`;
-/// catchCallback reports a rejection) - so the answer comes in a
-/// sendResponse, here, and is handed to `outcome`.
-///
-/// Per agent, never process-wide: the inspector is the isolate's
-/// (V8Inspector::create(isolate, client) - v8::debug::SetInspector and
-/// SetConsoleDelegate on that isolate alone), made on the console's first use
-/// and deleted by the agent's end (v8_ReplSession_Delete) after its last
-/// microtask checkpoint and before the isolate is disposed: a promise job of
-/// the inspector's that ran after it was deleted would find no inspector
-/// (13.1 thenCallback reads v8::debug::GetInspector). No V8 flag is set. No
-/// domain is enabled, so the inspector reports nothing on its own (no
-/// Runtime.consoleAPICalled, no exceptionThrown) and pauses nothing. Used on
-/// the agent's own thread only.
-class CraneReplSession final : public v8_inspector::V8InspectorClient,
-                               public v8_inspector::V8Inspector::Channel {
-public:
-    /// What a response came to (protocol_repl.zig, Outcome).
-    enum Kind : int { kCompleted = 0, kThrew = 1, kFailed = 2 };
-    using Outcome = void (*)(void* host, int call_id, int kind, Global<Value>* value, bool incomplete);
-    /// Every context of the agent is in the one group the session joins.
-    static constexpr int kContextGroupId = 1;
-
-    CraneReplSession(Isolate* isolate, Outcome outcome, void* host)
-        : isolate_(isolate), outcome_(outcome), host_(host) {
-        inspector_ = v8_inspector::V8Inspector::create(isolate, this);
-        if (inspector_) {
-            session_ = inspector_->connect(kContextGroupId, this, v8_inspector::StringView(),
-                                           v8_inspector::V8Inspector::kFullyTrusted,
-                                           v8_inspector::V8Inspector::kNotWaitingForDebugger);
+/// UTF-8 of a protocol message V8 made (Latin-1 or UTF-16), appended to `out`.
+static void CraneAppendUtf8(std::string& out, v8_inspector::StringView view) {
+    if (view.is8Bit()) {
+        const uint8_t* chars = view.characters8();
+        for (size_t i = 0; i < view.length(); ++i) {
+            const uint8_t c = chars[i];
+            if (c < 0x80) {
+                out.push_back(static_cast<char>(c));
+            } else {
+                out.push_back(static_cast<char>(0xC0 | (c >> 6)));
+                out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+            }
+        }
+        return;
+    }
+    const uint16_t* chars = view.characters16();
+    const size_t length = view.length();
+    for (size_t i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length && chars[i + 1] >= 0xDC00 && chars[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (chars[i + 1] - 0xDC00);
+            ++i;
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+            cp = 0xFFFD;
+        }
+        if (cp < 0x80) {
+            out.push_back(static_cast<char>(cp));
+        } else if (cp < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
         }
     }
+}
 
-    ~CraneReplSession() override {
-        // From here on a response - the session's end fails what is still
-        // pending - reaches nobody.
-        closing_ = true;
-        HandleScope handle_scope(isolate_);
-        DetachContexts();
-        if (session_) session_->releaseObjectGroup(ObjectGroup());
-        session_.reset();
-        inspector_.reset();
-        utility_.Reset();
+/// A host's UTF-8 message as V8's inspector reads one: 8-bit when it is
+/// ASCII, else UTF-16 (decoded into `wide`, which the view borrows).
+static v8_inspector::StringView CraneMessageView(const uint8_t* utf8, size_t length, std::vector<uint16_t>& wide) {
+    bool ascii = true;
+    for (size_t i = 0; i < length; ++i) {
+        if (utf8[i] >= 0x80) {
+            ascii = false;
+            break;
+        }
+    }
+    if (ascii) return v8_inspector::StringView(utf8, length);
+    wide.clear();
+    wide.reserve(length);
+    size_t i = 0;
+    while (i < length) {
+        const uint8_t c = utf8[i];
+        uint32_t cp = 0xFFFD;
+        size_t n = 1;
+        if (c < 0x80) {
+            cp = c;
+        } else if ((c & 0xE0) == 0xC0 && i + 1 < length) {
+            cp = ((c & 0x1F) << 6) | (utf8[i + 1] & 0x3F);
+            n = 2;
+        } else if ((c & 0xF0) == 0xE0 && i + 2 < length) {
+            cp = ((c & 0x0F) << 12) | ((utf8[i + 1] & 0x3F) << 6) | (utf8[i + 2] & 0x3F);
+            n = 3;
+        } else if ((c & 0xF8) == 0xF0 && i + 3 < length) {
+            cp = ((c & 0x07) << 18) | ((utf8[i + 1] & 0x3F) << 12) | ((utf8[i + 2] & 0x3F) << 6) | (utf8[i + 3] & 0x3F);
+            n = 4;
+        }
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            wide.push_back(static_cast<uint16_t>(0xD800 + (cp >> 10)));
+            wide.push_back(static_cast<uint16_t>(0xDC00 + (cp & 0x3FF)));
+        } else {
+            wide.push_back(static_cast<uint16_t>(cp));
+        }
+        i += n;
+    }
+    return v8_inspector::StringView(wide.data(), wide.size());
+}
+
+static v8_inspector::StringView CraneView(const uint8_t* text, size_t length) {
+    return v8_inspector::StringView(text ? text : reinterpret_cast<const uint8_t*>(""), text ? length : 0);
+}
+
+/// The host's side of the agent's inspector (protocol_inspector.zig): its
+/// V8InspectorClient answers come from here.
+struct CraneInspectorHooks {
+    void* host;
+    /// Runtime.runIfWaitingForDebugger for `group` (V8InspectorClient::
+    /// runIfWaitingForDebugger).
+    void (*run_if_waiting)(void* host, int group);
+    /// The debugger paused script of `group` / resumed it (V8InspectorClient::
+    /// runMessageLoopOnPause, quitMessageLoopOnPause). Null: no pause is held.
+    void (*run_message_loop_on_pause)(void* host, int group);
+    void (*quit_message_loop_on_pause)(void* host);
+    /// `group`'s default context as the realm record's own handle, BORROWED
+    /// (V8InspectorClient::ensureDefaultContextInGroup); null for none.
+    Global<Context>* (*default_context)(void* host, int group);
+};
+
+/// THE agent's inspector (engine section 4.2b): one V8Inspector per isolate
+/// (V8 allows one: V8Inspector::create calls v8::debug::SetInspector and
+/// SetConsoleDelegate on the isolate), and its client. Made on the agent's
+/// first need - the console's first REPL evaluation, or a host's first
+/// inspector session - and deleted at the agent's end after its last
+/// microtask checkpoint, before the isolate is disposed (a promise job of
+/// the inspector's that ran after it was deleted would find no inspector:
+/// injected-script.cc thenCallback reads v8::debug::GetInspector). Owned by
+/// protocol_inspector.zig's Inspector, on the agent's record; used on the
+/// agent's own thread only. Chrome's architecture (Blink's
+/// MainThreadDebugger owns the isolate's V8Inspector and is its client;
+/// third_party/blink/renderer/core/inspector/main_thread_debugger.cc,
+/// BSD-3 - reproduced, not copied).
+class CraneInspector final : public v8_inspector::V8InspectorClient {
+public:
+    explicit CraneInspector(Isolate* isolate) : isolate_(isolate) {
+        inspector_ = v8_inspector::V8Inspector::create(isolate, this);
     }
 
-    bool ok() const { return inspector_ && session_; }
+    ~CraneInspector() override { inspector_.reset(); }
 
-    /// The inspector's execution context id for `context`, made known to the
-    /// inspector first if it is not yet (contextCreated). 0 on failure.
-    int Register(Local<Context> context) {
-        int id = v8_inspector::V8ContextInfo::executionContextId(context);
-        if (id != 0 && contexts_.count(id) != 0) return id;
+    bool ok() const { return inspector_ != nullptr; }
+    v8_inspector::V8Inspector* inspector() { return inspector_.get(); }
+    Isolate* isolate() const { return isolate_; }
+    void SetHooks(const CraneInspectorHooks* hooks) {
+        hooks_ = hooks ? *hooks : CraneInspectorHooks{nullptr, nullptr, nullptr, nullptr, nullptr};
+    }
+
+    /// Make `context` known to the inspector in `group` (contextCreated),
+    /// with the name, origin and auxData CDP reports
+    /// (Runtime.ExecutionContextDescription). A context belongs to one group:
+    /// the caller forgets it first if it was known elsewhere. Answers its
+    /// execution context id, 0 on failure.
+    int ContextCreated(Local<Context> context, int group, v8_inspector::StringView name, v8_inspector::StringView origin, v8_inspector::StringView aux) {
+        if (!inspector_) return 0;
         // InspectedContext's constructor gives the context's `console` a
-        // createTask (async stack tagging, 13.1 inspected-context.cc). That
-        // is Chrome's console object, not the Console Standard's, and nothing
-        // of the console goes on the page: taken off again unless the page
-        // had one of its own.
+        // createTask (async stack tagging, inspected-context.cc). That is
+        // Chrome's console object, not the Console Standard's: taken off
+        // again unless the page had one of its own - nothing of the
+        // inspector goes on the page.
         Local<Object> console;
         bool had_create_task = true;
         {
@@ -21116,57 +21191,570 @@ public:
                 had_create_task = console->HasOwnProperty(context, String::NewFromUtf8Literal(isolate_, "createTask")).FromMaybe(true);
             }
         }
-        const char* name = "crane-console";
-        v8_inspector::V8ContextInfo info(context, kContextGroupId, v8_inspector::StringView(reinterpret_cast<const uint8_t*>(name), strlen(name)));
+        v8_inspector::V8ContextInfo info(context, group, name);
+        info.origin = origin;
+        info.auxData = aux;
         inspector_->contextCreated(info);
         if (!console.IsEmpty() && !had_create_task) {
             TryCatch try_catch(isolate_);
             (void)console->Delete(context, String::NewFromUtf8Literal(isolate_, "createTask"));
         }
-        id = v8_inspector::V8ContextInfo::executionContextId(context);
+        const int id = v8_inspector::V8ContextInfo::executionContextId(context);
         if (id == 0) return 0;
         Global<Context> weak(isolate_, context);
         weak.SetWeak();
-        contexts_[id] = std::move(weak);
+        contexts_[id] = Known{std::move(weak), group};
         return id;
     }
 
-    /// The realm of context `id` ended: the inspector forgets it now
-    /// (contextDestroyed), while the context still exists, rather than when
-    /// the collector takes it - which, at an agent's end, could be after the
-    /// inspector itself.
-    void ContextEnded(int id) {
+    /// The context known as `id` is forgotten now (contextDestroyed), while
+    /// it exists - not when the collector takes it, which at an agent's end
+    /// could be after the inspector itself.
+    void ContextDestroyed(int id) {
         auto it = contexts_.find(id);
         if (it == contexts_.end()) return;
-        Global<Context> handle = std::move(it->second);
+        Global<Context> handle = std::move(it->second.context);
         contexts_.erase(it);
-        if (handle.IsEmpty()) return;
+        if (handle.IsEmpty() || !inspector_) return;
         HandleScope handle_scope(isolate_);
         inspector_->contextDestroyed(handle.Get(isolate_));
         handle.Reset();
     }
 
-    /// Every context the inspector still knows of, forgotten (ContextEnded).
+    /// Every context of `group` forgotten - Runtime.executionContextsCleared
+    /// to the group's sessions (resetContextGroup): a top-level navigation's
+    /// commit (Blink's MainThreadDebugger::DidClearContextsForFrame).
+    void ResetGroup(int group) {
+        if (!inspector_) return;
+        std::vector<int> ids;
+        for (auto& entry : contexts_) if (entry.second.group == group) ids.push_back(entry.first);
+        for (int id : ids) {
+            auto it = contexts_.find(id);
+            if (it != contexts_.end()) {
+                it->second.context.Reset();
+                contexts_.erase(it);
+            }
+        }
+        inspector_->resetContextGroup(group);
+    }
+
+    /// Every context the inspector knows, forgotten (the agent's end).
     void DetachContexts() {
         std::vector<int> ids;
         ids.reserve(contexts_.size());
         for (auto& entry : contexts_) ids.push_back(entry.first);
-        for (int id : ids) ContextEnded(id);
+        for (int id : ids) ContextDestroyed(id);
     }
 
+    /// The group context `id` is known in, or 0.
+    int GroupOf(int id) const {
+        auto it = contexts_.find(id);
+        return it == contexts_.end() ? 0 : it->second.group;
+    }
+
+    // ---- V8InspectorClient ----
+
+    /// The inspector's ids (each context's unique id, the isolate's) from a
+    /// counter of the agent's own: by default it draws them from the
+    /// isolate's random number generator, which a seeded agent's Math.random
+    /// is seeded from (engine.capabilities.seeded_random).
+    int64_t generateUniqueId() override { return ++unique_id_; }
+
+    /// The wall clock the agent's Date reads (CranePlatform answers the
+    /// isolate's clock: engine.capabilities.host_clock), for console message
+    /// and exception timestamps.
+    double currentTimeMS() override { return g_platform.platform ? g_platform.platform->CurrentClockTimeMillis() : 0; }
+
+    void runMessageLoopOnPause(int group) override {
+        if (hooks_.run_message_loop_on_pause) hooks_.run_message_loop_on_pause(hooks_.host, group);
+    }
+    void quitMessageLoopOnPause() override {
+        if (hooks_.quit_message_loop_on_pause) hooks_.quit_message_loop_on_pause(hooks_.host);
+    }
+    void runIfWaitingForDebugger(int group) override {
+        if (hooks_.run_if_waiting) hooks_.run_if_waiting(hooks_.host, group);
+    }
+    Local<Context> ensureDefaultContextInGroup(int group) override {
+        if (!hooks_.default_context) return Local<Context>();
+        Global<Context>* context = hooks_.default_context(hooks_.host, group);
+        if (!context || context->IsEmpty()) return Local<Context>();
+        return context->Get(isolate_);
+    }
+
+private:
+    struct Known {
+        Global<Context> context;
+        int group;
+    };
+    Isolate* isolate_;
+    std::unique_ptr<v8_inspector::V8Inspector> inspector_;
+    CraneInspectorHooks hooks_{nullptr, nullptr, nullptr, nullptr, nullptr};
+    int64_t unique_id_ = 0x63726e65;
+    /// The contexts made known, by execution context id: weak handles.
+    std::unordered_map<int, Known> contexts_;
+};
+
+/// A value handed to a session for the command line API's `$0`
+/// (V8InspectorSession::addInspectedObject): how a host wraps a value as a
+/// RemoteObject of that session without V8's generated protocol types,
+/// which the prebuilt does not ship.
+class CraneInspectable final : public v8_inspector::V8InspectorSession::Inspectable {
+public:
+    CraneInspectable(Isolate* isolate, Local<Value> value) : isolate_(isolate), value_(isolate, value) {}
+    Local<Value> get(Local<Context>) override { return value_.Get(isolate_); }
+
+private:
+    Isolate* isolate_;
+    Global<Value> value_;
+};
+
+/// One host session of the agent's inspector (engine.inspectorConnect): a
+/// V8InspectorSession in the host's group, whose responses and events go to
+/// the host's channel as UTF-8 - CDP's Runtime, Debugger, Profiler and
+/// HeapProfiler domains for one client (Blink: one per DevToolsSession).
+class CraneInspectorSession final : public v8_inspector::V8Inspector::Channel {
+public:
+    using Send = void (*)(void* host, const uint8_t* utf8, size_t length);
+
+    CraneInspectorSession(CraneInspector* owner, int group, Send send, void* host)
+        : owner_(owner), group_(group), send_(send), host_(host) {
+        if (owner->inspector()) {
+            session_ = owner->inspector()->connect(group, this, v8_inspector::StringView(),
+                                                   v8_inspector::V8Inspector::kFullyTrusted,
+                                                   v8_inspector::V8Inspector::kNotWaitingForDebugger);
+        }
+    }
+
+    ~CraneInspectorSession() override {
+        closing_ = true;
+        session_.reset();
+    }
+
+    bool ok() const { return session_ != nullptr; }
+    int group() const { return group_; }
+
+    /// One CDP request from the host (UTF-8 JSON). Not a script call: no
+    /// automatic microtask checkpoint inside it (NativeStepScope), as for the
+    /// console's evaluations.
+    void Dispatch(const uint8_t* utf8, size_t length) {
+        if (!session_) return;
+        std::vector<uint16_t> wide;
+        NativeStepScope native_step(owner_->isolate());
+        session_->dispatchProtocolMessage(CraneMessageView(utf8, length, wide));
+    }
+
+    /// `value`, of the context known as `context_id`, as a Runtime.RemoteObject
+    /// of THIS session in `object_group`: the command line API's `$0`, which
+    /// Runtime.evaluate with includeCommandLineAPI answers with the session's
+    /// last inspected object. The whole response (UTF-8 JSON) goes to
+    /// `sink`; false when there is none.
+    bool Wrap(int context_id, Local<Value> value, const uint8_t* group, size_t group_length, Send sink, void* sink_host) {
+        if (!session_ || closing_) return false;
+        session_->addInspectedObject(std::make_unique<CraneInspectable>(owner_->isolate(), value));
+        std::string request = "{\"id\":";
+        const int id = --next_internal_id_;
+        request += std::to_string(id);
+        request += ",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"$0\",\"includeCommandLineAPI\":true,\"silent\":true,\"generatePreview\":false,\"contextId\":";
+        request += std::to_string(context_id);
+        request += ",\"objectGroup\":\"";
+        for (size_t i = 0; i < group_length; ++i) {
+            const char c = static_cast<char>(group[i]);
+            if (c == '"' || c == '\\') request.push_back('\\');
+            request.push_back(c);
+        }
+        request += "\"}}";
+        capture_id_ = id;
+        captured_.clear();
+        captured_any_ = false;
+        Dispatch(reinterpret_cast<const uint8_t*>(request.data()), request.size());
+        capture_id_ = 0;
+        if (!captured_any_) return false;
+        sink(sink_host, reinterpret_cast<const uint8_t*>(captured_.data()), captured_.size());
+        return true;
+    }
+
+    /// The value a RemoteObject id of this session names, and its context.
+    bool Unwrap(const uint8_t* object_id, size_t length, Local<Value>* value, Local<Context>* context) {
+        if (!session_) return false;
+        std::unique_ptr<v8_inspector::StringBuffer> error;
+        std::unique_ptr<v8_inspector::StringBuffer> group;
+        return session_->unwrapObject(&error, CraneView(object_id, length), value, context, &group);
+    }
+
+    void ReleaseObjectGroup(const uint8_t* group, size_t length) {
+        if (session_) session_->releaseObjectGroup(CraneView(group, length));
+    }
+
+    // ---- V8Inspector::Channel ----
+
+    void sendResponse(int call_id, std::unique_ptr<v8_inspector::StringBuffer> message) override {
+        if (closing_ || !message) return;
+        if (capture_id_ != 0 && call_id == capture_id_) {
+            captured_.clear();
+            CraneAppendUtf8(captured_, message->string());
+            captured_any_ = true;
+            return;
+        }
+        Forward(message->string());
+    }
+    void sendNotification(std::unique_ptr<v8_inspector::StringBuffer> message) override {
+        if (closing_ || !message) return;
+        Forward(message->string());
+    }
+    void flushProtocolNotifications() override {}
+
+private:
+    void Forward(v8_inspector::StringView view) {
+        std::string utf8;
+        CraneAppendUtf8(utf8, view);
+        send_(host_, reinterpret_cast<const uint8_t*>(utf8.data()), utf8.size());
+    }
+
+    CraneInspector* owner_;
+    int group_;
+    Send send_;
+    void* host_;
+    bool closing_ = false;
+    /// The internal request whose response is captured (Wrap), never
+    /// forwarded: ids below zero, which a client never sends.
+    int capture_id_ = 0;
+    int next_internal_id_ = 0;
+    std::string captured_;
+    bool captured_any_ = false;
+    std::unique_ptr<v8_inspector::V8InspectorSession> session_;
+};
+
+/// The object V8's own console is kept on: `context`'s global object - the
+/// global proxy's [[Prototype]] - or the proxy where there is none.
+static Local<Object> CraneEngineConsoleHolder(Local<Context> context) {
+    Local<Object> proxy = context->Global();
+    Local<Value> prototype = proxy->GetPrototype();
+    if (!prototype.IsEmpty() && prototype->IsObject()) return prototype.As<Object>();
+    return proxy;
+}
+
+extern "C" {
+
+/// The agent's inspector for `isolate` (entered): null when V8 could not make
+/// one.
+CraneInspector* v8_Inspector_New(Isolate* isolate) {
+    if (!isolate) return nullptr;
+    auto* inspector = new CraneInspector(isolate);
+    if (!inspector->ok()) {
+        delete inspector;
+        return nullptr;
+    }
+    return inspector;
+}
+
+/// Delete the inspector, every session of it deleted first. With the isolate
+/// entered, before it is disposed.
+void v8_Inspector_Delete(CraneInspector* inspector) {
+    delete inspector;
+}
+
+void v8_Inspector_SetHooks(CraneInspector* inspector, const CraneInspectorHooks* hooks) {
+    if (inspector) inspector->SetHooks(hooks);
+}
+
+/// contextCreated for `context` (BORROWED) in `group`; the execution context
+/// id, 0 on failure.
+int v8_Inspector_ContextCreated(CraneInspector* inspector, Global<Context>* context, int group,
+                                const uint8_t* name, size_t name_length, const uint8_t* origin, size_t origin_length,
+                                const uint8_t* aux, size_t aux_length) {
+    if (!inspector || !context || context->IsEmpty()) return 0;
+    Isolate* isolate = inspector->isolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    Context::Scope context_scope(local);
+    // The name and auxData may be UTF-8: V8 reads a StringView as Latin-1 or
+    // UTF-16, so a non-ASCII one goes as UTF-16.
+    std::vector<uint16_t> wide_name;
+    std::vector<uint16_t> wide_origin;
+    std::vector<uint16_t> wide_aux;
+    return inspector->ContextCreated(local, group,
+                                     CraneMessageView(name ? name : reinterpret_cast<const uint8_t*>(""), name ? name_length : 0, wide_name),
+                                     CraneMessageView(origin ? origin : reinterpret_cast<const uint8_t*>(""), origin ? origin_length : 0, wide_origin),
+                                     CraneMessageView(aux ? aux : reinterpret_cast<const uint8_t*>(""), aux ? aux_length : 0, wide_aux));
+}
+
+void v8_Inspector_ContextDestroyed(CraneInspector* inspector, int context_id) {
+    if (inspector) inspector->ContextDestroyed(context_id);
+}
+
+void v8_Inspector_ResetGroup(CraneInspector* inspector, int group) {
+    if (inspector) inspector->ResetGroup(group);
+}
+
+void v8_Inspector_DetachContexts(CraneInspector* inspector) {
+    if (inspector) inspector->DetachContexts();
+}
+
+int v8_Inspector_GroupOf(CraneInspector* inspector, int context_id) {
+    return inspector ? inspector->GroupOf(context_id) : 0;
+}
+
+/// V8InspectorSession::canDispatchMethod: whether `method` is one of the
+/// domains V8's inspector implements (Runtime, Debugger, Profiler,
+/// HeapProfiler, Console, Schema).
+bool v8_Inspector_CanDispatch(const uint8_t* method, size_t length) {
+    return v8_inspector::V8InspectorSession::canDispatchMethod(CraneView(method, length));
+}
+
+/// V8Inspector::exceptionThrown in `context`, for `exception` (BORROWED); the
+/// exception id (0 on failure). The stack is the current one when script
+/// runs, else the exception's own.
+unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>* context, Global<Value>* exception,
+                                      const uint8_t* message, size_t message_length, const uint8_t* url, size_t url_length,
+                                      unsigned line, unsigned column) {
+    if (!inspector || !inspector->inspector() || !context || context->IsEmpty()) return 0;
+    Isolate* isolate = inspector->isolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    Context::Scope context_scope(local);
+    Local<Value> value = exception && !exception->IsEmpty() ? exception->Get(isolate) : Undefined(isolate).As<Value>();
+    std::unique_ptr<v8_inspector::V8StackTrace> stack;
+    if (value->IsObject()) {
+        Local<StackTrace> trace = Exception::GetStackTrace(value);
+        if (!trace.IsEmpty() && trace->GetFrameCount() > 0) stack = inspector->inspector()->createStackTrace(trace);
+    }
+    if (!stack) stack = inspector->inspector()->captureStackTrace(false);
+    std::vector<uint16_t> wide_message;
+    std::vector<uint16_t> wide_url;
+    v8_inspector::StringView message_view = CraneMessageView(message ? message : reinterpret_cast<const uint8_t*>(""), message ? message_length : 0, wide_message);
+    return inspector->inspector()->exceptionThrown(local, message_view, value, message_view,
+                                                   CraneMessageView(url ? url : reinterpret_cast<const uint8_t*>(""), url ? url_length : 0, wide_url),
+                                                   line, column, std::move(stack), 0);
+}
+
+void v8_Inspector_ExceptionRevoked(CraneInspector* inspector, Global<Context>* context, unsigned exception_id, const uint8_t* message, size_t length) {
+    if (!inspector || !inspector->inspector() || !context || context->IsEmpty()) return;
+    Isolate* isolate = inspector->isolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    std::vector<uint16_t> wide;
+    inspector->inspector()->exceptionRevoked(local, exception_id, CraneMessageView(message ? message : reinterpret_cast<const uint8_t*>(""), message ? length : 0, wide));
+}
+
+/// The current stack as CDP's Runtime.StackTrace JSON ({"callFrames":[...]},
+/// 0-based lines and columns, as V8's own), handed to `sink`; false outside
+/// script.
+bool v8_Inspector_StackTrace(CraneInspector* inspector, unsigned max_frames, CraneInspectorSession::Send sink, void* sink_host) {
+    if (!inspector || !inspector->inspector()) return false;
+    Isolate* isolate = inspector->isolate();
+    HandleScope handle_scope(isolate);
+    std::unique_ptr<v8_inspector::V8StackTrace> stack = inspector->inspector()->captureStackTrace(true);
+    if (!stack || stack->isEmpty()) return false;
+    std::vector<v8_inspector::V8StackFrame> frames = stack->frames();
+    std::string json = "{\"callFrames\":[";
+    unsigned written = 0;
+    for (const auto& frame : frames) {
+        if (max_frames != 0 && written >= max_frames) break;
+        if (written != 0) json += ",";
+        json += "{\"functionName\":";
+        std::string name;
+        CraneAppendUtf8(name, frame.functionName);
+        std::string url;
+        CraneAppendUtf8(url, frame.sourceURL);
+        auto quote = [&json](const std::string& text) {
+            json.push_back('"');
+            for (char c : text) {
+                const unsigned char u = static_cast<unsigned char>(c);
+                if (c == '"' || c == '\\') {
+                    json.push_back('\\');
+                    json.push_back(c);
+                } else if (u < 0x20) {
+                    char escaped[8];
+                    snprintf(escaped, sizeof(escaped), "\\u%04x", u);
+                    json += escaped;
+                } else {
+                    json.push_back(c);
+                }
+            }
+            json.push_back('"');
+        };
+        quote(name);
+        json += ",\"scriptId\":\"";
+        json += std::to_string(frame.scriptId);
+        json += "\",\"url\":";
+        quote(url);
+        // V8StackFrame's numbers are 1-based; CDP's CallFrame's 0-based.
+        json += ",\"lineNumber\":";
+        json += std::to_string(frame.lineNumber > 0 ? frame.lineNumber - 1 : 0);
+        json += ",\"columnNumber\":";
+        json += std::to_string(frame.columnNumber > 0 ? frame.columnNumber - 1 : 0);
+        json += "}";
+        ++written;
+    }
+    json += "]}";
+    sink(sink_host, reinterpret_cast<const uint8_t*>(json.data()), json.size());
+    return true;
+}
+
+/// A host session in `group`, its messages to `send(host, ...)`; null when V8
+/// could not connect one.
+CraneInspectorSession* v8_InspectorSession_New(CraneInspector* inspector, int group, CraneInspectorSession::Send send, void* host) {
+    if (!inspector || !send) return nullptr;
+    auto* session = new CraneInspectorSession(inspector, group, send, host);
+    if (!session->ok()) {
+        delete session;
+        return nullptr;
+    }
+    return session;
+}
+
+void v8_InspectorSession_Delete(CraneInspectorSession* session) {
+    delete session;
+}
+
+void v8_InspectorSession_Dispatch(CraneInspectorSession* session, const uint8_t* json, size_t length) {
+    if (session && json) session->Dispatch(json, length);
+}
+
+/// engine.inspectorWrap: `value` (BORROWED) of the context known as
+/// `context_id`, as this session's RemoteObject: the Runtime.evaluate
+/// response's JSON to `sink`.
+bool v8_InspectorSession_Wrap(CraneInspectorSession* session, int context_id, Global<Value>* value,
+                              const uint8_t* group, size_t group_length, CraneInspectorSession::Send sink, void* sink_host) {
+    if (!session || !value || value->IsEmpty() || !sink) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return session->Wrap(context_id, value->Get(isolate), group, group_length, sink, sink_host);
+}
+
+/// engine.inspectorUnwrap: the value (a new Global the caller owns) and its
+/// context's Crane id; null when the id names nothing.
+Global<Value>* v8_InspectorSession_Unwrap(CraneInspectorSession* session, const uint8_t* object_id, size_t length, void** context_key) {
+    if (!session || !object_id) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> value;
+    Local<Context> context;
+    if (!session->Unwrap(object_id, length, &value, &context)) return nullptr;
+    if (context_key) *context_key = context.IsEmpty() ? nullptr : CraneContextIdOf(context);
+    return trackHandle(new Global<Value>(isolate, value));
+}
+
+void v8_InspectorSession_ReleaseObjectGroup(CraneInspectorSession* session, const uint8_t* group, size_t length) {
+    if (session) session->ReleaseObjectGroup(group, length);
+}
+
+/// V8's own console object of `context` (BORROWED): the one V8 puts on every
+/// context's global, kept on the global object (not its proxy) under a
+/// private key before the Console Standard's namespace replaces it -
+/// engine.inspectorConsoleMessage calls its methods, so V8's inspector itself
+/// reports Runtime.consoleAPICalled (its delegate, V8Console). One property
+/// per realm: the object and its builtin functions V8 made with the context
+/// are retained, nothing is made.
+void v8_Context_KeepEngineConsole(Global<Context>* context) {
+    if (!context || context->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    Context::Scope context_scope(local);
+    TryCatch try_catch(isolate);
+    Local<Object> global = local->Global();
+    Local<Value> console;
+    if (!global->Get(local, String::NewFromUtf8Literal(isolate, "console")).ToLocal(&console) || !console->IsObject()) return;
+    // On the global OBJECT (the proxy's [[Prototype]]), never the proxy,
+    // which a navigation hands on to the next realm.
+    Local<Object> holder = CraneEngineConsoleHolder(local);
+    if (holder.IsEmpty()) return;
+    Local<Private> key = Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane:engine-console"));
+    (void)holder->SetPrivate(local, key, console);
+}
+
+/// engine.inspectorConsoleMessage: V8's own console[`method`](...args) in
+/// `context` (each argument a BORROWED Global<Value>). Nothing when the
+/// realm kept no engine console or has no such method.
+void v8_Context_EngineConsoleCall(Global<Context>* context, const uint8_t* method, size_t method_length, Global<Value>** args, size_t count) {
+    if (!context || context->IsEmpty() || !method) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    Context::Scope context_scope(local);
+    TryCatch try_catch(isolate);
+    Local<Object> holder = CraneEngineConsoleHolder(local);
+    if (holder.IsEmpty()) return;
+    Local<Private> key = Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane:engine-console"));
+    Local<Value> console;
+    if (!holder->GetPrivate(local, key).ToLocal(&console) || !console->IsObject()) return;
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, reinterpret_cast<const char*>(method), NewStringType::kNormal, static_cast<int>(method_length)).ToLocal(&name)) return;
+    Local<Value> function;
+    if (!console.As<Object>()->Get(local, name).ToLocal(&function) || !function->IsFunction()) return;
+    std::vector<Local<Value>> argv;
+    argv.reserve(count);
+    for (size_t i = 0; i < count; ++i) argv.push_back(args[i] && !args[i]->IsEmpty() ? args[i]->Get(isolate) : Undefined(isolate).As<Value>());
+    (void)function.As<Function>()->Call(local, console, static_cast<int>(argv.size()), argv.data());
+}
+
+} // extern "C"
+
+// ---- lane: console1 (engine.evaluateReplScript: REPL mode through the inspector) ----
+
+/// What an agent's console keeps of the agent's inspector
+/// (engine.evaluateReplScript, protocol_repl.zig): one V8InspectorSession per
+/// context group it evaluates in, whose responses come back here.
+///
+/// REPL mode is Chrome DevTools' console evaluation - Runtime.evaluate with
+/// `replMode` (js_protocol.pdl: "enables `let` re-declaration and top-level
+/// `await`"). V8 compiles such a script with v8::debug::EvaluateGlobal's repl
+/// flag, which is not public API (src/debug/debug-interface.h); its one
+/// public door is the inspector. Deno's REPL, an embedder like Crane, goes
+/// through it the same way: an in-process session that dispatches
+/// Runtime.evaluate with replMode (deno cli/tools/repl/session.rs). A REPL
+/// script always completes through a promise of {".repl_result": value}, and
+/// the inspector answers once that settles (injected-script.cc,
+/// ProtocolPromiseHandler::thenCallback unwraps `.repl_result`;
+/// catchCallback reports a rejection) - so the answer comes in a
+/// sendResponse, here, and is handed to `outcome`.
+///
+/// The inspector is the AGENT's (CraneInspector, lane cdpw - V8 allows one per
+/// isolate, and a host's CDP sessions use the same one). A context belongs to
+/// one group: a realm a host registered in its group is evaluated through
+/// this session's V8 session for that group; any other realm is registered in
+/// the console's own group (protocol_repl.zig). No domain is enabled, so the
+/// console's sessions report nothing on their own and pause nothing. Used on
+/// the agent's own thread only.
+class CraneReplSession final : public v8_inspector::V8Inspector::Channel {
+public:
+    /// What a response came to (protocol_repl.zig, Outcome).
+    enum Kind : int { kCompleted = 0, kThrew = 1, kFailed = 2 };
+    using Outcome = void (*)(void* host, int call_id, int kind, Global<Value>* value, bool incomplete);
+
+    CraneReplSession(CraneInspector* owner, Outcome outcome, void* host)
+        : owner_(owner), isolate_(owner->isolate()), outcome_(outcome), host_(host) {}
+
+    ~CraneReplSession() override {
+        // From here on a response - a session's end fails what is still
+        // pending - reaches nobody.
+        closing_ = true;
+        HandleScope handle_scope(isolate_);
+        for (auto& entry : sessions_) entry.second->releaseObjectGroup(ObjectGroup());
+        sessions_.clear();
+        utility_.Reset();
+    }
+
+    bool ok() const { return owner_ && owner_->inspector(); }
+
     /// Dispatch one protocol message (`json`, ASCII: protocol_repl.zig
-    /// escapes everything else). What a previous response bound in the
-    /// object group is released first: the host has taken its value.
-    void Dispatch(const uint8_t* json, size_t length) {
+    /// escapes everything else) to the V8 session of `group`, made on its
+    /// first use. What a previous response bound in the object group is
+    /// released first: the host has taken its value.
+    void Dispatch(int group, const uint8_t* json, size_t length) {
+        v8_inspector::V8InspectorSession* session = SessionFor(group);
+        if (!session) return;
         if (release_pending_) {
-            session_->releaseObjectGroup(ObjectGroup());
+            for (auto& entry : sessions_) entry.second->releaseObjectGroup(ObjectGroup());
             release_pending_ = false;
         }
         // Not a script call: no kAuto microtask checkpoint inside it
         // (NativeStepScope), so an evaluation's outcome comes back at the
         // agent's next checkpoint - or here, for input that does not parse.
         NativeStepScope native_step(isolate_);
-        session_->dispatchProtocolMessage(v8_inspector::StringView(json, length));
+        current_ = session;
+        session->dispatchProtocolMessage(v8_inspector::StringView(json, length));
     }
 
     // ---- V8Inspector::Channel ----
@@ -21193,15 +21781,21 @@ public:
     void sendNotification(std::unique_ptr<v8_inspector::StringBuffer>) override {}
     void flushProtocolNotifications() override {}
 
-    // ---- V8InspectorClient ----
-
-    /// The inspector's ids (each context's unique id, its isolate's) from a
-    /// counter of the session's own: by default it draws them from the
-    /// isolate's random number generator, which a seeded agent's Math.random
-    /// is seeded from (engine.capabilities.seeded_random).
-    int64_t generateUniqueId() override { return ++unique_id_; }
-
 private:
+    /// The V8 session of `group`, connected on first use.
+    v8_inspector::V8InspectorSession* SessionFor(int group) {
+        auto it = sessions_.find(group);
+        if (it != sessions_.end()) return it->second.get();
+        if (!owner_ || !owner_->inspector()) return nullptr;
+        auto made = owner_->inspector()->connect(group, this, v8_inspector::StringView(),
+                                                 v8_inspector::V8Inspector::kFullyTrusted,
+                                                 v8_inspector::V8Inspector::kNotWaitingForDebugger);
+        if (!made) return nullptr;
+        v8_inspector::V8InspectorSession* raw = made.get();
+        sessions_[group] = std::move(made);
+        return raw;
+    }
+
     /// The object group every response's values are bound in (a string
     /// literal: static storage).
     static v8_inspector::StringView ObjectGroup() {
@@ -21258,11 +21852,18 @@ private:
         Local<Value> object_id = Field(isolate_, utility, remote, "objectId");
         if (object_id->IsString()) {
             String::Utf8Value id(isolate_, object_id);
-            if (!*id) return false;
+            if (!*id || !current_) return false;
             std::unique_ptr<v8_inspector::StringBuffer> error;
             std::unique_ptr<v8_inspector::StringBuffer> group;
             Local<Context> context;
-            return session_->unwrapObject(&error, v8_inspector::StringView(reinterpret_cast<const uint8_t*>(*id), static_cast<size_t>(id.length())), out, &context, &group);
+            // The id is the session's that answered: every session of the
+            // agent's inspector reads every group's remote objects
+            // (InjectedScript ids carry their context), and each REPL
+            // evaluation is answered by the session it was dispatched to.
+            for (auto& entry : sessions_) {
+                if (entry.second->unwrapObject(&error, v8_inspector::StringView(reinterpret_cast<const uint8_t*>(*id), static_cast<size_t>(id.length())), out, &context, &group)) return true;
+            }
+            return false;
         }
         Local<Value> unserializable = Field(isolate_, utility, remote, "unserializableValue");
         if (unserializable->IsString()) {
@@ -21319,6 +21920,7 @@ private:
                strcmp(*text, "Uncaught SyntaxError: Unterminated template literal") == 0;
     }
 
+    CraneInspector* owner_;
     Isolate* isolate_;
     Outcome outcome_;
     void* host_;
@@ -21326,23 +21928,21 @@ private:
     /// A response bound its value in the object group: released at the next
     /// dispatch (the host took the value in `outcome`).
     bool release_pending_ = false;
-    int64_t unique_id_ = 0x63726e65;
-    /// The contexts made known to the inspector, by its id: weak handles,
-    /// for ContextEnded.
-    std::unordered_map<int, Global<Context>> contexts_;
+    /// The session the last dispatch went to.
+    v8_inspector::V8InspectorSession* current_ = nullptr;
+    /// One V8 session per context group the console evaluated in.
+    std::unordered_map<int, std::unique_ptr<v8_inspector::V8InspectorSession>> sessions_;
     Global<Context> utility_;
-    std::unique_ptr<v8_inspector::V8Inspector> inspector_;
-    std::unique_ptr<v8_inspector::V8InspectorSession> session_;
 };
 
 extern "C" {
 
-/// A new console session for `isolate` (CraneReplSession), whose responses
-/// go to `outcome(host, ...)`. Null when V8 could not make one. With the
-/// isolate entered.
-CraneReplSession* v8_ReplSession_New(Isolate* isolate, CraneReplSession::Outcome outcome, void* host) {
-    if (!isolate || !outcome) return nullptr;
-    auto* session = new CraneReplSession(isolate, outcome, host);
+/// A new console session on the agent's inspector `owner`, whose responses go
+/// to `outcome(host, ...)`. Null when there is no inspector. With the isolate
+/// entered.
+CraneReplSession* v8_ReplSession_New(CraneInspector* owner, CraneReplSession::Outcome outcome, void* host) {
+    if (!owner || !outcome) return nullptr;
+    auto* session = new CraneReplSession(owner, outcome, host);
     if (!session->ok()) {
         delete session;
         return nullptr;
@@ -21350,40 +21950,18 @@ CraneReplSession* v8_ReplSession_New(Isolate* isolate, CraneReplSession::Outcome
     return session;
 }
 
-/// End the session: every context it made known is forgotten, its pending
-/// evaluations fail silently, and the inspector is deleted. With the
-/// isolate entered, before it is disposed.
+/// End the session: its V8 sessions go (their pending evaluations fail
+/// silently). The agent's inspector stays. With the isolate entered, before
+/// the inspector is deleted.
 void v8_ReplSession_Delete(CraneReplSession* session) {
     delete session;
 }
 
-/// The inspector's execution context id for `context` (registered on first
-/// use); 0 on failure.
-int v8_ReplSession_Register(CraneReplSession* session, Global<Context>* context) {
-    if (!session || !context || context->IsEmpty()) return 0;
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> local = context->Get(isolate);
-    Context::Scope context_scope(local);
-    return session->Register(local);
-}
-
-/// Dispatch a protocol message (ASCII JSON) to the session.
-void v8_ReplSession_Dispatch(CraneReplSession* session, const uint8_t* json, size_t length) {
+/// Dispatch a protocol message (ASCII JSON) to the session's V8 session of
+/// `group`.
+void v8_ReplSession_Dispatch(CraneReplSession* session, int group, const uint8_t* json, size_t length) {
     if (!session || !json) return;
-    session->Dispatch(json, length);
-}
-
-/// The realm whose context the inspector knows as `context_id` ended.
-void v8_ReplSession_ContextEnded(CraneReplSession* session, int context_id) {
-    if (!session) return;
-    session->ContextEnded(context_id);
-}
-
-/// Every context the session made known, forgotten (the agent's end).
-void v8_ReplSession_DetachContexts(CraneReplSession* session) {
-    if (!session) return;
-    session->DetachContexts();
+    session->Dispatch(group, json, length);
 }
 
 } // extern "C"

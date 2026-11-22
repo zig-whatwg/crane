@@ -50,15 +50,18 @@ pub fn bind(isolate: *ffi.Isolate, wrapper: *ffi.Object, instance: *runtime.Inst
 }
 
 /// `bind` for a wrapper an isolated world realm's cache will keep (protocol_worlds.zig, WrapperCache.world):
-/// a NODE's too, which is bound to a platform anchor like any other object's - the node's own slot and its
-/// NodeAnchor are the main world's - and its record holds the node's counted reference instead
-/// (wrapper_cache.zig `Bits.world_counted`). A node that holds nodes (a Document's holder trace) gets a holder
-/// anchor, so a reachable world wrapper keeps what it holds as the main world's does.
+/// a NODE's too - the node's own slot and its NodeAnchor are the main world's - and its record holds the node's
+/// counted reference instead (wrapper_cache.zig `Bits.world_counted`). A world's node wrapper is bound to a
+/// HOLDER anchor: when a collection reaches it, node_wrappers' `traceHolder` walks from its node exactly as a
+/// reached NodeAnchor does - the node's wrapper in every world, its main-world slot included, and every
+/// wrapper its tree keeps - so a world wrapper script holds keeps the main world's wrappers (and their
+/// expandos) of its tree alive. Blink: a world's wrapper reaches the C++ Node, whose Trace reaches its tree,
+/// its main-world `wrapper_` (ScriptWrappable::Trace) and, through the DOMDataStore ephemerons, every
+/// world's wrapper of each node.
 pub fn bindInWorld(isolate: *ffi.Isolate, wrapper: *ffi.Object, instance: *runtime.Instance) bool {
     if (instance.vtable.counted == null) return bind(isolate, wrapper, instance);
-    const holds_nodes = instance.vtable.trace_held_nodes != null;
-    if (holds_nodes) node_wrappers.prepareHolderTracing(isolate);
-    return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, holds_nodes);
+    node_wrappers.prepareHolderTracing(isolate);
+    return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, true);
 }
 
 /// `wrapper` reaches no instance from here - Blink's V8DOMWrapper::ClearNativeInfo: the wrap that made it

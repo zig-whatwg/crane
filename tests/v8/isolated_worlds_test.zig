@@ -228,6 +228,36 @@ test "a world's wrappers are collected when nothing keeps them, and a node's wor
     engine.requestGarbageCollection(page.agent);
 }
 
+test "a world wrapper script holds keeps its tree's main-world wrappers, and their expandos" {
+    // Blink: an isolated world's wrapper reaches the C++ Node, whose Trace
+    // reaches its tree and its main-world wrapper - so a detached subtree only
+    // a world holds keeps the page's expandos on it. Crane: the world's node
+    // wrapper is bound to a holder anchor whose trace walks from its node
+    // (platform_anchor.bindInWorld, node_wrappers.traceHolder).
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(page.realm,
+        \\const kept = document.createElement('div');
+        \\kept.id = 'kept';
+        \\const inner = document.createElement('span');
+        \\inner.mainMark = 'main-expando';
+        \\kept.appendChild(inner);
+        \\kept.mainMark = 'main-root';
+        \\document.body.appendChild(kept);
+        \\'ok'
+    , "ok");
+    // The world takes the subtree; the page detaches it and keeps no
+    // reference to any of it.
+    try expect(world, "globalThis.held = document.getElementById('kept'); 'ok'", "ok");
+    try expect(page.realm, "document.getElementById('kept').remove(); 'ok'", "ok");
+    for (0..3) |_| engine.requestGarbageCollection(page.agent);
+    // The world puts it back; the page finds its own wrappers, expandos and
+    // all.
+    try expect(world, "document.body.appendChild(held); delete globalThis.held; 'ok'", "ok");
+    try expect(page.realm, "const k = document.getElementById('kept'); k.mainMark + ' ' + k.firstChild.mainMark", "main-root main-expando");
+}
+
 test "a world realm ends with its main realm, before it, and the shared Window is freed once" {
     var page = try Page.make();
     defer page.end();

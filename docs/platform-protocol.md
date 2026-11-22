@@ -399,11 +399,17 @@ model (Storage 4.2 storage keys, 4.6 storage bottles) stays above the protocol.
 
 ### 6.6 The storage engine (decision 10)
 
-A transactional, ordered key-value store: the common shape of SQLite, LevelDB and an in-memory map,
-and of what Crane's stores need (IndexedDB, localStorage persistence, Cache API, the permission
-store). kit/sqlite, kit/leveldb and kit/memory_store implement it; darwin, linux and testing use them
-(today's choice: SQLite on iOS, LevelDB on desktop, memory with no profile directory), and a platform
-may supply its own.
+A transactional, ordered key-value store: the common shape of SQLite and an in-memory map, and of
+what Crane's stores need (IndexedDB, localStorage persistence, Cache API, the permission store).
+kit/sqlite and kit/memory_store implement it: SQLite on every platform with a profile directory (user
+ruling 2026-11-21: Firefox and Safari keep their profile state in SQLite, Chrome its cookies), and
+kit/memory_store for a Browser with none; darwin (macOS and iOS), linux and testing use both
+(kit/browser_state dispatches by the `StorageEngine` each handle points at), and a platform may
+supply its own. kit/sqlite (src/platform/kit/sqlite/root.zig, lane life1) keeps one database file
+per store under `<profile>/stores/`, a `kv(key BLOB PRIMARY KEY, value BLOB) WITHOUT ROWID` table
+whose BINARY collation is this section's byte order, WAL with synchronous=FULL (durable on return),
+a connection per transaction (WAL snapshot reads), and one writer per store (a second is
+`Conflict`). Its system library is declared by each adapter's `platform_build.zig` (section 10).
 
 **Web-visible behaviour is above the protocol.** Keys are byte strings compared lexicographically
 (unsigned bytes) - the one order every implementation must give, so an IndexedDB key range or cursor
@@ -924,6 +930,13 @@ them). V8 is built without ICU, so its Date reads libc's `TZ`. The testing platf
 environment itself: WPT runs build against it and keep the host's environment, as browsers' WPT runs do.
 
 ## 10. Link plans
+
+**The build declaration (lane life1, 2026-11-21).** What a built-in platform builds in beyond the fixed
+kit - an extra kit part and the system libraries it links - is declared by its adapter in
+`src/platform/adapters/<platform>/platform_build.zig` (`kitParts(target)`), read through
+`src/platform/platform_build_protocol.zig` as the engine's adapters are read through
+src/runtime/engine_build_protocol.zig: build.zig names no library for it. The first part is kit/sqlite,
+`sqlite3` from the system on darwin (macOS and iOS SDKs) and linux.
 
 **The principle (the user, 2026-10-09): ship the smallest library.** For each capability - and, where it
 matters, each algorithm or feature - a platform dynamically links the system library when the platform

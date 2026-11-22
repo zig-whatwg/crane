@@ -375,12 +375,16 @@ pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// HTML "vendor" getter steps: "return the appropriate string from the
 /// following list: If the navigator compatibility mode is Chrome: the string
 /// "Google Inc."; Gecko: the empty string; WebKit: "Apple Computer, Inc."".
-/// Crane's navigator compatibility mode is Chrome - the mode its productSub
-/// ("20030107") and appVersion already follow - by the user's ruling of
-/// 2026-11-20. ([Exposed=Window]: a WorkerNavigator has no vendor.)
+/// DEVIATION, by the user's ruling of 2026-11-21 7:32 PM ET: Crane returns
+/// its own name, "Crane", in place of the Chrome mode's "Google Inc." (the
+/// 2026-11-20 ruling it replaces). productSub ("20030107") and appVersion
+/// stay in the Chrome mode. Known cost: WPT
+/// html/webappapis/system-state-and-capabilities/the-navigator-object/
+/// navigator.any.html "vendor" fails, recorded as a user-ruling loss.
+/// ([Exposed=Window]: a WorkerNavigator has no vendor.)
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return runtime.DOMString.initInterned("Google Inc.");
+    return runtime.DOMString.initInterned("Crane");
 }
 
 /// Getter for vendorSub

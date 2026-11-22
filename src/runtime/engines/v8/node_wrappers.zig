@@ -699,8 +699,20 @@ fn traceHolder(raw_registry: ?*anyopaque, raw_instance: ?*anyopaque, generation:
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     // A test that removed the walk removed the holders' walks with it.
     if (!runtime.lifetime.walkInstalled()) return;
-    const trace = instance.vtable.trace_held_nodes orelse return;
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
+    // An isolated world's wrapper of a NODE (protocol_worlds.zig; bound to a
+    // holder anchor by platform_anchor.bindInWorld): reached, it keeps what a
+    // reached NodeAnchor keeps - its node's wrapper in every world (the main
+    // world's slot included: `traceNodeWrapper`) and the walk from its node
+    // (`walk`: every wrapper its host-including tree and its node document's
+    // tree keep). Blink: the world's wrapper reaches the C++ Node, whose
+    // Trace reaches its tree and its main-world wrapper.
+    if (instance.vtable.counted != null) {
+        const target = targetOf(instance) orelse return;
+        traceNodeWrapper(&tracer, runtime.lifetime.slotOf(target));
+        walk(registry, target, &tracer);
+    }
+    const trace = instance.vtable.trace_held_nodes orelse return;
     registry.in_walk = true;
     defer registry.in_walk = false;
     trace(instance, &tracer);

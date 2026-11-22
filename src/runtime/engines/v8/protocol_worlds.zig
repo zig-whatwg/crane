@@ -51,12 +51,13 @@
 //!   Blink's WindowProxy objects live in the frame's WindowProxyManager and are
 //!   re-initialized in the new document.
 //!
-//! Deviations, part 1 (documented, for the test pass): a reachable world
-//! wrapper of a node does not walk its tree - its node is kept (its counted
-//! reference) but a main-world wrapper of that tree that nothing else reaches
-//! may be collected; a string TimerHandler a world passes to setTimeout is
-//! compiled in the main realm, whose Window keeps the world's timers
-//! (page_realm.receiverWindowRealm), where Blink compiles it in the world.
+//! - A reachable world wrapper of a node keeps its tree: it is bound to a
+//!   holder anchor whose trace walks from its node (platform_anchor.
+//!   bindInWorld, node_wrappers.traceHolder), as a reached NodeAnchor does.
+//! - A world's timers are its Window's - one map of active timers - and run
+//!   in the world: the host is handed the world realm and keeps the map on
+//!   its main realm (browser/Context.zig TimerMap), so a string handler is
+//!   compiled in the world and a callback's this is the world's WindowProxy.
 //!
 //! Engine work in the sense of AGENTS.md (handle ownership, allocator
 //! lifetimes, teardown order): every `v8_*` call returning a pointer made a
@@ -267,14 +268,18 @@ pub fn worldRealmFor(main: Context, world: WorldId) ?Context {
     return w.realm;
 }
 
-/// engine.worldOf.
+/// engine.worldOf: no lookup, no lock, for a realm of a Browser that made
+/// no world (`realmMayHaveWorlds`) - the host asks it on hot paths (its
+/// timer map).
 pub fn worldOf(realm: Context) WorldId {
+    if (!realmMayHaveWorlds(realm)) return engine.main_world;
     const w = stateOf(realm) orelse return engine.main_world;
     return w.world;
 }
 
-/// engine.mainRealmOf.
+/// engine.mainRealmOf, as cheap as `worldOf` without worlds.
 pub fn mainRealmOf(realm: Context) Context {
+    if (!realmMayHaveWorlds(realm)) return realm;
     const w = stateOf(realm) orelse return realm;
     return w.main;
 }
@@ -537,12 +542,12 @@ fn endWorldRealm(worlds: *AgentWorlds, w: *WorldRealm) void {
     const context = w.context;
     const isolate = isolateOf(realm);
 
-    // Its window operations end: nothing reaches the host's timer steps
-    // through it again. Its timers and animation frames are its main
-    // realm's Window's (page_realm.receiverWindowRealm), which end with that
-    // Window - never the Window's own end here (WindowOperations.
-    // windowDestroyed runs the Window's unloading cleanup steps, which a
-    // world realm does not own).
+    // Its timers and animation frame callbacks end - the ones it set, in
+    // its Window's map (the host tells a world realm from its main realm by
+    // engine.worldOf and ends only the world's: browser/Context.zig) - then
+    // its window operations: nothing reaches the host's steps through it
+    // again.
+    page_realm.frameWindowDestroyed(realm);
     page_realm.endWindowOperations(realm);
 
     if (isLive(context)) {

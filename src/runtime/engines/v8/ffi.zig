@@ -4363,28 +4363,72 @@ pub extern fn v8_WasmResponseCompilation_Append(compilation: *WasmResponseCompil
 pub extern fn v8_WasmResponseCompilation_Finish(compilation: *WasmResponseCompilation, url: [*]const u8, url_length: usize) void;
 /// WasmStreaming::Abort with `reason` (borrowed) or none; deletes `compilation`.
 pub extern fn v8_WasmResponseCompilation_Abort(compilation: *WasmResponseCompilation, reason: ?*Value) void;
+// ---- lane: cdpw (the agent's inspector: engine section 4.2b) ----
+/// THE agent's inspector (v8_wrapper.cpp, CraneInspector): its V8Inspector -
+/// one per isolate - and the client V8 asks. Owned by
+/// protocol_inspector.Inspector, on the agent's record; deleted at the agent's
+/// end, after its last microtask checkpoint and before its isolate is
+/// disposed. Used only on the agent's own thread, with its isolate entered.
+pub const Inspector = opaque {};
+/// One host session of the agent's inspector (CraneInspectorSession).
+pub const InspectorSession = opaque {};
+/// A UTF-8 message out of the inspector, BORROWED for the call.
+pub const InspectorSend = *const fn (host: ?*anyopaque, utf8: [*]const u8, length: usize) callconv(.c) void;
+/// CraneInspectorHooks, field for field.
+pub const InspectorHooks = extern struct {
+    host: ?*anyopaque,
+    run_if_waiting: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) void,
+    run_message_loop_on_pause: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) void,
+    quit_message_loop_on_pause: ?*const fn (host: ?*anyopaque) callconv(.c) void,
+    /// BORROWED: the realm record's own context handle.
+    default_context: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) ?*Context,
+};
+pub extern fn v8_Inspector_New(isolate: *Isolate) ?*Inspector;
+pub extern fn v8_Inspector_Delete(inspector: ?*Inspector) void;
+pub extern fn v8_Inspector_SetHooks(inspector: *Inspector, hooks: ?*const InspectorHooks) void;
+/// contextCreated for `context` (BORROWED) in `group`; its execution context
+/// id, 0 on failure. `name`, `origin` and `aux` UTF-8, BORROWED.
+pub extern fn v8_Inspector_ContextCreated(inspector: *Inspector, context: *Context, group: c_int, name: [*]const u8, name_length: usize, origin: [*]const u8, origin_length: usize, aux: [*]const u8, aux_length: usize) c_int;
+pub extern fn v8_Inspector_ContextDestroyed(inspector: *Inspector, context_id: c_int) void;
+pub extern fn v8_Inspector_ResetGroup(inspector: *Inspector, group: c_int) void;
+pub extern fn v8_Inspector_DetachContexts(inspector: *Inspector) void;
+pub extern fn v8_Inspector_GroupOf(inspector: *Inspector, context_id: c_int) c_int;
+pub extern fn v8_Inspector_CanDispatch(method: [*]const u8, length: usize) bool;
+pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint) c_uint;
+pub extern fn v8_Inspector_ExceptionRevoked(inspector: *Inspector, context: *Context, exception_id: c_uint, message: [*]const u8, length: usize) void;
+/// The current stack as CDP's Runtime.StackTrace JSON, to `sink`; false outside script.
+pub extern fn v8_Inspector_StackTrace(inspector: *Inspector, max_frames: c_uint, sink: InspectorSend, sink_host: ?*anyopaque) bool;
+pub extern fn v8_InspectorSession_New(inspector: *Inspector, group: c_int, send: InspectorSend, host: ?*anyopaque) ?*InspectorSession;
+pub extern fn v8_InspectorSession_Delete(session: ?*InspectorSession) void;
+pub extern fn v8_InspectorSession_Dispatch(session: *InspectorSession, json: [*]const u8, length: usize) void;
+/// `value` (BORROWED) of context `context_id` as the session's RemoteObject:
+/// the Runtime.evaluate response's JSON to `sink`.
+pub extern fn v8_InspectorSession_Wrap(session: *InspectorSession, context_id: c_int, value: *Value, group: [*]const u8, group_length: usize, sink: InspectorSend, sink_host: ?*anyopaque) bool;
+/// The value the object id names (a new Global the caller owns), and its
+/// context's Crane id in `context_key`; null when it names nothing.
+pub extern fn v8_InspectorSession_Unwrap(session: *InspectorSession, object_id: [*]const u8, length: usize, context_key: *?*anyopaque) ?*Value;
+pub extern fn v8_InspectorSession_ReleaseObjectGroup(session: *InspectorSession, group: [*]const u8, length: usize) void;
+/// Keep V8's own console object of `context` (BORROWED) before the Console
+/// Standard's namespace replaces it (engine.inspectorConsoleMessage).
+pub extern fn v8_Context_KeepEngineConsole(context: *Context) void;
+/// V8's own console[method](...args) in `context`; every handle BORROWED.
+pub extern fn v8_Context_EngineConsoleCall(context: *Context, method: [*]const u8, method_length: usize, args: [*]const *Value, count: usize) void;
+// ---- end lane: cdpw ----
 // ---- lane: console1 (engine.evaluateReplScript) ----
-/// An agent's console session (v8_wrapper.cpp, CraneReplSession): an
-/// inspector of the agent's isolate and one session of it, through which
+/// An agent's console session (v8_wrapper.cpp, CraneReplSession): one session
+/// of the agent's inspector per context group it evaluates in, through which
 /// console input is evaluated in REPL mode. Owned by the agent's AgentRecord
-/// (protocol_repl.Session); deleted at the agent's end, after its last
-/// microtask checkpoint and before its isolate is disposed. Used only on the
-/// agent's own thread, with its isolate entered.
+/// (protocol_repl.Session); deleted at the agent's end, before the agent's
+/// inspector. Used only on the agent's own thread, with its isolate entered.
 pub const ReplSession = opaque {};
 /// What a response of the session came to: `kind` 0 completed (`value` the
 /// completion value), 1 threw (`value` the exception; `incomplete` when it is
 /// the SyntaxError of input that ended too soon), 2 failed (`value` null).
 /// `value` is a new Global the callee owns.
 pub const ReplOutcome = *const fn (host: ?*anyopaque, call_id: c_int, kind: c_int, value: ?*Value, incomplete: bool) callconv(.c) void;
-pub extern fn v8_ReplSession_New(isolate: *Isolate, outcome: ReplOutcome, host: ?*anyopaque) ?*ReplSession;
+pub extern fn v8_ReplSession_New(inspector: *Inspector, outcome: ReplOutcome, host: ?*anyopaque) ?*ReplSession;
 pub extern fn v8_ReplSession_Delete(session: ?*ReplSession) void;
-/// The inspector's execution context id for `context`, made known to it on
-/// first use; 0 on failure.
-pub extern fn v8_ReplSession_Register(session: *ReplSession, context: *Context) c_int;
-/// Dispatch one DevTools protocol message (ASCII JSON).
-pub extern fn v8_ReplSession_Dispatch(session: *ReplSession, json: [*]const u8, length: usize) void;
-/// The realm whose context the inspector knows as `context_id` ended.
-pub extern fn v8_ReplSession_ContextEnded(session: *ReplSession, context_id: c_int) void;
-/// Every context the session made known, forgotten.
-pub extern fn v8_ReplSession_DetachContexts(session: *ReplSession) void;
+/// Dispatch one DevTools protocol message (ASCII JSON) to the session's V8
+/// session of `group`.
+pub extern fn v8_ReplSession_Dispatch(session: *ReplSession, group: c_int, json: [*]const u8, length: usize) void;
 // ---- end lane: console1 ----

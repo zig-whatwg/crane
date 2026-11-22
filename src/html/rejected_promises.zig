@@ -46,6 +46,10 @@ const Rejected = struct {
     promise: engine.Owned,
     /// Null when the engine gave none.
     reason: ?engine.Owned,
+    /// The agent's inspector's id for the rejection it was told of
+    /// (`reportToInspector`), for Runtime.exceptionRevoked when a handler
+    /// comes; 0: none.
+    inspector_id: u32 = 0,
 
     fn release(self: Rejected) void {
         self.promise.release();
@@ -321,6 +325,7 @@ fn notificationSteps(data: ?*anyopaque) void {
             .unhandled_rejection => notifyOne(task.global, rejected),
             .rejection_handled => {
                 defer rejected.release();
+                revokeAtInspector(task.global.ctx, rejected);
                 _ = firePromiseRejectionEvent(task.global, "rejectionhandled", rejected, false);
             },
         }
@@ -347,12 +352,38 @@ fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
     // Browser's, when its host shows one (dom.developer_console).
     if (not_canceled and !reportToDeveloperConsole(realm, rejected)) log.debug("unhandled promise rejection", .{});
 
+    // And to the agent's inspector: Runtime.exceptionThrown, "Uncaught (in
+    // promise)" (Blink's RejectedPromises::Message::Report ->
+    // ThreadDebugger::PromiseRejected).
+    var outstanding = rejected;
+    if (not_canceled) outstanding.inspector_id = reportToInspector(realm, rejected);
+
     // 4.1.4: If p.[[PromiseIsHandled]] is false, append p to the global's
     // outstanding rejected promises weak set.
-    if (isHandled(realm, rejected.promise.value)) return rejected.release();
-    const t = trackedFor(global, true) orelse return rejected.release();
+    if (isHandled(realm, outstanding.promise.value)) return outstanding.release();
+    const t = trackedFor(global, true) orelse return outstanding.release();
     if (t.outstanding.items.len >= max_outstanding) t.outstanding.orderedRemove(0).release();
-    t.outstanding.append(allocator, rejected) catch rejected.release();
+    t.outstanding.append(allocator, outstanding) catch outstanding.release();
+}
+
+/// An unhandled rejection, to the agent's inspector (engine section 4.2b
+/// [inspector_protocol]): its id, 0 when none took it (no inspector, the
+/// realm not registered, or no inspector protocol: -Dcdp=false).
+fn reportToInspector(realm: runtime.Context, rejected: Rejected) u32 {
+    if (engine.capabilities.inspector_protocol != .unsupported) {
+        const reason = rejected.reasonValue() orelse runtime.JSValue.jsUndefined;
+        return engine.inspectorExceptionThrown(realm, reason, &.{ .message = "Uncaught (in promise)" });
+    }
+    return 0;
+}
+
+/// A rejection the inspector was told of got its handler:
+/// Runtime.exceptionRevoked (Blink's ThreadDebugger::PromiseRejectionRevoked).
+fn revokeAtInspector(realm: runtime.Context, rejected: Rejected) void {
+    if (rejected.inspector_id == 0) return;
+    if (engine.capabilities.inspector_protocol != .unsupported) {
+        engine.inspectorExceptionRevoked(realm, rejected.inspector_id, "Handler added to rejected promise");
+    }
 }
 
 /// Step 4.1.3's report to `realm`'s Browser's developer console, as DevTools

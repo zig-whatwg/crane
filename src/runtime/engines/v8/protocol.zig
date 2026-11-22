@@ -41,6 +41,7 @@ const protocol_modules = @import("protocol_modules.zig");
 const builtin = @import("builtin");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_worlds = @import("protocol_worlds.zig");
+const protocol_inspector = @import("protocol_inspector.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 /// [repl_mode]: console input in REPL mode, through the agent's inspector
 /// session.
@@ -137,6 +138,10 @@ pub const capabilities: engine.Capabilities = .{
     // joinOpaqueRoot / leaveOpaqueRoot / keepOpaqueRoot calls for nodes
     // compile out here (they are the .emulated engines' path).
     .wrapper_tracing = .native,
+    // V8's inspector (protocol_inspector.zig), with -Dcdp only: without it
+    // the per-session machinery compiles out; the REPL's use of the agent's
+    // inspector (repl_mode) stays.
+    .inspector_protocol = if (@import("build_options").cdp) .native else .unsupported,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -390,6 +395,74 @@ pub fn destroyWorldRealms(main: Context) void {
 
 pub fn installWorldObserver(agent: *Agent, observer: ?*const engine.WorldObserver, host: ?*anyopaque) void {
     protocol_worlds.installWorldObserver(agent, observer, host);
+}
+
+// ============================================================================
+// 4.2b Inspector protocol [inspector_protocol] (protocol_inspector.zig)
+// ============================================================================
+
+pub fn installInspectorClient(agent: *Agent, client: ?*const engine.InspectorClient) void {
+    protocol_inspector.installInspectorClient(agent, client);
+}
+
+pub fn inspectorConnect(agent: *Agent, group: engine.InspectorGroup, channel: engine.InspectorChannel) Error!*engine.InspectorSession {
+    return protocol_inspector.inspectorConnect(agent, group, channel);
+}
+
+pub fn inspectorDisconnect(session: *engine.InspectorSession) void {
+    protocol_inspector.inspectorDisconnect(session);
+}
+
+pub fn inspectorDispatch(session: *engine.InspectorSession, message: []const u8) void {
+    protocol_inspector.inspectorDispatch(session, message);
+}
+
+pub fn inspectorCanDispatch(method: []const u8) bool {
+    return protocol_inspector.inspectorCanDispatch(method);
+}
+
+pub fn inspectorContextCreated(context: *const engine.InspectorContext) Error!i64 {
+    return protocol_inspector.inspectorContextCreated(context);
+}
+
+pub fn inspectorContextDestroyed(realm: Context) void {
+    protocol_inspector.inspectorContextDestroyed(realm);
+}
+
+pub fn inspectorResetGroup(agent: *Agent, group: engine.InspectorGroup) void {
+    protocol_inspector.inspectorResetGroup(agent, group);
+}
+
+pub fn inspectorContextId(realm: Context) ?i64 {
+    return protocol_inspector.inspectorContextId(realm);
+}
+
+pub fn inspectorRealmOfContextId(agent: *Agent, id: i64) ?Context {
+    return protocol_inspector.inspectorRealmOfContextId(agent, id);
+}
+
+pub fn inspectorWrap(session: *engine.InspectorSession, realm: Context, value: JSValue, object_group: []const u8, allocator: std.mem.Allocator) Error![]u8 {
+    return protocol_inspector.inspectorWrap(session, realm, value, object_group, allocator);
+}
+
+pub fn inspectorUnwrap(session: *engine.InspectorSession, object_id: []const u8) Error!?engine.InspectorUnwrapped {
+    return protocol_inspector.inspectorUnwrap(session, object_id);
+}
+
+pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
+    protocol_inspector.inspectorConsoleMessage(realm, method, args);
+}
+
+pub fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const engine.InspectorExceptionDetails) u32 {
+    return protocol_inspector.inspectorExceptionThrown(realm, exception, details);
+}
+
+pub fn inspectorExceptionRevoked(realm: Context, exception_id: u32, message: []const u8) void {
+    protocol_inspector.inspectorExceptionRevoked(realm, exception_id, message);
+}
+
+pub fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std.mem.Allocator) Error!?[]u8 {
+    return protocol_inspector.inspectorStackTrace(agent, max_frames, allocator);
 }
 
 // ============================================================================
