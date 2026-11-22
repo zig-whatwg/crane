@@ -272,6 +272,10 @@ pub const DispatchPath = struct {
     /// Source/WebCore/dom/EventPath.h).
     pub const inline_capacity = 32;
 
+    /// `only_world` for a dispatch every world's listeners hear (every one
+    /// but an error report's).
+    pub const any_world: u32 = std.math.maxInt(u32);
+
     /// One retargeted touch target of one run of the path's touch targets,
     /// with the path's counted reference on it while dispatch runs. A touch
     /// target is retargeted against each tree the path enters, so it can be
@@ -308,6 +312,12 @@ pub const DispatchPath = struct {
     /// How many touch targets the event has: the length of every item's
     /// touch target list.
     touch_count: u32,
+    /// The only world (engine.WorldId) whose listeners this dispatch
+    /// reaches, or `any_world`: a user agent's error report is its throwing
+    /// script's world's (Blink's ErrorEvent::CanBeDispatchedInWorld;
+    /// dom.fire_event.dispatchTrustedInWorld). In the padding after
+    /// `touch_count`: the header stays 88 bytes.
+    only_world: u32,
     /// The event's currentTarget attribute value ("invoke" step 7), or null
     /// before the first listener's item. It is the dispatch's to keep, not
     /// the Event's: outside dispatch it is null (dispatch step 8), so an
@@ -328,6 +338,7 @@ pub const DispatchPath = struct {
         self.heap = &.{};
         self.touch_targets = .empty;
         self.touch_count = 0;
+        self.only_world = any_world;
         self.current_target = null;
         self.current_target_generation = 0;
     }

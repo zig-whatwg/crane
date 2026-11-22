@@ -162,6 +162,9 @@ fn reportThrown(context: *ffi.Context, exception: *ffi.Value, report: runtime.Re
         .colno = 0,
         // Borrowed: the caller's completion Global outlives the report.
         .error_value = .{ .handle = .{ .ptr = exception } },
+        // The realm that threw: an isolated world's error event is that
+        // world's only (html report_exception).
+        .realm = context_manager.get(context),
     };
     if (info) |i| {
         if (i.getMessage()) |m| error_info.message = m;

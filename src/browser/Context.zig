@@ -452,6 +452,9 @@ fn reportToWindow(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The realm that threw (an isolated world's: its error event is that
+        // world's only - report_exception).
+        .realm = info.realm,
     };
     _ = html_mod.report_exception.reportErrorInfo(window, &extracted, .{});
 }

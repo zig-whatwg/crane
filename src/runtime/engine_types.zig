@@ -116,6 +116,12 @@ pub const ErrorInfo = struct {
     colno: u32,
     /// The thrown value itself, BORROWED: the engine keeps it.
     error_value: ?JSValue,
+    /// The realm whose script threw, when the reporter knows it - an
+    /// isolated world's realm for a world's script (engine section 4.2a):
+    /// its error event is that world's only (Blink's ErrorEvent keeps the
+    /// world of the script that threw, ErrorEvent::CanBeDispatchedInWorld).
+    /// Null: the reported global's own realm.
+    realm: ?Context = null,
 };
 
 /// HTML "report an exception", as the host supplies it to an operation that
