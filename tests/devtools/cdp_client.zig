@@ -220,19 +220,19 @@ pub const Client = struct {
         if (data.len < 2) return null;
         const opcode = data[0] & 0x0F;
         var length: usize = data[1] & 0x7F;
-        var at: usize = 2;
+        var offset: usize = 2;
         if (length == 126) {
             if (data.len < 4) return null;
             length = std.mem.readInt(u16, data[2..4], .big);
-            at = 4;
+            offset = 4;
         } else if (length == 127) {
             if (data.len < 10) return null;
             length = @intCast(std.mem.readInt(u64, data[2..10], .big));
-            at = 10;
+            offset = 10;
         }
-        if (data.len < at + length) return null;
-        const payload = try self.allocator.dupe(u8, data[at .. at + length]);
-        self.consume(at + length);
+        if (data.len < offset + length) return null;
+        const payload = try self.allocator.dupe(u8, data[offset .. offset + length]);
+        self.consume(offset + length);
         if (opcode == 0x8) {
             self.last_close = if (payload.len >= 2) std.mem.readInt(u16, payload[0..2], .big) else null;
             self.allocator.free(payload);
