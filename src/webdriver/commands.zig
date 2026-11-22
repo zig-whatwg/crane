@@ -268,7 +268,7 @@ fn handleAlert(ctx: CommandContext, session: *Session, action: []const u8) !Comm
     else if (std.mem.eql(u8, action, "accept") and ctx.method == .POST)
         if (session.acceptAlert()) null else |err| err
     else if (std.mem.eql(u8, action, "text") and ctx.method == .GET)
-        session.alertText(allocator)
+        if (session.alertText(allocator)) |text| text else |err| err
     else if (std.mem.eql(u8, action, "text") and ctx.method == .POST) blk: {
         const parsed = std.json.parseFromSlice(struct { text: []const u8 }, allocator, ctx.body, .{ .ignore_unknown_fields = true }) catch
             return errorResponse(allocator, .invalid_argument, "Send Alert Text needs a string 'text'");

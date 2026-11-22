@@ -95,9 +95,10 @@ pub const PendingPrompt = struct {
 
     /// Open a prompt: its serial.
     fn begin(self: *PendingPrompt, tab: u64, navigable: u64, kind: Kind, message: []const u8, default_prompt: []const u8) Allocator.Error!u64 {
-        const message_copy = if (message.len > 0) try self.allocator.dupe(u8, message) else &.{};
-        errdefer if (message_copy.len > 0) self.allocator.free(message_copy);
-        const default_copy = if (default_prompt.len > 0) try self.allocator.dupe(u8, default_prompt) else &.{};
+        // (An empty copy allocates nothing, and frees as nothing.)
+        const message_copy = try self.allocator.dupe(u8, message);
+        errdefer self.allocator.free(message_copy);
+        const default_copy = try self.allocator.dupe(u8, default_prompt);
         self.lock();
         defer self.unlock();
         self.clearLocked();
