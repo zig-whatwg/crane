@@ -299,16 +299,37 @@ fn destroyRetiredRealm(data: *anyopaque, global: ?*anyopaque, allocator: std.mem
 }
 
 /// Cleanup callback for iframe context, run when the integration goes with
-/// its element: the navigable's realm, if it still has one, ends
-/// (engine.destroyWindowRealm, which ends its frames' realms first) - its
-/// page is ending with the element in it. A removed iframe's realm is not
-/// here any more: the removal took it (dom.navigables.destroyChildNavigable).
+/// its element - or with its record, for a popup.
+///
+/// A popup's record goes at its Browser's end, or its own: its realm, if it
+/// still has one, ends (engine.destroyWindowRealm, which ends its frames'
+/// realms first).
+///
+/// A frame's element goes when the collector frees it, which says nothing of
+/// its realm: the element's document may be one a navigation destroyed, and
+/// script may still hold the frame's WindowProxy, whose Window HTML keeps for
+/// as long as it is held. So the element's teardown never ends a frame's
+/// realm - it ended it here, at a point the collector chose (lane flk4: a
+/// frame two levels inside a removed or navigated-away document threw
+/// "Illegal invocation" once its element was freed;
+/// crane/flk4-navigated-frame-window-survives-gc.html). Its navigable was
+/// destroyed with that document: the realm detaches if nothing has detached
+/// it yet (engine.detachWindowRealm - its parent's detach, at that document's
+/// navigation or removal, normally has) and ends once the collector takes it,
+/// or with its page; a realm its page's end ended already is left alone. A
+/// removed iframe's, or a direct child navigable's of a navigated-away
+/// document, is not here any more: the removal or the navigation took it
+/// (dom.navigables.queueRemovedFrameRealmEnd).
 fn iframeContextCleanup(integration: *IFrameIntegration) void {
     if (integration.context_cleanup_data) |data| {
         // Cleared first: nothing re-entered below may reach a realm that is
         // ending. Ending one twice finds nothing the second time.
         integration.context_cleanup_data = null;
-        engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .global_detached);
+        const realm: runtime.Context = @ptrCast(@alignCast(data));
+        if (integration.iframe_element != null)
+            engine.detachWindowRealm(realm)
+        else
+            engine.destroyWindowRealm(realm, .global_detached);
     }
 }
 
@@ -5851,6 +5872,20 @@ fn destroyChildNavigables(integration: *IFrameIntegration) void {
         if (i >= bc.children.items.len) continue;
         const child = bc.children.items[i];
         if (integrationOfBrowsingContext(child)) |owner| {
+            // HTML "destroy a document and its descendants" destroys the
+            // child navigable, as "destroy a child navigable" does for a
+            // removed container: its realm leaves the container element -
+            // which stays in the destroyed document, garbage once that goes -
+            // and is detached from a task, unless the navigation's detach of
+            // this navigable's own realm detached it first
+            // (dom.navigables.queueRemovedFrameRealmEnd). Left with the
+            // element, it ended when the collector freed the element, and
+            // with it the Window that script still held through the frame's
+            // WindowProxy (event-listeners.window.js, "Illegal invocation"
+            // 1 run in 11; crane/flk4-navigated-frame-window-survives-gc.html).
+            if (owner.state != .discarded) {
+                if (child.container) |container| dom_module.navigables.queueRemovedFrameRealmEnd(@ptrCast(@alignCast(container)), owner);
+            }
             owner.onRemovedFromDocument();
         } else {
             // A context whose integration made no realm for it: no navigable

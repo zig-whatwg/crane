@@ -334,6 +334,10 @@ pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     protocol_realms.destroyWindowRealm(realm, how);
 }
 
+pub fn detachWindowRealm(realm: Context) void {
+    protocol_realms.detachWindowRealm(realm);
+}
+
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
     return worker_realm.createWorkerRealm(agent, options.*) catch |err| protocolError(err);
 }

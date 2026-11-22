@@ -704,7 +704,23 @@ pub fn destroyDocumentsAtBrowserEnd(bc: *BrowsingContext) void {
 /// of the retired realm that died in the same collection had been zapped,
 /// and the realm's end read it (fetch/origin/assorted.window.js, SIGSEGV in
 /// v8::Value::IsProxy; crane/c4-removed-frame-retired-realm-gc.html).
-fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameIntegration) void {
+///
+/// A navigation destroys navigables too: "destroy a document and its
+/// descendants" for the document it replaces destroys that document's child
+/// navigables, whose containers stay in the destroyed document - and the
+/// collector frees them with it, later. The navigation hands each one's realm
+/// over here as the removal does (HTMLIFrameElement destroyChildNavigables):
+/// left with its container, the realm ended when the collector freed the
+/// <iframe> element, and a Window script still held through its WindowProxy
+/// was freed then (lane flk4: event-listeners.window.js's "active but not
+/// fully active document" subtest threw "Illegal invocation" 1 run in 11).
+/// The task detaches the realm only if nothing has (engine.detachWindowRealm):
+/// a navigation that replaces the parent's Window detaches the parent's realm
+/// - and every frame realm under it - first, before this task runs; one that
+/// keeps the parent's Window (from its initial about:blank) detaches nothing,
+/// and the frame's realm, never detached, was never collected either
+/// (crane/flk4-navigated-frame-window-survives-gc.html).
+pub fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameIntegration) void {
     const loop = container.ctx.getOptionalEventLoop() orelse return;
     // Every retired realm here was retired with the navigation machinery's
     // `retired_realm_destroy`, whose only input is the realm.
@@ -717,8 +733,12 @@ fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameI
     loop.queueTask(.{ .callback = endRemovedFrameRealm, .context = data, .drop = null });
 }
 
+/// Detached, unless its parent's detach took it first - a navigation of the
+/// parent's navigable after the removal, before this task - when it is left
+/// as it is: `destroyWindowRealm` here ENDED a detached realm, freeing the
+/// Window of a WindowProxy script may still hold.
 fn endRemovedFrameRealm(data: ?*anyopaque) void {
-    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .navigable_destroyed);
+    engine.detachWindowRealm(@ptrCast(@alignCast(data.?)));
 }
 
 /// A retired realm of a destroyed navigable: its WindowProxy went on to a

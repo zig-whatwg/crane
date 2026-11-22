@@ -1453,6 +1453,28 @@ pub inline fn destroyWindowRealm(realm: Context, how: WindowRealmEnd) void {
     impl.destroyWindowRealm(realm, how);
 }
 
+/// HTML "destroy a child navigable", for the realm of the navigable that was
+/// destroyed: what `destroyWindowRealm(realm, .navigable_destroyed)` does to
+/// a frame's realm that is still attached - its script activity stops, the
+/// engine keeps no root into it, and it ends once the collector takes it or
+/// with its page - and NOTHING to a realm that is detached already or has
+/// ended. Idempotent, unlike `destroyWindowRealm`, whose call on a detached
+/// realm is its owner's end and ends it at once.
+///
+/// A navigable is destroyed twice over: its container is removed and then
+/// its container's document is destroyed by a navigation, or a navigation
+/// destroys a document and the collector later frees the <iframe> elements
+/// in it - whose teardown used to end their navigables' realms, so a Window
+/// that script still held through its WindowProxy was freed at whatever
+/// point the collector chose (lane flk4: event-listeners.window.js failed 1
+/// run in 11 with "Illegal invocation"). HTML keeps a Window for as long as
+/// a WindowProxy for it is held, and Chrome 157, Firefox 159 and Safari 27
+/// answer through it after collections (tmp/probes/flk4-navwin,
+/// crane/flk4-navigated-frame-window-survives-gc.html).
+pub inline fn detachWindowRealm(realm: Context) void {
+    impl.detachWindowRealm(realm);
+}
+
 /// A worker's realm, in `agent`. OWNED: `destroyWorkerRealm`.
 pub inline fn createWorkerRealm(agent: *Agent, options: *const WorkerRealmOptions) Error!WorkerRealm {
     return impl.createWorkerRealm(agent, options);

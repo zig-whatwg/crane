@@ -811,6 +811,29 @@ pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     endRealm(realm, how);
 }
 
+/// engine.detachWindowRealm: HTML "destroy a child navigable" for `realm`, a
+/// realm whose navigable was destroyed - detached (`detach`) when it is still
+/// attached, and left alone when it is detached already or has ended. A
+/// navigable is destroyed twice over: its container removed and then its
+/// container's document destroyed by a navigation (this realm detached by
+/// its parent's `detach` first), or a navigation that destroys a document
+/// whose <iframe> elements the collector frees later - whose teardown ended
+/// their navigables' realms with `destroyWindowRealm`, whose call on a
+/// detached realm ends it: a Window that script still held through its
+/// WindowProxy was freed when the collector chose, and the next member call
+/// threw "Illegal invocation" (lane flk4: event-listeners.window.js, 1 run
+/// in 11). HTML keeps the Window for as long as a WindowProxy for it is
+/// held; Chrome 157, Firefox 159 and Safari 27 answer through such a proxy
+/// after collections (tmp/probes/flk4-navwin, 2026-11-22). A detached realm
+/// ends once the collector takes it, or with its page (`endRealm`).
+pub fn detachWindowRealm(realm: Context) void {
+    // Ended (its state gone with it), or not a Window realm of this adapter:
+    // nothing is left to detach.
+    const state = stateOf(realm) orelse return;
+    if (state.detached != null) return;
+    destroyWindowRealm(realm, .navigable_destroyed);
+}
+
 /// HTML "destroy a child navigable" - or "destroy a document" for a document
 /// a navigation replaced - for the realm: script activity stops - its timers
 /// and animation frames, the callbacks its script registered, its tasks
