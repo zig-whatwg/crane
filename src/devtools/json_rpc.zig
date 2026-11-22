@@ -182,6 +182,23 @@ test "parse: crdtp's errors for malformed messages" {
     try std.testing.expectEqual(Code.invalid_request, (try parse(a, "{\"id\":1,\"method\":\"X.y\",\"params\":[]}")).failure.code);
 }
 
+test "parse: \"params\": null is a command with no params (crdtp MaybeParseParams)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // Vitest browser mode's cdp().send('HeapProfiler.collectGarbage') -
+    // Playwright's CDPSession sends `"params":null` (190 times in
+    // tmp/plans/cdp1-evidence/vue-e2e-browser.protocol.log); Chrome answers.
+    const parsed = try parse(arena.allocator(), "{\"id\":50,\"method\":\"HeapProfiler.collectGarbage\",\"params\":null,\"sessionId\":\"S8\"}");
+    const cmd = parsed.command;
+    try std.testing.expectEqual(@as(i64, 50), cmd.id);
+    try std.testing.expectEqualStrings("HeapProfiler.collectGarbage", cmd.method);
+    try std.testing.expectEqualStrings("S8", cmd.session_id);
+    try std.testing.expectEqual(@as(usize, 0), cmd.params.object.count());
+    // Any other non-object is still refused.
+    try std.testing.expectEqual(Code.invalid_request, (try parse(arena.allocator(), "{\"id\":1,\"method\":\"X.y\",\"params\":3}")).failure.code);
+    try std.testing.expectEqual(Code.invalid_request, (try parse(arena.allocator(), "{\"id\":1,\"method\":\"X.y\",\"params\":\"{}\"}")).failure.code);
+}
+
 test "encode: result, error and an event, sessionId last" {
     const a = std.testing.allocator;
     const r = try encodeResult(a, 1, .{ .frameId = "F", .loaderId = @as(?[]const u8, null) }, "S");
