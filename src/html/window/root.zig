@@ -42,6 +42,9 @@ const std = @import("std");
 
 // Browsing Context (§7.1)
 pub const browsing_context = @import("browsing_context.zig");
+/// A host's overrides of the platform's answers for a tab (CDP Emulation,
+/// WebDriver BiDi emulation).
+pub const host_overrides = @import("host_overrides.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
 pub const Navigables = browsing_context.Navigables;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;

@@ -502,6 +502,11 @@ pub const BrowsingContext = struct {
     /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
     /// page), which wins over the platform's while set.
     viewport_override: ?ViewportSize = null,
+    /// A host's overrides of the platform's other answers for this tab -
+    /// media, touch points, user agent (host_overrides.zig: CDP Emulation,
+    /// WebDriver BiDi emulation). A top-level traversable's; read through
+    /// `getTop()`. Owned: freed by `deinit`.
+    host_overrides: @import("host_overrides.zig").HostOverrides = .{},
 
     /// HTML's one permitted sandboxed navigator: the browsing context that
     /// opened this one from a document with the sandboxed navigation browsing
@@ -795,6 +800,7 @@ pub const BrowsingContext = struct {
 
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
+        self.host_overrides.deinit(self.allocator);
         // The tree's links end at both ends before the memory goes: off the
         // parent's children list, and every child's link to this context
         // gone. Each context is owned elsewhere - an IFrameIntegration, a

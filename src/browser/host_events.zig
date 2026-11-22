@@ -6,9 +6,10 @@
 //! WebDriver session - each told every event, in order, on the Browser's
 //! thread.
 //!
-//! A listener only records or queues: it must not run script, and must not
-//! close or create tabs from inside the call (the Browser is in the middle of
-//! the step that made the event). It may add or remove listeners; one removed
+//! A listener only records or queues: it must not run script - except for
+//! `document_start`, which exists for that - and must not close or create
+//! tabs from inside the call (the Browser is in the middle of the step that
+//! made the event). It may add or remove listeners; one removed
 //! during a delivery is not called again.
 //!
 //! The source is the Browser's navigation observer (lane life1's
@@ -23,6 +24,8 @@ const std = @import("std");
 
 /// A navigation milestone (html.navigation.observer.Milestone).
 pub const Milestone = @import("html").navigation.observer.Milestone;
+/// A new document ready for host scripts (html.navigation.document_start).
+pub const DocumentStart = @import("html").navigation.document_start.Start;
 
 /// A tab: its top-level traversable's browsing context id (process-unique,
 /// kept for its life; the BiDi navigable id, the source of CDP's target id).
@@ -52,6 +55,13 @@ pub const Event = union(enum) {
     /// A navigation milestone of one of the Browser's navigables, at its
     /// spec step (html.navigation.observer: BORROWED for the call).
     navigation: *const Milestone,
+    /// A new document's Window realm is set up and none of the document's
+    /// own scripts has run (html.navigation.document_start; Blink's
+    /// DidCreateMainWorldContext): the one event a listener MAY run script
+    /// for - a host's scripts for every new document (CDP
+    /// Page.addScriptToEvaluateOnNewDocument), in its main world or in world
+    /// realms it makes. BORROWED for the call.
+    document_start: *const DocumentStart,
 
     pub const TabCreated = struct {
         tab: TabId,
