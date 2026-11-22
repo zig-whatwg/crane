@@ -4143,6 +4143,9 @@ pub fn build(b: *std.Build) void {
         const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
         const run_fetch_tests = addSuiteRun(b, launch, fetch_tests, "src-fetch", null);
         test_step.dependOn(&run_fetch_tests.step);
+        // The HTTP cache's profile store tests (fetch/cache/persistence.zig)
+        // compile with the storage tests (approved 9:52 PM ET, lane prof2).
+        check_storage_tests.dependOn(&fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
@@ -4686,6 +4689,11 @@ pub fn build(b: *std.Build) void {
     const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
+        // The Browser's storage sequence and its platform state's stores,
+        // which the storage sequence tests hold (tests/browser/
+        // prof2_storage_sequence_test.zig).
+        .{ .name = "storage", .module = testing_graph.storage },
+        .{ .name = "platform", .module = testing_graph.platform },
     };
     if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
@@ -8715,6 +8723,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // "process cookie changes" step 2 (cookiestore imports neither
     // service_worker nor anything that does: no cycle).
     service_worker_mod.addImport("cookiestore", cookiestore_mod);
+    // Cache Storage's operations run on the Browser's storage sequence with
+    // a profile directory (storage.StorageSequence; lane prof2). storage
+    // imports nothing of service_worker: no cycle.
+    service_worker_mod.addImport("storage", storage_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)

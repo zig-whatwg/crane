@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Moving store writes to a writer thread gives every read a rule](architecture-moving-store-writes-to-a-writer-thread-gives-every-read-a-rule.md) - **Moving writes off-thread is a list of reads: for each, in flight, barrier, hold, or ordering - and an owner that ends mid-write waits for the write, never rolls back under it.**
 - [A worker takes its tab's state as a copy when it is made, not through a shared table](architecture-a-worker-takes-its-tabs-state-as-a-copy-at-creation.md) - **Before designing cross-thread access for a worker, read how the browser hands the worker its inputs - a copy in its start record is thread-safe by construction and is usually the browsers' own semantics.**
 - [A supplement cannot write a platform store at its end - flush before the platform state ends](architecture-a-supplement-cannot-write-a-platform-store-at-its-end.md) - **In Crane a Browser's platform state dies before its supplements: persist through an explicit flush that runs before it, and open stores per operation.**
 - [A paused thread is answered through shared state, never through its own task queue](architecture-a-paused-thread-is-answered-through-state-not-its-task-queue.md) - **Design the answer path of every pause first: it must work while the paused thread runs nothing - shared state plus a wake, never a task for that thread.**

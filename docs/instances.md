@@ -126,6 +126,23 @@ the store in both modes), the HTTP cache (a disk level under the memory cache) a
 each writes what is pending at the Browser's end (src/browser/profile_stores.zig). Session state stays
 in memory either way, as in every browser across restarts: sessionStorage, session cookies, the tabs.
 
+Those stores are written on the Browser's STORAGE SEQUENCE (lane prof2; `storage.StorageSequence`,
+src/storage/sequence.zig), never on the thread that changed them - as Chromium writes DOM storage,
+cookies, the disk cache and IndexedDB on sequences of their own. It is a thread the Browser owns (a
+BrowserScope supplement started through the platform's `spawnThread` by profile_stores.attach), made
+only for a Browser with a profile directory: one with none has no sequence and no thread, and
+kit/memory_store is written inline as before. Jobs run one at a time in the order posted, each owning
+copies of what it writes: localStorage's and the cookie store's batches, the HTTP cache's (in flight,
+and readable, until written), IndexedDB's commits - a transaction's `complete` fires only once its
+commit was written, a failed write aborts it - and database deletions (deleteDatabase succeeds once
+the records are gone), and every Cache Storage operation, reads included, whose promise settles from
+a task posted back to its realm (its pending call released at the realm's end, a worker's included). `profile_stores.flush` stops it at the Browser's end, after every store
+handed over its last batch: the stop runs what is queued, then joins the thread, before the event
+loop and the platform state end. Only three waits are ever made on it: a localStorage area's first read
+(Chrome's renderer blocks on a synchronous GetAll), a service worker router's cache source (Handle
+Fetch needs the answer at once), and an agent that ends with its IndexedDB commit in flight (it waits
+for that commit, then finishes as the write says).
+
 ## Rules for new state
 
 1. **Do not add a `threadlocal` or a container-level `var`.** A threadlocal is per thread, which is

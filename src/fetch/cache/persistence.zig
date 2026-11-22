@@ -18,9 +18,17 @@
 //! - A response is read from the store when the memory cache misses and the
 //!   index has it, and kept in memory from then on.
 //! - What the memory cache stores, and what it invalidates, is queued and
-//!   written in one transaction as soon as the Browser's loop runs a task
-//!   (Chromium writes its disk cache off the requesting path, on the cache
-//!   thread), and at the Browser's end.
+//!   handed over as one batch as soon as the Browser's loop runs a task, and
+//!   at the Browser's end; the Browser's storage sequence writes it in one
+//!   transaction (storage.StorageSequence; lane prof2): Chromium writes its
+//!   disk cache off the requesting path, on the cache's own sequence
+//!   (net/disk_cache/simple/simple_backend_impl.cc), never on the thread
+//!   that stored the response.
+//! - A batch handed over and not yet written is kept IN FLIGHT: a read finds
+//!   a response there before it looks in the store, so a read never waits
+//!   for the sequence and never misses a write it has not yet made (Chrome's
+//!   simple cache answers an entry with a write pending from the entry's
+//!   operation queue, never from a disk that lacks it).
 //! - The disk cap is Chromium's PreferredCacheSize for an HTTP disk cache:
 //!   80 MiB (kDefaultCacheSize) scaled by 400% off Windows, chosen from the
 //!   free space of the profile's volume (PreferredCacheSizeInternal), never
@@ -37,14 +45,18 @@
 //!   0x02 key   the response (`encode`)
 //!
 //! THREADS: the memory cache serves every thread of its Browser; this is
-//! called after its lock is released, never under it, and guards its index
-//! and queue with `mutex`. Commits run on the Browser's window thread (the
-//! commit timer's task, the Browser's end), one at a time.
+//! called after its lock is released, never under it, and guards its index,
+//! its queue and its batches in flight with `mutex`. A commit takes the
+//! queue on the Browser's window thread (the commit timer's task, the
+//! Browser's end); the batch is written on the storage sequence, which then
+//! takes `mutex` to retire it - never while another thread holds `mutex`
+//! and waits for the sequence (nothing here waits for it).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const platform = @import("platform");
 const storage = @import("storage");
+const Job = storage.sequence.Job;
 const stored_response = @import("stored_response.zig");
 const StoredResponse = stored_response.StoredResponse;
 const Header = stored_response.Header;
@@ -132,14 +144,20 @@ pub const Persistence = struct {
     /// By cache key (OWNED keys).
     pending: std.StringHashMapUnmanaged(Pending) = .empty,
     commit_posted: bool = false,
-    /// One commit at a time.
-    commit_mutex: std.Io.Mutex = .init,
+    /// The batches handed to the storage sequence and not yet written,
+    /// oldest first: a read looks in them, newest first, after `pending`.
+    in_flight: std.ArrayListUnmanaged(*Batch) = .empty,
+    /// BORROWED: the Browser's storage sequence, which writes every batch
+    /// and stops before this ends (profile_stores.flush).
+    sequence: *storage.StorageSequence,
 
     /// The persistence of a profile whose volume has `available` bytes free
-    /// (null: unknown), its index read from the store.
-    pub fn create(allocator: Allocator, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, available: ?u64) Allocator.Error!*Persistence {
+    /// (null: unknown), its index read from the store, its batches written
+    /// on `sequence`. `allocator` must be thread-safe: a batch is freed on
+    /// the sequence.
+    pub fn create(allocator: Allocator, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, sequence: *storage.StorageSequence, available: ?u64) Allocator.Error!*Persistence {
         const self = try allocator.create(Persistence);
-        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer, .max_bytes = preferredCacheSize(available) };
+        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer, .sequence = sequence, .max_bytes = preferredCacheSize(available) };
         self.loadIndex() catch |err| switch (err) {
             error.OutOfMemory => {
                 self.destroy();
@@ -150,9 +168,12 @@ pub const Persistence = struct {
         return self;
     }
 
-    /// With the memory cache's close, after the Browser's flush and its
-    /// platform state's end: nothing is written here.
+    /// With the memory cache's close, after the Browser's flush, its
+    /// storage sequence's stop (every batch written) and its platform
+    /// state's end: nothing is written here.
     pub fn destroy(self: *Persistence) void {
+        std.debug.assert(self.in_flight.items.len == 0);
+        self.in_flight.deinit(self.allocator);
         var keys = self.index.keyIterator();
         while (keys.next()) |key| self.allocator.free(key.*);
         self.index.deinit(self.allocator);
@@ -364,7 +385,7 @@ pub const Persistence = struct {
         {
             self.lock();
             defer self.unlock();
-            if (self.pending.get(key)) |what| switch (what) {
+            if (self.queuedLocked(key)) |what| switch (what) {
                 .put => |entry| {
                     entry.retain();
                     return entry;
@@ -402,6 +423,36 @@ pub const Persistence = struct {
         self.touch(key);
     }
 
+    /// Under the lock: what is queued or in flight for `key`, newest first -
+    /// the queue, then the batches in flight from the last handed over. A
+    /// touch alone says nothing of the response: the next older one, or the
+    /// store, does.
+    fn queuedLocked(self: *Persistence, key: []const u8) ?Pending {
+        if (self.pending.get(key)) |what| if (what != .touch) return what;
+        var i = self.in_flight.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (self.in_flight.items[i].taken.get(key)) |what| if (what != .touch) return what;
+        }
+        return null;
+    }
+
+    /// Under the lock: whether a batch newer than `batch` - in flight after
+    /// it, or the queue - writes `key`'s response again.
+    fn rewrittenAfterLocked(self: *Persistence, batch: *const Batch, key: []const u8) bool {
+        if (self.pending.get(key)) |what| if (what == .put) return true;
+        var newer = false;
+        for (self.in_flight.items) |other| {
+            if (other == batch) {
+                newer = true;
+                continue;
+            }
+            if (!newer) continue;
+            if (other.taken.get(key)) |what| if (what == .put) return true;
+        }
+        return false;
+    }
+
     fn touch(self: *Persistence, key: []const u8) void {
         self.lock();
         defer self.unlock();
@@ -435,102 +486,170 @@ pub const Persistence = struct {
         _ = data;
     }
 
-    /// Everything queued, in one write transaction. The window thread.
+    /// Everything queued, taken as one batch with the index records as they
+    /// stand now, and handed to the storage sequence, which writes it in one
+    /// write transaction. The window thread.
     pub fn commit(self: *Persistence) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.commit_mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.commit_mutex);
-        var taken: std.StringHashMapUnmanaged(Pending) = .empty;
-        var index_now: std.ArrayListUnmanaged(struct { key: []const u8, entry: ?IndexEntry }) = .empty;
-        defer index_now.deinit(self.allocator);
+        // Made first: with no room for it the queue waits, whole, for the
+        // next commit (the Browser's end flushes at the latest).
+        const batch = self.allocator.create(Batch) catch return;
+        batch.* = .{ .persistence = self };
         {
             self.lock();
             defer self.unlock();
-            taken = self.pending;
-            self.pending = .empty;
             self.commit_posted = false;
-            // The index records as they stand now, read under the lock.
-            index_now.ensureTotalCapacity(self.allocator, taken.count()) catch {
-                // Not even that: the queue waits for the next commit.
-                self.pending = taken;
+            if (self.pending.count() == 0) {
+                self.allocator.destroy(batch);
+                return;
+            }
+            // The index records as they stand now, read under the lock, and
+            // a slot in the list of batches in flight.
+            batch.index_now.ensureTotalCapacity(self.allocator, self.pending.count()) catch {
+                self.allocator.destroy(batch);
                 return;
             };
-            var keys = taken.keyIterator();
-            while (keys.next()) |key| index_now.appendAssumeCapacity(.{ .key = key.*, .entry = self.index.get(key.*) });
+            self.in_flight.ensureUnusedCapacity(self.allocator, 1) catch {
+                batch.index_now.deinit(self.allocator);
+                self.allocator.destroy(batch);
+                return;
+            };
+            batch.taken = self.pending;
+            self.pending = .empty;
+            var keys = batch.taken.keyIterator();
+            while (keys.next()) |key| batch.index_now.appendAssumeCapacity(.{ .key = key.*, .entry = self.index.get(key.*) });
+            self.in_flight.appendAssumeCapacity(batch);
         }
-        defer self.dropPending(&taken);
-        if (taken.count() == 0) return;
-        self.write(&taken, index_now.items) catch |err| {
-            // The batch is lost, as a failed disk cache write is; what it
-            // would have written leaves the index, so the index never names
-            // a response the disk lacks.
-            log.warn("an HTTP cache commit to the profile failed: {s}", .{@errorName(err)});
-            self.lock();
-            defer self.unlock();
-            var entries = taken.iterator();
-            while (entries.next()) |entry| {
-                if (entry.value_ptr.* != .put) continue;
-                if (self.index.fetchRemove(entry.key_ptr.*)) |removed| {
-                    self.index_guard.noteRemoval(&self.index);
-                    self.disk_bytes -= removed.value.size;
-                    self.allocator.free(removed.key);
-                }
-            }
-        };
+        self.sequence.post(&batch.job);
     }
 
-    /// The Browser's end: what is queued, written now.
+    /// The Browser's end: what is queued, handed to the storage sequence
+    /// now, before the sequence stops (which writes it).
     pub fn flush(self: *Persistence) void {
         self.commit();
     }
 
-    fn write(self: *Persistence, taken: *const std.StringHashMapUnmanaged(Pending), index_now: anytype) platform.StoreError!void {
-        const store = try platform.openStore(self.browser, platform.Str.from(store_name), .{});
-        defer platform.closeStore(store);
-        const transaction = try platform.beginTransaction(store, .write);
-        self.writeAll(transaction, taken, index_now) catch |err| {
-            platform.abortTransaction(transaction);
-            return err;
-        };
-        return platform.commitTransaction(transaction);
+    /// Under the lock: `batch` leaves the batches in flight.
+    fn retireLocked(self: *Persistence, batch: *Batch) void {
+        for (self.in_flight.items, 0..) |held, i| {
+            if (held != batch) continue;
+            _ = self.in_flight.orderedRemove(i);
+            return;
+        }
     }
 
-    fn writeAll(self: *Persistence, transaction: *platform.StoreTransaction, taken: *const std.StringHashMapUnmanaged(Pending), index_now: anytype) platform.StoreError!void {
-        var full: std.ArrayListUnmanaged(u8) = .empty;
-        defer full.deinit(self.allocator);
-        for (index_now) |item| {
-            const what = taken.get(item.key).?;
-            full.clearRetainingCapacity();
-            try full.append(self.allocator, 0x01);
-            try full.appendSlice(self.allocator, item.key);
-            const index_key = try self.allocator.dupe(u8, full.items);
-            defer self.allocator.free(index_key);
-            full.items[0] = 0x02;
-            const response_key = full.items;
-            // The index entry gone since (evicted or deleted): both records go.
-            const entry = item.entry orelse {
-                try platform.storeDelete(transaction, platform.Bytes.from(index_key));
-                try platform.storeDelete(transaction, platform.Bytes.from(response_key));
-                continue;
+    /// One commit's batch: its queue, taken whole (OWNED, a reference held
+    /// per put), and the index records as they stood when it was taken
+    /// (their keys borrowed from `taken`). Written on the storage sequence;
+    /// in flight - readable - until then.
+    const Batch = struct {
+        job: Job = .{ .run = run, .drop = drop },
+        /// BORROWED: outlives the sequence (the Browser stops it first).
+        persistence: *Persistence,
+        taken: std.StringHashMapUnmanaged(Pending) = .empty,
+        index_now: std.ArrayListUnmanaged(IndexNow) = .empty,
+
+        const IndexNow = struct { key: []const u8, entry: ?IndexEntry };
+
+        fn destroy(self: *Batch) void {
+            const persistence = self.persistence;
+            self.index_now.deinit(persistence.allocator);
+            persistence.dropPending(&self.taken);
+            persistence.allocator.destroy(self);
+        }
+
+        /// On the storage sequence: the write, then the batch retired. A
+        /// failed batch is lost, as a failed disk cache write is; what it
+        /// would have written leaves the index - unless a newer batch writes
+        /// it again - so the index never names a response the disk lacks.
+        fn run(job: *Job) void {
+            const self: *Batch = @fieldParentPtr("job", job);
+            const persistence = self.persistence;
+            const result = self.write();
+            {
+                persistence.lock();
+                defer persistence.unlock();
+                if (result) |_| {} else |err| {
+                    log.warn("an HTTP cache commit to the profile failed: {s}", .{@errorName(err)});
+                    var entries = self.taken.iterator();
+                    while (entries.next()) |entry| {
+                        if (entry.value_ptr.* != .put) continue;
+                        if (persistence.rewrittenAfterLocked(self, entry.key_ptr.*)) continue;
+                        if (persistence.index.fetchRemove(entry.key_ptr.*)) |removed| {
+                            persistence.index_guard.noteRemoval(&persistence.index);
+                            persistence.disk_bytes -= removed.value.size;
+                            persistence.allocator.free(removed.key);
+                        }
+                    }
+                }
+                persistence.retireLocked(self);
+            }
+            self.destroy();
+        }
+
+        /// The sequence had stopped: the Browser is ending, its flush ran
+        /// before, and this came too late to be written.
+        fn drop(job: *Job) void {
+            const self: *Batch = @fieldParentPtr("job", job);
+            const persistence = self.persistence;
+            log.warn("an HTTP cache commit came after the Browser's storage sequence stopped; it is not written", .{});
+            {
+                persistence.lock();
+                defer persistence.unlock();
+                persistence.retireLocked(self);
+            }
+            self.destroy();
+        }
+
+        fn write(self: *Batch) platform.StoreError!void {
+            const store = try platform.openStore(self.persistence.browser, platform.Str.from(store_name), .{});
+            defer platform.closeStore(store);
+            const transaction = try platform.beginTransaction(store, .write);
+            self.writeAll(transaction) catch |err| {
+                platform.abortTransaction(transaction);
+                return err;
             };
-            switch (what) {
-                .delete => {
+            return platform.commitTransaction(transaction);
+        }
+
+        fn writeAll(self: *Batch, transaction: *platform.StoreTransaction) platform.StoreError!void {
+            const allocator = self.persistence.allocator;
+            var full: std.ArrayListUnmanaged(u8) = .empty;
+            defer full.deinit(allocator);
+            for (self.index_now.items) |item| {
+                const what = self.taken.get(item.key).?;
+                full.clearRetainingCapacity();
+                try full.append(allocator, 0x01);
+                try full.appendSlice(allocator, item.key);
+                const index_key = try allocator.dupe(u8, full.items);
+                defer allocator.free(index_key);
+                full.items[0] = 0x02;
+                const response_key = full.items;
+                // The index entry gone since (evicted or deleted): both records go.
+                const entry = item.entry orelse {
                     try platform.storeDelete(transaction, platform.Bytes.from(index_key));
                     try platform.storeDelete(transaction, platform.Bytes.from(response_key));
                     continue;
-                },
-                .put => |response| {
-                    const record = try encode(self.allocator, response);
-                    defer self.allocator.free(record);
-                    try platform.storePut(transaction, platform.Bytes.from(response_key), platform.Bytes.from(record));
-                },
-                .touch => {},
+                };
+                switch (what) {
+                    .delete => {
+                        try platform.storeDelete(transaction, platform.Bytes.from(index_key));
+                        try platform.storeDelete(transaction, platform.Bytes.from(response_key));
+                        continue;
+                    },
+                    .put => |response| {
+                        const record = try encode(allocator, response);
+                        defer allocator.free(record);
+                        try platform.storePut(transaction, platform.Bytes.from(response_key), platform.Bytes.from(record));
+                    },
+                    .touch => {},
+                }
+                var index_record: [12]u8 = undefined;
+                std.mem.writeInt(u64, index_record[0..8], entry.size, .big);
+                std.mem.writeInt(u32, index_record[8..12], entry.last_used, .big);
+                try platform.storePut(transaction, platform.Bytes.from(index_key), platform.Bytes.from(&index_record));
             }
-            var index_record: [12]u8 = undefined;
-            std.mem.writeInt(u64, index_record[0..8], entry.size, .big);
-            std.mem.writeInt(u32, index_record[8..12], entry.last_used, .big);
-            try platform.storePut(transaction, platform.Bytes.from(index_key), platform.Bytes.from(&index_record));
         }
-    }
+    };
 };
 
 // ------------------------------------------------------------------- keys
@@ -748,19 +867,29 @@ test "a profile's HTTP cache: what one Browser stored is read by the next, what 
         const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
         defer platform.destroyBrowserPlatform(browser);
         const cache = try HttpCache.create(testing.allocator, .{});
+        var sequence = storage.StorageSequence.init(testing.allocator);
+        defer sequence.deinit();
+        try sequence.start();
         // No timer: the batch waits for the flush.
-        try cache.attachProfile(browser, null, null);
+        try cache.attachProfile(browser, null, &sequence, null);
         cache.publish(try make.response("https://a.test/kept", "kept"));
         cache.publish(try make.response("https://a.test/gone", "gone"));
         cache.invalidate("https://top.test", "https://a.test/gone");
         cache.flushProfile();
+        // As at a Browser's end: the sequence writes what it was handed and
+        // stops before the cache closes.
+        sequence.stop();
         cache.close();
     }
     const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
     defer platform.destroyBrowserPlatform(browser);
     const cache = try HttpCache.create(testing.allocator, .{});
     defer cache.close();
-    try cache.attachProfile(browser, null, null);
+    // Stopped before the cache closes (the defers run in reverse).
+    var sequence = storage.StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try cache.attachProfile(browser, null, &sequence, null);
     // The memory level is empty; the disk level answers, once, and the
     // memory level keeps it.
     try testing.expectEqual(@as(usize, 0), cache.entryCount());
@@ -771,4 +900,83 @@ test "a profile's HTTP cache: what one Browser stored is read by the next, what 
     try testing.expect(cache.lookup("https://top.test", "https://a.test/gone", true) == null);
     // Another partition, another key.
     try testing.expect(cache.lookup("https://other.test", "https://a.test/kept", true) == null);
+}
+
+/// A job that holds the storage sequence until its gate is set.
+const Held = struct {
+    job: Job = .{ .run = run, .drop = drop },
+    gate: storage.sequence.Done = .{},
+
+    fn run(job: *Job) void {
+        const self: *Held = @fieldParentPtr("job", job);
+        self.gate.wait();
+    }
+
+    fn drop(job: *Job) void {
+        _ = job;
+    }
+};
+
+fn countRecords(browser: *platform.BrowserPlatform) !usize {
+    const store = try platform.openStore(browser, platform.Str.from(store_name), .{});
+    defer platform.closeStore(store);
+    const transaction = try platform.beginTransaction(store, .read);
+    defer platform.abortTransaction(transaction);
+    const cursor = try platform.openCursor(transaction, .all, .forward);
+    defer platform.closeCursor(cursor);
+    var records: usize = 0;
+    while (try platform.cursorNext(cursor, std.testing.allocator)) |record| {
+        std.testing.allocator.free(record.key.slice());
+        std.testing.allocator.free(record.value.slice());
+        records += 1;
+    }
+    return records;
+}
+
+test "a batch handed to the storage sequence answers reads from memory until it is written" {
+    const testing = std.testing;
+    const HttpCache = @import("http_cache.zig").HttpCache;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(base);
+    const directory = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
+    defer testing.allocator.free(directory);
+    const no_events: platform.EventSink = .{ .context = null, .post = ignoreEvent };
+    const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    const cache = try HttpCache.create(testing.allocator, .{});
+    defer cache.close();
+    var sequence = storage.StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try cache.attachProfile(browser, null, &sequence, null);
+    var held: Held = .{};
+    sequence.post(&held.job);
+    cache.publish(try StoredResponse.create(testing.allocator, .{
+        .partition = "https://top.test",
+        .url = "https://a.test/held",
+        .status = 200,
+        .headers = &.{.{ .name = "Cache-Control", .value = "max-age=600" }},
+        .body = "held",
+        .request_time = 1,
+        .response_time = 2,
+    }));
+    cache.flushProfile();
+    const persistence = cache.persistence.?;
+    // Handed over and not written: the store has nothing, the batch is in
+    // flight, and the disk level answers from it.
+    try testing.expectEqual(@as(usize, 0), try countRecords(browser));
+    try testing.expectEqual(@as(usize, 1), persistence.in_flight.items.len);
+    const from_batch = persistence.load(testing.allocator, "https://top.test", "https://a.test/held", true) orelse return error.TestExpectedHit;
+    defer from_batch.release();
+    try testing.expectEqualStrings("held", from_batch.body.bytes);
+    held.gate.set();
+    sequence.barrier();
+    // Written - its index record and its response - and retired.
+    try testing.expectEqual(@as(usize, 0), persistence.in_flight.items.len);
+    try testing.expectEqual(@as(usize, 2), try countRecords(browser));
+    const from_store = persistence.load(testing.allocator, "https://top.test", "https://a.test/held", true) orelse return error.TestExpectedHit;
+    defer from_store.release();
+    try testing.expectEqualStrings("held", from_store.body.bytes);
 }

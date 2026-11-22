@@ -47,13 +47,21 @@
 //!   records the error and carries on) and the jar keeps its cookies.
 //!
 //! THREADS: the jar serves every thread of its Browser under its lock, and
-//! records into this under that lock (`mutex` nests inside it). Commits run
-//! on the Browser's window thread - its timer's, its posted task's, its
-//! end's - one at a time (`commit_mutex`).
+//! records into this under that lock (`mutex` nests inside it). A commit
+//! takes the queue on the Browser's window thread - its timer's, its posted
+//! task's, its end's - and hands it to the Browser's storage sequence
+//! (storage.StorageSequence; lane prof2), which writes it: Chromium's
+//! SQLitePersistentCookieStore queues its operations from the network
+//! thread and commits them on its background runner (Backend::Commit runs
+//! there, never on the thread that changed a cookie). The job owns the
+//! records it writes, and touches neither the jar nor this. The cookies are
+//! read once, at the Browser's start, before anything was written: no read
+//! waits for the sequence.
 
 const std = @import("std");
 const platform = @import("platform");
 const storage = @import("storage");
+const Job = storage.sequence.Job;
 const cookie_mod = @import("cookie.zig");
 const Cookie = cookie_mod.Cookie;
 const SameSite = cookie_mod.SameSite;
@@ -95,12 +103,15 @@ pub const CookiePersistence = struct {
     /// cleared whole: the next commit deletes every record and writes every
     /// persistent cookie of the jar.
     rewrite_all: bool = false,
-    /// One commit at a time.
-    commit_mutex: std.Io.Mutex = .init,
+    /// BORROWED: the Browser's storage sequence, which writes every commit
+    /// and stops before the jar ends (profile_stores.flush).
+    sequence: *storage.StorageSequence,
 
-    pub fn create(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, jar: *CookieJar) std.mem.Allocator.Error!*CookiePersistence {
+    /// `allocator` must be thread-safe: a commit's records are freed on the
+    /// storage sequence.
+    pub fn create(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, sequence: *storage.StorageSequence, jar: *CookieJar) std.mem.Allocator.Error!*CookiePersistence {
         const self = try allocator.create(CookiePersistence);
-        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer, .jar = jar };
+        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer, .sequence = sequence, .jar = jar };
         return self;
     }
 
@@ -183,12 +194,14 @@ pub const CookiePersistence = struct {
             }
         }.lessThan);
         if (stale.items.len == 0) return;
-        const transaction = try platform.beginTransaction(store, .write);
-        for (stale.items) |key| platform.storeDelete(transaction, platform.Bytes.from(key)) catch |err| {
-            platform.abortTransaction(transaction);
+        // Their deletion is a write: the storage sequence's.
+        const job = try self.allocator.create(CommitJob);
+        job.* = .{ .allocator = self.allocator, .browser = self.browser };
+        job.stale = stale.toOwnedSlice(self.allocator) catch |err| {
+            job.destroy();
             return err;
         };
-        try platform.commitTransaction(transaction);
+        self.sequence.post(&job.job);
     }
 
     // ----------------------------------------------------------- recording
@@ -277,88 +290,127 @@ pub const CookiePersistence = struct {
 
     // ------------------------------------------------------------- commits
 
-    /// Backend::Commit: everything queued, in one write transaction. On the
+    /// Backend::Commit: everything queued, taken now and handed to the
+    /// storage sequence, which writes it in one write transaction. On the
     /// window thread, never under the jar's lock.
     pub fn commit(self: *CookiePersistence) void {
-        lock(&self.commit_mutex);
-        defer unlock(&self.commit_mutex);
-        // "Maybe an old timer fired or we are already Close()'ed": the
-        // queue is taken whole, and a commit with nothing queued writes
-        // nothing.
-        var taken: std.StringHashMapUnmanaged(?[]u8) = .empty;
-        var rewrite: ?[]Cookie = null;
-        defer {
-            var entries = taken.iterator();
-            while (entries.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-                if (entry.value_ptr.*) |record| self.allocator.free(record);
-            }
-            taken.deinit(self.allocator);
-            if (rewrite) |cookies| freeCookies(self.allocator, cookies);
-        }
+        // Made first: with no room for it, nothing is taken, and the queue
+        // waits for the next commit (the Browser's end flushes at the latest).
+        const job = self.allocator.create(CommitJob) catch return;
+        job.* = .{ .allocator = self.allocator, .browser = self.browser };
         {
             self.jar.lock();
             defer self.jar.unlock();
             lock(&self.mutex);
             defer unlock(&self.mutex);
-            taken = self.pending;
+            // "Maybe an old timer fired or we are already Close()'ed": the
+            // queue is taken whole, and a commit with nothing queued writes
+            // nothing.
+            job.taken = self.pending;
             self.pending = .empty;
             self.num_pending = 0;
             if (self.rewrite_all) {
                 self.rewrite_all = false;
-                rewrite = snapshot(self.allocator, self.jar) catch blk: {
+                job.rewrite = snapshot(self.allocator, self.jar) catch blk: {
                     // Not even the snapshot fits: the next commit tries again.
                     self.rewrite_all = true;
                     break :blk null;
                 };
-                if (rewrite == null) return;
             }
         }
-        if (taken.count() == 0 and rewrite == null) return;
-        self.write(&taken, rewrite) catch |err| {
-            // DoCommit: the error is recorded, the operations are gone.
-            log.warn("a cookie commit to the profile failed: {s}", .{@errorName(err)});
-        };
+        if (job.taken.count() == 0 and job.rewrite == null) return job.destroy();
+        self.sequence.post(&job.job);
     }
 
-    /// What is queued, written now: the Browser's end (the cookie store's
-    /// Flush), before its loop and its platform state end.
+    /// What is queued, handed to the storage sequence now: the Browser's end
+    /// (the cookie store's Flush), before the sequence stops and the loop
+    /// and the platform state end.
     pub fn flush(self: *CookiePersistence) void {
         self.commit();
     }
 
-    fn write(self: *CookiePersistence, taken: *const std.StringHashMapUnmanaged(?[]u8), rewrite: ?[]const Cookie) platform.StoreError!void {
-        const store = try platform.openStore(self.browser, platform.Str.from(store_name), .{});
-        defer platform.closeStore(store);
-        const transaction = try platform.beginTransaction(store, .write);
-        self.writeAll(transaction, taken, rewrite) catch |err| {
-            platform.abortTransaction(transaction);
-            return err;
-        };
-        return platform.commitTransaction(transaction);
-    }
+    /// One commit (or the load's deletion of stale records), written on the
+    /// storage sequence. OWNED: the records are the queue's, taken whole;
+    /// the job touches neither the jar nor its persistence.
+    const CommitJob = struct {
+        job: Job = .{ .run = run, .drop = drop },
+        allocator: std.mem.Allocator,
+        /// BORROWED: the Browser's platform state, which outlives the
+        /// sequence.
+        browser: *platform.BrowserPlatform,
+        /// Each changed cookie's last state, by record key (OWNED).
+        taken: std.StringHashMapUnmanaged(?[]u8) = .empty,
+        /// A rewrite: every record deleted, these written (OWNED copies).
+        rewrite: ?[]Cookie = null,
+        /// The load's stale records, deleted (OWNED keys).
+        stale: []const []u8 = &.{},
 
-    fn writeAll(self: *CookiePersistence, transaction: *platform.StoreTransaction, taken: *const std.StringHashMapUnmanaged(?[]u8), rewrite: ?[]const Cookie) platform.StoreError!void {
-        if (rewrite) |cookies| {
-            try platform.storeDeleteRange(transaction, .all);
-            for (cookies) |*cookie| {
-                const key = try recordKey(self.allocator, cookie);
-                defer self.allocator.free(key);
-                const record = try encode(self.allocator, cookie);
-                defer self.allocator.free(record);
-                try platform.storePut(transaction, platform.Bytes.from(key), platform.Bytes.from(record));
+        fn destroy(self: *CommitJob) void {
+            var entries = self.taken.iterator();
+            while (entries.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                if (entry.value_ptr.*) |record| self.allocator.free(record);
+            }
+            self.taken.deinit(self.allocator);
+            if (self.rewrite) |cookies| freeCookies(self.allocator, cookies);
+            for (self.stale) |key| self.allocator.free(key);
+            self.allocator.free(self.stale);
+            self.allocator.destroy(self);
+        }
+
+        /// On the storage sequence. A failure is logged and the operations
+        /// are gone (DoCommit records the error and carries on); the jar
+        /// keeps its cookies.
+        fn run(job: *Job) void {
+            const self: *CommitJob = @fieldParentPtr("job", job);
+            defer self.destroy();
+            self.write() catch |err| {
+                log.warn("a cookie commit to the profile failed: {s}", .{@errorName(err)});
+            };
+        }
+
+        /// The sequence had stopped: the Browser is ending, its flush ran
+        /// before, and this came too late to be written.
+        fn drop(job: *Job) void {
+            const self: *CommitJob = @fieldParentPtr("job", job);
+            log.warn("a cookie commit came after the Browser's storage sequence stopped; it is not written", .{});
+            self.destroy();
+        }
+
+        fn write(self: *CommitJob) platform.StoreError!void {
+            const store = try platform.openStore(self.browser, platform.Str.from(store_name), .{});
+            defer platform.closeStore(store);
+            const transaction = try platform.beginTransaction(store, .write);
+            self.writeAll(transaction) catch |err| {
+                platform.abortTransaction(transaction);
+                return err;
+            };
+            return platform.commitTransaction(transaction);
+        }
+
+        fn writeAll(self: *CommitJob, transaction: *platform.StoreTransaction) platform.StoreError!void {
+            for (self.stale) |key| try platform.storeDelete(transaction, platform.Bytes.from(key));
+            if (self.rewrite) |cookies| {
+                try platform.storeDeleteRange(transaction, .all);
+                for (cookies) |*cookie| {
+                    const key = try recordKey(self.allocator, cookie);
+                    defer self.allocator.free(key);
+                    const record = try encode(self.allocator, cookie);
+                    defer self.allocator.free(record);
+                    try platform.storePut(transaction, platform.Bytes.from(key), platform.Bytes.from(record));
+                }
+            }
+            var entries = self.taken.iterator();
+            while (entries.next()) |entry| {
+                const key = platform.Bytes.from(entry.key_ptr.*);
+                if (entry.value_ptr.*) |record| {
+                    try platform.storePut(transaction, key, platform.Bytes.from(record));
+                } else {
+                    try platform.storeDelete(transaction, key);
+                }
             }
         }
-        var entries = taken.iterator();
-        while (entries.next()) |entry| {
-            const key = platform.Bytes.from(entry.key_ptr.*);
-            if (entry.value_ptr.*) |record| {
-                try platform.storePut(transaction, key, platform.Bytes.from(record));
-            } else {
-                try platform.storeDelete(transaction, key);
-            }
-        }
-    }
+    };
 
     /// Copies of the jar's persistent cookies. Under the jar's lock.
     fn snapshot(allocator: std.mem.Allocator, jar: *const CookieJar) std.mem.Allocator.Error![]Cookie {
@@ -585,8 +637,14 @@ test "a jar on a profile: persistent cookies are written, session cookies never,
         defer platform.destroyBrowserPlatform(browser);
         var jar = CookieJar.init(testing.allocator);
         defer jar.deinit();
+        // Stopped first (the defers run in reverse), as at a Browser's end:
+        // what was handed to it is written before the jar and the platform
+        // state end.
+        var sequence = storage.StorageSequence.init(testing.allocator);
+        defer sequence.deinit();
+        try sequence.start();
         // No timer: every batch waits for the flush.
-        try jar.attachProfile(browser, null);
+        try jar.attachProfile(browser, null, &sequence);
         var kept = try testCookie("kept", "1", 3_600_000);
         defer kept.deinit();
         var session = try testCookie("session", "2", null);
@@ -607,11 +665,16 @@ test "a jar on a profile: persistent cookies are written, session cookies never,
     defer platform.destroyBrowserPlatform(browser);
     var jar = CookieJar.init(testing.allocator);
     defer jar.deinit();
-    try jar.attachProfile(browser, null);
+    var sequence = storage.StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try jar.attachProfile(browser, null, &sequence);
     // Only "kept": the session cookie was never written, "gone" deleted,
-    // and "short" expired while no jar was open - its record swept.
+    // and "short" expired while no jar was open - its record swept, by a
+    // write on the storage sequence.
     try testing.expectEqual(@as(usize, 1), jar.count());
     try testing.expectEqualStrings("kept", jar.cookies.items[0].name);
+    sequence.barrier();
     const store = try platform.openStore(browser, platform.Str.from(store_name), .{});
     defer platform.closeStore(store);
     const transaction = try platform.beginTransaction(store, .read);
@@ -625,4 +688,66 @@ test "a jar on a profile: persistent cookies are written, session cookies never,
         records += 1;
     }
     try testing.expectEqual(@as(usize, 1), records);
+}
+
+/// A job that holds the storage sequence until its gate is set.
+const Held = struct {
+    job: Job = .{ .run = run, .drop = drop },
+    gate: storage.sequence.Done = .{},
+
+    fn run(job: *Job) void {
+        const self: *Held = @fieldParentPtr("job", job);
+        self.gate.wait();
+    }
+
+    fn drop(job: *Job) void {
+        _ = job;
+    }
+};
+
+fn countCookieRecords(browser: *platform.BrowserPlatform) !usize {
+    const store = try platform.openStore(browser, platform.Str.from(store_name), .{});
+    defer platform.closeStore(store);
+    const transaction = try platform.beginTransaction(store, .read);
+    defer platform.abortTransaction(transaction);
+    const cursor = try platform.openCursor(transaction, .all, .forward);
+    defer platform.closeCursor(cursor);
+    var records: usize = 0;
+    while (try platform.cursorNext(cursor, std.testing.allocator)) |record| {
+        std.testing.allocator.free(record.key.slice());
+        std.testing.allocator.free(record.value.slice());
+        records += 1;
+    }
+    return records;
+}
+
+test "a cookie commit is written on the storage sequence, never on the thread that commits" {
+    const testing = std.testing;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(base);
+    const directory = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
+    defer testing.allocator.free(directory);
+    const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    var jar = CookieJar.init(testing.allocator);
+    defer jar.deinit();
+    var sequence = storage.StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try jar.attachProfile(browser, null, &sequence);
+    var held: Held = .{};
+    sequence.post(&held.job);
+    var kept = try testCookie("kept", "1", 3_600_000);
+    defer kept.deinit();
+    try jar.store(kept);
+    jar.flush();
+    // Taken from the queue and handed over: not in the store while the
+    // sequence is held.
+    try testing.expectEqual(@as(usize, 0), jar.persistence.?.num_pending);
+    try testing.expectEqual(@as(usize, 0), try countCookieRecords(browser));
+    held.gate.set();
+    sequence.barrier();
+    try testing.expectEqual(@as(usize, 1), try countCookieRecords(browser));
 }

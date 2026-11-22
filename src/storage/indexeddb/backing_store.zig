@@ -35,6 +35,20 @@
 //! - A record keeps, beside its value, the index keys it was filed under
 //!   (Firefox's index_data_values on object_data rows), so an overwrite or a
 //!   delete removes its old index entries without running a key path again.
+//! - With a profile directory, a commit is written on the Browser's storage
+//!   sequence (storage.StorageSequence; lane prof2), never on the agent's
+//!   thread: the batch moves into a `CommitJob`, and the transaction learns
+//!   its result from a task the job posts to its agent's loop - Chromium
+//!   commits on its IndexedDB backing store's sequence and posts the
+//!   complete event back to the renderer only after the commit finished
+//!   (content/browser/indexed_db/indexed_db_transaction.cc, Commit ->
+//!   CommitPhaseTwo -> the callbacks' OnComplete). With no profile directory
+//!   (kit/memory_store) there is no sequence: a commit is written on the
+//!   committing thread, as before. No read waits for the sequence: a
+//!   transaction starts only once every earlier overlapping one finished -
+//!   its commit written - and a database's schema is read only for a record
+//!   the server's map lacks, which a database with a commit or a deletion
+//!   in flight never is (the job holds its record, `CommitJob.hold`).
 //!
 //! LAYOUT (byte keys; `esc(b)` escapes 0x00 as 00 FF and ends with 00 01;
 //! integers u64 big-endian; `key(k)` the key encoding below):
@@ -49,6 +63,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const platform = @import("platform");
 const IDBKey = @import("key.zig").IDBKey;
+const sequence_mod = @import("../sequence.zig");
+const server_mod = @import("server.zig");
 
 pub const store_name = "indexeddb";
 
@@ -441,6 +457,11 @@ pub const BackingStore = struct {
     /// lock - always the latest, so the stored counter never goes back.
     next_db_id: std.atomic.Value(u64) = .init(1),
     counter_dirty: std.atomic.Value(bool) = .init(false),
+    /// The Browser's storage sequence, which writes every commit of a
+    /// Browser with a profile directory (lane prof2; `IDBServer.attachSequence`
+    /// at Browser.init, before any realm). Null - no profile directory, or no
+    /// Browser - commits are written on the committing thread.
+    sequence: ?*sequence_mod.StorageSequence = null,
 
     /// The store of `browser`, its database counter read.
     pub fn init(allocator: Allocator, browser: *platform.BrowserPlatform) Error!BackingStore {
@@ -479,8 +500,9 @@ pub const BackingStore = struct {
     }
 
     /// Write `changes` - each key's value, or null for its deletion - in one
-    /// store transaction, under the commit lock. Durable on return with a
-    /// profile (kit/sqlite).
+    /// store transaction, under the commit lock (several agents' threads
+    /// commit at once with no sequence; with one, only the sequence writes).
+    /// Durable on return with a profile (kit/sqlite).
     pub fn apply(self: *BackingStore, ranges: []const OwnedRange, changes: []const Change) platform.StoreError!void {
         if (changes.len == 0 and ranges.len == 0) return;
         std.Io.Threaded.mutexLockUncancelable(&self.commit_mutex);
@@ -536,6 +558,152 @@ pub const OwnedRange = struct {
 
     fn contains(self: OwnedRange, key: []const u8) bool {
         return std.mem.order(u8, key, self.lower) != .lt and std.mem.order(u8, key, self.upper) == .lt;
+    }
+};
+
+/// A commit handed to the Browser's storage sequence (lane prof2): an
+/// IndexedDB transaction's batch, or a database's deletion, moved out of
+/// its `Transaction` and written there in one store transaction
+/// (`BackingStore.apply`). Two references: the waiter's (the transaction,
+/// or the deletion's request: `take` or `abandon`) and the sequence's
+/// (passed to the task that tells the waiter, or given back when nobody is
+/// told).
+pub const CommitJob = struct {
+    job: sequence_mod.Job = .{ .run = run, .drop = drop },
+    backing: *BackingStore,
+    /// The batch, moved from the transaction. OWNED until written.
+    ranges: std.ArrayListUnmanaged(OwnedRange) = .empty,
+    changes: std.ArrayListUnmanaged(Change) = .empty,
+    /// Written by the sequence before `done` is set; read after it.
+    result: platform.StoreError!void = {},
+    done: sequence_mod.Done = .{},
+    refs: std.atomic.Value(u32) = .init(2),
+    /// Where the waiter is told: a task posted to its agent's loop (an
+    /// endpoint of dom.indexeddb.endpointOf, its sink reference OWNED until
+    /// the post). Null: the waiter waits for `done` itself.
+    notify: ?server_mod.Endpoint = null,
+    /// What the posted task calls, on the waiter's agent's thread, while
+    /// set. That thread's alone: set after the post, cleared by `take` and
+    /// `abandon` - so the task never calls a waiter that has gone.
+    waiter: ?Waiter = null,
+    /// A database record the job holds until it was written (a deletion's):
+    /// the record stays in the server's map, so no agent reads the store's
+    /// copy of the database - its schema, its directory entry - meanwhile.
+    hold: ?Hold = null,
+
+    pub const Waiter = struct {
+        context: *anyopaque,
+        call: *const fn (context: *anyopaque) void,
+    };
+
+    pub const Hold = struct {
+        server: *server_mod.IDBServer,
+        database: *server_mod.UniqueIDBDatabase,
+    };
+
+    /// Hand it to the storage sequence. Never under a lock a job takes (the
+    /// server's: a stopped sequence drops it here, and the drop lets go of
+    /// its hold). The job is the sequence's and its waiter's from here.
+    pub fn post(self: *CommitJob) void {
+        self.backing.sequence.?.post(&self.job);
+    }
+
+    /// Whether the batch was written (or will never be).
+    pub fn isDone(self: *const CommitJob) bool {
+        return self.done.isSet();
+    }
+
+    /// Block until it was written: an agent ending with its transaction's
+    /// commit in flight (the one wait an agent's thread makes on the
+    /// sequence, at its end), or a caller with no loop to be told on.
+    pub fn wait(self: *CommitJob) void {
+        self.done.wait();
+    }
+
+    /// The waiter's answer, once done, and its reference given back: the
+    /// store's error, if the write failed. On the waiter's thread.
+    pub fn take(self: *CommitJob) platform.StoreError!void {
+        std.debug.assert(self.done.isSet());
+        self.waiter = null;
+        const result = self.result;
+        self.release();
+        return result;
+    }
+
+    /// The waiter goes without its answer (its agent ended; a deletion's
+    /// write needs nothing of it): its reference given back. On the
+    /// waiter's thread.
+    pub fn abandon(self: *CommitJob) void {
+        self.waiter = null;
+        self.release();
+    }
+
+    fn release(self: *CommitJob) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        if (self.notify) |*endpoint| endpoint.release();
+        self.freeBatch();
+        self.backing.allocator.destroy(self);
+    }
+
+    fn freeBatch(self: *CommitJob) void {
+        const allocator = self.backing.allocator;
+        for (self.changes.items) |item| {
+            allocator.free(item.key);
+            if (item.value) |value| allocator.free(value);
+        }
+        self.changes.deinit(allocator);
+        self.changes = .empty;
+        for (self.ranges.items) |range| {
+            allocator.free(range.lower);
+            allocator.free(range.upper);
+        }
+        self.ranges.deinit(allocator);
+        self.ranges = .empty;
+    }
+
+    /// On the storage sequence: the write.
+    fn run(job: *sequence_mod.Job) void {
+        const self: *CommitJob = @fieldParentPtr("job", job);
+        self.result = self.backing.apply(self.ranges.items, self.changes.items);
+        self.finish();
+    }
+
+    /// The sequence had stopped (the Browser is ending, after its realms):
+    /// never written. On the poster's thread.
+    fn drop(job: *sequence_mod.Job) void {
+        const self: *CommitJob = @fieldParentPtr("job", job);
+        self.result = error.Closed;
+        self.finish();
+    }
+
+    /// The batch goes, the record is let go, the waiter learns: `done`,
+    /// then the task to its agent, which takes the sequence's reference.
+    fn finish(self: *CommitJob) void {
+        self.freeBatch();
+        if (self.hold) |hold| {
+            self.hold = null;
+            // A job may take the server's lock: nothing waits for the
+            // sequence under it.
+            hold.server.release(hold.database);
+        }
+        self.done.set();
+        var endpoint = self.notify orelse return self.release();
+        self.notify = null;
+        endpoint.post(.{ .run = notifyRun, .drop = notifyDrop, .data = self });
+        endpoint.release();
+    }
+
+    /// On the waiter's agent's thread: tell it, if it still waits.
+    fn notifyRun(data: ?*anyopaque) void {
+        const self: *CommitJob = @ptrCast(@alignCast(data.?));
+        if (self.waiter) |waiter| waiter.call(waiter.context);
+        self.release();
+    }
+
+    /// That loop ended: nobody to tell (the agent's end waited instead).
+    fn notifyDrop(data: ?*anyopaque) void {
+        const self: *CommitJob = @ptrCast(@alignCast(data.?));
+        self.release();
     }
 };
 
@@ -668,6 +836,32 @@ pub const Transaction = struct {
     /// Drop the changes (LevelDBTransaction::Rollback).
     pub fn rollback(self: *Transaction) void {
         self.dropChanges();
+    }
+
+    /// Whether a commit would write anything.
+    pub fn hasChanges(self: *const Transaction) bool {
+        return self.changes.items.len != 0 or self.ranges.items.len != 0;
+    }
+
+    /// The changes, moved into a job for the Browser's storage sequence (the
+    /// backing store has one), to be handed over with `CommitJob.post`:
+    /// `notify` is told once it was written (null: the caller waits), and
+    /// `hold` is held until then. The snapshot stays the transaction's.
+    /// Takes `notify` whatever happens. The job's waiter reference is the
+    /// caller's.
+    pub fn prepareCommit(self: *Transaction, notify: ?server_mod.Endpoint, hold: ?CommitJob.Hold) Allocator.Error!*CommitJob {
+        std.debug.assert(self.backing.sequence != null);
+        const job = self.backing.allocator.create(CommitJob) catch |err| {
+            if (notify) |endpoint| {
+                var owned = endpoint;
+                owned.release();
+            }
+            return err;
+        };
+        job.* = .{ .backing = self.backing, .ranges = self.ranges, .changes = self.changes, .notify = notify, .hold = hold };
+        self.ranges = .empty;
+        self.changes = .empty;
+        return job;
     }
 
     fn find(self: *const Transaction, key: []const u8) struct { index: usize, found: bool } {

@@ -377,7 +377,12 @@ const ConnectionTask = struct {
     /// The version rises (or this is a deletion): connections are told and
     /// waited on (5.1 step 10 / 5.3 steps 5-7).
     change: bool = false,
-    phase: enum { start, notify, blocked, wait, upgrade, commit, success, failed, error_event, finished } = .start,
+    phase: enum { start, notify, blocked, wait, deleted, upgrade, commit, success, failed, error_event, finished } = .start,
+    /// A deletion's write on the Browser's storage sequence (a profile
+    /// directory; lane prof2), until its answer is taken: the request
+    /// succeeds only once the records are gone from the store. Its waiter
+    /// reference is this task's.
+    deletion_written: ?*storage.indexeddb.backing_store.CommitJob = null,
     /// Connections on this thread to tell versionchange, by id, one per
     /// task (5.1 step 10.2); those of other threads were told by the server.
     local_notifications: []server_mod.Id = &.{},
@@ -397,6 +402,13 @@ const ConnectionTask = struct {
 
     fn internal(self: *ConnectionTask) *InternalState {
         return self.factory.getState(State).own._internal.?;
+    }
+    /// The deletion's job, on this thread: its records are gone (or the
+    /// write failed) - the request goes on.
+    fn deletionWritten(context: *anyopaque) void {
+        const self: *ConnectionTask = @ptrCast(@alignCast(context));
+        self.parked = false;
+        self.schedule() catch self.failScheduling();
     }
     /// The server's note for this request's entry, on this thread.
     fn serverNote(context: *anyopaque, note: server_mod.Note) void {
@@ -524,8 +536,24 @@ const ConnectionTask = struct {
                 }
                 if (self.deletion) {
                     // 5.3 steps 8-11: the database goes; success reports its
-                    // old version.
-                    self.old_version = self.server.deleteDatabase(self.database);
+                    // old version. With a profile directory its records are
+                    // deleted on the Browser's storage sequence, and the
+                    // request waits for that (Chromium's
+                    // DeleteDatabaseOperation answers after the backing
+                    // store's delete): this agent's endpoint is told, made
+                    // only then.
+                    const notify = if (self.server.writesOnSequence()) dom.indexeddb.endpointOf(self.realm) else null;
+                    const deleted = self.server.deleteDatabase(self.database, notify);
+                    self.old_version = deleted.old_version;
+                    if (deleted.written) |job| {
+                        self.deletion_written = job;
+                        job.waiter = .{ .context = self, .call = deletionWritten };
+                        self.phase = .deleted;
+                        // Told by the job's task, which may already be
+                        // queued: it runs after this task, on this thread.
+                        self.parked = true;
+                        return;
+                    }
                     try dom.indexeddb.completeRequest(self.request, .jsUndefined, null);
                     try self.versionEvent(self.request, "success", null);
                     self.phase = .finished;
@@ -547,6 +575,20 @@ const ConnectionTask = struct {
                 self.database_root = try engine.retainValue(self.realm, .{ .instance = database });
                 self.database_instance = database;
                 self.phase = if (self.version.? > opened.old_version) .upgrade else .success;
+            },
+            .deleted => {
+                const job = self.deletion_written.?;
+                if (!job.isDone()) {
+                    self.parked = true;
+                    return;
+                }
+                self.deletion_written = null;
+                // 5.3 step 10: "If this fails for any reason, return an
+                // appropriate error (e.g. QuotaExceededError or UnknownError)".
+                job.take() catch |err| return self.fail(if (err == error.QuotaExceeded) "QuotaExceededError" else "UnknownError");
+                try dom.indexeddb.completeRequest(self.request, .jsUndefined, null);
+                try self.versionEvent(self.request, "success", null);
+                self.phase = .finished;
             },
             .upgrade => {
                 // 5.7: expose the upgrade transaction and done result before dispatch.
@@ -698,6 +740,12 @@ const ConnectionTask = struct {
         self.leaveQueue(false);
         self.releaseRoots();
         allocator.free(self.local_notifications);
+        // A deletion still being written goes on without this request (the
+        // job holds the database record until it is done).
+        if (self.deletion_written) |job| {
+            self.deletion_written = null;
+            job.abandon();
+        }
         self.server.release(self.database);
         allocator.destroy(self);
     }
