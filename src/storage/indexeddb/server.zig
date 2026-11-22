@@ -119,12 +119,15 @@ pub const Endpoint = struct {
         return self.thread == std.Thread.getCurrentId();
     }
 
-    fn post(self: Endpoint, task: Task) void {
+    /// Post `task` to the agent's loop: run there, or dropped (here, when
+    /// it has no sink or its loop ended).
+    pub fn post(self: Endpoint, task: Task) void {
         const sink = self.sink orelse return task.drop(task.data);
         _ = self.ops.?.post(sink, task);
     }
 
-    fn release(self: *Endpoint) void {
+    /// Give the sink reference back.
+    pub fn release(self: *Endpoint) void {
         if (self.sink) |sink| self.ops.?.release(sink);
         self.sink = null;
     }
@@ -356,6 +359,23 @@ pub const IDBServer = struct {
         defer std.Io.Threaded.mutexUnlock(&self.backing_mutex);
         std.debug.assert(self.backing == null);
         self.backing = try backing_store.BackingStore.init(self.allocator, browser);
+    }
+
+    /// The Browser's storage sequence (lane prof2): every commit of its
+    /// databases, and every deletion, is written there from now on.
+    /// profile_stores.attach's, for a Browser with a profile directory,
+    /// after `attachPlatform` and before any realm.
+    pub fn attachSequence(self: *IDBServer, sequence: *@import("../sequence.zig").StorageSequence) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.backing_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.backing_mutex);
+        if (self.backing) |*backing| backing.sequence = sequence;
+    }
+
+    /// Whether commits and deletions are written on the storage sequence:
+    /// the caller then gives its agent's endpoint, to be told when.
+    pub fn writesOnSequence(self: *IDBServer) bool {
+        const backing = self.backingStore() orelse return false;
+        return backing.sequence != null;
     }
 
     fn ignoreEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
@@ -796,29 +816,72 @@ pub const IDBServer = struct {
         return false;
     }
 
+    /// What "delete a database" did: the version the database had (0 when
+    /// there was none) and, when its records are being deleted on the
+    /// storage sequence, the job to learn the result from (its waiter
+    /// reference the caller's: `take` or `abandon`).
+    pub const Deleted = struct {
+        old_version: u64,
+        written: ?*backing_store.CommitJob = null,
+    };
+
     /// ED 5.3 "delete a database" steps 8-11, every connection closed: the
-    /// database goes; returns its version (0 when there was none).
-    /// Connections still open (a native caller's) keep the old one.
-    pub fn deleteDatabase(self: *IDBServer, database: *UniqueIDBDatabase) u64 {
-        self.lock();
-        defer self.unlock();
-        const durable = database.durable orelse return 0;
-        const old_version = durable.version;
-        database.durable = null;
-        durable.releaseHeapOwnership();
-        // Its records, index entries, reverse rows, schema and directory
-        // entry go from the backing store (5.3 step 10: "delete database").
-        if (database.persisted) self.deleteStoredLocked(database) catch |err| {
-            log.err("an IndexedDB database could not be deleted from its backing store ({s})", .{@errorName(err)});
+    /// database goes, and its records, index entries, reverse rows, schema
+    /// and directory entry with it (step 10: "delete database"). Connections
+    /// still open (a native caller's) keep the old one.
+    ///
+    /// With a storage sequence (a profile directory) that deletion is
+    /// written there: with `notify` - an endpoint with a sink, OWNED -
+    /// `written` is its job, and `notify`'s agent is told when it is done,
+    /// so the request's success waits for it as Chromium's
+    /// DeleteDatabaseOperation answers only after the backing store's
+    /// delete; with none it is waited for here. The job holds the record
+    /// until then, so nobody reads the store's copy of the database
+    /// meanwhile. Without a sequence it is written here.
+    pub fn deleteDatabase(self: *IDBServer, database: *UniqueIDBDatabase, notify: ?Endpoint) Deleted {
+        var pending_notify = notify;
+        defer if (pending_notify) |*endpoint| endpoint.release();
+        // An endpoint with no sink can be told nothing: the wait is here.
+        if (pending_notify) |*endpoint| if (endpoint.sink == null) {
+            endpoint.release();
+            pending_notify = null;
         };
-        database.id = 0;
-        database.persisted = false;
-        return old_version;
+        var job: ?*backing_store.CommitJob = null;
+        const old_version = blk: {
+            self.lock();
+            defer self.unlock();
+            const durable = database.durable orelse break :blk 0;
+            const old_version = durable.version;
+            database.durable = null;
+            durable.releaseHeapOwnership();
+            if (database.persisted) {
+                job = self.deleteStoredLocked(database, &pending_notify) catch |err| fail: {
+                    log.err("an IndexedDB database could not be deleted from its backing store ({s})", .{@errorName(err)});
+                    break :fail null;
+                };
+            }
+            database.id = 0;
+            database.persisted = false;
+            break :blk old_version;
+        };
+        const written = job orelse return .{ .old_version = old_version };
+        // Read before the post: from then on the job is the sequence's too.
+        const told = written.notify != null;
+        // Handed over after the lock: a stopped sequence drops the job here,
+        // and its drop lets go of the record under the lock.
+        written.post();
+        if (told) return .{ .old_version = old_version, .written = written };
+        // Nobody to tell: waited for here.
+        written.wait();
+        written.take() catch |err| log.err("an IndexedDB database could not be deleted from its backing store ({s})", .{@errorName(err)});
+        return .{ .old_version = old_version };
     }
 
-    /// With the lock: every key of `database` in the backing store.
-    fn deleteStoredLocked(self: *IDBServer, database: *UniqueIDBDatabase) backing_store.Error!void {
-        const backing = self.backingStore() orelse return;
+    /// With the lock: every key of `database` in the backing store, deleted
+    /// - here, or (a storage sequence) by the job returned, which takes
+    /// `notify.*` and holds the record until it is written.
+    fn deleteStoredLocked(self: *IDBServer, database: *UniqueIDBDatabase, notify: *?Endpoint) backing_store.Error!?*backing_store.CommitJob {
+        const backing = self.backingStore() orelse return null;
         const allocator = self.allocator;
         const txn = try backing.begin();
         defer txn.destroy();
@@ -835,7 +898,18 @@ pub const IDBServer = struct {
         const directory = txn.buffer(.key);
         try backing_store.directoryKey(directory, allocator, serialized, database.name);
         try txn.delete(directory.items);
-        try txn.commit();
+        if (backing.sequence == null) {
+            try txn.commit();
+            return null;
+        }
+        const endpoint = notify.*;
+        notify.* = null;
+        // The job's hold on the record: given back from the sequence.
+        database.holders += 1;
+        return txn.prepareCommit(endpoint, .{ .server = self, .database = database }) catch |err| {
+            database.holders -= 1;
+            return err;
+        };
     }
 
     pub const Opened = struct {

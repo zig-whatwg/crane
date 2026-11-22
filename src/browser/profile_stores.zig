@@ -41,10 +41,15 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     const user_agent_storage = try scope.of(storage.UserAgentStorage);
     const jar = try scope.of(cookiestore.CookieJar);
     const caches = try scope.of(service_worker.cache.store.Storage);
+    const databases = try scope.of(storage.indexeddb.IDBServer);
     // The storage sequence: the thread every write below runs on.
     const sequence = try scope.of(storage.StorageSequence);
     try sequence.start();
     errdefer sequence.stop();
+    // IndexedDB (D6 step 4; attachPlatform gave it its store): its
+    // transactions' commits and its deletions are written on the sequence,
+    // and a transaction completes once its commit is written.
+    databases.attachSequence(sequence);
     // localStorage (D6 step 2): read per area on first use, committed in
     // batches (storage/profile.zig).
     try user_agent_storage.attachProfile(browser, commitTimer(loop), sequence);

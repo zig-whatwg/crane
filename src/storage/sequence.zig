@@ -37,10 +37,12 @@
 //!
 //! THREADS. `post` and `barrier` from any thread but the sequence's own (a
 //! job never waits on its own sequence); `start` and `stop` from the
-//! Browser's thread. A job takes no lock that a thread may hold while it waits
-//! on this sequence - IndexedDB's server lock, the cookie jar's, the
-//! UserAgentStorage's: `barrier` is called under those, so a job that took
-//! one would deadlock with it.
+//! Browser's thread. A job may take a lock only if no thread ever waits for
+//! the sequence while holding it: localStorage's first read waits under the
+//! UserAgentStorage lock, so no job takes that one; an IndexedDB deletion's
+//! job takes the IndexedDB server's lock to let go of its database record,
+//! so nothing waits for the sequence under that lock (a commit's or a
+//! deletion's wait is made after it is released).
 
 const std = @import("std");
 const platform = @import("platform");
@@ -154,6 +156,14 @@ pub const StorageSequence = struct {
         lock(&self.mutex);
         defer unlock(&self.mutex);
         return self.state == .running;
+    }
+
+    /// How many jobs were posted since the start (a diagnostic: what a test
+    /// waits for before it ends a Browser with a write in flight).
+    pub fn postedCount(self: *StorageSequence) u64 {
+        lock(&self.mutex);
+        defer unlock(&self.mutex);
+        return self.posted;
     }
 
     /// Whether the calling thread is the sequence's.
