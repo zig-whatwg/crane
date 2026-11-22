@@ -124,8 +124,10 @@ pub const Persistence = struct {
     max_bytes: u64,
     /// Guards everything below.
     mutex: std.Io.Mutex = .init,
-    /// By cache key (OWNED keys).
+    /// By cache key (OWNED keys). Responses come and go - evicted,
+    /// invalidated - so its tombstones are rehashed away (infra.tombstones).
     index: std.StringHashMapUnmanaged(IndexEntry) = .empty,
+    index_guard: @import("infra").tombstones.TombstoneGuard = .{},
     disk_bytes: u64 = 0,
     /// By cache key (OWNED keys).
     pending: std.StringHashMapUnmanaged(Pending) = .empty,
@@ -202,6 +204,7 @@ pub const Persistence = struct {
                 .size = std.mem.readInt(u64, value[0..8], .big),
                 .last_used = @max(1, std.mem.readInt(u32, value[8..12], .big)),
             };
+            self.index_guard.beforeInsert(&self.index);
             const slot = self.index.getOrPut(self.allocator, key) catch |err| {
                 self.allocator.free(key);
                 return err;
@@ -271,6 +274,7 @@ pub const Persistence = struct {
         if (!self.index.contains(key) and !self.pending.contains(key)) return;
         self.queue(key, .delete) catch {};
         if (self.index.fetchRemove(key)) |removed| {
+            self.index_guard.noteRemoval(&self.index);
             self.disk_bytes -= removed.value.size;
             self.allocator.free(removed.key);
         }
@@ -285,6 +289,7 @@ pub const Persistence = struct {
         }
         const owned = try self.allocator.dupe(u8, key);
         errdefer self.allocator.free(owned);
+        self.index_guard.beforeInsert(&self.index);
         try self.index.put(self.allocator, owned, entry);
         self.disk_bytes += entry.size;
     }
@@ -293,19 +298,21 @@ pub const Persistence = struct {
     /// posting its commit. A queued put a later operation replaces is
     /// released; a touch never replaces a put.
     fn queue(self: *Persistence, key: []const u8, what: Pending) Allocator.Error!void {
-        const slot = self.pending.getOrPut(self.allocator, key) catch |err| {
+        // The key copied first, so the map never holds a slot it cannot
+        // fill (and is never removed from: commits take it whole).
+        const owned = self.allocator.dupe(u8, key) catch |err| {
+            if (what == .put) what.put.release();
+            return err;
+        };
+        const slot = self.pending.getOrPut(self.allocator, owned) catch |err| {
+            self.allocator.free(owned);
             if (what == .put) what.put.release();
             return err;
         };
         if (slot.found_existing) {
+            self.allocator.free(owned);
             if (what == .touch and slot.value_ptr.* == .put) return;
             if (slot.value_ptr.* == .put) slot.value_ptr.put.release();
-        } else {
-            slot.key_ptr.* = self.allocator.dupe(u8, key) catch |err| {
-                _ = self.pending.remove(key);
-                if (what == .put) what.put.release();
-                return err;
-            };
         }
         slot.value_ptr.* = what;
         if (!self.commit_posted) {
@@ -463,6 +470,7 @@ pub const Persistence = struct {
             while (entries.next()) |entry| {
                 if (entry.value_ptr.* != .put) continue;
                 if (self.index.fetchRemove(entry.key_ptr.*)) |removed| {
+                    self.index_guard.noteRemoval(&self.index);
                     self.disk_bytes -= removed.value.size;
                     self.allocator.free(removed.key);
                 }

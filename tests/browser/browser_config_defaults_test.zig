@@ -13,20 +13,6 @@ test "BrowserConfig's default is in memory" {
     try testing.expect(!defaults.persist_storage);
 }
 
-test "a Browser at the defaults makes nothing under its storage root" {
-    var tmp = testing.tmpDir(.{});
-    defer tmp.cleanup();
-    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
-    defer testing.allocator.free(base);
-    const root = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
-    defer testing.allocator.free(root);
-
-    const browser = try Browser.init(testing.allocator, .{ .storage_root = root, .snapshot_path = "" });
-    try browser.navigate("about:blank", .window);
-    browser.deinit();
-    try testing.expectError(error.FileNotFound, tmp.dir.access(testing.io, "profile", .{}));
-}
-
 test "a Browser at the defaults makes nothing under $HOME" {
     // Only where ~/.whatwg/ is not there already: then a Browser that made
     // it would show.

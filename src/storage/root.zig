@@ -5,11 +5,14 @@
 //! ## Architecture
 //!
 //! ```
-//! StorageBackend (interface)
-//!     ├── MemoryBackend (testing)
-//!     ├── SQLiteBackend (iOS/Android, planned)
-//!     └── LevelDBBackend (desktop, planned)
+//! StorageBackend (legacy interface)
+//!     └── MemoryBackend (testing)
 //! ```
+//!
+//! A Browser's stores - IndexedDB (indexeddb/backing_store.zig), localStorage
+//! (profile.zig), and those of other modules - go through the platform
+//! protocol's storage engine (docs/platform-protocol.md 6.6): kit/memory_store,
+//! or kit/sqlite under a profile directory.
 //!
 //! ## Usage
 //!
