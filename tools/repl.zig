@@ -142,6 +142,11 @@ pub const Options = struct {
     user_data_dir: ?[]const u8 = null,
     /// Chrome's `--headless[=new|old]`: Crane always is.
     headless: bool = false,
+    /// Chrome's `--no-startup-window` (switches::kNoStartupWindow): the
+    /// browser starts with no window - no first tab - and a client makes the
+    /// tabs it wants (Playwright passes it for a launch that is not
+    /// persistent, playwright-core chromium.ts _innerDefaultArgs).
+    no_startup_window: bool = false,
 
     /// Whether the command line asks for remote debugging: then Chrome's
     /// other switches are accepted and ignored, as a launcher passes many.
@@ -238,6 +243,8 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.user_data_dir = value;
         } else if (std.mem.eql(u8, arg, "--headless") or valueOf(arg, "--headless") != null) {
             options.headless = true;
+        } else if (std.mem.eql(u8, arg, "--no-startup-window")) {
+            options.no_startup_window = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             if (chrome_mode) continue;
             return error.UnknownOption;
@@ -289,8 +296,10 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
             };
         }
     };
+    // --no-startup-window: none (Chrome starts with no browser window; the
+    // client's Target.createTarget makes the first tab).
     var first_tab: FirstTab = .{ .url = options.url };
-    host.call(&first_tab, FirstTab.run) catch {
+    if (!options.no_startup_window) host.call(&first_tab, FirstTab.run) catch {
         first_tab.failed = true;
     };
     if (first_tab.failed) {
