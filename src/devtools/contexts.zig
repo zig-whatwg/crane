@@ -222,9 +222,34 @@ fn onServedCommitLive(side: *const BrowserSide, milestone: *const frames.Milesto
         const agent = browser.agent orelse return;
         engine.inspectorResetGroup(agent, groupOf(tab));
     } else if (milestone.navigation_id == 0) {
-        // A child's initial about:blank: made known when script reaches it.
+        // A child's initial about:blank: made known when script reaches it
+        // (`onServedTouch`), as page.zig marks it for a tab with sessions.
+        bc.inspector_pending = true;
         return;
     }
+    const main = frames.mainRealmOf(bc) orelse return;
+    _ = registerWithToken(side.token, main, bc);
+}
+
+/// Script reached, for the first time, the Window of a frame still on its
+/// initial about:blank (the host's frame_touched event, BrowsingContext.
+/// touchedByScript) in a served Browser's tab NO session is attached to: its
+/// main world context is made known now, as Blink makes it then
+/// (LocalWindowProxy::Initialize -> MainThreadDebugger::ContextCreated), so
+/// a session that attaches later finds it and the console messages logged in
+/// it. A tab with a session is left to its sessions (page.zig frameTouched).
+pub fn onServedTouch(side: *const BrowserSide, navigable: u64) void {
+    if (comptime have_inspector) onServedTouchLive(side, navigable);
+}
+
+/// `onServedTouch` with the engine's inspector operations: analysed only
+/// when the engine protocol has them.
+fn onServedTouchLive(side: *const BrowserSide, navigable: u64) void {
+    const browser = side.browser orelse return;
+    const navigables = @import("dom").browser_state.existingNavigablesIn(browser.scope) orelse return;
+    const bc = navigables.byId(navigable) orelse return;
+    if (bc.is_closed or bc.active_window == null) return;
+    if (sessionOnTab(side, bc.getTop().id)) return;
     const main = frames.mainRealmOf(bc) orelse return;
     _ = registerWithToken(side.token, main, bc);
 }

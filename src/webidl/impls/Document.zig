@@ -342,6 +342,7 @@ pub fn installHooks() void {
         .matches_focus = &focus.matchesFocus,
         .matches_focus_within = &focus.matchesFocusWithin,
         .matches_focus_visible = &focus.matchesFocusVisible,
+        .focus_visible_revision = &focus.focusVisibleRevision,
     });
     // html's script processing model reaches a document's script state.
     installScriptHooks();
@@ -2181,6 +2182,7 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const val_slice = value.asSlice();
 
+    const was_on = std.mem.eql(u8, internal.design_mode.asSlice(), "on");
     // Only "on" and "off" are valid values (case-insensitive)
     if (std.ascii.eqlIgnoreCase(val_slice, "on")) {
         internal.design_mode.deinit(internal.allocator);
@@ -2190,6 +2192,10 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
         internal.design_mode = runtime.DOMString.initInterned("off");
     }
     // Invalid values are ignored per spec
+    // A switch makes the document an editing host or not, which
+    // :focus-visible (a focused element that takes text input) and
+    // :read-write read with no tree mutation: cached styles are stale.
+    if (was_on != std.mem.eql(u8, internal.design_mode.asSlice(), "on")) @import("html").focus.focusVisibleInputsChanged(instance);
 }
 
 /// Setter for fgColor

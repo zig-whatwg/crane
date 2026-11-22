@@ -86,8 +86,11 @@ test "conformance: the bound platform matches every operation" {
     // devtoolsAccept, devtoolsRead, devtoolsWrite, devtoolsShutdown,
     // devtoolsClose, devtoolsCloseListener, devtoolsOpenInheritedPipe); 246
     // since lane tpw added devtoolsReadTimeout (a pipe reader that ends on
-    // its connection's shutdown without the client's EOF).
-    try testing.expectEqual(@as(usize, 246), count);
+    // its connection's shutdown without the client's EOF); 249 since lane tpc
+    // made the waits block with no timeout on a wake (devtoolsWakeNew,
+    // devtoolsWake, devtoolsWakeClose; devtoolsReadOrWake replaced
+    // devtoolsReadTimeout).
+    try testing.expectEqual(@as(usize, 249), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

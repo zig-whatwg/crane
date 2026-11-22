@@ -27,9 +27,12 @@ pub const meminfo = @import("meminfo.zig");
 /// inherited pipe pair.
 const devtools_transport = @import("devtools_transport.zig");
 pub const devtoolsListen = devtools_transport.devtoolsListen;
+pub const devtoolsWakeNew = devtools_transport.devtoolsWakeNew;
+pub const devtoolsWake = devtools_transport.devtoolsWake;
+pub const devtoolsWakeClose = devtools_transport.devtoolsWakeClose;
 pub const devtoolsAccept = devtools_transport.devtoolsAccept;
 pub const devtoolsRead = devtools_transport.devtoolsRead;
-pub const devtoolsReadTimeout = devtools_transport.devtoolsReadTimeout;
+pub const devtoolsReadOrWake = devtools_transport.devtoolsReadOrWake;
 pub const devtoolsWrite = devtools_transport.devtoolsWrite;
 pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
 pub const devtoolsClose = devtools_transport.devtoolsClose;

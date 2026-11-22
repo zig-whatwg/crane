@@ -387,6 +387,10 @@ pub const Edit = struct {
         const ranges = dom.document_internals.liveRanges(self.document);
         const live = dom.range_boundaries.liveRange();
         if (ranges != null and live != null) {
+            // Room for every range at once: grown from empty it rehashed
+            // as walk 1 filled it, on every move (lane tpc's delete-join
+            // profile). Out of memory, the puts below grow it as before.
+            adjusted.ensureTotalCapacity(self.allocator, std.math.cast(u32, ranges.?.count()) orelse std.math.maxInt(u32)) catch {};
             var walk: dom.document_internals.LiveObjects.Walk = undefined;
             ranges.?.beginWalk(&walk);
             defer ranges.?.endWalk(&walk);

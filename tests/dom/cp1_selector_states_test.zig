@@ -144,18 +144,22 @@ fn focusReads() !void {
     // volatile. A later focus change is already in the style cache key.
     try std.testing.expect(!matcher.matches(target, &ast.selectors[0], null));
     try std.testing.expect(!reads.@"volatile");
+    // Nor the focused element: what :focus-visible reads beyond the focus
+    // (the input modality, a focus() call's focusVisible, designMode) moves
+    // a revision the style engine pulls (StyleEngine.observeFocusVisible,
+    // lane tpc), so its style is cached like any other.
     dom.focused_area.set(document, target);
     defer dom.focused_area.set(document, null);
     try std.testing.expect(matcher.matches(target, &ast.selectors[0], null));
-    try std.testing.expect(reads.@"volatile");
+    try std.testing.expect(!reads.@"volatile");
     reads = .{};
     var has = try dom.selector_matching.parse(a, ":has(:focus-visible)");
     defer has.deinit();
     var ancestor_matcher = dom.selector_matching.StyleMatcher.init(parent, &reads).?;
     try std.testing.expect(ancestor_matcher.matches(parent, &has.selectors[0], null));
-    try std.testing.expect(reads.@"volatile");
+    try std.testing.expect(!reads.@"volatile");
 }
 
-test "focus-visible style reads are volatile only for focused elements and their dependencies" {
+test "focus-visible style reads are never volatile - the focus is in every style key and the rest of its inputs move a revision the style engine pulls" {
     try onThread(focusReads);
 }
