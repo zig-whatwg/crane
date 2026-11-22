@@ -318,7 +318,7 @@ fn deleteFiles(allocator: std.mem.Allocator, path: []const u8, must_exist: bool)
 
 fn storeData(store: *platform.Store) *StoreData {
     const engine: *platform.StorageEngine = @ptrCast(@alignCast(store));
-    return @fieldParentPtr("engine", engine);
+    return @alignCast(@fieldParentPtr("engine", engine));
 }
 
 /// Stores live as long as their Browser (or until deleted): closing a handle
@@ -337,7 +337,7 @@ const Transaction = struct {
 
 fn transactionOf(transaction: *platform.StoreTransaction) *Transaction {
     const engine: *platform.StorageEngine = @ptrCast(@alignCast(transaction));
-    return @fieldParentPtr("engine", engine);
+    return @alignCast(@fieldParentPtr("engine", engine));
 }
 
 pub fn beginTransaction(store: *platform.Store, mode: platform.TransactionMode) StoreError!*platform.StoreTransaction {
@@ -502,7 +502,7 @@ pub fn openCursor(handle: *platform.StoreTransaction, range: platform.KeyRange, 
 
 fn cursorOf(handle: *platform.StoreCursor) *Cursor {
     const engine: *platform.StorageEngine = @ptrCast(@alignCast(handle));
-    return @fieldParentPtr("engine", engine);
+    return @alignCast(@fieldParentPtr("engine", engine));
 }
 
 pub fn cursorNext(handle: *platform.StoreCursor, allocator: std.mem.Allocator) StoreError!?platform.KeyValue {
