@@ -154,7 +154,7 @@ const CBrowser = struct {
             },
             // Navigation milestones and document starts are not in the C
             // ABI's events yet.
-            .navigation, .document_start => return,
+            .navigation, .document_start, .dialog_opening, .dialog_closed => return,
         }
         callback(self.event_context, &out);
     }

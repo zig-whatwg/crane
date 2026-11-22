@@ -54,6 +54,11 @@ pub const BrowserHost = struct {
     /// The loop's inbox, held for the host's life: a post after the
     /// Browser's end finds it closed, never freed.
     sink: ?*runtime.TaskSink = null,
+    /// The Browser's scope and its pause (runtime.BrowserPause), set before
+    /// `started`: what other threads reach of the Browser without its thread
+    /// - a paused thread's session messages, an open dialog's answer.
+    scope: ?*runtime.BrowserScope = null,
+    pause: ?*runtime.BrowserPause = null,
     start_error: ?anyerror = null,
     started: Signal = .{},
     /// Set by the stop command, on the Browser's thread: the loop stops
@@ -62,6 +67,9 @@ pub const BrowserHost = struct {
     /// The readiness waits of `navigate` and `reload` callers, checked
     /// between the loop's turns (the spin's goal). Browser-thread only.
     readiness_waits: std.ArrayListUnmanaged(*ReadinessWait) = .empty,
+    /// The `evaluate` calls whose evaluation runs or awaits now. Browser-
+    /// thread only.
+    evaluations: std.ArrayListUnmanaged(*EvaluationWaiter) = .empty,
 
     /// Start a Browser on a thread of its own, made with `config` (BORROWED
     /// until this returns: Browser.init runs while the caller waits). The
@@ -124,6 +132,61 @@ pub const BrowserHost = struct {
         };
         command.* = .{ .host = self, .ctx = ctx, .run = run, .drop = drop };
         return sink.post(.{ .run = PostedCommand.runTask, .drop = PostedCommand.dropTask, .data = command });
+    }
+
+    /// Post a page session's message (lane cdpt's devtools thread sends
+    /// every one through this): an ordinary FIFO command, as `post`, while
+    /// the Browser's thread runs its loop; while the debugger has it paused
+    /// (runtime.BrowserPause, policy .debugger: Blink's ClientMessageLoop),
+    /// the nested loop runs it, in order, so Debugger.resume and the
+    /// inspector's other methods are answered there. During a dialog's pause
+    /// it waits, as Chrome's page messages wait for a renderer blocked on a
+    /// dialog. Exactly one of `run` and `drop` runs; false when the Browser
+    /// has ended (`drop` already ran).
+    pub fn postSessionMessage(self: *BrowserHost, ctx: ?*anyopaque, run: *const fn (ctx: ?*anyopaque, b: *Browser) void, drop: *const fn (ctx: ?*anyopaque) void) bool {
+        const pause = self.pause orelse return self.post(ctx, run, drop);
+        const sink = self.sink orelse {
+            drop(ctx);
+            return false;
+        };
+        const command = self.allocator.create(PostedCommand) catch {
+            drop(ctx);
+            return false;
+        };
+        command.* = .{ .host = self, .ctx = ctx, .run = run, .drop = drop };
+        if (!pause.postMessage(.{ .run = PostedCommand.runTask, .drop = PostedCommand.dropTask, .data = command })) return false;
+        // The loop's turn for it: runs the oldest queued session message,
+        // unless the nested loop of a pause already ran it.
+        _ = sink.post(.{ .run = runNextSessionMessage, .drop = ignoreDrop, .data = self });
+        return true;
+    }
+
+    fn runNextSessionMessage(data: ?*anyopaque) void {
+        const self: *BrowserHost = @ptrCast(@alignCast(data.?));
+        const pause = self.pause orelse return;
+        const message = pause.takeMessage() orelse return;
+        message.run(message.data);
+    }
+
+    /// Answer the simple dialog open on tab `tab` (html.simple_dialogs:
+    /// accept or dismiss, a prompt's text), from any thread - while the
+    /// Browser's thread is paused on it, which is the only time one is open.
+    /// False when no dialog of that tab is open, or it was answered already.
+    /// The same call as the DialogAnswer of host_events' dialog_opening
+    /// (WebDriver's Accept and Dismiss Alert, CDP's
+    /// Page.handleJavaScriptDialog).
+    pub fn answerUserPrompt(self: *BrowserHost, tab: Browser.TabId, accept: bool, prompt_text: []const u8) bool {
+        const scope = self.scope orelse return false;
+        const pending = @import("html").simple_dialogs.pendingOf(scope) orelse return false;
+        return pending.answerForTab(tab, accept, prompt_text);
+    }
+
+    /// The simple dialog open now, copied into `allocator` (WebDriver's Get
+    /// Alert Text, its unhandled prompt behaviour), or null. Any thread.
+    pub fn userPromptOf(self: *BrowserHost, allocator: std.mem.Allocator) !?@import("html").simple_dialogs.Info {
+        const scope = self.scope orelse return null;
+        const pending = @import("html").simple_dialogs.pendingOf(scope) orelse return null;
+        return pending.snapshot(allocator);
     }
 
     /// Run `run(ctx, browser)` on the Browser's thread as a task and wait
@@ -430,6 +493,42 @@ pub const BrowserHost = struct {
         };
     }
 
+    /// The Browser's events, on its thread: a dialog opening on a tab ends
+    /// the readiness waits and evaluations its callers wait on, with
+    /// error.UserPromptOpen - the thread is paused on the dialog until a host
+    /// answers it, and a caller that waited on would wait for itself (W3C
+    /// WebDriver: a command whose script or navigation opened a prompt
+    /// returns, and the prompt is handled by the next).
+    fn hostEvent(context: *anyopaque, event: *const @import("host_events.zig").Event) void {
+        const self: *BrowserHost = @ptrCast(@alignCast(context));
+        switch (event.*) {
+            .dialog_opening => |opening| self.promptOpened(opening.tab),
+            else => {},
+        }
+    }
+
+    fn promptOpened(self: *BrowserHost, tab: Browser.TabId) void {
+        var i: usize = 0;
+        while (i < self.readiness_waits.items.len) {
+            const waiter = self.readiness_waits.items[i];
+            if (waiter.tab != tab) {
+                i += 1;
+                continue;
+            }
+            _ = self.readiness_waits.swapRemove(i);
+            waiter.result = error.UserPromptOpen;
+            waiter.done.set();
+            waiter.release();
+        }
+        for (self.evaluations.items) |waiter| {
+            if (waiter.tab != tab or waiter.abandoned.load(.acquire)) continue;
+            // Its answer, when the script ends after the dialog, is dropped.
+            waiter.result = error.UserPromptOpen;
+            waiter.abandoned.store(true, .release);
+            waiter.done.set();
+        }
+    }
+
     /// The spin's goal, asked between the loop's turns: the readiness waits
     /// checked, then whether the host asked the loop to stop.
     fn goalMet(context: *anyopaque) bool {
@@ -495,6 +594,12 @@ pub const BrowserHost = struct {
             return;
         };
         self.sink = loop.taskSink().retain();
+        self.scope = b.scope;
+        self.pause = b.scope.of(runtime.BrowserPause) catch null;
+        // A dialog that opens ends the waits of its tab's callers (WebDriver:
+        // a navigation or a script that opened a prompt returns while it is
+        // open).
+        b.addListener(.{ .context = self, .on_event = hostEvent }) catch {};
         self.started.set();
         // HTML "spin the event loop" for the Browser's life: its turns run -
         // tasks, timers, the network, posted commands, microtask checkpoints
@@ -510,6 +615,8 @@ pub const BrowserHost = struct {
         // loop's inbox closed - commands still queued dropped (their callers
         // told) - on this thread.
         self.endReadinessWaits();
+        self.evaluations.deinit(self.allocator);
+        b.removeListener(.{ .context = self, .on_event = hostEvent });
         self.browser_ptr = null;
         b.deinit();
     }
@@ -597,12 +704,18 @@ pub const BrowserHost = struct {
 
         fn start(ctx: ?*anyopaque, b: *Browser) void {
             const self: *EvaluationWaiter = @ptrCast(@alignCast(ctx.?));
+            self.host.evaluations.append(self.host.allocator, self) catch {};
             b.evaluateInTab(self.tab, self.source, self.options, .{ .context = self, .done = answered });
         }
 
         fn answered(context: *anyopaque, result: anyerror!Browser.EvaluateResult) void {
             const self: *EvaluationWaiter = @ptrCast(@alignCast(context));
             defer self.release();
+            for (self.host.evaluations.items, 0..) |item, i| {
+                if (item != self) continue;
+                _ = self.host.evaluations.swapRemove(i);
+                break;
+            }
             if (!self.abandoned.load(.acquire)) {
                 self.result = if (result) |r|
                     if (self.result_allocator.dupe(u8, r.json)) |json| .{ .kind = r.kind, .json = json } else |err| err

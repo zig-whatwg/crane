@@ -30,6 +30,9 @@ pub const Session = struct {
     /// New Session's `se:cdp`: CDP for this session's Browser
     /// (devtools_endpoint.zig).
     cdp: @import("devtools_endpoint.zig").Endpoint = .{},
+    /// Send Alert Text's text for the open prompt (OWNED), which Accept Alert
+    /// answers it with.
+    alert_text: ?[]u8 = null,
 
     /// Create a new session with a fresh Browser on a thread of its own.
     /// `allocator` must be thread-safe (the Browser's thread allocates from
@@ -67,15 +70,50 @@ pub const Session = struct {
                 .implicit = protocol.Timeouts.default_implicit,
             },
         };
+        // The session answers its Browser's user prompts (W3C WebDriver 16:
+        // a prompt stays open until a command handles it), so it claims each
+        // as it opens: the platform's dialog does not answer it.
+        host.call(session, addPromptListener) catch {};
 
         return session;
+    }
+
+    fn promptListener(self: *Session) browser_mod.host_events.Listener {
+        return .{ .context = self, .on_event = onBrowserEvent };
+    }
+
+    fn addPromptListener(ctx: ?*anyopaque, b: *Browser) void {
+        const self: *Session = @ptrCast(@alignCast(ctx.?));
+        b.addListener(self.promptListener()) catch {};
+    }
+
+    fn removePromptListener(ctx: ?*anyopaque, b: *Browser) void {
+        const self: *Session = @ptrCast(@alignCast(ctx.?));
+        b.removeListener(self.promptListener());
+    }
+
+    /// On the Browser's thread: a prompt opening is claimed.
+    fn onBrowserEvent(context: *anyopaque, event: *const browser_mod.host_events.Event) void {
+        _ = context;
+        switch (event.*) {
+            .dialog_opening => |opening| opening.claim.* = true,
+            else => {},
+        }
     }
 
     /// Clean up session resources: the Browser ends, every tab closed
     /// without prompting.
     pub fn deinit(self: *Session) void {
+        // An open prompt is dismissed first: the Browser's thread is paused
+        // on it, and everything below runs there.
+        if (self.host.userPromptOf(self.allocator) catch null) |info| {
+            defer info.deinit(self.allocator);
+            _ = self.host.answerUserPrompt(info.tab, false, "");
+        }
         // The CDP endpoint first: its sessions detach while the Browser runs.
         self.cdp.stop();
+        self.host.call(self, removePromptListener) catch {};
+        if (self.alert_text) |text| self.allocator.free(text);
         self.host.stop();
         self.allocator.free(self.id);
         self.allocator.destroy(self);
@@ -98,7 +136,12 @@ pub const Session = struct {
     pub fn navigate(self: *Session, url: []const u8) !void {
         std.log.info("Session {s}: navigating to {s}", .{ self.id, url });
         const tab = try self.currentTab();
-        const landed = self.host.navigate(self.allocator, tab, url, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| return mapTabError(err);
+        const landed = self.host.navigate(self.allocator, tab, url, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| switch (err) {
+            // The page opened a prompt while it loaded: the navigation
+            // command is done, the prompt left for the next command.
+            error.UserPromptOpen => return,
+            else => return mapTabError(err),
+        };
         self.allocator.free(landed);
     }
 
@@ -106,14 +149,20 @@ pub const Session = struct {
     /// for the navigation to complete.
     pub fn back(self: *Session) !void {
         const tab = try self.currentTab();
-        _ = self.host.traverseHistoryAndWait(tab, -1, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| return mapTabError(err);
+        _ = self.host.traverseHistoryAndWait(tab, -1, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| switch (err) {
+            error.UserPromptOpen => return,
+            else => return mapTabError(err),
+        };
     }
 
     /// W3C WebDriver "Forward": traverse the history by a delta +1, then
     /// wait for the navigation to complete.
     pub fn forward(self: *Session) !void {
         const tab = try self.currentTab();
-        _ = self.host.traverseHistoryAndWait(tab, 1, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| return mapTabError(err);
+        _ = self.host.traverseHistoryAndWait(tab, 1, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| switch (err) {
+            error.UserPromptOpen => return,
+            else => return mapTabError(err),
+        };
     }
 
     /// W3C WebDriver "Refresh": reload the current top-level browsing
@@ -121,7 +170,10 @@ pub const Session = struct {
     /// navigation to complete.
     pub fn refresh(self: *Session) !void {
         const tab = try self.currentTab();
-        const landed = self.host.reload(self.allocator, tab, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| return mapTabError(err);
+        const landed = self.host.reload(self.allocator, tab, .{ .wait = .complete, .timeout_ms = self.pageLoadTimeout() }) catch |err| switch (err) {
+            error.UserPromptOpen => return,
+            else => return mapTabError(err),
+        };
         self.allocator.free(landed);
     }
 
@@ -224,9 +276,11 @@ pub const Session = struct {
 
         const tab = try self.currentTab();
         const timeout = self.timeouts.script orelse protocol.Timeouts.default_script;
-        const answer = self.host.evaluate(allocator, tab, wrapped, .{ .await_promise = true }, timeout) catch |err| return switch (err) {
-            error.Timeout => error.ScriptTimeout,
-            else => mapTabError(err),
+        const answer = self.host.evaluate(allocator, tab, wrapped, .{ .await_promise = true }, timeout) catch |err| switch (err) {
+            error.Timeout => return error.ScriptTimeout,
+            // A prompt the script opened: null, the prompt left open.
+            error.UserPromptOpen => return try allocator.dupe(u8, "null"),
+            else => return mapTabError(err),
         };
         defer answer.deinit(allocator);
         if (answer.kind == .exception) return error.JavascriptError;
@@ -238,7 +292,12 @@ pub const Session = struct {
     /// `allocator`.
     fn executeScriptReturningString(self: *Session, allocator: Allocator, script: []const u8) ![]const u8 {
         const tab = try self.currentTab();
-        const answer = self.host.evaluate(allocator, tab, script, .{}, self.timeouts.script orelse protocol.Timeouts.default_script) catch |err| return mapTabError(err);
+        const answer = self.host.evaluate(allocator, tab, script, .{}, self.timeouts.script orelse protocol.Timeouts.default_script) catch |err| switch (err) {
+            // A prompt the script opened: the command returns null, the
+            // prompt open for the next command to handle (W3C WebDriver 13).
+            error.UserPromptOpen => return allocator.dupe(u8, "null"),
+            else => return mapTabError(err),
+        };
         defer answer.deinit(allocator);
         if (answer.kind == .exception) {
             std.log.err("Script execution error: {s}", .{answer.json});
@@ -259,6 +318,69 @@ pub const Session = struct {
             };
         }
         return allocator.dupe(u8, "null");
+    }
+
+    // ------------------------------------------------------------------
+    // User prompts (W3C WebDriver 16)
+    // ------------------------------------------------------------------
+
+    /// The open prompt of the session's Browser, OWNED, or null.
+    fn openPrompt(self: *Session) ?browser_mod.host_events.UserPromptInfo {
+        return self.host.userPromptOf(self.allocator) catch null;
+    }
+
+    /// "Handle any user prompts" (16.2) with the unhandled prompt behaviour
+    /// "dismiss and notify", the default: an open prompt is dismissed and
+    /// the command fails with "unexpected alert open".
+    pub fn handleUserPrompts(self: *Session) !void {
+        const info = self.openPrompt() orelse return;
+        defer info.deinit(self.allocator);
+        _ = self.host.answerUserPrompt(info.tab, false, "");
+        self.clearAlertText();
+        return error.UnexpectedAlertOpen;
+    }
+
+    fn clearAlertText(self: *Session) void {
+        if (self.alert_text) |text| self.allocator.free(text);
+        self.alert_text = null;
+    }
+
+    /// Dismiss Alert (16.3): an alert is acknowledged, a confirm or prompt
+    /// answered "cancel". error.NoSuchAlert with none open.
+    pub fn dismissAlert(self: *Session) !void {
+        const info = self.openPrompt() orelse return error.NoSuchAlert;
+        defer info.deinit(self.allocator);
+        self.clearAlertText();
+        if (!self.host.answerUserPrompt(info.tab, info.kind == .alert, "")) return error.NoSuchAlert;
+    }
+
+    /// Accept Alert (16.4): OK - a prompt with the text Send Alert Text
+    /// gave, else its default.
+    pub fn acceptAlert(self: *Session) !void {
+        const info = self.openPrompt() orelse return error.NoSuchAlert;
+        defer info.deinit(self.allocator);
+        const text: []const u8 = if (info.kind == .prompt) (self.alert_text orelse info.default_prompt) else "";
+        const answered = self.host.answerUserPrompt(info.tab, true, text);
+        self.clearAlertText();
+        if (!answered) return error.NoSuchAlert;
+    }
+
+    /// Get Alert Text (16.5): the open prompt's message, OWNED.
+    pub fn alertText(self: *Session, allocator: Allocator) ![]u8 {
+        const info = self.openPrompt() orelse return error.NoSuchAlert;
+        defer info.deinit(self.allocator);
+        return allocator.dupe(u8, info.message);
+    }
+
+    /// Send Alert Text (16.6): only a prompt takes text ("element not
+    /// interactable" for an alert or confirm); kept for Accept Alert.
+    pub fn sendAlertText(self: *Session, text: []const u8) !void {
+        const info = self.openPrompt() orelse return error.NoSuchAlert;
+        defer info.deinit(self.allocator);
+        if (info.kind != .prompt) return error.ElementNotInteractable;
+        const copy = try self.allocator.dupe(u8, text);
+        self.clearAlertText();
+        self.alert_text = copy;
     }
 
     /// A tab error as WebDriver's: a closed or unknown tab is "no such

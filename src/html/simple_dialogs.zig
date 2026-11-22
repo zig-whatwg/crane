@@ -140,6 +140,17 @@ pub const PendingPrompt = struct {
         return self.answerSerial(serial, accept, text);
     }
 
+    /// Answer the open prompt if it is tab `tab`'s (a host that names the
+    /// tab it means - WebDriver, BrowserHost.answerUserPrompt). Any thread.
+    pub fn answerForTab(self: *PendingPrompt, tab: u64, accept: bool, text: []const u8) bool {
+        self.lock();
+        const serial = self.serial;
+        const open_tab = self.tab;
+        self.unlock();
+        if (serial == 0 or open_tab != tab) return false;
+        return self.answerSerial(serial, accept, text);
+    }
+
     /// The host's door to the open prompt (`Opening.answer`).
     pub fn dialogAnswer(self: *PendingPrompt) user_prompts.DialogAnswer {
         return .{ .context = self, .answer = answerOpen };

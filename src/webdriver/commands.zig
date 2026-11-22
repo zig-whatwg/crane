@@ -72,6 +72,22 @@ pub fn handleCommand(ctx: CommandContext) !CommandResult {
             return handleDeleteSession(ctx, session_id);
         }
 
+        // /session/{sessionId}/alert/... - the user prompt commands (W3C
+        // WebDriver 16.3-16.6), which work on an open prompt.
+        if (parts.len == 4 and std.mem.eql(u8, parts[2], "alert")) {
+            return handleAlert(ctx, session, parts[3]);
+        }
+
+        // Every other session command but the timeouts first "handles any
+        // user prompts" (W3C WebDriver 16.2): an open prompt is dismissed and
+        // the command fails with "unexpected alert open" (the default
+        // unhandled prompt behaviour, "dismiss and notify").
+        if (!(parts.len == 3 and std.mem.eql(u8, parts[2], "timeouts"))) {
+            session.handleUserPrompts() catch |err| switch (err) {
+                error.UnexpectedAlertOpen => return errorResponse(ctx.allocator, .unexpected_alert_open, "A user prompt was open: it was dismissed"),
+            };
+        }
+
         // /session/{sessionId}/url
         if (parts.len == 3 and std.mem.eql(u8, parts[2], "url")) {
             if (ctx.method == .POST) {
@@ -242,6 +258,33 @@ fn handleNavigate(ctx: CommandContext, session: *Session) !CommandResult {
         .status = .ok,
         .body = try protocol.Response.successNull(ctx.allocator),
     };
+}
+
+/// /session/{sessionId}/alert/dismiss, /accept (POST), /text (GET, POST).
+fn handleAlert(ctx: CommandContext, session: *Session, action: []const u8) !CommandResult {
+    const allocator = ctx.allocator;
+    const result: anyerror!?[]u8 = if (std.mem.eql(u8, action, "dismiss") and ctx.method == .POST)
+        if (session.dismissAlert()) null else |err| err
+    else if (std.mem.eql(u8, action, "accept") and ctx.method == .POST)
+        if (session.acceptAlert()) null else |err| err
+    else if (std.mem.eql(u8, action, "text") and ctx.method == .GET)
+        session.alertText(allocator)
+    else if (std.mem.eql(u8, action, "text") and ctx.method == .POST) blk: {
+        const parsed = std.json.parseFromSlice(struct { text: []const u8 }, allocator, ctx.body, .{ .ignore_unknown_fields = true }) catch
+            return errorResponse(allocator, .invalid_argument, "Send Alert Text needs a string 'text'");
+        defer parsed.deinit();
+        break :blk if (session.sendAlertText(parsed.value.text)) null else |err| err;
+    } else return errorResponse(allocator, .unknown_command, "Unknown alert command");
+    const text = result catch |err| return switch (err) {
+        error.NoSuchAlert => errorResponse(allocator, .no_such_alert, "No user prompt is open"),
+        error.ElementNotInteractable => errorResponse(allocator, .element_not_interactable, "The open prompt takes no text"),
+        else => errorResponse(allocator, .unknown_error, "The user prompt could not be handled"),
+    };
+    if (text) |t| {
+        defer allocator.free(t);
+        return .{ .status = .ok, .body = try protocol.Response.success(allocator, t) };
+    }
+    return .{ .status = .ok, .body = try protocol.Response.successNull(allocator) };
 }
 
 /// POST /session/{sessionId}/back, /forward, /refresh: the browser's own
