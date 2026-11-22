@@ -21548,9 +21548,26 @@ bool v8_Inspector_CanDispatch(const uint8_t* method, size_t length) {
 /// V8Inspector::exceptionThrown in `context`, for `exception` (BORROWED); the
 /// exception id (0 on failure). The stack is the current one when script
 /// runs, else the exception's own.
+// A stack the inspector captured for a later report (engine.inspectorCaptureStack).
+struct CraneInspectorStack {
+    std::unique_ptr<v8_inspector::V8StackTrace> trace;
+};
+
+CraneInspectorStack* v8_Inspector_CaptureStack(CraneInspector* inspector) {
+    if (!inspector || !inspector->inspector()) return nullptr;
+    HandleScope handle_scope(inspector->isolate());
+    std::unique_ptr<v8_inspector::V8StackTrace> trace = inspector->inspector()->captureStackTrace(false);
+    if (!trace || trace->isEmpty()) return nullptr;
+    return new CraneInspectorStack{std::move(trace)};
+}
+
+void v8_InspectorStack_Delete(CraneInspectorStack* stack) {
+    delete stack;
+}
+
 unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>* context, Global<Value>* exception,
                                       const uint8_t* message, size_t message_length, const uint8_t* url, size_t url_length,
-                                      unsigned line, unsigned column) {
+                                      unsigned line, unsigned column, const CraneInspectorStack* site) {
     if (!inspector || !inspector->inspector() || !context || context->IsEmpty()) return 0;
     Isolate* isolate = inspector->isolate();
     HandleScope handle_scope(isolate);
@@ -21562,13 +21579,29 @@ unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>
         Local<StackTrace> trace = Exception::GetStackTrace(value);
         if (!trace.IsEmpty() && trace->GetFrameCount() > 0) stack = inspector->inspector()->createStackTrace(trace);
     }
-    if (!stack) stack = inspector->inspector()->captureStackTrace(false);
+    // Where it happened, captured then (an unhandled rejection's reject
+    // call): its stack, and - with no location given - its top frame's URL,
+    // line, column and script, as Blink's SourceLocation for
+    // ThreadDebugger::PromiseRejected (V8StackTrace's top* answers are
+    // 1-based, as exceptionThrown takes them).
     std::vector<uint16_t> wide_message;
     std::vector<uint16_t> wide_url;
+    v8_inspector::StringView url_view = CraneMessageView(url ? url : reinterpret_cast<const uint8_t*>(""), url ? url_length : 0, wide_url);
+    int script_id = 0;
+    if (site && site->trace && !site->trace->isEmpty()) {
+        if (!stack) stack = site->trace->clone();
+        if (!url || url_length == 0) {
+            // Valid while `site` lives - through this call.
+            url_view = site->trace->topSourceURL();
+            line = static_cast<unsigned>(site->trace->topLineNumber());
+            column = static_cast<unsigned>(site->trace->topColumnNumber());
+            script_id = site->trace->topScriptId();
+        }
+    }
+    if (!stack) stack = inspector->inspector()->captureStackTrace(false);
     v8_inspector::StringView message_view = CraneMessageView(message ? message : reinterpret_cast<const uint8_t*>(""), message ? message_length : 0, wide_message);
-    return inspector->inspector()->exceptionThrown(local, message_view, value, message_view,
-                                                   CraneMessageView(url ? url : reinterpret_cast<const uint8_t*>(""), url ? url_length : 0, wide_url),
-                                                   line, column, std::move(stack), 0);
+    return inspector->inspector()->exceptionThrown(local, message_view, value, message_view, url_view,
+                                                   line, column, std::move(stack), script_id);
 }
 
 void v8_Inspector_ExceptionRevoked(CraneInspector* inspector, Global<Context>* context, unsigned exception_id, const uint8_t* message, size_t length) {

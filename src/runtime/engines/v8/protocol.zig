@@ -467,6 +467,14 @@ pub fn inspectorExceptionRevoked(realm: Context, exception_id: u32, message: []c
     protocol_inspector.inspectorExceptionRevoked(realm, exception_id, message);
 }
 
+pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
+    return protocol_inspector.inspectorCaptureStack(realm);
+}
+
+pub fn inspectorReleaseStack(stack: *engine.InspectorStack) void {
+    protocol_inspector.inspectorReleaseStack(stack);
+}
+
 pub fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std.mem.Allocator) Error!?[]u8 {
     return protocol_inspector.inspectorStackTrace(agent, max_frames, allocator);
 }

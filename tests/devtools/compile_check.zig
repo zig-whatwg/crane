@@ -21,4 +21,5 @@ test {
     _ = @import("tpf_resize_observer_test.zig");
     _ = @import("tpf_streamed_document_test.zig");
     _ = @import("tpf_console_webcompat_test.zig");
+    _ = @import("tpf_rejection_report_test.zig");
 }

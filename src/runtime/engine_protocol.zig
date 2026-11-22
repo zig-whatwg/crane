@@ -1787,7 +1787,18 @@ pub const InspectorExceptionDetails = struct {
     url: []const u8 = "",
     line: u32 = 0,
     column: u32 = 0,
+    /// Where it happened, captured then (`inspectorCaptureStack`): the
+    /// report's stack trace, and its URL, line, column and script when
+    /// `url` is empty - an unhandled rejection reported after the call that
+    /// rejected returned, as Blink's PromiseRejectHandler captures its
+    /// SourceLocation. An Error exception's own stack still wins. BORROWED.
+    stack: ?*const InspectorStack = null,
 };
+
+/// A JavaScript stack as the agent's inspector captured it
+/// (`inspectorCaptureStack`); OWNED by whoever captured it until
+/// `inspectorReleaseStack`.
+pub const InspectorStack = opaque {};
 
 /// What a remote object id names (`inspectorUnwrap`): the value, OWNED, and
 /// the realm it is of.
@@ -1899,6 +1910,23 @@ pub inline fn inspectorConsoleMessage(realm: Context, method: []const u8, args: 
 pub inline fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const InspectorExceptionDetails) u32 {
     comptime gate(.inspector_protocol, "inspectorExceptionThrown");
     return impl.inspectorExceptionThrown(realm, exception, details);
+}
+
+/// The running script's stack, as the inspector of `realm`'s agent would
+/// report it, kept for a report made later (`InspectorExceptionDetails.
+/// stack`): HostPromiseRejectionTracker's "reject" runs inside the call
+/// that rejected, after which nothing of it is on the stack. OWNED - release
+/// with `inspectorReleaseStack`. Null when the agent has no inspector (or no
+/// script runs).
+pub inline fn inspectorCaptureStack(realm: Context) ?*InspectorStack {
+    comptime gate(.inspector_protocol, "inspectorCaptureStack");
+    return impl.inspectorCaptureStack(realm);
+}
+
+/// Free a stack `inspectorCaptureStack` captured.
+pub inline fn inspectorReleaseStack(stack: *InspectorStack) void {
+    comptime gate(.inspector_protocol, "inspectorReleaseStack");
+    impl.inspectorReleaseStack(stack);
 }
 
 /// A rejection reported by `inspectorExceptionThrown` got a handler:

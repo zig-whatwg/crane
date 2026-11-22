@@ -293,6 +293,10 @@ pub fn inspectorExceptionThrown(_: Context, _: JSValue, _: *const engine.Inspect
     return 0;
 }
 pub fn inspectorExceptionRevoked(_: Context, _: u32, _: []const u8) void {}
+pub fn inspectorCaptureStack(_: Context) ?*engine.InspectorStack {
+    return null;
+}
+pub fn inspectorReleaseStack(_: *engine.InspectorStack) void {}
 pub fn inspectorStackTrace(_: *Agent, _: u32, _: std.mem.Allocator) Error!?[]u8 {
     return null;
 }
