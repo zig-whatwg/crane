@@ -95,7 +95,13 @@ pub const InternalState = struct {
         return extra;
     }
 
-    fn deinit(self: *InternalState, instance: *runtime.Instance) void {
+    /// What the state holds, let go - from deinitOwn (the instance's own
+    /// teardown) and a failed make, never from InstanceRegistry's sweeps: it
+    /// needs its instance, which a stale entry's slot no longer is. Not named
+    /// `deinit` - that name is the registry's optional no-argument hook
+    /// (`@hasDecl(T, "deinit")`), which a private declaration never answered
+    /// (Zig 0.17's @hasDecl sees only `pub` ones; tools/lint_hasdecl.zig).
+    fn release(self: *InternalState, instance: *runtime.Instance) void {
         if (self.kind == .computed) if (self.extra) |extra| extra.computed_element.release(instance, element_slot);
         if (self.rule) |r| r.unref();
         self.rule = null;
@@ -141,7 +147,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // it": tests/dom/bx1_transform_alias_test.zig's allocation-failure
     // reads, once `extra` became an allocation of its own).
     errdefer {
-        internal.deinit(instance);
+        internal.release(instance);
         Registry.remove(instance);
     }
     if (@hasField(@TypeOf(args), "inline_owner")) {
@@ -169,7 +175,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 }
 
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    if (Registry.get(instance)) |internal| internal.deinit(instance);
+    if (Registry.get(instance)) |internal| internal.release(instance);
     Registry.remove(instance);
 }
 

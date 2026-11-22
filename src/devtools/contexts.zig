@@ -35,6 +35,7 @@ const runtime = @import("runtime");
 const browser_mod = @import("browser");
 const frames = @import("frames.zig");
 const PageSession = @import("page_session.zig").PageSession;
+const BrowserSide = @import("browser_side.zig").BrowserSide;
 
 /// Whether the engine protocol has the inspector operations yet, and the
 /// engine supports them.
@@ -172,6 +173,68 @@ fn beforeCommitLive(session: *const PageSession, navigable: u64, old_realms: []c
 /// session on the tab only.
 pub fn afterCommit(session: *const PageSession, bc: *frames.BrowsingContext) void {
     registerNavigable(session, bc);
+}
+
+// ============================================================================
+// A served Browser's tabs with no session (Chrome's inspector knows every
+// context from its making)
+// ============================================================================
+
+/// A cross-document commit in a Browser a devtools server serves (it has a
+/// BrowserSide), in a tab NO page session is attached to: the tab's contexts
+/// are kept as Chrome's are, so a session that attaches later finds them and
+/// V8 replays them - and the console messages logged in them, which V8 stores
+/// only for a context it knows (V8ConsoleMessageStorage; ConsoleHelper::
+/// reportCall drops a call of a context in no group) - on its Runtime.enable.
+///
+/// Blink tells its inspector of every context as it is made, session or none:
+/// LocalWindowProxy::Initialize -> MainThreadDebugger::ContextCreated, and
+/// MainThreadDebugger::DidClearContextsForFrame resets the context group
+/// (V8Inspector::resetContextGroup, which drops the group's stored messages)
+/// as a main frame's document goes (third_party/blink/renderer/core/inspector/
+/// main_thread_debugger.cc, BSD-3; reproduced, not copied). So here: a
+/// top-level commit resets the tab's group, then the new document's main
+/// world realm is made known; a frame's commit makes its new realm known
+/// (its old realm is forgotten when it ends). A child's initial about:blank
+/// waits for script to reach it (BrowsingContext.touchedByScript), as with a
+/// session. Nothing is sent: no session listens. A tab with a session is
+/// left to its sessions (`beforeCommit` / `afterCommit`), whose order the
+/// runners depend on. A Browser no devtools server serves has no BrowserSide
+/// and none of this: nothing could ever attach to it.
+pub fn onServedCommit(side: *const BrowserSide, milestone: *const frames.Milestone) void {
+    if (comptime have_inspector) onServedCommitLive(side, milestone);
+}
+
+/// `onServedCommit` with the engine's inspector operations: analysed only
+/// when the engine protocol has them.
+fn onServedCommitLive(side: *const BrowserSide, milestone: *const frames.Milestone) void {
+    switch (milestone.event) {
+        .committed => {},
+        else => return,
+    }
+    const browser = side.browser orelse return;
+    const navigables = @import("dom").browser_state.existingNavigablesIn(browser.scope) orelse return;
+    const bc = navigables.byId(milestone.navigable_id) orelse return;
+    if (bc.is_closed or bc.active_window == null) return;
+    const tab = bc.getTop().id;
+    if (sessionOnTab(side, tab)) return;
+    if (bc.id == tab) {
+        const agent = browser.agent orelse return;
+        engine.inspectorResetGroup(agent, groupOf(tab));
+    } else if (milestone.navigation_id == 0) {
+        // A child's initial about:blank: made known when script reaches it.
+        return;
+    }
+    const main = frames.mainRealmOf(bc) orelse return;
+    _ = registerWithToken(side.token, main, bc);
+}
+
+/// Whether a page session is attached to tab `tab` of `side`'s Browser.
+fn sessionOnTab(side: *const BrowserSide, tab: u64) bool {
+    for (side.sessions.items) |s| {
+        if (s.tab == tab) return true;
+    }
+    return false;
 }
 
 /// Whether `session` is the first (`first`) or the last attached session on
