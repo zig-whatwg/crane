@@ -20,6 +20,9 @@ const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 const outbound = devtools.outbound;
+/// Lane cdpr's loopback site: "/" (a page with a frame and a script),
+/// "/frame.html", and 404 for any other path.
+const Site = @import("cdpr_replay.zig").Site;
 
 /// A Browser on its own thread with one page session on a tab, and the
 /// messages the session sends.
@@ -455,6 +458,89 @@ test "Log violations: document.write and a slow listener and timer are reported 
         try testing.expect(std.mem.indexOf(u8, text, "long task") == null);
     }
     _ = try h.call("Log.stopViolationsReport", "{}");
+}
+
+/// The Log.entryAdded events seen from index `from`, each checked to be a
+/// network error entry for a URL ending in `path`.
+fn countNetworkEntries(h: *Harness, from: usize, path: []const u8) !usize {
+    var entries: usize = 0;
+    for (h.seen.items[from..]) |parsed| {
+        const method = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, method.string, "Log.entryAdded")) continue;
+        entries += 1;
+        const entry = parsed.value.object.get("params").?.object.get("entry").?.object;
+        try testing.expectEqualStrings("network", entry.get("source").?.string);
+        try testing.expectEqualStrings("error", entry.get("level").?.string);
+        try testing.expect(std.mem.startsWith(u8, entry.get("text").?.string, "Failed to load resource: the server responded with a status of 404"));
+        try testing.expect(std.mem.endsWith(u8, entry.get("url").?.string, path));
+    }
+    return entries;
+}
+
+/// Page.navigate the session's tab to `url` and wait for its load.
+fn navigateAndLoad(h: *Harness, url: []const u8) !void {
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"url\":\"{s}\"}}", .{url});
+    defer h.allocator.free(params);
+    const from = h.seen.items.len;
+    _ = try h.call("Page.navigate", params);
+    _ = try h.waitEvent("Page.loadEventFired", from);
+}
+
+/// Log.disable then Log.enable: the entries the enable replays, counted.
+fn reenableLog(h: *Harness) !usize {
+    _ = try h.call("Log.disable", "{}");
+    const from = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    return countNetworkEntries(h, from, "/missing.json");
+}
+
+test "Log.enable replays the tab's entries from before it, kept whether or not a session listens; a top-level commit and Log.clear forget them" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try Site.start(testing.allocator);
+    defer site.stop();
+    var url_buffer: [64]u8 = undefined;
+    const page_url = try site.url(&url_buffer, "/");
+
+    _ = try h.call("Page.enable", "{}");
+    try navigateAndLoad(&h, page_url);
+    // A 404 while no session has Log on: nothing is sent, the entry is kept
+    // (Blink's ConsoleMessageStorage keeps every message of the page).
+    const fetch_404 = "fetch('/missing.json').then((r) => r.status)";
+    const first = try h.host.evaluate(h.allocator, h.tab, fetch_404, .{ .await_promise = true }, 5_000);
+    defer first.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":404}", first.json);
+
+    // InspectorLogAgent::enable -> InnerEnable: each kept entry, before the
+    // answer; the page's own load (200s) left none.
+    const before_enable = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 1), try countNetworkEntries(&h, before_enable, "/missing.json"));
+    // Already enabled: enable does nothing (no replay).
+    const again = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 0), try countNetworkEntries(&h, again, "/missing.json"));
+    // Disabled and enabled again: the storage is the page's, not the
+    // session's - replayed again.
+    try testing.expectEqual(@as(usize, 1), try reenableLog(&h));
+    // Log.clear empties it (InspectorLogAgent::clear -> storage_->Clear()).
+    _ = try h.call("Log.clear", "{}");
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+
+    // A frame's commit is not the main frame's: the entry stays.
+    const live_from = h.seen.items.len;
+    const second = try h.host.evaluate(h.allocator, h.tab, fetch_404, .{ .await_promise = true }, 5_000);
+    defer second.deinit(h.allocator);
+    // Log on: sent as it happens, and kept.
+    _ = try h.waitEvent("Log.entryAdded", live_from);
+    const framed = try h.host.evaluate(h.allocator, h.tab, "new Promise((resolve) => { const f = document.createElement('iframe'); f.src = '/frame.html'; f.onload = () => resolve(1); document.body.append(f); })", .{ .await_promise = true }, 5_000);
+    defer framed.deinit(h.allocator);
+    try testing.expectEqual(@as(usize, 1), try reenableLog(&h));
+    // The main frame commits a new document: Page::DidCommitLoad clears the
+    // page's storage.
+    try navigateAndLoad(&h, page_url);
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
 }
 
 /// A fresh iframe named `name` on its initial about:blank, then `touch` run
