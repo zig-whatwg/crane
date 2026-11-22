@@ -33,6 +33,10 @@ pub const PageSession = struct {
     link: *outbound.SessionLink,
     /// The message a handler's `fail` set, for the dispatcher.
     failure: dispatch_mod.Failure = .{},
+    /// The current command's arena, set by the dispatcher: a handler's
+    /// result may be allocated from it (it lives until the answer is sent;
+    /// an async handler copies what it keeps).
+    arena: ?Allocator = null,
     /// The Browser's devtools record (null until attached).
     side: ?*BrowserSide = null,
     /// The Browser this session's page lives in (null until attached).
@@ -158,13 +162,21 @@ pub const PageSession = struct {
     /// {waitForDebuggerOnStart}): its first navigation starts. Runtime's
     /// runIfWaitingForDebugger reaches this, from the handler or from V8's
     /// inspector client hook.
+    /// The devtools thread counts the tab's waiting sessions and releases the
+    /// hold (life1's `release`) when the last one has run: Chrome's
+    /// TargetHandler throttle resumes a paused target when every client it
+    /// reported waiting has answered.
     pub fn runIfWaitingForDebugger(self: *PageSession) void {
-        if (self.browser) |b| host_bridge.releaseTab(b, self.tab);
+        const side = self.side orelse return;
+        var id: [32]u8 = @splat(0);
+        const own = self.link.sessionId();
+        @memcpy(id[0..own.len], own);
+        side.sink.post(side.sink.context, side, .{ .run_if_waiting = .{ .tab = self.tab, .session_id = id } });
     }
 
-    /// Every attached session on the same tab (this one included), for
-    /// events that go to all of them.
-    pub fn siblings(self: *const PageSession) []const *PageSession {
+    /// Every attached page session of this Browser (this one included):
+    /// compare each one's `tab`, or use `side.sessionsOn(tab, buffer)`.
+    pub fn browserSessions(self: *const PageSession) []const *PageSession {
         return if (self.side) |side| side.sessions.items else &.{};
     }
 };

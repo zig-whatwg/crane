@@ -27,6 +27,9 @@ pub const Session = struct {
     /// other was switched to.
     current_tab: ?Browser.TabId,
     timeouts: protocol.Timeouts,
+    /// New Session's `se:cdp`: CDP for this session's Browser
+    /// (devtools_endpoint.zig).
+    cdp: @import("devtools_endpoint.zig").Endpoint = .{},
 
     /// Create a new session with a fresh Browser on a thread of its own.
     /// `allocator` must be thread-safe (the Browser's thread allocates from
@@ -71,6 +74,8 @@ pub const Session = struct {
     /// Clean up session resources: the Browser ends, every tab closed
     /// without prompting.
     pub fn deinit(self: *Session) void {
+        // The CDP endpoint first: its sessions detach while the Browser runs.
+        self.cdp.stop();
         self.host.stop();
         self.allocator.free(self.id);
         self.allocator.destroy(self);

@@ -5373,6 +5373,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "browser", .module = testing_graph.browser },
                 .{ .name = "console", .module = testing_graph.console },
                 .{ .name = "platform", .module = testing_graph.platform },
+                .{ .name = "devtools", .module = testing_graph.devtools },
             },
         });
         const console_test_imports = [_]std.Build.Module.Import{
@@ -8818,6 +8819,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         // console does - never an impl.
         devtools_mod.addImport("interfaces", interfaces_mod);
         devtools_mod.addOptions("build_options", build_options);
+        // GET /json/protocol serves the pinned definitions (server.zig
+        // protocolJson).
+        devtools_mod.addAnonymousImport("browser_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/browser_protocol.json") });
+        devtools_mod.addAnonymousImport("js_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/js_protocol.json") });
     }
     // New Session's se:cdp capability (W3C WebDriver; Selenium 4).
     webdriver_mod.addImport("devtools", devtools_mod);

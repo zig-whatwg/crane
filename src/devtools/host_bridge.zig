@@ -55,6 +55,10 @@ const StubHost = struct {
         drop(ctx);
         return false;
     }
+    pub fn call(self: *StubHost, ctx: ?*anyopaque, run: RunFn) error{ BrowserGone, WrongThread }!void {
+        _ = .{ self, ctx, run };
+        return error.BrowserGone;
+    }
     pub fn isBrowserThread(self: *StubHost) bool {
         _ = self;
         return false;
@@ -90,6 +94,14 @@ pub fn closeTab(b: *Browser, tab: TabId, prompt_unload: bool) !void {
 /// (Runtime.runIfWaitingForDebugger).
 pub fn releaseTab(b: *Browser, tab: TabId) void {
     if (comptime @hasDecl(Browser, "releaseTab")) return b.releaseTab(tab);
+}
+
+/// Browser thread. Whether tabs a page opens (window.open, a target=_blank
+/// link) start held at life1's hold point until `releaseTab` (Target.
+/// setAutoAttach {waitForDebuggerOnStart} on a browser session: Chrome's
+/// TargetHandler throttle pauses popups too).
+pub fn holdTabsOpenedByPages(b: *Browser, hold: bool) void {
+    if (comptime @hasDecl(Browser, "holdTabsOpenedByPages")) return b.holdTabsOpenedByPages(hold);
 }
 
 /// Browser thread. Make `tab` the active one (Target.activateTarget).
@@ -170,21 +182,17 @@ pub fn freeTabs(allocator: std.mem.Allocator, tabs: []TabInfo) void {
 pub const HostEvent = if (have_host_events) browser.host_events.Event else StubEvent;
 pub const Listener = if (have_host_events) browser.host_events.Listener else StubListener;
 
-/// Lane life1's navigation milestone, as the host events carry it.
-pub const Milestone = if (have_host_events) blk: {
-    const E = browser.host_events.Event;
-    const info = @typeInfo(E).@"union";
-    for (info.field_names, info.field_types) |name, T| {
-        if (std.mem.eql(u8, name, "navigation")) break :blk @typeInfo(T).pointer.child;
-    }
-    break :blk StubMilestone;
-} else StubMilestone;
+/// Lane life1's navigation milestone (src/html/navigation/observer.zig),
+/// as the host events carry it.
+pub const Milestone = @import("html").navigation.observer.Milestone;
+pub const MilestoneEvent = @import("html").navigation.observer.Event;
 
-const StubMilestone = struct {};
 const StubEvent = union(enum) {
     tab_created: struct { tab: TabId, opener: ?TabId },
     tab_destroyed: struct { tab: TabId },
-    navigation: *const StubMilestone,
+    frame_created: struct { navigable: u64, parent: ?u64 },
+    frame_destroyed: struct { navigable: u64 },
+    navigation: *const Milestone,
 };
 const StubListener = struct {
     context: *anyopaque,

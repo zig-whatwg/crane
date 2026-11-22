@@ -32,7 +32,7 @@ pub const Opcode = enum(u4) {
     _,
 
     fn isControl(op: Opcode) bool {
-        return @intFromEnum(op) & 0x8 != 0;
+        return @backingInt(op) & 0x8 != 0;
     }
 };
 
@@ -82,7 +82,7 @@ pub fn handshakeResponse(allocator: Allocator, key: []const u8) Allocator.Error!
 /// mask any frames that it sends to the client"). OWNED by the caller.
 pub fn encodeFrame(allocator: Allocator, opcode: Opcode, payload: []const u8) Allocator.Error![]u8 {
     var header: [10]u8 = undefined;
-    header[0] = 0x80 | @as(u8, @intFromEnum(opcode));
+    header[0] = 0x80 | @as(u8, @backingInt(opcode));
     var header_len: usize = 2;
     if (payload.len < 126) {
         header[1] = @intCast(payload.len);
@@ -104,7 +104,7 @@ pub fn encodeFrame(allocator: Allocator, opcode: Opcode, payload: []const u8) Al
 /// A close frame with `code` and no reason (5.5.1). OWNED by the caller.
 pub fn encodeClose(allocator: Allocator, code: CloseCode) Allocator.Error![]u8 {
     var body: [2]u8 = undefined;
-    std.mem.writeInt(u16, &body, @intFromEnum(code), .big);
+    std.mem.writeInt(u16, &body, @backingInt(code), .big);
     return encodeFrame(allocator, .close, &body);
 }
 
@@ -169,7 +169,7 @@ pub const Decoder = struct {
             if (data.len < 2) return null;
             const fin = data[0] & 0x80 != 0;
             const rsv = data[0] & 0x70;
-            const opcode: Opcode = @enumFromInt(@as(u4, @truncate(data[0])));
+            const opcode: Opcode = @fromBackingInt(@intCast(@as(u4, @truncate(data[0]))));
             const masked = data[1] & 0x80 != 0;
             var length: u64 = data[1] & 0x7F;
             var at: usize = 2;
@@ -370,7 +370,7 @@ test "decode: control frames longer than 125 bytes, invalid UTF-8 text, a stray 
     {
         var d = Decoder.init(a);
         defer d.deinit();
-        const long = [_]u8{'p'} ** 126;
+        const long: [126]u8 = @splat('p');
         const f = try clientFrame(a, 0x89, mask, &long);
         defer a.free(f);
         try d.feed(f);
@@ -409,7 +409,7 @@ test "encode: a server frame is unmasked, with the shortest length form" {
     const small = try encodeFrame(a, .text, "Hello");
     defer a.free(small);
     try std.testing.expectEqualSlices(u8, &.{ 0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f }, small);
-    const payload = [_]u8{0} ** 300;
+    const payload: [300]u8 = @splat(0);
     const medium = try encodeFrame(a, .text, &payload);
     defer a.free(medium);
     try std.testing.expectEqualSlices(u8, &.{ 0x81, 126, 0x01, 0x2c }, medium[0..4]);
