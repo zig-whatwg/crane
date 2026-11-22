@@ -980,7 +980,7 @@ pub const AsyncFetch = struct {
         // reported them canceled - Playwright's page.goto failed with
         // net::ERR_ABORTED on every navigation (lane tpf, htmx's and Vue's
         // runners).
-        self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| false else |_| true);
+        self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| null else |err| internal_response.NetError.fromNetwork(err));
         // Received, or failed: the job's report timing steps run now.
         self.endBody();
         if (self.awaiting_body) {
@@ -1288,7 +1288,7 @@ pub const AsyncFetch = struct {
         self.encoded_bytes = relay.drained;
         if (end == .open) return true;
         // A service worker's body handed over: its end, as networkEnd's.
-        self.job.observeBodyEnd(relay.drained, end == .errored);
+        self.job.observeBodyEnd(relay.drained, if (end == .errored) .failed else null);
         self.relay_source = null;
         relay.release();
         self.relay = null;
