@@ -17,7 +17,9 @@ const cdp = @import("cdp_client.zig");
 const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 pub const BrowserHost = browser_mod.BrowserHost;
-pub const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+/// Leak-checking and poisoning on free (the Crane test runner's allocator:
+/// a bare std.heap.DebugAllocator is refused in tests).
+pub const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 pub const Message = std.json.Parsed(std.json.Value);
 
 /// A field of a message and the text its value must print as (a string's
@@ -239,6 +241,10 @@ pub const Site = struct {
     listener: LoopbackListener,
     thread: ?std.Thread = null,
     active: std.atomic.Value(u32) = .init(0),
+    /// Requests whose target was in absolute form ("GET http://host/path"):
+    /// what a client sends a proxy (RFC 9112 3.2.2) - the site serving as
+    /// one.
+    proxied: std.atomic.Value(u32) = .init(0),
 
     pub const index_html =
         \\<!doctype html><title>replay</title><p id=x>hello</p><iframe name="vitest-iframe" src="/frame.html"></iframe><script src="/app.js"></script>
@@ -283,10 +289,10 @@ pub const Site = struct {
     fn answerAndClose(self: *Site, stream: std.Io.net.Stream) void {
         defer _ = self.active.fetchSub(1, .acq_rel);
         defer stream.close(std.testing.io);
-        answer(stream) catch {};
+        self.answer(stream) catch {};
     }
 
-    fn answer(stream: std.Io.net.Stream) !void {
+    fn answer(self: *Site, stream: std.Io.net.Stream) !void {
         var input: [16384]u8 = undefined;
         var reader = stream.reader(std.testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
@@ -294,7 +300,13 @@ pub const Site = struct {
         const line_end = std.mem.indexOf(u8, head, "\r\n") orelse return;
         var parts = std.mem.tokenizeScalar(u8, head[0..line_end], ' ');
         _ = parts.next() orelse return;
-        const target = parts.next() orelse return;
+        var target = parts.next() orelse return;
+        // Absolute form: the site is the client's proxy; its path is served.
+        if (std.mem.startsWith(u8, target, "http://")) {
+            _ = self.proxied.fetchAdd(1, .acq_rel);
+            const authority = target["http://".len..];
+            target = if (std.mem.indexOfScalar(u8, authority, '/')) |slash| authority[slash..] else "/";
+        }
         const path = if (std.mem.indexOfScalar(u8, target, '?')) |q| target[0..q] else target;
         const page: struct { status: u16 = 200, content_type: []const u8 = "text/html", body: []const u8 } =
             if (std.mem.eql(u8, path, "/"))

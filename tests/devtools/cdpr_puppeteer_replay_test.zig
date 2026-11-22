@@ -412,5 +412,8 @@ test "Puppeteer page.close() and browser.close(): the page session's detachedFro
 
     const bye = try rec.send("Browser.close", "{}", "");
     try testing.expectEqual(@as(?i64, null), try rec.errorCode(bye));
+    // Answered first, then the embedder is asked to end (browser_handler.cc
+    // Close): the server's close request follows the reply.
+    fx.server.waitUntilClosed();
     try testing.expect(fx.server.isClosed());
 }

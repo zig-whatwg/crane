@@ -142,6 +142,18 @@ pub const Options = struct {
     user_data_dir: ?[]const u8 = null,
     /// Chrome's `--headless[=new|old]`: Crane always is.
     headless: bool = false,
+    /// Chrome's `--proxy-server=<rules>` (switches::kProxyServer): Chrome's
+    /// proxy rules (ProxyRules::ParseFromString) for every request, over
+    /// `--proxy`. Playwright's launch-level proxy passes it.
+    proxy_server: ?[]const u8 = null,
+    /// Chrome's `--proxy-bypass-list=<rules>` (switches::kProxyBypassList),
+    /// with --proxy-server.
+    proxy_bypass_list: ?[]const u8 = null,
+    /// Chrome's `--no-startup-window` (switches::kNoStartupWindow): the
+    /// browser starts with no window - no first tab - and a client makes the
+    /// tabs it wants (Playwright passes it for a launch that is not
+    /// persistent, playwright-core chromium.ts _innerDefaultArgs).
+    no_startup_window: bool = false,
 
     /// Whether the command line asks for remote debugging: then Chrome's
     /// other switches are accepted and ignored, as a launcher passes many.
@@ -238,6 +250,12 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.user_data_dir = value;
         } else if (std.mem.eql(u8, arg, "--headless") or valueOf(arg, "--headless") != null) {
             options.headless = true;
+        } else if (valueOf(arg, "--proxy-server")) |value| {
+            options.proxy_server = value;
+        } else if (valueOf(arg, "--proxy-bypass-list")) |value| {
+            options.proxy_bypass_list = value;
+        } else if (std.mem.eql(u8, arg, "--no-startup-window")) {
+            options.no_startup_window = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             if (chrome_mode) continue;
             return error.UnknownOption;
@@ -267,6 +285,11 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
         .proxy = options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
     };
+    // --proxy-server: the Browser's, and every context the client makes
+    // (Chrome's off-the-record profiles take the command line's proxy).
+    var proxy_rules = try chromeProxyRules(allocator, options);
+    defer if (proxy_rules) |*rules| rules.deinit();
+    if (proxy_rules) |*rules| config.proxy = .{ .rules = rules };
     // Decision D6 (the user, 2026-11-21): --user-data-dir is the Browser's
     // profile directory (lane life1's profile persistence).
     if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = options.user_data_dir;
@@ -289,8 +312,10 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
             };
         }
     };
+    // --no-startup-window: none (Chrome starts with no browser window; the
+    // client's Target.createTarget makes the first tab).
     var first_tab: FirstTab = .{ .url = options.url };
-    host.call(&first_tab, FirstTab.run) catch {
+    if (!options.no_startup_window) host.call(&first_tab, FirstTab.run) catch {
         first_tab.failed = true;
     };
     if (first_tab.failed) {
@@ -331,6 +356,17 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
     server.waitUntilClosed();
     return 0;
 }
+
+/// Chrome's `--proxy-server` and `--proxy-bypass-list`, parsed as Chrome
+/// parses them (fetch/network/proxy_rules.zig); null without
+/// --proxy-server. OWNED: `deinit`.
+fn chromeProxyRules(allocator: std.mem.Allocator, options: Options) !?ProxyRules {
+    const server = options.proxy_server orelse return null;
+    return try ProxyRules.parse(allocator, server, options.proxy_bypass_list orelse "");
+}
+
+/// fetch.network.NetworkContext.ProxyRules, as BrowserConfig names it.
+const ProxyRules = @typeInfo(@FieldType(BrowserConfig.Proxy, "rules")).pointer.child;
 
 /// `arg`'s value when it is `<name>=<value>`.
 fn valueOf(arg: []const u8, name: []const u8) ?[]const u8 {
@@ -2073,10 +2109,12 @@ pub fn main(init: std.process.Init) !u8 {
     }
 
     // In memory (BrowserConfig's default): nothing is written to disk.
+    var proxy_rules = try chromeProxyRules(allocator, options);
+    defer if (proxy_rules) |*rules| rules.deinit();
     const browser = try Browser.init(allocator, .{
         .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
-        .proxy = options.proxy,
+        .proxy = if (proxy_rules) |*rules| .{ .rules = rules } else options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
     });
     defer browser.deinit();

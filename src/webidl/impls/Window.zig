@@ -1967,7 +1967,41 @@ pub fn get_pageYOffset(instance: *runtime.Instance) anyerror!f64 {
 /// Per spec: Returns the X position of the window on the screen.
 pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // The window's (its tab's window rect: the platform's, a host's - CDP
+    // Browser.setWindowBounds -, or moveTo's), else this Window's own.
+    if (tabWindowRect(internal)) |rect| return rect.x;
     return internal.screen_x;
+}
+
+/// The rect of the window this Window's tab is shown in, once one is known
+/// (html BrowsingContext.window_rect); null for a Window with no browsing
+/// context or a tab with no rect yet.
+fn tabWindowRect(internal: *InternalState) ?html_core.window.browsing_context.WindowRect {
+    if (internal.closed) return null;
+    return internal.browsing_context.windowRect();
+}
+
+/// moveTo/moveBy/resizeTo/resizeBy: the tab's window takes `rect` when it
+/// has one (BrowsingContext.requestWindowRect), its resize steps at the next
+/// rendering opportunity; else this Window's own fields do.
+fn moveOrResize(instance: *runtime.Instance, internal: *InternalState, rect: html_core.window.browsing_context.WindowRect) void {
+    _ = instance;
+    if (internal.browsing_context.requestWindowRect(rect)) {
+        // A headless window's size is its viewport: the resize steps run at
+        // the next rendering opportunity.
+        const document = internal.document orelse return;
+        @import("dom").update_the_rendering.requestFrame(document);
+        return;
+    }
+    internal.screen_x = rect.x;
+    internal.screen_y = rect.y;
+    internal.outer_width = rect.width;
+    internal.outer_height = rect.height;
+}
+
+/// The window's rect as this Window reports it now.
+fn currentWindowRect(internal: *InternalState) html_core.window.browsing_context.WindowRect {
+    return tabWindowRect(internal) orelse .{ .x = internal.screen_x, .y = internal.screen_y, .width = internal.outer_width, .height = internal.outer_height };
 }
 
 /// Getter for screenLeft - Same as screenX
@@ -1980,6 +2014,7 @@ pub fn get_screenLeft(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the Y position of the window on the screen.
 pub fn get_screenY(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.y;
     return internal.screen_y;
 }
 
@@ -1993,6 +2028,7 @@ pub fn get_screenTop(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the width of the window including chrome.
 pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.width;
     return internal.outer_width;
 }
 
@@ -2000,6 +2036,7 @@ pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the height of the window including chrome.
 pub fn get_outerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.height;
     return internal.outer_height;
 }
 
@@ -2795,11 +2832,11 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
         return;
     }
 
-    // Update outer dimensions
-    internal.outer_width = width;
-    internal.outer_height = height;
-
-    // TODO: Notify platform to actually resize the window
+    // Update outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width = width;
+    rect.height = height;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: showSaveFilePicker
@@ -3449,11 +3486,11 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Apply delta to screen position
-    internal.screen_x += x;
-    internal.screen_y += y;
-
-    // TODO: Notify platform to actually move the window
+    // Apply delta to screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x +%= x;
+    rect.y +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: getSelection
@@ -3504,11 +3541,11 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
         return;
     }
 
-    // Apply delta to outer dimensions
-    internal.outer_width += x;
-    internal.outer_height += y;
-
-    // TODO: Notify platform to actually resize the window
+    // Apply delta to outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width +%= x;
+    rect.height +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: open
@@ -4242,11 +4279,11 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Update screen position
-    internal.screen_x = x;
-    internal.screen_y = y;
-
-    // TODO: Notify platform to actually move the window
+    // Update screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x = x;
+    rect.y = y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: prompt

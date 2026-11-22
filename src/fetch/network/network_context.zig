@@ -46,6 +46,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.network_context);
 const backend = @import("backend.zig");
+const proxy_rules = @import("proxy_rules.zig");
+const platform = @import("platform");
 const user_agent = @import("../internal/user_agent.zig");
 const Share = @import("kit_curl_share").Share;
 const TrustStore = @import("kit_curl_share").trust.Store;
@@ -78,6 +80,11 @@ pub const NetworkContext = struct {
     user_agent: ?[]u8 = null,
     /// Where the Browser's requests go (`configure`; OWNED strings).
     proxy: Proxy = .system,
+    /// Chrome's proxy retry info (net/proxy_resolution/proxy_retry_info.h,
+    /// ProxyResolutionService's proxy_retry_info_map): a proxy of the
+    /// `rules` that failed, by its URL (BORROWED from the rules), and the
+    /// monotonic time until which it is passed over. Guarded by `mutex`.
+    proxy_retry: std.StringHashMapUnmanaged(i128) = .empty,
     /// Browser-owned Fetch permission entries, independently locked.
     preflight_cache: @import("../cors/preflight_cache.zig").PreflightCache,
     /// The Browser's HTTP cache: made by `configure` (BrowserConfig
@@ -118,6 +125,9 @@ pub const NetworkContext = struct {
         http_cache: HttpCacheConfig = .{},
     };
 
+    /// Chrome's proxy rules (proxy_rules.zig), for a `rules` configuration.
+    pub const ProxyRules = proxy_rules.Rules;
+
     pub const HttpCache = @import("../cache/http_cache.zig").HttpCache;
     pub const HttpCacheConfig = @import("../cache/http_cache.zig").Config;
 
@@ -132,6 +142,11 @@ pub const NetworkContext = struct {
         direct,
         /// A proxy per scheme, and the hosts that bypass it.
         manual: Manual,
+        /// Chrome's own rules (`--proxy-server`, CDP Target.createBrowserContext
+        /// proxyServer/proxyBypassList; proxy_rules.zig): per-scheme ordered
+        /// lists with a fallback, and Chrome's bypass rules. In Options
+        /// BORROWED (`configure` copies them); in the context OWNED.
+        rules: *const proxy_rules.Rules,
 
         pub const Manual = struct {
             /// For http: and ws: URLs, e.g. "http://proxy.example:8080";
@@ -180,8 +195,16 @@ pub const NetworkContext = struct {
             .manual => |manual| for ([_]?[]const u8{ manual.http, manual.https, manual.no_proxy }) |owned| {
                 if (owned) |value| self.allocator.free(value);
             },
+            .rules => |rules| {
+                const owned: *proxy_rules.Rules = @constCast(rules);
+                owned.deinit();
+                self.allocator.destroy(owned);
+            },
             else => {},
         }
+        // The retry info's keys are the rules' strings.
+        self.proxy_retry.deinit(self.allocator);
+        self.proxy_retry = .empty;
         self.proxy = .system;
     }
 
@@ -211,6 +234,12 @@ pub const NetworkContext = struct {
                 errdefer if (https) |v| self.allocator.free(v);
                 const no_proxy = try self.dupeOptional(manual.no_proxy);
                 break :blk .{ .manual = .{ .http = http, .https = https, .no_proxy = no_proxy } };
+            },
+            .rules => |rules| blk: {
+                const copy = try self.allocator.create(proxy_rules.Rules);
+                errdefer self.allocator.destroy(copy);
+                copy.* = try rules.clone(self.allocator);
+                break :blk .{ .rules = copy };
             },
         };
         self.freeProxy();
@@ -253,7 +282,57 @@ pub const NetworkContext = struct {
                 const chosen = if (secure) manual.https else manual.http;
                 break :blk .{ .url = chosen orelse "", .no_proxy = manual.no_proxy };
             },
+            // The URL's list (a bypassed URL's is direct://), its first
+            // entry not marked bad - ProxyResolutionService's
+            // DeprioritizeBadProxyChains puts the bad ones last, so with every
+            // entry bad the first is tried again.
+            .rules => |rules| .{ .url = self.firstUsable(rules.listFor(url), null) orelse "" },
         };
+    }
+
+    /// The first proxy of `list` (after `after`'s position, when given) not
+    /// marked bad now; with none, the first after it, bad or not; null when
+    /// `after` was the last.
+    fn firstUsable(self: *const NetworkContext, list: []const proxy_rules.Server, after: ?usize) ?[]const u8 {
+        const from = if (after) |i| i + 1 else 0;
+        if (from >= list.len) return null;
+        const now: i128 = platform.monotonicNow().ns;
+        const mutex = @constCast(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(mutex);
+        defer std.Io.Threaded.mutexUnlock(mutex);
+        for (list[from..]) |server| {
+            const bad_until = self.proxy_retry.get(server.url) orelse return server.url;
+            if (bad_until <= now) return server.url;
+        }
+        return list[from].url;
+    }
+
+    /// How long a proxy that failed is passed over: Chrome's default retry
+    /// delay (net/proxy_resolution/proxy_list.cc, ProxyList::Fallback's
+    /// `retry_delay` - five minutes).
+    pub const proxy_retry_delay_ns: i128 = 5 * std.time.ns_per_min;
+
+    /// A request to `url` through proxy `failed` (a URL proxyFor gave) could
+    /// not connect: the proxy is marked bad for `proxy_retry_delay_ns`
+    /// (ProxyRetryInfo) and the next proxy of the URL's list, if any, is the
+    /// one to try now (ProxyResolutionService::ReconsiderProxyAfterError ->
+    /// ProxyList::Fallback) - "" for direct://. Null: none is left; the error
+    /// stands. Only the `rules` configuration has lists.
+    pub fn proxyFailed(self: *NetworkContext, url: []const u8, failed: []const u8) ?[]const u8 {
+        const rules = switch (self.proxy) {
+            .rules => |r| r,
+            else => return null,
+        };
+        const list = rules.listFor(url);
+        const at = for (list, 0..) |server, i| {
+            if (std.mem.eql(u8, server.url, failed)) break i;
+        } else return null;
+        if (list[at].scheme != .direct) {
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            self.proxy_retry.put(self.allocator, list[at].url, @as(i128, platform.monotonicNow().ns) + proxy_retry_delay_ns) catch {};
+        }
+        return self.firstUsable(list, at);
     }
 
     /// The certificate options a request of this Browser is verified with.
@@ -731,6 +810,33 @@ test "configure copies the trust it is given" {
     path[1] = 'X';
     try std.testing.expectEqualStrings("/certs/ca.pem", context.certOptions().ca_bundle_path.?);
     try std.testing.expect(context.certOptions().verify_peer);
+}
+
+test {
+    _ = proxy_rules;
+}
+
+test "Chrome's proxy rules: the URL's first usable proxy; one that failed is passed over for the retry delay and the next is tried, ending at direct://" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    var rules = try proxy_rules.Rules.parse(std.testing.allocator, "http=a.test:1,b.test:2,direct://;https=c.test:3", "*.bypass.test");
+    defer rules.deinit();
+    try context.configure(.{ .proxy = .{ .rules = &rules } });
+    try std.testing.expectEqualStrings("http://a.test:1", context.proxyFor("http://x.test/").?.url);
+    try std.testing.expectEqualStrings("http://c.test:3", context.proxyFor("https://x.test/").?.url);
+    // Bypassed, explicitly and implicitly (loopback): direct.
+    try std.testing.expectEqualStrings("", context.proxyFor("http://www.bypass.test/").?.url);
+    try std.testing.expectEqualStrings("", context.proxyFor("http://127.0.0.1:8000/").?.url);
+    // a fails: b now, and a is passed over by the next request too.
+    try std.testing.expectEqualStrings("http://b.test:2", context.proxyFailed("http://x.test/", "http://a.test:1").?);
+    try std.testing.expectEqualStrings("http://b.test:2", context.proxyFor("http://y.test/").?.url);
+    // b fails: direct:// is next; after it, nothing.
+    try std.testing.expectEqualStrings("", context.proxyFailed("http://x.test/", "http://b.test:2").?);
+    try std.testing.expect(context.proxyFailed("http://x.test/", "") == null);
+    // a and b bad: they go last (DeprioritizeBadProxyChains), direct:// first.
+    try std.testing.expectEqualStrings("", context.proxyFor("http://z.test/").?.url);
+    // https's one proxy fails: none left.
+    try std.testing.expect(context.proxyFailed("https://x.test/", "http://c.test:3") == null);
 }
 
 test "a manual proxy per scheme, none for a scheme it names none, the system's by default" {
