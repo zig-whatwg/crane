@@ -42,6 +42,12 @@ pub const IntersectionObserver = struct {
             .{ "trackVisibility", "get_trackVisibility", null },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "thresholds",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "observe", "call_observe", 1 },

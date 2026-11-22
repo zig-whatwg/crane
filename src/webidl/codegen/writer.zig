@@ -675,6 +675,8 @@ pub fn writeMetadata(
 
     // [SameObject]: the binding ties these children to their owner.
     if (!is_mixin) try writeSameObjectAttributes(writer, own_attributes, type_registry);
+    // FrozenArray<T>: the binding knows the getter's array as one.
+    if (!is_mixin) try writeFrozenArrayAttributes(writer, own_attributes);
 
     // Generate [PutForwards] metadata for attributes with setter forwarding
     // Per WebIDL spec §4.3.10: [PutForwards=X] means setting the attribute
@@ -5327,6 +5329,43 @@ pub fn writeSameObjectAttributes(writer: anytype, own_attributes: []const types.
     try writer.writeAll("        };\n");
 }
 
+/// Whether `attr`'s IDL type is a FrozenArray<T> (nullable or not): its
+/// generated getter returns a runtime.JSValue like an `any` attribute's, so
+/// the binding learns the type from `Meta.frozen_array_attributes`.
+pub fn isFrozenArrayAttribute(attr: types.Attribute) bool {
+    return std.mem.eql(u8, attr.idlType.type, "FrozenArray");
+}
+
+/// `Meta.frozen_array_attributes`: the instance attributes typed
+/// FrozenArray<T>, by their getter's name less `get_`. The getter returns
+/// the array as a runtime.JSValue, as an `any` attribute's value; the
+/// binding (engines/v8 interface.zig `frozenArrayAttribute`,
+/// binding_plumbing.finishGetter) reads this list at compile time so that
+/// an isolated world gets a frozen array of its own for it (engine section
+/// 4.2a; Blink's FrozenArray, a JS array per world) - a type it would
+/// otherwise have to guess at run time.
+pub fn writeFrozenArrayAttributes(writer: anytype, own_attributes: []const types.Attribute) !void {
+    var any = false;
+    for (own_attributes) |attr| {
+        if (!attr.static and isFrozenArrayAttribute(attr)) {
+            any = true;
+            break;
+        }
+    }
+    if (!any) return;
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and\n");
+    try writer.writeAll("        /// the binding gives each isolated world a frozen array of its own.\n");
+    try writer.writeAll("        pub const frozen_array_attributes = .{\n");
+    for (own_attributes) |attr| {
+        if (attr.static or !isFrozenArrayAttribute(attr)) continue;
+        try writer.writeAll("            \"");
+        try writeSanitizedName(writer, attr.name);
+        try writer.writeAll("\",\n");
+    }
+    try writer.writeAll("        };\n");
+}
+
 /// How `writeDelegateFunctions` writes one file's delegates.
 pub const DelegateOptions = struct {
     /// Cache a [SameObject] attribute's value in the file's own `State`. False
@@ -6287,6 +6326,30 @@ test "writeIterableSupport publishes a pair iterable's live entries and its impl
     defer value_only.deinit();
     try writeIterableSupport(&value_only.writer, "ListImpl", .{ .keyType = .{ .type = "Node" } });
     try testing.expectEqualStrings("", value_only.written());
+}
+
+test "writeFrozenArrayAttributes lists the instance attributes typed FrozenArray<T>, nullable too, and nothing else" {
+    const attributes = [_]types.Attribute{
+        .{ .name = "languages", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true },
+        .{ .name = "ariaLabelledByElements", .idlType = .{ .type = "FrozenArray", .generic = "Element", .nullable = true } },
+        .{ .name = "data", .idlType = .{ .type = "any" }, .readonly = true },
+        .{ .name = "knownSources", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true, .static = true },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeFrozenArrayAttributes(&buffer.writer, &attributes);
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub const frozen_array_attributes = .{") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"languages\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"ariaLabelledByElements\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"data\"") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"knownSources\"") == null);
+
+    // An interface with none writes nothing.
+    var none: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer none.deinit();
+    try writeFrozenArrayAttributes(&none.writer, attributes[2..3]);
+    try testing.expectEqualStrings("", none.written());
 }
 
 test "writeHeader writes basic header" {
