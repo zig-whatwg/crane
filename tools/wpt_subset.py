@@ -553,6 +553,12 @@ INCLUDE = [
     # screen-orientation files that need a device able to lock the orientation are excluded below.
     ('page-visibility/', 'Page Visibility (HTML 6.2): visibilityState, hidden, visibilitychange, through minimize/restore and unload'),
     ('screen-orientation/', 'Screen Orientation API: ScreenOrientation reading, change events, lock/unlock argument and state checks; device-lock files excluded below'),
+    # Lane tpw (the integrator, 2026-11-22 2:56 AM ET): Resize Observer 1 (W3C, all three browsers ship it); Crane
+    # implements it (lane tpf 227027b88: the gather/broadcast steps at the rendering steps, sizes from the renderer
+    # protocol, 0x0 with none). The first observation fires at 0x0 too (lastReportedSizes starts (-1,-1)), so
+    # callback, observe/unobserve/disconnect, error and IDL files are in; files whose every subtest needs a box
+    # size or a size change are excluded below (measured on a runner of lane/tpf d68a3ec18).
+    ('resize-observer/', 'Resize Observer: observe/unobserve/disconnect, the first observation, callbacks, errors, IDL; geometry files excluded below'),
 
     # --- iframe needs real browsing contexts; navigation needs the rest. ----
     ('html/browsers/windows/',           'nested browsing contexts, contentWindow'),
@@ -1009,6 +1015,28 @@ EXCLUDE = [
     # NotSupportedError); only Firefox 160 passes the iframe subtest; Safari 27.2 has no lock(). On a UA that
     # cannot lock it tests nothing reachable (the integrator, 2026-11-22 1:08 AM ET).
     ('screen-orientation/fullscreen-interactions.html', 'needs a device that can lock the orientation: its iframe subtest asserts a pre-spec SecurityError'),
+    # Resize Observer files whose every subtest asserts a laid-out box size or waits for a notification that only
+    # a size change brings (0/N on a production runner of lane/tpf d68a3ec18 with no renderer, 2026-11-22; all
+    # three browsers pass them) - lane tpw.
+    ('resize-observer/change-layout-in-error.html', 'needs a box size change to reach the loop limit: TIMEOUT 0/1 with 0x0 boxes'),
+    ('resize-observer/fragments.html', 'asserts laid-out fragment inline/block sizes: 0/5'),
+    ('resize-observer/observe-001.html', 'asserts the observed box size ("target width expected 5 but got 0")'),
+    ('resize-observer/observe-006.html', 'waits for the img box size the decoded image gives'),
+    ('resize-observer/observe-009.html', 'asserts content-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-010.html', 'asserts content-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-011.html', 'asserts border-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-012.html', 'asserts vertical writing-mode box sizes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-013.html', 'asserts box sizes across a writing-mode change ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-014.html', 'asserts box sizes across a writing-mode change ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-015.html', 'asserts box sizes per observed box ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-016.html', 'asserts a laid-out size before display changes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-018.html', 'asserts box-sizing sizes ("target width expected 40 but got 0")'),
+    ('resize-observer/observe-019.html', 'asserts device-pixel-content-box sizes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-020.html', 'waits for device-pixel-content-box size changes'),
+    ('resize-observer/observer-in-cross-origin-frame.sub.html', 'asserts the frame\'s laid-out size ("expected 200 but got 0")'),
+    ('resize-observer/scrollbars.html', 'asserts content-box sizes minus scrollbar widths'),
+    ('resize-observer/scrollbars-2.html', 'asserts a scroll container\'s content-box size beside its scrollbars ("expected 120 but got 0")'),
+    ('resize-observer/zoom.html', 'asserts zoom-scaled content rects ("content-rect top should be scaled by zoom expected 5 but got 0")'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),

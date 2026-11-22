@@ -116,6 +116,8 @@ pub const BrowserSide = struct {
             self.postNavigated(t.id, t.url, true);
             if (t.title.len > 0) self.postTitle(t.id, t.title);
         }
+        // And their realms are the inspector's from now on (contexts.onServed).
+        @import("contexts.zig").onServed(self);
     }
 
     /// Browser thread: detach every session and stop listening.
@@ -276,7 +278,66 @@ pub const InstallTask = struct {
     }
 };
 
+/// Install `side` on its Browser and wait until it has: the remote end's
+/// start (Server.start), from a thread that is not the Browser's. `install`
+/// posts a tab_created for every tab that exists already, so those reach
+/// the devtools thread's inbox before any connection is accepted - a
+/// client's first Target.setAutoAttach finds the console's first tab as an
+/// existing target, attached not waiting and before its reply, as Chrome's
+/// browser process knows its tabs when the client connects (lane cdpr's
+/// Playwright replay: posted and not waited for, the tab could arrive after
+/// setAutoAttach and be attached as a new, held target). A session message
+/// (host_bridge.postSessionMessage), so a Browser already sitting in a
+/// simple dialog's or a pause's nested loop runs it.
+pub fn installAndWait(side: *BrowserSide) void {
+    const Wait = struct {
+        side: *BrowserSide,
+        /// 1 once the install ran, or the Browser went without it.
+        done: std.atomic.Value(u32) = .init(0),
+
+        fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.side.install(browser) catch |err| log.warn("devtools: listening to the Browser's events failed: {t}", .{err});
+            self.signal();
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.signal();
+        }
+
+        fn signal(self: *@This()) void {
+            self.done.store(1, .release);
+            futexIo().futexWake(u32, &self.done.raw, 1);
+        }
+    };
+    var wait: Wait = .{ .side = side };
+    // False: the Browser has gone, and `drop` ran already.
+    if (!host_bridge.postSessionMessage(side.host, &wait, Wait.run, Wait.drop)) {
+        log.warn("devtools: the Browser did not take the remote end's listener: it has gone", .{});
+        return;
+    }
+    while (wait.done.load(.acquire) == 0) {
+        futexIo().futexWaitTimeout(u32, &wait.done.raw, 0, .{ .duration = .{ .raw = .fromMilliseconds(20), .clock = .awake } }) catch {};
+    }
+}
+
 /// Attach an allocated session.
+///
+/// A session's attach (AttachTask), its messages (MessageTask) and its
+/// detach (DetachTask) all go as session messages (host_bridge.
+/// postSessionMessage), so they run in the order they were posted - and
+/// inside a debugger pause, whose nested loop runs session messages and no
+/// other task. Posted as ordinary tasks, an attach or a detach waited out the
+/// pause while the session's messages and the server's uninstall ran inside
+/// it: a message found its session not attached yet and went unanswered, and
+/// a detach ran after the uninstall had freed its session (CDP part 1 gap 6).
+/// Blink orders them the same way: "devtools relies on a disconnect handler
+/// for detaching and is sensitive to reordering of detach and attach", so a
+/// session's attach goes to the task runner its messages use, through the
+/// InspectorTaskRunner that interrupts a paused or busy V8
+/// (third_party/blink/renderer/core/inspector/devtools_agent.cc,
+/// IOAgent::AttachDevToolsSession, DevToolsAgent::AttachDevToolsSessionImpl).
 pub const AttachTask = struct {
     session: *PageSession,
     side: *BrowserSide,
@@ -284,7 +345,7 @@ pub const AttachTask = struct {
     pub fn post(side: *BrowserSide, session: *PageSession) !void {
         const task = try side.allocator.create(AttachTask);
         task.* = .{ .session = session, .side = side };
-        if (!side.host.post(task, run, drop)) return error.BrowserGone;
+        if (!host_bridge.postSessionMessage(side.host, task, run, drop)) return error.BrowserGone;
     }
 
     fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
@@ -332,7 +393,8 @@ pub const MessageTask = struct {
     }
 };
 
-/// Detach and free a session.
+/// Detach and free a session: a session message, after the session's own
+/// (AttachTask says why).
 pub const DetachTask = struct {
     session: *PageSession,
     allocator: Allocator,
@@ -344,7 +406,7 @@ pub const DetachTask = struct {
             return;
         };
         task.* = .{ .session = session, .allocator = side.allocator };
-        _ = side.host.post(task, run, drop);
+        _ = host_bridge.postSessionMessage(side.host, task, run, drop);
     }
 
     fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {

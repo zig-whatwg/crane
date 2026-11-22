@@ -71,9 +71,14 @@ fn pumpUntil(browser: *browser_mod.Browser, realm: runtime.Context, condition: [
 
 /// A page loaded from `html`, its realm.
 fn loadPage(browser: *browser_mod.Browser, html: []const u8) !runtime.Context {
+    return loadPageAt(browser, html, "about:blank");
+}
+
+/// A page loaded from `html` as the document at `url`, its realm.
+fn loadPageAt(browser: *browser_mod.Browser, html: []const u8, url: []const u8) !runtime.Context {
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML(html, .{ .base_url = "about:blank" });
+    try page.loadHTML(html, .{ .base_url = url });
     _ = try browser.runEventLoopBlocking(20);
     return (browser.current_context orelse return error.NoPage).realm orelse error.NoRealm;
 }
@@ -265,7 +270,12 @@ test "a FrozenArray attribute is one frozen array per world, the same array on e
 test "a dictionary an operation returns crosses worlds member by member: navigation.navigate()'s promises are the world's" {
     const browser = try makeBrowser(testing.allocator);
     defer browser.deinit();
-    const page = try loadPage(browser, "<!doctype html><body></body>");
+    // A document at an http URL: this about:blank document's origin is
+    // opaque, so its Navigation "has entries and events disabled", and then
+    // HTML's navigate() "calls return promises that will never fulfill. We
+    // never create a NavigationHistoryEntry object for such Documents" (the
+    // navigate-event steps' note) - in any world, so `settled` stayed ''.
+    const page = try loadPageAt(browser, "<!doctype html><body></body>", "http://cdpw.test/navigate.html");
     const world = try isolated_worlds.createIsolatedWorld(page, navigable, "__dictionaries__", false);
     try expect(world,
         \\globalThis.settled = '';

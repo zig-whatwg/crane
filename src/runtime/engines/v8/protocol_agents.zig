@@ -176,6 +176,10 @@ pub fn deinitializeEngine() void {
 /// What the adapter keeps for an agent it made: the host's hooks.
 const AgentRecord = struct {
     isolate: *ffi.Isolate,
+    /// `createAgent` entered the isolate for the agent's life - the agent is
+    /// its thread's (no other isolate was current there) - and
+    /// `destroyAgent` exits it after every realm of the agent ended.
+    entered_for_life: bool = false,
     hooks: *const engine.HostHooks,
     host: ?*anyopaque,
     /// AgentOptions.allocator: the agent's own state.
@@ -409,6 +413,13 @@ pub fn liveAgentCount() usize {
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own), and for an agent whose end has
 /// begun (`AgentRecord.ending`).
+/// Whether `createAgent` entered `isolate` for its agent's life
+/// (`AgentRecord.entered_for_life`): `destroyAgent` exits it last.
+pub fn enteredForLife(isolate: *ffi.Isolate) bool {
+    const record = recordOf(isolate) orelse return false;
+    return record.entered_for_life;
+}
+
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -615,7 +626,14 @@ pub fn restoredFromSnapshot(agent: *Agent) bool {
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
-/// installed. The isolate is not entered.
+/// installed. The agent is its thread's: its isolate is entered here and
+/// stays entered until `destroyAgent` (`AgentRecord.entered_for_life`), so
+/// every operation on the agent's thread finds its engine current, whatever
+/// realm is or is not entered - a renderer's main thread keeps its isolate
+/// entered for the thread's life, and each worker thread its own. A realm's
+/// own entries nest inside. (An agent made while another isolate is current
+/// on the thread - a test's second agent - is not its thread's, and is
+/// entered only per call, as before.)
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // Every agent of a build has the build's young generation
     // (-Dv8-young-generation-mb, young_generation.zig): the window agent's
@@ -654,6 +672,11 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
         break :blk ffi.v8_Isolate_NewWithOptions(&isolate_options) orelse return support.protocolError(error.OperationFailed);
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
+    // The thread's agent: entered for its life (above). Exited before the
+    // isolate is disposed, on a failure too.
+    const entered_for_life = ffi.v8_Isolate_GetCurrent() == null;
+    if (entered_for_life) ffi.v8_Isolate_Enter(isolate);
+    errdefer if (entered_for_life) ffi.v8_Isolate_Exit(isolate);
     if (options.engine_task_sink) |sink| {
         const retained = sink.retain();
         if (!ffi.v8_Isolate_AttachForegroundTaskSink(isolate, retained, wakeEngineLoop, releaseEngineSink)) {
@@ -681,7 +704,7 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);

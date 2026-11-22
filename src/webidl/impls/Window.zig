@@ -2083,7 +2083,11 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // traversable starts with a copy of its opener's shed
     // (`newTopLevelTraversable`).
     const context_id = internal.browsing_context.getTop().id;
-    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
+    // "Obtain a session storage bottle map" step 1: "obtain a storage key"
+    // with the environment - failure, a SecurityError, for an opaque origin;
+    // a file: document's key is the browsers' (dom.global_settings
+    // storageKeyOf).
+    const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
     // The traversable's shed is one of its Browser's navigables' (Storage
     // 4.3: "A traversable navigable holds a storage shed"): a realm no
@@ -2142,7 +2146,11 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
     // Its shelf is the storage key's (`settingsStorageKey`): one origin
     // framed under two top-level sites has two areas, as in every browser.
-    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
+    // "Obtain a local storage bottle map" step 1: "obtain a storage key" with
+    // the environment - failure, a SecurityError, for an opaque origin; a
+    // file: document's key is the browsers' (dom.global_settings
+    // storageKeyOf).
+    const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
     // Create the backend storage for this storage key
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;

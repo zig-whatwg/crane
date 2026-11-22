@@ -383,9 +383,6 @@ src/html/event_loop/timers.zig platform.timer_backend 4
 src/html/external_script_loader.zig host.@import 1
 src/html/external_script_loader.zig host.cwd 1
 src/html/external_script_loader.zig host.io 1
-src/html/navigation/fetch_integration.zig host.@import 1
-src/html/navigation/fetch_integration.zig host.cwd 1
-src/html/navigation/fetch_integration.zig host.io 1
 src/html/navigation/joint_history.zig extern.getentropy 1
 src/html/navigator/navigator_concurrent_hardware.zig std.Thread.getCpuCount 1
 src/html/navigator/navigator_id.zig builtin.os.tag 2

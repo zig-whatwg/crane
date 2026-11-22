@@ -1,0 +1,23 @@
+// console.timeStamp, console.profile and console.profileEnd. No standard
+// defines them: the WHATWG Console Standard's namespace (specs/idl/console.idl)
+// has none of the three. All three browsers ship them, so golden rule 2 (no
+// spec; the browsers agree) adds them:
+//
+// - Gecko, dom/webidl/Console.webidl, under its "Mozilla only or Webcompat
+//   methods" comment: timeStamp(optional any data), profile(any... data),
+//   profileEnd(any... data).
+// - WebKit, Source/JavaScriptCore/runtime/ConsoleObject.cpp: finishCreation
+//   registers "timeStamp", "profile" and "profileEnd" on the console object.
+// - Chrome: V8's console builtins (console.timeStamp, console.profile,
+//   console.profileEnd).
+//
+// The signatures are Gecko's. Chrome's DevTools extensibility arguments to
+// timeStamp (start, end, track, track group, color) are accepted as extra
+// arguments, as every JavaScript call accepts them. Angular's DevTools
+// performance integration spies on console.timeStamp (lane tpf: 10 of
+// Angular's acceptance tests failed on "timeStamp() method does not exist").
+partial namespace console {
+  undefined timeStamp(optional any data);
+  undefined profile(any... data);
+  undefined profileEnd(any... data);
+};

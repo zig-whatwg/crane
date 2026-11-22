@@ -77,10 +77,26 @@ pub fn schemeFetch(
     }
 }
 
-/// Handle about: URLs.
+/// Scheme fetch, "about": "If request's current URL's path is the string
+/// "blank", then return a new response whose status message is `OK`, header
+/// list is « (`Content-Type`, `text/html;charset=utf-8`) », and body is the
+/// empty byte sequence as a body. URLs such as "about:config" are handled
+/// during navigation and result in a network error in the context of
+/// fetching top-level navigables."
 ///
-/// Per spec: Only about:blank is supported.
-/// Returns a response with status 200 and content-type text/html;charset=utf-8.
+/// about:srcdoc is such a URL: an iframe srcdoc document is made from the
+/// srcdoc attribute (the navigation's srcdoc resource, never this fetch),
+/// and a navigation to about:srcdoc by any other route - location, a link,
+/// window.open() - is a network error, whose document has an opaque origin
+/// (html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-
+/// navigation-blocked.window.js; wpt.fyi stable: Chrome 157 0/3, Firefox
+/// 160 3/3, Safari 27.2 0/3). Golden rule 2, the user's ruling (2026-11-12
+/// 01:01 UTC): the spec, which Firefox ships. Chrome and Safari lag rather
+/// than deviate: Chromium's own open bug 40165505 (crbug 1169736),
+/// "Navigation to about:srcdoc should fail per HTML Standard", wrote this
+/// WPT, and whatwg/html#6316 (annevk, 2021) confirms the network error;
+/// no engine declined. (A navigation fetched about: URLs apart until lane
+/// tpg, 2026-11-22; every scheme goes through Fetch now.)
 fn aboutFetch(allocator: Allocator, url: []const u8) SchemeFetchError!SchemeFetchResult {
     // Parse out the path from about:blank or about:blank?... or about:blank#...
     const after_scheme = if (std.mem.startsWith(u8, url, "about:"))
@@ -218,6 +234,10 @@ fn fileFetchRequest(allocator: Allocator, request: *const InternalRequest) Schem
     response.status = 200;
     response.setStatusMessage("OK") catch return SchemeFetchError.OutOfMemory;
     response.header_list.append("Content-Type", file.mime_type) catch return SchemeFetchError.OutOfMemory;
+    var date_buffer: [29]u8 = undefined;
+    if (file_fetch.lastModified(&date_buffer, file.path)) |date| {
+        response.header_list.append("Last-Modified", date) catch return SchemeFetchError.OutOfMemory;
+    }
     const body = Body.fromBytes(allocator, file.bytes) catch return SchemeFetchError.OutOfMemory;
     // fromBytes copies the bytes but keeps `source` on the caller's slice,
     // which is freed above: the source is the body's own copy (as

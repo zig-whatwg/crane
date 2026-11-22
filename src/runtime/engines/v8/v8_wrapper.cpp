@@ -7519,6 +7519,14 @@ static inline void countContextGlobal() {
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
+    // No context entered: none (as GetEnteredOrMicrotaskContext answers).
+    // The agent's isolate is entered for its life (protocol_agents
+    // createAgent), so host code outside any call reaches here with no
+    // context - a Global of an empty handle crashed its first use
+    // (CraneContextIdOf on null, lane tpg).
+    if (ctx.IsEmpty()) {
+        return nullptr;
+    }
     g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<Context>(isolate, ctx));
 }

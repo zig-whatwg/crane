@@ -26,17 +26,53 @@
 //!   Chrome's "Cross origin requests are only supported for protocol schemes"
 //!   without --allow-file-access-from-files.
 //!
-//! The navigation of a document to a file: URL reads it through the same
-//! `read` (html/navigation/fetch_integration.zig handleFileUrl).
+//! - Its header list: `Content-Type`, and `Last-Modified` - the file's
+//!   modification time as an HTTP-date - which Chrome's file loader sends
+//!   for a document and a subresource alike (Chrome 157, CDP probe: a file:
+//!   document's and its script's Network.responseReceived headers), and
+//!   which a file: document's lastModified reads.
+//!
+//! A navigation to a file: URL goes through main fetch like any other
+//! (lane tpg, 2026-11-22; it read the file apart before).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const platform = @import("platform");
 
-/// The largest local file a subresource fetch reads (a script, a
-/// stylesheet, an image): beyond it, a network error. A navigation passes
-/// its own (fetch_integration.zig max_file_navigation_bytes).
+/// The largest local file a fetch reads - a navigation's document or a
+/// subresource: beyond it, a network error.
 pub const max_file_bytes: usize = 64 * 1024 * 1024;
+
+/// `time` as an HTTP-date's preferred form, IMF-fixdate (RFC 9110 5.6.7):
+/// "Sun, 06 Nov 1994 08:49:37 GMT". Null before 1970 or after 9999.
+pub fn imfFixdate(buffer: *[29]u8, time: platform.WallTime) ?[]const u8 {
+    const seconds = @divFloor(time.ns_since_epoch, std.time.ns_per_s);
+    if (seconds < 0) return null;
+    const epoch_seconds: std.time.epoch.EpochSeconds = .{ .secs = @intCast(seconds) };
+    const day = epoch_seconds.getEpochDay();
+    const year_day = day.calculateYearDay();
+    if (year_day.year > 9999) return null;
+    const month_day = year_day.calculateMonthDay();
+    const day_seconds = epoch_seconds.getDaySeconds();
+    const weekdays = [_][]const u8{ "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed" }; // 1970-01-01 was a Thursday
+    const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    return std.fmt.bufPrint(buffer, "{s}, {d:0>2} {s} {d:0>4} {d:0>2}:{d:0>2}:{d:0>2} GMT", .{
+        weekdays[@intCast(day.day % 7)],
+        @as(u8, month_day.day_index) + 1,
+        months[month_day.month.numeric() - 1],
+        year_day.year,
+        day_seconds.getHoursIntoDay(),
+        day_seconds.getMinutesIntoHour(),
+        day_seconds.getSecondsIntoMinute(),
+    }) catch null;
+}
+
+/// The `Last-Modified` value of the local file at `path` (decoded), in
+/// `buffer`; null when the platform cannot tell its modification time.
+pub fn lastModified(buffer: *[29]u8, path: []const u8) ?[]const u8 {
+    const info = platform.fileInfo(platform.Str.from(path)) catch return null;
+    return imfFixdate(buffer, info.modified);
+}
 
 /// Whether the platform reads local files at all (capability `file_urls`).
 pub const supported = platform.capabilities.file_urls != .unsupported;
@@ -47,10 +83,10 @@ pub const Read = union(enum) {
     /// `read` took, and its MIME type (static).
     file: struct { bytes: []u8, mime_type: []const u8, path: []u8 },
     /// No such file, a directory, one that could not be read or is over the
-    /// limit: Fetch's network error, a navigation's 404.
+    /// limit: Fetch's network error (Chrome's net::ERR_FILE_NOT_FOUND).
     not_found,
     /// The URL names a host other than the local one (or no path): Fetch's
-    /// network error, a navigation's 400.
+    /// network error.
     bad_host,
 };
 
@@ -161,4 +197,12 @@ test "contentTypeFromPath: by extension, octet-stream otherwise" {
     try std.testing.expectEqualStrings("text/javascript", contentTypeFromPath("/a/vue.global.js"));
     try std.testing.expectEqualStrings("text/css", contentTypeFromPath("/a/INDEX.CSS"));
     try std.testing.expectEqualStrings("application/octet-stream", contentTypeFromPath("/a/b"));
+}
+
+test "imfFixdate: RFC 9110's example, the epoch, a leap day; null before 1970" {
+    var buffer: [29]u8 = undefined;
+    try std.testing.expectEqualStrings("Sun, 06 Nov 1994 08:49:37 GMT", imfFixdate(&buffer, .{ .ns_since_epoch = 784111777 * std.time.ns_per_s + 999 }).?);
+    try std.testing.expectEqualStrings("Thu, 01 Jan 1970 00:00:00 GMT", imfFixdate(&buffer, .{ .ns_since_epoch = 0 }).?);
+    try std.testing.expectEqualStrings("Wed, 29 Feb 2012 00:00:00 GMT", imfFixdate(&buffer, .{ .ns_since_epoch = 1330473600 * std.time.ns_per_s }).?);
+    try std.testing.expect(imfFixdate(&buffer, .{ .ns_since_epoch = -1 }) == null);
 }

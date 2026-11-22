@@ -1083,6 +1083,12 @@ const Navigation = struct {
     /// javascript: URL's checks, about:blank's document origin) take only for
     /// the navigations they handle. Null with no source document. OWNED.
     request_origin: ?[]u8 = null,
+    /// The source document is a file: document, which may load local
+    /// resources: scheme fetch "file" reads a file: URL only for such a
+    /// request or one with no initiator (fetch/algorithms/file_fetch.zig;
+    /// Blink's SecurityOrigin::CanDisplay asks the requesting origin's
+    /// CanLoadLocalResources). False with no source document.
+    local_file_access: bool = false,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -1970,7 +1976,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // The same snapshot, serialized, for the navigation's request (its
     // origin, startFetch).
-    if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
+    if (options.source_document) |source| {
+        record.request_origin = documentOriginOf(source, allocator);
+        if (documentUrlOf(source, allocator)) |source_url| {
+            defer allocator.free(source_url);
+            record.local_file_access = std.mem.eql(u8, navigate_steps.schemeOf(source_url), "file");
+        } else |_| {}
+    }
     // "Create navigation params by fetching" step 3 for a traversal no
     // document started ("apply the history step" populating the entry
     // again): the request's origin is the entry's document state's initiator
@@ -2827,7 +2839,6 @@ fn fetchWithoutNetwork(context: ?*anyopaque) void {
 fn fetchResourceWithoutNetwork(record: *Navigation) void {
     const allocator = record.allocator;
     const url = record.url;
-    const scheme = navigate_steps.schemeOf(url);
     const destination: navigation_fetch.NavigationFetchOptions.Destination = if (record.integration.iframe_element) |element_ptr|
         switch (dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe) {
             .iframe => .iframe,
@@ -2837,38 +2848,53 @@ fn fetchResourceWithoutNetwork(record: *Navigation) void {
         }
     else
         .document;
-    // data:/file: bypass main fetch. Run its steps 4 and 7 here:
-    // monitored policies report, then enforced policies can block.
-    if (std.mem.eql(u8, scheme, "data") or std.mem.eql(u8, scheme, "file")) {
-        if (record.initiator_policy_container) |*container| {
-            if (destination != .document and !container.csp_list.isEmpty()) {
-                // With no response (out of memory even for a network error),
-                // runCommit ends the navigation.
-                const request = navigation_fetch.navigationRequest(allocator, url, .{
-                    .destination = destination,
-                    .mode = .navigate,
-                    .navigation_id = record.id,
-                    .policy_container = container,
-                }) catch {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
-                    return;
-                };
-                defer request.deinit();
-                if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
-                fetch_mod.algorithms.csp_check.reportViolationsForRequest(request);
-                if (fetch_mod.algorithms.csp_check.shouldRequestBeBlocked(request)) {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
-                    return;
-                }
-            }
-        }
-    }
-    record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
+    // "Create navigation params by fetching" steps 3-21 for a scheme Fetch
+    // answers without the network: the request step 3 makes, fetched by main
+    // fetch - whose steps 4 and 7 report and enforce the initiator's CSP
+    // (frame-src for a frame), and whose scheme fetch answers data: (the
+    // data: URL processor; a URL it rejects is a network error) and file:
+    // (file_fetch.zig: the file, with its extension's MIME type and its
+    // Last-Modified). On the Browser's network context, so its observer hears
+    // the request as it hears an http(s) one: DevTools' Network events for a
+    // data: or file: document (Chrome 157: requestWillBeSent type Document,
+    // requestId == loaderId, responseReceived with protocol "data"/"file",
+    // loadingFinished; a data: URL the processor rejects, loadingFailed
+    // net::ERR_INVALID_URL; a missing file, net::ERR_FILE_NOT_FOUND).
+    // Only data: and file: go on the network context: any other scheme that
+    // reaches here (about:config, one with no handler) is a network error,
+    // which Chrome reports to no Network domain.
+    // With no response (out of memory even for a network error), runCommit
+    // ends the navigation.
+    const scheme = navigate_steps.schemeOf(url);
+    const observed = std.mem.eql(u8, scheme, "data") or std.mem.eql(u8, scheme, "file");
+    const request = navigation_fetch.navigationRequest(allocator, url, .{
         .destination = destination,
         .mode = .navigate,
         .navigation_id = record.id,
         .redirect = .follow,
-    }) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
+        .network = if (observed) networkOf(record.integration) else null,
+        .referrer = record.referrer,
+        .referrer_policy = record.referrer_policy,
+        .policy_container = if (record.initiator_policy_container) |*container| container else null,
+    }) catch {
+        record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+        return;
+    };
+    if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+    // Step 3: the request's origin is the initiator's (as `startFetch`'s
+    // http(s) request); a navigation with no initiator keeps "client".
+    if (record.request_origin) |origin| request.setOrigin(origin) catch {
+        request.deinit();
+        record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
+        return;
+    };
+    // Who may read a file: URL (scheme fetch "file"): a file: document's
+    // navigation, or the browser's own. A web page's navigation of the host
+    // page to one was refused before it started (`navigate`); a frame's or a
+    // popup's is a network error here, as Blink's SecurityOrigin::CanDisplay
+    // refuses a local URL to a page that cannot load local resources.
+    request.local_file_access = record.local_file_access;
+    record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
 }
 
 /// Whether two or more of `integration`'s ancestor navigables show a

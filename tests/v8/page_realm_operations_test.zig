@@ -381,9 +381,16 @@ test "requestAnimationFrame takes a callable; cancelAnimationFrame a handle in r
     try std.testing.expect(seen.realm.? == ctx);
     try std.testing.expectEqual(@as(i32, 9), try scriptInt("globalThis.handle"));
 
-    _ = try run("globalThis.none = requestAnimationFrame(3);");
+    // WebIDL: `FrameRequestCallback callback` is required and not nullable -
+    // no argument, null, a number, a plain object: a TypeError, and nothing
+    // is registered (Chrome, Firefox and Safari throw for each; zone.js's
+    // own suite asserts it: "should be tolerant of invalid arguments").
+    for ([_][]const u8{ "requestAnimationFrame();", "requestAnimationFrame(null);", "requestAnimationFrame(3);", "requestAnimationFrame({});" }) |source| {
+        const reports = try run(source);
+        try std.testing.expectEqual(@as(usize, 1), reports.count);
+        try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "TypeError") != null);
+    }
     try std.testing.expectEqual(@as(usize, 1), seen.frames);
-    try std.testing.expectEqual(@as(i32, 0), try scriptInt("globalThis.none"));
 
     _ = try run("cancelAnimationFrame(0); cancelAnimationFrame(NaN); cancelAnimationFrame('9');");
     try std.testing.expectEqual(@as(?u32, null), seen.cancelled);

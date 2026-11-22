@@ -44,6 +44,10 @@ const PuppeteerTab = struct {
     fn open(allocator: std.mem.Allocator, client: *cdp.Client, url: []const u8) !PuppeteerTab {
         const auto = try client.call("Target.setAutoAttach", "{\"autoAttach\":true,\"waitForDebuggerOnStart\":true,\"flatten\":true,\"filter\":[{\"type\":\"page\",\"exclude\":true},{}]}", "");
         auto.deinit();
+        // The tabs that exist already (the Browser's first page) were
+        // attached before the answer, not waiting (Chrome: its startup tab,
+        // vue-e2e protocol log l.9-12): not the tab this opens.
+        _ = client.dropQueued("Target.attachedToTarget");
         var params_buffer: [256]u8 = undefined;
         const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"{s}\"}}", .{url}), "");
         defer created.deinit();
@@ -65,7 +69,7 @@ const PuppeteerTab = struct {
         // The tab session's auto-attach: its page child, NOT waiting.
         const child = try client.call("Target.setAutoAttach", "{\"autoAttach\":true,\"waitForDebuggerOnStart\":true,\"flatten\":true,\"filter\":[{}]}", tab_session);
         child.deinit();
-        const page = try client.waitEvent("Target.attachedToTarget");
+        const page = try client.waitEventOn("Target.attachedToTarget", tab_session);
         defer page.deinit();
         try testing.expectEqualStrings("page", cdp.stringAt(page.value, "params.targetInfo.type").?);
         try testing.expectEqualStrings(page_id, cdp.stringAt(page.value, "params.targetInfo.targetId").?);
@@ -238,7 +242,17 @@ test "G3: one loaderId per document - a navigation's requestId is its loaderId a
 
     const listed = try client.call("Target.getTargets", "{}", "");
     defer listed.deinit();
-    const page_id = cdp.stringAt(cdp.at(listed.value, "result.targetInfos").?.array.items[0], "targetId").?;
+    // The PAGE target of the tab this test made - the newest page: the list
+    // also has the Browser's first page, and each tab's TAB target, which
+    // the first entry is (a session on it saw none of the tab's requests:
+    // the test waited for good).
+    const page_id = blk: {
+        var newest: ?[]const u8 = null;
+        for (cdp.at(listed.value, "result.targetInfos").?.array.items) |info| {
+            if (std.mem.eql(u8, cdp.stringAt(info, "type").?, "page")) newest = cdp.stringAt(info, "targetId").?;
+        }
+        break :blk newest orelse return error.NoPageTarget;
+    };
     var params_buffer: [160]u8 = undefined;
     const attached = try client.call("Target.attachToTarget", try std.fmt.bufPrint(&params_buffer, "{{\"targetId\":\"{s}\",\"flatten\":true}}", .{page_id}), "");
     defer attached.deinit();
@@ -369,6 +383,9 @@ test "G15: a new page target has title \"\" and no parentId, its tab target the 
 
     const discover = try client.call("Target.setDiscoverTargets", "{\"discover\":true,\"filter\":[{}]}", "");
     discover.deinit();
+    // The targets that exist already (the Browser's first page: its tab and
+    // page) were reported before the answer: not the ones this creates.
+    _ = client.dropQueued("Target.targetCreated");
     const url = "data:text/html,<title>Hello</title><p>x";
     var params_buffer: [160]u8 = undefined;
     const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"{s}\"}}", .{url}), "");

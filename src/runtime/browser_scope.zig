@@ -157,9 +157,10 @@ pub const BrowserScope = struct {
         font_face,
         font_face_set,
         /// dom.browser_object_lists: the Browser's IntersectionObservers
-        /// that observe something, its Navigation objects, and its
-        /// ProcessingInstructions not yet deinit'd.
+        /// and ResizeObservers that observe something, its Navigation
+        /// objects, and its ProcessingInstructions not yet deinit'd.
         intersection_observers,
+        resize_observers,
         navigations,
         processing_instructions,
         /// dom.element_name.Table: the Browser's interned element names -

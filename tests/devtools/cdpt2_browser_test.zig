@@ -148,3 +148,46 @@ test "gap 6: stopping the server while the debugger has the page paused does not
     defer after.deinit(allocator);
     try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"yes\"}", after.json);
 }
+
+// A session's attach, its messages and its detach keep their order, and all
+// three run inside a debugger pause: Blink posts a session's attach to the
+// thread that runs its messages because "devtools relies on a disconnect
+// handler for detaching and is sensitive to reordering of detach and attach"
+// (third_party/blink/renderer/core/inspector/devtools_agent.cc,
+// DevToolsAgent::AttachDevToolsSessionImpl; IOAgent::AttachDevToolsSession
+// appends it to the InspectorTaskRunner, which interrupts a paused or busy
+// V8). A second client attaching while the first holds the page paused is
+// answered, and its detach - on the stopping server - never outlives it.
+test "a session attached while the debugger has the page paused is answered inside the pause, and detaching it there is safe" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const tab = try host.createTab(.{});
+    const loaded = try host.navigate(allocator, tab, "data:text/html,<title>paused</title><script>window.after='no'</script>", .{ .wait = .complete, .timeout_ms = 10_000 });
+    allocator.free(loaded);
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    const first = try attachPage(allocator, server);
+    defer allocator.free(first.session);
+    const enabled = try first.client.call("Debugger.enable", "{}", first.session);
+    enabled.deinit();
+    const message = try std.fmt.allocPrint(allocator, "{{\"id\":900,\"method\":\"Runtime.evaluate\",\"params\":{{\"expression\":\"setTimeout(() => {{ debugger; window.after = 'yes'; }}, 10); 0\"}},\"sessionId\":\"{s}\"}}", .{first.session});
+    defer allocator.free(message);
+    try first.client.sendText(message);
+    const paused = try first.client.waitEvent("Debugger.paused");
+    paused.deinit();
+    // The page's thread sits in the paused loop now.
+    const second = try attachPage(allocator, server);
+    defer allocator.free(second.session);
+    const tree = try second.client.call("Page.getFrameTree", "{}", second.session);
+    defer tree.deinit();
+    try testing.expect(cdp.at(tree.value, "result.frameTree.frame.id") != null);
+    // Its detach runs inside the pause too, before the server's uninstall.
+    second.client.close();
+    first.client.close();
+    server.stop();
+    const after = try host.evaluate(allocator, tab, "window.after", .{}, 10_000);
+    defer after.deinit(allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"yes\"}", after.json);
+}

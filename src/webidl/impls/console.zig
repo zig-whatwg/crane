@@ -430,3 +430,33 @@ pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror
     toInspector(ctx, "dirxml", data);
     printConsoleValues(ctx, .dirxml, data);
 }
+
+// ============================================================================
+// Webcompat methods (specs/supplementary/console-webcompat.idl): no standard
+// defines them, all three browsers ship them. None prints to the console in
+// any of the three: each reaches the developer tools only.
+// ============================================================================
+
+/// console.timeStamp(data): a marker on the developer tools' performance
+/// timeline. V8's console hands it to the inspector client's timestamp
+/// hook (V8Console::TimeStamp); Runtime.consoleAPICalled has no type for
+/// it, and Chrome sends none. Chrome's extensibility arguments (start, end,
+/// track, track group, color) are extra arguments, which WebIDL ignores.
+pub fn call_timeStamp(ctx: runtime.Context, data: webidl.Opt(runtime.JSValue)) anyerror!void {
+    if (data.wasPassed()) toInspector(ctx, "timeStamp", &.{data.value}) else toInspector(ctx, "timeStamp", &.{});
+}
+
+/// console.profile(data...): starts a JavaScript CPU profile in the
+/// developer tools. V8's console hands it to each session's profiler agent
+/// (V8Console::Profile): Profiler.consoleProfileStarted where a session has
+/// Profiler on, and no Runtime.consoleAPICalled - Chrome for Testing 157
+/// sends none (lane tpf's probe).
+pub fn call_profile(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "profile", data);
+}
+
+/// console.profileEnd(data...): ends it - Profiler.consoleProfileFinished
+/// with the profile (V8Console::ProfileEnd).
+pub fn call_profileEnd(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    toInspector(ctx, "profileEnd", data);
+}

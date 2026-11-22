@@ -15,6 +15,11 @@
 //!   invocation" (a world's node wrapper is no node-anchor wrapper), so
 //!   Puppeteer's addScriptTag (`script.type = ...`) and every locator read
 //!   failed.
+//! - A file: document has localStorage and sessionStorage, one localStorage
+//!   for every file: document (Chrome 157, measured; Vue's todomvc example
+//!   page reads localStorage at mount): Crane threw SecurityError (the
+//!   spec's opaque-origin path; global_settings.storageKeyOf says why the
+//!   browsers win).
 
 const std = @import("std");
 const testing = std.testing;
@@ -118,4 +123,49 @@ test "in an isolated world a node's attributes read and write, and its nodes are
     _ = try evaluate(rec, session, "document.body.dataset.order = '', requestAnimationFrame(() => { document.body.dataset.order += 'm'; })", 0);
     const order = try evaluateWith(rec, session, "new Promise((resolve) => requestAnimationFrame(() => { document.body.dataset.order += 'w'; resolve(document.body.dataset.order); }))", context, true);
     try testing.expectEqualStrings("mw", cdp.stringAt(order, "value") orelse "(none)");
+}
+
+/// Page.navigate `session`'s tab to `url` and wait for its load event.
+fn navigateAndLoad(rec: *replay.Recorder, session: []const u8, url: []const u8) !void {
+    var buffer: [512]u8 = undefined;
+    const start = rec.log.items.len;
+    const id = try rec.send("Page.navigate", try std.fmt.bufPrint(&buffer, "{{\"url\":\"{s}\"}}", .{url}), session);
+    if (cdp.stringAt(try rec.result(id), "errorText")) |why| {
+        std.debug.print("Page.navigate {s}: {s}\n", .{ url, why });
+        return error.NavigationFailed;
+    }
+    _ = try rec.awaitEvent("Page.loadEventFired", session, start, &.{});
+}
+
+test "a file: document has localStorage and sessionStorage: one localStorage for every file: document, as Chrome's" {
+    var gpa: replay.LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(testing.io, "a");
+    try tmp.dir.createDirPath(testing.io, "b");
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "a/one.html", .data = "<p>one</p>" });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "b/two.html", .data = "<p>two</p>" });
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", allocator);
+    defer allocator.free(base);
+    const one = try std.fmt.allocPrint(allocator, "file://{s}/a/one.html", .{base});
+    defer allocator.free(one);
+    const two = try std.fmt.allocPrint(allocator, "file://{s}/b/two.html", .{base});
+    defer allocator.free(two);
+
+    const fx = try replay.Fixture.start(allocator);
+    defer fx.stop();
+    const rec = &fx.rec;
+    const session = try pageSession(allocator, rec);
+    defer allocator.free(session);
+    _ = try rec.result(try rec.send("Page.enable", "{}", session));
+
+    try navigateAndLoad(rec, session, one);
+    const first = try evaluate(rec, session, "localStorage.setItem('k', 'from one'), sessionStorage.setItem('s', '1'), localStorage.getItem('k') + ' ' + sessionStorage.getItem('s') + ' ' + self.origin", 0);
+    try testing.expectEqualStrings("from one 1 null", cdp.stringAt(first, "value") orelse "(none)");
+    // Another file: document, in another directory: the same localStorage.
+    try navigateAndLoad(rec, session, two);
+    const second = try evaluate(rec, session, "String(localStorage.getItem('k'))", 0);
+    try testing.expectEqualStrings("from one", cdp.stringAt(second, "value") orelse "(none)");
 }

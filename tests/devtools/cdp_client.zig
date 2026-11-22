@@ -313,10 +313,61 @@ pub const Client = struct {
         }
     }
 
+    /// Forget every queued event named `method` - what arrived before the
+    /// last call's answer (an auto-attach's attachments of the targets that
+    /// already exist, which Chrome sends before setAutoAttach's answer).
+    /// How many went.
+    pub fn dropQueued(self: *Client, method: []const u8) usize {
+        var dropped: usize = 0;
+        var i: usize = 0;
+        while (i < self.queued.items.len) {
+            if (isEvent(self.queued.items[i], method)) {
+                self.allocator.free(self.queued.orderedRemove(i));
+                dropped += 1;
+            } else i += 1;
+        }
+        return dropped;
+    }
+
+    /// The next `method` event sent on session `session_id` ("" for the
+    /// browser session), among those queued, then on the wire, OWNED by the
+    /// caller; the others stay queued.
+    pub fn waitEventOn(self: *Client, method: []const u8, session_id: []const u8) !std.json.Parsed(std.json.Value) {
+        var i: usize = 0;
+        while (i < self.queued.items.len) : (i += 1) {
+            if (!isEvent(self.queued.items[i], method) or !try self.sentOn(self.queued.items[i], session_id)) continue;
+            const text = self.queued.orderedRemove(i);
+            defer self.allocator.free(text);
+            return std.json.parseFromSlice(std.json.Value, self.allocator, text, .{});
+        }
+        while (true) {
+            const text = (try self.receiveFromWire()) orelse return error.ConnectionClosed;
+            if (isEvent(text, method) and try self.sentOn(text, session_id)) {
+                defer self.allocator.free(text);
+                return std.json.parseFromSlice(std.json.Value, self.allocator, text, .{});
+            }
+            try self.queued.append(self.allocator, text);
+        }
+    }
+
+    /// Whether the message `text` was sent on session `session_id` (its
+    /// top-level sessionId; none for the browser session).
+    fn sentOn(self: *Client, text: []const u8, session_id: []const u8) !bool {
+        const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, text, .{});
+        defer parsed.deinit();
+        const on = stringAt(parsed.value, "sessionId") orelse "";
+        return std.mem.eql(u8, on, session_id);
+    }
+
+    /// Whether `text` is the event `method`: a message whose first member is
+    /// its "method" (Crane writes an event's method first, a response's
+    /// "id"). Not "no `"id":` anywhere": an event's params have ids of their
+    /// own - Page.frameNavigated's frame, executionContextCreated's context -
+    /// and a wait for one of those never matched (G3 hung on frameNavigated).
     fn isEvent(text: []const u8, method: []const u8) bool {
         var needle_buffer: [128]u8 = undefined;
-        const needle = std.fmt.bufPrint(&needle_buffer, "\"method\":\"{s}\"", .{method}) catch return false;
-        return std.mem.indexOf(u8, text, needle) != null and std.mem.indexOf(u8, text, "\"id\":") == null;
+        const needle = std.fmt.bufPrint(&needle_buffer, "{{\"method\":\"{s}\"", .{method}) catch return false;
+        return std.mem.startsWith(u8, text, needle);
     }
 };
 
