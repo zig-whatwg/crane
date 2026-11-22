@@ -17,7 +17,7 @@ test "IndexedDB accepted writes execute while the transaction is committing" {
     defer allocator.destroy(request);
     defer request.deinit();
     try std.testing.expectEqual(idb.IDBTransactionState.committing, transaction.state);
-    try std.testing.expectEqualStrings("accepted", store.recordsList().items[0].value);
+    try std.testing.expectEqualStrings("accepted", (try store.recordAt(0)).?.value);
 }
 
 test "IndexedDB internal abort can roll back a committing transaction" {

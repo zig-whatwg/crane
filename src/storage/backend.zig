@@ -1,7 +1,11 @@
 //! Storage Backend Interface
 //!
-//! This module defines the unified storage backend abstraction that supports
-//! SQLite, LevelDB, and Memory backends for IndexedDB and Storage Standard implementations.
+//! This module defines the legacy storage backend abstraction and its one
+//! implementation, the in-memory MemoryBackend. A Browser's stores go
+//! through the platform protocol's storage engine instead (docs/
+//! platform-protocol.md 6.6: kit/memory_store, or kit/sqlite under a profile
+//! directory - the user's ruling D6, 2026-11-21); the SQLite and LevelDB
+//! backends were retired (lane prof1, D6 step 6).
 //!
 //! ## Design Principles
 //!
@@ -12,8 +16,6 @@
 //!
 //! ## Backend Implementations
 //!
-//! - **SQLite**: Default for iOS/Android (system-provided, zero cost)
-//! - **LevelDB**: Default for desktop (best performance)
 //! - **Memory**: For testing and ephemeral storage
 //!
 //! ## Usage Example
@@ -43,9 +45,6 @@
 //!
 //! ## TODO(Storage Backend)
 //!
-//! - Implement SQLite backend
-//! - Implement LevelDB backend
-//! - Implement Memory backend
 //! - Add quota management
 //! - Add encryption support
 //!
@@ -312,7 +311,7 @@ pub const DatabaseInfo = struct {
 /// Unified storage backend interface
 ///
 /// This vtable-based interface allows runtime backend selection while maintaining
-/// type safety and performance. All backends (SQLite, LevelDB, Memory) implement
+/// type safety and performance. The Memory backend implements
 /// this interface.
 ///
 /// ## VTable Pattern and Type Erasure
@@ -371,8 +370,6 @@ pub const StorageBackend = struct {
         ///
         /// Opens or creates a database at the specified path.
         /// Backend-specific path handling:
-        /// - SQLite: Creates .sqlite file at path
-        /// - LevelDB: Creates directory at path
         /// - Memory: Path is used as key in global map
         ///
         /// Returns: void on success, BackendError on failure
@@ -650,13 +647,9 @@ pub const IndexOptions = struct {
 
 /// Backend type selector
 pub const BackendType = enum {
-    /// SQLite backend (best for iOS/Android, ACID, widely compatible)
-    sqlite,
-
-    /// LevelDB backend (best for desktop, fastest for simple key-value)
-    leveldb,
-
-    /// In-memory backend (for testing, no persistence)
+    /// In-memory backend (for testing, no persistence). The SQLite and
+    /// LevelDB backends were retired (D6 step 6): a Browser's persistent
+    /// stores are the platform protocol's (6.6), kit/sqlite.
     memory,
 
     /// Automatic selection based on platform
@@ -690,19 +683,9 @@ pub const Platform = enum {
 
     /// Get recommended backend for this platform
     pub fn recommendedBackend(self: Platform) BackendType {
-        return switch (self) {
-            // Mobile: Use SQLite (system-provided, zero cost)
-            .ios, .android => .sqlite,
-
-            // Desktop: Use LevelDB (best performance)
-            .macos, .linux, .windows => .leveldb,
-
-            // WASM: Use Memory (no persistent storage available)
-            .wasm => .memory,
-
-            // Unknown: Fall back to Memory for safety
-            .unknown => .memory,
-        };
+        // The one legacy backend left; persistence is the platform's (6.6).
+        _ = self;
+        return .memory;
     }
 };
 
@@ -728,7 +711,7 @@ const backends = @import("backends/root.zig");
 ///
 /// Usage:
 /// ```zig
-/// const backend = try createBackend(allocator, .sqlite);
+/// const backend = try createBackend(allocator, .memory);
 /// defer backend.destroy();
 /// ```
 pub fn createBackend(allocator: std.mem.Allocator, backend_type: BackendType) BackendError!StorageBackend {
@@ -738,8 +721,6 @@ pub fn createBackend(allocator: std.mem.Allocator, backend_type: BackendType) Ba
     };
 
     return switch (effective_type) {
-        .sqlite => backends.SQLiteBackend.create(allocator),
-        .leveldb => backends.LevelDBBackend.create(allocator),
         .memory => backends.MemoryBackend.create(allocator),
         .auto => unreachable, // Already resolved above
     };
@@ -750,7 +731,7 @@ pub fn createBackend(allocator: std.mem.Allocator, backend_type: BackendType) Ba
 /// Usage:
 /// ```zig
 /// const backend = try createBackendWithConfig(allocator, .{
-///     .backend_type = .sqlite,
+///     .backend_type = .memory,
 ///     .debug = true,
 /// });
 /// defer backend.destroy();
@@ -773,12 +754,8 @@ pub fn getDefaultBackendType() BackendType {
 
 /// Check if a backend type is available on this platform
 ///
-/// Note: Currently all backends are compiled in. This function
-/// is for future use when we may conditionally compile backends.
 pub fn isBackendAvailable(backend_type: BackendType) bool {
     return switch (backend_type) {
-        .sqlite => true, // SQLite stub always available
-        .leveldb => true, // LevelDB stub always available
         .memory => true, // Memory always available
         .auto => true, // Auto always resolves to something
     };
@@ -843,9 +820,7 @@ test "Platform.recommendedBackend returns valid backend" {
 
     for (platforms) |platform| {
         const backend_type = platform.recommendedBackend();
-        try std.testing.expect(backend_type == .sqlite or
-            backend_type == .leveldb or
-            backend_type == .memory);
+        try std.testing.expect(backend_type == .memory);
     }
 }
 
@@ -856,8 +831,6 @@ test "getDefaultBackendType returns non-auto" {
 
 test "isBackendAvailable" {
     try std.testing.expect(isBackendAvailable(.memory));
-    try std.testing.expect(isBackendAvailable(.sqlite));
-    try std.testing.expect(isBackendAvailable(.leveldb));
     try std.testing.expect(isBackendAvailable(.auto));
 }
 
@@ -885,7 +858,7 @@ test "createBackendWithConfig force_memory" {
     const allocator = std.testing.allocator;
 
     const backend = try createBackendWithConfig(allocator, .{
-        .backend_type = .leveldb,
+        .backend_type = .auto,
         .force_memory = true, // Should override backend_type
     });
     defer backend.destroy();

@@ -110,8 +110,8 @@ test "IndexedDB cursor update recreates a removed current record" {
     defer allocator.destroy(clear);
     const updated = try cursor.update("after");
     defer allocator.destroy(updated);
-    try std.testing.expectEqual(@as(usize, 1), store.recordsList().items.len);
-    try std.testing.expectEqualStrings("after", store.recordsList().items[0].value);
+    try std.testing.expectEqual(@as(usize, 1), (try store.recordCount(null)));
+    try std.testing.expectEqualStrings("after", (try store.recordAt(0)).?.value);
 }
 
 fn cursorDeleteWalk(allocator: std.mem.Allocator) !void {
@@ -131,11 +131,11 @@ fn cursorDeleteWalk(allocator: std.mem.Allocator) !void {
     transaction.requests.deinit(allocator);
     transaction.requests = .empty;
     const deleted = cursor.delete() catch |err| {
-        try std.testing.expectEqual(@as(usize, 1), store.recordsList().items.len);
+        try std.testing.expectEqual(@as(usize, 1), (try store.recordCount(null)));
         return err;
     };
     defer allocator.destroy(deleted);
-    try std.testing.expectEqual(@as(usize, 0), store.recordsList().items.len);
+    try std.testing.expectEqual(@as(usize, 0), (try store.recordCount(null)));
 }
 
 test "IndexedDB cursor delete allocation failure leaves records intact" {

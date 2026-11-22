@@ -326,11 +326,19 @@ fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const transaction = internal.transaction orelse return error.InvalidStateError;
     // Aborting an upgrade 5.8 and committing 5.4: dispatch after state is finished.
-    const aborted = abort or internal.aborted or transaction.err != null;
+    var aborted = abort or internal.aborted or transaction.err != null;
     internal.aborted = aborted;
     if (internal.finish_event_fired) return !aborted;
     if (transaction.state != .finished) {
-        if (aborted) try transaction.abortForError(transaction.err orelse error.AbortError) else try transaction.commit();
+        if (aborted) try transaction.abortForError(transaction.err orelse error.AbortError) else {
+            try transaction.commit();
+            // ED 5.4 step 3.1: writing the changes failed, so the commit
+            // aborted the transaction instead - it fires "abort".
+            if (transaction.err != null) {
+                aborted = true;
+                internal.aborted = true;
+            }
+        }
     }
     if (transaction.mode == .versionchange) dom.indexeddb.endUpgrade(internal.database.?);
     internal.finish_event_fired = true;

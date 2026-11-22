@@ -20,8 +20,8 @@ test "IndexedDB unique failure leaves earlier indexes unchanged" {
     try indexes[1].addEntry(idb.IDBKey.string("duplicate"), idb.IDBKey.number(1));
     const properties = [_]idb.ExtractedValue.Property{.{ .key = "key", .value = .{ .string = "duplicate" } }};
     try std.testing.expectError(error.ConstraintError, idb.updateIndexesForRecord(allocator, &indexes, .{ .object = &properties }, idb.IDBKey.number(2)));
-    try std.testing.expectEqual(@as(usize, 0), indexes[0].entriesList().items.len);
-    try std.testing.expectEqual(@as(usize, 1), indexes[1].entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 0), (try indexes[0].entryCount(null)));
+    try std.testing.expectEqual(@as(usize, 1), (try indexes[1].entryCount(null)));
 }
 
 test "IndexedDB multiEntry constraint failure publishes no partial subkeys" {
@@ -38,7 +38,7 @@ test "IndexedDB multiEntry constraint failure publishes no partial subkeys" {
     try index.addEntry(idb.IDBKey.string("duplicate"), idb.IDBKey.number(1));
     const keys = [_]idb.IDBKey{ idb.IDBKey.string("new"), idb.IDBKey.string("duplicate") };
     try std.testing.expectError(error.ConstraintError, idb.addIndexEntries(&index, .{ .multi_keys = &keys }, idb.IDBKey.number(2)));
-    try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
 }
 
 test "IndexedDB indexes order equal index keys by primary key" {
@@ -79,10 +79,10 @@ fn updateAllocationWalk(allocator: std.mem.Allocator) !void {
     for (&indexes) |*index| index.key_path = "key";
     const properties = [_]idb.ExtractedValue.Property{.{ .key = "key", .value = .{ .string = "entry" } }};
     idb.updateIndexesForRecord(allocator, &indexes, .{ .object = &properties }, idb.IDBKey.string("primary")) catch |err| {
-        for (&indexes) |*index| try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
+        for (&indexes) |*index| try std.testing.expectEqual(@as(usize, 0), (try index.entryCount(null)));
         return err;
     };
-    for (&indexes) |*index| try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
+    for (&indexes) |*index| try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
 }
 
 test "IndexedDB index allocation failure publishes no partial update" {

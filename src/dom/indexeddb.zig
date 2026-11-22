@@ -281,9 +281,16 @@ pub fn executeStorageWrite(realm: runtime.Context, store: *storage.indexeddb.IDB
     }
     const native = if (operation.kind == .add) try store.add(bytes, key) else try store.put(bytes, key);
     // Steps 3 and 5.5-5.6: old entries disappear even if extraction failed.
+    // All of it is the transaction's write batch (storage.indexeddb.
+    // backing_store): a failure here leaves the request failed, and an
+    // abort drops every part.
+    errdefer {
+        native.deinit();
+        native.allocator.destroy(native);
+    }
     for (handles, staged) |index, *entries| {
-        index.removeEntriesForPrimaryKey(key);
-        entries.commit(index);
+        try index.removeEntriesForPrimaryKey(key);
+        try entries.commit(index);
     }
     return native;
 }
@@ -291,7 +298,18 @@ pub fn executeStorageWrite(realm: runtime.Context, store: *storage.indexeddb.IDB
 /// createIndex's asynchronous population runs at its own position in the
 /// upgrade FIFO. A failure aborts the transaction; it fires no request event.
 pub fn populateIndex(realm: runtime.Context, index: *storage.indexeddb.IDBIndex) anyerror!void {
-    for (index.object_store.recordsList().items) |record| {
+    // Every record of the store, in key order, read from the backing store
+    // one at a time: each step seeks past the last, since writing the
+    // record's entries changes the batch a walk would read.
+    const store = index.object_store;
+    var after: ?storage.indexeddb.IDBKey = null;
+    defer if (after) |*key| key.deinit();
+    while (true) {
+        const range: storage.indexeddb.IDBKeyRange = if (after) |key| .{ .lower = key, .upper = null, .lower_open = true, .upper_open = true, .allocator = null } else storage.indexeddb.IDBKeyRange.unbounded();
+        const record = (try store.firstRecord(index.allocator, range)) orelse return;
+        defer index.allocator.free(record.value);
+        if (after) |*old| old.deinit();
+        after = record.key;
         const value = try engine.structuredDeserialize(realm, record.value);
         defer value.release();
         var key = try extractIndexKey(realm, index, value.value, index.allocator) orelse continue;
@@ -299,7 +317,7 @@ pub fn populateIndex(realm: runtime.Context, index: *storage.indexeddb.IDBIndex)
         const keys: []const storage.indexeddb.IDBKey = if (index.multi_entry and key.key_type == .array) key.value.array else &.{key};
         var staged = try index.prepareEntries(keys, record.key);
         defer staged.deinit();
-        staged.commit(index);
+        try staged.commit(index);
     }
 }
 

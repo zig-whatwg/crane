@@ -36,8 +36,8 @@ test "IndexedDB clear allocation failure leaves records intact" {
     defer allocator.destroy(write);
     failing.fail_index = failing.alloc_index;
     try std.testing.expectError(error.OutOfMemory, store.clear());
-    try std.testing.expectEqual(@as(usize, 1), store.recordsList().items.len);
-    try std.testing.expectEqualStrings("value", store.recordsList().items[0].value);
+    try std.testing.expectEqual(@as(usize, 1), (try store.recordCount(null)));
+    try std.testing.expectEqualStrings("value", (try store.recordAt(0)).?.value);
 }
 
 fn readIndex(allocator: std.mem.Allocator) !void {

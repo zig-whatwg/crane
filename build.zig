@@ -29,115 +29,6 @@ comptime {
 }
 
 // ============================================================================
-// Platform-Specific Storage Backend Configuration (Phase 9)
-// ============================================================================
-
-/// Configure storage backend library linking based on target platform
-///
-/// Phase 9.1: iOS SQLite Integration - Uses system-provided SQLite
-/// Phase 9.2: Android SQLite Integration - Uses system-provided SQLite
-/// Phase 9.3: Desktop LevelDB Static Linking - Statically links LevelDB
-///
-/// Platform Strategy:
-/// - iOS: System SQLite (always available, zero binary size cost)
-/// - Android: System SQLite (NDK provides libsqlite3)
-/// - macOS: Homebrew SQLite + LevelDB (development), system SQLite (production)
-/// - Linux: System SQLite + LevelDB via pkg-config
-/// - Windows: Bundled SQLite + LevelDB (static linking)
-/// - WASM: Memory backend only (no native libraries)
-fn configureStorageBackends(
-    module: *std.Build.Module,
-    target: std.Build.ResolvedTarget,
-) void {
-    const os = target.result.os.tag;
-    const cpu_arch = target.result.cpu.arch;
-
-    // Detect if this is an Android build (Linux ABI with Android)
-    const is_android = os == .linux and target.result.abi == .android;
-
-    if (os == .ios) {
-        // ====================================================================
-        // Phase 9.1: iOS SQLite Integration
-        // ====================================================================
-        // iOS provides SQLite as a system framework - no additional linking needed
-        // The SQLite C API is available via libsqlite3.tbd
-        module.linkSystemLibrary("sqlite3", .{});
-        // Note: On iOS, SQLite is part of the SDK, no path configuration needed
-
-        // LevelDB is not used on iOS (SQLite is the default backend)
-        // Memory backend is always available as fallback
-
-    } else if (is_android) {
-        // ====================================================================
-        // Phase 9.2: Android SQLite Integration
-        // ====================================================================
-        // Android NDK provides libsqlite3.so
-        // Link against the system SQLite library
-        module.linkSystemLibrary("sqlite3", .{});
-        // Note: Android's SQLite is provided by the system, linked dynamically
-
-        // LevelDB is not used on Android (SQLite is the default backend)
-        // Memory backend is always available as fallback
-
-    } else if (os == .macos) {
-        // ====================================================================
-        // macOS: Homebrew development / System production
-        // ====================================================================
-        // For development on macOS with Homebrew-installed libraries
-        // Production builds could use system SQLite or bundled libraries
-
-        // SQLite: Use Homebrew installation (development)
-        // System SQLite is also available at /usr/lib/libsqlite3.dylib
-        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-        module.linkSystemLibrary("sqlite3", .{});
-
-        // Phase 9.3: LevelDB Static Linking for Desktop
-        // Use Homebrew LevelDB (static library preferred)
-        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/lib" });
-        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/include" });
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (os == .linux) {
-        // ====================================================================
-        // Linux: System libraries via pkg-config
-        // ====================================================================
-        // Most Linux distributions provide SQLite and LevelDB packages
-
-        // SQLite: System library (libsqlite3-dev on Debian/Ubuntu)
-        module.linkSystemLibrary("sqlite3", .{});
-
-        // Phase 9.3: LevelDB Static Linking for Desktop
-        // System library (libleveldb-dev on Debian/Ubuntu)
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (os == .windows) {
-        // ====================================================================
-        // Windows: Static linking with bundled libraries
-        // ====================================================================
-        // Windows builds typically bundle SQLite and LevelDB statically
-        // TODO: Add paths to bundled Windows libraries when available
-
-        // For now, attempt system library linking (MSYS2, vcpkg, etc.)
-        module.linkSystemLibrary("sqlite3", .{});
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (cpu_arch == .wasm32 or cpu_arch == .wasm64) {
-        // ====================================================================
-        // WASM: Memory backend only
-        // ====================================================================
-        // No native SQLite or LevelDB available in WASM
-        // The Memory backend will be used automatically
-        // No library linking needed
-
-    } else {
-        // ====================================================================
-        // Unknown/Other platforms: Best effort
-        // ====================================================================
-        // Attempt system library linking, fall back to memory backend at runtime
-        module.linkSystemLibrary("sqlite3", .{});
-        module.linkSystemLibrary("leveldb", .{});
-    }
-}
-
-// ============================================================================
 // Static libcurl Configuration for Fetch Module
 // ============================================================================
 
@@ -1975,23 +1866,37 @@ fn addTestFilesFromDir(
     runs_engine: bool,
     select: TestSelection,
 ) !void {
+    _ = try addTestFilesFromDirCompile(builder, step, dir_path, target, modules, runs_engine, select);
+}
+
+/// `addTestFilesFromDir`, answering the directory's test executable (null
+/// when it has none of its own: no test files, or -Dtest-binaries=engine
+/// joined it) - what a compile-only step (check-storage-tests) builds.
+fn addTestFilesFromDirCompile(
+    builder: *std.Build,
+    step: *std.Build.Step,
+    dir_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    modules: []const std.Build.Module.Import,
+    runs_engine: bool,
+    select: TestSelection,
+) !?*std.Build.Step.Compile {
     const allocator = builder.allocator;
     const io = builder.graph.io;
     recordSuiteDir(builder, select, dir_path);
 
     if (select.file) |file| {
-        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return null;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
-        return;
+        return addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
     }
 
     var dir = builder.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         // Directory might not exist yet, skip silently - until it does.
         if (err == error.FileNotFound) {
             select.inputs.absent(builder, dir_path);
-            return;
+            return null;
         }
         return err;
     };
@@ -2009,7 +1914,7 @@ fn addTestFilesFromDir(
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         try files.append(allocator, try allocator.dupe(u8, entry.path));
     }
-    if (files.items.len == 0) return;
+    if (files.items.len == 0) return null;
     std.mem.sort([]const u8, files.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -2053,10 +1958,11 @@ fn addTestFilesFromDir(
             .runs_engine = runs_engine,
             .target = target,
         });
-        return;
+        return null;
     };
     const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, runs_engine, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
+    return test_exe;
 }
 
 /// -Dtest-binaries=engine, at the end of the build: the members that link the engine,
@@ -2323,8 +2229,8 @@ fn addCompileCheck(
     return check;
 }
 
-/// The system libraries a module graph names (configureStorageBackends:
-/// sqlite3 and leveldb on Linux) are resolved when the compiler starts, even
+/// The system libraries a module graph names (kit/sqlite's sqlite3, through
+/// the platform's build declaration) are resolved when the compiler starts, even
 /// for a compile that links nothing (-fno-emit-bin). The compiler searches
 /// the build machine's own library directories only for a target that leaves
 /// both its OS and its ABI to the build machine; a target that names either
@@ -2349,7 +2255,7 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
     const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
     if (target.result.os.tag != .linux or !names_os_or_abi) return;
     const empty = b.addWriteFiles().add("stub.zig", "");
-    for ([_][]const u8{ "sqlite3", "leveldb" }) |library| {
+    for ([_][]const u8{"sqlite3"}) |library| {
         const stub = b.addLibrary(.{
             .name = library,
             .linkage = .dynamic,
@@ -3443,6 +3349,11 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+    // The storage engines' test executables, compiled and not run (lane
+    // prof1, the integrator 2026-11-21 9:03 PM ET: a compile break in a test
+    // hides where no step builds it): src/storage, tests/storage,
+    // src/cookiestore, src/platform, tests/platform and tests/browser.
+    const check_storage_tests = b.step("check-storage-tests", "Compile the storage, cookie, platform and browser test executables (nothing runs)");
 
     // tools/test_launcher runs EVERY test executable (addSuiteRun): seeded
     // batches of child processes over the Zig test runner's protocol, a
@@ -4383,6 +4294,7 @@ pub fn build(b: *std.Build) void {
         const storage_tests = b.addTest(.{ .root_module = testing_graph.storage });
         const run_storage_tests = addSuiteRun(b, launch, storage_tests, "src-storage", null);
         test_step.dependOn(&run_storage_tests.step);
+        check_storage_tests.dependOn(&storage_tests.step);
 
         // Add dedicated test files from tests/storage/
         const storage_imports = [_]std.Build.Module.Import{
@@ -4392,14 +4304,16 @@ pub fn build(b: *std.Build) void {
             // infra.tombstones: the slot counts of storage's long-lived maps.
             .{ .name = "infra", .module = testing_graph.infra },
         };
-        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
     }
 
     // CookieStore tests (WHATWG Cookie Store API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
         const cookiestore_tests = b.addTest(.{ .root_module = testing_graph.cookiestore });
+        check_storage_tests.dependOn(&cookiestore_tests.step);
         const run_cookiestore_tests = addSuiteRun(b, launch, cookiestore_tests, "src-cookiestore", null);
         test_step.dependOn(&run_cookiestore_tests.step);
 
@@ -4544,6 +4458,7 @@ pub fn build(b: *std.Build) void {
     // Platform tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
+        check_storage_tests.dependOn(&platform_tests.step);
         const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
         test_step.dependOn(&run_platform_tests.step);
 
@@ -4585,9 +4500,10 @@ pub fn build(b: *std.Build) void {
                 break :stack_overflow_fixtures options.createModule();
             } },
         };
-        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
 
         // TRANSITIONAL: the old platform code step 0 keeps, compiled until each
         // recipes step that replaces it retires it (tests/platform/
@@ -4760,9 +4676,10 @@ pub fn build(b: *std.Build) void {
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
     };
-    addTestFilesFromDir(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| {
+    if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
-    };
+        break :blk null;
+    }) |exe| check_storage_tests.dependOn(&exe.step);
 
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
@@ -4889,9 +4806,6 @@ pub fn build(b: *std.Build) void {
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, full_static_lib.root_module, .{});
 
-    // Configure storage backends
-    configureStorageBackends(lib_exports_mod, target);
-
     b.installArtifact(full_static_lib);
 
     // The C ABI's own tests - a browser created and destroyed through it under
@@ -4953,9 +4867,6 @@ pub fn build(b: *std.Build) void {
     crane_mod.addImport("intl", intl_mod);
     crane_mod.addImport("platform", platform_mod);
 
-    // Configure storage backends
-    configureStorageBackends(crane_mod, target);
-
     // ---- Crane Static Library (libcrane.a) ----
     const crane_lib = b.addLibrary(.{
         .linkage = .static,
@@ -5004,9 +4915,6 @@ pub fn build(b: *std.Build) void {
 
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, crane_exe.root_module, .{});
-
-    // Configure storage backends for executable
-    configureStorageBackends(crane_exe.root_module, target);
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
@@ -7561,12 +7469,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     storage_mod.addImport("clock", clock_mod);
     storage_mod.addImport("host", host_mod);
     storage_mod.addImport("infra", infra_mod);
-
-    // Configure platform-specific storage backend linking (Phase 9)
-    // - iOS: System SQLite (Phase 9.1)
-    // - Android: System SQLite (Phase 9.2)
-    // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
-    configureStorageBackends(storage_mod, target);
 
     // CookieStore module (WHATWG Cookie Store API)
     const cookiestore_mod = graphModule(b, public, "cookiestore", .{

@@ -31,6 +31,7 @@ const IDBKey = @import("key.zig").IDBKey;
 const IDBKeyRange = @import("key_range.zig").IDBKeyRange;
 const IDBError = @import("errors.zig").IDBError;
 const compareKeys = @import("key.zig").compare;
+const backing_store = @import("backing_store.zig");
 
 /// Cursor direction
 /// https://w3c.github.io/IndexedDB/#cursor-direction
@@ -69,7 +70,10 @@ pub const IDBCursor = struct {
     /// Cursor direction
     direction: IDBCursorDirection,
 
-    /// Current position (index into records)
+    /// Whether the cursor has a position (`key`, `primary_key`): null once
+    /// it ran past its range. The position itself is a key, never an index -
+    /// writes under the cursor move nothing (IDB 6.7 step 9: "search by
+    /// key/primary position every time").
     position: ?usize,
 
     /// Current key
@@ -113,7 +117,7 @@ pub const IDBCursor = struct {
 
         // Position cursor at first matching record
         errdefer cursor.deinit();
-        _ = try cursor.seek(false);
+        _ = try cursor.seek(.first);
 
         return cursor;
     }
@@ -141,7 +145,7 @@ pub const IDBCursor = struct {
 
         // Position cursor at first matching entry
         errdefer cursor.deinit();
-        _ = try cursor.seek(false);
+        _ = try cursor.seek(.first);
 
         return cursor;
     }
@@ -198,21 +202,6 @@ pub const IDBCursor = struct {
         self.primary_key = null;
         self.value = null;
     }
-    fn setSnapshot(self: *Self, position: usize, key: IDBKey, primary: IDBKey, value: ?[]const u8) IDBError!void {
-        var copied_key = try key.clone(self.allocator);
-        errdefer copied_key.deinit();
-        var copied_primary = try primary.clone(self.allocator);
-        errdefer copied_primary.deinit();
-        const copied_value = if (!self.key_only and value != null) try self.allocator.dupe(u8, value.?) else null;
-        // IDB 6.7 steps 10-14: publish only after every snapshot allocation succeeds.
-        self.clearSnapshot();
-        self.position = position;
-        self.key = copied_key;
-        self.primary_key = copied_primary;
-        self.value = copied_value;
-        self.got_value = true;
-    }
-
     /// Advance cursor by count positions
     /// https://w3c.github.io/IndexedDB/#dom-idbcursor-advance
     ///
@@ -298,19 +287,12 @@ pub const IDBCursor = struct {
         // Step 5: Set cursor's got value flag to false
         self.got_value = false;
 
-        // Step 6: Iterate cursor
+        // Step 6: Iterate cursor - to the first position at or past `key`
+        // in its direction, past its own position (step 4 made sure `key`
+        // lies beyond it), in one seek.
         if (key) |k| {
-            // Continue to specific key
-            while (try self.moveToNext()) {
-                if (self.key) |current_key| {
-                    const cmp = compareKeys(current_key, k);
-                    if (self.direction == .next or self.direction == .nextunique) {
-                        if (cmp >= 0) break;
-                    } else {
-                        if (cmp <= 0) break;
-                    }
-                }
-            }
+            if (self.position == null) return;
+            _ = try self.seek(.{ .at_key = k });
         } else {
             // Continue to next
             _ = try self.moveToNext();
@@ -390,27 +372,10 @@ pub const IDBCursor = struct {
         // Step 19: Set cursor's got value flag to false
         self.got_value = false;
 
-        // Step 20: Iterate cursor to find matching keys
-        while (try self.moveToNext()) {
-            if (self.key != null and self.primary_key != null) {
-                const key_cmp = compareKeys(self.key.?, key);
-                const pk_cmp = compareKeys(self.primary_key.?, primary_key);
-
-                if (self.direction == .next) {
-                    // For "next": find first record where key >= target key
-                    // and if key == target key, primaryKey >= target primaryKey
-                    if (key_cmp > 0 or (key_cmp == 0 and pk_cmp >= 0)) {
-                        break;
-                    }
-                } else {
-                    // For "prev": find first record where key <= target key
-                    // and if key == target key, primaryKey <= target primaryKey
-                    if (key_cmp < 0 or (key_cmp == 0 and pk_cmp <= 0)) {
-                        break;
-                    }
-                }
-            }
-        }
+        // Step 20: Iterate cursor to the first entry at or past (key,
+        // primaryKey) in its direction, in one seek.
+        if (self.position == null) return;
+        _ = try self.seek(.{ .at_key_primary = .{ .key = key, .primary = primary_key } });
     }
 
     /// Update current record
@@ -510,56 +475,156 @@ pub const IDBCursor = struct {
 
     fn moveToNext(self: *Self) IDBError!bool {
         if (self.position == null) return false;
-        return self.seek(true);
+        return self.seek(.past_position);
     }
-    fn afterPosition(self: *Self, key: IDBKey, primary: IDBKey, advancing: bool) bool {
-        if (!self.matchesRange(key)) return false;
-        if (!advancing) return true;
-        const order = compareKeys(key, self.key.?);
-        const reverse = self.direction == .prev or self.direction == .prevunique;
-        if (order != 0) return if (reverse) order < 0 else order > 0;
-        if (self.source == .object_store or self.direction == .nextunique or self.direction == .prevunique) return false;
-        const primary_order = compareKeys(primary, self.primary_key.?);
-        return if (reverse) primary_order < 0 else primary_order > 0;
+
+    /// Where a seek looks from.
+    const Target = union(enum) {
+        /// The first position in the range.
+        first,
+        /// Past the current position in the cursor's direction (a unique
+        /// direction past every entry of the current key).
+        past_position,
+        /// continue(key): the first position at or past `key`.
+        at_key: IDBKey,
+        /// continuePrimaryKey(key, primaryKey).
+        at_key_primary: struct { key: IDBKey, primary: IDBKey },
+    };
+
+    fn reverse(self: *const Self) bool {
+        return self.direction == .prev or self.direction == .prevunique;
     }
-    fn seek(self: *Self, advancing: bool) IDBError!bool {
-        const reverse = self.direction == .prev or self.direction == .prevunique;
-        // IDB 6.7 step 9: search by key/primary position every time. A record
-        // index cannot be a cursor position: writes insert/delete earlier rows.
+
+    /// Append `key`'s encoding to `out` after `prefix`.
+    fn keyedBound(out: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, prefix: []const u8, keys: []const IDBKey) IDBError!void {
+        out.clearRetainingCapacity();
+        try out.appendSlice(alloc, prefix);
+        for (keys) |key| try backing_store.appendKey(out, alloc, key);
+    }
+
+    /// The end of every key starting with `out`'s bytes, in `out`.
+    fn toPrefixEnd(out: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator) IDBError!void {
+        const start = try alloc.dupe(u8, out.items);
+        defer alloc.free(start);
+        out.clearRetainingCapacity();
+        try backing_store.prefixEnd(out, alloc, start);
+    }
+
+    /// The bound `target` adds to the range, in the transaction's aux
+    /// buffers: past the position, or at a target. `prefix` is the
+    /// source's (03 db store, or 04 db store index).
+    fn targetBounds(self: *Self, txn: *backing_store.Transaction, prefix: []const u8, target: Target) IDBError!backing_store.Bounds {
+        const alloc = txn.gpa();
+        const lower = txn.buffer(.aux_lower);
+        const upper = txn.buffer(.aux_upper);
+        const index_source = self.source == .index;
+        switch (target) {
+            .first => return .{},
+            .past_position => {
+                const key = self.key.?;
+                const unique = self.direction == .nextunique or self.direction == .prevunique;
+                // An index position is (key, primary key); a unique walk
+                // moves past every entry of the key.
+                const position: []const IDBKey = if (index_source and !unique) &.{ key, self.primary_key.? } else &.{key};
+                if (self.reverse()) {
+                    try keyedBound(upper, alloc, prefix, position);
+                    return .{ .upper = upper.items, .upper_open = true };
+                }
+                try keyedBound(lower, alloc, prefix, position);
+                if (index_source and unique) {
+                    try toPrefixEnd(lower, alloc);
+                } else try lower.append(alloc, 0x00);
+                return .{ .lower = lower.items };
+            },
+            .at_key => |key| {
+                if (self.reverse()) {
+                    try keyedBound(upper, alloc, prefix, &.{key});
+                    try toPrefixEnd(upper, alloc);
+                    return .{ .upper = upper.items, .upper_open = true };
+                }
+                try keyedBound(lower, alloc, prefix, &.{key});
+                return .{ .lower = lower.items };
+            },
+            .at_key_primary => |at| {
+                if (self.reverse()) {
+                    try keyedBound(upper, alloc, prefix, &.{ at.key, at.primary });
+                    try upper.append(alloc, 0x00);
+                    return .{ .upper = upper.items, .upper_open = true };
+                }
+                try keyedBound(lower, alloc, prefix, &.{ at.key, at.primary });
+                return .{ .lower = lower.items };
+            },
+        }
+    }
+
+    /// IDB 6.7 "iterate a cursor" steps 1-9, by one seek of the transaction's
+    /// merged view (its snapshot and its own writes): the first record, or
+    /// index entry, in range and past the target in the cursor's direction.
+    fn seek(self: *Self, target: Target) IDBError!bool {
+        const store = switch (self.source) {
+            .object_store => |s| s,
+            .index => |index| index.object_store,
+        };
+        const txn = try store.backing();
+        const alloc = self.allocator;
+        const direction: backing_store.Direction = if (self.reverse()) .reverse else .forward;
         switch (self.source) {
-            .object_store => |store| {
-                const records = store.recordsList().items;
-                var offset: usize = 0;
-                while (offset < records.len) : (offset += 1) {
-                    const i = if (reverse) records.len - 1 - offset else offset;
-                    const record = records[i];
-                    if (!self.afterPosition(record.key, record.key, advancing)) continue;
-                    try self.setSnapshot(i, record.key, record.key, record.value);
-                    return true;
+            .object_store => {
+                const base = try store.recordBoundsIn(txn, self.range);
+                const prefix = txn.scratch[@backingInt(backing_store.Transaction.Slot.prefix)].items;
+                const bounds = backing_store.intersect(base, try self.targetBounds(txn, prefix, target));
+                if (!backing_store.empty(bounds)) {
+                    if (txn.first(alloc, bounds, direction) catch |err| return backing_store.idbError(err)) |entry| {
+                        defer alloc.free(entry.key);
+                        errdefer alloc.free(entry.value);
+                        var reader: backing_store.Reader = .{ .bytes = entry.key, .at = prefix.len };
+                        var key = reader.key(alloc) catch |err| return backing_store.idbError(err);
+                        errdefer key.deinit();
+                        const primary = try key.clone(alloc);
+                        const value: ?[]u8 = if (self.key_only) blk: {
+                            alloc.free(entry.value);
+                            break :blk null;
+                        } else entry.value;
+                        self.setSnapshotOwned(key, primary, value);
+                        return true;
+                    }
                 }
             },
             .index => |index| {
-                const entries = index.entriesList().items;
-                var offset: usize = 0;
-                while (offset < entries.len) : (offset += 1) {
-                    var i = if (reverse) entries.len - 1 - offset else offset;
-                    var entry = entries[i];
-                    if (!self.afterPosition(entry.index_key, entry.primary_key, advancing)) continue;
-                    // Step 9.1 prevunique: choose the FIRST record with this key,
-                    // hence the lowest primary key, in both unique directions.
-                    if (self.direction == .prevunique) {
-                        while (i > 0 and compareKeys(entries[i - 1].index_key, entry.index_key) == 0) i -= 1;
-                        entry = entries[i];
-                    }
-                    var value: ?[]const u8 = null;
-                    for (index.object_store.recordsList().items) |record| {
-                        if (compareKeys(record.key, entry.primary_key) == 0) {
-                            value = record.value;
-                            break;
+                const base = try index.entryBoundsIn(txn, self.range);
+                const prefix = txn.scratch[@backingInt(backing_store.Transaction.Slot.prefix)].items;
+                const bounds = backing_store.intersect(base, try self.targetBounds(txn, prefix, target));
+                if (!backing_store.empty(bounds)) {
+                    if (txn.first(alloc, bounds, direction) catch |err| return backing_store.idbError(err)) |entry| {
+                        var decoded = blk: {
+                            defer entry.deinit(alloc);
+                            break :blk try IDBIndex.decodeEntry(alloc, entry.key);
+                        };
+                        errdefer decoded.index_key.deinit();
+                        errdefer decoded.primary_key.deinit();
+                        // Step 9.1 prevunique: the FIRST record with this
+                        // key - the lowest primary key - in both unique
+                        // directions.
+                        if (self.direction == .prevunique) {
+                            const lower = txn.buffer(.aux_lower);
+                            try keyedBound(lower, alloc, prefix, &.{decoded.index_key});
+                            const upper = txn.buffer(.aux_upper);
+                            try upper.appendSlice(alloc, lower.items);
+                            try toPrefixEnd(upper, alloc);
+                            const same_key = backing_store.intersect(base, .{ .lower = lower.items, .upper = upper.items, .upper_open = true });
+                            if (txn.first(alloc, same_key, .forward) catch |err| return backing_store.idbError(err)) |lowest| {
+                                defer lowest.deinit(alloc);
+                                var first_of_key = try IDBIndex.decodeEntry(alloc, lowest.key);
+                                decoded.index_key.deinit();
+                                decoded.primary_key.deinit();
+                                decoded = .{ .index_key = first_of_key.index_key, .primary_key = first_of_key.primary_key };
+                                first_of_key = undefined;
+                            }
                         }
+                        const value: ?[]u8 = if (self.key_only) null else try store.recordValue(alloc, decoded.primary_key);
+                        self.setSnapshotOwned(decoded.index_key, decoded.primary_key, value);
+                        return true;
                     }
-                    try self.setSnapshot(i, entry.index_key, entry.primary_key, value);
-                    return true;
                 }
             },
         }
@@ -568,6 +633,16 @@ pub const IDBCursor = struct {
         self.position = null;
         self.got_value = false;
         return false;
+    }
+
+    /// IDB 6.7 steps 10-14: the new position, taken whole (every part owned).
+    fn setSnapshotOwned(self: *Self, key: IDBKey, primary: IDBKey, value: ?[]u8) void {
+        self.clearSnapshot();
+        self.position = 0;
+        self.key = key;
+        self.primary_key = primary;
+        self.value = value;
+        self.got_value = true;
     }
 
     fn matchesRange(self: *Self, key: IDBKey) bool {

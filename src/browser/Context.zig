@@ -21,9 +21,7 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
 
-const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
-const Storage = storage_mod.Storage;
 const EventLoop = @import("event_loop.zig").EventLoop;
 const rendering = @import("rendering.zig");
 
@@ -1479,8 +1477,6 @@ pub const Context = struct {
     agent: *engine.Agent,
     /// The page's realm, a Window's; null only while it is being made.
     realm: ?runtime.Context = null,
-    /// Storage subsystem (shared across navigations)
-    storage: *Storage,
     /// The Browser's cookie jar (BORROWED): the page's top-level browsing
     /// context gets it as its Window is made.
     cookie_jar: ?*cookiestore.CookieJar,
@@ -1545,7 +1541,6 @@ pub const Context = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         agent: anytype,
-        storage: *Storage,
         cookie_jar: ?*cookiestore.CookieJar,
         url: []const u8,
         event_loop: anytype,
@@ -1553,7 +1548,7 @@ pub const Context = struct {
         from_snapshot: bool,
         browser_scope: ?*runtime.BrowserScope,
     ) !*Context {
-        return initWithOptions(allocator, agent, storage, cookie_jar, url, event_loop, context_type, from_snapshot, browser_scope, .{});
+        return initWithOptions(allocator, agent, cookie_jar, url, event_loop, context_type, from_snapshot, browser_scope, .{});
     }
 
     /// `init` with `options`: a tab the host opens beside its first page
@@ -1561,7 +1556,6 @@ pub const Context = struct {
     pub fn initWithOptions(
         allocator: std.mem.Allocator,
         agent: anytype,
-        storage: *Storage,
         cookie_jar: ?*cookiestore.CookieJar,
         url: []const u8,
         event_loop: anytype,
@@ -1580,7 +1574,6 @@ pub const Context = struct {
         ctx.* = Context{
             .allocator = allocator,
             .agent = @ptrCast(agent),
-            .storage = storage,
             .cookie_jar = cookie_jar,
             .url = url_copy,
             .context_type = context_type,

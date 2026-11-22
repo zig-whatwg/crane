@@ -70,7 +70,6 @@
 
 const std = @import("std");
 const platform = @import("platform");
-const clock = @import("clock");
 
 const log = std.log.scoped(.profile_storage);
 
@@ -222,7 +221,7 @@ pub const Area = struct {
 
     /// StorageAreaImpl::ComputeCommitDelay.
     pub fn commitDelayMs(self: *const Area) u64 {
-        const elapsed = clock.monotonicMillis() - self.start_ms;
+        const elapsed = platform.monotonicMillis() - self.start_ms;
         const limited = @max(self.commit_rate.delayNeededMs(elapsed), self.data_rate.delayNeededMs(elapsed));
         return @max(commit_default_delay_ms, @as(u64, @intCast(limited)));
     }
@@ -384,7 +383,7 @@ pub const Profile = struct {
             .profile = self,
             .prefix = prefix,
             .map = map,
-            .start_ms = clock.monotonicMillis(),
+            .start_ms = platform.monotonicMillis(),
             .commit_rate = .init(max_commits_per_hour, hour_ms),
             .data_rate = .init(@intCast(quota), hour_ms),
         };
@@ -563,7 +562,7 @@ test "the commit delay: Chrome's 5 s default, longer once the commit rate limit 
         .profile = undefined,
         .prefix = &.{},
         .map = null,
-        .start_ms = clock.monotonicMillis(),
+        .start_ms = platform.monotonicMillis(),
         .commit_rate = .init(max_commits_per_hour, hour_ms),
         .data_rate = .init(5 * 1024 * 1024, hour_ms),
     };
