@@ -739,7 +739,13 @@ pub const AsyncFetch = struct {
             // What arrived while it was held, for the observer; the rest as
             // it comes (`networkData`).
             self.job.observeData(pipe.?.buffered.items);
-            return self.advance(self.job.resumeNetworkHead(h, pipe.?));
+            // A body that ended while it was held ended unreported (its
+            // response was nobody's yet): its sizes go to the job now, for
+            // the report timing steps of the response it hands over.
+            const ended = self.source == null;
+            self.advance(self.job.resumeNetworkHead(h, pipe.?));
+            if (ended and self.reporting and self.job.awaitsBodyEnd()) self.job.bodyEnded(.{ .encoded = self.encoded_bytes, .decoded = self.body_bytes });
+            return;
         }
         // The answer goes: its pipe lets the transfer stop.
         if (pipe) |p| p.release();
