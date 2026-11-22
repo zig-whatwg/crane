@@ -5067,7 +5067,8 @@ pub fn build(b: *std.Build) void {
     // -Dcdp=false: the build without the Chrome DevTools Protocol remote end
     // still compiles - the console and the WebDriver server answer "built
     // without CDP support" (src/devtools/unavailable.zig). A sub-build of its
-    // own, as check-linux; nothing runs. The integrator's flag-off check.
+    // own, as the cross-target checks above; nothing runs. The integrator's
+    // flag-off check.
     {
         const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "crane-check", "repl-exe", "-Dcdp=false", "-j2" });
         sub_build.addArg("--cache-dir");
