@@ -1,17 +1,23 @@
-//! The remote end's fetch observer: Network events and Fetch interception
-//! for a Browser's page sessions (tmp/plans/cdp-part1-design.md 3.9-3.10).
+//! The remote end's fetch observer: Network events, kept bodies, and the
+//! hooks of Fetch interception, for a Browser's page sessions
+//! (tmp/plans/cdp-part1-design.md 3.9-3.10).
 //!
 //! Installed on the Browser's network context (fetch.network.observer, the
 //! generic slot) while the remote end is on the Browser (BrowserSide), it
 //! turns Fetch's steps into Network.requestWillBeSent, responseReceived,
-//! loadingFinished, loadingFailed and requestServedFromCache for every page
-//! session of the request's tab with Network enabled - Blink's
-//! InspectorNetworkAgent at its probe points (third_party/blink/renderer/
-//! core/inspector/inspector_network_agent.cc WillSendRequest,
-//! DidReceiveResourceResponse, DidFinishLoading, DidFailLoading) - and holds
-//! a request a session's Fetch patterns match (Fetch.requestPaused) until
-//! the session continues, fulfills or fails it, as Chrome's
-//! DevToolsURLLoaderInterceptor does in the network service.
+//! dataReceived, loadingFinished, loadingFailed and requestServedFromCache
+//! for every page session of the request's tab with Network enabled -
+//! Blink's InspectorNetworkAgent at its probe points (third_party/blink/
+//! renderer/core/inspector/inspector_network_agent.cc WillSendRequest,
+//! DidReceiveResourceResponse, DidReceiveData, DidFinishLoading,
+//! DidFailLoading) - and Network.requestWillBeSentExtraInfo /
+//! responseReceivedExtraInfo with what went over the network, as Chrome's
+//! network service reports them below the page (services/network/
+//! url_loader.cc -> DevToolsObserver OnRawRequest / OnRawResponse: the
+//! headers HTTP-network-or-cache fetch adds are THERE, not in
+//! requestWillBeSent - Chrome's split, lane cdpr's G16). Each session with
+//! Network enabled keeps the bodies (network_resources.zig). Holding
+//! requests is fetch_interception.zig's.
 //!
 //! Only the window agent's fetches are reported: a worker's go to its worker
 //! target in Chrome, and part 1 reports no worker targets (decision D10). Its
@@ -38,6 +44,8 @@ const protocol = @import("protocol/root.zig");
 const ids = @import("ids.zig");
 const host_bridge = @import("host_bridge.zig");
 const frames = @import("frames.zig");
+const fetch_interception = @import("fetch_interception.zig");
+const network_resources = @import("network_resources.zig");
 const BrowserSide = @import("browser_side.zig").BrowserSide;
 const PageSession = @import("page_session.zig").PageSession;
 
@@ -45,7 +53,6 @@ const observer = fetch.network.observer;
 const InternalRequest = fetch.internal.InternalRequest;
 const InternalResponse = fetch.internal.InternalResponse;
 const N = protocol.Network;
-const F = protocol.Fetch;
 
 const log = std.log.scoped(.devtools);
 const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
@@ -53,45 +60,61 @@ const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 /// The high bit marks a request id that is a counter, not a navigation id.
 const counter_bit: u64 = 1 << 63;
 
+/// What the observer keeps of one request while it is in flight.
+pub const RequestInfo = struct {
+    /// Its interception job (fetch_interception.zig), 0 until first held.
+    job: u64 = 0,
+    /// Redirects followed so far (the interception id's second number).
+    hop: u32 = 0,
+    /// A redirect's response, from redirect_received to the next
+    /// will_send_request.
+    redirect: ?Head = null,
+    /// Whether the redirect's response came over the network (an
+    /// ExtraInfo was reported for it: requestWillBeSent's
+    /// redirectHasExtraInfo).
+    redirect_extra_info: bool = false,
+    /// The current hop's response came over the network
+    /// (responseReceivedExtraInfo went: responseReceived's hasExtraInfo).
+    extra_info: bool = false,
+    /// responseReceived went; bytes that came before it (main fetch step
+    /// 23's whole body) are announced with it.
+    response_seen: bool = false,
+    pending_data: u64 = 0,
+    /// The navigable whose in-flight count this request is in.
+    counted_frame: ?u64 = null,
+
+    fn deinit(self: *RequestInfo, allocator: Allocator) void {
+        if (self.redirect) |*r| r.deinit(allocator);
+        self.redirect = null;
+    }
+};
+
 /// What the observer keeps of a Browser, on its window thread.
 pub const State = struct {
     next_request: u64 = 1,
-    next_interception: u64 = 1,
+    next_job: u64 = 1,
     /// Navigation id -> the navigable it navigates (`started` milestones):
     /// which frame a navigation request is for.
     navigations: std.AutoHashMapUnmanaged(u64, u64) = .empty,
-    /// A redirect's response, kept from redirect_received to the next
-    /// will_send_request of the same fetch.
-    redirects: std.AutoHashMapUnmanaged(u64, Head) = .empty,
-    /// Requests a session holds (Fetch.requestPaused), by interception id.
-    paused: std.AutoHashMapUnmanaged(u64, Paused) = .empty,
+    /// Requests in flight, by id.
+    requests: std.AutoHashMapUnmanaged(u64, RequestInfo) = .empty,
     /// Each navigable's subresource fetches in flight (Page.lifecycleEvent's
     /// networkAlmostIdle / networkIdle: Blink's IdlenessDetector counts a
-    /// frame's active requests), and which navigable each counted request is
-    /// a fetch of.
+    /// frame's active requests).
     in_flight: std.AutoHashMapUnmanaged(u64, u32) = .empty,
-    counted: std.AutoHashMapUnmanaged(u64, u64) = .empty,
     /// Each map's tombstones, bounded: their keys - navigations, requests,
-    /// interceptions, frames - come and go for as long as the remote end is
-    /// on the Browser (infra.tombstones.TombstoneGuard;
-    /// tools/lint_tombstones.zig).
+    /// frames - come and go for as long as the remote end is on the Browser
+    /// (infra.tombstones.TombstoneGuard; tools/lint_tombstones.zig).
     navigations_guard: TombstoneGuard = .{},
-    redirects_guard: TombstoneGuard = .{},
-    paused_guard: TombstoneGuard = .{},
+    requests_guard: TombstoneGuard = .{},
     in_flight_guard: TombstoneGuard = .{},
-    counted_guard: TombstoneGuard = .{},
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         self.navigations.deinit(allocator);
-        var heads = self.redirects.valueIterator();
-        while (heads.next()) |h| h.deinit(allocator);
-        self.redirects.deinit(allocator);
-        // A held request whose session went: it is sent as it was.
-        var held = self.paused.valueIterator();
-        while (held.next()) |p| p.interception.decide(.{ .@"continue" = .{} });
-        self.paused.deinit(allocator);
+        var it = self.requests.valueIterator();
+        while (it.next()) |r| r.deinit(allocator);
+        self.requests.deinit(allocator);
         self.in_flight.deinit(allocator);
-        self.counted.deinit(allocator);
     }
 };
 
@@ -129,6 +152,21 @@ fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void 
     }
 }
 
+/// The request's record, while it is in flight.
+pub fn requestInfo(side: *BrowserSide, request_id: u64) ?*RequestInfo {
+    return side.fetch_state.requests.getPtr(request_id);
+}
+
+/// The request is over: its record goes, and its in-flight count.
+fn endRequest(side: *BrowserSide, request_id: u64, tab: ?u64) void {
+    const state = &side.fetch_state;
+    fetch_interception.forget(side, request_id);
+    var removed = state.requests.fetchRemove(request_id) orelse return;
+    state.requests_guard.noteRemoval(&state.requests);
+    removed.value.deinit(side.allocator);
+    if (removed.value.counted_frame) |frame| if (tab) |t| countInFlight(side, t, frame, -1);
+}
+
 /// A response's head, OWNED copies.
 const Head = struct {
     url: []u8,
@@ -136,6 +174,7 @@ const Head = struct {
     status_text: []u8,
     headers: std.json.ObjectMap,
     mime_type: []u8,
+    charset: []u8,
 
     fn of(allocator: Allocator, response: *const InternalResponse) !Head {
         var headers: std.json.ObjectMap = .empty;
@@ -145,15 +184,18 @@ const Head = struct {
         errdefer allocator.free(url);
         const status_text = try allocator.dupe(u8, response.status_message);
         errdefer allocator.free(status_text);
-        const content_type = headers.get("content-type") orelse headers.get("Content-Type");
-        const mime = if (content_type) |v| essence(v.string) else "";
-        return .{ .url = url, .status = response.status, .status_text = status_text, .headers = headers, .mime_type = try allocator.dupe(u8, mime) };
+        const content_type = headerOf(&headers, "content-type");
+        const mime = try allocator.dupe(u8, if (content_type) |v| essence(v) else "");
+        errdefer allocator.free(mime);
+        const charset = try allocator.dupe(u8, if (content_type) |v| charsetOf(v) else "");
+        return .{ .url = url, .status = response.status, .status_text = status_text, .headers = headers, .mime_type = mime, .charset = charset };
     }
 
     fn deinit(self: *Head, allocator: Allocator) void {
         allocator.free(self.url);
         allocator.free(self.status_text);
         allocator.free(self.mime_type);
+        allocator.free(self.charset);
         freeHeaders(allocator, &self.headers);
     }
 
@@ -164,7 +206,7 @@ const Head = struct {
             .statusText = self.status_text,
             .headers = .{ .object = self.headers },
             .mimeType = self.mime_type,
-            .charset = "",
+            .charset = self.charset,
             .connectionReused = false,
             .connectionId = 0,
             .encodedDataLength = encoded_length,
@@ -174,12 +216,6 @@ const Head = struct {
     }
 };
 
-const Paused = struct {
-    interception: observer.Interception,
-    /// The session that holds it (BORROWED: cleared when it detaches).
-    session: *PageSession,
-};
-
 fn freeHeaders(allocator: Allocator, headers: *std.json.ObjectMap) void {
     var it = headers.iterator();
     while (it.next()) |e| {
@@ -187,6 +223,13 @@ fn freeHeaders(allocator: Allocator, headers: *std.json.ObjectMap) void {
         allocator.free(e.value_ptr.string);
     }
     headers.deinit(allocator);
+}
+
+/// A header of a Network.Headers object, by name in any case.
+fn headerOf(headers: *const std.json.ObjectMap, name: []const u8) ?[]const u8 {
+    var it = headers.iterator();
+    while (it.next()) |e| if (std.ascii.eqlIgnoreCase(e.key_ptr.*, name)) return e.value_ptr.string;
+    return null;
 }
 
 /// Headers as CDP's Network.Headers object: a name seen twice is joined
@@ -210,6 +253,19 @@ fn essence(content_type: []const u8) []const u8 {
     return std.mem.trim(u8, content_type[0..end], " \t");
 }
 
+/// A Content-Type's charset parameter, unquoted ("" for none).
+fn charsetOf(content_type: []const u8) []const u8 {
+    var it = std.mem.splitScalar(u8, content_type, ';');
+    _ = it.next();
+    while (it.next()) |param| {
+        const p = std.mem.trim(u8, param, " \t");
+        const eq = std.mem.indexOfScalar(u8, p, '=') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, p[0..eq], " \t"), "charset")) continue;
+        return std.mem.trim(u8, p[eq + 1 ..], " \t\"");
+    }
+    return "";
+}
+
 fn securityStateOf(url: []const u8) protocol.Security.SecurityState {
     if (std.mem.startsWith(u8, url, "https:") or std.mem.startsWith(u8, url, "wss:")) return .secure;
     if (std.mem.startsWith(u8, url, "http:") or std.mem.startsWith(u8, url, "ws:")) return .insecure;
@@ -231,18 +287,24 @@ pub fn observerFor(side: *BrowserSide) observer.Observer {
         .will_send_request = willSendRequest,
         .redirect_received = redirectReceived,
         .served_from_cache = servedFromCache,
+        .request_sent = requestSent,
+        .response_head_received = responseHeadReceived,
         .response_received = responseReceived,
+        .data_received = dataReceived,
         .loading_finished = loadingFinished,
         .loading_failed = loadingFailed,
-        .intercept_request = interceptRequest,
-        .interception_dropped = interceptionDropped,
+        .intercept_request = fetch_interception.interceptRequest,
+        .intercept_response = fetch_interception.interceptResponse,
+        .intercept_auth = fetch_interception.interceptAuth,
+        .interception_dropped = fetch_interception.interceptionDropped,
         .bypass_cache = bypassCache,
     };
 }
 
-fn sideOf(context: *anyopaque) ?*BrowserSide {
+/// The side an observer call is for, on the window agent's thread only
+/// (decision D10).
+pub fn sideOf(context: *anyopaque) ?*BrowserSide {
     const side: *BrowserSide = @ptrCast(@alignCast(context));
-    // Only the window agent's fetches (decision D10).
     if (!side.host.isBrowserThread()) return null;
     return side;
 }
@@ -275,14 +337,14 @@ pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) 
 /// Whom a request is for: its tab, frame and document's loader, and the
 /// document whose fetch it is (null for a navigation request, whose
 /// documentURL is its own URL).
-const Attribution = struct {
+pub const Attribution = struct {
     tab: u64,
     frame: u64,
     loader: u64,
     document: ?*runtime.Instance,
 };
 
-fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attribution {
+pub fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attribution {
     const navigables = dom.browser_state.existingNavigablesIn(side.browser.?.scope) orelse return null;
     if (request.navigation_id != 0) {
         const navigable_id = side.fetch_state.navigations.get(request.navigation_id) orelse return null;
@@ -312,13 +374,39 @@ fn documentUrlOf(arena: Allocator, who: Attribution, request: *const InternalReq
 /// Browser) prints it: a navigation request's is its loaderId
 /// (frames.loaderToken - Chrome's loaderId IS the navigation request's
 /// requestId), any other a counter in Chrome's "<n>.<counter>" form.
-fn requestIdText(session: *const PageSession, id: u64, buffer: *[48]u8) []const u8 {
+pub fn requestIdText(session: *const PageSession, id: u64, buffer: *[48]u8) []const u8 {
+    return requestIdTextFor(session.side.?.token, id, buffer);
+}
+
+/// requestIdText from the Browser's devtools token alone (the Log entries'
+/// call sites hold the BrowserSide, not a session).
+pub fn requestIdTextFor(browser_token: u64, id: u64, buffer: *[48]u8) []const u8 {
     if (id & counter_bit != 0) {
-        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ session.side.?.token % 100000, id & ~counter_bit }) catch "";
+        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ browser_token % 100000, id & ~counter_bit }) catch "";
     }
-    const token = frames.loaderToken(session, id);
+    const token = frames.loaderTokenOf(browser_token, id);
     @memcpy(buffer[0..32], token.slice());
     return buffer[0..32];
+}
+
+/// The request id a Network.RequestId names for `session`, if it is one
+/// `requestIdText` could have printed.
+pub fn parseRequestId(session: *const PageSession, text: []const u8) ?u64 {
+    const side = session.side orelse return null;
+    if (std.mem.indexOfScalar(u8, text, '.')) |dot| {
+        const prefix = std.fmt.parseInt(u64, text[0..dot], 10) catch return null;
+        if (prefix != side.token % 100000) return null;
+        const counter = std.fmt.parseInt(u64, text[dot + 1 ..], 10) catch return null;
+        if (counter & counter_bit != 0) return null;
+        return counter | counter_bit;
+    }
+    const ref = ids.parseFrameId(text) orelse return null;
+    if (ref.browser_token != side.token) return null;
+    // A loader token is frames.loaderToken's, its flag bit set: the id is
+    // the one whose token this is.
+    const candidate = ref.navigable_id & ~counter_bit;
+    if (!frames.loaderToken(session, candidate).eql(text)) return null;
+    return candidate;
 }
 
 fn loaderText(session: *const PageSession, loader: u64, buffer: *[32]u8) []const u8 {
@@ -326,7 +414,7 @@ fn loaderText(session: *const PageSession, loader: u64, buffer: *[32]u8) []const
     return buffer;
 }
 
-fn resourceTypeOf(request: *const InternalRequest) N.ResourceType {
+pub fn resourceTypeOf(request: *const InternalRequest) N.ResourceType {
     if (request.mode == .navigate) return .Document;
     if (request.initiator_type) |t| switch (t) {
         .xmlhttprequest => return .XHR,
@@ -363,13 +451,26 @@ fn referrerPolicyOf(request: *const InternalRequest) @FieldType(N.Request, "refe
     };
 }
 
-/// The Network.Request of `request`, its headers in `arena`.
-fn requestOf(arena: Allocator, request: *const InternalRequest) !N.Request {
+/// The bytes of the request's body, when it has them (a stream body has
+/// none to report).
+fn postBytesOf(request: *const InternalRequest) ?[]const u8 {
+    const body = request.body orelse return null;
+    return switch (body) {
+        .body => |b| b.getBytes(),
+        else => null,
+    };
+}
+
+/// The Network.Request of `request`, its strings in `arena`. Its post data
+/// as Blink's BuildObjectForResourceRequest gives it: hasPostData for any
+/// body, postData (UTF-8, Latin-1 fallback) and postDataEntries for a body
+/// of bytes no longer than `max_post_data` (0: any).
+pub fn requestOf(arena: Allocator, request: *const InternalRequest, max_post_data: u64) !N.Request {
     var headers: std.json.ObjectMap = .empty;
     for (request.header_list.entries.items) |h| try putHeader(arena, &headers, h.name, h.value);
     const url = request.currentUrl();
     const hash = std.mem.indexOfScalar(u8, url, '#');
-    return .{
+    var result: N.Request = .{
         .url = if (hash) |at| url[0..at] else url,
         .urlFragment = if (hash) |at| url[at..] else null,
         .method = request.method,
@@ -378,6 +479,14 @@ fn requestOf(arena: Allocator, request: *const InternalRequest) !N.Request {
         .referrerPolicy = referrerPolicyOf(request),
         .hasPostData = if (request.body != null) true else null,
     };
+    if (postBytesOf(request)) |bytes| if (bytes.len > 0 and (max_post_data == 0 or bytes.len <= max_post_data)) {
+        const text = try network_resources.reportedBody(arena, bytes, "text/plain", "");
+        result.postData = text.text;
+        const entries = try arena.alloc(N.PostDataEntry, 1);
+        entries[0] = .{ .bytes = try network_resources.base64(arena, bytes) };
+        result.postDataEntries = entries;
+    };
+    return result;
 }
 
 /// Every attached page session of `tab` with `enabled(session)`, into
@@ -400,69 +509,82 @@ fn sessionsWith(side: *BrowserSide, tab: u64, comptime field: []const u8, out: [
 
 fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     const side = sideOf(context) orelse return 0;
+    const state = &side.fetch_state;
     const id = if (request.request_id != 0)
         request.request_id
     else if (request.navigation_id != 0)
         request.navigation_id
     else blk: {
-        const n = side.fetch_state.next_request;
-        side.fetch_state.next_request += 1;
+        const n = state.next_request;
+        state.next_request += 1;
         break :blk n | counter_bit;
     };
     const who = attribute(side, request) orelse return id;
-    // A subresource fetch's first hop: one more in flight for its frame.
-    if (request.request_id == 0 and request.navigation_id == 0) {
-        side.fetch_state.counted_guard.beforeInsert(&side.fetch_state.counted);
-        if (side.fetch_state.counted.put(side.allocator, id, who.frame)) |_| {
+    state.requests_guard.beforeInsert(&state.requests);
+    const entry = state.requests.getOrPut(side.allocator, id) catch return id;
+    if (!entry.found_existing) {
+        entry.value_ptr.* = .{};
+        // A subresource fetch's first hop: one more in flight for its frame.
+        if (request.request_id == 0 and request.navigation_id == 0) {
+            entry.value_ptr.counted_frame = who.frame;
             countInFlight(side, who.tab, who.frame, 1);
-        } else |_| {}
+        }
     }
+    const info = entry.value_ptr;
+    // A redirect's next hop: its response goes with this event.
+    var redirect = info.redirect;
+    info.redirect = null;
+    defer if (redirect) |*r| r.deinit(side.allocator);
+    const redirect_extra_info = info.redirect_extra_info;
+    info.redirect_extra_info = false;
+    info.extra_info = false;
+    info.response_seen = false;
+    info.pending_data = 0;
+
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
-    var redirect = side.fetch_state.redirects.fetchRemove(id);
-    if (redirect != null) side.fetch_state.redirects_guard.noteRemoval(&side.fetch_state.redirects);
-    defer if (redirect) |*r| r.value.deinit(side.allocator);
     if (sessions.len == 0) return id;
 
     var arena_state = std.heap.ArenaAllocator.init(side.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    const n_request = requestOf(arena, request) catch return id;
+    const post_bytes = postBytesOf(request);
     var id_buffer: [48]u8 = undefined;
     var loader_buffer: [32]u8 = undefined;
-    var frame_buffer: [32]u8 = undefined;
-    const frame = ids.frameId(side.token, who.frame);
-    frame_buffer = frame.text;
-    const params: N.requestWillBeSent.Params = .{
-        .requestId = requestIdText(sessions[0], id, &id_buffer),
-        .loaderId = loaderText(sessions[0], who.loader, &loader_buffer),
-        .documentURL = documentUrlOf(arena, who, request),
-        .request = n_request,
-        .timestamp = monotonicSeconds(),
-        .wallTime = wallSeconds(),
-        .initiator = .{ .type = if (request.mode == .navigate) .other else if (request.parser_metadata == .parser_inserted) .parser else .script },
-        .redirectHasExtraInfo = false,
-        .redirectResponse = if (redirect) |*r| r.value.toResponse(0) else null,
-        .type = resourceTypeOf(request),
-        .frameId = &frame_buffer,
-        .hasUserGesture = request.user_activation,
-    };
-    for (sessions) |s| s.emit(N.requestWillBeSent, params);
+    var frame_buffer: [32]u8 = ids.frameId(side.token, who.frame).text;
+    const document_url = documentUrlOf(arena, who, request);
+    for (sessions) |s| {
+        // The session keeps the request's record (its post data) for
+        // getRequestPostData and its body to come.
+        if (s.states.Network.resources) |*res| res.requestWillBeSent(id, who.loader, post_bytes) catch {};
+        const n_request = requestOf(arena, request, s.states.Network.max_post_data_size) catch continue;
+        s.emit(N.requestWillBeSent, .{
+            .requestId = requestIdText(s, id, &id_buffer),
+            .loaderId = loaderText(s, who.loader, &loader_buffer),
+            .documentURL = document_url,
+            .request = n_request,
+            .timestamp = monotonicSeconds(),
+            .wallTime = wallSeconds(),
+            .initiator = .{ .type = if (request.mode == .navigate) .other else if (request.parser_metadata == .parser_inserted) .parser else .script },
+            .redirectHasExtraInfo = redirect_extra_info,
+            .redirectResponse = if (redirect) |*r| r.toResponse(0) else null,
+            .type = resourceTypeOf(request),
+            .frameId = &frame_buffer,
+            .hasUserGesture = request.user_activation,
+        });
+    }
     return id;
 }
 
 fn redirectReceived(context: *anyopaque, request: *const InternalRequest, response: *const InternalResponse) void {
     const side = sideOf(context) orelse return;
-    if (request.request_id == 0) return;
+    const info = requestInfo(side, request.request_id) orelse return;
     const head = Head.of(side.allocator, response) catch return;
-    side.fetch_state.redirects_guard.beforeInsert(&side.fetch_state.redirects);
-    const entry = side.fetch_state.redirects.getOrPut(side.allocator, request.request_id) catch {
-        var h = head;
-        h.deinit(side.allocator);
-        return;
-    };
-    if (entry.found_existing) entry.value_ptr.deinit(side.allocator);
-    entry.value_ptr.* = head;
+    if (info.redirect) |*old| old.deinit(side.allocator);
+    info.redirect = head;
+    info.redirect_extra_info = info.extra_info;
+    // The next hop is a new interception id's ("interception-job-<n>.<hop>").
+    info.hop += 1;
 }
 
 fn servedFromCache(context: *anyopaque, request: *const InternalRequest) void {
@@ -475,43 +597,161 @@ fn servedFromCache(context: *anyopaque, request: *const InternalRequest) void {
     }
 }
 
-fn responseReceived(context: *anyopaque, request: *const InternalRequest, response: *const InternalResponse) void {
+/// Network.requestWillBeSentExtraInfo: the headers as they go over the
+/// network - what HTTP-network-or-cache fetch added (User-Agent,
+/// Accept-Encoding, Accept-Language, Referer, Origin, Sec-Fetch-*, Cookie)
+/// and the Host the transfer sends - as Chrome's network service reports
+/// them (DevToolsObserver::OnRawRequest; associatedCookies empty: the
+/// Cookie header carries them).
+fn requestSent(context: *anyopaque, request: *const InternalRequest, network_request: *const fetch.network.NetworkRequest) void {
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse return;
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
+    if (sessions.len == 0) return;
+    var arena_state = std.heap.ArenaAllocator.init(side.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var headers: std.json.ObjectMap = .empty;
+    for (network_request.headers) |h| putHeader(arena, &headers, h.name, h.value) catch return;
+    if (headerOf(&headers, "host") == null) if (hostOf(network_request.url)) |host| putHeader(arena, &headers, "Host", host) catch return;
+    var id_buffer: [48]u8 = undefined;
+    for (sessions) |s| {
+        s.emit(N.requestWillBeSentExtraInfo, .{
+            .requestId = requestIdText(s, request.request_id, &id_buffer),
+            .associatedCookies = &.{},
+            .headers = .{ .object = headers },
+            .connectTiming = .{ .requestTime = monotonicSeconds() },
+        });
+    }
+}
+
+/// A URL's host and port, as the Host header names them (RFC 9110 7.2).
+fn hostOf(url: []const u8) ?[]const u8 {
+    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
+    const rest = url[scheme_end + 3 ..];
+    const end = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
+    const authority = rest[0..end];
+    const at = std.mem.lastIndexOfScalar(u8, authority, '@');
+    const host = if (at) |i| authority[i + 1 ..] else authority;
+    return if (host.len > 0) host else null;
+}
+
+/// Network.responseReceivedExtraInfo: the network's head as it came
+/// (DevToolsObserver::OnRawResponse).
+fn responseHeadReceived(context: *anyopaque, request: *const InternalRequest, network_response: *const fetch.network.NetworkResponse) void {
+    const side = sideOf(context) orelse return;
+    const who = attribute(side, request) orelse return;
+    if (requestInfo(side, request.request_id)) |info| info.extra_info = true;
+    var buffer: [16]*PageSession = undefined;
+    const sessions = sessionsWith(side, who.tab, "Network", &buffer);
+    if (sessions.len == 0) return;
+    var arena_state = std.heap.ArenaAllocator.init(side.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var headers: std.json.ObjectMap = .empty;
+    for (network_response.headers) |h| putHeader(arena, &headers, h.name, h.value) catch return;
+    var id_buffer: [48]u8 = undefined;
+    for (sessions) |s| {
+        s.emit(N.responseReceivedExtraInfo, .{
+            .requestId = requestIdText(s, request.request_id, &id_buffer),
+            .blockedCookies = &.{},
+            .headers = .{ .object = headers },
+            .resourceIPAddressSpace = addressSpaceOf(network_response.remote_ip),
+            .statusCode = network_response.status,
+        });
+    }
+}
+
+/// The IP address space of the server's address (Private Network Access:
+/// loopback, private ranges, the rest public).
+fn addressSpaceOf(ip: ?[]const u8) N.IPAddressSpace {
+    const address = ip orelse return .Unknown;
+    if (std.mem.startsWith(u8, address, "127.") or std.mem.eql(u8, address, "::1")) return .Loopback;
+    if (std.mem.startsWith(u8, address, "10.") or std.mem.startsWith(u8, address, "192.168.") or std.mem.startsWith(u8, address, "169.254.") or
+        std.mem.startsWith(u8, address, "fc") or std.mem.startsWith(u8, address, "fd") or std.mem.startsWith(u8, address, "fe80:"))
+    {
+        return .Local;
+    }
+    if (std.mem.startsWith(u8, address, "172.")) {
+        const second = std.fmt.parseInt(u8, std.mem.sliceTo(address[4..], '.'), 10) catch return .Public;
+        if (second >= 16 and second <= 31) return .Local;
+    }
+    return .Public;
+}
+
+fn responseReceived(context: *anyopaque, request: *const InternalRequest, response: *const InternalResponse) void {
+    const side = sideOf(context) orelse return;
+    const who = attribute(side, request) orelse return;
+    // Log.entryAdded "Failed to load resource: the server responded with a
+    // status of N (text)" for the tab's Log sessions (lane cdph's
+    // domains/log.zig; Blink's ResourceLoadObserverForFrame::
+    // DidReceiveResponse, status >= 400) - whether or not Network is on.
+    if (response.status >= 400) {
+        var log_id_buffer: [48]u8 = undefined;
+        @import("domains/log.zig").errorResponse(side, who.tab, request.getUrl(), requestIdTextFor(side.token, request.request_id, &log_id_buffer), response.status, response.status_message);
+    }
+    const info = requestInfo(side, request.request_id);
+    var buffer: [16]*PageSession = undefined;
+    const sessions = sessionsWith(side, who.tab, "Network", &buffer);
+    if (info) |i| i.response_seen = true;
     if (sessions.len == 0) return;
     var head = Head.of(side.allocator, response) catch return;
     defer head.deinit(side.allocator);
     var id_buffer: [48]u8 = undefined;
     var loader_buffer: [32]u8 = undefined;
     var frame_buffer: [32]u8 = ids.frameId(side.token, who.frame).text;
-    const params: N.responseReceived.Params = .{
-        .requestId = requestIdText(sessions[0], request.request_id, &id_buffer),
-        .loaderId = loaderText(sessions[0], who.loader, &loader_buffer),
-        .timestamp = monotonicSeconds(),
-        .type = resourceTypeOf(request),
-        .response = head.toResponse(0),
-        .hasExtraInfo = false,
-        .frameId = &frame_buffer,
-    };
-    for (sessions) |s| s.emit(N.responseReceived, params);
+    const has_extra_info = if (info) |i| i.extra_info else false;
+    const pending = if (info) |i| i.pending_data else 0;
+    if (info) |i| i.pending_data = 0;
+    for (sessions) |s| {
+        if (s.states.Network.resources) |*res| res.responseReceived(request.request_id, head.mime_type, head.charset) catch {};
+        const request_id = requestIdText(s, request.request_id, &id_buffer);
+        s.emit(N.responseReceived, .{
+            .requestId = request_id,
+            .loaderId = loaderText(s, who.loader, &loader_buffer),
+            .timestamp = monotonicSeconds(),
+            .type = resourceTypeOf(request),
+            .response = head.toResponse(0),
+            .hasExtraInfo = has_extra_info,
+            .frameId = &frame_buffer,
+        });
+        // Bytes that came before it (a body fetch waited for whole).
+        if (pending > 0) s.emit(N.dataReceived, .{ .requestId = request_id, .timestamp = monotonicSeconds(), .dataLength = @intCast(pending), .encodedDataLength = 0 });
+    }
 }
 
-/// A counted fetch ended: one fewer in flight for its frame.
-fn uncount(side: *BrowserSide, request: *const InternalRequest, tab: u64) void {
-    const removed = side.fetch_state.counted.fetchRemove(request.request_id) orelse return;
-    side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
-    countInFlight(side, tab, removed.value, -1);
+/// More of a response's body: every Network session keeps it (within its
+/// limits) and hears Network.dataReceived - Blink's DidReceiveData (its
+/// encodedDataLength is 0 there: the encoded size comes with
+/// loadingFinished).
+fn dataReceived(context: *anyopaque, request: *const InternalRequest, bytes: []const u8) void {
+    const side = sideOf(context) orelse return;
+    const who = attribute(side, request) orelse return;
+    const info = requestInfo(side, request.request_id);
+    const announce = if (info) |i| i.response_seen else true;
+    if (!announce) info.?.pending_data += bytes.len;
+    var buffer: [16]*PageSession = undefined;
+    var id_buffer: [48]u8 = undefined;
+    for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
+        if (s.states.Network.resources) |*res| res.addData(request.request_id, bytes);
+        if (announce) s.emit(N.dataReceived, .{
+            .requestId = requestIdText(s, request.request_id, &id_buffer),
+            .timestamp = monotonicSeconds(),
+            .dataLength = @intCast(bytes.len),
+            .encodedDataLength = 0,
+        });
+    }
 }
 
 fn loadingFinished(context: *anyopaque, request: *const InternalRequest, encoded_length: u64) void {
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse return;
-    uncount(side, request, who.tab);
+    endRequest(side, request.request_id, who.tab);
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
+        if (s.states.Network.resources) |*res| res.finished(request.request_id);
         s.emit(N.loadingFinished, .{
             .requestId = requestIdText(s, request.request_id, &id_buffer),
             .timestamp = monotonicSeconds(),
@@ -524,10 +764,10 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse {
         // Its frame went: the count goes with the frame.
-        if (side.fetch_state.counted.remove(request.request_id)) side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
+        endRequest(side, request.request_id, null);
         return;
     };
-    uncount(side, request, who.tab);
+    endRequest(side, request.request_id, who.tab);
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
@@ -539,6 +779,10 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
             .canceled = if (canceled) true else null,
         });
     }
+    // Log.entryAdded "Failed to load resource: ..." for the tab's Log
+    // sessions - not for a cancellation (lane cdph's domains/log.zig;
+    // Blink's FrameConsole::DidFailLoading).
+    if (!canceled) @import("domains/log.zig").loadingFailed(side, who.tab, request.getUrl(), requestIdTextFor(side.token, request.request_id, &id_buffer), error_text);
 }
 
 /// Network.setCacheDisabled: a tab whose session disabled the cache sends
@@ -552,157 +796,22 @@ fn bypassCache(context: *anyopaque, request: *const InternalRequest) bool {
     return false;
 }
 
-// ----------------------------------------------------------------------------
-// Fetch interception
-// ----------------------------------------------------------------------------
-
-/// Fetch.enable's pattern match (Fetch RequestPattern: urlPattern with `*`
-/// for any run of characters, `?` for one, `\` escaping either; resourceType;
-/// requestStage "Request" - the default - only: part 1 holds no response).
-pub fn patternMatches(pattern: @import("domains/fetch.zig").Pattern, url: []const u8, resource_type: N.ResourceType) bool {
-    if (pattern.request_stage) |stage| if (stage == .Response) return false;
-    if (pattern.resource_type) |t| if (t != resource_type) return false;
-    return wildcardMatch(pattern.url_pattern, url);
+test "charsetOf reads a Content-Type's charset parameter" {
+    try std.testing.expectEqualStrings("utf-8", charsetOf("text/html; charset=utf-8"));
+    try std.testing.expectEqualStrings("ISO-8859-1", charsetOf("text/plain;charset=\"ISO-8859-1\""));
+    try std.testing.expectEqualStrings("", charsetOf("image/png"));
 }
 
-pub fn wildcardMatch(pattern: []const u8, text: []const u8) bool {
-    var p: usize = 0;
-    var t: usize = 0;
-    var star: ?usize = null;
-    var star_t: usize = 0;
-    while (t < text.len) {
-        if (p < pattern.len and pattern[p] == '\\' and p + 1 < pattern.len) {
-            if (pattern[p + 1] == text[t]) {
-                p += 2;
-                t += 1;
-                continue;
-            }
-        } else if (p < pattern.len and (pattern[p] == '?' or pattern[p] == text[t]) and pattern[p] != '*') {
-            p += 1;
-            t += 1;
-            continue;
-        } else if (p < pattern.len and pattern[p] == '*') {
-            star = p;
-            star_t = t;
-            p += 1;
-            continue;
-        }
-        const s = star orelse return false;
-        p = s + 1;
-        star_t += 1;
-        t = star_t;
-    }
-    while (p < pattern.len and pattern[p] == '*') p += 1;
-    return p == pattern.len;
+test "hostOf is a URL's host and port" {
+    try std.testing.expectEqualStrings("localhost:8004", hostOf("http://localhost:8004/x?y").?);
+    try std.testing.expectEqualStrings("a.test", hostOf("https://u:p@a.test#f").?);
+    try std.testing.expect(hostOf("about:blank") == null);
 }
 
-fn interceptRequest(context: *anyopaque, request: *const InternalRequest, network_request: *const fetch.network.NetworkRequest, interception: observer.Interception) bool {
-    _ = network_request;
-    const side = sideOf(context) orelse return false;
-    const who = attribute(side, request) orelse return false;
-    const resource_type = resourceTypeOf(request);
-    const url = request.currentUrl();
-    // The first session of the tab whose patterns take it holds it.
-    var found: ?*PageSession = null;
-    search: for (side.sessions.items) |s| {
-        if (s.tab != who.tab or !s.states.Fetch.enabled) continue;
-        for (s.states.Fetch.patterns.items) |pattern| {
-            if (patternMatches(pattern, url, resource_type)) {
-                found = s;
-                break :search;
-            }
-        }
-    }
-    const holder = found orelse return false;
-
-    const interception_id = side.fetch_state.next_interception;
-    side.fetch_state.next_interception += 1;
-    side.fetch_state.paused_guard.beforeInsert(&side.fetch_state.paused);
-    side.fetch_state.paused.put(side.allocator, interception_id, .{ .interception = interception, .session = holder }) catch return false;
-
-    var arena_state = std.heap.ArenaAllocator.init(side.allocator);
-    defer arena_state.deinit();
-    const n_request = requestOf(arena_state.allocator(), request) catch {
-        if (side.fetch_state.paused.remove(interception_id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
-        return false;
-    };
-    var paused_buffer: [48]u8 = undefined;
-    var network_buffer: [48]u8 = undefined;
-    var frame_buffer: [32]u8 = ids.frameId(side.token, who.frame).text;
-    holder.emit(F.requestPaused, .{
-        .requestId = interceptionIdText(interception_id, &paused_buffer),
-        .request = n_request,
-        .frameId = &frame_buffer,
-        .resourceType = resource_type,
-        .networkId = requestIdText(holder, request.request_id, &network_buffer),
-    });
-    return true;
-}
-
-fn interceptionDropped(context: *anyopaque, request_id: u64) void {
-    const side = sideOf(context) orelse return;
-    var it = side.fetch_state.paused.iterator();
-    while (it.next()) |e| {
-        if (e.value_ptr.interception.request_id == request_id) {
-            if (side.fetch_state.paused.remove(e.key_ptr.*)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
-            return;
-        }
-    }
-}
-
-/// Chrome's interception ids: "interception-job-<n>.0".
-pub fn interceptionIdText(id: u64, buffer: *[48]u8) []const u8 {
-    return std.fmt.bufPrint(buffer, "interception-job-{d}.0", .{id}) catch "";
-}
-
-pub fn parseInterceptionId(text: []const u8) ?u64 {
-    const prefix = "interception-job-";
-    if (!std.mem.startsWith(u8, text, prefix)) return null;
-    const rest = text[prefix.len..];
-    const dot = std.mem.indexOfScalar(u8, rest, '.') orelse rest.len;
-    return std.fmt.parseInt(u64, rest[0..dot], 10) catch null;
-}
-
-/// Fetch.continueRequest / fulfillRequest / failRequest: the decision for a
-/// held request `session` holds. False: no such request.
-pub fn decide(session: *PageSession, interception_text: []const u8, decision: observer.Decision) bool {
-    const side = session.side orelse return false;
-    const id = parseInterceptionId(interception_text) orelse return false;
-    const held = side.fetch_state.paused.get(id) orelse return false;
-    if (held.session != session) return false;
-    if (side.fetch_state.paused.remove(id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
-    held.interception.decide(decision);
-    return true;
-}
-
-/// A session's end (or Fetch.disable): what it holds is sent as it was.
-pub fn releaseHeldBy(session: *PageSession) void {
-    const side = session.side orelse return;
-    while (true) {
-        var it = side.fetch_state.paused.iterator();
-        const found = while (it.next()) |e| {
-            if (e.value_ptr.session == session) break e.key_ptr.*;
-        } else break;
-        const held = side.fetch_state.paused.fetchRemove(found).?.value;
-        side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
-        held.interception.decide(.{ .@"continue" = .{} });
-    }
-}
-
-test "wildcardMatch: Fetch's urlPattern" {
-    try std.testing.expect(wildcardMatch("*", "https://a.test/x"));
-    try std.testing.expect(wildcardMatch("https://a.test/*", "https://a.test/x/y"));
-    try std.testing.expect(!wildcardMatch("https://b.test/*", "https://a.test/x"));
-    try std.testing.expect(wildcardMatch("*.js", "https://a.test/app.js"));
-    try std.testing.expect(wildcardMatch("https://a.test/?", "https://a.test/x"));
-    try std.testing.expect(wildcardMatch("https://a.test/\\*", "https://a.test/*"));
-    try std.testing.expect(!wildcardMatch("https://a.test/\\*", "https://a.test/x"));
-}
-
-test "interception ids round-trip in Chrome's form" {
-    var buffer: [48]u8 = undefined;
-    const text = interceptionIdText(42, &buffer);
-    try std.testing.expectEqualStrings("interception-job-42.0", text);
-    try std.testing.expectEqual(@as(?u64, 42), parseInterceptionId(text));
-    try std.testing.expect(parseInterceptionId("nope") == null);
+test "addressSpaceOf: loopback, private ranges, public" {
+    try std.testing.expectEqual(N.IPAddressSpace.Loopback, addressSpaceOf("127.0.0.1"));
+    try std.testing.expectEqual(N.IPAddressSpace.Local, addressSpaceOf("192.168.1.2"));
+    try std.testing.expectEqual(N.IPAddressSpace.Local, addressSpaceOf("172.20.0.1"));
+    try std.testing.expectEqual(N.IPAddressSpace.Public, addressSpaceOf("172.32.0.1"));
+    try std.testing.expectEqual(N.IPAddressSpace.Unknown, addressSpaceOf(null));
 }
