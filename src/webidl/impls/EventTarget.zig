@@ -1214,7 +1214,13 @@ pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_typ
 /// `target`: null deactivates the handler; any other value becomes the
 /// handler's value, which is then activated.
 pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, value: Handler) !void {
-    const listeners = listenersOf(target) orelse return error.InvalidStateError;
+    // An instance that never ran EventTarget's init (`lazyInternal`: one a
+    // platform object makes for itself, as Screen makes its
+    // ScreenOrientation) gets its list here, as addEventListener makes it -
+    // the setter threw InvalidStateError for one (lane tpg:
+    // `screen.orientation.onchange = f`). Deactivating needs none: with no
+    // list there is no handler to deactivate.
+    const listeners = if (value == null) (listenersOf(target) orelse return) else try ensureListeners(target);
     // The script's world's handler (`HandlerWorld`).
     const world = currentHandlerWorld(target);
     // Step 3: "If the given value is null, then deactivate an event handler
