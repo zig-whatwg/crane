@@ -78,6 +78,9 @@ pub const IDBRequestReadyState = request.IDBRequestReadyState;
 pub const IDBOpenDBRequest = request.IDBOpenDBRequest;
 
 pub const server = @import("server.zig");
+/// The records and index entries in the Browser's store (6.6), read on
+/// demand, written in batches (lane prof1, D6 step 4).
+pub const backing_store = @import("backing_store.zig");
 pub const IDBServer = server.IDBServer;
 
 pub const factory = @import("factory.zig");
@@ -256,6 +259,7 @@ test {
     _ = events;
     _ = async_operations;
     _ = webidl_types;
+    _ = backing_store;
     _ = sqlite_transactions;
     _ = mvcc;
     _ = object_store_persistence;
