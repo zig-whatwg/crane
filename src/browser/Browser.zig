@@ -433,9 +433,12 @@ pub const Browser = struct {
         // given a profile directory persists its web state there, its
         // platform state's stores (profile_stores.zig); one with none keeps
         // it in memory, as before.
-        if (config.profile_dir != null) {
-            if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
-                if (state.browser) |browser_platform| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, config.profile_dir.?);
+        if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
+            if (state.browser) |browser_platform| {
+                // IndexedDB keeps its databases in the platform's stores in
+                // both modes (approved 8:44 PM ET).
+                try @import("profile_stores.zig").attachPlatform(scope, browser_platform);
+                if (config.profile_dir) |profile_dir| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, profile_dir);
             }
         }
 

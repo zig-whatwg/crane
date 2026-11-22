@@ -54,6 +54,17 @@ pub const store_name = "indexeddb";
 
 pub const Error = platform.StoreError || error{Corrupt};
 
+/// A store failure as IndexedDB reports it: QuotaExceededError for a full
+/// store, UnknownError for any other (IndexedDB 5.4 commit: "an appropriate
+/// error"; Chromium's IndexedDBBackingStore maps leveldb errors so).
+pub fn idbError(err: anyerror) @import("errors.zig").IDBError {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.QuotaExceeded => error.QuotaExceededError,
+        else => error.UnknownError,
+    };
+}
+
 // ======================================================================
 // Key encoding
 // ======================================================================
@@ -338,6 +349,82 @@ pub fn prefixEnd(out: *std.ArrayListUnmanaged(u8), allocator: Allocator, prefix:
     out.items[out.items.len - 1] += 1;
 }
 
+/// 05 db store key(primary) - every reverse row of a record starts so; the
+/// row's index id follows.
+pub fn reversePrefix(out: *std.ArrayListUnmanaged(u8), allocator: Allocator, db: u64, store: u64) Allocator.Error!void {
+    try out.append(allocator, tag_reverse);
+    try appendU64(out, allocator, db);
+    try appendU64(out, allocator, store);
+}
+
+pub const tag_reverse: u8 = 0x05;
+
+/// The byte bounds - lower inclusive, upper exclusive - of the keys under
+/// `prefix` whose next encoded key lies in the IndexedDB key range (`lower`,
+/// `upper`, each open or closed; null: unbounded), into `lower_out` and
+/// `upper_out`. A key under the prefix may carry more after that key (an
+/// index entry's primary key, a reverse row's index id): a closed upper bound
+/// and an open lower one are the end of everything that starts with
+/// prefix ++ key(bound).
+pub fn keyRangeBounds(
+    allocator: Allocator,
+    prefix: []const u8,
+    lower: ?IDBKey,
+    lower_open: bool,
+    upper: ?IDBKey,
+    upper_open: bool,
+    lower_out: *std.ArrayListUnmanaged(u8),
+    upper_out: *std.ArrayListUnmanaged(u8),
+) Allocator.Error!Bounds {
+    lower_out.clearRetainingCapacity();
+    upper_out.clearRetainingCapacity();
+    try lower_out.appendSlice(allocator, prefix);
+    if (lower) |key| {
+        try appendKey(lower_out, allocator, key);
+        if (lower_open) {
+            var start: std.ArrayListUnmanaged(u8) = .empty;
+            defer start.deinit(allocator);
+            try start.appendSlice(allocator, lower_out.items);
+            lower_out.clearRetainingCapacity();
+            try prefixEnd(lower_out, allocator, start.items);
+        }
+    }
+    if (upper) |key| {
+        try upper_out.appendSlice(allocator, prefix);
+        try appendKey(upper_out, allocator, key);
+        if (!upper_open) {
+            var start: std.ArrayListUnmanaged(u8) = .empty;
+            defer start.deinit(allocator);
+            try start.appendSlice(allocator, upper_out.items);
+            upper_out.clearRetainingCapacity();
+            try prefixEnd(upper_out, allocator, start.items);
+        }
+    } else try prefixEnd(upper_out, allocator, prefix);
+    return .{ .lower = lower_out.items, .upper = upper_out.items, .upper_open = true };
+}
+
+/// `a` narrowed by `b`: the larger lower bound, the smaller upper bound
+/// (both lower inclusive and upper exclusive).
+pub fn intersect(a: Bounds, b: Bounds) Bounds {
+    var result = a;
+    if (b.lower) |lower| {
+        if (result.lower == null or std.mem.order(u8, lower, result.lower.?) == .gt) result.lower = lower;
+    }
+    if (b.upper) |upper| {
+        if (result.upper == null or std.mem.order(u8, upper, result.upper.?) == .lt) result.upper = upper;
+    }
+    result.lower_open = false;
+    result.upper_open = true;
+    return result;
+}
+
+/// Whether the bounds hold no key at all.
+pub fn empty(bounds: Bounds) bool {
+    const lower = bounds.lower orelse return false;
+    const upper = bounds.upper orelse return false;
+    return std.mem.order(u8, lower, upper) != .lt;
+}
+
 // ======================================================================
 // The store and its transactions
 // ======================================================================
@@ -520,6 +607,23 @@ pub const Transaction = struct {
     /// (deleteRange clears the changes it covers). Chromium's
     /// LevelDBTransaction::RemoveRange.
     ranges: std.ArrayListUnmanaged(OwnedRange) = .empty,
+    /// Key buffers the transaction's requests build their keys in, reused:
+    /// a read allocates no key once they have grown.
+    scratch: [@typeInfo(Slot).@"enum".field_names.len]std.ArrayListUnmanaged(u8) = @splat(.empty),
+
+    /// The scratch buffers, by use.
+    pub const Slot = enum { lower, upper, key, prefix, aux_lower, aux_upper, aux_key };
+
+    /// The buffer `slot`, emptied. Grown with `allocator()`.
+    pub fn buffer(self: *Transaction, slot: Slot) *std.ArrayListUnmanaged(u8) {
+        const out = &self.scratch[@backingInt(slot)];
+        out.clearRetainingCapacity();
+        return out;
+    }
+
+    pub fn gpa(self: *const Transaction) Allocator {
+        return self.backing.allocator;
+    }
 
     /// The transaction ends: its snapshot and its changes go (committed or
     /// not - `commit` writes them first).
@@ -528,6 +632,7 @@ pub const Transaction = struct {
         self.dropChanges();
         self.changes.deinit(allocator);
         self.ranges.deinit(allocator);
+        for (&self.scratch) |*slot_buffer| slot_buffer.deinit(allocator);
         platform.abortTransaction(self.snapshot);
         platform.closeStore(self.store);
         allocator.destroy(self);
@@ -535,9 +640,9 @@ pub const Transaction = struct {
 
     fn dropChanges(self: *Transaction) void {
         const allocator = self.backing.allocator;
-        for (self.changes.items) |change| {
-            allocator.free(change.key);
-            if (change.value) |value| allocator.free(value);
+        for (self.changes.items) |item| {
+            allocator.free(item.key);
+            if (item.value) |value| allocator.free(value);
         }
         self.changes.clearRetainingCapacity();
         for (self.ranges.items) |range| {

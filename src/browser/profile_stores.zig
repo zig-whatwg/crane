@@ -54,6 +54,20 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     };
 }
 
+/// Hand `browser` - the Browser's platform state - to the parts of its web
+/// state that keep their data in its stores whether or not it has a profile
+/// directory: IndexedDB (D6 step 4: one engine in both modes, kit/memory_store
+/// or kit/sqlite). Every Browser's, before its first realm.
+pub fn attachPlatform(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform) !void {
+    const server = try scope.of(storage.indexeddb.IDBServer);
+    server.attachPlatform(browser) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        // A store it cannot read: IndexedDB fails at its first use rather
+        // than the Browser at its start.
+        else => log.err("IndexedDB's store could not be opened ({s})", .{@errorName(err)}),
+    };
+}
+
 /// Write what is pending to the profile: the Browser's end.
 pub fn flush(scope: *runtime.BrowserScope) void {
     if (scope.existing(storage.UserAgentStorage)) |user_agent_storage| user_agent_storage.flushProfile();

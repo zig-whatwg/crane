@@ -136,7 +136,7 @@ pub fn generateIndexKey(
 /// ## Returns
 /// - `true` if unique constraint would be violated
 /// - `false` if it's safe to add the key(s)
-pub fn wouldViolateUnique(index: *const IDBIndex, key_result: IndexKeyResult) bool {
+pub fn wouldViolateUnique(index: *IDBIndex, key_result: IndexKeyResult) IDBError!bool {
     if (!index.unique) return false;
 
     switch (key_result) {
@@ -147,7 +147,7 @@ pub fn wouldViolateUnique(index: *const IDBIndex, key_result: IndexKeyResult) bo
         .multi_keys => |keys| {
             // Step 5.4: For multiEntry arrays, check each subkey
             for (keys) |k| {
-                if (indexContainsKey(index, k)) {
+                if (try indexContainsKey(index, k)) {
                     return true;
                 }
             }
@@ -157,14 +157,10 @@ pub fn wouldViolateUnique(index: *const IDBIndex, key_result: IndexKeyResult) bo
     }
 }
 
-/// Check if an index already contains a record with the given key.
-fn indexContainsKey(index: *const IDBIndex, key: IDBKey) bool {
-    for (index.entriesList().items) |entry| {
-        if (key_mod.compare(entry.index_key, key) == 0) {
-            return true;
-        }
-    }
-    return false;
+/// Check if an index already contains a record with the given key (in the
+/// backing store, as its transaction sees it).
+fn indexContainsKey(index: *IDBIndex, key: IDBKey) IDBError!bool {
+    return index.uniqueKeyTaken(key, key, false);
 }
 
 /// Add index entries for a record.
@@ -190,7 +186,7 @@ pub fn addIndexEntries(
 ) IDBError!void {
     var prepared = try prepareIndexEntries(index, key_result, primary_key);
     defer prepared.deinit();
-    prepared.commit(index);
+    try prepared.commit(index);
 }
 
 fn prepareIndexEntries(index: *IDBIndex, result: IndexKeyResult, primary_key: IDBKey) IDBError!IDBIndex.PreparedEntries {
@@ -246,7 +242,7 @@ pub fn updateIndexesForRecord(
         const entries = try prepareIndexEntries(index, result, primary_key);
         plans.appendAssumeCapacity(.{ .index = index, .entries = entries });
     }
-    for (plans.items) |*plan| plan.entries.commit(plan.index);
+    for (plans.items) |*plan| try plan.entries.commit(plan.index);
 }
 
 /// Remove all index entries for a primary key.
@@ -259,9 +255,9 @@ pub fn updateIndexesForRecord(
 pub fn removeIndexEntriesForPrimaryKey(
     indexes: []IDBIndex,
     primary_key: IDBKey,
-) void {
+) IDBError!void {
     for (indexes) |*index| {
-        index.removeEntriesForPrimaryKey(primary_key);
+        try index.removeEntriesForPrimaryKey(primary_key);
     }
 }
 
@@ -406,11 +402,11 @@ test "wouldViolateUnique - detects duplicate" {
 
     // Test - same key should violate unique
     const result = IndexKeyResult{ .single_key = IDBKey.string("existing") };
-    try std.testing.expect(wouldViolateUnique(&index, result));
+    try std.testing.expect(try wouldViolateUnique(&index, result));
 
     // Different key should not violate
     const result2 = IndexKeyResult{ .single_key = IDBKey.string("different") };
-    try std.testing.expect(!wouldViolateUnique(&index, result2));
+    try std.testing.expect(!try wouldViolateUnique(&index, result2));
 }
 
 test "wouldViolateUnique - non-unique index allows duplicates" {
@@ -434,7 +430,7 @@ test "wouldViolateUnique - non-unique index allows duplicates" {
 
     // Same key should NOT violate when unique=false
     const result = IndexKeyResult{ .single_key = IDBKey.string("existing") };
-    try std.testing.expect(!wouldViolateUnique(&index, result));
+    try std.testing.expect(!try wouldViolateUnique(&index, result));
 }
 
 test "addIndexEntries - single key" {
@@ -458,8 +454,10 @@ test "addIndexEntries - single key" {
 
     try addIndexEntries(&index, key_result, primary_key);
 
-    try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
-    try std.testing.expectEqual(IDBKeyType.string, index.entriesList().items[0].index_key.key_type);
+    const entries = try index.collectEntries(allocator);
+    defer IDBIndex.freeEntries(allocator, entries);
+    try std.testing.expectEqual(@as(usize, 1), entries.len);
+    try std.testing.expectEqual(IDBKeyType.string, entries[0].index_key.key_type);
 }
 
 test "addIndexEntries - multi keys" {
@@ -489,7 +487,7 @@ test "addIndexEntries - multi keys" {
     try addIndexEntries(&index, key_result, primary_key);
 
     // Should have 3 entries, all pointing to same primary key
-    try std.testing.expectEqual(@as(usize, 3), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 3), (try index.entryCount(null)));
 }
 
 test "addIndexEntries - failure/invalid skipped" {
@@ -512,11 +510,11 @@ test "addIndexEntries - failure/invalid skipped" {
 
     // Failure should be skipped
     try addIndexEntries(&index, .failure, primary_key);
-    try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 0), (try index.entryCount(null)));
 
     // Invalid should be skipped
     try addIndexEntries(&index, .invalid, primary_key);
-    try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 0), (try index.entryCount(null)));
 }
 
 test "updateIndexesForRecord - full workflow" {
@@ -556,8 +554,8 @@ test "updateIndexesForRecord - full workflow" {
     try updateIndexesForRecord(allocator, &indexes, value, IDBKey.number(1));
 
     // Both indexes should have entries
-    try std.testing.expectEqual(@as(usize, 1), indexes[0].entries.items.len);
-    try std.testing.expectEqual(@as(usize, 1), indexes[1].entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), (try indexes[0].entryCount(null)));
+    try std.testing.expectEqual(@as(usize, 1), (try indexes[1].entryCount(null)));
 }
 
 test "updateIndexesForRecord - unique constraint violation" {
@@ -617,12 +615,12 @@ test "removeIndexEntriesForPrimaryKey" {
     try indexes[0].addEntry(IDBKey.string("b"), IDBKey.number(1));
     try indexes[0].addEntry(IDBKey.string("c"), IDBKey.number(2));
 
-    try std.testing.expectEqual(@as(usize, 3), indexes[0].entries.items.len);
+    try std.testing.expectEqual(@as(usize, 3), (try indexes[0].entryCount(null)));
 
     // Remove entries for primary key 1
-    removeIndexEntriesForPrimaryKey(&indexes, IDBKey.number(1));
+    try removeIndexEntriesForPrimaryKey(&indexes, IDBKey.number(1));
 
     // Should only have entry for primary key 2
-    try std.testing.expectEqual(@as(usize, 1), indexes[0].entries.items.len);
-    try std.testing.expectEqual(@as(f64, 2), indexes[0].entries.items[0].primary_key.value.number);
+    try std.testing.expectEqual(@as(usize, 1), (try indexes[0].entryCount(null)));
+    try std.testing.expectEqual(@as(f64, 2), (try indexes[0].entryAt(0)).?.primary_key.value.number);
 }
