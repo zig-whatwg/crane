@@ -369,7 +369,7 @@ test "a dedicated worker made after Emulation.setUserAgentOverride reports the o
     try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
 }
 
-test "a dedicated worker made after setUserAgentOverride's acceptLanguage reports it as navigator.language and languages" {
+test "navigator.languages is the whole list - the platform's en-US, en with no override, the override's own list with one - in the page and in a worker" {
     var h: Harness = undefined;
     try h.init(testing.allocator);
     defer h.deinit();
@@ -377,18 +377,38 @@ test "a dedicated worker made after setUserAgentOverride's acceptLanguage report
     const ask =
         \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
         \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.language + "|" + navigator.languages.join(","))'], { type: 'text/javascript' })));
+        \\globalThis.inPage = () => navigator.language + "|" + navigator.languages.join(",");
         \\1
     ;
     const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
     defer made.deinit(h.allocator);
+    // No override: the platform's list - Chrome's and Firefox's for an en-US
+    // user (Safari's is en-US alone).
+    const page_default = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", page_default.json);
+    const worker_default = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", worker_default.json);
+
     // Playwright's locale call: an empty userAgent overrides the languages
-    // alone. The worker copies its tab's override as it is made (Chrome's
-    // NavigatorLanguage::EnsureUpdatedLanguage reads the override "to allow
-    // for workers to respect the override").
-    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de-DE,de;q=0.9\"}");
-    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
-    defer after.deinit(h.allocator);
-    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE\"}", after.json);
+    // alone. Blink's ParseAndSanitize of the override as given: split at
+    // ',', trimmed, xx_ made xx-, q-values kept. The worker copies its tab's
+    // override as it is made (Chrome's NavigatorLanguage::
+    // EnsureUpdatedLanguage reads the override "to allow for workers to
+    // respect the override").
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de_DE, de;q=0.9\"}");
+    const page_override = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", page_override.json);
+    const worker_override = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", worker_override.json);
+    // The page's array changed with the list ("until the user agent needs
+    // to return different values"), and stays the same object after.
+    const same = try h.host.evaluate(h.allocator, h.tab, "Object.isFrozen(navigator.languages) && navigator.languages === navigator.languages", .{}, 5_000);
+    defer same.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":true}", same.json);
 }
 
 test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
@@ -539,6 +559,39 @@ test "Log.enable replays the tab's entries from before it, kept whether or not a
     try testing.expectEqual(@as(usize, 1), try reenableLog(&h));
     // The main frame commits a new document: Page::DidCommitLoad clears the
     // page's storage.
+    try navigateAndLoad(&h, page_url);
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+}
+
+test "a javascript: URL's document keeps the page's Log entries: only a regular commit starts a new page's (Blink's CommitReason)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try Site.start(testing.allocator);
+    defer site.stop();
+    var url_buffer: [64]u8 = undefined;
+    const page_url = try site.url(&url_buffer, "/");
+
+    _ = try h.call("Page.enable", "{}");
+    try navigateAndLoad(&h, page_url);
+    const fetched = try h.host.evaluate(h.allocator, h.tab, "fetch('/missing.json').then((r) => r.status)", .{ .await_promise = true }, 5_000);
+    defer fetched.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":404}", fetched.json);
+    // The page's document replaced by a javascript: URL's String ("navigate
+    // to a javascript: URL" step 13): Blink commits it with
+    // CommitReason::kJavascriptUrl, and DidCommitNavigation returns before
+    // Page::DidCommitLoad - the page's storage stays.
+    const from = h.seen.items.len;
+    const replaced = try h.host.evaluate(h.allocator, h.tab, "location.href = \"javascript:'<b>replaced</b>'\"; 1", .{}, 5_000);
+    defer replaced.deinit(h.allocator);
+    _ = try h.waitEvent("Page.frameNavigated", from);
+    const text = try h.host.evaluate(h.allocator, h.tab, "document.body.textContent", .{}, 5_000);
+    defer text.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"replaced\"}", text.json);
+    const before_enable = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 1), try countNetworkEntries(&h, before_enable, "/missing.json"));
+    // A regular commit after it does start a new page's.
     try navigateAndLoad(&h, page_url);
     try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
 }

@@ -118,13 +118,24 @@ pub fn defaultDataDirectory(allocator: std.mem.Allocator) Error!?[]u8 {
     }
 }
 
-/// Today's answer everywhere: navigator.language is "en-US"
-/// (src/webidl/impls/Navigator.zig). Reading the OS's list is a later step.
+/// Today's answer everywhere: an en-US user's list as the browsers' majority
+/// gives it - "en-US", then its base language "en" (Chrome's accept-languages
+/// default and Firefox's intl.accept_languages "en-US, en"; Safari reports
+/// "en-US" alone). navigator.language(s) and the default Accept-Language
+/// read it (html.window.host_overrides.platformLanguages, Fetch's step 14).
+/// Reading the OS's list is a later step.
 pub fn preferredLanguages(allocator: std.mem.Allocator) Error![]Str {
-    const list = try allocator.alloc(Str, 1);
-    errdefer allocator.free(list);
-    const tag = try allocator.dupe(u8, "en-US");
-    list[0] = Str.from(tag);
+    const defaults = [_][]const u8{ "en-US", "en" };
+    const list = try allocator.alloc(Str, defaults.len);
+    var made: usize = 0;
+    errdefer {
+        for (list[0..made]) |tag| allocator.free(tag.slice());
+        allocator.free(list);
+    }
+    for (defaults) |text| {
+        list[made] = Str.from(try allocator.dupe(u8, text));
+        made += 1;
+    }
     return list;
 }
 

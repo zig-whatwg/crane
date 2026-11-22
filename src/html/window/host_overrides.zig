@@ -134,23 +134,107 @@ pub const HostOverrides = struct {
         self.user_agent_owner = 0;
     }
 
-    /// The first language of the Accept-Language override ("de-DE,de;q=0.9"
-    /// -> "de-DE"), or null.
-    pub fn language(self: *const HostOverrides) ?[]const u8 {
-        return firstLanguageOf(self.accept_language);
+    /// The navigator's languages from the Accept-Language override
+    /// (`parseLanguages`), or null when there is none. OWNED.
+    pub fn languages(self: *const HostOverrides, allocator: Allocator) Allocator.Error!?Languages {
+        const list = self.accept_language orelse return null;
+        return try parseLanguages(allocator, list);
     }
 };
 
-/// The first language tag of an Accept-Language list ("de-DE,de;q=0.9" ->
-/// "de-DE"): the text before the first ',', trimmed, without its ";q=" -
-/// or null for none. The Window's navigator (HostOverrides.language) and a
-/// dedicated worker's (UserAgentSnapshot.language) read it alike.
-fn firstLanguageOf(accept_language: ?[]const u8) ?[]const u8 {
-    const list = accept_language orelse return null;
-    var parts = std.mem.splitScalar(u8, list, ',');
-    const first = std.mem.trim(u8, parts.first(), " ");
-    const tag = std.mem.trim(u8, if (std.mem.indexOfScalar(u8, first, ';')) |i| first[0..i] else first, " ");
-    return if (tag.len > 0) tag else null;
+/// The languages a navigator reports, most preferred first:
+/// navigator.languages, whose first is navigator.language. Never empty.
+/// OWNED (`deinit`).
+pub const Languages = struct {
+    tags: [][]u8,
+
+    pub fn first(self: *const Languages) []const u8 {
+        return self.tags[0];
+    }
+
+    pub fn deinit(self: *Languages, allocator: Allocator) void {
+        for (self.tags) |tag| allocator.free(tag);
+        allocator.free(self.tags);
+        self.* = undefined;
+    }
+};
+
+/// Blink's ParseAndSanitize (third_party/blink/renderer/core/frame/
+/// navigator_language.cc, BSD; reproduced, not copied), which
+/// NavigatorLanguage::EnsureUpdatedLanguage runs on the Accept-Language
+/// override (InspectorEmulationAgent::ApplyAcceptLanguageOverride hands it
+/// over as given) and on the browser's own list: `list` split at ',',
+/// empty items skipped; each item stripped of white space and, when its
+/// third character is '_', that made '-' ("en_US" -> "en-US"); nothing
+/// left, the default language. No q-value is removed and nothing is
+/// deduplicated - Chrome's navigator.languages under the override
+/// "de-DE,de;q=0.9" is ["de-DE", "de;q=0.9"]: only Chrome ships the CDP
+/// override, so its behaviour decides (golden rule 2). Only the
+/// Accept-Language header gets q-values (Fetch's step 14, fetch_job.zig).
+pub fn parseLanguages(allocator: Allocator, list: []const u8) Allocator.Error!Languages {
+    var tags: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (tags.items) |tag| allocator.free(tag);
+        tags.deinit(allocator);
+    }
+    var items = std.mem.tokenizeScalar(u8, list, ',');
+    while (items.next()) |item| {
+        const tag = try sanitizedCopy(allocator, item);
+        errdefer allocator.free(tag);
+        try tags.append(allocator, tag);
+    }
+    if (tags.items.len == 0) {
+        // DefaultLanguage(): the platform's.
+        var default = try platformLanguages(allocator);
+        defer default.deinit(allocator);
+        const tag = try allocator.dupe(u8, default.first());
+        errdefer allocator.free(tag);
+        try tags.append(allocator, tag);
+    }
+    return .{ .tags = try tags.toOwnedSlice(allocator) };
+}
+
+/// One ParseAndSanitize token: stripped of white space, a third character
+/// '_' made '-'.
+fn sanitizedCopy(allocator: Allocator, item: []const u8) Allocator.Error![]u8 {
+    const tag = try allocator.dupe(u8, std.mem.trim(u8, item, " \t\n\r\x0b\x0c"));
+    if (tag.len >= 3 and tag[2] == '_') tag[2] = '-';
+    return tag;
+}
+
+/// The languages with no override: the platform's preferred languages,
+/// sanitized as ParseAndSanitize does Chrome's accept-languages preference
+/// (Blink: ParseAndSanitize(GetAcceptLanguages())). For an en-US user that
+/// list is "en-US,en" in Chrome (its accept-languages default) and in
+/// Firefox (intl.accept_languages "en-US, en"); Safari reports "en-US"
+/// alone - the majority is the platform's default list
+/// (platform/kit/posix preferredLanguages). A platform that has no list
+/// answers "en-US", Crane's language before the platform had one.
+pub fn platformLanguages(allocator: Allocator) Allocator.Error!Languages {
+    var tags: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (tags.items) |tag| allocator.free(tag);
+        tags.deinit(allocator);
+    }
+    const preferred: ?[]platform_mod.Str = platform_mod.preferredLanguages(allocator) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    };
+    if (preferred) |list| {
+        defer allocator.free(list);
+        defer for (list) |language| allocator.free(language.slice());
+        for (list) |language| {
+            const tag = try sanitizedCopy(allocator, language.slice());
+            errdefer allocator.free(tag);
+            try tags.append(allocator, tag);
+        }
+    }
+    if (tags.items.len == 0) {
+        const tag = try allocator.dupe(u8, "en-US");
+        errdefer allocator.free(tag);
+        try tags.append(allocator, tag);
+    }
+    return .{ .tags = try tags.toOwnedSlice(allocator) };
 }
 
 /// A copy of a tab's user agent override, taken when a dedicated worker is
@@ -173,14 +257,15 @@ pub const UserAgentSnapshot = struct {
         return copyOf(allocator, overrides.user_agent, overrides.platform, overrides.accept_language);
     }
 
-    /// The first language of the copied Accept-Language override, or null:
-    /// the worker's navigator.language (and its languages, built from it).
+    /// The worker navigator's languages from the copied Accept-Language
+    /// override (`parseLanguages`), or null when there is none. OWNED.
     /// Chrome's workers answer the override too - NavigatorLanguage::
     /// EnsureUpdatedLanguage reads probe::ApplyAcceptLanguageOverride first,
     /// "required to allow for workers to respect the override"
     /// (third_party/blink/renderer/core/frame/navigator_language.cc).
-    pub fn language(self: *const UserAgentSnapshot) ?[]const u8 {
-        return firstLanguageOf(self.accept_language);
+    pub fn languages(self: *const UserAgentSnapshot, allocator: Allocator) Allocator.Error!?Languages {
+        const list = self.accept_language orelse return null;
+        return try parseLanguages(allocator, list);
     }
 
     /// Another snapshot's copy (a nested dedicated worker takes its owner
@@ -224,18 +309,60 @@ test "a worker's user agent snapshot is a copy: the tab's override changing late
     try std.testing.expect(none.user_agent == null);
 }
 
-test "a worker's snapshot names the first language of its Accept-Language copy, as the tab's override does" {
+/// `languages`' tags joined with '|', for the tests.
+fn joinedForTest(languages: *const Languages, buffer: []u8) []const u8 {
+    var at: usize = 0;
+    for (languages.tags, 0..) |tag, i| {
+        if (i > 0) {
+            buffer[at] = '|';
+            at += 1;
+        }
+        @memcpy(buffer[at..][0..tag.len], tag);
+        at += tag.len;
+    }
+    return buffer[0..at];
+}
+
+test "a worker's snapshot gives the languages of its Accept-Language copy, as the tab's override does" {
     const allocator = std.testing.allocator;
     var overrides: HostOverrides = .{};
     defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "", null, " de-DE;q=1, de;q=0.9");
+    try overrides.setUserAgent(allocator, 1, "", null, "de-DE,de");
     var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
     defer snapshot.deinit(allocator);
-    try std.testing.expectEqualStrings("de-DE", snapshot.language().?);
-    try std.testing.expectEqualStrings(overrides.language().?, snapshot.language().?);
+    var from_snapshot = (try snapshot.languages(allocator)).?;
+    defer from_snapshot.deinit(allocator);
+    var from_tab = (try overrides.languages(allocator)).?;
+    defer from_tab.deinit(allocator);
+    var buffer: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("de-DE|de", joinedForTest(&from_snapshot, &buffer));
+    try std.testing.expectEqualStrings("de-DE", from_tab.first());
     var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
     defer none.deinit(allocator);
-    try std.testing.expect(none.language() == null);
+    try std.testing.expect((try none.languages(allocator)) == null);
+}
+
+test "ParseAndSanitize: split at ',' skipping empty items, white space stripped, xx_ made xx-, q-values and repeats kept" {
+    const allocator = std.testing.allocator;
+    var buffer: [128]u8 = undefined;
+    var list = try parseLanguages(allocator, " en_US ,,de;q=0.9, en_US,zh_Hant");
+    defer list.deinit(allocator);
+    try std.testing.expectEqualStrings("en-US|de;q=0.9|en-US|zh-Hant", joinedForTest(&list, &buffer));
+    // Nothing left: the default language (the platform's first).
+    var empty = try parseLanguages(allocator, ",,");
+    defer empty.deinit(allocator);
+    var platform_list = try platformLanguages(allocator);
+    defer platform_list.deinit(allocator);
+    try std.testing.expectEqualStrings(platform_list.first(), empty.first());
+    try std.testing.expectEqual(@as(usize, 1), empty.tags.len);
+}
+
+test "with no override the languages are the platform's list: en-US then en (Chrome's and Firefox's default)" {
+    const allocator = std.testing.allocator;
+    var list = try platformLanguages(allocator);
+    defer list.deinit(allocator);
+    var buffer: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("en-US|en", joinedForTest(&list, &buffer));
 }
 
 test "an empty user agent overrides the languages alone (Playwright's locale call)" {
@@ -244,7 +371,9 @@ test "an empty user agent overrides the languages alone (Playwright's locale cal
     defer overrides.deinit(allocator);
     try overrides.setUserAgent(allocator, 1, "", null, "fr-FR,fr");
     try std.testing.expect(overrides.user_agent == null);
-    try std.testing.expectEqualStrings("fr-FR", overrides.language().?);
+    var languages = (try overrides.languages(allocator)).?;
+    defer languages.deinit(allocator);
+    try std.testing.expectEqualStrings("fr-FR", languages.first());
     try std.testing.expectEqual(@as(Owner, 1), overrides.user_agent_owner);
     try overrides.setUserAgent(allocator, 1, "", "", "");
     try std.testing.expect(overrides.accept_language == null);
@@ -259,7 +388,7 @@ test "a setter that goes clears only what it set; strings are owned" {
     overrides.setMedia(2, .{ .color_scheme = .dark });
     overrides.setMaxTouchPoints(1, 5);
     overrides.setScreen(1, .{ .width = 390, .height = 844, .device_pixel_ratio = 3 });
-    try std.testing.expectEqualStrings("de-DE", overrides.language().?);
+    try std.testing.expectEqualStrings("de-DE,de;q=0.9", overrides.accept_language.?);
     overrides.clearOwnedBy(allocator, 1);
     try std.testing.expect(overrides.user_agent == null);
     try std.testing.expect(overrides.max_touch_points == null);
