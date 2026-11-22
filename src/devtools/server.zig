@@ -232,6 +232,12 @@ pub const Server = struct {
             platform.joinThread(thread);
             self.acceptor = null;
         }
+        // No task runs any more: what is still queued is dropped now, before
+        // the wait below - a connection the acceptor opened after StopTask
+        // (its AddConnection, never run) is closed by its drop, so its
+        // reader and writer end; every task's reference is let go. Later
+        // posts are dropped as they come (TaskSink.post).
+        self.inbox.close();
         // Readers and writers end once their connections are shut down.
         while (true) {
             const live = self.live_threads.load(.acquire);
@@ -272,6 +278,13 @@ pub const Server = struct {
     /// Post `value` (a struct with `fn run(*@This(), *Server) void` and an
     /// optional `fn drop(*@This(), Allocator) void`) to the devtools thread.
     /// Any thread. False when the server has stopped (the value is dropped).
+    /// Run `value.run(server)` on the devtools thread. A task the inbox
+    /// does not run - posted after it closed, still queued at its close, or
+    /// refused for want of memory - is dropped instead: `value.drop`, which
+    /// must be `pub` (Zig's @hasDecl does not see a private declaration: a
+    /// private `drop` was never called, and every dropped task leaked what
+    /// it held - a ClosedTask its Connection, with the Connection's Outbound,
+    /// at every Server.stop that raced a reader's end; lane tpf).
     pub fn postTask(self: *Server, comptime T: type, value: T) bool {
         const Task = struct {
             server: *Server,
@@ -1129,9 +1142,12 @@ const AddConnection = struct {
     connection: *Connection,
 
     fn run(self: *AddConnection, server: *Server) void {
+        // After StopTask (a connection accepted while the server stopped,
+        // its task behind StopTask in the same batch): no StopTask will
+        // close it, so it is closed now, as a dropped task's.
+        if (server.devtools_done.load(.acquire) != 0) return self.drop(server.allocator);
         server.connections.append(server.allocator, self.connection) catch {
-            self.connection.shutdown();
-            self.connection.release();
+            self.drop(server.allocator);
             return;
         };
         if (self.connection.transport == .pipe) {
@@ -1140,8 +1156,11 @@ const AddConnection = struct {
         }
     }
 
-    fn drop(self: *AddConnection, allocator: Allocator) void {
+    pub fn drop(self: *AddConnection, allocator: Allocator) void {
         _ = allocator;
+        // Its writer waits on the outbound, its reader on the transport:
+        // both end.
+        self.connection.outbound.close();
         self.connection.shutdown();
         self.connection.release();
     }
@@ -1156,7 +1175,7 @@ const HttpTask = struct {
         server.handleHttp(self.connection, &self.request);
     }
 
-    fn drop(self: *HttpTask, allocator: Allocator) void {
+    pub fn drop(self: *HttpTask, allocator: Allocator) void {
         self.request.deinit(allocator);
         self.connection.release();
     }
@@ -1171,7 +1190,7 @@ const MessageTask = struct {
         server.handleMessage(self.connection, self.text);
     }
 
-    fn drop(self: *MessageTask, allocator: Allocator) void {
+    pub fn drop(self: *MessageTask, allocator: Allocator) void {
         allocator.free(self.text);
         self.connection.release();
     }
@@ -1188,7 +1207,7 @@ const ClosedTask = struct {
         };
     }
 
-    fn drop(self: *ClosedTask, allocator: Allocator) void {
+    pub fn drop(self: *ClosedTask, allocator: Allocator) void {
         _ = allocator;
         self.connection.release();
     }
@@ -1203,7 +1222,7 @@ const TargetEventTask = struct {
         server.handleTargetEvent(self.side, self.event);
     }
 
-    fn drop(self: *TargetEventTask, allocator: Allocator) void {
+    pub fn drop(self: *TargetEventTask, allocator: Allocator) void {
         switch (self.event) {
             .navigated => |e| allocator.free(e.url),
             .title_changed => |e| allocator.free(e.title),
@@ -1364,7 +1383,12 @@ pub const Connection = struct {
     }
 
     fn threadEnded(self: *Connection) void {
-        const server = self.server;
+        threadEndedOn(self.server);
+    }
+
+    /// A reader or writer of `server` is done with every connection it held
+    /// (its last touch of either): Server.stop may go on.
+    fn threadEndedOn(server: *Server) void {
         _ = server.live_threads.fetchSub(1, .acq_rel);
         futexIo().futexWake(u32, &server.live_threads.raw, 1);
     }
@@ -1388,8 +1412,15 @@ pub const Connection = struct {
         const server = self.server;
         defer {
             _ = server.postTask(ClosedTask, .{ .connection = self.retain() });
-            self.threadEnded();
+            // The thread's reference goes BEFORE the thread says it ended:
+            // Server.stop returns - and frees the server, whose allocator
+            // frees a connection - once no reader or writer is live, so a
+            // release after that could be the last one, made on a freed
+            // server or after the embedder's allocator checked for leaks
+            // (lane tpf: the replay tests' DebugAllocator reported the
+            // Connection, its Outbound and its queue leaked).
             self.release();
+            threadEndedOn(server);
         }
         switch (self.transport) {
             .socket => self.readSocket(),
@@ -1496,9 +1527,11 @@ pub const Connection = struct {
 
     fn writerMain(context: ?*anyopaque) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(context.?));
+        const server = self.server;
         defer {
-            self.threadEnded();
+            // As the reader's: release, then say the thread ended.
             self.release();
+            threadEndedOn(server);
         }
         const allocator = self.server.allocator;
         var items: std.ArrayList(outbound.Item) = .empty;

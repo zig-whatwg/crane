@@ -465,14 +465,18 @@ pub const Browser = struct {
         navigables.frame_touched = .{ .context = browser, .touched = frameTouched };
         // The agent's inspector client (the engine protocol's
         // inspector_protocol): Runtime.runIfWaitingForDebugger releases the
-        // tab's start hold, and a debugger pause runs the Browser's nested
-        // message loop (runtime.BrowserPause, policy .debugger).
+        // tab's start hold, a debugger pause runs the Browser's nested
+        // message loop (runtime.BrowserPause, policy .debugger), and the DOM's
+        // objects get Blink's RemoteObject subtypes and descriptions
+        // (inspector_values.zig: a node is subtype "node").
         if (comptime engine.capabilities.inspector_protocol != .unsupported) {
             browser.inspector_client = .{
                 .host = browser,
                 .runIfWaitingForDebugger = inspectorRunIfWaiting,
                 .runMessageLoopOnPause = inspectorRunMessageLoopOnPause,
                 .quitMessageLoopOnPause = inspectorQuitMessageLoopOnPause,
+                .valueSubtype = @import("inspector_values.zig").valueSubtype,
+                .descriptionForValueSubtype = @import("inspector_values.zig").description,
             };
             engine.installInspectorClient(agent, &browser.inspector_client);
         }

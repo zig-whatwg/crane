@@ -18,9 +18,6 @@ const Allocator = std.mem.Allocator;
 // Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
 const fetch = @import("fetch");
 
-// Host platform IO, for file: URLs.
-const host = @import("host");
-
 const navigate_steps = @import("navigate_steps.zig");
 
 /// The response `resultFromResponse` takes, as Fetch hands it over.
@@ -892,10 +889,10 @@ const max_file_navigation_bytes: usize = 32 * 1024 * 1024;
 
 /// Handle file: URLs.
 ///
-/// file: is not a fetch scheme, so this does not go through the Fetch
-/// algorithm: it reads the path and synthesises the response a navigation
-/// needs. The MIME type comes from the file extension, which is the only
-/// supplied type a local file has.
+/// A navigation to a file: URL reads it as scheme fetch "file" does
+/// (fetch/algorithms/file_fetch.zig, through the platform's file access) and
+/// synthesises the response a navigation needs: the MIME type comes from the
+/// file extension, which is the only supplied type a local file has.
 fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
@@ -904,89 +901,30 @@ fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!Nav
     result.is_network_error = false;
     result.is_cross_origin = false;
 
-    // file://host/path is not supported; only file:///path and file:/path.
-    const after_scheme = url["file:".len..];
-    const raw_path = if (std.mem.startsWith(u8, after_scheme, "//")) blk: {
-        const authority_and_path = after_scheme[2..];
-        const slash = std.mem.indexOfScalar(u8, authority_and_path, '/') orelse {
+    // file://host/path names another machine: only file:///path,
+    // file://localhost/path and file:/path are read.
+    const found = fetch.algorithms.file_fetch.read(allocator, url, max_file_navigation_bytes) catch return NavigationFetchError.OutOfMemory;
+    const file = switch (found) {
+        .file => |f| f,
+        .bad_host => {
             result.status = 400;
             return result;
-        };
-        const authority = authority_and_path[0..slash];
-        if (authority.len != 0 and !std.mem.eql(u8, authority, "localhost")) {
-            result.status = 400;
+        },
+        .not_found => {
+            result.status = 404;
             return result;
-        }
-        break :blk authority_and_path[slash..];
-    } else after_scheme;
-
-    // Strip any query and fragment: neither is part of a file path.
-    const path_end = std.mem.indexOfAny(u8, raw_path, "?#") orelse raw_path.len;
-    const encoded_path = raw_path[0..path_end];
-
-    const path = percentDecode(allocator, encoded_path) catch return NavigationFetchError.OutOfMemory;
-    defer allocator.free(path);
-
-    const io = host.io();
-    const file = host.cwd().openFile(io, path, .{}) catch {
-        result.status = 404;
-        return result;
+        },
     };
-    defer file.close(io);
-
-    var file_reader = file.reader(io, &.{});
-    const bytes = file_reader.interface.allocRemaining(allocator, .limited(max_file_navigation_bytes)) catch {
-        result.status = 404;
-        return result;
-    };
-    result.body = bytes;
+    defer allocator.free(file.path);
+    result.body = file.bytes;
     result.status = 200;
     result.ok = true;
-    result.last_modified = if (@import("platform").fileInfo(@import("platform").Str.from(path))) |info| info.modified else |_| null;
-    result.content_type = allocator.dupe(u8, contentTypeFromPath(path)) catch {
+    result.last_modified = if (@import("platform").fileInfo(@import("platform").Str.from(file.path))) |info| info.modified else |_| null;
+    result.content_type = allocator.dupe(u8, file.mime_type) catch {
         return NavigationFetchError.OutOfMemory;
     };
 
     return result;
-}
-
-/// The supplied MIME type of a local file, from its extension.
-///
-/// mimesniff calls this "determining the supplied MIME type": for a local file
-/// the extension is all there is. Unknown extensions get
-/// "application/octet-stream", which routes to external software rather than
-/// being guessed at.
-pub fn contentTypeFromPath(path: []const u8) []const u8 {
-    const table = [_]struct { ext: []const u8, mime: []const u8 }{
-        .{ .ext = ".html", .mime = "text/html" },
-        .{ .ext = ".htm", .mime = "text/html" },
-        .{ .ext = ".xhtml", .mime = "application/xhtml+xml" },
-        .{ .ext = ".xml", .mime = "text/xml" },
-        .{ .ext = ".svg", .mime = "image/svg+xml" },
-        .{ .ext = ".css", .mime = "text/css" },
-        .{ .ext = ".js", .mime = "text/javascript" },
-        .{ .ext = ".mjs", .mime = "text/javascript" },
-        .{ .ext = ".json", .mime = "application/json" },
-        .{ .ext = ".txt", .mime = "text/plain" },
-        .{ .ext = ".vtt", .mime = "text/vtt" },
-        .{ .ext = ".png", .mime = "image/png" },
-        .{ .ext = ".gif", .mime = "image/gif" },
-        .{ .ext = ".jpg", .mime = "image/jpeg" },
-        .{ .ext = ".jpeg", .mime = "image/jpeg" },
-        .{ .ext = ".bmp", .mime = "image/bmp" },
-        .{ .ext = ".webp", .mime = "image/webp" },
-        .{ .ext = ".ico", .mime = "image/vnd.microsoft.icon" },
-        .{ .ext = ".mp4", .mime = "video/mp4" },
-        .{ .ext = ".webm", .mime = "video/webm" },
-        .{ .ext = ".ogg", .mime = "audio/ogg" },
-        .{ .ext = ".mp3", .mime = "audio/mpeg" },
-        .{ .ext = ".wav", .mime = "audio/wav" },
-    };
-
-    for (table) |row| {
-        if (std.ascii.endsWithIgnoreCase(path, row.ext)) return row.mime;
-    }
-    return "application/octet-stream";
 }
 
 /// Percent-decode a string

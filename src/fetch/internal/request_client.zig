@@ -135,6 +135,14 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // must not ask a later document or retain the settings object.
     request.prohibits_mixed_security_contexts = client.prohibits_mixed_security_contexts;
 
+    // Not a step: whether the client may load local files (scheme fetch
+    // "file", file_fetch.zig) - a client whose document is a file: one. The
+    // referrer source is that document's URL (a srcdoc document's is its
+    // ancestor's, a worker's its creation URL).
+    if (client.referrer_source) |source| {
+        if (std.ascii.startsWithIgnoreCase(source, "file:")) request.local_file_access = true;
+    }
+
     // Referrer Policy "determine request's referrer", step 3's "client" case,
     // resolved here where the client is known; main fetch step 9 takes it
     // from there as a URL referrer, which is the same referrerSource. A

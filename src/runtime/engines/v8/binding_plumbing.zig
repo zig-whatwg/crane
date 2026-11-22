@@ -810,7 +810,7 @@ fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInf
     if (!self.global_interface) {
         // A node interface's receiver is unwrapped as a node wrapper
         // (`thisNodeInstance`: Object::Unwrap, comptime per interface).
-        const found_instance = if (self.node_receiver) thisNodeInstance(info) else thisInstance(info);
+        const found_instance = if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info);
         if (found_instance) |found| {
             if (!isPoisoned(@intFromPtr(found))) {
                 const instance: *runtime.Instance = @ptrCast(@alignCast(found));
@@ -1089,8 +1089,9 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
             // read from `info` with no handle (`thisInstance`); a wrapper keeps
             // no WrapperTypeInfo beside it (lane v8up A0).
             // A node interface's receiver: a node wrapper's instance, through
-            // its anchor (`thisNodeInstance`).
-            if (if (self.node_receiver) thisNodeInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
+            // its anchor - or an isolated world's wrapper of the node
+            // (`nodeReceiverInstance`).
+            if (if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - return undefined instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);
@@ -1865,6 +1866,21 @@ pub fn thisNodeInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
     return @ptrCast(@import("node_wrappers.zig").instanceOfSlot(slot) orelse return null);
 }
 
+/// `this`'s instance for a member of a node interface: the main world's node
+/// wrapper through its anchor (`thisNodeInstance`, the hit path), else any
+/// other wrapper of the node - an isolated world's, which is bound as a
+/// platform object (platform_anchor.bindInWorld) and so carries no node
+/// anchor - through the general read (`thisInstance`: instanceOfObject reads
+/// every kind of wrapper). Before the fallback, every attribute of a node
+/// read in a world threw "Illegal invocation" (Puppeteer's and Playwright's
+/// utility worlds: `script.type = ...`, `el.textContent`, `document.head`),
+/// while operations reached the node through `interface.getInstance`
+/// (lane tpf, Vue's Puppeteer e2e suite). Null for a `this` that is no
+/// platform object; the caller's brand check decides the interface.
+pub fn nodeReceiverInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
+    return thisNodeInstance(info) orelse thisInstance(info);
+}
+
 /// An attribute setter function's steps (the generic makeSetterCallback's
 /// callback and body), for the attribute `self` describes.
 pub fn attributeSetter(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
@@ -1972,8 +1988,9 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
             // The brand check is the instance's state ancestry (`self.implements`
             // below), per instance, so it holds across realms. `this`'s instance
             // is read from `info` with no handle (`thisInstance`): a
-            // Global<Object> per assignment before (perf3 phase 1b).
-            if (if (self.node_receiver) thisNodeInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
+            // Global<Object> per assignment before (perf3 phase 1b). A node
+            // interface's: `nodeReceiverInstance`.
+            if (if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - silently return instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);

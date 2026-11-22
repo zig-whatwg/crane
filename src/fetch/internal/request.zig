@@ -364,6 +364,14 @@ pub const InternalRequest = struct {
     /// null/UA client. Never inferred from the request URL or current realm.
     prohibits_mixed_security_contexts: bool = false,
 
+    /// The client is a local document - a file: document, or a srcdoc one
+    /// inside it - which may load local files: scheme fetch "file" serves a
+    /// file: URL to it, and to a request with no client, and to nothing else
+    /// (fetch/algorithms/file_fetch.zig; Blink's SecurityOrigin::
+    /// CanLoadLocalResources). Captured from the client at population, kept
+    /// across clones and redirects.
+    local_file_access: bool = false,
+
     /// Reserved client for navigation/worker requests (internal HTML spec concept)
     reserved_client: ?*anyopaque = null,
 
@@ -979,6 +987,7 @@ pub const InternalRequest = struct {
             .body = null, // Handle body separately
             .client = self.client,
             .prohibits_mixed_security_contexts = self.prohibits_mixed_security_contexts,
+            .local_file_access = self.local_file_access,
             .reserved_client = self.reserved_client,
             .replaces_client_id = self.replaces_client_id,
             .traversable_for_user_prompts = self.traversable_for_user_prompts,

@@ -21146,6 +21146,13 @@ struct CraneInspectorHooks {
     /// `group`'s default context as the realm record's own handle, BORROWED
     /// (V8InspectorClient::ensureDefaultContextInGroup); null for none.
     Global<Context>* (*default_context)(void* host, int group);
+    /// The RemoteObject subtype of a platform object, by its instance
+    /// (V8InspectorClient::valueSubtype): STATIC NUL-terminated UTF-8, or
+    /// null for none. Null hook: none.
+    const char* (*value_subtype)(void* host, void* instance);
+    /// Its description (descriptionForValueSubtype), written into `buffer`
+    /// (at most `capacity` bytes): the length, 0 for none.
+    size_t (*description)(void* host, void* instance, char* buffer, size_t capacity);
 };
 
 /// THE agent's inspector (engine section 4.2b): one V8Inspector per isolate
@@ -21173,7 +21180,7 @@ public:
     v8_inspector::V8Inspector* inspector() { return inspector_.get(); }
     Isolate* isolate() const { return isolate_; }
     void SetHooks(const CraneInspectorHooks* hooks) {
-        hooks_ = hooks ? *hooks : CraneInspectorHooks{nullptr, nullptr, nullptr, nullptr, nullptr};
+        hooks_ = hooks ? *hooks : CraneInspectorHooks{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     }
 
     /// Make `context` known to the inspector in `group` (contextCreated),
@@ -21288,6 +21295,36 @@ public:
         return context->Get(isolate_);
     }
 
+    /// A platform object's RemoteObject subtype, from the host (Blink's
+    /// ThreadDebuggerCommonImpl::valueSubtype: "node" for a Node, "array" for
+    /// a NodeList or HTMLCollection, ...). Without it every DOM object was a
+    /// plain "object": Puppeteer and Playwright make an element handle only
+    /// for subtype "node" (lane tpf, Vue's Puppeteer e2e: "document.$eval is
+    /// not a function"). Any wrapper kind - a node's, an isolated world's,
+    /// another platform object's - through instanceOfObject.
+    std::unique_ptr<v8_inspector::StringBuffer> valueSubtype(Local<Value> value) override {
+        if (!hooks_.value_subtype || value.IsEmpty() || !value->IsObject()) return nullptr;
+        void* instance = instanceOfObject(isolate_, value.As<Object>());
+        if (!instance) return nullptr;
+        const char* subtype = hooks_.value_subtype(hooks_.host, instance);
+        if (!subtype) return nullptr;
+        return v8_inspector::StringBuffer::create(v8_inspector::StringView(reinterpret_cast<const uint8_t*>(subtype), strlen(subtype)));
+    }
+
+    /// The description of a value valueSubtype named (Blink's
+    /// descriptionForValueSubtype: a node's tag#id.class, "#document").
+    std::unique_ptr<v8_inspector::StringBuffer> descriptionForValueSubtype(Local<Context>, Local<Value> value) override {
+        if (!hooks_.description || value.IsEmpty() || !value->IsObject()) return nullptr;
+        void* instance = instanceOfObject(isolate_, value.As<Object>());
+        if (!instance) return nullptr;
+        char buffer[1024];
+        const size_t length = hooks_.description(hooks_.host, instance, buffer, sizeof buffer);
+        if (length == 0) return nullptr;
+        // UTF-8 to the inspector's UTF-16 (a StringView of bytes is Latin-1).
+        std::vector<uint16_t> wide;
+        return v8_inspector::StringBuffer::create(CraneMessageView(reinterpret_cast<const uint8_t*>(buffer), length, wide));
+    }
+
 private:
     struct Known {
         Global<Context> context;
@@ -21295,7 +21332,7 @@ private:
     };
     Isolate* isolate_;
     std::unique_ptr<v8_inspector::V8Inspector> inspector_;
-    CraneInspectorHooks hooks_{nullptr, nullptr, nullptr, nullptr, nullptr};
+    CraneInspectorHooks hooks_{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     int64_t unique_id_ = 0x63726e65;
     /// The contexts made known, by execution context id: weak handles.
     std::unordered_map<int, Known> contexts_;

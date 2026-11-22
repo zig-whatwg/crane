@@ -1766,6 +1766,18 @@ pub const InspectorClient = struct {
     /// Null: the engine resumes at once.
     runMessageLoopOnPause: ?*const fn (host: ?*anyopaque, group: InspectorGroup) void = null,
     quitMessageLoopOnPause: ?*const fn (host: ?*anyopaque) void = null,
+    /// The RemoteObject `subtype` the host gives a platform object (V8's
+    /// V8InspectorClient::valueSubtype; Blink's ThreadDebuggerCommonImpl):
+    /// "node", "array", "error", "blob" or "trustedtype" - STATIC text - or
+    /// null for none (the engine's own answer). `instance` BORROWED. Called
+    /// on the agent's thread whenever the inspector describes an object.
+    /// CDP clients make an element handle only for subtype "node".
+    valueSubtype: ?*const fn (host: ?*anyopaque, instance: *Instance) ?[]const u8 = null,
+    /// The RemoteObject `description` of a platform object valueSubtype
+    /// named (descriptionForValueSubtype: a node's "div#id.class",
+    /// "#document"), written into `buffer`; the bytes written, or null for
+    /// the engine's own. `instance` BORROWED.
+    descriptionForValueSubtype: ?*const fn (host: ?*anyopaque, instance: *Instance, buffer: []u8) ?[]const u8 = null,
 };
 
 /// Where an exception the host reports was thrown (`inspectorExceptionThrown`).

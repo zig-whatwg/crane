@@ -61,12 +61,19 @@ fn expect(realm: runtime.Context, source: []const u8, expected: []const u8) !voi
 }
 
 /// A page: a Browser scope of the test's own, an agent, a Window realm with
-/// an HTML document as its Window's.
+/// an HTML document as its Window's, shown by a top-level browsing context of
+/// the scope - so the document is fully active, as a page's is. Without the
+/// context the Window had a Document no navigable showed: not fully active,
+/// so DOM "inner invoke" (steps 2.7-2.8, EventTarget.windowFullyActive)
+/// skipped every listener - the page's own included - and each test that
+/// dispatched an event checked nothing (lane tpf: 5 of these tests failed on
+/// that alone).
 const Page = struct {
     own_runtime: test_process.OwnRuntime,
     browser: *runtime.BrowserScope,
     agent: *engine.Agent,
     realm: runtime.Context,
+    context: *dom.browser_state.BrowsingContext,
     live: bool = true,
 
     fn make() !Page {
@@ -97,11 +104,20 @@ const Page = struct {
         try dom.document_internals.setDocumentType(document, .html);
         dom.window_globals.setDocument(window, document);
         dom.document_browsing_context.setWindow(document, window);
+        // The top-level browsing context that shows them (HTML "create a new
+        // top-level browsing context": its active window and document).
+        const navigables = dom.browser_state.navigablesOf(realm) orelse return error.NoNavigables;
+        const context = try dom.browser_state.BrowsingContext.initTopLevel(testing.allocator, navigables);
+        errdefer context.releaseByOwner();
+        context.setActiveDocument(document, window);
         try expect(realm, "document.appendChild(document.createElement('html')); document.documentElement.appendChild(document.createElement('body')); String(!!document.body)", "true");
-        return .{ .own_runtime = own_runtime, .browser = browser, .agent = agent, .realm = realm };
+        return .{ .own_runtime = own_runtime, .browser = browser, .agent = agent, .realm = realm, .context = context };
     }
 
     fn end(self: *Page) void {
+        // The context goes first (no Window holds it): the realm's end then
+        // finds no context naming its Window, as a closed page's.
+        self.context.releaseByOwner();
         if (self.live) engine.destroyWindowRealm(self.realm, .global_detached);
         self.live = false;
         engine.destroyAgent(self.agent);
