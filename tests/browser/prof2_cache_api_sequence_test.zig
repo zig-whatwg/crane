@@ -159,12 +159,15 @@ fn workerCalls() !void {
     const browser = try openPage(profile);
     defer browser.deinit();
     const sequence = sequenceOf(browser) orelse return error.NoSequence;
-    // A worker's calls answer on its own loop.
+    // A worker's calls answer on its own loop. Absolute URLs: a blob:
+    // worker's API base URL is its blob: URL, which no relative URL parses
+    // against (URL parsing: a base with an opaque path), so '/w' is a
+    // TypeError there - in every browser too.
     try expectInPage(browser,
         \\const source = `(async () => {
         \\  const cache = await caches.open('w');
-        \\  await cache.put('/w', new Response('from worker'));
-        \\  postMessage(await (await cache.match('/w')).text());
+        \\  await cache.put('https://example.test/w', new Response('from worker'));
+        \\  postMessage(await (await cache.match('https://example.test/w')).text());
         \\})().catch(e => postMessage('failed:' + e));`;
         \\const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
         \\const answer = await new Promise(resolve => worker.onmessage = e => resolve(e.data));
