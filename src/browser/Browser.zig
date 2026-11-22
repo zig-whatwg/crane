@@ -1031,6 +1031,43 @@ pub const Browser = struct {
         integration.navigate(serialized, .{ .browser_ui = true });
     }
 
+    /// What `navigateNavigable` carries besides its URL (N5: CDP
+    /// Page.navigate's `referrer` and `referrerPolicy`).
+    pub const NavigateNavigableOptions = struct {
+        /// The request's referrer, a URL. BORROWED for the call.
+        referrer: ?[]const u8 = null,
+        referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    };
+
+    /// HTML "navigate" navigable `id` - a tab, or a frame in one - to `url`
+    /// as the browser's UI does (user involvement "browser UI", no
+    /// sourceDocument), with `options`' referrer: CDP Page.navigate,
+    /// whatever frame it names (Chrome: NavigationController::LoadURL on
+    /// that frame's FrameTreeNode). The navigation runs as tasks; returns
+    /// the id of the cross-document navigation it started (the navigation
+    /// observer's navigation_id, CDP's loaderId), or 0 when none started (a
+    /// fragment navigation, one refused). error.NoSuchTab for an id that
+    /// names no live navigable of this Browser; error.InvalidUrl.
+    pub fn navigateNavigable(self: *Browser, id: u64, url: []const u8, options: NavigateNavigableOptions) !u64 {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return error.NoSuchTab;
+        const bc = navigables.byId(id) orelse return error.NoSuchTab;
+        if (bc.is_closed or bc.active_window == null) return error.NoSuchTab;
+        const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
+        defer self.allocator.free(serialized);
+        if (bc.parent == null) if (self.hostContextOf(bc)) |ctx| {
+            return ctx.navigateWithOptions(serialized, .{ .referrer = options.referrer, .referrer_policy = options.referrer_policy });
+        };
+        const integration = integrationOf(bc) orelse return error.NoSuchTab;
+        var started: u64 = 0;
+        integration.navigate(serialized, .{
+            .browser_ui = true,
+            .referrer_url = options.referrer,
+            .referrer_policy = options.referrer_policy,
+            .started_navigation_id = &started,
+        });
+        return started;
+    }
+
     /// HTML "reload" traversable `id`'s navigable, as the browser's reload
     /// button does: with userInvolvement "browser UI", so "reload" step 1 -
     /// the navigation API's navigate event, which the page could cancel - is
