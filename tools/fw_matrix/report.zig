@@ -106,7 +106,7 @@ pub const rulings_statement =
 /// Where Node runs (the user, 2026-11-11 5:43 PM ET: "we can run node for
 /// the purposes of these tests").
 pub const node_note =
-    "Node runs only the projects' own build steps, test servers and test runners, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies; Angular's are built by its own Bazel and served by its own web-test-runner, one target per page. htmx's test page and the TodoMVC apps are static files, served as they are.";
+    "Node runs only the projects' own build steps, test servers and test runners, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies. Angular, htmx, React, Svelte and Vue are run by their own test runners, which drive Crane over the Chrome DevTools Protocol as they drive Chrome: Playwright through Crane's WebDriver server (htmx's web-test-runner, React's suites, Svelte's and Vue's Vitest), Puppeteer by launching Crane's console (Vue's e2e tests, Angular's Bazel web-test-runner). The TodoMVC apps are static files, served as they are.";
 
 /// The runs in `journals` grouped by suite, each suite's runs ordered by
 /// generation (lane runs, with none, after) then label.
