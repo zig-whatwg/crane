@@ -43,8 +43,8 @@ pub const KitPart = struct {
 /// The extra kit parts of the platform named `platform_name` for `target`:
 /// its adapter's declaration, none for a platform with no build file here.
 pub fn kitParts(platform_name: []const u8, target: std.Target) []const KitPart {
-    inline for (@typeInfo(@TypeOf(adapters)).@"struct".fields) |field| {
-        if (std.mem.eql(u8, field.name, platform_name)) return @field(adapters, field.name).kitParts(target);
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (std.mem.eql(u8, name, platform_name)) return @field(adapters, name).kitParts(target);
     }
     return &.{};
 }
