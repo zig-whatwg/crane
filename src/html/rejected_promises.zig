@@ -117,7 +117,7 @@ const Tracked = struct {
 /// handles, into another isolate.) Null for an agent with no host (a unit
 /// test's bare agent): nothing is tracked.
 fn listOf(agent: ?*engine.Agent) ?*std.ArrayListUnmanaged(*anyopaque) {
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent orelse return null) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent orelse return null) orelse return null;
     return &host.rejections;
 }
 
