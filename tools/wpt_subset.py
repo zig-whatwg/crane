@@ -1003,6 +1003,12 @@ EXCLUDE = [
     ('screen-orientation/nested-documents.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
     ('screen-orientation/onchange-event-subframe.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
     ('screen-orientation/onchange-event.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    # Both subtests need lock() past step 3: the first locks in fullscreen (0/2 in all three), the second wants
+    # SecurityError from an iframe's lock() where the current spec rejects NotSupportedError at step 3 on a UA
+    # without lock support and NotAllowedError at step 4's pre-lock check. Crane = the spec + Chrome 158 (both
+    # NotSupportedError); only Firefox 160 passes the iframe subtest; Safari 27.2 has no lock(). On a UA that
+    # cannot lock it tests nothing reachable (the integrator, 2026-11-22 1:08 AM ET).
+    ('screen-orientation/fullscreen-interactions.html', 'needs a device that can lock the orientation: its iframe subtest asserts a pre-spec SecurityError'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),
