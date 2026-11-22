@@ -35,3 +35,14 @@ test "a window by default: Puppeteer's launch has no --no-startup-window" {
     const options = try repl.parseOptions(&.{ "--remote-debugging-port=0", "about:blank" }, &bad);
     try testing.expect(!options.no_startup_window);
 }
+
+test "Chrome's --proxy-server and --proxy-bypass-list (Playwright's launch-level proxy) are the console's" {
+    var bad: []const u8 = "";
+    const options = try repl.parseOptions(&.{
+        "--remote-debugging-pipe",
+        "--proxy-server=http=a.test:3128;socks=b.test",
+        "--proxy-bypass-list=*.internal;<-loopback>",
+    }, &bad);
+    try testing.expectEqualStrings("http=a.test:3128;socks=b.test", options.proxy_server.?);
+    try testing.expectEqualStrings("*.internal;<-loopback>", options.proxy_bypass_list.?);
+}

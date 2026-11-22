@@ -167,6 +167,11 @@ pub const BrowserConfig = struct {
         direct,
         /// A proxy per scheme and the hosts that bypass it.
         manual: @import("fetch").network.NetworkContext.Proxy.Manual,
+        /// Chrome's proxy rules - `--proxy-server` / `--proxy-bypass-list`,
+        /// CDP Target.createBrowserContext {proxyServer, proxyBypassList}
+        /// (fetch/network/proxy_rules.zig). BORROWED until Browser.init
+        /// returns: the network context keeps a copy.
+        rules: *const @import("fetch").network.NetworkContext.ProxyRules,
         /// A proxy auto-config file's URL: not supported.
         pac: []const u8,
         /// Proxy auto-detection (WPAD): not supported.
@@ -404,6 +409,7 @@ pub const Browser = struct {
                 .system => .system,
                 .direct => .direct,
                 .manual => |manual| .{ .manual = manual },
+                .rules => |rules| .{ .rules = rules },
                 .pac, .autodetect => unreachable, // refused by init
             },
             .accept_insecure_certs = config.accept_insecure_certs,

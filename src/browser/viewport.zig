@@ -38,8 +38,117 @@ pub fn windowRectChanged(scope: *runtime.BrowserScope, tab: platform.TabId, rect
         if (tab != 0 and traversable.id != tab) continue;
         const before = traversable.traversableViewport();
         traversable.viewport = size;
+        // The window's rect too (screenX/screenY, outerWidth/outerHeight).
+        traversable.window_rect = .{ .x = cssPosition(rect.x), .y = cssPosition(rect.y), .width = size.width, .height = size.height };
         changed(traversable, before);
     }
+}
+
+pub const WindowRect = html.window.browsing_context.WindowRect;
+pub const WindowState = html.window.browsing_context.WindowState;
+
+/// A tab's window: its rect and state (CDP Browser.Bounds).
+pub const WindowBounds = struct { rect: WindowRect, state: WindowState };
+
+/// The headless platform's window when nothing has said otherwise
+/// (kit/headless windowRect: the default viewport at the origin).
+const default_window: WindowRect = .{ .width = 1024, .height = 768 };
+
+/// Tab `tab`'s window (CDP Browser.getWindowForTarget / getWindowBounds):
+/// the rect the platform, a host or the page set, else the window its
+/// viewport is; null when no open top-level traversable has that id.
+pub fn windowBounds(scope: *runtime.BrowserScope, tab: u64) ?WindowBounds {
+    const traversable = topLevel(scope, tab) orelse return null;
+    return .{ .rect = currentRect(traversable), .state = traversable.window_state };
+}
+
+fn currentRect(traversable: *BrowsingContext) WindowRect {
+    if (traversable.window_rect) |rect| return rect;
+    const size = traversable.viewport orelse return default_window;
+    return .{ .width = size.width, .height = size.height };
+}
+
+fn topLevel(scope: *runtime.BrowserScope, tab: u64) ?*BrowsingContext {
+    const navigables = dom.browser_state.existingNavigablesIn(scope) orelse return null;
+    for (navigables.contexts()) |traversable| {
+        if (traversable.parent != null or traversable.is_closed or traversable.id != tab) continue;
+        return traversable;
+    }
+    return null;
+}
+
+/// What a host asks of a tab's window (CDP Browser.setWindowBounds): new
+/// edges, each that is given, and/or a state.
+pub const WindowChange = struct {
+    x: ?i32 = null,
+    y: ?i32 = null,
+    width: ?i32 = null,
+    height: ?i32 = null,
+    state: ?WindowState = null,
+};
+
+pub const WindowChangeError = error{
+    NoSuchTab,
+    /// New edges for a window that is not normal: Chrome's "To resize
+    /// minimized/maximized/fullscreen window, restore it to normal state
+    /// first."
+    NotNormal,
+};
+
+/// Change tab `tab`'s window as Chrome's BrowserHandler::SetWindowBounds
+/// does (chrome/browser/devtools/protocol/browser_handler.cc; reproduced):
+/// "normal" first restores a minimized, maximized or fullscreen window to
+/// the rect it had; new edges then move or resize a normal window (refused
+/// for any other); "minimized" keeps the rect, "maximized" takes the
+/// screen's available area and "fullscreen" the whole screen, each keeping
+/// the normal rect to restore. The viewport follows the rect's size (a
+/// headless window's rect IS its viewport) and the resize steps run at the
+/// next rendering opportunity.
+pub fn setWindowBounds(scope: *runtime.BrowserScope, tab: u64, change: WindowChange) WindowChangeError!void {
+    const traversable = topLevel(scope, tab) orelse return error.NoSuchTab;
+    var rect = currentRect(traversable);
+    if (change.state) |state| if (state == .normal and traversable.window_state != .normal) {
+        rect = traversable.restore_rect orelse rect;
+        traversable.restore_rect = null;
+        traversable.window_state = .normal;
+    };
+    if (change.x != null or change.y != null or change.width != null or change.height != null) {
+        if (traversable.window_state != .normal) return error.NotNormal;
+        if (change.x) |v| rect.x = v;
+        if (change.y) |v| rect.y = v;
+        if (change.width) |v| rect.width = @max(v, 0);
+        if (change.height) |v| rect.height = @max(v, 0);
+    }
+    if (change.state) |state| switch (state) {
+        .normal => {},
+        .minimized, .maximized, .fullscreen => {
+            if (traversable.window_state == .normal) traversable.restore_rect = rect;
+            traversable.window_state = state;
+            if (state != .minimized) rect = screenRect(traversable, state == .fullscreen);
+        },
+    };
+    const before = traversable.traversableViewport();
+    traversable.window_rect = rect;
+    traversable.viewport = .{ .width = rect.width, .height = rect.height };
+    changed(traversable, before);
+}
+
+/// The screen the tab's window is on (the platform's screenInfo): its
+/// whole area, or its available area at the origin.
+fn screenRect(traversable: *BrowsingContext, whole: bool) WindowRect {
+    const window: *runtime.Instance = @ptrCast(@alignCast(traversable.getActiveWindow() orelse return default_window));
+    const browser = html.platform_state.of(window.ctx) orelse return default_window;
+    const screen = platform.screenInfo(browser);
+    return if (whole)
+        .{ .width = screen.width, .height = screen.height }
+    else
+        .{ .width = screen.avail_width, .height = screen.avail_height };
+}
+
+/// A platform coordinate (f64) as a whole CSS pixel, either sign.
+fn cssPosition(value: f64) i32 {
+    if (!std.math.isFinite(value)) return 0;
+    return @intFromFloat(std.math.clamp(@floor(value), @as(f64, std.math.minInt(i32)), @as(f64, std.math.maxInt(i32))));
 }
 
 /// A host's viewport override for the top-level traversable whose browsing

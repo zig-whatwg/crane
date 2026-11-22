@@ -476,6 +476,9 @@ pub const FetchJob = struct {
     /// step asked for.
     pub fn resumeNetwork(self: *FetchJob, result: NetworkError!NetworkResponse) FetchError!Step {
         const allocator = self.allocator;
+        // A proxy that could not be reached: the same request again through
+        // the next proxy of its URL's list (fallBackToNextProxy).
+        if (result) |_| {} else |err| if (self.fallBackToNextProxy(err)) return .{ .network = .{ .request = &self.network_request.? } };
         const request = self.network_request orelse unreachable; // no request was asked for
         self.network_request = null;
         // Kept until the cache has read its headers (the Vary data).
@@ -1005,6 +1008,34 @@ pub const FetchJob = struct {
     /// Preserve the known transport failure for HTML 9.2.2 step 15.2's
     /// retry decision. Policy, scheme and CORS errors keep the default;
     /// a failed preflight is not a retryable event-stream connection either.
+    /// Chrome's proxy fallback (net/proxy_resolution/
+    /// configured_proxy_resolution_service.cc ReconsiderProxyAfterError ->
+    /// ProxyList::Fallback, for the connection errors net::
+    /// CanFalloverToNextProxy names - a response, a 407 included, is none):
+    /// the proxy the request went through is marked bad for its retry delay
+    /// (ProxyRetryInfo, NetworkContext.proxyFailed) and the request takes the
+    /// next proxy of its URL's list - direct:// when listed. False: it went
+    /// direct, the error is no such failure, or no proxy is left.
+    fn fallBackToNextProxy(self: *FetchJob, err: NetworkError) bool {
+        switch (err) {
+            NetworkError.DnsResolutionFailed,
+            NetworkError.ConnectionRefused,
+            NetworkError.ConnectionTimeout,
+            NetworkError.ConnectionReset,
+            NetworkError.NetworkUnreachable,
+            NetworkError.HostUnreachable,
+            => {},
+            else => return false,
+        }
+        const request = if (self.network_request) |*r| r else return false;
+        const proxy = request.proxy orelse return false;
+        if (proxy.url.len == 0) return false;
+        const context = request.network orelse return false;
+        const next = context.proxyFailed(request.url, proxy.url) orelse return false;
+        request.proxy = .{ .url = next, .no_proxy = proxy.no_proxy };
+        return true;
+    }
+
     fn transportFailed(self: *FetchJob) FetchError!Step {
         const response = try networkError(self.allocator);
         if (!self.network_request_is_preflight) response.network_error_cause = .transport;
