@@ -1995,7 +1995,7 @@ fn addTestFilesFromDirCompile(
     recordSuiteDir(builder, select, dir_path);
 
     if (select.file) |file| {
-        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return null;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
         return addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
