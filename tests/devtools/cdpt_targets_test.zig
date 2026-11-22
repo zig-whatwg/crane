@@ -77,6 +77,10 @@ test "Playwright's launch: setAutoAttach attaches the existing page, not waiting
     defer existing.deinit();
     try testing.expectEqualStrings("page", cdp.stringAt(existing.value, "params.targetInfo.type").?);
     try testing.expect(!cdp.at(existing.value, "params.waitingForDebugger").?.bool);
+    // Every existing page was attached before the answer - the Browser's
+    // first page and the tab made above - so the other one is queued too:
+    // not the created target's.
+    _ = client.dropQueued("Target.attachedToTarget");
 
     // A context and a page in it (seq-svelte.txt #22-#24).
     const context = try client.call("Target.createBrowserContext", "{\"disposeOnDetach\":true}", "");
@@ -136,7 +140,9 @@ test "Puppeteer's launch: auto-attach to tab targets, each tab session attaches 
 
     const child = try client.call("Target.setAutoAttach", "{\"autoAttach\":true,\"waitForDebuggerOnStart\":true,\"flatten\":true,\"filter\":[{}]}", tab_session);
     child.deinit();
-    const page = try client.waitEvent("Target.attachedToTarget");
+    // The tab session's page child: the event on that session (the other
+    // existing tab's attachment is queued on the browser session).
+    const page = try client.waitEventOn("Target.attachedToTarget", tab_session);
     defer page.deinit();
     try testing.expectEqualStrings("page", cdp.stringAt(page.value, "params.targetInfo.type").?);
     try testing.expectEqualStrings(tab_session, cdp.stringAt(page.value, "sessionId").?);
