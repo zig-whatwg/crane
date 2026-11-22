@@ -2,12 +2,13 @@
 # Build V8 15.7.112.43 - the newest 15.7.112.x on build day, the V8 Chrome 157 stable ships (the user,
 # 2026-11-10: "the same V8 that Chrome 157 uses"; ruling R1: the newest 15.7.112.x tag) - as Crane's
 # static monolith for THIS host (macOS arm64 or Linux x86-64), the way Chrome builds it: against
-# Chromium's own libc++ (see "THE C++ LIBRARY"). It installs BESIDE the 13.1.203 archives and touches
-# nothing of theirs: $CRANE_V8/15.7.112.43/ holds include/ (+ the build's own v8-gn.h),
-# out/static/obj/ (the three V8 archives and libc++_chromium.a), libcxx/ (that libc++'s headers and
-# the compile flags a consumer needs, read from the build), args.gn, PROVENANCE, SHA256SUMS,
-# ninja-tail.txt, rust.txt and smoke.txt. The plan: tmp/plans/v8-update-plan.md (lane v8up). V8's
-# sources are never patched.
+# Chromium's own libc++ (see "THE C++ LIBRARY"), with ICU (see "ICU"). It installs BESIDE every other
+# archive and touches nothing of theirs: $CRANE_V8/15.7.112.43-icu/ holds include/ (+ the build's own
+# v8-gn.h), out/static/obj/ (the three V8 archives, libc++_chromium.a and librust_v8.a), libcxx/ (that
+# libc++'s headers and the compile flags a consumer needs, read from the build), icu/ (ICU's public
+# headers and the defines a consumer compiles them with, read from the build), args.gn, PROVENANCE,
+# SHA256SUMS, ninja-tail.txt, rust.txt and smoke.txt. The plan: tmp/plans/v8-update-plan.md (lane
+# v8up). V8's sources are never patched.
 #
 #   scripts/build-v8-15.7.sh <step>...   (in this order the first time; `all` runs them all)
 #     deps       the commands needed, the pinned Zig, free disk (needs ~25 GB: checkout ~10, out ~10)
@@ -60,16 +61,35 @@
 # RELA relocations, which every ELF linker reads - the same code, sections and symbols. V8's sources and GN
 # files are not changed. Step `verify` fails on any .crel section left.
 #
+# ICU (lane icu1, 2026-11-22; the user's ruling that morning: "Rebuild with ICU"). V8's Intl, RegExp's Unicode
+# property escapes (\p{...}), String.prototype.normalize and the locale-sensitive case mapping and comparison
+# exist only with v8_enable_i18n_support (V8 BUILD.gn: V8_INTL_SUPPORT); Chrome, Firefox and Safari all ship
+# ICU, and the 13.1.203 and first 15.7 archives had it off. Two arguments:
+#  - v8_enable_i18n_support = true: Chrome's setting; V8 then builds and links Chromium's ICU
+#    (//third_party/icu, ICU 78 at this tag's DEPS), whose objects the complete static monolith carries.
+#  - icu_use_data_file = false (third_party/icu/config.gni): ICU's data, third_party/icu/common/icudtl.dat
+#    (Chrome desktop's full data set, 10.8 MB), is assembled into the archive (third_party/icu/BUILD.gn,
+#    source_set("icudata") from make_data_assembly.py) instead of read from an icudtl.dat file beside the
+#    binary, which is Chrome's way (icu_use_data_file = true). Crane stays ONE self-contained binary; V8's
+#    InitializeICU then has nothing to load (src/init/icu_util.cc, ICU_UTIL_DATA_STATIC: "Use bundled ICU
+#    data"). Node.js embeds its ICU data the same way.
+# The install keeps ICU's public headers (icu/include/unicode) and the defines GN compiles ICU's consumers
+# with (icu/flags.txt, read from the compile command of V8's own src/objects/intl-objects.cc): the adapter
+# sets ICU's default locale through ICU's C API, as d8 does with --icu-locale (src/d8/d8.cc) and Chrome
+# with the browser's locale (base/i18n/rtl.cc SetICUDefaultLocale).
+#
 # GN ARGUMENTS (each a choice; the plan's section 3): out/static's 13.1.203 arguments (the same list as
-# scripts/build-v8-official.sh control_args) EXCEPT use_custom_libcxx (above), plus:
+# scripts/build-v8-official.sh control_args) EXCEPT use_custom_libcxx (above) and v8_enable_i18n_support
+# (ICU, above), plus:
 #  - use_siso = false: V8 15.7's .gn makes Siso the default; this script runs ninja, as before.
 #  - v8_enable_partition_alloc = false: 15.7 defaults it ON for a standalone V8 (BUILD.gn:719), but
 #    Chrome's own V8 never uses it (BUILD.gn:964 asserts !build_with_chromium || !partition_alloc),
 #    nor does Node. V8 keeps allocating through malloc and the platform, as at 13.1.
 #  - v8_enable_temporal_support = true: Temporal ships in 15.7 (feature-flags.h, the shipped list) and
 #    in Chrome 157; ruling R2 (the user, 2026-11-10): ship it, with V8's own Rust toolchain (DEPS
-#    third_party/rust-toolchain) in this build only - no Rust in Crane's tools. Without ICU, V8 bakes
-#    a zoneinfo64 table into the archive (BUILD.gn:7336).
+#    third_party/rust-toolchain) in this build only - no Rust in Crane's tools. With ICU its time
+#    zones come from ICU's data (without ICU V8 baked a zoneinfo64 table in: BUILD.gn:7336).
+#  - icu_use_data_file = false: ICU's data inside the archive (ICU, above).
 #  - v8_generate_external_defines_header = true: the build writes gen/include/v8-gn.h with every
 #    define V8's public headers depend on (BUILD.gn:3937, tools/gen-v8-gn.py), installed with
 #    include/; Crane compiles with -DV8_GN_HEADER instead of a hand-kept list (lesson
@@ -89,7 +109,7 @@
 # Environment: V8_ROOT (gclient root), CRANE_V8 (install root, default ~/projects/crane/jsengines/v8),
 # ZIG (the pinned Zig), JOBS (ninja -j; default the CPU count), STOP (a file whose existence stops the
 # script between steps; default $V8_ROOT/STOP; a TERM to the pid in $V8_ROOT/build.pid stops ninja
-# too), OUT (the build directory under $V8, default out/static-15.7), DEVELOPER_DIR (macOS: an Xcode;
+# too), OUT (the build directory under $V8, default out/static-15.7-icu), DEVELOPER_DIR (macOS: an Xcode;
 # Chromium's build/ asks xcodebuild for the SDK, which the Command Line Tools cannot answer).
 set -euo pipefail
 
@@ -102,10 +122,13 @@ V8_COMMIT=307108153d1e35e6e74528ee55f97b0cd59bf182
 V8_ROOT="${V8_ROOT:-$HOME/v8-$V8_TAG}"
 V8="$V8_ROOT/v8"
 CRANE_V8="${CRANE_V8:-$HOME/projects/crane/jsengines/v8}"
-DEST="$CRANE_V8/$V8_TAG"
+# The install's name: the tag and what sets this archive apart from the first 15.7 build, ICU (the
+# "-icu" directory sits beside 15.7.112.43/, which builds of an older Crane still link).
+INSTALL_NAME="$V8_TAG-icu"
+DEST="$CRANE_V8/$INSTALL_NAME"
 ZIG="${ZIG:-$HOME/crane-toolchains/zig-0.17.1-dev+77c319a0f0/bin/zig}"
 ZIG_VERSION=0.17.1-dev+77c319a0f0
-OUT="${OUT:-out/static-15.7}"
+OUT="${OUT:-out/static-15.7-icu}"
 STOP="${STOP:-$V8_ROOT/STOP}"
 LLVM="$V8/third_party/llvm-build/Release+Asserts"
 case "$(uname -s)" in
@@ -142,7 +165,8 @@ run_long() {
 static_args() {
   cat <<ARGS
 # V8 $V8_TAG for Crane ($HOST_OS $TARGET_CPU, scripts/build-v8-15.7.sh): out/static's 13.1.203 arguments
-# except use_custom_libcxx (Chromium's libc++: the sandbox requires its hardening, BUILD.gn:896)
+# except use_custom_libcxx (Chromium's libc++: the sandbox requires its hardening, BUILD.gn:896) and
+# v8_enable_i18n_support (ICU, Chrome's setting: the script's header, "ICU")
 is_component_build = false
 v8_monolithic = true
 v8_use_external_startup_data = false
@@ -157,7 +181,7 @@ v8_enable_verify_heap = false
 v8_enable_trace_maps = false
 v8_enable_test_features = false
 v8_enable_v8_checks = false
-v8_enable_i18n_support = false
+v8_enable_i18n_support = true
 clang_use_chrome_plugins = false
 treat_warnings_as_errors = false
 use_custom_libcxx = true
@@ -169,6 +193,7 @@ v8_enable_temporal_support = true
 v8_generate_external_defines_header = true
 cppgc_enable_object_names = false
 cppgc_enable_object_section_gcinfo = false
+icu_use_data_file = false
 ARGS
   if [ "$HOST_OS" = linux ]; then
     cat <<ARGS
@@ -331,6 +356,33 @@ print("\n".join(out))
 PY
 }
 
+# The defines GN gives a consumer of ICU's headers (//third_party/icu:icu_config, ICU's public config:
+# U_USING_ICU_NAMESPACE=0, U_ENABLE_DYLOAD=0, USE_CHROMIUM_ICU=1, U_STATIC_IMPLEMENTATION,
+# ICU_UTIL_DATA_IMPL, ...), read from the compile command of V8's own src/objects/intl-objects.cc, never
+# written by hand: every -DU_*, -DUCONFIG_*, -DICU_* and -DUSE_CHROMIUM_ICU*.
+icu_consumer_flags() {
+  local cmd all
+  all=$(mktemp)
+  "$V8/third_party/ninja/ninja" -C "$V8/$OUT" -t commands v8_base_without_compiler > "$all"
+  cmd=$(grep -m1 -- 'src/objects/intl-objects\.cc' "$all" || true)
+  rm -f "$all"
+  [ -n "$cmd" ] || die "no compile command for src/objects/intl-objects.cc (is v8_enable_i18n_support on?)"
+  python3 -I - "$cmd" <<'PY'
+import shlex, sys
+out = []
+for a in shlex.split(sys.argv[1]):
+    if a.startswith(("-DU_", "-DUCONFIG_", "-DICU_", "-DUSE_CHROMIUM_ICU")) and a not in out:
+        out.append(a)
+print("\n".join(out))
+PY
+}
+
+# ICU's major version at this tag's DEPS: the suffix of every ICU symbol (unicode/urename.h) and of
+# its data's entry point (icudt<N>_dat).
+icu_major() {
+  sed -n 's/^#define U_ICU_VERSION_MAJOR_NUM \([0-9][0-9]*\)$/\1/p' "$V8/third_party/icu/source/common/unicode/uvernum.h"
+}
+
 step_verify() {
   check_stop verify
   cd "$V8/$OUT/obj"
@@ -355,6 +407,23 @@ step_verify() {
   log "libc++ consumer flags ($(wc -l < "$V8/$OUT/libcxx-flags.txt" | tr -d ' ') lines):"
   sed 's/^/   /' "$V8/$OUT/libcxx-flags.txt"
   grep -q -x -- '-nostdinc++' "$V8/$OUT/libcxx-flags.txt" || die "no -nostdinc++ in the consumer flags"
+  # ICU (the header, "ICU"): its code and its data are IN the monolith - ICU's C API (uloc_setDefault, the
+  # call the adapter makes) and the data's entry point icudt<N>_dat - and its consumers' defines say the
+  # data is linked in (ICU_UTIL_DATA_STATIC), not a file to load.
+  local major
+  major=$(icu_major)
+  [ -n "$major" ] || die "no U_ICU_VERSION_MAJOR_NUM in third_party/icu/source/common/unicode/uvernum.h"
+  local uloc data
+  uloc=$("$nm" --defined-only libv8_monolith.a 2>/dev/null | grep -c -E " [TtSs] _?uloc_setDefault_$major\$" || true)
+  data=$("$nm" --defined-only libv8_monolith.a 2>/dev/null | grep -c -E " [A-Za-z] _?icudt${major}_dat\$" || true)
+  echo "   ICU $major in libv8_monolith.a: uloc_setDefault_$major defined $uloc, icudt${major}_dat defined $data"
+  [ "$uloc" -ge 1 ] || die "the monolith does not carry ICU's code (no uloc_setDefault_$major)"
+  [ "$data" -ge 1 ] || die "the monolith does not carry ICU's data (no icudt${major}_dat): is icu_use_data_file false?"
+  icu_consumer_flags > "$V8/$OUT/icu-flags.txt"
+  log "ICU consumer defines ($(wc -l < "$V8/$OUT/icu-flags.txt" | tr -d ' ') lines):"
+  sed 's/^/   /' "$V8/$OUT/icu-flags.txt"
+  grep -q -x -- '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' "$V8/$OUT/icu-flags.txt" \
+    || die "ICU's consumers are not compiled for linked-in data (-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC)"
   # Temporal's Rust code (temporal_capi, temporal_rs) and Rust's std: defined in the monolith, or
   # only referenced (then Crane's link must add them)?
   {
@@ -456,6 +525,14 @@ PYIN
   "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
   log "d8: $(cat "$OUT/d8-smoke.txt") (rc $rc)"
   [ "$rc" = 0 ] && grep -q -x '2 2026-11-11' "$OUT/d8-smoke.txt" || die "d8's smoke test failed"
+  # ICU, with no icudtl.dat beside d8 (the data is linked in): a Unicode property escape, NFD splitting
+  # U+00E9, German collation (a, U+00E4, z) and a Tokyo wall time.
+  rc=0
+  "$OUT/d8" -e 'print(/\p{L}/u.test("é"), "é".normalize("NFD").length, ["z", "ä", "a"].sort(new Intl.Collator("de").compare).map((c) => c.codePointAt(0)).join(","), new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(0))' \
+    > "$OUT/d8-icu-smoke.txt" 2>&1 || rc=$?
+  log "d8 ICU: $(cat "$OUT/d8-icu-smoke.txt") (rc $rc)"
+  [ "$rc" = 0 ] && grep -q -x 'true 2 97,228,122 09' "$OUT/d8-icu-smoke.txt" || die "d8's ICU smoke test failed"
+  cat "$OUT/d8-icu-smoke.txt" >> "$OUT/d8-smoke.txt"
 }
 
 smoke_source() {
@@ -470,6 +547,7 @@ smoke_source() {
 #include "cppgc/persistent.h"
 #include "cppgc/visitor.h"
 #include "libplatform/libplatform.h"
+#include "unicode/uloc.h"
 #include "v8-cppgc.h"
 #include "v8.h"
 struct Leaf final : cppgc::GarbageCollected<Leaf> {
@@ -483,6 +561,14 @@ extern "C" int crane_v8_smoke_main();
 #endif
 int main() {
   v8::V8::SetFlagsFromString("--expose-gc");
+  // ICU as Crane's adapter starts it: V8's InitializeICU (the data is linked in, so it loads nothing),
+  // then ICU's default locale through ICU's own C API, from a BCP 47 tag.
+  bool icu = v8::V8::InitializeICU();
+  char locale_id[ULOC_FULLNAME_CAPACITY] = {0};
+  UErrorCode status = U_ZERO_ERROR;
+  uloc_forLanguageTag("de-CH", locale_id, sizeof(locale_id), nullptr, &status);
+  if (U_SUCCESS(status)) uloc_setDefault(locale_id, &status);
+  icu = icu && U_SUCCESS(status);
   std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
   v8::V8::InitializePlatform(platform.get());
   v8::V8::Initialize();
@@ -492,7 +578,7 @@ int main() {
   params.cpp_heap = v8::CppHeap::Create(platform.get(), v8::CppHeapCreateParams({})).release();
   v8::Isolate* isolate = v8::Isolate::New(params);
   int sum = -1, cpp = -1;
-  std::string temporal = "?";
+  std::string temporal = "?", intl = "?";
   {
     v8::Isolate::Scope isolate_scope(isolate);
     v8::HandleScope handle_scope(isolate);
@@ -505,6 +591,9 @@ int main() {
     sum = run("1 + 1")->Int32Value(context).FromJust();
     v8::String::Utf8Value date(isolate, run("Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString()"));
     temporal = *date;
+    // V8's Intl answers from ICU, in the default locale set above.
+    v8::String::Utf8Value icu_answer(isolate, run("[/\\p{L}/u.test('\\u00e9'), new Intl.DateTimeFormat().resolvedOptions().locale].join(' ')"));
+    intl = *icu_answer;
     cppgc::Persistent<Leaf> leaf(cppgc::MakeGarbageCollected<Leaf>(isolate->GetCppHeap()->GetAllocationHandle()));
     isolate->RequestGarbageCollectionForTesting(v8::Isolate::kFullGarbageCollection);
     cpp = leaf->value + 1;
@@ -513,10 +602,20 @@ int main() {
   v8::V8::Dispose();
   v8::V8::DisposePlatform();
   delete params.array_buffer_allocator;
-  std::printf("smoke: 1+1 = %d; Temporal 2026-11-10 + 1 day = %s; cppgc value after a full GC = %d\n", sum, temporal.c_str(), cpp);
-  return sum == 2 && temporal == "2026-11-11" && cpp == 42 ? 0 : 1;
+  std::printf("smoke: 1+1 = %d; Temporal 2026-11-10 + 1 day = %s; cppgc value after a full GC = %d; ICU %s, Intl: %s\n", sum, temporal.c_str(), cpp, icu ? "started" : "FAILED", intl.c_str());
+  return sum == 2 && temporal == "2026-11-11" && cpp == 42 && icu && intl == "true de-CH" ? 0 : 1;
 }
 CC
+}
+
+# ICU's public headers - source/common/unicode and source/i18n/unicode at this tag's DEPS, the two
+# directories GN's icu_config puts on a consumer's include path - into "$1"/unicode, one directory, so a
+# consumer's #include "unicode/uloc.h" finds them under -I "$1".
+install_icu_headers() {
+  local to="$1/unicode" icu="$V8/third_party/icu/source"
+  mkdir -p "$to"
+  cp "$icu"/common/unicode/*.h "$icu"/i18n/unicode/*.h "$to/"
+  [ -s "$to/uloc.h" ] && [ -s "$to/urename.h" ] && [ -s "$to/ucol.h" ] || die "ICU's public headers are incomplete in $to"
 }
 
 step_smoke() {
@@ -526,6 +625,10 @@ step_smoke() {
   inc="$t/include"
   cp -R "$V8/include" "$inc"
   cp "$V8/$OUT/gen/include/v8-gn.h" "$inc/v8-gn.h"
+  # ICU's public headers as the install lays them out (icu/include/unicode) and its consumer defines.
+  install_icu_headers "$t/icu-include"
+  local icu_flags=()
+  while IFS= read -r f; do icu_flags+=("$f"); done < "$V8/$OUT/icu-flags.txt"
   smoke_source > "$t/smoke.cc"
   # Zig's form of GN's consumer flags: Zig puts its own -isystem directories (clang's builtins, the
   # SDK's usr/include) BEFORE any the command line adds (`zig cc -###`), so libc++'s two directories
@@ -540,7 +643,7 @@ step_smoke() {
   # Compile as Crane compiles v8_wrapper.cpp (C++20, no exceptions, no RTTI), but against Chromium's
   # libc++ (the consumer flags) and with the archive's own V8/cppgc defines (v8-gn.h).
   ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
-    -I "$inc" -c "$t/smoke.cc" -o "$t/smoke.o" > "$t/compile.txt" 2>&1 || rc=$?
+    ${icu_flags[@]+"${icu_flags[@]}"} -I "$inc" -I "$t/icu-include" -c "$t/smoke.cc" -o "$t/smoke.o" > "$t/compile.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     head -60 "$t/compile.txt" | tee "$V8/$OUT/smoke.txt"
     cp "$t/compile.txt" "$V8/$OUT/smoke-compile.txt"
@@ -579,7 +682,7 @@ step_smoke() {
   # relocations it reads (ELF RELOCATIONS: an archive with CREL linked there called address 0 before main).
   # The C++ main is renamed (CRANE_V8_SMOKE_ZIG_MAIN); a Zig main calls it.
   ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
-    -DCRANE_V8_SMOKE_ZIG_MAIN -I "$inc" -c "$t/smoke.cc" -o "$t/smoke-zig.o" > "$t/compile-zig.txt" 2>&1 \
+    ${icu_flags[@]+"${icu_flags[@]}"} -DCRANE_V8_SMOKE_ZIG_MAIN -I "$inc" -I "$t/icu-include" -c "$t/smoke.cc" -o "$t/smoke-zig.o" > "$t/compile-zig.txt" 2>&1 \
     || { cat "$t/compile-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke compile failed"; }
   printf '%s\n' 'extern fn crane_v8_smoke_main() c_int;' \
     'pub fn main() u8 {' '    return @intCast(crane_v8_smoke_main());' '}' > "$t/smoke_main.zig"
@@ -618,11 +721,15 @@ step_install() {
       -e "s#^$V8/buildtools/third_party/libc++\$#$DEST/libcxx/config#" \
       "$OUT/libcxx-flags.txt" > "$DEST/libcxx/flags.txt"
   ! grep -q "$V8_ROOT" "$DEST/libcxx/flags.txt" || die "libcxx/flags.txt still names the checkout"
+  # ICU for consumers: its public headers and the defines GN compiles them with (the header, "ICU").
+  install_icu_headers "$DEST/icu/include"
+  cp "$OUT/icu-flags.txt" "$DEST/icu/flags.txt"
   cp "$OUT/args.gn" "$DEST/args.gn"
   tail -40 "$OUT/ninja.log.txt" > "$DEST/ninja-tail.txt"
   cp "$OUT/rust.txt" "$OUT/smoke.txt" "$OUT/system-libs.txt" "$OUT/d8-link-inputs.txt" "$OUT/d8-smoke.txt" "$DEST/"
   {
     echo "V8 $V8_TAG ($(git rev-parse HEAD)) for $HOST_OS $TARGET_CPU, built $(date -u +%FT%TZ) on $(hostname) by scripts/build-v8-15.7.sh"
+    echo "ICU: $(icu_major) (third_party/icu at this tag's DEPS, $(git -C third_party/icu rev-parse --short=12 HEAD 2> /dev/null || echo '?')); data linked in (icu_use_data_file = false, $(wc -c < third_party/icu/common/icudtl.dat | tr -d ' ') bytes of common/icudtl.dat)"
     echo "clang: $("$LLVM/bin/clang" --version | head -1)"
     echo "rustc: $("$V8/third_party/rust-toolchain/bin/rustc" --version)"
     echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); libc++_chromium.a"

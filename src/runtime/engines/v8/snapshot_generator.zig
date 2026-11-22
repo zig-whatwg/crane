@@ -16,9 +16,9 @@
 //!    script first reads it.
 //! 3. The default context (the base of every Context::New in a restored
 //!    isolate): plain.
-//! 4. The Window context, at index 0: Crane's Intl and the built-ins'
-//!    toLocaleString (installSnapshotIntrinsics), Window's function
-//!    instantiated.
+//! 4. The Window context, at index 0: Window's function instantiated. (Its
+//!    Intl and the built-ins' toLocaleString are V8's own, from ICU: until
+//!    lane icu1 the generator installed Crane's here.)
 //! 5. The two templates attached to the isolate snapshot (AddData), which a
 //!    restored isolate takes back once (interface_bindings.
 //!    takeSnapshotTemplates): its one copy of them. Every other template is
@@ -239,9 +239,6 @@ fn generate(init: std.process.Init, log: *Log) !void {
         return error.ContextFailed;
     };
     v8.ffi.v8_Context_Enter(indexed_context);
-    // What a Window realm's context has beside its template's: Crane's Intl
-    // and the built-ins' toLocaleString.
-    interface_bindings.installSnapshotIntrinsics(isolate, indexed_context);
     // Window's function instantiated in the context, so the context's
     // template instantiation cache carries it: a restored realm's lazily
     // built Window interface object is then this one, whose prototype the

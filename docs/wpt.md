@@ -41,15 +41,16 @@ Crane runs WPT tests for all implemented WHATWG specifications:
 
 ### Prerequisites
 
-1. **V8 JavaScript Engine** - V8 15.7.112.43 (Chrome 157's), as Crane's
-   static archives in `jsengines/v8/15.7.112.43/`, built for this host
-   (macOS arm64 or Linux x86-64) against Chromium's own libc++. A system V8
+1. **V8 JavaScript Engine** - V8 15.7.112.43 (Chrome 157's) with ICU, as
+   Crane's static archives in `jsengines/v8/15.7.112.43-icu/`, built for this
+   host (macOS arm64 or Linux x86-64) against Chromium's own libc++, with ICU's
+   code and data linked in (no icudtl.dat beside the binary). A system V8
    (Homebrew's, a distribution's) is never linked.
    ```bash
    # Builds and installs the archives (~25 GB of disk while it builds)
    scripts/build-v8-15.7.sh all
 
-   # Or copy jsengines/v8/15.7.112.43/ from a host of the same OS
+   # Or copy jsengines/v8/15.7.112.43-icu/ from a host of the same OS
    # and check it against its SHA256SUMS
    ```
 

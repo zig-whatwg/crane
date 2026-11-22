@@ -587,6 +587,18 @@ INCLUDE = [
     ('url/', 'URL'), ('urlpattern/', 'URLPattern'), ('encoding/', 'Encoding'),
     ('console/', 'Console'), ('mimesniff/', 'MIME Sniffing'), ('streams/', 'Streams'),
     ('webidl/', 'WebIDL'),
+    # Lane tpw (the integrator, 2026-11-22 10:51 AM ET, under the scope line): ECMA-402 leaves a locale's
+    # formatted output implementation-defined, and this file pins what web compatibility requires of it
+    # (U+0020 before AM/PM in en and en-US, yyyy-mm-dd for en-CA and sv-SE; Chromium 1414292 and 1418727,
+    # Mozilla 1864612). ECMA-402 is a ratified Ecma standard, the file is not tentative and reads no
+    # geometry, and all three browsers ship it (wpt.fyi aligned runs at a3830cd8f7: Chrome 158, Firefox 160,
+    # Safari 27.2 4/4 each). Crane answers through V8's ICU (lane icu1): 3/4 on generation 236, 4/4 with ICU.
+    ('ecmascript/locale-compat.html', 'ECMA-402 web-compat requirements on implementation-defined locale formatting (all three browsers ship them)'),
+    # Lane tpw (the integrator, 2026-11-22 10:57 AM ET, the same scope line): RegExp lookbehind assertions
+    # (ECMA-262 since ES2018, ratified; V8's port of test262's built-ins/RegExp/lookBehind cases), not
+    # tentative, no geometry; all three browsers ship it (wpt.fyi aligned runs at a3830cd8f7: Chrome 158,
+    # Firefox 160, Safari 27.2 17/17 each).
+    ('ecmascript/regexp-lookbehind.html', 'ECMA-262 RegExp lookbehind assertions (ES2018; all three browsers ship them)'),
 
     # --- Tier 1: core headless APIs real apps and agents use (the user, 2026-10-01). ---
     ('shadow-dom/',    'DOM Standard shadow trees, slots, retargeting'),

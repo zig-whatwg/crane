@@ -820,12 +820,25 @@ pub const PlatformStart = enum(c_int) {
     started_now = 1,
 };
 
-/// Start V8 - `flags` (null: none), then its platform - unless it has
-/// started: exactly once per process, from any thread, by whichever caller
-/// is first. A caller that comes while the start is under way waits for it,
-/// so every caller returns with V8 started. V8 itself FATALs on a second or
-/// concurrent start (13.1.203 src/init/v8.cc AdvanceStartupState).
-pub extern fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart;
+/// Start V8 - `flags` (null: none), ICU's default locale (the platform's
+/// preferred language: snapshot_loader.icuDefaultLocale), then its platform
+/// - unless it has started: exactly once per process, from any thread, by
+/// whichever caller is first. A caller that comes while the start is under
+/// way waits for it, so every caller returns with V8 started. V8 itself
+/// FATALs on a second or concurrent start (13.1.203 src/init/v8.cc
+/// AdvanceStartupState). The locale is a fact of every start, never a
+/// caller's choice: ICU's default is the process's (v8_wrapper.cpp
+/// setIcuDefaultLocale). The platform is asked only while V8 has not
+/// started: once it has, the C side only compares the flags and ignores the
+/// locale (and every v8_Isolate_New comes here).
+pub fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart {
+    if (v8_Platform_IsInitialized()) return v8_Platform_StartWithDefaultLocale(flags, null);
+    var tag: snapshot_loader.LocaleTag = undefined;
+    return v8_Platform_StartWithDefaultLocale(flags, snapshot_loader.icuDefaultLocale(&tag));
+}
+/// v8_Platform_Start's C side: `default_locale` is a BCP 47 tag, null for
+/// ICU's own default.
+extern fn v8_Platform_StartWithDefaultLocale(flags: ?[*:0]const u8, default_locale: ?[*:0]const u8) PlatformStart;
 /// The engine protocol's initializeBeforeThreadCreation: V8's platform -
 /// and the memory protection key of its thread isolation - made on the
 /// calling thread, first in a process's main, before it creates any thread;

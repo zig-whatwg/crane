@@ -1,5 +1,5 @@
 //! `v8_String_WriteUtf8` keeps V8 13.1's `String::WriteUtf8` contract, the one
-//! its callers read (helpers.writtenUtf8, intl_binding, observable_array,
+//! its callers read (helpers.writtenUtf8, intl_binding until lane icu1, observable_array,
 //! conversions, protocol_values): as many whole characters as fit; then, when
 //! every character was written and a byte is left, a NUL, COUNTED in the
 //! result; a capacity of -1 is unbounded (13.1 api.cc WriteUtf8Impl).
