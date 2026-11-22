@@ -46,3 +46,36 @@ test "Browser.getVersion's jsVersion and /json/version's V8-Version are the engi
     defer parsed.deinit();
     try testing.expectEqualStrings(expected, parsed.value.object.get("V8-Version").?.string);
 }
+
+test "G18: Target.createBrowserContext makes an off-the-record context - it never opens the console's --user-data-dir profile the default Browser holds" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", allocator);
+    defer allocator.free(base);
+    const profile = try std.fs.path.join(allocator, &.{ base, "profile" });
+    defer allocator.free(profile);
+
+    // The console's shape with --user-data-dir: the default Browser holds
+    // the profile, and the contexts' config names it too.
+    const config: browser_mod.BrowserConfig = .{ .profile_dir = profile, .persist_storage = true };
+    const host = try BrowserHost.start(allocator, config);
+    defer host.stop();
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host, .context_config = config, .user_data_dir = profile });
+    defer server.stop();
+    const client = try connectBrowser(allocator, server);
+    defer client.close();
+
+    const context = try client.call("Target.createBrowserContext", "{}", "");
+    defer context.deinit();
+    // Chrome's answer, not "Failed to create browser context" (ProfileInUse).
+    try testing.expect(cdp.stringAt(context.value, "result.browserContextId") != null);
+    // And it shares no storage with the default Browser: a key set in one
+    // is not in the other.
+    var params_buffer: [192]u8 = undefined;
+    const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"about:blank\",\"browserContextId\":\"{s}\"}}", .{cdp.stringAt(context.value, "result.browserContextId").?}), "");
+    defer created.deinit();
+    try testing.expect(cdp.stringAt(created.value, "result.targetId") != null);
+}

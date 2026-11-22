@@ -323,6 +323,16 @@ pub const TargetDomain = struct {
     pub fn createBrowserContext(session: *Session, params: T.createBrowserContext.Params) !T.createBrowserContext.Result {
         const server = serverOf(session);
         var config = server.options.context_config;
+        // An off-the-record context: it never opens the user data directory
+        // (Chrome: TargetHandler::CreateBrowserContext makes its contexts
+        // with DevToolsBrowserContextManager::CreateBrowserContext - an
+        // off-the-record Profile of the original, chrome/browser/devtools/
+        // devtools_browser_context_manager.cc). The console started with
+        // --user-data-dir hands a config whose profile directory the default
+        // Browser holds: a second Browser on it failed with ProfileInUse
+        // (lane cdpr's G18), and would have shared its state.
+        config.profile_dir = null;
+        config.persist_storage = false;
         if (params.proxyServer) |proxy| {
             config.proxy = proxyConfig(proxy, params.proxyBypassList) orelse return session.failWithCode(.invalid_params, "Invalid proxy server");
         }
