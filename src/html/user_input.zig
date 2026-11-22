@@ -20,8 +20,14 @@
 //! a click runs activation behaviour through the normal dispatch), and freed
 //! with releaseIfUnwrapped unless a listener kept it.
 //!
+//! The click count (`detail`) is the input device's: Pointer Events 4 11.1
+//! "implementations MUST maintain the current click count", which the
+//! device reports with each press (`Pointer.click_count`: CDP's clickCount,
+//! Chrome's WebMouseEvent click_count) and which mousedown, mouseup, click
+//! and auxclick carry; a click of count 2 is followed by dblclick (11.4.4).
+//! A host that keeps no count leaves it 1.
+//!
 //! Stated deviations:
-//!   * The click count (`detail`) is always 1: no dblclick.
 //!   * An email or number control is edited through its value, which its
 //!     value sanitization algorithm then applies to: the text a user sees in
 //!     a browser keeps what sanitization strips (visible value vs value).
@@ -394,6 +400,22 @@ pub const Pointer = struct {
     hit_document: ?Weak = null,
     /// The pressed buttons, as the `buttons` bitmask.
     buttons: u16 = 0,
+    /// The current click count the device reports for its next press
+    /// (Pointer Events 4 11.1: "the number of consecutive clicks of a
+    /// pointing device button within a specific time" - the environment's
+    /// to count: CDP's Input.dispatchMouseEvent clickCount, Chrome's
+    /// WebMouseEvent click_count). The embedder sets it before
+    /// `pointerDown`; 1 for a host that counts nothing. 0 is a press that is
+    /// no click: mousedown and mouseup carry detail 0 and no click follows
+    /// (Blink's MouseEventManager::DispatchMouseClickIfNeeded dispatches only
+    /// while click_count_ > 0).
+    click_count: u32 = 1,
+    /// The count of the last press, which its mouseup and click carry: Blink
+    /// sets the count at the press (EventHandler::HandleMousePressEvent
+    /// SetClickCount) and the release reads it (third_party/blink/renderer/
+    /// core/input/event_handler.cc, mouse_event_manager.cc DispatchMouseEvent:
+    /// "click_count = click_count_" for mouseup, mousedown, click, auxclick).
+    press_click_count: u32 = 1,
     /// Where each button went down: a click goes to the nearest common
     /// inclusive ancestor of that and where it came up.
     down_targets: [5]?Weak = @splat(null),
@@ -830,6 +852,10 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit != 0) return;
     const first = pointer.buttons == 0;
+    // The click count of this press: what its mousedown, its mouseup and
+    // its click carry (Blink's SetClickCount at the press).
+    pointer.press_click_count = pointer.click_count;
+    const detail: i32 = @intCast(@min(pointer.press_click_count, std.math.maxInt(i32)));
     // HTML 6.11.5: what the press would drag, found before its listeners run
     // (html/drag_and_drop.zig candidateAt).
     const drag_candidate: ?*Instance = if (button == 0 and first and pointer.pointer_type != .touch) drag_and_drop.candidateAt(hit) else null;
@@ -858,7 +884,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     if (!first) {
         // A chorded button press is a pointermove (Pointer Events 4.1.3).
         _ = firePointerEventOnly(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
-        if (!pointer.compatibility_suppressed) _ = fireMouseEvent(capturedOr(pointer, target), "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null);
+        if (!pointer.compatibility_suppressed) _ = fireMouseEvent(capturedOr(pointer, target), "mousedown", modifiers, @intCast(button), pointer.buttons, detail, null);
         return;
     }
     if (!firePointerEventOnly(target, "pointerdown", pointer, modifiers, @intCast(button), 0, null)) {
@@ -872,7 +898,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     // events for a particular pointer (including any compatibility mouse
     // events)").
     const down_target = capturedOr(pointer, pointer.currentTarget() orelse return);
-    if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null)) return;
+    if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, detail, null)) return;
     mousedownDefaults(pointer, down_target, button, modifiers, pointer);
     // HTML 6.11.5: a primary press neither pointerdown nor mousedown
     // canceled may begin a drag of what it went down on.
@@ -1033,6 +1059,10 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     pointer.down_targets[button] = null;
     const suppressed = pointer.compatibility_suppressed;
     if (pointer.buttons == 0) pointer.compatibility_suppressed = false;
+    // The count of the press this release ends (Blink: the release reads
+    // the count its press set).
+    const click_count = pointer.press_click_count;
+    const detail: i32 = @intCast(@min(click_count, std.math.maxInt(i32)));
     const hit = pointer.currentTarget() orelse return;
     const target = pointerEventTarget(pointer, hit, modifiers, true);
     const captured = capturedTarget(pointer, target) != null;
@@ -1054,7 +1084,7 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         _ = firePointerEventOnly(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
     }
     const up_target = if (captured) target else pointer.currentTarget() orelse return;
-    if (!suppressed and isReachable(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null)) {
+    if (!suppressed and isReachable(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, detail, null)) {
         if (mouseTargetNow(if (captured) null else pointer, up_target)) |current| @import("forms/select_picker.zig").mouseUp(current, button);
     }
     // 3.3.12.3 step 3: "If ... userEvent was dispatched while the
@@ -1070,12 +1100,83 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         break :blk commonAncestor(pressed, click_up) orelse return;
     };
     if (isInDisabledFormControl(click_target)) return;
-    // The click is a PointerEvent (UI Events 3.5.1.1, Pointer Events 4.2.3).
+    // A press of click count 0 is no click: Blink dispatches click and
+    // auxclick only while click_count_ > 0 (third_party/blink/renderer/
+    // core/input/mouse_event_manager.cc DispatchMouseClickIfNeeded) - what
+    // CDP's Input.dispatchMouseEvent makes of a press without clickCount
+    // (its default 0; content/browser/devtools/protocol/input_handler.cc
+    // "click_count = click_count.value_or(0)").
+    if (click_count == 0) return;
+    // The click is a PointerEvent (UI Events 3.5.1.1, Pointer Events 4.2.3),
+    // its detail the current click count (Pointer Events 4 11.4.2).
     if (button == 0) {
-        _ = firePointerEventOnly(click_target, "click", pointer, modifiers, 0, 1, null);
+        _ = firePointerEventOnly(click_target, "click", pointer, modifiers, 0, detail, null);
+        // Pointer Events 4 11.4.4 dblclick: "MUST dispatch this event when
+        // the primary button of a pointing device is clicked twice over an
+        // element", after the click, whether or not the click was canceled,
+        // at the same target; a MouseEvent whose detail is the click count.
+        // The engines fire it for the click whose count is 2 - Blink
+        // (third_party/blink/renderer/core/events/mouse_event.cc
+        // MouseEvent::DispatchEvent: a trusted click with detail 2 is
+        // followed by a dblclick with its bubbles, cancelable, composed,
+        // view, detail, modifiers, button and buttons; LGPL - the algorithm
+        // reproduced, not the code), Gecko and WebKit alike - and a
+        // secondary button never ("Secondary buttons MUST NOT fire
+        // dblclick events"). At the click's node even when a click listener
+        // removed it (Blink dispatches it at the dispatcher's node), but
+        // never into a document that has gone (`inFullyActiveDocument`:
+        // nothing may be made in a realm with no engine behind it).
+        if (click_count == 2 and inFullyActiveDocument(click_target) != null) {
+            _ = fireMouseEvent(click_target, "dblclick", modifiers, 0, pointer.buttons, detail, null);
+        }
     } else {
-        _ = firePointerEventOnly(click_target, "auxclick", pointer, modifiers, @intCast(button), 1, null);
+        _ = firePointerEventOnly(click_target, "auxclick", pointer, modifiers, @intCast(button), detail, null);
     }
+}
+
+// ============================================================================
+// Wheels (Pointer Events 4 section 12)
+// ============================================================================
+
+/// A wheel's turn as its device reports it (Pointer Events 4 12.1: deltaX,
+/// deltaY and deltaZ in units of `mode`).
+pub const WheelDelta = struct {
+    x: f64 = 0,
+    y: f64 = 0,
+    z: f64 = 0,
+    /// DOM_DELTA_PIXEL (0), DOM_DELTA_LINE (1) or DOM_DELTA_PAGE (2).
+    mode: u32 = 0,
+};
+
+/// `pointer`'s wheel turned over `target`, the element target of the wheel
+/// event transaction (Pointer Events 4 12: "the topmost event target at the
+/// time the first wheel event occurs in the group") - the embedder's hit
+/// test, which pointer capture does not move (capture retargets pointer
+/// events and the compatibility mouse events, section 8; Blink's
+/// EventHandler::HandleWheelEvent hit-tests apart from
+/// EffectiveMouseEventTargetElement). One trusted `wheel` WheelEvent
+/// (12.3): bubbles, composed, and cancelable - a device that waits for its
+/// listeners, as Chrome's blocking wheel dispatch (content/browser/devtools/
+/// protocol/input_handler.cc: DispatchType::kBlocking for CDP's mouseWheel)
+/// - with the modifiers and the pressed buttons, relatedTarget null.
+/// Whether it was not canceled: its default action, scrolling, is the
+/// renderer's (with no layout, nothing scrolls either way). Nothing fires
+/// into a document that has gone (`inFullyActiveDocument`), and a wheel is
+/// no activation-triggering input event (HTML 6.4.2).
+pub fn wheel(pointer: *const Pointer, target: *Instance, delta: WheelDelta, modifiers: Modifiers) bool {
+    if (inFullyActiveDocument(target) == null) return true;
+    const init: dictionaries.WheelEventInit = .{
+        .base = mouseInit(target, .{ .bubbles = true, .cancelable = true, .composed = true }, modifiers, 0, pointer.buttons, 0, null),
+        .deltaX = delta.x,
+        .deltaY = delta.y,
+        .deltaZ = delta.z,
+        .deltaMode = delta.mode,
+    };
+    const event = interfaces.WheelEvent.call_constructor(target.ctx, runtime.DOMString.initInterned("wheel"), webidl.Opt(dictionaries.WheelEventInit).passed(init)) catch |err| {
+        log.debug("wheel not fired: {}", .{err});
+        return true;
+    };
+    return dispatch(target, event);
 }
 
 // ============================================================================
