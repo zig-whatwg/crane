@@ -183,6 +183,47 @@ test "setLifecycleEventsEnabled replays the current document's lifecycle as Chro
     , lines.items);
 }
 
+test "a frame's idleness runs from its DOMContentLoaded with no session listening for it, and a replay reports its quiet start before the event fires (Blink's IdlenessDetector)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // A document loaded while no session has lifecycle events on.
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>quiet\"}");
+    _ = try h.waitEvent("Page.loadEventFired", from);
+    // 200 ms on: past its quiet start, short of the 500 ms window.
+    const waited = try h.host.evaluate(h.allocator, h.tab, "new Promise((resolve) => setTimeout(() => resolve(1), 200))", .{ .await_promise = true }, 5_000);
+    defer waited.deinit(h.allocator);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    // GetNetworkAlmostIdleTime / GetNetworkIdleTime: the quiet stretch's
+    // start, known as it began - replayed although no event has fired, and
+    // stamped then, not now.
+    var dcl_at: ?f64 = null;
+    var idle_at: ?f64 = null;
+    var almost_idle_at: ?f64 = null;
+    for (h.seen.items[before..]) |parsed| {
+        const method = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, method.string, "Page.lifecycleEvent")) continue;
+        const params = parsed.value.object.get("params").?.object;
+        const name = params.get("name").?.string;
+        const at = switch (params.get("timestamp").?) {
+            .float => |f| f,
+            .integer => |i| @as(f64, @floatFromInt(i)),
+            else => return error.NoTimestamp,
+        };
+        if (std.mem.eql(u8, name, "DOMContentLoaded")) dcl_at = at;
+        if (std.mem.eql(u8, name, "networkAlmostIdle")) almost_idle_at = at;
+        if (std.mem.eql(u8, name, "networkIdle")) idle_at = at;
+    }
+    try testing.expect(almost_idle_at != null and idle_at != null and dcl_at != null);
+    // The replay's DOMContentLoaded is stamped now; the quiet began at the
+    // document's own DOMContentLoaded, 200 ms or more before.
+    try testing.expect(dcl_at.? - idle_at.? >= 0.15);
+}
+
 test "Page.navigate answers when ready to commit, then the commit, DOMContentLoaded and load arrive in Chrome's order" {
     var h: Harness = undefined;
     try h.init(testing.allocator);

@@ -21,6 +21,7 @@ const page_domains = @import("domains/page_domains.zig");
 const PageSession = @import("page_session.zig").PageSession;
 const fetch_observer = @import("fetch_observer.zig");
 const log_domain = @import("domains/log.zig");
+const page_domain = @import("domains/page.zig");
 const fetch_interception = @import("fetch_interception.zig");
 const fetch = @import("fetch");
 
@@ -77,6 +78,9 @@ pub const BrowserSide = struct {
     fetch_state: fetch_observer.State = .{},
     /// Browser thread only: each tab's kept Log entries (domains/log.zig).
     log_storage: log_domain.Storage = .{},
+    /// Browser thread only: every frame's network idleness detector
+    /// (domains/page.zig IdleFrames: Blink's per-frame IdlenessDetector).
+    idle: page_domain.IdleFrames = .{},
     /// Any thread (locked): the requests a session holds
     /// (fetch_interception.zig) - the devtools thread answers them.
     interceptions: fetch_interception.Table = .{},
@@ -134,6 +138,9 @@ pub const BrowserSide = struct {
         fetch_interception.release(self, null, .any);
         self.interceptions.deinit(self.allocator);
         self.log_storage.deinit(self.allocator);
+        // The detectors' armed checks are cancelled on this, the timers'
+        // thread, while the Browser's loop still runs.
+        self.idle.deinit(self);
     }
 
     fn listener(self: *BrowserSide) host_bridge.Listener {
@@ -177,6 +184,7 @@ pub const BrowserSide = struct {
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
         fetch_observer.onMilestone(self, milestone);
         log_domain.onMilestone(self, milestone);
+        page_domain.onBrowserMilestone(self, milestone);
         switch (milestone.event) {
             .committed => |c| self.postNavigated(milestone.navigable_id, c.url, true),
             .same_document => |c| self.postNavigated(milestone.navigable_id, c.url, false),

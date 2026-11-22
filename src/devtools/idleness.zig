@@ -42,10 +42,15 @@ pub const Detector = struct {
     quiet_0: ?i64 = null,
     /// What is in flight now.
     count: u32 = 0,
-    /// GetNetworkAlmostIdleTime / GetNetworkIdleTime: when each fired
-    /// period began (the event's timestamp), for a replay.
-    almost_idle_at: ?i64 = null,
-    idle_at: ?i64 = null,
+    /// network_2_quiet_start_time_ / network_0_quiet_start_time_: when the
+    /// latest quiet stretch began - set as it begins, kept after it fires
+    /// and when a request ends it, cleared only by a new document
+    /// (WillCommitLoad). GetNetworkAlmostIdleTime / GetNetworkIdleTime
+    /// answer them, and a replay (InspectorPageAgent::
+    /// setLifecycleEventsEnabled) reports each one set - whether or not its
+    /// event has fired yet.
+    quiet_2_start: ?i64 = null,
+    quiet_0_start: ?i64 = null,
 
     /// Start: the document's DOMContentLoaded fired at `now` with `count` in
     /// flight.
@@ -76,27 +81,31 @@ pub const Detector = struct {
         if (count > 2) return;
         if (count == 2 and self.in_2) {
             self.quiet_2 = now;
+            self.quiet_2_start = now;
         } else if (count < 2 and self.in_2 and self.quiet_2 == null) {
             self.quiet_2 = now;
+            self.quiet_2_start = now;
         }
-        if (count == 0 and self.in_0) self.quiet_0 = now;
+        if (count == 0 and self.in_0) {
+            self.quiet_0 = now;
+            self.quiet_0_start = now;
+        }
     }
 
     pub const Due = struct { almost_idle: ?i64 = null, idle: ?i64 = null };
 
     /// WillProcessTask at `now`: the events due, each with its timestamp
-    /// (the quiet stretch's start), and their periods closed.
+    /// (the quiet stretch's start: NetworkBecameAlmostIdle(
+    /// network_2_quiet_start_time_)), and their periods closed.
     pub fn check(self: *Detector, now: i64) Due {
         var due: Due = .{};
         if (self.in_2) if (self.quiet_2) |since| if (now - since > quiet_window_ns) {
-            due.almost_idle = since;
-            self.almost_idle_at = since;
+            due.almost_idle = self.quiet_2_start orelse since;
             self.quiet_2 = null;
             self.in_2 = false;
         };
         if (self.in_0) if (self.quiet_0) |since| if (now - since > quiet_window_ns) {
-            due.idle = since;
-            self.idle_at = since;
+            due.idle = self.quiet_0_start orelse since;
             self.quiet_0 = null;
             self.in_0 = false;
         };
@@ -150,7 +159,19 @@ test "networkAlmostIdle waits for two in flight, networkIdle for none; a new req
     try std.testing.expect(due.idle == null);
     due = d.check(1101 * ms);
     try std.testing.expectEqual(@as(?i64, 600 * ms), due.idle);
-    try std.testing.expectEqual(@as(?i64, 500 * ms), d.almost_idle_at);
+    try std.testing.expectEqual(@as(?i64, 500 * ms), d.quiet_2_start);
+}
+
+test "the quiet start is known as the quiet begins, before its event fires: what a replay reports (GetNetworkIdleTime)" {
+    var d = Detector.start(0, 1000 * ms);
+    // At once, 500 ms before either event is due.
+    try std.testing.expectEqual(@as(?i64, 1000 * ms), d.quiet_2_start);
+    try std.testing.expectEqual(@as(?i64, 1000 * ms), d.quiet_0_start);
+    // A request ending the quiet keeps the start it had; a new quiet moves it.
+    d.moved(1, 1100 * ms);
+    try std.testing.expectEqual(@as(?i64, 1000 * ms), d.quiet_0_start);
+    d.moved(0, 1200 * ms);
+    try std.testing.expectEqual(@as(?i64, 1200 * ms), d.quiet_0_start);
 }
 
 test "a request sent while two are in flight does not move the 2-quiet start; one that makes any clears the 0-quiet" {
