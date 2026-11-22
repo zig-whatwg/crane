@@ -8584,6 +8584,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const platform_mod = platform_binding.facade;
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
+    // A profile directory's HTTP cache commits on storage's commit timer
+    // (fetch/cache/persistence.zig).
+    fetch_mod.addImport("storage", storage_mod);
     dom_mod.addImport("platform", platform_mod);
     storage_mod.addImport("platform", platform_mod);
     // The cookie jar's persistence in a profile directory: the platform's
