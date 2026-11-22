@@ -546,8 +546,7 @@ const Held = struct {
     /// The observer's state, if it is still the observer that was taken.
     fn live(self: Held) ?*InternalState {
         if (runtime.SlabAllocator.generationOf(self.observer) != self.generation) return null;
-        if (self.observer.getState(State).own._internal == null) return null;
-        return getInternal(self.observer);
+        return Accessor.get(self.observer);
     }
 };
 
@@ -579,8 +578,8 @@ fn observersOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]Hel
     const observing = browser_object_lists.existing(document, .intersection_observers) orelse return null;
     var list: std.ArrayListUnmanaged(Held) = .empty;
     for (observing.slice()) |observer| {
-        if (observer.getState(State).own._internal == null) continue;
-        if (observingDocument(getInternal(observer)) != document) continue;
+        const internal = Accessor.get(observer) orelse continue;
+        if (observingDocument(internal) != document) continue;
         list.append(allocator, .{ .observer = observer, .generation = runtime.SlabAllocator.generationOf(observer) }) catch {
             list.deinit(allocator);
             return null;
