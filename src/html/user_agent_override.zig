@@ -17,10 +17,8 @@ const http_fetch = @import("fetch").algorithms.http_fetch;
 const worker_host = @import("worker_host.zig");
 
 /// Install the reader, once, at process start (src/browser/process.zig).
-/// Until lane cdpt's hook (943c446da) is on this tree there is nothing to
-/// install into.
 pub fn installHooks() void {
-    if (comptime @hasDecl(http_fetch, "installUserAgentOverrideReader")) http_fetch.installUserAgentOverrideReader(&read);
+    http_fetch.installUserAgentOverrideReader(&read);
 }
 
 /// The override for a request whose client is `client`: a Window (its
