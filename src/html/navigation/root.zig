@@ -40,6 +40,7 @@ pub const not_restored_reasons = @import("not_restored_reasons.zig");
 pub const observer = @import("observer.zig");
 pub const document_start = @import("document_start.zig");
 pub const user_prompts = @import("user_prompts.zig");
+pub const window_open = @import("window_open.zig");
 
 pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 pub const NavigationFetchResult = fetch_integration.NavigationFetchResult;

@@ -35,6 +35,13 @@ pub const RequestClient = struct {
     /// only whether there is one is ever read (HTTP-network-or-cache fetch
     /// step 14). Null for any other global: "no-traversable".
     traversable: ?*anyopaque = null,
+    /// A global that is not a Window, whose user agent override its requests
+    /// send (http_fetch.userAgentOverrideOf): a dedicated worker carries a
+    /// copy of its tab's (Chrome's creation-params copy, which
+    /// WorkerFetchContext::PrepareRequest sends). Null for a Window - its
+    /// traversable is read - and where no Browser runs the global. BORROWED
+    /// with the client's lifetime, as the traversable is.
+    user_agent_client: ?*anyopaque = null,
     /// The user agent's cookie jar, as the settings object reaches it.
     /// BORROWED: the Browser that owns it outlives every fetch.
     cookie_jar: ?*CookieJar = null,
@@ -100,6 +107,9 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     if (request.traversable_for_user_prompts == .client) {
         request.traversable_for_user_prompts = if (client.traversable) |t| .{ .traversable = t } else .no_traversable;
     }
+    // Not a step either: a worker client's user agent override, which the
+    // traversable stands for in a Window's request.
+    if (request.user_agent_client == null) request.user_agent_client = client.user_agent_client;
     // 2. If request's origin is "client": set it to request's client's
     //    origin. (One the global does not know yet leaves it "client".)
     if (request.origin == .client) {

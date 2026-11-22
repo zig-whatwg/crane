@@ -17,7 +17,8 @@ const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 const host_events = browser_mod.host_events;
 
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+/// A poisoning leak-checker (tests/AGENTS.md: never a bare std.heap.DebugAllocator).
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true, .stack_trace_frames = 0 });
 
 fn evaluateString(browser: *Browser, script: []const u8) ![]u8 {
     const ctx = browser.current_context orelse return error.NoContext;
@@ -52,6 +53,8 @@ const Claimer = struct {
                 opening.claim.* = true;
                 self.last_kind.store(@backingInt(opening.kind), .release);
                 _ = self.opened.fetchAdd(1, .acq_rel);
+                // The test thread waits on the count (waitForPrompt).
+                testing.io.futexWake(u32, &self.opened.raw, std.math.maxInt(u32));
             },
             .dialog_closed => |closed| {
                 self.closed_accepted.store(closed.accepted, .release);
@@ -72,14 +75,18 @@ const Claimer = struct {
     }
 };
 
-/// Wait (5 s) until a dialog is open on the host's Browser; its info.
-fn waitForPrompt(host: *BrowserHost, allocator: std.mem.Allocator) !host_events.UserPromptInfo {
-    var waited: u32 = 0;
-    while (waited < 5000) : (waited += 5) {
-        if (try host.userPromptOf(allocator)) |info| return info;
-        std.Thread.sleep(5 * std.time.ns_per_ms);
+/// Wait (5 s) until `claimer` has heard a dialog open - its listener wakes
+/// the count it bumps, no polling - then the open dialog's info.
+fn waitForPrompt(host: *BrowserHost, claimer: *Claimer, allocator: std.mem.Allocator) !host_events.UserPromptInfo {
+    var tries: u32 = 0;
+    while (claimer.opened.load(.acquire) == 0) : (tries += 1) {
+        if (tries == 50) return error.Timeout;
+        const timeout: std.Io.Timeout = .{ .duration = .{ .raw = .fromMilliseconds(100), .clock = .awake } };
+        testing.io.futexWaitTimeout(u32, &claimer.opened.raw, 0, timeout) catch {};
     }
-    return error.Timeout;
+    // Opened is told before the Browser's thread pauses, with the prompt
+    // already recorded (simple_dialogs.show: begin, then the hook).
+    return (try host.userPromptOf(allocator)) orelse error.NoPrompt;
 }
 
 test "a claimed prompt pauses the Browser's thread until a host answers it from another thread" {
@@ -96,7 +103,7 @@ test "a claimed prompt pauses the Browser's thread until a host answers it from 
     // The script opens a prompt: the evaluation ends with the dialog open
     // (the Browser's thread is paused on it).
     try testing.expectError(error.UserPromptOpen, host.evaluate(allocator, tab, "globalThis.answer = prompt('Your name?', 'nobody')", .{}, 5_000));
-    const info = try waitForPrompt(host, allocator);
+    const info = try waitForPrompt(host, &claimer, allocator);
     defer info.deinit(allocator);
     try testing.expectEqual(tab, info.tab);
     try testing.expectEqualStrings("Your name?", info.message);
@@ -125,7 +132,7 @@ test "a claimed confirm answered cancel is false; newlines in its message are no
     const tab = try host.createTab(.{});
 
     try testing.expectError(error.UserPromptOpen, host.evaluate(allocator, tab, "globalThis.ok = confirm('one\\r\\ntwo')", .{}, 5_000));
-    const info = try waitForPrompt(host, allocator);
+    const info = try waitForPrompt(host, &claimer, allocator);
     defer info.deinit(allocator);
     try testing.expectEqualStrings("one\ntwo", info.message);
     try testing.expect(host.answerUserPrompt(tab, false, ""));
@@ -200,7 +207,7 @@ test "a beforeunload handler with sticky activation asks the user; a claimed pro
     };
     var closer: Closer = .{ .host = host, .tab = tab };
     const thread = try std.Thread.spawn(.{}, Closer.run, .{&closer});
-    const info = try waitForPrompt(host, allocator);
+    const info = try waitForPrompt(host, &claimer, allocator);
     defer info.deinit(allocator);
     try testing.expectEqual(@as(u8, @backingInt(host_events.DialogKind.beforeunload)), claimer.last_kind.load(.acquire));
     // "Stay on the page": the close is canceled.

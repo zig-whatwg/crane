@@ -191,6 +191,16 @@ pub const Navigables = struct {
     /// opened and closed). One slot, which the Browser sets to its own
     /// dispatcher.
     user_prompts: ?@import("../navigation/user_prompts.zig").Hook = null,
+    /// The Browser's new-window hook (navigation/window_open.zig): told as a
+    /// page asks for a new top-level traversable, before it is made (CDP's
+    /// Page.windowOpen). One slot, which the Browser sets to its own
+    /// dispatcher.
+    window_open: ?@import("../navigation/window_open.zig").Hook = null,
+    /// The Browser's hook for a child navigable whose initial about:blank
+    /// script reached for the first time (`BrowsingContext.touchedByScript`):
+    /// a host announces its main world context then, as Blink makes it
+    /// lazily (LocalWindowProxy::Initialize on first access).
+    frame_touched: ?FrameTouched = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
@@ -393,6 +403,12 @@ pub const SystemVisibility = enum { visible, hidden };
 /// `long`).
 pub const ViewportSize = struct { width: i32, height: i32 };
 
+/// `Navigables.frame_touched`.
+pub const FrameTouched = struct {
+    context: *anyopaque,
+    touched: *const fn (context: *anyopaque, navigable: u64) void,
+};
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -531,6 +547,17 @@ pub const BrowsingContext = struct {
     /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
     /// page), which wins over the platform's while set.
     viewport_override: ?ViewportSize = null,
+    /// A top-level traversable's screen as the platform last reported it
+    /// (`screen_changed(tab, screen)`, docs/platform-protocol.md section 7),
+    /// or null while it has reported none (the platform's `screenInfo`
+    /// answers then). html.screen_info reads it, under a host's override.
+    reported_screen: ?@import("platform").ScreenInfo = null,
+    /// A child navigable on its initial about:blank whose main world a host
+    /// (CDP's Runtime) has not announced yet: the first script to reach its
+    /// Window - its container's contentWindow/contentDocument, window[i],
+    /// a named frame, window.open by its name - announces it
+    /// (`touchedByScript`).
+    inspector_pending: bool = false,
     /// A host's overrides of the platform's other answers for this tab -
     /// media, touch points, user agent (host_overrides.zig: CDP Emulation,
     /// WebDriver BiDi emulation). A top-level traversable's; read through
@@ -1036,6 +1063,17 @@ pub const BrowsingContext = struct {
     /// The system visibility state of this navigable's traversable navigable
     /// (HTML 6.2): what "set the initial visibility state" gives a document
     /// it makes active.
+    /// Script reached this navigable's Window: one load unless a host waits
+    /// to announce its context (`inspector_pending`), then the Browser's
+    /// `frame_touched` hook, once.
+    pub fn touchedByScript(self: *BrowsingContext) void {
+        if (!self.inspector_pending) return;
+        self.inspector_pending = false;
+        const list = self.navigables orelse return;
+        const hook = list.frame_touched orelse return;
+        hook.touched(hook.context, self.id);
+    }
+
     pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
         return self.getTop().system_visibility;
     }

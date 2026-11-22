@@ -663,7 +663,14 @@ fn updateTheRendering(frames: *Frames) void {
             entry.consumed = true;
             // Only active documents' callbacks were collected.
             dom_mod.bfcache.assertNotCached(entry.realm);
+            // Timed for a host's handler violation (Blink's
+            // FrameRequestCallbackCollection probe::UserCallback
+            // "requestAnimationFrame", recurring) - one load while none
+            // listens.
+            const monitor = dom_mod.performance_monitor.active(entry.realm);
+            const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
             Context.invokeReporting(entry.realm, entry.callback, &.{timestamp});
+            if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(entry.realm, "requestAnimationFrame", true, duration);
             last_realm = entry.realm;
         }
     }

@@ -763,6 +763,7 @@ fn handleScriptSchedulingOf(
                 return ScriptExecutionError.OutOfMemory;
             };
             setPendingParsingBlockingScript(parser_document orelse doc, script_element);
+            reportDocumentWrittenBlockingScript(parser_document orelse doc);
         }
         return true;
     }
@@ -1025,6 +1026,19 @@ pub fn pendingParserBlockingScriptReady(document: *runtime.Instance) bool {
 pub fn pendingParsingBlockingScript(document: *runtime.Instance) ?*runtime.Instance {
     const scripts = document_scripts.of(document) orelse return null;
     return scripts.pending_parsing_blocking_script;
+}
+
+/// A host's blockedParser violation: a parser-blocking external script
+/// written by document.write() into a top-level document (Blink's
+/// MaybeDisallowFetchForDocWrittenScript -> probe::DocumentWriteFetchScript:
+/// in document.write, in the outermost main frame, not deferred).
+fn reportDocumentWrittenBlockingScript(document: *runtime.Instance) void {
+    const lists = document_scripts.of(document) orelse return;
+    if (lists.document_write_depth == 0) return;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const bc = dom.browser_state.browsingContextOf(window) orelse return;
+    if (bc.parent != null) return;
+    dom.performance_monitor.reportUntimed(window.ctx, .blocked_parser, "Parser was blocked due to document.write(<script>)");
 }
 
 fn setPendingParsingBlockingScript(document: *runtime.Instance, script: ?*runtime.Instance) void {

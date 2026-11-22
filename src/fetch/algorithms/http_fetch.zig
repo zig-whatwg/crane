@@ -1253,7 +1253,9 @@ pub const UserAgentOverride = struct {
 
 /// Reads the override of the tab a Window client (`traversable`: the
 /// request's traversable for user prompts, a Window standing for its
-/// navigable's traversable) is in. The tab's state is HTML's - its
+/// navigable's traversable) is in - or, given a worker client's global (the
+/// request's user agent client), the copy of its tab's override the worker
+/// took when it was made (Chrome's dedicated worker creation params). The tab's state is HTML's - its
 /// top-level traversable's - which fetch does not import, so its owner
 /// installs the reader once, at process start. BORROWED strings, valid for
 /// the request's step.
@@ -1273,7 +1275,10 @@ pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
     const reader = user_agent_override_reader.get() orelse return .{};
     return switch (request.traversable_for_user_prompts) {
         .traversable => |traversable| reader(traversable),
-        else => .{},
+        // A worker client's request has no traversable (no-traversable, by
+        // spec): it carries its global instead, whose copy of its tab's
+        // override the reader answers (RequestClient.user_agent_client).
+        else => if (request.user_agent_client) |global| reader(global) else .{},
     };
 }
 

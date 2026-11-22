@@ -237,6 +237,7 @@ pub const same_object_cache = @import("same_object_cache.zig");
 /// KeptChild). A shared helper, so not in src/webidl/impls/ (AGENTS.md, the
 /// impls boundary rule 3).
 pub const same_object = @import("same_object.zig");
+pub const performance_monitor = @import("performance_monitor.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");

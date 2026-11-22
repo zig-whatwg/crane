@@ -15,4 +15,5 @@ test {
     _ = @import("cdpr_puppeteer_replay_test.zig");
     _ = @import("cdpr_vitest_cdp_replay_test.zig");
     _ = @import("cdpr_window_proxy_test.zig");
+    _ = @import("cdph_page_session_test.zig");
 }
