@@ -88,6 +88,12 @@ const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding"
 /// Browser's memory-pressure observer (memory_pressure.zig: a /proc/meminfo poller thread), which
 /// reports through the Browser's EventSink from `start` until `deinit`.
 const Extra = struct {
+    /// One live Browser per profile directory (kit/browser_state).
+    pub const ProfileLock = posix.ProfileLock;
+    /// The stores of a Browser with a profile directory (kit/browser_state):
+    /// SQLite on every platform with one (the user's ruling, 2026-11-21).
+    pub const persistent_store = @import("kit_sqlite");
+
     clipboard: memory_clipboard.Clipboard,
     memory_pressure: memory_pressure.Observer = .{},
 
@@ -234,19 +240,19 @@ pub const protocol = struct {
     pub const listDirectory = posix.listDirectory;
     pub const volumeSpace = posix.volumeSpace;
     pub const openStore = State.openStore;
-    pub const closeStore = memory_store.closeStore;
+    pub const closeStore = State.closeStore;
     pub const deleteStore = State.deleteStore;
-    pub const beginTransaction = memory_store.beginTransaction;
-    pub const commitTransaction = memory_store.commitTransaction;
-    pub const abortTransaction = memory_store.abortTransaction;
-    pub const storeGet = memory_store.storeGet;
-    pub const storePut = memory_store.storePut;
-    pub const storeDelete = memory_store.storeDelete;
-    pub const storeDeleteRange = memory_store.storeDeleteRange;
-    pub const openCursor = memory_store.openCursor;
-    pub const cursorNext = memory_store.cursorNext;
-    pub const closeCursor = memory_store.closeCursor;
-    pub const storeSize = memory_store.storeSize;
+    pub const beginTransaction = State.beginTransaction;
+    pub const commitTransaction = State.commitTransaction;
+    pub const abortTransaction = State.abortTransaction;
+    pub const storeGet = State.storeGet;
+    pub const storePut = State.storePut;
+    pub const storeDelete = State.storeDelete;
+    pub const storeDeleteRange = State.storeDeleteRange;
+    pub const openCursor = State.openCursor;
+    pub const cursorNext = State.cursorNext;
+    pub const closeCursor = State.closeCursor;
+    pub const storeSize = State.storeSize;
     pub const createEventLoopPort = curl.createEventLoopPort;
     pub const destroyEventLoopPort = curl.destroyEventLoopPort;
     pub const pollEventLoopPort = curl.pollEventLoopPort;

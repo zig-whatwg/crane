@@ -56,6 +56,34 @@ repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>] [--accept-insecure
 API and the HTTP cache are all in memory, and the Browser writes nothing to disk). Persistence is
 queued (STORAGE PERSISTENCE).
 
+## Remote debugging (the Chrome DevTools Protocol)
+
+With Chrome's `--remote-debugging-port` or `--remote-debugging-pipe` the console is the headless
+browser a CDP client drives (decision D2, the user 2026-11-21; src/devtools, design
+tmp/plans/cdp-part1-design.md): Puppeteer launches it as Chrome (`PUPPETEER_EXECUTABLE_PATH`), with
+Chrome's switches, and reads the line it prints on stderr:
+
+```
+DevTools listening on ws://127.0.0.1:<port>/devtools/browser/<id>
+```
+
+It then reads no input: its Browser runs on a thread of its own, with one tab - the command line's
+URL, or `about:blank` - until a client sends `Browser.close`, the pipe's other end closes, or a
+signal ends the process.
+
+| Switch | What it does |
+|---|---|
+| `--remote-debugging-port=<n>` | Serve CDP on `127.0.0.1:<n>` (0: any free port): `/json/version`, `/json/list`, `/json/protocol`, the browser's WebSocket and each page's. Loopback only; a request whose `Host` is not an IP address or `localhost` is refused, as Chrome refuses it. |
+| `--remote-debugging-pipe` | Serve CDP on the inherited descriptors 3 (read) and 4 (write), messages NUL-terminated (decision D8). |
+| `--remote-allow-origins=<a,b>` | Origins whose WebSocket connections are served (`*` for any); a connection with any other `Origin` is refused (Chrome 111+). |
+| `--user-data-dir=<dir>` | The Browser's profile directory (decision D6); `DevToolsActivePort` (the port and the browser's WebSocket path) is written there. |
+| `--headless[=new]` | Accepted: Crane is headless. |
+
+With remote debugging, every other Chrome switch (`--no-sandbox`, `--disable-gpu`, ...) is accepted
+and ignored, as a launcher passes many. A build without CDP (`-Dcdp=false`) answers
+"built without CDP support". WebDriver's sessions serve the same protocol for their Browser through
+New Session's `se:cdp` capability (src/webdriver/devtools_endpoint.zig).
+
 ## Using it
 
 Type JavaScript; Enter evaluates once the input is complete (an open block asks for more with
@@ -112,7 +140,8 @@ printf '%s\n' 'document.title' 'document.querySelector("a").click()' 'location.h
 - Rendering and layout: Crane is the web platform; the host supplies pixels. No screenshots, no
   geometry (`getBoundingClientRect` and layout-dependent values are what the layout backend gives:
   none here).
-- Automation protocols (CDP, WebDriver BiDi): not the console's - src/webdriver is their home.
+- WebDriver BiDi: src/webdriver is its home. CDP is served by the console itself (Remote debugging,
+  above) and by WebDriver's sessions (`se:cdp`).
 - Media decoding beyond WAV: the platform decides what it decodes (protocol `media_decoding`; lane
   wptcfg D4, the user 2026-11-09). Crane's default platforms build in WAV linear PCM
   (kit/media_decoding), so the console's `<audio>` plays a WAV - `canPlayType('audio/wav')` is

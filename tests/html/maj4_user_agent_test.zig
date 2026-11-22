@@ -2,8 +2,8 @@
 //! value Fetch sends (HTTP-network-or-cache fetch step 8.15, the environment
 //! default) and navigator.userAgent, which returns the same value, both carry
 //! "Crane/0.1" on every platform - not the old "WhatWG-Zig/1.0" (the user,
-//! 2026-11-20). navigator.vendor is the Chrome navigator compatibility mode's
-//! "Google Inc." (the user's ruling, 2026-11-20).
+//! 2026-11-20). navigator.vendor is "Crane" (the user's ruling of 2026-11-21
+//! 7:32 PM ET, replacing the Chrome mode's "Google Inc." ruled 2026-11-20).
 //!
 //! tests/html is one executable: the engine may already be started.
 const std = @import("std");
@@ -35,13 +35,13 @@ test "navigator.userAgent carries Crane's product token" {
 fn navigatorVendor() !void {
     const page = try helpers.Page.open();
     defer page.close();
-    // HTML "vendor" getter steps, the Chrome navigator compatibility mode -
-    // the mode productSub "20030107" and appVersion already name (the user's
-    // ruling, 2026-11-20).
-    try harness.expectEval(page, "navigator.vendor", "Google Inc.");
+    // navigator.vendor is "Crane" - a deliberate deviation from HTML's
+    // "vendor" getter steps (Chrome mode "Google Inc.") by the user's ruling
+    // of 2026-11-21 7:32 PM ET, which replaced the 2026-11-20 one.
+    try harness.expectEval(page, "navigator.vendor", "Crane");
     try harness.expectEval(page, "navigator.vendorSub", "");
 }
 
-test "navigator.vendor is the Chrome compatibility mode's, Google Inc." {
+test "navigator.vendor is Crane (user ruling 2026-11-21)" {
     try helpers.onFreshThread(navigatorVendor);
 }
