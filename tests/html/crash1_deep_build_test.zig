@@ -46,7 +46,7 @@ fn withDocument(comptime body: fn (*runtime.Instance) anyerror!void) !void {
         fn runBody() !void {
             var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
             {
-                const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+                const browser = try Browser.init(debug.allocator(), .{ .snapshot_path = "" });
                 defer browser.deinit();
                 try browser.navigate("about:blank", .window);
                 const page = browser.current_context orelse return error.NoPage;

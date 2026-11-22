@@ -108,7 +108,7 @@ const Side = struct {
     }
 
     fn steps(self: *Side) !void {
-        const browser = try browser_mod.Browser.init(self.debug_allocator.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(self.debug_allocator.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const context = browser.current_context orelse return error.NoPage;

@@ -23,7 +23,7 @@ fn selected(browser: *browser_mod.Browser, predicate: []const u8) !void {
 }
 
 fn runCase(kind: Case) !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     try browser.current_context.?.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });

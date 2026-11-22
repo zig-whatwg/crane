@@ -38,7 +38,7 @@ fn setRuleRange(comptime path: RulePath, style: *runtime.Instance, text: []const
 }
 
 fn ruleRange(comptime path: RulePath) !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -90,7 +90,7 @@ test "font descriptor dashed attribute retokenizes unicode ranges without generi
 }
 
 fn constructorRange() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -114,7 +114,7 @@ test "FontFace constructor retokenizes unicodeRange descriptor text with comment
 }
 
 fn faceSetterRange() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;

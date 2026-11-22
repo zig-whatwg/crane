@@ -44,7 +44,7 @@ fn onFreshThread(comptime body: fn () anyerror!void) !void {
 }
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 fn expectEval(page: *browser_mod.Context, source: []const u8, expected: []const u8) !void {

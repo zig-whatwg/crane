@@ -60,7 +60,7 @@ fn round(kind: Kind) !void {
     defer server.stop();
     var base_buf: [128]u8 = undefined;
     const base = try std.fmt.bufPrint(&base_buf, "http://127.0.0.1:{d}/", .{server.listener.port()});
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

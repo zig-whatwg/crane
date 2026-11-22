@@ -69,7 +69,7 @@ const Trial = struct {
 
     fn check(self: *Trial) !void {
         const allocator = std.testing.allocator;
-        var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        var browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.TestUnexpectedResult;
@@ -197,7 +197,6 @@ const CacheTrial = struct {
         var proxy_buf: [64]u8 = undefined;
         const proxy = try server.proxyUrl(&proxy_buf);
         const browser = try browser_mod.Browser.init(allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
         });

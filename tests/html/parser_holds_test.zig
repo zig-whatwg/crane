@@ -52,7 +52,7 @@ fn openBrowser() !*browser_mod.Browser {
 /// A Browser whose page is `markup`, loaded once into the navigation's fresh
 /// document (a load never reuses a document that has children here).
 fn openPage(markup: []const u8, url: []const u8) !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

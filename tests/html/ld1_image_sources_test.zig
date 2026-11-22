@@ -4,7 +4,7 @@ const std = @import("std");
 const Browser = @import("browser").Browser;
 
 test "srcset selects the first valid density candidate after the microtask" {
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -22,7 +22,7 @@ test "srcset selects the first valid density candidate after the microtask" {
 }
 
 test "srcset descriptor errors, default source and source sizes" {
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

@@ -91,7 +91,7 @@ fn openPage(browser: *browser_mod.Browser) !void {
 }
 
 fn workerBesidePageChurn() !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     // Four pages: each navigation also ends the page before, with its
     // worker's realm, beside the next page's start.

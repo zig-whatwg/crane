@@ -21,7 +21,7 @@ fn onThread(comptime body: fn () anyerror!void) !void {
 
 fn validityEvents(comptime select: bool) !void {
     const a = std.testing.allocator;
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context.?;

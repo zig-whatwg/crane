@@ -35,7 +35,7 @@ fn expectPolicy(browser: *browser_mod.Browser, enabled: bool) !void {
 }
 
 fn run() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "https://fx1.test/policy-parent";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

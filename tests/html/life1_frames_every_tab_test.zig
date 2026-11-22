@@ -11,7 +11,7 @@ const testing = std.testing;
 const browser_mod = @import("browser");
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// Run `browser`'s loop until `condition` (a script in its page) is true,

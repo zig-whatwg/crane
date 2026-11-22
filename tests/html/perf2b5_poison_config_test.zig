@@ -11,7 +11,7 @@ const browser_mod = @import("browser");
 
 test "a Browser poisons freed state when its config asks, and in a Debug build either way" {
     for ([_]bool{ false, true }) |poison| {
-        const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .poison_freed_state = poison });
+        const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "", .poison_freed_state = poison });
         defer browser.deinit();
         // A Debug build poisons freed state blocks and released NodeBases
         // either way (the unit tests' poison-on-free; the blocks since lane

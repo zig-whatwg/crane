@@ -6,7 +6,7 @@ const dom = @import("dom");
 fn exercise() !void {
     if (comptime @hasDecl(dom, "sri_reporting")) {
         const a = std.testing.allocator;
-        const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(a, .{ .snapshot_path = "" });
         defer browser.deinit();
         const url = "https://user:password@sri.test/page?query=yes#document-fragment";
         try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

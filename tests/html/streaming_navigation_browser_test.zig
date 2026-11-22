@@ -107,7 +107,7 @@ fn waitFor(browser: *browser_mod.Browser, source: []const u8) !void {
 /// A page at the server's origin with one frame navigating to /frame,
 /// returned once the frame's first chunk is in its document.
 fn openFramedPage(server: *ChunkServer) !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     var url_buf: [64]u8 = undefined;
     const page_url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/page", .{server.port});
@@ -155,7 +155,7 @@ test "a frame's streamed body is reported to its container's resource timing onc
     var server: ChunkServer = undefined;
     try server.start();
     defer server.stop();
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var url_buf: [64]u8 = undefined;
     const page_url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/page", .{server.port});

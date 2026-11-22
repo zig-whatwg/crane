@@ -98,7 +98,7 @@ fn differentAllocatorFailures() !void {
 
 fn realQueryAllocator() !void {
     if (comptime @hasDecl(permissions.BrowserStore, "listenOwned")) {
-        const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
         defer browser.deinit();
         const page_url = "https://pm2-key.example.test/page.html";
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });

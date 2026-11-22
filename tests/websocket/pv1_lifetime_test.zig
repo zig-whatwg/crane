@@ -50,7 +50,7 @@ const Side = struct {
         var server: Server = undefined;
         try server.start();
         defer server.stop();
-        const browser = try Browser.init(self.debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(self.debug.allocator(), .{ .snapshot_path = "" });
         var ended = false;
         defer if (!ended) browser.deinit();
         try page(browser);
@@ -108,7 +108,7 @@ fn workerEnds() !void {
     var server: Server = undefined;
     try server.start();
     defer server.stop();
-    const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(debug.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try page(browser);
     var url: [128]u8 = undefined;

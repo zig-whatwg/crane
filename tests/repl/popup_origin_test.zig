@@ -23,7 +23,7 @@ test "a same-origin popup of a page the console opened loads in the Window open(
     const a = try site.url(testing.allocator, "/a.html");
     defer testing.allocator.free(a);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var output: std.Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();

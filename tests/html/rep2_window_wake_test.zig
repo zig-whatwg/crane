@@ -30,7 +30,7 @@ const clock = @import("clock");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 fn openPage() !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

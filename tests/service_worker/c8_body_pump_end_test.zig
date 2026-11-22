@@ -181,7 +181,7 @@ fn expectScript(browser: *browser_mod.Browser, source: []const u8) !void {
 test "a stream body's pump cancelled for the page: the read its cancel settles ends the pump, and the cancel reads nothing of it after" {
     var pages: Pages = .{};
     {
-        const browser = try browser_mod.Browser.init(pages.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(pages.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const context = browser.current_context orelse return error.NoPage;

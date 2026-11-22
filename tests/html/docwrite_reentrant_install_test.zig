@@ -7,7 +7,7 @@ const dom = @import("dom");
 const Scenario = enum { current_entry_change, child_unload };
 
 fn exercise(scenario: Scenario) !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.TestUnexpectedResult;

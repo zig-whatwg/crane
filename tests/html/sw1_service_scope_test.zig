@@ -12,7 +12,7 @@ const browser_mod = @import("browser");
 const html = @import("html");
 
 test "a window realm is no service worker's: serviceScopeOf answers null" {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

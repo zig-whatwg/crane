@@ -30,7 +30,7 @@ fn waitFor(browser: *Browser, expression: []const u8) !void {
 fn workerDelivery() !void {
     var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("permission Browser leaked");
-    const browser = try Browser.init(gpa.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(gpa.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try open(browser);
     const store = try browser.getRealm().?.browser_scope.?.of(permissions.BrowserStore);
@@ -70,7 +70,7 @@ fn browserIsolation() !void {
     for (0..2) |index| {
         var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer std.testing.expect(gpa.deinit() == .ok) catch @panic("permission Browser leaked");
-        const browser = try Browser.init(gpa.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(gpa.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try open(browser);
         if (index == 0) {

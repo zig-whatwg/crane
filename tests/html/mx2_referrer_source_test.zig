@@ -35,7 +35,6 @@ fn readyDescendant(root: *runtime.Instance, depth: usize) ?*runtime.Instance {
 
 fn expectSource(url: []const u8, depth: usize) !void {
     const browser = try Browser.init(std.testing.allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
     });
     defer browser.deinit();

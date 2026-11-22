@@ -19,7 +19,7 @@ fn fresh(comptime exercise: fn () anyerror!void) !void {
 }
 
 fn inputAbort() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -49,7 +49,7 @@ test "input image pending activity cancels before realm teardown" {
 
 fn ownerCapacity() !void {
     try std.testing.expectEqual(@as(usize, 20), @typeInfo(dom.document_fetches.OwnerSlots).array.len);
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const count = dom.document_fetches.ownerCount();
     // Eleven BASE owners plus input, two SVG kinds, fonts and the CSS cache.
@@ -62,7 +62,7 @@ test "all document fetch owners fit with a spare slot after process start" {
 }
 
 fn svgAbort() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -91,7 +91,7 @@ test "SVG image and use pending activity is canceled by document abort" {
 fn secureXml() !void {
     const interfaces = @import("interfaces");
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const setup = try browser.evaluateScript("globalThis.cr1SvgScriptRan=false; customElements.define('cr1-evil',class extends HTMLElement {constructor(){super();globalThis.cr1SvgScriptRan=true;}}); true");
@@ -124,7 +124,7 @@ test "secure SVG XML parsing starts no nested requests or custom element scripts
 fn strictSvgEncoding() !void {
     const interfaces = @import("interfaces");
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -142,7 +142,7 @@ test "secure SVG document rejects malformed encoded bytes instead of replacing t
 }
 
 fn cssAbort() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const doc_value = try browser.evaluateScript("document");
@@ -166,7 +166,7 @@ test "document abort cancels pending CSS images and preserves a failed cache ent
 }
 
 fn emptySvgReplacement() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -192,7 +192,7 @@ test "empty SVG image href cancels its previous pending request" {
 }
 
 fn svgCacheDoesNotStartCssWork() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -215,7 +215,7 @@ test "an SVG document cache alone does not schedule a CSS resource walk" {
 }
 
 fn adoptionToInertDocument() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -245,7 +245,7 @@ test "adopting image loaders into an inert document ends their old pending activ
 }
 
 fn inlineSourceProvenance() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -285,7 +285,7 @@ test "attribute and CSSOM inline URLs share their actual element base and client
 }
 
 fn resourceRenderingTurn() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -322,7 +322,7 @@ test "used CSS resources start at a rendering turn and reuse their document cach
 fn nativeSvgAbort() !void {
     const interfaces = @import("interfaces");
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -379,7 +379,7 @@ test "generated SVG resource owners cancel their real requests without factory d
 fn nativeEmptySvgReplacement() !void {
     const interfaces = @import("interfaces");
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -411,7 +411,7 @@ test "empty href replaces a native SVG image pending request before its queued e
 fn cssomSheetSources() !void {
     const interfaces = @import("interfaces");
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -459,7 +459,7 @@ test "CSSOM insert replacement and rule declaration edits all retain URL sources
 }
 
 fn backgroundHintCache() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -505,7 +505,7 @@ test "HTML background hint is lazy document-sourced and invalidated by base and 
 
 fn fontRuleDiscovery() !void {
     const runtime = @import("runtime");
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -581,7 +581,7 @@ test "font rule discovery follows imports adopted sheets conditions and shadow s
 }
 
 fn cssomFontRuleSources() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -625,7 +625,7 @@ test "font descriptor CSSOM mutation captures sources and detached edits release
 
 fn cssImageVisibility() !void {
     if (comptime !@hasDecl(dom.style.engine, "isCssImageResourceOrigin")) return error.MissingImageEligibility;
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -647,7 +647,7 @@ test "CSS image eligibility ignores skipped contents but excludes display none s
 
 fn fontTextParent() !void {
     if (comptime !@hasDecl(dom.style.engine, "fontStyleForText")) return error.MissingFontTextStyle;
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -685,7 +685,7 @@ test "font text inherits through the flat tree and excludes unassigned and hidde
 
 fn skippedFontText() !void {
     if (comptime !@hasDecl(dom.style.engine, "fontStyleForText")) return error.MissingFontTextStyle;
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

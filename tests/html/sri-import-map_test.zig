@@ -22,7 +22,7 @@ const Trial = struct {
     }
     fn check(self: *@This()) !void {
         const a = std.testing.allocator;
-        const browser = try browser_mod.Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(a, .{ .snapshot_path = "" });
         defer browser.deinit();
         const base = "https://sri.test/dir/page.html";
         try browser.navigateWithOptions(base, .window, .{ .skip_load = true });

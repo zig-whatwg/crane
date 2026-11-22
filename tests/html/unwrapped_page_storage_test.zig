@@ -78,7 +78,7 @@ fn openPage(browser: *browser_mod.Browser, script: []const u8) !void {
 /// a document makes for itself - which this lane leaves: a realm's global
 /// can outlive it.)
 fn churn(script: []const u8, pages: usize, per_page: usize) !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
 
     try openPage(browser, script);

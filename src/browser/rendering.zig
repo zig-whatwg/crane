@@ -1295,7 +1295,7 @@ test "native autofocus rendering retires replaced and destroyed documents and ex
             };
         }
         fn exercise(_: *@This()) !void {
-            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;
@@ -1361,7 +1361,7 @@ test "reactivation restores pending native autofocus rendering without an idle t
             };
         }
         fn exercise(_: *@This()) !void {
-            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;

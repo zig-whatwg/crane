@@ -107,7 +107,7 @@ fn openPage(browser: *browser_mod.Browser) !void {
 const document_parts = [_][]const u8{ "HTMLHtmlElement", "HTMLHeadElement", "HTMLBodyElement", "HTMLElement" };
 
 fn navigatedFrames() !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try openPage(browser);
     const first = count(browser, &document_parts);
@@ -134,7 +134,7 @@ fn heldNodeOfOldDocument() !void {
     // impostors of the second document's types, each announcing itself, are
     // made between the slices that free the second document - into every
     // slot those slices give back - and must stay untouched.
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..3) |_| {
         try browser.navigate("about:blank", .window);
@@ -219,7 +219,7 @@ fn collectUntilSettled(browser: *browser_mod.Browser, goal: ?usize) !usize {
 }
 
 fn initialEmptyNavigated() !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var first: usize = 0;
     for (0..4) |page_index| {

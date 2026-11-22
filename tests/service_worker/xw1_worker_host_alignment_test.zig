@@ -67,7 +67,7 @@ fn wait(browser: *Browser, want: []const u8) !void {
 }
 
 fn check() !void {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("https://xw1.test/page.html", .window, .{ .skip_load = true });
     try browser.current_context.?.loadHTML("<!doctype html><body>", .{ .base_url = "https://xw1.test/page.html" });

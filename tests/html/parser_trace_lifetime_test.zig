@@ -44,7 +44,7 @@ fn currentNode(parser: *scripted_parser.DocumentParser) !*runtime.Instance {
 }
 
 fn detachedNodeUntilEOF() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -101,7 +101,7 @@ const LoaderLifetime = struct {
 };
 
 fn unreachableSuspendedCycle() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     var document_owner: ?engine.Owned = try browser.evaluateScript("document.implementation.createHTMLDocument('unreachable parser')");
@@ -154,7 +154,7 @@ test "an unreachable suspended Document parser graph has no independent root" {
 /// reference goes, the parser detaches, and the whole graph is freed - no
 /// cycle between the document and its parser's counted structures survives.
 fn suspendedParserDetachesWhileAForeignHoldKeepsTheTree() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     var document_owner: ?engine.Owned = try browser.evaluateScript(
@@ -232,7 +232,7 @@ const Reentry = struct {
 };
 
 fn replacementDuringCompletion() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -310,7 +310,7 @@ const AbortReentry = struct {
 };
 
 fn replacementDuringAbortReadiness() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -347,7 +347,7 @@ test "abort readiness replacement preserves old abort-stack nodes and the succes
 }
 
 fn numericPrototypeSetter() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -373,7 +373,7 @@ test "parser retention does not invoke numeric Array prototype setters" {
 }
 
 fn suspendedRealmTeardown() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

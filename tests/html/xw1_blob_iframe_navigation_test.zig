@@ -11,7 +11,7 @@ fn truthy(browser: *browser_mod.Browser, source: []const u8) !bool {
 }
 
 fn run() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "http://xw1.test/page.html";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

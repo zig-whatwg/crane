@@ -92,11 +92,6 @@ const window_agent_hooks: engine.HostHooks = blk: {
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
-    /// No effect since D6 (2026-11-21); removed before the test pass. (It
-    /// told the legacy storage manager, src/browser/storage/Storage.zig,
-    /// retired then, to make directories nothing read; a Browser's stores
-    /// persist under `profile_dir`.)
-    persist_storage: bool = false,
     /// The Browser's profile directory (docs/instances.md): its stores
     /// persist under it, and it is the Browser's alone while it lives - a
     /// second live Browser given the same directory fails to start with
@@ -1938,9 +1933,7 @@ test "Browser - basic lifecycle" {
 
     // Note: This test requires V8 to be initialized, which may not be available
     // in all test environments. Skip if V8 is not available.
-    var browser = Browser.init(allocator, .{
-        .persist_storage = false, // Use memory-only storage for tests
-    }) catch |err| {
+    var browser = Browser.init(allocator, .{}) catch |err| {
         // V8 not available in test environment
         if (err == error.V8InitFailed) return;
         return err;

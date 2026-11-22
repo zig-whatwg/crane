@@ -105,7 +105,7 @@ fn iterateWith(comptime browser_mod: type, why: *Io.Writer) anyerror!void {
 fn runPages(comptime browser_mod: type, allocator: std.mem.Allocator, why: *Io.Writer) !void {
     // No snapshot: one found from the working directory may be another
     // build's (the tests/v8 snapshot lesson); a fresh isolate is real work.
-    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (pages, 0..) |page_spec, i| {
         try browser.navigate("about:blank", .window);

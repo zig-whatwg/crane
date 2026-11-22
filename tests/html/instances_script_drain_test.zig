@@ -27,7 +27,7 @@ const page_url = "http://drainrace.test/page.html";
 const rounds = 8;
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 fn truthy(browser: *browser_mod.Browser, source: []const u8) !bool {

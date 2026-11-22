@@ -120,7 +120,7 @@ fn runUntil(page: h.Page, comptime done: []const u8) !void {
 }
 
 fn pendingInlineScriptIsHeld() !void {
-    const browser = try h.browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try h.browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;

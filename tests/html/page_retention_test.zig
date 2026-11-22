@@ -169,7 +169,7 @@ fn settle(browser: *browser_mod.Browser) !void {
 /// hold at least one slot of each type in `own` - a script that made none
 /// of what it is about cannot pass.
 fn churn(html: []const u8, script: []const u8, pages: usize, own: []const []const u8) !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
 
     try openPage(browser, html, script);
@@ -498,7 +498,7 @@ fn readsOf(browser: *browser_mod.Browser) ![]u8 {
 }
 
 fn removedFrameHolders() !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..3) |_| {
         try openPage(browser, empty_page, frame_holders_script ++
@@ -529,7 +529,7 @@ test "a removed frame's document, node, Location and History read safely from th
 }
 
 fn navigatedFrameHolders() !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..3) |_| {
         try openPage(browser, empty_page, frame_holders_script ++
@@ -590,7 +590,7 @@ fn queryObjectOutlivesItsUrl() !void {
     // and its teardown runs; impostors take whatever slots it freed. The
     // query object script holds is cut from its URL: it never reaches the
     // URL's freed state, and no impostor answers for it.
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..3) |_| {
         try openPage(browser, empty_page,
@@ -650,7 +650,7 @@ fn portOutlivesItsChannel() !void {
     // each announcing a message it hears - take whatever slots it freed.
     // port1's messages then go nowhere (its peer is gone: the channel is
     // disentangled), and no impostor hears them.
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..3) |_| {
         try openPage(browser, empty_page,
@@ -699,7 +699,7 @@ fn transferredPortOutlivesItsChannel() !void {
     // the page drops the channel and collects - the channel freeing port2,
     // which script never read, on the page's thread while the worker's
     // thread posts to it. Six rounds.
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     for (0..6) |_| {
         try openPage(browser, empty_page,

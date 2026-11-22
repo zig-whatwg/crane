@@ -27,7 +27,7 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
 /// Parse each `[markup, expected body innerHTML]` both ways in a fresh page;
 /// "ok", or every mismatch.
 fn compare(comptime cases: []const u8) !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -147,7 +147,7 @@ test "a reset with a select on the stack parses in body, live and in DOMParser" 
 /// The fragment case: innerHTML with a select context element resets to "in
 /// body" too (the select matches no step; the last node is the context).
 fn selectFragment() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

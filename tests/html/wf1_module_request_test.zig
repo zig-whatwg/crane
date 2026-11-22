@@ -13,7 +13,6 @@ fn runBrowser(allocator: std.mem.Allocator, server: *http.Server, policy: []cons
     var proxy_buffer: [64]u8 = undefined;
     const proxy = try server.proxyUrl(&proxy_buffer);
     const browser = try Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
     });

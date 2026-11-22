@@ -34,7 +34,7 @@ pub const Page = struct {
 
     /// A page of a Browser made with `allocator`.
     pub fn open(allocator: std.mem.Allocator) !Page {
-        const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigate("about:blank", .window);
         const context = browser.current_context orelse return error.NoPage;
