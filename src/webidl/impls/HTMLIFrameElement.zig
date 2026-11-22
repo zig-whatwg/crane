@@ -4757,11 +4757,15 @@ fn reportCommitted(browsing_context: *html_core.BrowsingContext, document: *runt
     const navigation_id: u64 = if (integration) |i| i.committing_navigation_id else 0;
     if (integration) |i| i.committed_navigation_id = navigation_id;
     const url: []const u8 = if (navigation_id != 0) (if (integration.?.loaded_url) |u| u else "about:blank") else "about:blank";
+    // `kind`, Blink's CommitReason: the initial about:blank document's
+    // (kInitialization) and a javascript: URL's result (kJavascriptUrl) say
+    // so as they commit; everything else is regular.
     observer.notify(list, .{ .navigable_id = browsing_context.id, .navigation_id = navigation_id, .event = .{ .committed = .{
         .url = url,
         .document = .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) },
         .mime_type = mime_type,
         .error_page = if (integration) |i| i.committing_error_page else false,
+        .kind = if (integration) |i| i.committing_kind else .regular,
     } } });
 }
 
@@ -6142,9 +6146,14 @@ fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, 
     integration.next_document_state = document_state;
     defer integration.next_document_state = null;
     integration.committing_navigation_id = record.id;
+    // The observer's `committed` kind: a javascript: URL's result (Blink's
+    // CommitReason::kJavascriptUrl - no page load for what a browser keeps
+    // per page, Page::DidCommitLoad is not reached).
+    integration.committing_kind = .javascript_url;
     defer {
         if (integration.committed_navigation_id == record.id) record.committed_reported = true;
         integration.committing_navigation_id = 0;
+        integration.committing_kind = .regular;
     }
     integration.commitHtmlAt(url, html, if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.container_origin) catch return endLoadDelay(integration);
     attachDocument(integration, document_state, false);
@@ -7622,8 +7631,12 @@ fn makeInitialAboutBlank(
     // context is created, not through navigation.
     // HTML "create a new browsing context and document" step 15: this
     // document "is initial about:blank"; step 21 completely finishes loading
-    // it.
-    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document_ptr| {
+    // it. Its `committed` milestone says so (Blink's
+    // CommitReason::kInitialization).
+    integration.committing_kind = .initialization;
+    const initial_document = createDocumentForIframe(@ptrCast(realm), browsing_context);
+    integration.committing_kind = .regular;
+    if (initial_document) |document_ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
         dom_module.document_lifecycle.markInitialAboutBlank(document);
         if (creator) |creator_document| {

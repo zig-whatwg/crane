@@ -62,8 +62,9 @@ test "a host tab's realm is entered per call: outside script no realm is entered
     const tab = try tabRealm(agent, false);
     defer protocol.destroyWindowRealm(tab, .global_detached);
     try testing.expect(protocol.entryRealm() == null);
-    // Script still runs in it: each call enters it.
-    try evaluates(tab, "typeof document + ',' + (1 + 1)", "object,2");
+    // Script still runs in it: each call enters it. (Its Window is a bare
+    // one, with no associated Document: `document` reads undefined here.)
+    try evaluates(tab, "(globalThis instanceof Window) + ',' + (1 + 1)", "true,2");
     try testing.expect(protocol.entryRealm() == null);
 }
 

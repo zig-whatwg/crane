@@ -1,4 +1,6 @@
-//! Fetch step 14 adds the platform's preferred language before main fetch.
+//! Fetch step 14 adds the platform's preferred languages before main fetch,
+//! with q-values as the browsers' majority sends them (Chrome and Safari:
+//! "en-US,en;q=0.9"; Chrome's net::HttpUtil::GenerateAcceptLanguageHeader).
 const std = @import("std");
 const fetch = @import("fetch");
 
@@ -15,12 +17,12 @@ fn languageAfterStart(preset: ?[]const u8) ![]u8 {
     return allocator.dupe(u8, value);
 }
 
-test "fetch adds the most preferred platform language when Accept-Language is absent" {
+test "fetch adds the platform's preferred languages with q-values when Accept-Language is absent" {
     const allocator = std.testing.allocator;
-    // The testing platform supplies en-US (platform/kit/posix/root.zig).
+    // The testing platform supplies en-US, en (platform/kit/posix/root.zig).
     const actual = try languageAfterStart(null);
     defer allocator.free(actual);
-    try std.testing.expectEqualStrings("en-US", actual);
+    try std.testing.expectEqualStrings("en-US,en;q=0.9", actual);
 }
 
 test "fetch preserves an explicitly supplied Accept-Language including the empty value" {

@@ -136,6 +136,9 @@ fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void 
     if (delta > 0) entry.value_ptr.* += 1 else entry.value_ptr.* -|= 1;
     const now = entry.value_ptr.*;
     if (now == 0 and state.in_flight.remove(navigable)) state.in_flight_guard.noteRemoval(&state.in_flight);
+    // The frame's idleness detector hears it whether or not a session
+    // listens (Blink's IdlenessDetector, per frame: domains/page.zig).
+    @import("domains/page.zig").onBrowserNetworkActivity(side, navigable, now);
     const page_domains = @import("domains/page_domains.zig");
     var buffer: [16]*PageSession = undefined;
     var n: usize = 0;

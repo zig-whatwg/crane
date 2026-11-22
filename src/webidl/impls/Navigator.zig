@@ -407,54 +407,66 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     });
 }
 
-/// Getter for language
-/// Per HTML Standard: Returns the preferred language of the user.
+const host_overrides = @import("html").window.host_overrides;
+
+/// The languages the navigator reports now (OWNED): the tab's
+/// Accept-Language override (CDP Emulation.setUserAgentOverride's
+/// acceptLanguage), else the platform's list - each through Blink's
+/// ParseAndSanitize (NavigatorLanguage::EnsureUpdatedLanguage reads the
+/// override first; html.window.host_overrides).
+fn currentLanguages(instance: *runtime.Instance) !host_overrides.Languages {
+    if (hostOverridesOf(instance)) |overrides| if (try overrides.languages(instance.ctx.allocator)) |list| return list;
+    return host_overrides.platformLanguages(instance.ctx.allocator);
+}
+
+/// Getter for language (HTML 8.9.1.4): "a valid BCP 47 language tag
+/// representing either a plausible language or the user's most preferred
+/// language" - navigator.languages' first (Blink's NavigatorLanguage::
+/// language: languages().front()).
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // The host's override for the tab (the first language of CDP
-    // Emulation.setUserAgentOverride's acceptLanguage), else Crane's.
-    if (hostOverridesOf(instance)) |overrides| if (overrides.language()) |language| return runtime.DOMString.initDupe(instance.ctx.allocator, language);
-    return runtime.DOMString.initInterned("en-US");
+    var list = try currentLanguages(instance);
+    defer list.deinit(instance.ctx.allocator);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, list.first());
 }
 
 /// The member a navigator keeps its languages array in (engine.traceValue).
 const languages_slot: engine.TracedSlot = .{ .name = "languages" };
-/// The one it keeps the array of a host's language override in.
-const overridden_languages_slot: engine.TracedSlot = .{ .name = "languages_overridden" };
 
-/// Whether `array`'s first element is the string `language`.
-fn firstLanguageIs(instance: *runtime.Instance, array: runtime.JSValue, language: []const u8) bool {
-    const first = engine.getProperty(instance.ctx, array, "0") catch return false;
-    defer first.release();
-    const text = engine.convertToDOMString(instance.ctx, first.borrow(), instance.ctx.allocator) catch return false;
-    defer instance.ctx.allocator.free(text);
-    return std.mem.eql(u8, text, language);
+/// Whether `array` holds exactly `tags`, in order.
+fn holdsLanguages(instance: *runtime.Instance, array: runtime.JSValue, tags: []const []u8) bool {
+    var key_buffer: [24]u8 = undefined;
+    for (tags, 0..) |tag, i| {
+        const key = std.fmt.bufPrint(&key_buffer, "{d}", .{i}) catch return false;
+        const element = engine.getProperty(instance.ctx, array, key) catch return false;
+        defer element.release();
+        const text = engine.convertToDOMString(instance.ctx, element.borrow(), instance.ctx.allocator) catch return false;
+        defer instance.ctx.allocator.free(text);
+        if (!std.mem.eql(u8, text, tag)) return false;
+    }
+    // No element past the list's.
+    const past = std.fmt.bufPrint(&key_buffer, "{d}", .{tags.len}) catch return false;
+    return !(engine.hasOwnProperty(instance.ctx, array, past) catch true);
 }
 
 /// Getter for languages (HTML 8.9.1.4): "a frozen array of valid BCP 47
 /// language tags ... ordered by preference with the most preferred language
-/// first" - navigator.language, the one preference Crane has - and "the same
-/// object must be returned until the user agent needs to return different
-/// values": made on the first read, kept by an edge from the navigator.
+/// first" - the whole list (`currentLanguages`) - and "the same object must
+/// be returned until the user agent needs to return different values": the
+/// array made for the list is kept by an edge from the navigator while the
+/// list is the same; a host's override changing it is such a change.
 /// (No WebDriver BiDi emulated language: step 2 never applies.)
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // "Until the user agent needs to return different values": a host's
-    // language override for the tab (CDP setUserAgentOverride acceptLanguage)
-    // is such a change - its array is made for it, and kept while it holds.
-    if (hostOverridesOf(instance)) |overrides| if (overrides.language()) |language| {
-        if (engine.tracedValue(instance, overridden_languages_slot)) |kept| {
-            if (firstLanguageIs(instance, kept.borrow(), language)) return kept.take();
-            kept.release();
-        }
-        const values = [_]runtime.JSValue{.{ .string = .{ .data = language, .owned = false } }};
-        const array = try engine.createFrozenArray(instance.ctx, &values);
-        engine.traceValue(instance, array.value, overridden_languages_slot);
-        return array.take();
-    };
-    if (engine.tracedValue(instance, languages_slot)) |kept| return kept.take();
-    var language = try get_language(instance);
-    defer language.deinit(instance.ctx.allocator);
-    const values = [_]runtime.JSValue{.{ .string = .{ .data = language.asSlice(), .owned = false } }};
-    const array = try engine.createFrozenArray(instance.ctx, &values);
+    const allocator = instance.ctx.allocator;
+    var list = try currentLanguages(instance);
+    defer list.deinit(allocator);
+    if (engine.tracedValue(instance, languages_slot)) |kept| {
+        if (holdsLanguages(instance, kept.borrow(), list.tags)) return kept.take();
+        kept.release();
+    }
+    const values = try allocator.alloc(runtime.JSValue, list.tags.len);
+    defer allocator.free(values);
+    for (list.tags, values) |tag, *value| value.* = .{ .string = .{ .data = tag, .owned = false } };
+    const array = try engine.createFrozenArray(instance.ctx, values);
     engine.traceValue(instance, array.value, languages_slot);
     return array.take();
 }

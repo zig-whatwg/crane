@@ -580,7 +580,7 @@ fn reportDestroyedTree(bc: *BrowsingContext) void {
     if (navigables.observer == null) return;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
     defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
+    // collectDescendants lists `bc` itself first: each navigable once.
     bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
     var i = tree.items.len;
     while (i > 0) {

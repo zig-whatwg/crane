@@ -615,10 +615,13 @@ pub const BrowserHost = struct {
         // loop's inbox closed - commands still queued dropped (their callers
         // told) - on this thread.
         self.endReadinessWaits();
-        self.evaluations.deinit(self.allocator);
         b.removeListener(.{ .context = self, .on_event = hostEvent });
         self.browser_ptr = null;
+        // The Browser's end answers the evaluations still pending
+        // (failPendingEvaluations -> EvaluationWaiter.answered), which take
+        // themselves off `evaluations`: the list outlives it.
         b.deinit();
+        self.evaluations.deinit(self.allocator);
     }
 
     fn stopTask(data: ?*anyopaque) void {

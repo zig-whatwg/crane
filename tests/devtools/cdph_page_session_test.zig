@@ -56,8 +56,9 @@ const Harness = struct {
     fn sinkPost(context: *anyopaque, side: *devtools.BrowserSide, event: devtools.browser_side.TargetEvent) void {
         _ = context;
         switch (event) {
-            // The event owns its URL (TargetSink.post).
+            // The event owns its URL and its title (TargetSink.post).
             .navigated => |navigated| side.allocator.free(navigated.url),
+            .title_changed => |changed| side.allocator.free(changed.title),
             else => {},
         }
     }
@@ -180,6 +181,47 @@ test "setLifecycleEventsEnabled replays the current document's lifecycle as Chro
         \\=3
         \\
     , lines.items);
+}
+
+test "a frame's idleness runs from its DOMContentLoaded with no session listening for it, and a replay reports its quiet start before the event fires (Blink's IdlenessDetector)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // A document loaded while no session has lifecycle events on.
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>quiet\"}");
+    _ = try h.waitEvent("Page.loadEventFired", from);
+    // 200 ms on: past its quiet start, short of the 500 ms window.
+    const waited = try h.host.evaluate(h.allocator, h.tab, "new Promise((resolve) => setTimeout(() => resolve(1), 200))", .{ .await_promise = true }, 5_000);
+    defer waited.deinit(h.allocator);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    // GetNetworkAlmostIdleTime / GetNetworkIdleTime: the quiet stretch's
+    // start, known as it began - replayed although no event has fired, and
+    // stamped then, not now.
+    var dcl_at: ?f64 = null;
+    var idle_at: ?f64 = null;
+    var almost_idle_at: ?f64 = null;
+    for (h.seen.items[before..]) |parsed| {
+        const method = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, method.string, "Page.lifecycleEvent")) continue;
+        const params = parsed.value.object.get("params").?.object;
+        const name = params.get("name").?.string;
+        const at = switch (params.get("timestamp").?) {
+            .float => |f| f,
+            .integer => |i| @as(f64, @floatFromInt(i)),
+            else => return error.NoTimestamp,
+        };
+        if (std.mem.eql(u8, name, "DOMContentLoaded")) dcl_at = at;
+        if (std.mem.eql(u8, name, "networkAlmostIdle")) almost_idle_at = at;
+        if (std.mem.eql(u8, name, "networkIdle")) idle_at = at;
+    }
+    try testing.expect(almost_idle_at != null and idle_at != null and dcl_at != null);
+    // The replay's DOMContentLoaded is stamped now; the quiet began at the
+    // document's own DOMContentLoaded, 200 ms or more before.
+    try testing.expect(dcl_at.? - idle_at.? >= 0.15);
 }
 
 test "Page.navigate answers when ready to commit, then the commit, DOMContentLoaded and load arrive in Chrome's order" {
@@ -369,7 +411,7 @@ test "a dedicated worker made after Emulation.setUserAgentOverride reports the o
     try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
 }
 
-test "a dedicated worker made after setUserAgentOverride's acceptLanguage reports it as navigator.language and languages" {
+test "navigator.languages is the whole list - the platform's en-US, en with no override, the override's own list with one - in the page and in a worker" {
     var h: Harness = undefined;
     try h.init(testing.allocator);
     defer h.deinit();
@@ -377,18 +419,38 @@ test "a dedicated worker made after setUserAgentOverride's acceptLanguage report
     const ask =
         \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
         \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.language + "|" + navigator.languages.join(","))'], { type: 'text/javascript' })));
+        \\globalThis.inPage = () => navigator.language + "|" + navigator.languages.join(",");
         \\1
     ;
     const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
     defer made.deinit(h.allocator);
+    // No override: the platform's list - Chrome's and Firefox's for an en-US
+    // user (Safari's is en-US alone).
+    const page_default = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", page_default.json);
+    const worker_default = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", worker_default.json);
+
     // Playwright's locale call: an empty userAgent overrides the languages
-    // alone. The worker copies its tab's override as it is made (Chrome's
-    // NavigatorLanguage::EnsureUpdatedLanguage reads the override "to allow
-    // for workers to respect the override").
-    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de-DE,de;q=0.9\"}");
-    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
-    defer after.deinit(h.allocator);
-    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE\"}", after.json);
+    // alone. Blink's ParseAndSanitize of the override as given: split at
+    // ',', trimmed, xx_ made xx-, q-values kept. The worker copies its tab's
+    // override as it is made (Chrome's NavigatorLanguage::
+    // EnsureUpdatedLanguage reads the override "to allow for workers to
+    // respect the override").
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de_DE, de;q=0.9\"}");
+    const page_override = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", page_override.json);
+    const worker_override = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", worker_override.json);
+    // The page's array changed with the list ("until the user agent needs
+    // to return different values"), and stays the same object after.
+    const same = try h.host.evaluate(h.allocator, h.tab, "Object.isFrozen(navigator.languages) && navigator.languages === navigator.languages", .{}, 5_000);
+    defer same.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":true}", same.json);
 }
 
 test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
@@ -543,12 +605,47 @@ test "Log.enable replays the tab's entries from before it, kept whether or not a
     try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
 }
 
+test "a javascript: URL's document keeps the page's Log entries: only a regular commit starts a new page's (Blink's CommitReason)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try Site.start(testing.allocator);
+    defer site.stop();
+    var url_buffer: [64]u8 = undefined;
+    const page_url = try site.url(&url_buffer, "/");
+
+    _ = try h.call("Page.enable", "{}");
+    try navigateAndLoad(&h, page_url);
+    const fetched = try h.host.evaluate(h.allocator, h.tab, "fetch('/missing.json').then((r) => r.status)", .{ .await_promise = true }, 5_000);
+    defer fetched.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":404}", fetched.json);
+    // The page's document replaced by a javascript: URL's String ("navigate
+    // to a javascript: URL" step 13): Blink commits it with
+    // CommitReason::kJavascriptUrl, and DidCommitNavigation returns before
+    // Page::DidCommitLoad - the page's storage stays.
+    const from = h.seen.items.len;
+    const replaced = try h.host.evaluate(h.allocator, h.tab, "location.href = \"javascript:'<b>replaced</b>'\"; 1", .{}, 5_000);
+    defer replaced.deinit(h.allocator);
+    _ = try h.waitEvent("Page.frameNavigated", from);
+    const text = try h.host.evaluate(h.allocator, h.tab, "document.body.textContent", .{}, 5_000);
+    defer text.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"replaced\"}", text.json);
+    const before_enable = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 1), try countNetworkEntries(&h, before_enable, "/missing.json"));
+    // A regular commit after it does start a new page's.
+    try navigateAndLoad(&h, page_url);
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+}
+
 /// A fresh iframe named `name` on its initial about:blank, then `touch` run
 /// in the page: its main world context is announced only then (Blink's lazy
 /// LocalWindowProxy::Initialize), carrying its frameId.
 fn expectContextOnTouch(h: *Harness, name: []const u8, touch: []const u8) !void {
     const from = h.seen.items.len;
-    const make = try std.fmt.allocPrint(h.allocator, "const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); 1", .{ name, name });
+    // A block: each call's `f` is its own (a second top-level `const f`
+    // would be a redeclaration, a SyntaxError).
+    const make = try std.fmt.allocPrint(h.allocator, "{{ const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); }} 1", .{ name, name });
     defer h.allocator.free(make);
     const made = try h.host.evaluate(h.allocator, h.tab, make, .{}, 5_000);
     defer made.deinit(h.allocator);

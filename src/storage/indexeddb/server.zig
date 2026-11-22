@@ -461,12 +461,21 @@ pub const IDBServer = struct {
             return found.value_ptr.*;
         }
         errdefer if (self.databases.remove(.{ .storage_key = storage_key, .name = name })) self.guard.noteRemoval(&self.databases);
-        const made = try self.allocator.create(UniqueIDBDatabase);
-        errdefer self.allocator.destroy(made);
-        var key_copy = try copyKey(self.allocator, storage_key);
-        errdefer key_copy.deinit();
-        const name_copy = try self.allocator.dupe(u8, name);
-        made.* = .{ .server = self, .storage_key = key_copy, .name = name_copy, .holders = 1 };
+        // The record and its copies, unwound here until the record owns
+        // them; from then on only destroyDatabase frees them (the schema
+        // load's failure below), never these errdefers as well - which
+        // freed the key and the record twice (lane tpg: the
+        // allocation-failure walks of IDBFactory.open, double free in
+        // StorageKey.deinit).
+        const made = made: {
+            const record = try self.allocator.create(UniqueIDBDatabase);
+            errdefer self.allocator.destroy(record);
+            var key_copy = try copyKey(self.allocator, storage_key);
+            errdefer key_copy.deinit();
+            const name_copy = try self.allocator.dupe(u8, name);
+            record.* = .{ .server = self, .storage_key = key_copy, .name = name_copy, .holders = 1 };
+            break :made record;
+        };
         found.key_ptr.* = .{ .storage_key = made.storage_key, .name = made.name };
         found.value_ptr.* = made;
         // A database an earlier Browser on the profile made: its schema,

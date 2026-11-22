@@ -29,7 +29,8 @@ test "with no host claiming a dialog, the platform answers: alert returns, confi
     const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
     try browser.current_context.?.loadHTML("<!doctype html>", .{ .base_url = "http://example.test/" });
-    const result = try evaluateString(browser, "alert('a'); [confirm('c'), prompt('p', 'd')].join('|')");
+    // String(): join() would print prompt's null as "".
+    const result = try evaluateString(browser, "alert('a'); [String(confirm('c')), String(prompt('p', 'd'))].join('|')");
     defer testing.allocator.free(result);
     try testing.expectEqualStrings("false|null", result);
 }
@@ -271,17 +272,19 @@ test "a traversal that takes two frames to other documents prompts to unload onc
     defer host.call(&answerer, Answerer.remove) catch {};
     const tab = try host.createTab(.{});
 
-    // Two same-origin frames (srcdoc), each then navigated once (a new
-    // session history step each), each new document with a beforeunload
-    // handler that asks.
+    // Two same-origin frames (srcdoc), each then navigated once to an
+    // about:blank of the page's origin (a new session history step each: a
+    // srcdoc change would be a "replace", its URL being about:srcdoc again -
+    // HTML navigate step 13), each new document with a beforeunload handler
+    // that asks.
     const built = try host.evaluate(allocator, tab,
         \\const frame = (text) => new Promise((resolve) => { const f = document.createElement('iframe'); f.srcdoc = text; f.onload = () => resolve(f); document.body.append(f); });
-        \\const renavigate = (f, text) => new Promise((resolve) => { f.onload = () => resolve(f); f.srcdoc = text; });
+        \\const renavigate = (f, hash) => new Promise((resolve) => { f.onload = () => resolve(f); f.contentWindow.location.href = 'about:blank#' + hash; });
         \\(async () => {
         \\  globalThis.A = await frame('<p>a1</p>');
         \\  globalThis.B = await frame('<p>b1</p>');
-        \\  await renavigate(A, '<p>a2</p>');
-        \\  await renavigate(B, '<p>b2</p>');
+        \\  await renavigate(A, 'a2');
+        \\  await renavigate(B, 'b2');
         \\  const ask = (e) => e.preventDefault();
         \\  A.contentWindow.addEventListener('beforeunload', ask);
         \\  B.contentWindow.addEventListener('beforeunload', ask);

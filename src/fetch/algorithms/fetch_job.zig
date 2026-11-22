@@ -441,13 +441,21 @@ pub const FetchJob = struct {
 
         // TODO(step 13: WebDriver BiDi emulated language).
         // Step 14: supply a default only when the caller supplied none,
-        // including an explicitly empty value. Use the most preferred tag
-        // alone, without disclosing the rest of the platform's language list.
-        // A tab's Accept-Language override (a host's emulation,
-        // http_fetch.userAgentOverrideOf) stands for the platform's list.
+        // including an explicitly empty value: "an appropriate header
+        // value". A tab's Accept-Language override (a host's emulation,
+        // http_fetch.userAgentOverrideOf) stands for the platform's list,
+        // with q-values as Chrome gives it (EmulationHandler::ApplyOverrides
+        // and InspectorEmulationAgent::PrepareRequest send
+        // GenerateAcceptLanguageHeader of the override as given).
         if (!self.request.header_list.contains("Accept-Language")) if (http_fetch.userAgentOverrideOf(self.request).accept_language) |language| {
-            self.request.header_list.append("Accept-Language", language) catch return FetchError.OutOfMemory;
+            const value = generateAcceptLanguageHeader(self.allocator, language) catch return FetchError.OutOfMemory;
+            defer self.allocator.free(value);
+            if (value.len > 0) self.request.header_list.append("Accept-Language", value) catch return FetchError.OutOfMemory;
         };
+        // Otherwise the platform's whole list with q-values, as the
+        // browsers' majority sends it: Chrome "en-US,en;q=0.9" and Safari
+        // "en-US,en;q=0.9" (Firefox "en-US,en;q=0.5") for an en-US user -
+        // the same list navigator.languages reports.
         if (!self.request.header_list.contains("Accept-Language")) {
             const languages: ?[]platform.Str = platform.preferredLanguages(self.allocator) catch |err| switch (err) {
                 error.OutOfMemory => return FetchError.OutOfMemory,
@@ -456,9 +464,15 @@ pub const FetchJob = struct {
             if (languages) |preferred| {
                 defer self.allocator.free(preferred);
                 defer for (preferred) |language| self.allocator.free(language.slice());
-                if (preferred.len > 0) {
-                    self.request.header_list.append("Accept-Language", preferred[0].slice()) catch return FetchError.OutOfMemory;
+                var list: std.ArrayList(u8) = .empty;
+                defer list.deinit(self.allocator);
+                for (preferred, 0..) |language, i| {
+                    if (i > 0) list.append(self.allocator, ',') catch return FetchError.OutOfMemory;
+                    list.appendSlice(self.allocator, language.slice()) catch return FetchError.OutOfMemory;
                 }
+                const value = generateAcceptLanguageHeader(self.allocator, list.items) catch return FetchError.OutOfMemory;
+                defer self.allocator.free(value);
+                if (value.len > 0) self.request.header_list.append("Accept-Language", value) catch return FetchError.OutOfMemory;
             }
         }
 
@@ -1750,6 +1764,45 @@ fn cloneTimingInfo(info: *const FetchTimingInfo) Allocator.Error!FetchTimingInfo
 
 fn networkError(allocator: Allocator) FetchError!*InternalResponse {
     return internal_response.networkError(allocator) catch FetchError.OutOfMemory;
+}
+
+/// The `Accept-Language` value for a comma-separated language list, OWNED:
+/// Chrome's net::HttpUtil::GenerateAcceptLanguageHeader (net/http/
+/// http_util.cc, BSD; reproduced, not copied) - the list's non-empty items
+/// in order, the first as it is (q=1.0 implied), each later one with
+/// ";q=0.N", N starting at 9 and going down by one to 1, where it stays
+/// ("it does not make sense to have 'q=0'"). Items are taken as given (no
+/// white space trimmed: the function assumes a list from preferences).
+fn generateAcceptLanguageHeader(allocator: std.mem.Allocator, list: []const u8) std.mem.Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var qvalue10: u32 = 10;
+    var items = std.mem.tokenizeScalar(u8, list, ',');
+    while (items.next()) |language| {
+        if (qvalue10 == 10) {
+            try out.appendSlice(allocator, language);
+        } else {
+            try out.print(allocator, ",{s};q=0.{d}", .{ language, qvalue10 });
+        }
+        if (qvalue10 > 1) qvalue10 -= 1;
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+test "Accept-Language from a language list: Chrome's GenerateAcceptLanguageHeader q-values" {
+    const allocator = std.testing.allocator;
+    const cases = [_][2][]const u8{
+        .{ "en-US,en", "en-US,en;q=0.9" },
+        .{ "de-DE", "de-DE" },
+        .{ "de-DE,,de", "de-DE,de;q=0.9" },
+        .{ "a,b,c,d,e,f,g,h,i,j,k,l", "a,b;q=0.9,c;q=0.8,d;q=0.7,e;q=0.6,f;q=0.5,g;q=0.4,h;q=0.3,i;q=0.2,j;q=0.1,k;q=0.1,l;q=0.1" },
+        .{ "", "" },
+    };
+    for (cases) |case| {
+        const value = try generateAcceptLanguageHeader(allocator, case[0]);
+        defer allocator.free(value);
+        try std.testing.expectEqualStrings(case[1], value);
+    }
 }
 
 /// Fetch: the document `Accept` header value.

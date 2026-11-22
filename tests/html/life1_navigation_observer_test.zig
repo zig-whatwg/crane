@@ -227,6 +227,44 @@ test "a frame's navigable is created before its initial document commits, and de
     try onFreshThread(frameCreatedAndDestroyed);
 }
 
+fn nestedFramesDestroyedOnce() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try loadedPage(browser);
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    try recorder.observe(browser);
+
+    // A frame with a frame inside it (srcdoc, so the inner one is made as
+    // the outer's document parses).
+    try page.runScript("globalThis.f = document.createElement('iframe'); f.srcdoc = '<iframe></iframe>'; document.body.append(f);");
+    try until(browser, "f.contentDocument && f.contentDocument.querySelector('iframe') !== null && f.contentWindow.length === 1");
+    const tab = browser.hostTraversableId() orelse return error.NoTab;
+    var outer: ?u64 = null;
+    var inner: ?u64 = null;
+    for (recorder.seen.items) |s| {
+        if (s.tag != .navigable_created) continue;
+        if (s.parent_id == tab) outer = s.navigable_id else inner = s.navigable_id;
+    }
+    recorder.reset();
+    try page.runScript("f.remove();");
+    // "Destroy a child navigable" tells each navigable's end once, the inner
+    // first - and closing the removed context tells nothing more (it is no
+    // top-level traversable).
+    var destroyed: [8]u64 = undefined;
+    var n: usize = 0;
+    for (recorder.seen.items) |s| {
+        if (s.tag != .navigable_destroyed) continue;
+        if (n < destroyed.len) destroyed[n] = s.navigable_id;
+        n += 1;
+    }
+    try testing.expectEqualSlices(u64, &.{ inner orelse return error.NoInnerFrame, outer orelse return error.NoOuterFrame }, destroyed[0..n]);
+}
+
+test "removing a frame with a frame inside tells each navigable's end once, children first" {
+    try onFreshThread(nestedFramesDestroyedOnce);
+}
+
 fn heldUntilReleased() !void {
     const browser = try startBrowser();
     defer browser.deinit();

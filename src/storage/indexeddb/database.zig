@@ -191,7 +191,9 @@ pub const IDBDatabase = struct {
         if (self.private_store) |private| return &private.backing;
         const private = try self.allocator.create(PrivateStore);
         errdefer self.allocator.destroy(private);
-        const browser = platform.createBrowserPlatform(self.allocator, &.{}, .{ .context = null, .post = PrivateStore.ignore }) catch return IDBError.UnknownError;
+        // Out of memory stays OutOfMemory (backing_store.idbError), as the
+        // store's own init below: the allocation-failure walks expect it.
+        const browser = platform.createBrowserPlatform(self.allocator, &.{}, .{ .context = null, .post = PrivateStore.ignore }) catch |err| return backing_store.idbError(err);
         errdefer platform.destroyBrowserPlatform(browser);
         private.* = .{ .browser = browser, .backing = backing_store.BackingStore.init(self.allocator, browser) catch |err| return backing_store.idbError(err) };
         self.private_store = private;
@@ -569,7 +571,9 @@ pub const IDBDatabase = struct {
             try handle.preserveSchemaForRollback();
         }
         // ED 5.? deleteObjectStore step 6: the store's records and index
-        // entries go with it - range deletions in the upgrade's batch.
+        // entries go with it - range deletions of the upgrade's batch, made
+        // when it is written (IDBTransaction.dropped: a request accepted
+        // before this still reads them).
         try txn.dropStoreData(self.schema().getPtr(name).?.record_data.definition_id);
         var metadata = self.schema().fetchRemove(name).?.value;
         // Steps 5-7: invalidate every handle sharing this definition.
