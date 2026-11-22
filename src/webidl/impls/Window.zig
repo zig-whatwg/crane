@@ -3256,6 +3256,12 @@ const IdleTimeout = struct {
 /// WebIDL "invoke" an IdleRequestCallback with a new IdleDeadline in
 /// `realm`, reporting what it throws. `callback` stays the caller's.
 fn invokeIdleCallback(realm: runtime.Context, callback: engine.CallbackFunction, deadline: idle_periods.Deadline) void {
+    // Timed for a host's handler violation (Blink's ScriptedIdleTaskController
+    // probe::UserCallback "requestIdleCallback", recurring) - one load while
+    // none listens.
+    const monitor = @import("dom").performance_monitor.active(realm);
+    const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
+    defer if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(realm, "requestIdleCallback", true, duration);
     const deadline_arg = idle_periods.createDeadline(realm, deadline) catch |err| {
         log.debug("an idle callback was not invoked: {}", .{err});
         return;

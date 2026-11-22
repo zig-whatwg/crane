@@ -1034,7 +1034,15 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
     switch (data.handler) {
         // Step 8.4: invoke handler given arguments and "report", with callback
         // this value set to thisArg (the WindowProxy).
-        .function => |function| invokeReporting(data.realm, function, data.arguments),
+        // Timed for a host's handler violation (dom.performance_monitor:
+        // Blink's DOMTimer::Fired probe::UserCallback "setTimeout" /
+        // "setInterval", recurring) - one load while none listens.
+        .function => |function| {
+            const monitor = dom_mod.performance_monitor.active(data.realm);
+            const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
+            invokeReporting(data.realm, function, data.arguments);
+            if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(data.realm, if (data.is_interval) "setInterval" else "setTimeout", true, duration);
+        },
         // Step 8.5: create a classic script from the string - with the
         // settings object's API base URL, for a Window its document's base
         // URL, which is also where its errors are reported from - and run it.

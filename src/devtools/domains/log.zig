@@ -10,6 +10,7 @@ const PageSession = @import("../page_session.zig").PageSession;
 const BrowserSide = @import("../browser_side.zig").BrowserSide;
 const protocol = @import("../protocol/root.zig");
 const L = protocol.Log;
+const perf = @import("dom").performance_monitor;
 
 /// Per-session state of the domain.
 pub const State = struct {
@@ -26,8 +27,21 @@ pub fn enable(session: *PageSession, params: L.enable.Params) !L.enable.Result {
 
 pub fn disable(session: *PageSession, params: L.disable.Params) !L.disable.Result {
     _ = params;
+    unsubscribe(session);
     session.states.Log = .{};
     return .{};
+}
+
+pub fn sessionEnded(session: *PageSession) void {
+    unsubscribe(session);
+}
+
+fn unsubscribe(session: *PageSession) void {
+    if (!session.states.Log.violations) return;
+    session.states.Log.violations = false;
+    const browser = session.browser orelse return;
+    const monitor = perf.Monitor.of(browser.scope) catch return;
+    monitor.unsubscribeAll(session);
 }
 
 /// Nothing is kept to clear: entries go out as they happen.
@@ -37,16 +51,43 @@ pub fn clear(session: *PageSession, params: L.clear.Params) !L.clear.Result {
     return .{};
 }
 
+/// The session hears the violations named, each at its threshold
+/// (InspectorLogAgent::startViolationsReport: the earlier settings go,
+/// unknown names are skipped) through the Browser's performance monitor
+/// (dom.performance_monitor: Blink's PerformanceMonitor).
 pub fn startViolationsReport(session: *PageSession, params: L.startViolationsReport.Params) !L.startViolationsReport.Result {
-    _ = params;
+    if (!session.states.Log.enabled) return session.fail("Log is not enabled");
+    const browser = session.browser orelse return session.fail("Violations are not supported for this target");
+    const monitor = perf.Monitor.of(browser.scope) catch return session.fail("Violations are not supported for this target");
+    monitor.unsubscribeAll(session);
     session.states.Log.violations = true;
+    for (params.config) |setting| {
+        const violation = perf.Violation.ofName(@tagName(setting.name)) orelse continue;
+        const threshold_ns: i64 = @intFromFloat(setting.threshold * std.time.ns_per_ms);
+        try monitor.subscribe(.{ .context = session, .tab = session.tab, .report = onViolation }, violation, threshold_ns);
+    }
     return .{};
 }
 
 pub fn stopViolationsReport(session: *PageSession, params: L.stopViolationsReport.Params) !L.stopViolationsReport.Result {
     _ = params;
-    session.states.Log.violations = false;
+    unsubscribe(session);
     return .{};
+}
+
+/// A violation the session subscribed to: InspectorLogAgent::
+/// ReportGenericViolation - source violation, level verbose.
+fn onViolation(context: *anyopaque, violation: perf.Violation, text: []const u8, url: []const u8) void {
+    _ = violation;
+    const session: *PageSession = @ptrCast(@alignCast(context));
+    if (!session.states.Log.enabled) return;
+    session.emit(L.entryAdded, .{ .entry = .{
+        .source = .violation,
+        .level = .verbose,
+        .text = text,
+        .timestamp = wallMs(),
+        .url = if (url.len > 0) url else null,
+    } });
 }
 
 // ============================================================================

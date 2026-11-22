@@ -2908,6 +2908,15 @@ pub fn call_write(instance: *runtime.Instance, text: []const typedefs.TrustedHTM
     return documentWriteSteps(instance, text, false, "Document write");
 }
 
+/// A host's discouragedAPIUse violation for a write that reaches a parser
+/// (dom.performance_monitor; Blink's Document::write reports it there, before
+/// parser_->insert).
+fn reportDocumentWrite(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const view = internal.default_view orelse return;
+    @import("dom").performance_monitor.reportUntimed(view.ctx, .discouraged_api_use, "Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write");
+}
+
 /// The document write steps, given `instance`, `text`, `line_feed` and
 /// `sink`.
 ///
@@ -2953,6 +2962,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // Step 8: "If document's active parser was aborted is true, then return."
     if (internal.active_parser_was_aborted) return;
 
+    // In document.write() (Blink's IsInDocumentWrite) while it inserts and
+    // parses: a parser-blocking script prepared meanwhile was written.
+    const write_lists = @import("dom").document_scripts.of(instance);
+    if (write_lists) |lists| lists.document_write_depth += 1;
+    defer if (write_lists) |lists| {
+        lists.document_write_depth -|= 1;
+    };
+
     // Keep document.open()'s parser alive through nested script and through
     // processInserted restoring the stream's limits. Reentrant open/close
     // can detach it before the outer write has returned.
@@ -2968,6 +2985,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // that script's write() inserted.
     if (internal.input_stream_manager) |stream| {
         if (stream.hasInsertionPoint()) {
+            reportDocumentWrite(instance);
             // Step 10: "Insert string into the input stream just before the
             // insertion point."
             try stream.insert(string.items);
@@ -3005,6 +3023,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         if (kept_parser) |parser| parser_call = try parser.protect();
     }
     const stream = internal.input_stream_manager orelse return;
+    reportDocumentWrite(instance);
     // Steps 10-11 apply to the newly created parser as to an existing one.
     try stream.insert(string.items);
     if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();

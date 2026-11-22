@@ -363,6 +363,45 @@ test "setUserAgentOverride with an empty userAgent overrides the languages alone
     try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"true|fr-FR\"}", seen.json);
 }
 
+test "Log violations: document.write and a slow listener and timer are reported as Chrome's PerformanceMonitor does" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // Not enabled: refused, as InspectorLogAgent.
+    try testing.expectError(error.CommandFailed, h.call("Log.startViolationsReport", "{\"config\":[]}"));
+    _ = try h.call("Log.enable", "{}");
+    _ = try h.call("Log.startViolationsReport", "{\"config\":[{\"name\":\"discouragedAPIUse\",\"threshold\":-1},{\"name\":\"handler\",\"threshold\":1},{\"name\":\"recurringHandler\",\"threshold\":1},{\"name\":\"longTask\",\"threshold\":1}]}");
+    const from = h.seen.items.len;
+    const ran = try h.host.evaluate(h.allocator, h.tab,
+        \\document.body.addEventListener('click', () => { const t = performance.now(); while (performance.now() - t < 5); });
+        \\document.body.click();
+        \\setTimeout(() => { const t = performance.now(); while (performance.now() - t < 5); }, 0);
+        \\document.write('<p>w</p>'); 1
+    , .{}, 5_000);
+    defer ran.deinit(h.allocator);
+    var texts: std.ArrayList(u8) = .empty;
+    defer texts.deinit(h.allocator);
+    var at = from;
+    var seen_handler = false;
+    var seen_timer = false;
+    var seen_write = false;
+    while (!(seen_handler and seen_timer and seen_write)) {
+        const index = try h.waitEvent("Log.entryAdded", at);
+        at = index + 1;
+        const entry = h.seen.items[index].value.object.get("params").?.object.get("entry").?.object;
+        try testing.expectEqualStrings("violation", entry.get("source").?.string);
+        try testing.expectEqualStrings("verbose", entry.get("level").?.string);
+        const text = entry.get("text").?.string;
+        if (std.mem.startsWith(u8, text, "'click' handler took ")) seen_handler = true;
+        if (std.mem.startsWith(u8, text, "'setTimeout' handler took ")) seen_timer = true;
+        if (std.mem.startsWith(u8, text, "Avoid using document.write().")) seen_write = true;
+        // longTask is subscribed but never reported (no ReportLongTask).
+        try testing.expect(std.mem.indexOf(u8, text, "long task") == null);
+    }
+    _ = try h.call("Log.stopViolationsReport", "{}");
+}
+
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
     var h: Harness = undefined;
     try h.init(testing.allocator);
