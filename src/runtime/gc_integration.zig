@@ -430,9 +430,11 @@ pub const DeferredTeardown = struct {
         /// constructor's stamp, or what `freshSerialOf` answers for its
         /// slab generation). One made at or after `outermost` but before
         /// `innermost` waits where it is; anything else waits for depth
-        /// zero. Answers whether it could run here (as `run`) and the newest
-        /// stamp it left waiting.
-        run_fresh: *const fn (data: ?*anyopaque, innermost: u32, outermost: u32) Fresh,
+        /// zero. The same for the releases a collection recorded for node
+        /// wrappers it found dead (lane mem1). Answers whether it could run
+        /// here (as `run`) and the newest stamp it left waiting. `queue` is
+        /// the queue asking: its `freshSerialOf` judges each one.
+        run_fresh: *const fn (data: ?*anyopaque, queue: *const DeferredTeardown, innermost: u32, outermost: u32) Fresh,
         data: ?*anyopaque,
 
         pub const Fresh = struct {
@@ -862,7 +864,7 @@ pub const DeferredTeardown = struct {
         std.debug.assert(self.algorithm_depth != 0 and self.algorithm_depth == self.callback.depth);
         self.owed.fresh = false;
         const steps = self.finalizer_steps orelse return;
-        const result = steps.run_fresh(steps.data, self.callback.active, self.callback.outermost);
+        const result = steps.run_fresh(steps.data, self, self.callback.active, self.callback.outermost);
         // Not here (as `runFinalizers`): nothing was looked at, and the next
         // exit of this callback looks again.
         if (result.done) self.callback.waiting = result.waiting else self.owed.fresh = true;

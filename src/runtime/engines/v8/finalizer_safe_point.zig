@@ -113,6 +113,7 @@
 const runtime = @import("runtime");
 const ffi = @import("ffi.zig");
 const wrapper_cache = @import("wrapper_cache.zig");
+const node_wrappers = @import("node_wrappers.zig");
 
 const DeferredTeardown = runtime.gc.DeferredTeardown;
 
@@ -147,12 +148,19 @@ fn step(data: ?*anyopaque) bool {
 
 /// The queue's fresh steps: a binding returned into the script of the
 /// innermost callback invocation, which began at `innermost` on the agent's
-/// callback clock; the outermost on the stack began at `outermost`.
-fn freshStep(data: ?*anyopaque, innermost: u32, outermost: u32) DeferredTeardown.FinalizerSteps.Fresh {
+/// callback clock; the outermost on the stack began at `outermost`. The
+/// fresh finalizers first, then - where the engine's rules let them run
+/// (no finalizer on the stack, no exception pending: the finalizers' run
+/// answered done) - the fresh releases a collection recorded for node
+/// wrappers it found dead (node_wrappers.Registry.releaseFresh, lane mem1).
+fn freshStep(data: ?*anyopaque, queue: *const DeferredTeardown, innermost: u32, outermost: u32) DeferredTeardown.FinalizerSteps.Fresh {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(data orelse return .{ .done = true, .waiting = 0 }));
     var waiting: u32 = 0;
     const done = ffi.v8_Isolate_RunFreshFinalizers(isolate, innermost, outermost, freshStampOf, &waiting);
-    return .{ .done = done, .waiting = waiting };
+    if (!done) return .{ .done = false, .waiting = waiting };
+    const registry = node_wrappers.registryOf(isolate) orelse return .{ .done = true, .waiting = waiting };
+    const nodes = registry.releaseFresh(queue, innermost, outermost);
+    return .{ .done = nodes.done, .waiting = @max(waiting, nodes.waiting) };
 }
 
 /// What `v8_Isolate_RunFreshFinalizers` asks of each finalizer it looks at:
