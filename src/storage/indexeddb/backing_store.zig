@@ -349,9 +349,31 @@ pub const BackingStore = struct {
     browser: *platform.BrowserPlatform,
     /// One commit at a time (the store's one writer).
     commit_mutex: std.Io.Mutex = .init,
+    /// The next database id (`00 n`), read at `init`; handed out in memory
+    /// and written by the next commit after one was taken, under the commit
+    /// lock - always the latest, so the stored counter never goes back.
+    next_db_id: std.atomic.Value(u64) = .init(1),
+    counter_dirty: std.atomic.Value(bool) = .init(false),
 
-    pub fn init(allocator: Allocator, browser: *platform.BrowserPlatform) BackingStore {
-        return .{ .allocator = allocator, .browser = browser };
+    /// The store of `browser`, its database counter read.
+    pub fn init(allocator: Allocator, browser: *platform.BrowserPlatform) Error!BackingStore {
+        var self: BackingStore = .{ .allocator = allocator, .browser = browser };
+        const store = try self.open();
+        defer platform.closeStore(store);
+        const reader = try platform.beginTransaction(store, .read);
+        defer platform.abortTransaction(reader);
+        const stored = (try platform.storeGet(reader, allocator, platform.Bytes.from(&prefix_next_id))) orelse return self;
+        defer allocator.free(stored);
+        if (stored.len != 8) return error.Corrupt;
+        self.next_db_id.store(@max(1, std.mem.readInt(u64, stored[0..8], .big)), .monotonic);
+        return self;
+    }
+
+    /// A new database's id, never handed out before on this profile.
+    pub fn allocateDatabaseId(self: *BackingStore) u64 {
+        const id = self.next_db_id.fetchAdd(1, .monotonic);
+        self.counter_dirty.store(true, .release);
+        return id;
     }
 
     fn open(self: *BackingStore) platform.StoreError!*platform.Store {
@@ -372,39 +394,32 @@ pub const BackingStore = struct {
     /// Write `changes` - each key's value, or null for its deletion - in one
     /// store transaction, under the commit lock. Durable on return with a
     /// profile (kit/sqlite).
-    pub fn apply(self: *BackingStore, changes: []const Change) platform.StoreError!void {
-        if (changes.len == 0) return;
+    pub fn apply(self: *BackingStore, ranges: []const OwnedRange, changes: []const Change) platform.StoreError!void {
+        if (changes.len == 0 and ranges.len == 0) return;
         std.Io.Threaded.mutexLockUncancelable(&self.commit_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.commit_mutex);
         const store = try self.open();
         defer platform.closeStore(store);
         const writer = try platform.beginTransaction(store, .write);
-        for (changes) |change| {
-            const result = if (change.value) |value|
-                platform.storePut(writer, platform.Bytes.from(change.key), platform.Bytes.from(value))
-            else
-                platform.storeDelete(writer, platform.Bytes.from(change.key));
-            result catch |err| {
-                platform.abortTransaction(writer);
-                return err;
-            };
-        }
-        return platform.commitTransaction(writer);
+        const counter_was_dirty = self.counter_dirty.swap(false, .acq_rel);
+        self.writeAll(writer, ranges, changes, counter_was_dirty) catch |err| {
+            platform.abortTransaction(writer);
+            if (counter_was_dirty) self.counter_dirty.store(true, .release);
+            return err;
+        };
+        platform.commitTransaction(writer) catch |err| {
+            if (counter_was_dirty) self.counter_dirty.store(true, .release);
+            return err;
+        };
     }
 
-    /// Delete every key in [lower, upper) and write `changes`, in one store
-    /// transaction (deleteDatabase's ranges and its directory entry).
-    pub fn deleteRanges(self: *BackingStore, ranges: []const [2][]const u8, changes: []const Change) platform.StoreError!void {
-        std.Io.Threaded.mutexLockUncancelable(&self.commit_mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.commit_mutex);
-        const store = try self.open();
-        defer platform.closeStore(store);
-        const writer = try platform.beginTransaction(store, .write);
-        errdefer platform.abortTransaction(writer);
+    fn writeAll(self: *BackingStore, writer: *platform.StoreTransaction, ranges: []const OwnedRange, changes: []const Change, counter: bool) platform.StoreError!void {
+        // A batch's range deletions came before the changes it still holds
+        // (a change in a range made later overrides it).
         for (ranges) |range| try platform.storeDeleteRange(writer, .{
-            .lower = platform.Bytes.from(range[0]),
+            .lower = platform.Bytes.from(range.lower),
             .has_lower = true,
-            .upper = platform.Bytes.from(range[1]),
+            .upper = platform.Bytes.from(range.upper),
             .has_upper = true,
             .upper_open = true,
         });
@@ -413,7 +428,11 @@ pub const BackingStore = struct {
                 try platform.storePut(writer, platform.Bytes.from(change.key), platform.Bytes.from(value));
             } else try platform.storeDelete(writer, platform.Bytes.from(change.key));
         }
-        return platform.commitTransaction(writer);
+        if (counter) {
+            var bytes: [8]u8 = undefined;
+            std.mem.writeInt(u64, &bytes, self.next_db_id.load(.monotonic), .big);
+            try platform.storePut(writer, platform.Bytes.from(&prefix_next_id), platform.Bytes.from(&bytes));
+        }
     }
 };
 
@@ -421,6 +440,16 @@ pub const BackingStore = struct {
 pub const Change = struct {
     key: []u8,
     value: ?[]u8,
+};
+
+/// Every key in [lower, upper) deleted. OWNED.
+pub const OwnedRange = struct {
+    lower: []u8,
+    upper: []u8,
+
+    fn contains(self: OwnedRange, key: []const u8) bool {
+        return std.mem.order(u8, key, self.lower) != .lt and std.mem.order(u8, key, self.upper) == .lt;
+    }
 };
 
 /// What a merged read returns: a key and its value. OWNED (the allocator
@@ -486,6 +515,11 @@ pub const Transaction = struct {
     snapshot: *platform.StoreTransaction,
     /// The changes, sorted by key (a value, or null: deleted). OWNED.
     changes: std.ArrayListUnmanaged(Change) = .empty,
+    /// Range deletions, in the order made: a snapshot key inside one is
+    /// gone for this transaction; a change made after it overrides it
+    /// (deleteRange clears the changes it covers). Chromium's
+    /// LevelDBTransaction::RemoveRange.
+    ranges: std.ArrayListUnmanaged(OwnedRange) = .empty,
 
     /// The transaction ends: its snapshot and its changes go (committed or
     /// not - `commit` writes them first).
@@ -493,6 +527,7 @@ pub const Transaction = struct {
         const allocator = self.backing.allocator;
         self.dropChanges();
         self.changes.deinit(allocator);
+        self.ranges.deinit(allocator);
         platform.abortTransaction(self.snapshot);
         platform.closeStore(self.store);
         allocator.destroy(self);
@@ -505,12 +540,23 @@ pub const Transaction = struct {
             if (change.value) |value| allocator.free(value);
         }
         self.changes.clearRetainingCapacity();
+        for (self.ranges.items) |range| {
+            allocator.free(range.lower);
+            allocator.free(range.upper);
+        }
+        self.ranges.clearRetainingCapacity();
+    }
+
+    /// Whether a range deletion hides the snapshot's `key`.
+    fn hidden(self: *const Transaction, key: []const u8) bool {
+        for (self.ranges.items) |range| if (range.contains(key)) return true;
+        return false;
     }
 
     /// Write the changes (LevelDBTransaction::Commit). On failure nothing
     /// was written and the changes are kept for an abort.
     pub fn commit(self: *Transaction) platform.StoreError!void {
-        try self.backing.apply(self.changes.items);
+        try self.backing.apply(self.ranges.items, self.changes.items);
         self.dropChanges();
     }
 
@@ -557,23 +603,28 @@ pub const Transaction = struct {
         return self.change(key, null);
     }
 
-    /// Delete every key the transaction sees in `bounds`.
-    pub fn deleteRange(self: *Transaction, bounds: Bounds) Error!void {
+    /// Delete every key the transaction sees in [lower, upper): one range
+    /// deletion, whatever the range holds - its own changes there dropped.
+    pub fn deleteRange(self: *Transaction, lower: []const u8, upper: []const u8) Allocator.Error!void {
         const allocator = self.backing.allocator;
-        // The snapshot's keys in range: each becomes a deletion.
-        const cursor = try platform.openCursor(self.snapshot, bounds.platformRange(), .forward);
-        defer platform.closeCursor(cursor);
-        while (try platform.cursorNext(cursor, allocator)) |record| {
-            defer allocator.free(record.value.slice());
-            const key = record.key.slice();
-            defer allocator.free(key);
-            try self.change(key, null);
-        }
-        // And the transaction's own.
-        for (self.changes.items) |*item| {
-            if (!bounds.contains(item.key)) continue;
+        try self.ranges.ensureUnusedCapacity(allocator, 1);
+        const owned_lower = try allocator.dupe(u8, lower);
+        errdefer allocator.free(owned_lower);
+        const owned_upper = try allocator.dupe(u8, upper);
+        const range: OwnedRange = .{ .lower = owned_lower, .upper = owned_upper };
+        self.ranges.appendAssumeCapacity(range);
+        // Its own changes there: gone, and their slots too (a deletion of a
+        // key the snapshot may hold is the range's to say now).
+        var i: usize = 0;
+        while (i < self.changes.items.len) {
+            const item = self.changes.items[i];
+            if (!range.contains(item.key)) {
+                i += 1;
+                continue;
+            }
+            allocator.free(item.key);
             if (item.value) |value| allocator.free(value);
-            item.value = null;
+            _ = self.changes.orderedRemove(i);
         }
     }
 
@@ -584,6 +635,7 @@ pub const Transaction = struct {
             const value = self.changes.items[at.index].value orelse return null;
             return try allocator.dupe(u8, value);
         }
+        if (self.hidden(key)) return null;
         return platform.storeGet(self.snapshot, allocator, platform.Bytes.from(key));
     }
 
@@ -710,6 +762,10 @@ pub const Transaction = struct {
                     return .{ .key = key, .value = try allocator.dupe(u8, value) };
                 }
                 const kv = from_snapshot.?;
+                if (self.transaction.hidden(kv.key.slice())) {
+                    self.dropHeld();
+                    continue;
+                }
                 self.held = null;
                 return .{ .key = @constCast(kv.key.slice()), .value = @constCast(kv.value.slice()) };
             }
@@ -801,7 +857,7 @@ test "a transaction reads its own changes over its snapshot; commit and rollback
     const allocator = std.testing.allocator;
     const browser = try platform.createBrowserPlatform(allocator, &.{}, .{ .context = null, .post = ignoreEvent });
     defer platform.destroyBrowserPlatform(browser);
-    var backing = BackingStore.init(allocator, browser);
+    var backing = try BackingStore.init(allocator, browser);
     {
         const t = try backing.begin();
         defer t.destroy();
@@ -831,8 +887,13 @@ test "a transaction reads its own changes over its snapshot; commit and rollback
     const f = (try t.get(allocator, "f")).?;
     defer allocator.free(f);
     try std.testing.expectEqualStrings("F", f);
-    try t.deleteRange(.{ .lower = "a", .upper = "c" });
+    // [a, d): "b" from the snapshot and "c" of its own; a put after it
+    // overrides it.
+    try t.deleteRange("a", "d");
     try expectWalk(t, .{}, .forward, &.{"f"});
+    try t.put("b", "again");
+    try expectWalk(t, .{}, .forward, &.{ "b", "f" });
+    try std.testing.expect((try t.get(allocator, "c")) == null);
     t.rollback();
     try expectWalk(t, .{}, .forward, &.{ "b", "d", "f" });
 }
