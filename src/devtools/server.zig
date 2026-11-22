@@ -440,7 +440,10 @@ pub const Server = struct {
             .type = .tab,
             .context = context,
             .tab = tab,
-            .url = self.allocator.dupe(u8, "about:blank") catch return,
+            // Chrome's new tab target has no URL until its page commits
+            // (vue-e2e protocol log l.103: url ""); its page target's is
+            // about:blank from the start.
+            .url = self.allocator.alloc(u8, 0) catch return,
             .title = &.{},
             .opener = opener,
             .opened_by_page = opened_by_page,
@@ -1004,13 +1007,32 @@ pub const Server = struct {
         switch (event) {
             .tab_created => |e| self.addTab(context, e.tab, e.opener, e.opened_by_page),
             .tab_destroyed => |e| if (self.pageTargetOf(context, e.tab)) |t| self.removeTarget(t, true),
+            // A commit: the new document's URL, its title not known yet (the
+            // URL stands for it, Chrome's fallback); a same-document
+            // navigation keeps the title.
             .navigated => |e| if (self.pageTargetOf(context, e.navigable)) |page| {
                 for ([_]?*targets.Target{ page, page.partner }) |maybe| {
                     const t = maybe orelse continue;
                     const url = self.allocator.dupe(u8, e.url) catch continue;
                     self.allocator.free(t.url);
                     t.url = url;
+                    t.committed = true;
+                    if (e.cross_document and t.title.len > 0) {
+                        self.allocator.free(t.title);
+                        t.title = &.{};
+                    }
                     self.targetChanged(t);
+                }
+            },
+            // Only the page target carries the title (Chrome's tab target
+            // reports "").
+            .title_changed => |e| if (self.pageTargetOf(context, e.tab)) |page| {
+                if (!std.mem.eql(u8, page.title, e.title)) {
+                    if (self.allocator.dupe(u8, e.title)) |title| {
+                        self.allocator.free(page.title);
+                        page.title = title;
+                        self.targetChanged(page);
+                    } else |_| {}
                 }
             },
             .dialog_opening => |e| if (self.pageTargetOf(context, e.tab)) |t| {
@@ -1158,6 +1180,7 @@ const TargetEventTask = struct {
     fn drop(self: *TargetEventTask, allocator: Allocator) void {
         switch (self.event) {
             .navigated => |e| allocator.free(e.url),
+            .title_changed => |e| allocator.free(e.title),
             else => {},
         }
     }

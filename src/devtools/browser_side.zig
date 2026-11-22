@@ -32,7 +32,12 @@ pub const TargetEvent = union(enum) {
     /// the devtools thread updates the target whose tab it is
     /// (Target.targetInfoChanged). `url` is OWNED by the event (allocated
     /// with the side's allocator).
-    navigated: struct { navigable: u64, url: []u8 },
+    navigated: struct { navigable: u64, url: []u8, cross_document: bool = true },
+    /// A tab's document title is known or changed (read at its document's
+    /// DOMContentLoaded and load, and of a tab already open when the
+    /// remote end came: Target.targetInfoChanged as Chrome's TitleWasSet).
+    /// `title` is OWNED by the event.
+    title_changed: struct { tab: host_bridge.TabId, title: []u8 },
     /// A page session's Runtime.runIfWaitingForDebugger: one of the tab's
     /// waiting sessions is done waiting (the hold is released when all are).
     run_if_waiting: struct { tab: host_bridge.TabId, session_id: [32]u8 },
@@ -94,7 +99,12 @@ pub const BrowserSide = struct {
         // session's): the devtools thread hears of them as of new ones.
         const tabs = try host_bridge.listTabs(browser, self.allocator);
         defer host_bridge.freeTabs(self.allocator, tabs);
-        for (tabs) |t| self.sink.post(self.sink.context, self, .{ .tab_created = .{ .tab = t.id, .opener = t.opener, .opened_by_page = t.opened_by_page } });
+        for (tabs) |t| {
+            self.sink.post(self.sink.context, self, .{ .tab_created = .{ .tab = t.id, .opener = t.opener, .opened_by_page = t.opened_by_page } });
+            // It has committed its document already: its URL and title.
+            self.postNavigated(t.id, t.url, true);
+            if (t.title.len > 0) self.postTitle(t.id, t.title);
+        }
     }
 
     /// Browser thread: detach every session and stop listening.
@@ -153,8 +163,13 @@ pub const BrowserSide = struct {
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
         fetch_observer.onMilestone(self, milestone);
         switch (milestone.event) {
-            .committed => |c| self.postNavigated(milestone.navigable_id, c.url),
-            .same_document => |c| self.postNavigated(milestone.navigable_id, c.url),
+            .committed => |c| self.postNavigated(milestone.navigable_id, c.url, true),
+            .same_document => |c| self.postNavigated(milestone.navigable_id, c.url, false),
+            // A top-level document's title, once its parser has had the
+            // <title> (Chrome reports each title the page sets: WebContents
+            // TitleWasSet -> targetInfoChanged).
+            .dom_content_loaded => |d| self.postTitleOf(milestone.navigable_id, d.document),
+            .load => |d| self.postTitleOf(milestone.navigable_id, d.document),
             else => {},
         }
         // A handler may detach its session (a tab's close); walk a copy.
@@ -170,9 +185,29 @@ pub const BrowserSide = struct {
         }
     }
 
-    fn postNavigated(self: *BrowserSide, navigable: u64, url: []const u8) void {
+    fn postNavigated(self: *BrowserSide, navigable: u64, url: []const u8, cross_document: bool) void {
         const owned = self.allocator.dupe(u8, url) catch return;
-        self.sink.post(self.sink.context, self, .{ .navigated = .{ .navigable = navigable, .url = owned } });
+        self.sink.post(self.sink.context, self, .{ .navigated = .{ .navigable = navigable, .url = owned, .cross_document = cross_document } });
+    }
+
+    fn postTitle(self: *BrowserSide, tab: host_bridge.TabId, title: []const u8) void {
+        const owned = self.allocator.dupe(u8, title) catch return;
+        self.sink.post(self.sink.context, self, .{ .title_changed = .{ .tab = tab, .title = owned } });
+    }
+
+    /// The title of `ref`, a tab's active document (a frame's is no
+    /// target's), for the devtools thread, which reports it when it moved.
+    fn postTitleOf(self: *BrowserSide, navigable: u64, ref: host_bridge.MilestoneDocument) void {
+        const b = self.browser orelse return;
+        const navigables = @import("dom").browser_state.existingNavigablesIn(b.scope) orelse return;
+        const bc = navigables.byId(navigable) orelse return;
+        if (bc.parent != null) return;
+        const document: *@import("runtime").Instance = @ptrCast(@alignCast(ref.document));
+        if (@import("runtime").SlabAllocator.generationOf(document) != ref.generation) return;
+        if (bc.getActiveDocument() != ref.document) return;
+        var title = @import("interfaces").Document.get_title(document) catch return;
+        defer title.deinit(document.ctx.allocator);
+        self.postTitle(navigable, title.asSlice());
     }
 
     fn stillAttached(self: *BrowserSide, session: *PageSession) bool {

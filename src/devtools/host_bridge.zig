@@ -197,6 +197,7 @@ pub const Listener = if (have_host_events) browser.host_events.Listener else Stu
 /// as the host events carry it.
 pub const Milestone = @import("html").navigation.observer.Milestone;
 pub const MilestoneEvent = @import("html").navigation.observer.Event;
+pub const MilestoneDocument = @import("html").navigation.observer.DocumentRef;
 
 const StubEvent = union(enum) {
     tab_created: struct { tab: TabId, opener: ?TabId },

@@ -355,3 +355,61 @@ test "G12: a disposeOnDetach context with tabs goes with its connection, without
     }
     try testing.expect(gone);
 }
+
+test "G15: a new page target has title \"\" and no parentId, its tab target the URL \"\"; the commit's targetInfoChanged brings the URL, the document's <title> one more" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer server.stop();
+    const client = try connectBrowser(allocator, server);
+    defer client.close();
+
+    const discover = try client.call("Target.setDiscoverTargets", "{\"discover\":true,\"filter\":[{}]}", "");
+    discover.deinit();
+    const url = "data:text/html,<title>Hello</title><p>x";
+    var params_buffer: [160]u8 = undefined;
+    const created = try client.call("Target.createTarget", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"{s}\"}}", .{url}), "");
+    defer created.deinit();
+    const page_id = cdp.stringAt(created.value, "result.targetId").?;
+
+    // targetCreated: tab first (url ""), then the page (about:blank, title "",
+    // no parentId) - vue-e2e protocol log l.103-110.
+    var saw_tab = false;
+    var saw_page = false;
+    while (!(saw_tab and saw_page)) {
+        const event = try client.waitEvent("Target.targetCreated");
+        defer event.deinit();
+        const info = cdp.at(event.value, "params.targetInfo").?;
+        const kind = cdp.stringAt(info, "type").?;
+        if (std.mem.eql(u8, kind, "tab")) {
+            saw_tab = true;
+            try testing.expectEqualStrings("", cdp.stringAt(info, "url").?);
+            try testing.expectEqualStrings("", cdp.stringAt(info, "title").?);
+        } else if (std.mem.eql(u8, kind, "page")) {
+            saw_page = true;
+            try testing.expectEqualStrings(page_id, cdp.stringAt(info, "targetId").?);
+            try testing.expectEqualStrings("about:blank", cdp.stringAt(info, "url").?);
+            try testing.expectEqualStrings("", cdp.stringAt(info, "title").?);
+            try testing.expect(cdp.at(info, "parentId") == null);
+        }
+    }
+    // Then the page's title: the document's own once it is parsed.
+    while (true) {
+        const changed = try client.waitEvent("Target.targetInfoChanged");
+        defer changed.deinit();
+        const info = cdp.at(changed.value, "params.targetInfo").?;
+        if (!std.mem.eql(u8, cdp.stringAt(info, "targetId").?, page_id)) continue;
+        try testing.expect(cdp.at(info, "parentId") == null);
+        if (std.mem.eql(u8, cdp.stringAt(info, "title").?, "Hello")) {
+            try testing.expectEqualStrings(url, cdp.stringAt(info, "url").?);
+            break;
+        }
+        // Before the title: the committed URL stands for it, or "" before
+        // the commit.
+        const title = cdp.stringAt(info, "title").?;
+        try testing.expect(title.len == 0 or std.mem.eql(u8, title, cdp.stringAt(info, "url").?));
+    }
+}
