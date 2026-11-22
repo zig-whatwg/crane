@@ -50,7 +50,7 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     try user_agent_storage.attachProfile(browser, commitTimer(loop), sequence);
     // Cookies (D6 step 3): the jar's persistent cookies read now, its
     // changes committed in batches (cookiestore/storage_integration.zig).
-    try jar.attachProfile(browser, commitTimer(loop));
+    try jar.attachProfile(browser, commitTimer(loop), sequence);
     // The HTTP cache (D6 step 5): a disk level under the memory cache,
     // capped from the profile volume's free space (Chromium's
     // PreferredCacheSize; fetch/cache/persistence.zig). A Browser
