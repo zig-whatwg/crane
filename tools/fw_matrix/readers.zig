@@ -1036,14 +1036,37 @@ pub fn parseJtrLog(arena: Allocator, log: []const u8) ParseError!LogPage {
 }
 
 /// Bazel's per-target lines for a web-test-runner suite: each target's word
-/// and its counts. Refused: a target with one and not the other, or none.
+/// and its counts, and the failures its own test log names, one line each:
+/// "FAIL<tab><label><tab><name><tab><first message line>" - the name as
+/// web-test-runner prints it after its cross mark, Jasmine's suites and spec
+/// joined by " > " (the lines a scratch script collects from each target's
+/// test.log beside Bazel's own). Refused: a target with a word and no
+/// counts or the reverse, none at all, a failure of no target, a failure
+/// with no message, or more failures named than the target counts.
 pub fn parseWtrSummary(arena: Allocator, log: []const u8) ParseError![]const LogPage {
     const text = try stripAnsi(arena, log);
     var pages: std.ArrayList(LogPage) = .empty;
     var statuses: std.ArrayList(struct { []const u8, []const u8, u64 }) = .empty;
+    var named: std.ArrayList(struct { []const u8, Reported }) = .empty;
     var it = std.mem.splitScalar(u8, text, '\n');
     while (it.next()) |raw| {
         const line = std.mem.trimEnd(u8, raw, " \r");
+        if (std.mem.startsWith(u8, line, "FAIL\t")) {
+            var fields = std.mem.splitScalar(u8, line["FAIL\t".len..], '\t');
+            const label = fields.next() orelse return error.BadReport;
+            const full = fields.next() orelse return error.BadReport;
+            const message = fields.next() orelse return error.BadReport;
+            if (label.len == 0 or full.len == 0 or message.len == 0 or fields.next() != null) return error.BadReport;
+            const cut = std.mem.lastIndexOf(u8, full, " > ");
+            try named.append(arena, .{ label, .{
+                .module = if (cut) |c| full[0..c] else "",
+                .name = if (cut) |c| full[c + " > ".len ..] else full,
+                .id = full,
+                .status = .FAIL,
+                .message = message,
+            } });
+            continue;
+        }
         if (!std.mem.startsWith(u8, line, "//")) continue;
         if (std.mem.indexOfScalar(u8, line, '\t')) |tab| {
             // "<label>\t<P> passed, <F> failed[, <S> skipped]"
@@ -1083,6 +1106,17 @@ pub fn parseWtrSummary(arena: Allocator, log: []const u8) ParseError![]const Log
                 break;
             }
         } else return error.BadReport;
+    }
+    for (named.items) |n| {
+        for (pages.items) |p| {
+            if (std.mem.eql(u8, p.where, n[0])) break;
+        } else return error.BadReport;
+    }
+    for (pages.items) |*p| {
+        var failures: std.ArrayList(Reported) = .empty;
+        for (named.items) |n| if (std.mem.eql(u8, n[0], p.where)) try failures.append(arena, n[1]);
+        if (failures.items.len > p.failed) return error.BadReport;
+        p.failures = failures.items;
     }
     return pages.items;
 }
@@ -1164,6 +1198,28 @@ test "Bazel's web-test-runner lines: each target's word and counts, no names" {
     // A target with counts and no word, or the reverse, is refused.
     try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log[0..std.mem.lastIndexOf(u8, wtr_log, "//packages/zone.js/test:browser_test_chromium\t").?]));
     try testing.expectError(error.BadReport, parseWtrSummary(a, "nothing\n"));
+}
+
+test "Bazel's web-test-runner lines with the failures each target's log names: module, name and first message" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const named = wtr_log ++
+        "FAIL\t//packages/core/test/acceptance:acceptance_web_chromium\tacceptance > console > should call console.timeStamp\tTypeError: console.timeStamp is not a function\n";
+    const pages = try parseWtrSummary(a, named);
+    try testing.expectEqual(@as(usize, 1), pages[1].failures.len);
+    const f = pages[1].failures[0];
+    try testing.expectEqualStrings("acceptance > console", f.module);
+    try testing.expectEqualStrings("should call console.timeStamp", f.name);
+    try testing.expectEqualStrings("acceptance > console > should call console.timeStamp", f.id);
+    try testing.expectEqualStrings("TypeError: console.timeStamp is not a function", f.message.?);
+    try testing.expectEqual(journal.Status.FAIL, f.status);
+    try testing.expectEqual(@as(usize, 0), pages[0].failures.len);
+    // A failure of a target with no counts, more named failures than the
+    // target counts, or a failure with no message, is refused.
+    try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log ++ "FAIL\t//packages/x:y_chromium\tn\tm\n"));
+    try testing.expectError(error.BadReport, parseWtrSummary(a, named ++ "FAIL\t//packages/core/test/acceptance:acceptance_web_chromium\tsecond\tm\n"));
+    try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log ++ "FAIL\t//packages/core/test/acceptance:acceptance_web_chromium\tno message\n"));
 }
 
 // ============================================================================
