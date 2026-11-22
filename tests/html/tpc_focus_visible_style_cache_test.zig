@@ -62,16 +62,18 @@ fn modalityFlipRecomputes() !void {
     defer page.close();
     try page.run(
         \\document.head.innerHTML = '<style>#b { color: rgb(255, 0, 0) } #b:focus-visible { color: rgb(0, 128, 0) }</style>';
-        \\document.body.innerHTML = '<button id=b type=button>b</button>';
+        \\document.body.innerHTML = '<div id=b tabindex=0>b</div>';
     );
     const button = try element(page, "b");
-    // A pointer press focuses the button: no focus ring (Blink's heuristic).
+    // A pointer press focuses the div: no focus ring (Blink's heuristic). A
+    // div, not a button: a form control's style reads control state, which
+    // is volatile on its own.
     var pointer: input.Pointer = .{};
     input.pointerMove(&pointer, button, .{});
     input.pointerDown(&pointer, 0, .{});
     input.pointerUp(&pointer, 0, .{});
     try page.run(
-        \\if (document.activeElement !== document.getElementById('b')) throw new Error('the press focused the button');
+        \\if (document.activeElement !== document.getElementById('b')) throw new Error('the press focused the div');
         \\if (getComputedStyle(document.getElementById('b')).color !== 'rgb(255, 0, 0)') throw new Error('pointer focus: ' + getComputedStyle(document.getElementById('b')).color);
     );
     const pointer_serial = serialOf(button);
@@ -99,25 +101,20 @@ test "a modality flip recomputes a focused element's :focus-visible style; a rea
 fn designModeSwitchRecomputes() !void {
     const page = try helpers.Page.open();
     defer page.close();
+    // designMode makes every element editable: :read-write's answer moves
+    // with no tree mutation, and so does :focus-visible's for a focused
+    // element that then takes text input.
     try page.run(
-        \\document.head.innerHTML = '<style>#d { color: rgb(255, 0, 0) } #d:focus-visible { color: rgb(0, 128, 0) }</style>';
-        \\document.body.innerHTML = '<div id=d tabindex=0>d</div>';
-    );
-    const div = try element(page, "d");
-    var pointer: input.Pointer = .{};
-    input.pointerMove(&pointer, div, .{});
-    input.pointerDown(&pointer, 0, .{});
-    input.pointerUp(&pointer, 0, .{});
-    try page.run(
-        \\if (document.activeElement !== document.getElementById('d')) throw new Error('the press focused the div');
-        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(255, 0, 0)') throw new Error('pointer focus');
+        \\document.head.innerHTML = '<style>#d { color: rgb(255, 0, 0) } #d:read-write { color: rgb(0, 128, 0) }</style>';
+        \\document.body.innerHTML = '<div id=d>d</div>';
+        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(255, 0, 0)') throw new Error('read-only before');
         \\document.designMode = 'on';
-        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(0, 128, 0)') throw new Error('in designMode it takes text input: ' + getComputedStyle(document.getElementById('d')).color);
+        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(0, 128, 0)') throw new Error('designMode on: ' + getComputedStyle(document.getElementById('d')).color);
         \\document.designMode = 'off';
-        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(255, 0, 0)') throw new Error('designMode off again');
+        \\if (getComputedStyle(document.getElementById('d')).color !== 'rgb(255, 0, 0)') throw new Error('designMode off again: ' + getComputedStyle(document.getElementById('d')).color);
     );
 }
 
-test "a designMode switch recomputes a focused element's :focus-visible style" {
+test "a designMode switch recomputes cached styles that read editability (:read-write)" {
     try helpers.onFreshThread(designModeSwitchRecomputes);
 }
