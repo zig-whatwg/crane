@@ -154,6 +154,16 @@ tests/infra/test_log_level_test.zig pins the defaults.
   Results: `tmp/test-launch/<suite>.jsonl` (+ `.log`, the output of each
   non-pass); they also order the next run, longest batches first.
 
+**Wait for asynchronous work, never for wall time** (lane mem1, 2026-11-22;
+main's approval). A native test that asserts what a fetch, an import(), a
+force-async script or a queued task did waits for the event loop to go idle
+(`tests/html/loop_settle.zig` `settle`) or for the condition it asserts (a
+`runUntil` loop), never for a short `runEventLoopBlocking(ms)`: that is wall
+time, which a loaded or starved host need not give the work at all, and
+test-verify on a quiet host never shows it. Prove such a fix red and green
+by starving the test ([lesson](../docs/lessons/testing-starve-a-test-of-cpu-to-reproduce-a-flake-that-needs-a-stalled-host.md);
+[lesson](../docs/lessons/testing-a-test-that-waits-one-turn-races-a-step-that-went-parallel.md)).
+
 One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
 
