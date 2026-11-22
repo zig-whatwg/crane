@@ -7091,13 +7091,13 @@ pub fn build(b: *std.Build) void {
         step.dependOn(&thread_local_check.step);
     };
     // Every test executable carries production's thread-local layout, held
-    // to the same budget (part of `zig build test`): on Linux glibc puts a
-    // thread's static TLS inside its stack, so a larger block in a test
-    // executable makes threads production starts fail there - V8's CPU
-    // profiler thread (a 64 KB stack) did, a fatal CHECK on every
-    // console.profile, while the test runner kept Zig std's 256 KB
-    // thread-local signal stack (lane tpf, 2026-11-22;
-    // tests/test_runner/runner.zig's std_options).
+    // to the same budget (part of the test step): where a system's C library
+    // puts a thread's static thread-local block inside its stack, a larger
+    // block in a test executable makes threads that production starts with
+    // a small stack fail to start there - a JavaScript engine's profiler
+    // thread did, a fatal check on every console.profile, while the test
+    // runner kept Zig std's 256 KB thread-local signal stack (lane tpf,
+    // 2026-11-22; tests/test_runner/runner.zig's std_options).
     for (launch.test_exes.items) |test_exe| {
         const thread_local_check = b.addRunArtifact(thread_local_size_exe);
         thread_local_check.setName(b.fmt("thread-local block {s}", .{test_exe.name}));
