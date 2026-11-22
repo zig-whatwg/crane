@@ -29,6 +29,7 @@ const devtools_transport = @import("devtools_transport.zig");
 pub const devtoolsListen = devtools_transport.devtoolsListen;
 pub const devtoolsAccept = devtools_transport.devtoolsAccept;
 pub const devtoolsRead = devtools_transport.devtoolsRead;
+pub const devtoolsReadTimeout = devtools_transport.devtoolsReadTimeout;
 pub const devtoolsWrite = devtools_transport.devtoolsWrite;
 pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
 pub const devtoolsClose = devtools_transport.devtoolsClose;

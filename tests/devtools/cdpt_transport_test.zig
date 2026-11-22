@@ -227,6 +227,74 @@ test "the pipe transport: NUL-delimited messages on two descriptors (--remote-de
     try testing.expectEqual(@as(i64, -32601), cdp.at(unknown.value, "error.code").?.integer);
 }
 
+/// Server.stop from a thread of its own, so the test can see whether it
+/// returns.
+const StopInThread = struct {
+    done: std.atomic.Value(bool) = .init(false),
+
+    fn run(self: *StopInThread, server: *devtools.Server) void {
+        server.stop();
+        self.done.store(true, .release);
+    }
+};
+
+test "Server.stop ends a pipe connection whose client keeps its descriptors open: the reader stops without the client's EOF (Chrome's DevToolsPipeHandler shuts its reader down)" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+
+    // Real OS pipes - shutdown(2) does nothing to them, unlike the
+    // socketpairs libuv gives a child's stdio.
+    var to_server: [2]std.c.fd_t = undefined;
+    var from_server: [2]std.c.fd_t = undefined;
+    try testing.expectEqual(@as(c_int, 0), std.c.pipe(&to_server));
+    try testing.expectEqual(@as(c_int, 0), std.c.pipe(&from_server));
+    const server = try devtools.Server.start(allocator, .{
+        .pipe = .{ .read_fd = to_server[0], .write_fd = from_server[1] },
+        .default_host = host,
+    });
+    // The client's two ends stay open until the server has stopped (or the
+    // watchdog below lets a stuck server go).
+    var client_open = true;
+    defer if (client_open) {
+        _ = std.c.close(from_server[0]);
+        _ = std.c.close(to_server[1]);
+    };
+
+    // Browser.close, answered; the server asks the embedder to end.
+    const message = "{\"id\":1,\"method\":\"Browser.close\"}\x00";
+    try testing.expectEqual(@as(isize, message.len), std.c.write(to_server[1], message, message.len));
+    var reply: [4096]u8 = undefined;
+    var got: usize = 0;
+    while (std.mem.indexOfScalar(u8, reply[0..got], 0) == null) {
+        const n = std.c.read(from_server[0], reply[got..].ptr, reply.len - got);
+        if (n <= 0) return error.NoReply;
+        got += @intCast(n);
+    }
+    try testing.expect(std.mem.indexOf(u8, reply[0..got], "\"id\":1") != null);
+    server.waitUntilClosed();
+
+    // The embedder stops the server while the client still holds its ends.
+    var stop: StopInThread = .{};
+    const thread = try std.Thread.spawn(.{}, StopInThread.run, .{ &stop, server });
+    var waited_ms: u32 = 0;
+    while (!stop.done.load(.acquire) and waited_ms < 5_000) : (waited_ms += 20) {
+        @import("platform").sleepThread(20 * std.time.ns_per_ms);
+    }
+    const stopped_in_time = stop.done.load(.acquire);
+    // The watchdog: a server still waiting for the client's EOF is let go by
+    // closing the client's ends, and the test fails instead of hanging.
+    if (!stopped_in_time) {
+        _ = std.c.close(from_server[0]);
+        _ = std.c.close(to_server[1]);
+        client_open = false;
+    }
+    thread.join();
+    try testing.expect(stopped_in_time);
+}
+
 test "Browser.close is answered, then the server asks the embedder to end" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");

@@ -116,6 +116,21 @@ pub fn devtoolsRead(stream: platform.DevtoolsStream, buffer: []u8) Error!usize {
     }
 }
 
+pub fn devtoolsReadTimeout(stream: platform.DevtoolsStream, buffer: []u8, timeout_ms: u32) Error!?usize {
+    const fd = fdOf(stream.handle);
+    var poll_fds = [_]c.pollfd{.{ .fd = fd, .events = c.POLL.IN, .revents = 0 }};
+    const timeout: c_int = @intCast(@min(timeout_ms, std.math.maxInt(c_int)));
+    const ready = c.poll(&poll_fds, 1, timeout);
+    if (ready < 0) {
+        const err = lastError();
+        if (err == .INTR) return null;
+        return mapError(err);
+    }
+    if (ready == 0) return null;
+    // Readable, or the peer's end closed (POLLHUP): the read says which.
+    return try devtoolsRead(stream, buffer);
+}
+
 pub fn devtoolsWrite(stream: platform.DevtoolsStream, bytes: platform.Bytes) Error!void {
     const fd = fdOf(stream.handle);
     var rest = bytes.slice();
