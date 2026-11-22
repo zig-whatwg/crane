@@ -56,8 +56,9 @@ const Harness = struct {
     fn sinkPost(context: *anyopaque, side: *devtools.BrowserSide, event: devtools.browser_side.TargetEvent) void {
         _ = context;
         switch (event) {
-            // The event owns its URL (TargetSink.post).
+            // The event owns its URL and its title (TargetSink.post).
             .navigated => |navigated| side.allocator.free(navigated.url),
+            .title_changed => |changed| side.allocator.free(changed.title),
             else => {},
         }
     }

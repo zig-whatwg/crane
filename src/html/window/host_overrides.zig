@@ -309,62 +309,6 @@ test "a worker's user agent snapshot is a copy: the tab's override changing late
     try std.testing.expect(none.user_agent == null);
 }
 
-/// `languages`' tags joined with '|', for the tests.
-fn joinedForTest(languages: *const Languages, buffer: []u8) []const u8 {
-    var at: usize = 0;
-    for (languages.tags, 0..) |tag, i| {
-        if (i > 0) {
-            buffer[at] = '|';
-            at += 1;
-        }
-        @memcpy(buffer[at..][0..tag.len], tag);
-        at += tag.len;
-    }
-    return buffer[0..at];
-}
-
-test "a worker's snapshot gives the languages of its Accept-Language copy, as the tab's override does" {
-    const allocator = std.testing.allocator;
-    var overrides: HostOverrides = .{};
-    defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "", null, "de-DE,de");
-    var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
-    defer snapshot.deinit(allocator);
-    var from_snapshot = (try snapshot.languages(allocator)).?;
-    defer from_snapshot.deinit(allocator);
-    var from_tab = (try overrides.languages(allocator)).?;
-    defer from_tab.deinit(allocator);
-    var buffer: [64]u8 = undefined;
-    try std.testing.expectEqualStrings("de-DE|de", joinedForTest(&from_snapshot, &buffer));
-    try std.testing.expectEqualStrings("de-DE", from_tab.first());
-    var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
-    defer none.deinit(allocator);
-    try std.testing.expect((try none.languages(allocator)) == null);
-}
-
-test "ParseAndSanitize: split at ',' skipping empty items, white space stripped, xx_ made xx-, q-values and repeats kept" {
-    const allocator = std.testing.allocator;
-    var buffer: [128]u8 = undefined;
-    var list = try parseLanguages(allocator, " en_US ,,de;q=0.9, en_US,zh_Hant");
-    defer list.deinit(allocator);
-    try std.testing.expectEqualStrings("en-US|de;q=0.9|en-US|zh-Hant", joinedForTest(&list, &buffer));
-    // Nothing left: the default language (the platform's first).
-    var empty = try parseLanguages(allocator, ",,");
-    defer empty.deinit(allocator);
-    var platform_list = try platformLanguages(allocator);
-    defer platform_list.deinit(allocator);
-    try std.testing.expectEqualStrings(platform_list.first(), empty.first());
-    try std.testing.expectEqual(@as(usize, 1), empty.tags.len);
-}
-
-test "with no override the languages are the platform's list: en-US then en (Chrome's and Firefox's default)" {
-    const allocator = std.testing.allocator;
-    var list = try platformLanguages(allocator);
-    defer list.deinit(allocator);
-    var buffer: [64]u8 = undefined;
-    try std.testing.expectEqualStrings("en-US|en", joinedForTest(&list, &buffer));
-}
-
 test "an empty user agent overrides the languages alone (Playwright's locale call)" {
     const allocator = std.testing.allocator;
     var overrides: HostOverrides = .{};

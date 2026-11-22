@@ -434,12 +434,6 @@ const languages_slot: engine.TracedSlot = .{ .name = "languages" };
 
 /// Whether `array` holds exactly `tags`, in order.
 fn holdsLanguages(instance: *runtime.Instance, array: runtime.JSValue, tags: []const []u8) bool {
-    const length = engine.getProperty(instance.ctx, array, "length") catch return false;
-    defer length.release();
-    switch (length.borrow()) {
-        .number => |n| if (n != @as(f64, @floatFromInt(tags.len))) return false,
-        else => return false,
-    }
     var key_buffer: [24]u8 = undefined;
     for (tags, 0..) |tag, i| {
         const key = std.fmt.bufPrint(&key_buffer, "{d}", .{i}) catch return false;
@@ -449,7 +443,9 @@ fn holdsLanguages(instance: *runtime.Instance, array: runtime.JSValue, tags: []c
         defer instance.ctx.allocator.free(text);
         if (!std.mem.eql(u8, text, tag)) return false;
     }
-    return true;
+    // No element past the list's.
+    const past = std.fmt.bufPrint(&key_buffer, "{d}", .{tags.len}) catch return false;
+    return !(engine.hasOwnProperty(instance.ctx, array, past) catch true);
 }
 
 /// Getter for languages (HTML 8.9.1.4): "a frozen array of valid BCP 47
