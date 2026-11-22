@@ -16,5 +16,5 @@ test "IndexedDB replacement ignores only the same primary key for uniqueness" {
     var same = try index.prepareReplacementEntries(&.{idb.IDBKey.string("name")}, idb.IDBKey.number(1));
     defer same.deinit();
     try std.testing.expectError(error.ConstraintError, index.prepareReplacementEntries(&.{idb.IDBKey.string("name")}, idb.IDBKey.number(2)));
-    try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
 }
