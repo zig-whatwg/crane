@@ -4116,14 +4116,14 @@ pub fn V8Interface(comptime Interface: type) type {
         /// cut the edge to the other realm's wrapper.
         const recordSameObjectEdge = binding_plumbing.recordSameObjectEdge;
 
-        /// Whether attribute `name` (its getter's name less `get_`) is typed
+        /// Whether attribute `attribute_name` (its getter's name less `get_`) is typed
         /// FrozenArray<T>: the generated list (codegen
         /// `Meta.frozen_array_attributes`), for binding_plumbing.finishGetter's
         /// conversion across isolated worlds.
-        fn frozenArrayAttribute(comptime name: []const u8) bool {
+        fn frozenArrayAttribute(comptime attribute_name: []const u8) bool {
             if (!@hasDecl(Interface, "Meta") or !@hasDecl(Interface.Meta, "frozen_array_attributes")) return false;
             inline for (Interface.Meta.frozen_array_attributes) |attribute| {
-                if (comptime std.mem.eql(u8, attribute, name)) return true;
+                if (comptime std.mem.eql(u8, attribute, attribute_name)) return true;
             }
             return false;
         }
