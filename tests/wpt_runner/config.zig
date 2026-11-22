@@ -153,7 +153,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "page-visibility", .description = "Page Visibility (HTML 6.2)" },
     .{ .name = "screen-orientation", .description = "Screen Orientation API" },
     .{ .name = "resize-observer", .description = "Resize Observer" },
-    .{ .name = "ecmascript", .description = "ECMA-402 web-compat requirements (locale-compat.html)" },
+    .{ .name = "ecmascript", .description = "ECMA-262/402 cases WPT reports (locale-compat, regexp-lookbehind)" },
     .{ .name = "cookiestore", .description = "Cookie Store API" },
     .{ .name = "webidl", .description = "WebIDL bindings" },
     // The three below were in the 0.1 worklist (tools/wpt_subset.py) but not
