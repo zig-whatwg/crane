@@ -44,6 +44,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.network_context);
 const backend = @import("backend.zig");
@@ -509,6 +510,10 @@ pub const ConnectionSlots = struct {
     members: std.AutoHashMapUnmanaged(*const anyopaque, Member) = .empty,
     /// The next place given in a queue (never 0).
     next_ticket: u64 = 1,
+    /// Both maps' keys come and go - a holder per transfer, a group per busy
+    /// destination - for the Browser's whole life (infra.tombstones).
+    groups_guard: TombstoneGuard = .{},
+    members_guard: TombstoneGuard = .{},
     /// Unit tests only: how many entries the operations looked at (each
     /// map lookup, each queue entry inspected) - the scaling test's measure.
     probes: usize = 0,
@@ -570,6 +575,7 @@ pub const ConnectionSlots = struct {
         const group = try self.groupOf(allocator, destination);
         if (group.multiplexed) return true;
         if (group.used + group.waiting < max_connections_per_host) {
+            self.members_guard.beforeInsert(&self.members);
             try self.members.put(allocator, holder, .{ .group = group, .ticket = 0 });
             group.used += 1;
             return true;
@@ -577,6 +583,7 @@ pub const ConnectionSlots = struct {
         const ticket = self.next_ticket;
         try group.queue.append(allocator, .{ .holder = holder, .ticket = ticket });
         errdefer _ = group.queue.pop();
+        self.members_guard.beforeInsert(&self.members);
         try self.members.put(allocator, holder, .{ .group = group, .ticket = ticket });
         self.next_ticket += 1;
         group.waiting += 1;
@@ -591,7 +598,7 @@ pub const ConnectionSlots = struct {
         self.probe();
         const member = self.members.get(holder) orelse return;
         if (member.ticket != 0) return self.leaveQueue(allocator, holder, member);
-        _ = self.members.remove(holder);
+        self.forget(holder);
         const group = member.group;
         // The oldest waiter of the group takes its place (Chromium's
         // ProcessPendingRequest: the group's next request gets the socket).
@@ -642,7 +649,7 @@ pub const ConnectionSlots = struct {
         for (group.queue.items[group.head..]) |waiter| {
             self.probe();
             const member = self.members.get(waiter.holder) orelse continue;
-            if (member.group == group and member.ticket == waiter.ticket) _ = self.members.remove(waiter.holder);
+            if (member.group == group and member.ticket == waiter.ticket) self.forget(waiter.holder);
         }
         group.queue.clearRetainingCapacity();
         group.head = 0;
@@ -660,13 +667,18 @@ pub const ConnectionSlots = struct {
     /// `holder`, which waits in `member.group`'s queue, waits no more. Its
     /// entry stays, passed over when it reaches the front.
     fn leaveQueue(self: *ConnectionSlots, allocator: Allocator, holder: *const anyopaque, member: Member) void {
-        _ = self.members.remove(holder);
+        self.forget(holder);
         member.group.waiting -= 1;
         if (member.group.waiting == 0) {
             member.group.queue.clearRetainingCapacity();
             member.group.head = 0;
         }
         self.dropIfIdle(allocator, member.group);
+    }
+
+    /// `holder` is no member any more.
+    fn forget(self: *ConnectionSlots, holder: *const anyopaque) void {
+        if (self.members.remove(holder)) self.members_guard.noteRemoval(&self.members);
     }
 
     /// `destination`'s group, made the first time it is asked for.
@@ -677,6 +689,7 @@ pub const ConnectionSlots = struct {
         const key = try allocator.dupe(u8, destination);
         errdefer allocator.free(key);
         group.* = .{ .key = key };
+        self.groups_guard.beforeInsert(&self.groups);
         try self.groups.put(allocator, key, group);
         return group;
     }
@@ -685,7 +698,7 @@ pub const ConnectionSlots = struct {
     /// forgotten: a Browser that reaches many hosts keeps only the busy ones.
     fn dropIfIdle(self: *ConnectionSlots, allocator: Allocator, group: *Group) void {
         if (group.used != 0 or group.waiting != 0 or group.multiplexed) return;
-        _ = self.groups.remove(group.key);
+        if (self.groups.remove(group.key)) self.groups_guard.noteRemoval(&self.groups);
         destroyGroup(allocator, group);
     }
 
