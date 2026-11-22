@@ -144,6 +144,66 @@ pub const StoredResponse = struct {
         return self;
     }
 
+    /// What a response stored in a profile directory's HTTP cache holds
+    /// (fetch/cache/persistence.zig): every part as `create` left it - the
+    /// headers already the storable ones, the Vary data already taken.
+    /// BORROWED; `restore` copies.
+    pub const Parts = struct {
+        partition: []const u8,
+        url: []const u8,
+        credentialed: bool,
+        status: u16,
+        status_message: []const u8,
+        headers: []const Header,
+        body: []const u8,
+        body_info: BodyInfo,
+        vary: []const VaryField,
+        vary_star: bool,
+        request_time: i64,
+        response_time: i64,
+    };
+
+    /// A response as it was stored: `parts` copied, its freshness facts and
+    /// size made again as `create` makes them.
+    pub fn restore(allocator: Allocator, parts: Parts) Allocator.Error!*StoredResponse {
+        const self = try allocator.create(StoredResponse);
+        errdefer allocator.destroy(self);
+        const partition = try allocator.dupe(u8, parts.partition);
+        errdefer allocator.free(partition);
+        const url = try allocator.dupe(u8, parts.url);
+        errdefer allocator.free(url);
+        const status_message = try allocator.dupe(u8, parts.status_message);
+        errdefer allocator.free(status_message);
+        const headers = try copyHeaders(allocator, parts.headers);
+        errdefer freeHeaders(allocator, headers);
+        const vary = try copyVary(allocator, parts.vary);
+        errdefer freeVary(allocator, vary);
+        const bytes = try allocator.dupe(u8, parts.body);
+        const body = SharedBody.adopt(allocator, bytes) catch |err| {
+            allocator.free(bytes);
+            return err;
+        };
+        self.* = .{
+            .allocator = allocator,
+            .partition = partition,
+            .url = url,
+            .credentialed = parts.credentialed,
+            .status = parts.status,
+            .status_message = status_message,
+            .headers = headers,
+            .body = body,
+            .body_info = parts.body_info,
+            .vary = vary,
+            .vary_star = parts.vary_star,
+            .request_time = parts.request_time,
+            .response_time = parts.response_time,
+            .facts = Facts.fromHeaders(parts.status, headers),
+            .size = 0,
+        };
+        self.size = self.computeSize();
+        return self;
+    }
+
     /// Give a response made without its body (a writer's, before the body
     /// ended) its body - `bytes`, which the response's allocator made, taken.
     /// Only before it is published: a published response never changes.

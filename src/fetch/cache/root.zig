@@ -10,6 +10,7 @@
 //!   parser (RFC 9110 5.6.7) document.lastModified shares
 //! - `header_view.zig` - a request's header list as the cache reads it
 //! - `transaction.zig` - one HTTP-network-or-cache fetch's use of the cache
+//! - `persistence.zig` - the disk level under it in a profile directory
 //!
 //! Spec: https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
 //!       https://www.rfc-editor.org/rfc/rfc9111 (obsoletes RFC 7234)
@@ -22,6 +23,7 @@ pub const header_view = @import("header_view.zig");
 pub const stored_response = @import("stored_response.zig");
 pub const http_cache = @import("http_cache.zig");
 pub const transaction = @import("transaction.zig");
+pub const persistence = @import("persistence.zig");
 
 pub const Directives = cache_control.Directives;
 pub const HeaderView = header_view.HeaderView;
