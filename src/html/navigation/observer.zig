@@ -74,6 +74,29 @@ pub const AbortReason = enum {
 /// Who made a top-level traversable.
 pub const CreatedBy = enum { host, page };
 
+/// Why a document was committed - Blink's CommitReason
+/// (third_party/blink/renderer/core/loader/frame_loader_types.h, BSD). Only
+/// a regular commit is a page load for what a browser keeps per page:
+/// Blink's DocumentLoader::DidCommitNavigation returns before
+/// probe::DidCommitLoad and Page::DidCommitLoad (which clears the page's
+/// console message storage) for every other reason.
+pub const CommitKind = enum {
+    /// A navigation's document - a response, an error page, about:blank or
+    /// srcdoc navigated to (kRegular).
+    regular,
+    /// A navigable's initial about:blank document, made with it
+    /// (kInitialization).
+    initialization,
+    /// A javascript: URL's String result replacing the navigable's document
+    /// ("navigate to a javascript: URL" step 13; kJavascriptUrl).
+    javascript_url,
+    /// An XSLT transformation's result replacing an XML document (kXSLT).
+    /// Crane runs no XSLT processing instruction yet (xml-stylesheet loads
+    /// CSS only), so nothing commits one; the kind is named for the host
+    /// that reads it when one does.
+    xslt,
+};
+
 /// A document, by identity and slab generation: compared, never
 /// dereferenced by the observer.
 pub const DocumentRef = struct {
@@ -105,8 +128,10 @@ pub const Event = union(enum) {
     /// Also an initial about:blank document, with navigation_id 0, and a
     /// document the back/forward cache shows again (`restored`, CDP
     /// frameNavigated type BackForwardCacheRestore; navigation_id 0 - the
-    /// document keeps the id its own navigation gave it).
-    committed: struct { url: []const u8, document: DocumentRef, mime_type: []const u8, error_page: bool = false, restored: bool = false },
+    /// document keeps the id its own navigation gave it). `kind` says why
+    /// the document was made (a restored one was made before: its kind is
+    /// `regular` and means nothing).
+    committed: struct { url: []const u8, document: DocumentRef, mime_type: []const u8, error_page: bool = false, restored: bool = false, kind: CommitKind = .regular },
     /// A same-document navigation updated the URL (CDP navigatedWithinDocument).
     same_document: struct { url: []const u8, kind: SameDocumentKind },
     /// A started navigation ended without committing (CDP loadingFailed).

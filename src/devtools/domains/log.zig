@@ -17,7 +17,9 @@ const BrowserSide = @import("../browser_side.zig").BrowserSide;
 const host_bridge = @import("../host_bridge.zig");
 const protocol = @import("../protocol/root.zig");
 const L = protocol.Log;
-const perf = @import("dom").performance_monitor;
+const html = @import("html");
+const dom = @import("dom");
+const perf = dom.performance_monitor;
 
 /// Per-session state of the domain.
 pub const State = struct {
@@ -60,7 +62,7 @@ fn unsubscribe(session: *PageSession) void {
 /// a later Log.enable, in any session on the tab, replays none of them.
 pub fn clear(session: *PageSession, params: L.clear.Params) !L.clear.Result {
     _ = params;
-    if (session.side) |side| side.log_storage.forgetTab(side.allocator, session.tab);
+    if (session.side) |side| side.log_storage.clearTab(side.allocator, session.tab);
     return .{};
 }
 
@@ -165,23 +167,42 @@ pub fn errorResponse(side: *BrowserSide, tab: u64, url: []const u8, request_id: 
 // The kept entries (Blink's ConsoleMessageStorage)
 // ============================================================================
 
+/// A document, by identity and slab generation (the navigation observer's).
+const DocumentRef = html.navigation.observer.DocumentRef;
+
 /// Each tab's Log entries, kept for a Log.enable that comes later - Blink's
 /// ConsoleMessageStorage, one per Page (third_party/blink/renderer/core/
 /// inspector/console_message_storage.cc, BSD): AddConsoleMessage keeps at
 /// most kMaxConsoleMessageCount (1000), dropping the oldest and counting it
-/// (expired_count_); Clear empties both. Page::DidCommitLoad clears it when
-/// the main frame commits a new document (third_party/blink/renderer/core/
-/// page/page.cc - read, not copied: LGPL), InspectorLogAgent::clear when
-/// asked. Kept by the BrowserSide (`log_storage`), on the Browser's thread;
-/// the tabs are few, so a list, searched (no hash map to tombstone).
+/// (expired_count_); Clear empties both. A page's storage is emptied when
+/// its main frame commits a new document for a regular reason
+/// (DocumentLoader::DidCommitNavigation -> Page::DidCommitLoad,
+/// third_party/blink/renderer/core/page/page.cc - read, not copied: LGPL),
+/// and by InspectorLogAgent::clear. A javascript: URL's or XSLT's
+/// replacement document, and the initial empty document, do not reach
+/// Page::DidCommitLoad: the page's entries stay. A page the back/forward
+/// cache keeps is a Page of its own in Chrome, with its own storage, which
+/// shows again when the page is restored: here the entries of the page a
+/// regular commit left are parked by its document, and a restore of that
+/// document takes them back.
+///
+/// Kept by the BrowserSide (`log_storage`), on the Browser's thread. The
+/// tabs are few, so lists, searched (no hash map to tombstone).
 pub const Storage = struct {
-    tabs: std.ArrayList(TabEntries) = .empty,
+    /// The page each tab shows now.
+    pages: std.ArrayList(Page) = .empty,
+    /// Pages a commit left, for a restore of their document (oldest first;
+    /// as many as the Browser's back/forward cache keeps).
+    parked: std.ArrayList(Page) = .empty,
 
     /// Blink's kMaxConsoleMessageCount.
     pub const max_entries = 1000;
 
-    const TabEntries = struct {
+    pub const Page = struct {
         tab: u64,
+        /// The document the page shows, from its top-level commits; null
+        /// when none was seen (the remote end came after it).
+        document: ?DocumentRef = null,
         /// The entries, their strings OWNED: in order while fewer than
         /// `max_entries`; once full, a ring whose oldest is at `head`.
         ring: std.ArrayList(L.LogEntry) = .empty,
@@ -189,60 +210,149 @@ pub const Storage = struct {
         /// How many the bound dropped since the last clear.
         expired: u64 = 0,
 
-        fn deinit(self: *TabEntries, allocator: Allocator) void {
+        fn clearEntries(self: *Page, allocator: Allocator) void {
             for (self.ring.items) |*entry| freeEntry(allocator, entry);
             self.ring.deinit(allocator);
+            self.ring = .empty;
+            self.head = 0;
+            self.expired = 0;
+        }
+
+        fn deinit(self: *Page, allocator: Allocator) void {
+            self.clearEntries(allocator);
+        }
+
+        fn shows(self: *const Page, document: DocumentRef) bool {
+            const mine = self.document orelse return false;
+            return mine.document == document.document and mine.generation == document.generation;
         }
     };
 
     pub fn deinit(self: *Storage, allocator: Allocator) void {
-        for (self.tabs.items) |*kept| kept.deinit(allocator);
-        self.tabs.deinit(allocator);
+        for (self.pages.items) |*page| page.deinit(allocator);
+        self.pages.deinit(allocator);
+        for (self.parked.items) |*page| page.deinit(allocator);
+        self.parked.deinit(allocator);
         self.* = .{};
     }
 
-    fn find(self: *Storage, tab: u64) ?*TabEntries {
-        for (self.tabs.items) |*kept| if (kept.tab == tab) return kept;
+    fn indexOf(self: *const Storage, tab: u64) ?usize {
+        for (self.pages.items, 0..) |page, i| if (page.tab == tab) return i;
         return null;
     }
 
-    /// Keep a copy of `entry` for `tab`; when the tab has `max_entries`
+    fn current(self: *Storage, tab: u64) ?*Page {
+        const i = self.indexOf(tab) orelse return null;
+        return &self.pages.items[i];
+    }
+
+    /// Keep a copy of `entry` for `tab`'s page; when it has `max_entries`
     /// already, its oldest goes and is counted.
     pub fn add(self: *Storage, allocator: Allocator, tab: u64, entry: L.LogEntry) Allocator.Error!void {
         var copy = try copyEntry(allocator, entry);
         errdefer freeEntry(allocator, &copy);
-        const kept = self.find(tab) orelse blk: {
-            try self.tabs.append(allocator, .{ .tab = tab });
-            break :blk &self.tabs.items[self.tabs.items.len - 1];
+        const page = self.current(tab) orelse blk: {
+            try self.pages.append(allocator, .{ .tab = tab });
+            break :blk &self.pages.items[self.pages.items.len - 1];
         };
-        if (kept.ring.items.len < max_entries) {
-            try kept.ring.append(allocator, copy);
+        if (page.ring.items.len < max_entries) {
+            try page.ring.append(allocator, copy);
             return;
         }
-        freeEntry(allocator, &kept.ring.items[kept.head]);
-        kept.ring.items[kept.head] = copy;
-        kept.head = (kept.head + 1) % max_entries;
-        kept.expired += 1;
+        freeEntry(allocator, &page.ring.items[page.head]);
+        page.ring.items[page.head] = copy;
+        page.head = (page.head + 1) % max_entries;
+        page.expired += 1;
     }
 
-    /// `tab`'s entries and count go: the main frame committed a new
-    /// document, Log.clear, or the tab is gone.
+    /// Log.clear (InspectorLogAgent::clear -> ConsoleMessageStorage::Clear):
+    /// the entries of `tab`'s page and their count go; the page stays.
+    pub fn clearTab(self: *Storage, allocator: Allocator, tab: u64) void {
+        if (self.current(tab)) |page| page.clearEntries(allocator);
+    }
+
+    /// The tab is gone: its page and its parked pages go.
     pub fn forgetTab(self: *Storage, allocator: Allocator, tab: u64) void {
-        for (self.tabs.items, 0..) |*kept, i| {
-            if (kept.tab != tab) continue;
-            kept.deinit(allocator);
-            _ = self.tabs.swapRemove(i);
+        if (self.indexOf(tab)) |i| {
+            var page = self.pages.swapRemove(i);
+            page.deinit(allocator);
+        }
+        var i: usize = 0;
+        while (i < self.parked.items.len) {
+            if (self.parked.items[i].tab != tab) {
+                i += 1;
+                continue;
+            }
+            var page = self.parked.orderedRemove(i);
+            page.deinit(allocator);
+        }
+    }
+
+    /// Top-level traversable `tab` committed `document` for `kind`, or
+    /// showed it again from the back/forward cache (`restored`); the
+    /// Browser's cache keeps at most `parked_cap` pages.
+    pub fn committed(self: *Storage, allocator: Allocator, tab: u64, document: DocumentRef, kind: html.navigation.observer.CommitKind, restored: bool, parked_cap: usize) void {
+        if (restored) {
+            // Not a commit in Blink: the restored Page, with the storage it
+            // had, is shown again; the page left keeps its own.
+            self.park(allocator, tab, parked_cap);
+            const page = self.takeParked(tab, document) orelse Page{ .tab = tab, .document = document };
+            self.pages.append(allocator, page) catch {
+                var lost = page;
+                lost.deinit(allocator);
+            };
             return;
         }
+        switch (kind) {
+            // Page::DidCommitLoad: a new page's storage, empty.
+            .regular => {
+                self.park(allocator, tab, parked_cap);
+                self.pages.append(allocator, .{ .tab = tab, .document = document }) catch {};
+            },
+            // The same page goes on with a replacement document.
+            .javascript_url, .xslt => if (self.current(tab)) |page| {
+                page.document = document;
+            },
+            // The first document of a traversable: nothing kept yet.
+            .initialization => {},
+        }
+    }
+
+    /// `tab`'s page leaves: parked by its document when it has entries and
+    /// a document to be found by - the oldest parked one going when there
+    /// are more than `cap`, as the cache's oldest page leaves first
+    /// (src/browser/back_forward_cache.zig) - else freed.
+    fn park(self: *Storage, allocator: Allocator, tab: u64, cap: usize) void {
+        const i = self.indexOf(tab) orelse return;
+        var page = self.pages.swapRemove(i);
+        if (cap == 0 or page.document == null or (page.ring.items.len == 0 and page.expired == 0)) {
+            page.deinit(allocator);
+            return;
+        }
+        self.parked.append(allocator, page) catch {
+            page.deinit(allocator);
+            return;
+        };
+        while (self.parked.items.len > cap) {
+            var oldest = self.parked.orderedRemove(0);
+            oldest.deinit(allocator);
+        }
+    }
+
+    fn takeParked(self: *Storage, tab: u64, document: DocumentRef) ?Page {
+        for (self.parked.items, 0..) |*page, i| {
+            if (page.tab == tab and page.shows(document)) return self.parked.orderedRemove(i);
+        }
+        return null;
     }
 
     /// `tab`'s kept entries, oldest first, each to `visit`, after the
     /// count of those dropped.
     pub fn each(self: *Storage, tab: u64, context: anytype, comptime visit: fn (@TypeOf(context), expired: u64, entry: ?*const L.LogEntry) void) void {
-        const kept = self.find(tab) orelse return;
-        if (kept.expired > 0) visit(context, kept.expired, null);
-        const n = kept.ring.items.len;
-        for (0..n) |i| visit(context, 0, &kept.ring.items[(kept.head + i) % n]);
+        const page = self.current(tab) orelse return;
+        if (page.expired > 0) visit(context, page.expired, null);
+        const n = page.ring.items.len;
+        for (0..n) |i| visit(context, 0, &page.ring.items[(page.head + i) % n]);
     }
 };
 
@@ -284,24 +394,25 @@ fn replay(session: *PageSession, storage: *Storage) void {
 }
 
 /// A milestone of the Browser's navigables, whether or not a session
-/// listens (BrowserSide.fanOutNavigation): a top-level traversable's
-/// commit - its navigable id is its tab's - clears the tab's kept entries,
-/// as Page::DidCommitLoad does for the main frame. A child's commit keeps
-/// them. A main document's own error response (errorResponse, at its
-/// response) is cleared with the rest, as in Chrome, where DocumentLoader::
-/// CommitNavigation reports it (RecordConsoleMessagesForCommit) before
-/// DidCommitNavigation reaches Page::DidCommitLoad: a session listening
-/// then hears it, a later Log.enable does not. (Chrome clears for a regular
-/// commit only - DocumentLoader::
-/// DidCommitNavigation returns first for a javascript: URL's or XSLT's
-/// document, and a back/forward cache restore commits no new document but
-/// shows that Page's own storage; the milestone tells none of these apart,
-/// so every commit clears: the entries are a document's no longer shown.)
+/// listens (BrowserSide.fanOutNavigation): a top-level traversable's commit
+/// - its navigable id is its tab's - goes to the storage with its kind
+/// (Storage.committed); a child navigable's commit is not its page's.
+/// A main document's own error response (errorResponse, at its response)
+/// is cleared with the rest at its regular commit, as in Chrome, where
+/// DocumentLoader::CommitNavigation reports it
+/// (RecordConsoleMessagesForCommit) before DidCommitNavigation reaches
+/// Page::DidCommitLoad: a session listening then hears it, a later
+/// Log.enable does not.
 pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) void {
-    switch (milestone.event) {
-        .committed => side.log_storage.forgetTab(side.allocator, milestone.navigable_id),
-        else => {},
-    }
+    const commit = switch (milestone.event) {
+        .committed => |c| c,
+        else => return,
+    };
+    const browser = side.browser orelse return;
+    const navigables = dom.browser_state.existingNavigablesIn(browser.scope) orelse return;
+    const bc = navigables.byId(milestone.navigable_id) orelse return;
+    if (bc.parent != null) return;
+    side.log_storage.committed(side.allocator, milestone.navigable_id, commit.document, commit.kind, commit.restored, browser.config.back_forward_cache_size);
 }
 
 /// The tab is gone: its kept entries go with it.
@@ -313,7 +424,37 @@ fn testEntry(text: []const u8) L.LogEntry {
     return .{ .source = .network, .level = .@"error", .text = text, .timestamp = 1, .url = "https://a.test/x", .networkRequestId = "7" };
 }
 
-test "a tab keeps at most 1000 entries, the oldest dropped and counted; forgetting a tab empties it" {
+/// What `Storage.each` visited, for the tests.
+const Seen = struct {
+    expired: u64 = 0,
+    first: [16]u8 = undefined,
+    first_len: usize = 0,
+    last: [16]u8 = undefined,
+    last_len: usize = 0,
+    count: usize = 0,
+
+    fn visit(self: *Seen, expired: u64, entry: ?*const L.LogEntry) void {
+        const e = entry orelse {
+            self.expired = expired;
+            return;
+        };
+        if (self.count == 0) {
+            @memcpy(self.first[0..e.text.len], e.text);
+            self.first_len = e.text.len;
+        }
+        @memcpy(self.last[0..e.text.len], e.text);
+        self.last_len = e.text.len;
+        self.count += 1;
+    }
+
+    fn of(storage: *Storage, tab: u64) Seen {
+        var seen: Seen = .{};
+        storage.each(tab, &seen, visit);
+        return seen;
+    }
+};
+
+test "a tab keeps at most 1000 entries, the oldest dropped and counted; Log.clear and the tab's end empty it" {
     const allocator = std.testing.allocator;
     var storage: Storage = .{};
     defer storage.deinit(allocator);
@@ -323,40 +464,81 @@ test "a tab keeps at most 1000 entries, the oldest dropped and counted; forgetti
     }
     try storage.add(allocator, 2, testEntry("other tab"));
 
-    const Seen = struct {
-        expired: u64 = 0,
-        first: [16]u8 = undefined,
-        first_len: usize = 0,
-        last: [16]u8 = undefined,
-        last_len: usize = 0,
-        count: usize = 0,
-        fn visit(self: *@This(), expired: u64, entry: ?*const L.LogEntry) void {
-            const e = entry orelse {
-                self.expired = expired;
-                return;
-            };
-            if (self.count == 0) {
-                @memcpy(self.first[0..e.text.len], e.text);
-                self.first_len = e.text.len;
-            }
-            @memcpy(self.last[0..e.text.len], e.text);
-            self.last_len = e.text.len;
-            self.count += 1;
-        }
-    };
-    var seen: Seen = .{};
-    storage.each(1, &seen, Seen.visit);
+    const seen = Seen.of(&storage, 1);
     try std.testing.expectEqual(@as(u64, 2), seen.expired);
     try std.testing.expectEqual(@as(usize, Storage.max_entries), seen.count);
     try std.testing.expectEqualStrings("e2", seen.first[0..seen.first_len]);
     try std.testing.expectEqualStrings("e1001", seen.last[0..seen.last_len]);
 
-    storage.forgetTab(allocator, 1);
-    var none: Seen = .{};
-    storage.each(1, &none, Seen.visit);
-    try std.testing.expectEqual(@as(usize, 0), none.count);
-    try std.testing.expectEqual(@as(u64, 0), none.expired);
-    var other: Seen = .{};
-    storage.each(2, &other, Seen.visit);
-    try std.testing.expectEqual(@as(usize, 1), other.count);
+    storage.clearTab(allocator, 1);
+    const cleared = Seen.of(&storage, 1);
+    try std.testing.expectEqual(@as(usize, 0), cleared.count);
+    try std.testing.expectEqual(@as(u64, 0), cleared.expired);
+    try std.testing.expectEqual(@as(usize, 1), Seen.of(&storage, 2).count);
+    storage.forgetTab(allocator, 2);
+    try std.testing.expectEqual(@as(usize, 0), Seen.of(&storage, 2).count);
+}
+
+test "only a regular commit starts a new page's entries; a restore shows its own page's again (Blink's CommitReason, Page::DidCommitLoad)" {
+    const allocator = std.testing.allocator;
+    var storage: Storage = .{};
+    defer storage.deinit(allocator);
+    var a_doc: u8 = 0;
+    var b_doc: u8 = 0;
+    var c_doc: u8 = 0;
+    const a: DocumentRef = .{ .document = &a_doc, .generation = 1 };
+    const b: DocumentRef = .{ .document = &b_doc, .generation = 1 };
+    const js: DocumentRef = .{ .document = &c_doc, .generation = 1 };
+
+    // The initial about:blank, then page A (regular) with an entry.
+    storage.committed(allocator, 1, .{ .document = &a_doc, .generation = 0 }, .initialization, false, 8);
+    storage.committed(allocator, 1, a, .regular, false, 8);
+    try storage.add(allocator, 1, testEntry("on a"));
+    // A javascript: URL's document replaces A's: the same page, kept.
+    storage.committed(allocator, 1, js, .javascript_url, false, 8);
+    try std.testing.expectEqual(@as(usize, 1), Seen.of(&storage, 1).count);
+    // Page B (regular): a new page, empty; A's (now the javascript: URL
+    // document's) parked.
+    storage.committed(allocator, 1, b, .regular, false, 8);
+    try std.testing.expectEqual(@as(usize, 0), Seen.of(&storage, 1).count);
+    try storage.add(allocator, 1, testEntry("on b"));
+    // Back to the javascript: URL's document from the cache: its page's
+    // entry again, and B's parked.
+    storage.committed(allocator, 1, js, .regular, true, 8);
+    const back = Seen.of(&storage, 1);
+    try std.testing.expectEqual(@as(usize, 1), back.count);
+    try std.testing.expectEqualStrings("on a", back.first[0..back.first_len]);
+    // Forward to B from the cache.
+    storage.committed(allocator, 1, b, .regular, true, 8);
+    const forward = Seen.of(&storage, 1);
+    try std.testing.expectEqualStrings("on b", forward.first[0..forward.first_len]);
+    // A restore of a document whose page was not parked shows nothing.
+    var d_doc: u8 = 0;
+    storage.committed(allocator, 1, .{ .document = &d_doc, .generation = 1 }, .regular, true, 8);
+    try std.testing.expectEqual(@as(usize, 0), Seen.of(&storage, 1).count);
+}
+
+test "parked pages are as many as the back/forward cache keeps, the oldest leaving first" {
+    const allocator = std.testing.allocator;
+    var storage: Storage = .{};
+    defer storage.deinit(allocator);
+    var docs: [3]u8 = .{ 0, 0, 0 };
+    const x: DocumentRef = .{ .document = &docs[0], .generation = 1 };
+    const y: DocumentRef = .{ .document = &docs[1], .generation = 1 };
+    const z: DocumentRef = .{ .document = &docs[2], .generation = 1 };
+    storage.committed(allocator, 1, x, .regular, false, 1);
+    try storage.add(allocator, 1, testEntry("x"));
+    storage.committed(allocator, 1, y, .regular, false, 1);
+    try storage.add(allocator, 1, testEntry("y"));
+    // A third page: y's is parked, x's (the oldest) leaves.
+    storage.committed(allocator, 1, z, .regular, false, 1);
+    storage.committed(allocator, 1, x, .regular, true, 1);
+    try std.testing.expectEqual(@as(usize, 0), Seen.of(&storage, 1).count);
+    storage.committed(allocator, 1, y, .regular, true, 1);
+    const kept = Seen.of(&storage, 1);
+    try std.testing.expectEqualStrings("y", kept.first[0..kept.first_len]);
+    // A slab generation that moved on is another document.
+    storage.committed(allocator, 1, .{ .document = &docs[1], .generation = 2 }, .regular, false, 1);
+    storage.committed(allocator, 1, .{ .document = &docs[1], .generation = 3 }, .regular, true, 1);
+    try std.testing.expectEqual(@as(usize, 0), Seen.of(&storage, 1).count);
 }

@@ -475,6 +475,11 @@ pub const IFrameIntegration = struct {
     /// commit, cleared after.
     committing_navigation_id: u64 = 0,
     committing_error_page: bool = false,
+    /// Why the document being made now is made (the observer's
+    /// `committed` kind, Blink's CommitReason): `.regular` unless the
+    /// commit setting it says otherwise - the initial about:blank document,
+    /// a javascript: URL's result. Set just before, cleared after.
+    committing_kind: @import("../navigation/observer.zig").CommitKind = .regular,
     /// The navigation whose `committed` milestone the document factory last
     /// reported: the commit reads it back to know its document was made.
     committed_navigation_id: u64 = 0,
