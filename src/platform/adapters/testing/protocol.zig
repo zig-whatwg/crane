@@ -60,6 +60,9 @@ const fonts = if (for (platform_options.platform_without) |capability| {
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
 const Extra = struct {
+    /// One live Browser per profile directory (kit/browser_state).
+    pub const ProfileLock = posix.ProfileLock;
+
     clipboard: memory_clipboard.Clipboard,
     environment: environment_variables.Values,
     /// The Browser's virtual clock, when it asked for one (virtual_clock.zig).
