@@ -71,7 +71,8 @@ fn state(session: *PageSession) *State {
 }
 
 /// The session hears each new document of the Browser as it starts
-/// (host_events' document_start), to run its new-document scripts there.
+/// (host_events' document_start), to run its new-document scripts there,
+/// and each simple dialog as it opens and closes.
 pub fn sessionStarted(session: *PageSession) void {
     const browser = session.browser orelse return;
     browser.addListener(documentStartListener(session)) catch {};
@@ -85,8 +86,46 @@ fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events
     const session: *PageSession = @ptrCast(@alignCast(context));
     switch (event.*) {
         .document_start => |start| documentStarted(session, start),
+        .dialog_opening => |opening| dialogOpening(session, opening),
+        .dialog_closed => |closed| dialogClosed(session, closed),
         else => {},
     }
+}
+
+/// A simple dialog opens in the session's tab: with Page enabled the
+/// session hears Page.javascriptDialogOpening and claims the dialog - Chrome
+/// then waits for Page.handleJavaScriptDialog (which lane cdpt's devtools
+/// thread answers through the dialog's DialogAnswer while this thread is
+/// paused; Chrome's PageHandler in the browser process). headless has no
+/// browser-side handler (hasBrowserHandler false).
+fn dialogOpening(session: *PageSession, opening: *const @import("browser").host_events.DialogOpening) void {
+    if (!state(session).enabled or opening.tab != session.tab) return;
+    const frame_id = session.frameId(opening.navigable);
+    session.emit(P.javascriptDialogOpening, .{
+        .url = opening.url,
+        .frameId = frame_id.slice(),
+        .message = opening.message,
+        .type = switch (opening.kind) {
+            .alert => .alert,
+            .confirm => .confirm,
+            .prompt => .prompt,
+            .beforeunload => .beforeunload,
+        },
+        .hasBrowserHandler = false,
+        .defaultPrompt = if (opening.kind == .prompt) opening.default_prompt else null,
+    });
+    opening.claim.* = true;
+}
+
+/// The dialog closed, whoever answered: Page.javascriptDialogClosed.
+fn dialogClosed(session: *PageSession, closed: *const @import("browser").host_events.DialogClosed) void {
+    if (!state(session).enabled or closed.tab != session.tab) return;
+    const frame_id = session.frameId(closed.navigable);
+    session.emit(P.javascriptDialogClosed, .{
+        .frameId = frame_id.slice(),
+        .result = closed.accepted,
+        .userInput = closed.user_input,
+    });
 }
 
 /// A new document of the session's tab is ready for host scripts, before any

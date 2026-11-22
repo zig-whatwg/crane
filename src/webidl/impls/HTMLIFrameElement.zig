@@ -8725,9 +8725,15 @@ fn definitelyCloseTraversable(window: *runtime.Instance, prompt: dom_module.auxi
         var documents = dom_module.navigables.inclusiveDescendantDocuments(document, allocator);
         defer documents.deinit(allocator);
         var canceled = false;
+        // At most one unload prompt per check: each document is told
+        // whether one was shown (the steps to fire beforeunload's
+        // unloadPromptShown).
+        var prompt_shown = false;
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-            if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
+            const result = document_lifecycle.fireBeforeUnloadGiven(entry.document, prompt_shown);
+            if (result.prompt_shown) prompt_shown = true;
+            if (result.canceled) canceled = true;
         }
         if (canceled) {
             bc.is_closing = false;

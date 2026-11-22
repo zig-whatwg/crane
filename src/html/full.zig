@@ -138,8 +138,6 @@ pub const WindowProxyError = core.WindowProxyError;
 pub const IFrameIntegration = core.IFrameIntegration;
 pub const IFrameState = core.IFrameState;
 pub const IFrameError = core.IFrameError;
-pub const UIBackend = core.UIBackend;
-pub const StubUIBackend = core.StubUIBackend;
 
 // Web Workers (§10)
 pub const workers = core.workers;
@@ -312,6 +310,9 @@ pub const web_locks = @import("web_locks/root.zig");
 pub const embedder_scripts = @import("embedder_scripts.zig");
 /// HTML 6.4 user activation.
 pub const user_activation = @import("user_activation.zig");
+/// HTML 8.9.1 simple dialogs and 8.9.2's printing steps: the checks, the
+/// host's user prompt hook, the pause until the answer.
+pub const simple_dialogs = @import("simple_dialogs.zig");
 pub const close_watchers = @import("close_watchers.zig");
 
 // "same origin-domain" between the entry settings object and a Window (the

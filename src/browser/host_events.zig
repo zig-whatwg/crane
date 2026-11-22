@@ -26,6 +26,14 @@ const std = @import("std");
 pub const Milestone = @import("html").navigation.observer.Milestone;
 /// A new document ready for host scripts (html.navigation.document_start).
 pub const DocumentStart = @import("html").navigation.document_start.Start;
+/// A simple dialog opening and closing (html.navigation.user_prompts).
+pub const DialogOpening = @import("html").navigation.user_prompts.Opening;
+pub const DialogClosed = @import("html").navigation.user_prompts.Closed;
+pub const DialogAnswer = @import("html").navigation.user_prompts.DialogAnswer;
+pub const DialogKind = @import("html").navigation.user_prompts.Kind;
+/// An open dialog as a host reads it from any thread
+/// (BrowserHost.userPromptOf).
+pub const UserPromptInfo = @import("html").simple_dialogs.Info;
 
 /// A tab: its top-level traversable's browsing context id (process-unique,
 /// kept for its life; the BiDi navigable id, the source of CDP's target id).
@@ -62,6 +70,16 @@ pub const Event = union(enum) {
     /// Page.addScriptToEvaluateOnNewDocument), in its main world or in world
     /// realms it makes. BORROWED for the call.
     document_start: *const DocumentStart,
+    /// A simple dialog opens (WebDriver BiDi "user prompt opened"; HTML
+    /// 8.9.1, beforeunload's prompt), before the Browser thread pauses for
+    /// it: its tab, kind, message, default and URL, the `answer` any host may
+    /// call from ANY thread (at most once; false when already answered or
+    /// closed), and `claim`, which a host that will answer sets (else the
+    /// platform's dialog answers). BORROWED for the call.
+    dialog_opening: *const DialogOpening,
+    /// The dialog closed, whoever answered (WebDriver BiDi "user prompt
+    /// closed"). BORROWED for the call.
+    dialog_closed: *const DialogClosed,
 
     pub const TabCreated = struct {
         tab: TabId,

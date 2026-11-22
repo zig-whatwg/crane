@@ -49,6 +49,8 @@ pub fn sessionStarted(session: *PageSession) void {
 /// `sessionStarted` with the engine's inspector operations (lane cdpw's bridge):
 /// analysed only when the engine protocol has them.
 fn sessionStartedLive(session: *PageSession) void {
+    // World realms made on demand are registered as they are made.
+    contexts.watchWorlds(session);
     const browser = session.browser orelse return;
     const agent = browser.agent orelse return;
     session.states.Runtime.inspector = engine.inspectorConnect(agent, contexts.groupOf(session.tab), .{ .context = session, .send = sendToClient }) catch |err| blk: {

@@ -268,6 +268,7 @@ pub fn installHooks() void {
         .script_delivery_discarded = &lifecycleScriptDeliveryDiscarded,
         .delays_load_event = &lifecycleDelaysLoadEvent,
         .is_ready_for_post_load_tasks = &lifecycleIsReadyForPostLoadTasks,
+        .set_print_when_loaded = &lifecycleSetPrintWhenLoaded,
         .mark_ready_for_post_load_tasks = &lifecycleMarkReadyForPostLoadTasks,
         .is_completely_loaded = &lifecycleIsCompletelyLoaded,
         .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
@@ -4354,8 +4355,10 @@ fn completeLoadUnlessDelayed(document: *runtime.Instance) void {
     // and replace-before-load/form-submit.html's iframe fired load at its
     // first document.
     if (@import("dom").navigables.navigationPlanned(document)) return queueLoadUnlessDelayed(document);
-    // Step 11, "ready for post-load tasks", as queueLoadUnlessDelayed sets it
+    // Step 12, the printing steps when print() asked before the load; step
+    // 13, "ready for post-load tasks", as queueLoadUnlessDelayed sets it
     // before step 9's task runs.
+    printWhenLoaded(internal, document);
     internal.ready_for_post_load_tasks = true;
     if (!isShownByItsWindow(document)) return;
     engine.runInRealm(document.ctx, completeLoadingSteps, document) catch |err| {
@@ -4386,9 +4389,11 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
         return;
     }
     internal.load_waiting_on_delay = false;
-    // "The end" step 11 follows queueing step 9, without waiting for that
-    // task to fire load. Set this before the native no-loop fallback can
-    // synchronously run the queued task and its callbacks.
+    // "The end" steps 12 (the printing steps print() asked for) and 13
+    // follow queueing step 9, without waiting for that task to fire load.
+    // Set this before the native no-loop fallback can synchronously run the
+    // queued task and its callbacks.
+    printWhenLoaded(internal, document);
     internal.ready_for_post_load_tasks = true;
     const token = nextSerial(internal);
     internal.pending_load_token = token;
@@ -4410,6 +4415,20 @@ fn lifecycleDelaysLoadEvent(document: *runtime.Instance) bool {
 fn lifecycleIsReadyForPostLoadTasks(document: *runtime.Instance) bool {
     const internal = getInternal(document) orelse return true;
     return internal.ready_for_post_load_tasks;
+}
+
+fn lifecycleSetPrintWhenLoaded(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.print_when_loaded = true;
+}
+
+/// "The end" step 12: "If the Document's print when loaded flag is set, then
+/// run the printing steps" - just before step 13 makes it ready for
+/// post-load tasks (html.simple_dialogs.printingSteps).
+fn printWhenLoaded(internal: *InternalState, document: *runtime.Instance) void {
+    if (!internal.print_when_loaded) return;
+    internal.print_when_loaded = false;
+    @import("html").simple_dialogs.printingSteps(document);
 }
 
 fn lifecycleMarkReadyForPostLoadTasks(document: *runtime.Instance) void {
@@ -4631,13 +4650,12 @@ fn lifecycleIsUnloading(document: *runtime.Instance) bool {
 /// `document` (HTML §7.4.2.4), from a task on the navigation and traversal
 /// task source - so it opens the scope an event needs.
 ///
-/// Step 6's prompt needs sticky activation, which nothing in this engine
-/// grants, so no prompt is shown and nothing is cancelled: a handler that
-/// cancels the event or sets its returnValue is recorded in the result's
-/// `prompt_requested` and changes nothing else, as in a browser whose user
-/// never interacted with the page.
-fn lifecycleFireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
-    var call: BeforeUnloadCall = .{ .document = document };
+/// Step 6's prompt - for a document with sticky activation whose handler
+/// asked for it - is html.simple_dialogs' beforeunload prompt: WebDriver
+/// BiDi's user prompt opened and closed, the pause until the user (a host
+/// that claimed it, or the platform) answers.
+fn lifecycleFireBeforeUnload(document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult {
+    var call: BeforeUnloadCall = .{ .document = document, .unload_prompt_shown = unload_prompt_shown };
     engine.runInRealm(document.ctx, BeforeUnloadCall.steps, &call) catch return .{};
     return call.result;
 }
@@ -4647,15 +4665,16 @@ const BeforeUnloadResult = @import("dom").document_lifecycle.BeforeUnloadResult;
 /// The steps to fire beforeunload, run in the document's realm.
 const BeforeUnloadCall = struct {
     document: *runtime.Instance,
+    unload_prompt_shown: bool = false,
     result: BeforeUnloadResult = .{},
 
     fn steps(data: ?*anyopaque) void {
         const call: *BeforeUnloadCall = @ptrCast(@alignCast(data.?));
-        call.result = fireBeforeUnload(call.document);
+        call.result = fireBeforeUnload(call.document, call.unload_prompt_shown);
     }
 };
 
-fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
+fn fireBeforeUnload(document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult {
     const internal = getInternal(document) orelse return .{};
     const window = (get_defaultView(document) catch null) orelse return .{};
 
@@ -4669,7 +4688,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const termination_nesting = @import("html_core").navigation.termination_nesting;
     const event_loop = @import("dom").agent_hosts.of(document.ctx);
     termination_nesting.enter(event_loop);
-    defer termination_nesting.leave(event_loop);
+    var terminating = true;
+    defer if (terminating) termination_nesting.leave(event_loop);
 
     // Step 4: "Let eventFiringResult be the result of firing an event named
     // beforeunload at document's relevant global object, using
@@ -4679,10 +4699,29 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
     const not_canceled = @import("dom").fire_event.dispatchTrusted(window, event) catch true;
-    // Step 6's condition, less sticky activation: "eventFiringResult is
-    // false, or the returnValue attribute of event is not the empty string".
+    // Step 5: the termination nesting level goes down before the prompt.
+    termination_nesting.leave(event_loop);
+    terminating = false;
+    // Step 6's handler condition: "eventFiringResult is false, or the
+    // returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
-    return .{ .prompt_requested = !not_canceled or return_value.asSlice().len > 0 };
+    const prompt_requested = !not_canceled or return_value.asSlice().len > 0;
+    var result: BeforeUnloadResult = .{ .prompt_requested = prompt_requested, .prompt_shown = unload_prompt_shown };
+    // Step 6: no prompt shown yet in this check, no sandboxed modals flag,
+    // sticky activation, the handler asked - and the prompt not annoying,
+    // deceptive or pointless (Crane shows every one these allow).
+    if (prompt_requested and !unload_prompt_shown and
+        !@import("dom").document_scripts.activeSandboxingFlags(document).modals and
+        @import("html").user_activation.hasStickyActivation(window))
+    {
+        // 6.1-6.5: shown; WebDriver BiDi user prompt opened with
+        // "beforeunload", the pause for the user's answer, user prompt
+        // closed (html.simple_dialogs).
+        result.prompt_shown = true;
+        result.canceled = @import("html").simple_dialogs.promptToUnload(window);
+    }
+    // Step 7 (the unload counter, deferred above) and step 8.
+    return result;
 }
 
 /// dom.document_lifecycle: "unload" `document` (HTML §7.5.9) with no new

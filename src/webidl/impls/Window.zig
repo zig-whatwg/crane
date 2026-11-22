@@ -13,7 +13,7 @@
 //!
 //! The Window implementation uses pluggable backends:
 //! - BrowsingContext: Manages window relationships (parent, opener, etc.)
-//! - UIBackend: Handles alert/confirm/prompt dialogs
+//! - Simple dialogs (alert/confirm/prompt) and print: html.simple_dialogs
 //! - requestAnimationFrame: the Browser's frame clock (src/browser/rendering.zig),
 //!   bound on every Window realm through the engine's window operations
 //! - TimerManager: Handles setTimeout/setInterval (from event_loop)
@@ -39,8 +39,6 @@ const Window = interfaces.Window;
 // HTML Window infrastructure modules (html_core - interface-free)
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
-const UIBackend = html_core.window.UIBackend;
-const StubUIBackend = html_core.window.StubUIBackend;
 
 // requestIdleCallback's idle periods: the event loop's and IdleDeadline's
 // halves (src/dom/idle_periods.zig).
@@ -99,12 +97,6 @@ pub const InternalState = struct {
 
     /// The status bar text
     status: []const u8 = "",
-
-    /// UI backend for alert/confirm/prompt
-    ui_backend: UIBackend,
-
-    /// Stub UI backend instance (default, can be replaced)
-    stub_ui_backend: StubUIBackend,
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
@@ -284,8 +276,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
-            .stub_ui_backend = StubUIBackend.init(.{}),
-            .ui_backend = undefined, // Set by caller after init
             .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
             .close_watcher_manager = @import("dom").close_watcher_manager.Manager.init(allocator),
         };
@@ -465,7 +455,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // navigable it is shown in replaces it (replaceBrowsingContext).
     const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.NoBrowserScope;
     internal.* = try InternalState.init(allocator, navigables);
-    internal.ui_backend = internal.stub_ui_backend.backend();
     // Its Browser's clock (html.platform_state.clockOf), which its idle
     // callbacks read, as the event loop's idle periods do. A Browser with a
     // clock of its own (the testing platform's opt-in virtual clock) has
@@ -2214,22 +2203,15 @@ pub fn call_print(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // The printing steps, step 1: "If the active sandboxing flag set of
-    // this's associated Document has the sandboxed modals flag set, then
-    // return."
-    if (sandboxedModals(internal)) return;
-
-    // Use the UI backend to show print dialog
-    internal.ui_backend.showPrint();
-}
-
-/// HTML "cannot show simple dialogs" step 1 (and the printing steps' step
-/// 1): the window's associated Document's active sandboxing flag set has the
-/// sandboxed modals flag set.
-/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#cannot-show-simple-dialogs
-fn sandboxedModals(internal: *InternalState) bool {
-    const document = internal.document orelse return false;
-    return @import("dom").document_scripts.activeSandboxingFlags(document).modals;
+    // HTML 8.9.2 print() steps: 1. the associated Document; 2. not fully
+    // active: return; 3. its unload counter is above zero: return; 4. ready
+    // for post-load tasks: the printing steps (html.simple_dialogs); 5.
+    // otherwise its "print when loaded" flag, which "the end" step 12 reads.
+    const document = internal.document orelse return;
+    if (!@import("dom").document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return;
+    if (@import("dom").document_lifecycle.isUnloading(document)) return;
+    if (@import("dom").document_lifecycle.isReadyForPostLoadTasks(document)) return @import("html").simple_dialogs.printingSteps(document);
+    @import("dom").document_lifecycle.setPrintWhenLoaded(document);
 }
 
 /// Operation: confirm
@@ -2242,14 +2224,10 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
         return false; // Return false if window is closed
     }
 
-    // Step 1: "If we cannot show simple dialogs for this, then return false."
-    if (sandboxedModals(internal)) return false;
-
-    // Get message string (default to empty)
+    // HTML 8.9.1 confirm(message) steps 1-10 (html.simple_dialogs): the
+    // message defaults to the empty string (the IDL's default).
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
-
-    // Use the UI backend to show confirm dialog
-    return internal.ui_backend.showConfirm(msg);
+    return @import("html").simple_dialogs.confirm(instance, msg);
 }
 
 /// Operation: postMessage
@@ -2887,17 +2865,19 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
 /// Note: The IDL has an overload with message parameter; this is the no-argument version.
 pub fn call_alert(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.closed) return;
+    // alert(): step 2's message is the empty string; the steps are
+    // html.simple_dialogs' (cannot show, normalize, WebDriver BiDi user
+    // prompt opened, the pause, user prompt closed).
+    @import("html").simple_dialogs.alert(instance, "");
+}
 
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // Step 1: "If we cannot show simple dialogs for this, then return."
-    if (sandboxedModals(internal)) return;
-
-    // Show alert with empty message
-    internal.ui_backend.showAlert("");
+/// Operation: alert(message) - HTML 8.9.1, the overload with an argument
+/// (`alert(undefined)` is "undefined", `alert()` the empty string).
+pub fn call_alert__1(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.closed) return;
+    @import("html").simple_dialogs.alert(instance, message.asSlice());
 }
 
 /// Operation: focus
@@ -4236,19 +4216,12 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
         return null; // Return null if window is closed
     }
 
-    // Step 1: "If we cannot show simple dialogs for this, then return null."
-    if (sandboxedModals(internal)) return null;
-
-    // Get message and default strings
+    // HTML 8.9.1 prompt(message, default) steps 1-11 (html.simple_dialogs):
+    // both default to the empty string (the IDL's defaults).
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
     const default_value = if (default.wasPassed()) default.getValue().asSlice() else "";
-
-    // Use the UI backend to show prompt dialog
-    const result = internal.ui_backend.showPrompt(msg, default_value);
-    if (result) |str| {
-        return runtime.DOMString.initInterned(str);
-    }
-    return null;
+    const result = @import("html").simple_dialogs.prompt(instance, msg, default_value) orelse return null;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Operation: getComputedStyle (CSSOM 7.2)
