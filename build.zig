@@ -4855,14 +4855,15 @@ pub fn build(b: *std.Build) void {
     // std.testing.allocator - run with the browser tests: nothing else compiles
     // this module for the host. On a module of their own, with the tests'
     // engine link (addModuleTestWithEngine), never libwhatwg_full's own
-    // module: that one carries the PRODUCT link - v8_wrapper.cpp compiled in
-    // the module - and under -Dsanitize-thread the instrumentation pass
-    // (instrumentForThreadSanitizer, over every suite's executable)
-    // instrumented it, so the wrapper compiled in an instrumented compilation,
-    // where Zig puts its own libc++'s -D_LIBCPP_* macros beside the engine's
-    // libc++'s: "'_LIBCPP_HARDENING_MODE' macro redefined" and 23 more errors
-    // (lane flk4, 2026-11-22). The tests' link compiles the wrapper apart in
-    // a sanitizer build, as every other test executable's does.
+    // module: that one carries the PRODUCT link - the engine adapter's C++
+    // compiled in the module - and under -Dsanitize-thread the
+    // instrumentation pass (instrumentForThreadSanitizer, over every suite's
+    // executable) instrumented it, so the adapter's C++ compiled in an
+    // instrumented compilation, where Zig puts its own libc++'s -D_LIBCPP_*
+    // macros beside the engine's libc++'s: "'_LIBCPP_HARDENING_MODE' macro
+    // redefined" and 23 more errors (lane flk4, 2026-11-22). The tests' link
+    // compiles it apart in a sanitizer build, as every other test
+    // executable's does.
     const lib_exports_test = addModuleTestWithEngine(b, lib_exports_mod, target, tests_engine_link);
     // In the library's own mode, as it was tested on the library's module.
     lib_exports_test.root_module.optimize = lib_exports_mod.optimize;
