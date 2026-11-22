@@ -598,8 +598,15 @@ pub const InternalState = struct {
             // HTML properties
             .referrer = "",
             .design_mode = runtime.DOMString.initInterned("off"),
-            .visibility_state = ._visible_,
-            .hidden = false,
+            // HTML 6.2: "A Document has a visibility state, which is either
+            // "hidden" or "visible", initially set to "hidden"." A document a
+            // navigable shows gets its traversable's system visibility from
+            // "set the initial visibility state" (dom.visibility_state
+            // setInitial); one with no navigable - createHTMLDocument,
+            // DOMParser, an XHR response document - stays hidden, as in all
+            // three browsers (page-visibility/test_default_view.html).
+            .visibility_state = ._hidden_,
+            .hidden = true,
             // Active element (focus)
             .active_element = null,
             // Event handlers
