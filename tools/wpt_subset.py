@@ -545,6 +545,14 @@ INCLUDE = [
     # fullscreen flag, the fullscreen element, its events, :fullscreen), nothing
     # drawn. Geometry, screen-size and reftest-only files are excluded below.
     ('fullscreen/', 'Fullscreen API: requestFullscreen/exitFullscreen, the fullscreen element and events, :fullscreen; geometry exceptions below'),
+    # Lane tpw (the integrator, 2026-11-22 12:50 AM ET, under the scope line): Page Visibility is HTML's
+    # (6.2, all three browsers ship it); Screen Orientation is the W3C Screen Orientation API, whose
+    # ScreenOrientation (type, angle, onchange, lock/unlock) Chrome and Firefox ship and whose reading half
+    # Safari ships. Crane implements both (system visibility from the platform; lock() rejects with
+    # NotSupportedError, as desktop Chrome). Manual and tentative files are out by the blanket rules; the
+    # screen-orientation files that need a device able to lock the orientation are excluded below.
+    ('page-visibility/', 'Page Visibility (HTML 6.2): visibilityState, hidden, visibilitychange, through minimize/restore and unload'),
+    ('screen-orientation/', 'Screen Orientation API: ScreenOrientation reading, change events, lock/unlock argument and state checks; device-lock files excluded below'),
 
     # --- iframe needs real browsing contexts; navigation needs the rest. ----
     ('html/browsers/windows/',           'nested browsing contexts, contentWindow'),
@@ -985,6 +993,22 @@ EXCLUDE = [
     ('fullscreen/api/fullscreen-reordering.html', 'asserts the topmost element through elementFromPoint hit-testing'),
     ('fullscreen/rendering/fullscreen-root-block-scroll.html', 'asserts the fullscreen root\'s scrollTop over laid-out overflow'),
     ('fullscreen/rendering/fullscreen-root-block-size.html', 'asserts the fullscreen root\'s laid-out block size'),
+    # Screen Orientation files whose every subtest needs lock() to succeed - a device that can lock the screen
+    # orientation (hardware): on wpt.fyi's aligned stable run a3830cd8f7, Chrome 158 and Firefox 160 reject
+    # lock() with NotSupportedError ("not available on this device") and Safari 27.2 has no lock(), so all
+    # three pass none of them (lane tpw, 2026-11-22).
+    ('screen-orientation/active-lock.html', 'needs a device that can lock the orientation: 0/3 in all three browsers'),
+    ('screen-orientation/event-before-promise.html', 'needs a device that can lock the orientation: 0/1 in all three browsers'),
+    ('screen-orientation/lock-unlock-check.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/nested-documents.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/onchange-event-subframe.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/onchange-event.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    # Both subtests need lock() past step 3: the first locks in fullscreen (0/2 in all three), the second wants
+    # SecurityError from an iframe's lock() where the current spec rejects NotSupportedError at step 3 on a UA
+    # without lock support and NotAllowedError at step 4's pre-lock check. Crane = the spec + Chrome 158 (both
+    # NotSupportedError); only Firefox 160 passes the iframe subtest; Safari 27.2 has no lock(). On a UA that
+    # cannot lock it tests nothing reachable (the integrator, 2026-11-22 1:08 AM ET).
+    ('screen-orientation/fullscreen-interactions.html', 'needs a device that can lock the orientation: its iframe subtest asserts a pre-spec SecurityError'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),
