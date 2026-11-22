@@ -11,6 +11,7 @@
 3. IndexedDB deletion: a database record forgotten while its deletion is queued would be re-read from the store and come back. Fix: the deletion job holds the record (`holders`) until it is written, so no reader looks at the store's copy.
 4. IndexedDB transactions: no rule needed - the scheduler starts an overlapping transaction only after the earlier one finished, and "finished" now means "its commit was written".
 5. An agent ending with its commit in flight: aborting would restore the in-memory schema (key generators) under a commit that may be durable. Fix: the one wait an agent makes - it waits for that job, then completes or aborts as the write says.
+6. The Cache API, whose promises now settle from the writer's answer: a promise capability is engine handles of one agent, so it can neither ride the cross-thread answer nor be released by a dropped task (dropped on the writer thread, or after a worker's agent ended). Fix: the capability waits in a pending list by id, released on its realm's thread by the answer's task or by the realm's end (an unloading cleanup step, which a worker's end runs too); the answer carries only engine-free data and the id.
 
 **Fix**:
 1. A job owns copies of what it writes (Chrome's CollectCommit): the changing thread goes on.

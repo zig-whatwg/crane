@@ -135,11 +135,13 @@ kit/memory_store is written inline as before. Jobs run one at a time in the orde
 copies of what it writes: localStorage's and the cookie store's batches, the HTTP cache's (in flight,
 and readable, until written), IndexedDB's commits - a transaction's `complete` fires only once its
 commit was written, a failed write aborts it - and database deletions (deleteDatabase succeeds once
-the records are gone). `profile_stores.flush` stops it at the Browser's end, after every store
+the records are gone), and every Cache Storage operation, reads included, whose promise settles from
+a task posted back to its realm (its pending call released at the realm's end, a worker's included). `profile_stores.flush` stops it at the Browser's end, after every store
 handed over its last batch: the stop runs what is queued, then joins the thread, before the event
-loop and the platform state end. Only two reads ever wait for it, where Chrome's do: a localStorage
-area's first read (Chrome's renderer blocks on a synchronous GetAll), and an agent that ends with
-its IndexedDB commit in flight (it waits for that commit, then finishes as the write says).
+loop and the platform state end. Only three waits are ever made on it: a localStorage area's first read
+(Chrome's renderer blocks on a synchronous GetAll), a service worker router's cache source (Handle
+Fetch needs the answer at once), and an agent that ends with its IndexedDB commit in flight (it waits
+for that commit, then finishes as the write says).
 
 ## Rules for new state
 
