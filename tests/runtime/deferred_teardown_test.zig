@@ -275,3 +275,144 @@ test "an item whose teardown ends another realm drains that realm's items, neste
     queue.drainOwner(&realm);
     try testing.expect(queue.isEmpty());
 }
+
+// ============================================================================
+// The fresh rule for trees inside a callback (lane mem1, follow-up A)
+// ============================================================================
+
+/// `push` with the tree's lowest slab generation: the instance's own, as a
+/// one-node tree's walk would find (dom.tree_teardown.Measure).
+fn pushMade(queue: *DeferredTeardown, tree: *FakeTree) !*Instance {
+    const inst = try test_slab.alloc(&vtable);
+    try testing.expect(queue.push(.{
+        .instance = inst,
+        .generation = SlabAllocator.generationOf(inst),
+        .owner = null,
+        .steps = &fake_steps,
+        .data = tree,
+        .weight = tree.nodes,
+        .min_generation = SlabAllocator.generationOf(inst),
+    }));
+    return inst;
+}
+
+/// A binding called from the innermost callback's script returns to it.
+fn bindingReturn(queue: *DeferredTeardown) void {
+    queue.enterAlgorithm();
+    queue.leaveAlgorithmToScript();
+}
+
+test "inside a callback, past a bound, a binding's return frees a slice of the trees made inside it and none older" {
+    setupSlab();
+    defer test_slab.deinit();
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+
+    // Made and queued before the callback began.
+    trees[0] = .{ .nodes = 60_000 };
+    _ = try pushMade(&queue, &trees[0]);
+    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    // Made inside it: together they pass high_water.
+    trees[1] = .{ .nodes = 60_000 };
+    _ = try pushMade(&queue, &trees[1]);
+    try testing.expect(queue.pendingNodes() > DeferredTeardown.high_water);
+
+    bindingReturn(&queue);
+    try testing.expectEqual(DeferredTeardown.slice_budget, trees[1].freed);
+    try testing.expectEqual(@as(usize, 0), trees[0].freed);
+
+    // The callback returns; at depth zero everything is the queue's again.
+    queue.leaveCallback(outer);
+    queue.drainAll();
+    try testing.expect(trees[0].finished and trees[1].finished);
+}
+
+test "under the bounds a binding's return inside a callback frees nothing" {
+    setupSlab();
+    defer test_slab.deinit();
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+
+    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    trees[0] = .{ .nodes = 1_000 };
+    _ = try pushMade(&queue, &trees[0]);
+    bindingReturn(&queue);
+    try testing.expectEqual(@as(usize, 0), trees[0].freed);
+    queue.leaveCallback(outer);
+    queue.drainAll();
+}
+
+test "fresh is proven, never assumed: no generation, another slab's object, or no callback known is old" {
+    setupSlab();
+    defer test_slab.deinit();
+    var other_slab = SlabAllocator.init(testing.allocator);
+    defer other_slab.deinit();
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+
+    const entry = test_slab.generationNow();
+    const made = try test_slab.alloc(&vtable);
+    const elsewhere = try other_slab.alloc(&vtable);
+    var item: DeferredTeardown.Item = .{
+        .instance = made,
+        .generation = SlabAllocator.generationOf(made),
+        .owner = null,
+        .steps = &fake_steps,
+        .data = null,
+        .weight = 1,
+        .min_generation = SlabAllocator.generationOf(made),
+    };
+    // No callback on the stack.
+    try testing.expect(!queue.isFresh(&item));
+    // A callback whose entry nothing knows.
+    var outer = queue.enterCallback(.{});
+    try testing.expect(!queue.isFresh(&item));
+    queue.leaveCallback(outer);
+
+    outer = queue.enterCallback(.{ .slab = &test_slab, .generation = entry });
+    try testing.expect(queue.isFresh(&item));
+    // A tree no walk vouched for.
+    item.min_generation = 0;
+    try testing.expect(!queue.isFresh(&item));
+    // A tree begun before the callback.
+    item.min_generation = entry - 1;
+    try testing.expect(!queue.isFresh(&item));
+    // Another slab's object, whatever its generation says.
+    item.instance = elsewhere;
+    item.min_generation = SlabAllocator.generationOf(elsewhere) + entry;
+    try testing.expect(!queue.isFresh(&item));
+    queue.leaveCallback(outer);
+    test_slab.free(made);
+    other_slab.free(elsewhere);
+}
+
+test "a tree made inside a nested callback is fresh in the callback around it, and not in a later one" {
+    setupSlab();
+    defer test_slab.deinit();
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+
+    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const inner = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const made = try test_slab.alloc(&vtable);
+    var item: DeferredTeardown.Item = .{
+        .instance = made,
+        .generation = SlabAllocator.generationOf(made),
+        .owner = null,
+        .steps = &fake_steps,
+        .data = null,
+        .weight = 1,
+        .min_generation = SlabAllocator.generationOf(made),
+    };
+    try testing.expect(queue.isFresh(&item));
+    queue.leaveCallback(inner);
+    // Back in the outer callback, which began earlier still.
+    try testing.expect(queue.isFresh(&item));
+    // A sibling callback that began after the tree was made: its caller may
+    // hold it.
+    const later = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    try testing.expect(!queue.isFresh(&item));
+    queue.leaveCallback(later);
+    queue.leaveCallback(outer);
+    test_slab.free(made);
+}

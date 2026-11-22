@@ -131,6 +131,8 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
         .steps = &garbage_tree_steps,
         .weight = measure.nodes,
         .dying = .{ .memory = &runtime.BrowserScope.ofInstance(instance).dom_memory, .bytes = measure.bytes },
+        // The fresh rule's evidence (DeferredTeardown.isFresh; 0 = OLD).
+        .min_generation = measure.min_generation,
     })) {
         // The agent is ending (its queue closed): the old model frees it.
         root.rc_flags.garbage = false;

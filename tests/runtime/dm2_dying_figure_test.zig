@@ -367,7 +367,7 @@ test "an allocation during a teardown is alive, and a free pays the tree's share
     try testing.expectEqual(@as(usize, 0), memory.held());
 }
 
-test "a queue item is no larger than it was before it carried its tree's dying bytes" {
+test "a queue item is no larger than its dying bytes and its fresh-rule word make it" {
     // A script that drops elements one by one queues an item an element:
     // up to the queue's bound (100,000) wait at once, so the item's size is
     // paid 100,000 times. 88 bytes is the item of main ceb3c5098a0 (eleven
@@ -375,7 +375,15 @@ test "a queue item is no larger than it was before it carried its tree's dying b
     // and a word, 104 bytes. Whether those 16 bytes are what the attributes
     // page showed is a separate measurement (lane dm2's handoff): this test
     // only keeps the item from growing.
-    try testing.expectEqual(@as(usize, 88), @sizeOf(DeferredTeardown.Item));
+    //
+    // 96 since lane mem1's follow-up A (main's approval, 2026-11-22): the
+    // item carries its tree's lowest slab generation (`min_generation`, 0 =
+    // unknown = OLD) for the fresh rule, which frees the trees a long
+    // callback made inside it instead of after it - at most 800 KB at
+    // 100,000 queued items, against the in-callback peak it removes (8,000
+    // delete-joins in one timer callback: 56.6 MB Zig-side, 5.8 MB spread).
+    // The item had no padding to hold it.
+    try testing.expectEqual(@as(usize, 96), @sizeOf(DeferredTeardown.Item));
 }
 
 test "a weight beyond what an item can carry is clamped, and the memory bound still balances" {
