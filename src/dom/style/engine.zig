@@ -259,6 +259,9 @@ pub const StyleEngine = struct {
         environment_revision: u64 = 0,
         /// The last observed Document-owned top-layer entry revision.
         top_layer_revision: u64 = 0,
+        /// The last observed revision of :focus-visible's inputs
+        /// (`observeFocusVisible`).
+        focus_visible_revision: u64 = 0,
         /// Whether this document has a fullscreen element, as of the
         /// top-layer revision `fullscreen_revision`: Fullscreen 5.2's
         /// user-agent sheet is matched only then (`observeFullscreen`).
@@ -665,6 +668,24 @@ pub const StyleEngine = struct {
         self.environmentChanged();
     }
 
+    /// Selectors 4 9.4: :focus-visible reads the user agent's heuristic - the
+    /// last input modality, what a focus() call's focusVisible decided, and
+    /// whether the element takes text input (designMode included) - none of
+    /// which moves the tree version, and the focused element itself is in
+    /// every key already (`singletonKey`). Its inputs' revision
+    /// (dom.focus_matching.focusVisibleRevision) is pulled like the top
+    /// layer's, and a moved revision recomputes every style - Blink likewise
+    /// invalidates a focused element's style when its :focus-visible state
+    /// changes rather than resolving it on every read - so a focused
+    /// element's style is cached like any other. Before, matching marked it volatile, which made every style
+    /// read inside a focused editing host resolve again (lane tpc).
+    pub fn observeFocusVisible(self: *StyleEngine, revision: u64) Error!void {
+        const seen: u64 = if (self.rare) |r| r.focus_visible_revision else 0;
+        if (revision == seen) return;
+        (try self.ensureRare()).focus_visible_revision = revision;
+        self.environmentChanged();
+    }
+
     /// Fullscreen 5.2's user-agent rules (ua_sheet's fullscreen sheet) are
     /// matched only while this document has a fullscreen element, as Blink
     /// adds its fullscreen sheet only once an element goes fullscreen
@@ -706,6 +727,7 @@ pub const StyleEngine = struct {
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
         try self.observeTopLayer(@import("../top_layer.zig").revisionOf(document));
+        try self.observeFocusVisible(@import("../focus_matching.zig").focusVisibleRevision(document));
         self.observeFullscreen(document);
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
