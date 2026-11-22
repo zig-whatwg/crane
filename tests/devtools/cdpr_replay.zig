@@ -335,6 +335,8 @@ pub const Site = struct {
                 .{ .content_type = "text/javascript", .body = "window.appRan = true;" }
             else if (std.mem.eql(u8, path, "/frame.html"))
                 .{ .body = "<!doctype html><p>frame</p>" }
+            else if (std.mem.eql(u8, path, "/reject.html"))
+                .{ .body = "<!doctype html><title>reject</title><script>function rejectInPage() { Promise.reject('from page'); }\nrejectInPage();\nPromise.resolve().then(() => { throw 'from reaction'; });</script>" }
             else if (std.mem.eql(u8, path, "/data.json"))
                 .{ .content_type = "application/json", .body = "{\"from\":\"network\"}" }
             else
