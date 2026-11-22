@@ -18,7 +18,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const platform = @import("platform");
+const platform_mod = @import("platform");
 
 pub const MediaType = enum { screen, print };
 pub const ColorScheme = enum { light, dark };
@@ -48,7 +48,7 @@ pub const Screen = struct {
     orientation: ?Orientation = null,
 
     pub const Orientation = struct {
-        type: platform.OrientationType,
+        type: platform_mod.OrientationType,
         angle: u16,
     };
 };
