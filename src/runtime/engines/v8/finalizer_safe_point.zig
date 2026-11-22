@@ -58,10 +58,15 @@
 //! a binding's return into a callback's script is decided by construction,
 //! not by type:
 //!
-//!   FRESH = the object was made by a script-called WebIDL constructor
-//!   (`new X()`: the constructor trampoline created the instance and first
-//!   wrapped it, in that one binding call) at or after the beginning of the
-//!   innermost callback invocation still on the stack.
+//!   FRESH = the object was made at or after the beginning of the
+//!   innermost callback invocation still on the stack: by a script-called
+//!   WebIDL constructor (`new X()`: the constructor trampoline created the
+//!   instance and first wrapped it, in that one binding call, and stamped
+//!   it), or by anything else - a factory method (createRange), the DOM's
+//!   own algorithms (the Ranges and InputEvents editing makes) - as its
+//!   slab generation proves: at or above the generation the realm's slab
+//!   would issue next when the invocation began (lane mem1, follow-up A;
+//!   DeferredTeardown.freshSerialOf, asked by wrapper_cache.freshStampOf).
 //!
 //! Every DOM algorithm on the stack - the invocation's own, and all below -
 //! has been suspended in its call into script since before a fresh object
@@ -70,14 +75,15 @@
 //! question it already is at depth zero.) The agent's callback clock
 //! (DeferredTeardown.Callbacks) ticks at every callback invocation; the
 //! trampoline stamps the wrapper cache entry with it
-//! (WrapperCache.setConstructed), and `runFresh` compares stamps with the
-//! innermost invocation's tick. The default is the safe answer - not fresh,
-//! wait for depth zero: a node (its wrapper's end only lets its reference
-//! go; its tree is the queue's), an object an operation returned, one
-//! wrapped while it was being constructed, one made before the innermost
-//! callback began or outside any, the other kinds of finalizer (observable
-//! arrays, asynchronous iterators, promise reactions), and everything once
-//! the 32-bit clock has stopped. And no exit under a binding runs anything:
+//! (WrapperCache.setConstructed), every other entry earns the innermost
+//! invocation's tick from its generation (or the outermost's, to wait for
+//! it), and `runFresh` compares stamps with the innermost invocation's
+//! tick. The default is the safe answer - not fresh, wait for depth zero: a
+//! node (its wrapper's end only lets its reference go; its tree is the
+//! queue's), an object made before the innermost callback began or outside
+//! any, one whose generation is unknown or another slab's, the other kinds
+//! of finalizer (observable arrays, asynchronous iterators, promise
+//! reactions), and everything once the 32-bit clock has stopped. And no exit under a binding runs anything:
 //! script a conversion ran - an init dictionary's getter, a toString - has
 //! that binding on the stack below it, which may have begun after the
 //! object was made.

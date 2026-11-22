@@ -416,3 +416,61 @@ test "a tree made inside a nested callback is fresh in the callback around it, a
     queue.leaveCallback(outer);
     test_slab.free(made);
 }
+
+test "a finalizer's stamp by generation: the innermost callback's for what it made, the outermost's for what an outer one made, none for the rest" {
+    setupSlab();
+    defer test_slab.deinit();
+    var other_slab = SlabAllocator.init(testing.allocator);
+    defer other_slab.deinit();
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+
+    const before = try test_slab.alloc(&vtable);
+    const elsewhere = try other_slab.alloc(&vtable);
+    const generation_before = SlabAllocator.generationOf(before);
+    // No callback on the stack: depth zero finalizes everything.
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, generation_before));
+
+    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const in_outer = try test_slab.alloc(&vtable);
+    const inner = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const in_inner = try test_slab.alloc(&vtable);
+    const innermost = queue.callback.active;
+    const outermost = queue.callback.outermost;
+    try testing.expect(innermost > outermost);
+
+    // Made inside the innermost callback: fresh for it.
+    try testing.expectEqual(innermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    // Made inside the outer one before the inner began: waits for the outer.
+    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_outer)));
+    // Made before every callback on the stack.
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, generation_before));
+    // No generation known, or another slab's object whatever its number.
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.dead_generation));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&other_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(SlabAllocator.ownerOf(elsewhere), SlabAllocator.generationOf(elsewhere) + test_slab.generationNow()));
+
+    // Back in the outer callback: what the inner one made is fresh there.
+    queue.leaveCallback(inner);
+    try testing.expectEqual(outermost, queue.callback.active);
+    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_outer)));
+    queue.leaveCallback(outer);
+    // The stack is empty again: nothing is fresh.
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+
+    // A callback whose entry nothing knows proves nothing fresh.
+    const unknown = queue.enterCallback(.{});
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    queue.leaveCallback(unknown);
+
+    // A stopped clock stamps nothing: its invocations share one value, and
+    // an outermost serial would compare as the innermost's.
+    queue.callback.serial = std.math.maxInt(u32);
+    const stopped = queue.enterCallback(.{ .slab = &test_slab, .generation = SlabAllocator.generationOf(in_inner) });
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    queue.leaveCallback(stopped);
+
+    for ([_]*Instance{ before, in_outer, in_inner }) |inst| test_slab.free(inst);
+    other_slab.free(elsewhere);
+}

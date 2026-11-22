@@ -426,8 +426,9 @@ pub const DeferredTeardown = struct {
     pub const FinalizerSteps = struct {
         run: *const fn (data: ?*anyopaque) bool,
         /// Run the FRESH ones only (`runFresh`): those whose object was made
-        /// by a script-called constructor at or after `innermost` on the
-        /// callback clock. One made at or after `outermost` but before
+        /// at or after `innermost` on the callback clock (a script-called
+        /// constructor's stamp, or what `freshSerialOf` answers for its
+        /// slab generation). One made at or after `outermost` but before
         /// `innermost` waits where it is; anything else waits for depth
         /// zero. Answers whether it could run here (as `run`) and the newest
         /// stamp it left waiting.
@@ -454,8 +455,10 @@ pub const DeferredTeardown = struct {
     /// object was made, so none holds a pointer to it; a pointer some
     /// binding stored in a longer-lived structure since is the question it
     /// already is at depth zero. The adapter stamps the objects its
-    /// script-called constructors make with the clock (`freshStamp`), and a
-    /// stamp at or after the innermost callback's beginning is FRESH.
+    /// script-called constructors make with the clock (`freshStamp`), any
+    /// other object earns a stamp from its slab generation against the
+    /// invocations' entries (`freshSerialOf`), and a stamp at or after the
+    /// innermost callback's beginning is FRESH.
     pub const Callbacks = struct {
         /// The clock: the callback invocations that have begun. It stops at
         /// its last value rather than wrap, and nothing is stamped from then
@@ -484,6 +487,10 @@ pub const DeferredTeardown = struct {
         /// The slab `entry_generation` was read from: generations of two
         /// slabs do not compare, so an object another slab issued is OLD.
         entry_slab: ?*const SlabAllocator = null,
+        /// The outermost invocation's entry (with `outermost`): an object
+        /// made after it began but before the innermost did waits for the
+        /// outer callback's script (`freshSerialOf`).
+        outermost_entry: Entry = .{},
     };
 
     /// The invocation `enterCallback` found innermost, for `leaveCallback`.
@@ -736,6 +743,7 @@ pub const DeferredTeardown = struct {
         };
         self.callback.entry_generation = entry.generation;
         self.callback.entry_slab = entry.slab;
+        if (outer.active == 0) self.callback.outermost_entry = entry;
         self.fresh_scan_spent = false;
         if (self.callback.serial != std.math.maxInt(u32)) self.callback.serial += 1;
         self.callback.active = self.callback.serial;
@@ -762,6 +770,7 @@ pub const DeferredTeardown = struct {
             // else, at depth zero or the pump.
             self.callback.outermost = 0;
             self.callback.waiting = 0;
+            self.callback.outermost_entry = .{};
         } else if (self.callback.waiting >= outer.active) {
             self.owed.fresh = true;
         }
@@ -883,6 +892,41 @@ pub const DeferredTeardown = struct {
         if (item.min_generation == 0 or item.min_generation < entry) return false;
         // Issued by the slab the entry was read from (its address says).
         return SlabAllocator.ownerOf(item.instance) == slab;
+    }
+
+    /// The callback clock's stamp an object deserves by the fresh rule,
+    /// whatever made it (lane mem1, follow-up A): `slab` issued it at
+    /// `generation`. The innermost invocation's serial when that generation
+    /// is at or above the invocation's entry - made inside it, after every
+    /// native frame below it was suspended, so its finalizer may run at a
+    /// binding's return into that callback's script; the OUTERMOST
+    /// invocation's when it was made after the outermost began but before
+    /// the innermost did - it waits, at least until script is back in the
+    /// outermost callback (conservative: the invocations between keep no
+    /// entry here, so one made inside a middle callback is not owed a look
+    /// when an inner one returns into it; it runs when a later first pass
+    /// owes one, or back in the outermost); 0 - never fresh, depth zero
+    /// finalizes it - otherwise: made before every callback on the stack,
+    /// generation unknown (`dead_generation`), another slab's (generations
+    /// of two slabs do not compare), no callback on the stack, or once the
+    /// clock has stopped (`freshStamp`: the invocations then share its last
+    /// value, and an outermost serial would compare as innermost). The
+    /// ALLOWLIST: fresh is proven by the two numbers, never assumed.
+    ///
+    /// The constructor stamp (`freshStamp`) knew only the objects a
+    /// script-called constructor made; a factory method's (createRange)
+    /// and the DOM's own (the Ranges and InputEvents editing makes) were
+    /// never fresh and waited for depth zero - 56,000 Ranges after 8,000
+    /// delete-joins in one timer callback. What a fresh finalizer releases
+    /// is no wider for it: a `new Range()` was already fresh, and released
+    /// its references to old nodes at the callback's binding exit.
+    pub fn freshSerialOf(self: *const DeferredTeardown, slab: *const SlabAllocator, generation: u64) u32 {
+        if (self.callback.active == 0 or self.callback.serial == std.math.maxInt(u32)) return 0;
+        if (generation == SlabAllocator.dead_generation) return 0;
+        if (self.callback.entry_slab == slab and self.callback.entry_generation != 0 and generation >= self.callback.entry_generation) return self.callback.active;
+        const outermost = self.callback.outermost_entry;
+        if (outermost.slab == slab and outermost.generation != 0 and generation >= outermost.generation) return self.callback.outermost;
+        return 0;
     }
 
     /// THE SAFE POINT INSIDE A CALLBACK, for trees (lane mem1, follow-up
