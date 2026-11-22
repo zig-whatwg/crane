@@ -748,13 +748,23 @@ fn relativeHighResolutionTime(realm: runtime.Context, moment: i64) f64 {
 /// Reserve storage before moving any callback owner. Snapshot only THIS
 /// document's handles when its turn starts (HTML run-animation-callbacks 1–2).
 /// Parent callbacks can therefore register callbacks for a later child turn.
+///
+/// The document's map holds every world's callbacks (`sameWindow`): an
+/// isolated world's requestAnimationFrame registers in the same document map
+/// as the page's, and runs in the same frame, in handle order, each in the
+/// realm it came from - Blink's FrameRequestCallbackCollection is one per
+/// document for every world (frame_request_callback_collection.cc, BSD-3 -
+/// reproduced, not copied), as cancelAnimationFrame already reads it. The
+/// batch was collected by `realm == document.realm` alone, so a world's
+/// callback was never taken and never ran (lane tpf: Playwright's and
+/// Puppeteer's utility worlds wait on requestAnimationFrame).
 fn takeAnimationFrameBatch(
     allocator: Allocator,
     frames: *Frames,
     realm: runtime.Context,
 ) error{OutOfMemory}!std.ArrayListUnmanaged(AnimationFrameEntry) {
     var count: usize = 0;
-    for (frames.pending.items) |entry| if (entry.realm == realm) {
+    for (frames.pending.items) |entry| if (sameWindow(entry.realm, realm)) {
         count += 1;
     };
     var batch: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty;
@@ -762,7 +772,7 @@ fn takeAnimationFrameBatch(
     try batch.ensureTotalCapacity(allocator, count);
     var index: usize = 0;
     while (index < frames.pending.items.len) {
-        if (frames.pending.items[index].realm == realm) {
+        if (sameWindow(frames.pending.items[index].realm, realm)) {
             batch.appendAssumeCapacity(frames.pending.orderedRemove(index));
         } else index += 1;
     }
