@@ -440,8 +440,17 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   of another world reaches script as the target world's - a platform object
   as its wrapper there, a promise as the world's own promise for it (one per
   promise and realm, settled with the value across worlds: Blink's
-  ScriptPromiseProperty), anything else structured-cloned, or null when it
-  cannot be; the check runs only for a Browser that made a world. A world's
+  ScriptPromiseProperty), a FrozenArray attribute's array as one frozen
+  array per world realm, element by element (the binding knows the type
+  from codegen's `Meta.frozen_array_attributes`), anything else
+  structured-cloned, or null when it cannot be - and so does each `any` or
+  `object` member of a dictionary, sequence or record the binding converts;
+  the check runs only for a Browser (a member's: an agent) that made a
+  world. Event handler attributes are per world (Blink's
+  GetAttributeRegisteredEventListener): a world's `onclick` neither reads
+  nor replaces the page's, a content attribute's handler is the main
+  world's, and a world realm's handlers stay its world's after it ends
+  (`runtime.ContextData.world`, set on a world realm and never cleared). A world's
   uncaught error and unhandled rejection fire `error` and
   `unhandledrejection` at its own world's listeners only, and the page's at
   the page's (ErrorInfo.realm names the realm that threw; Blink's

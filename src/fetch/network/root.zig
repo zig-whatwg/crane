@@ -72,6 +72,8 @@ pub const NetworkScheduler = scheduler.NetworkScheduler;
 
 // A Browser's network: its connections, TLS options and WebSocket gate.
 pub const NetworkContext = network_context.NetworkContext;
+/// A Browser's fetch observer (NetworkContext.observer).
+pub const observer = @import("observer.zig");
 
 // Re-export connection pool. (Its process-wide instance, which nothing
 // fetched through - the curl share in curl_backend is the live pool - went

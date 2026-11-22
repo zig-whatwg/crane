@@ -131,6 +131,10 @@ pub const AsyncFetch = struct {
     outcome: ?(FetchError!FetchResult) = null,
     /// `done` has run.
     delivered: bool = false,
+    /// The Browser's fetch observer holds the request HTTP-network fetch was
+    /// about to send (network/observer.zig `intercept_request`): the fetch
+    /// waits for its decision (`resumeIntercepted`).
+    intercepted: bool = false,
     /// When its client went and it was kept (`keep`, the agent's monotonic
     /// clock in milliseconds); null while it has a client.
     kept_since_ms: ?i64 = null,
@@ -390,6 +394,12 @@ pub const AsyncFetch = struct {
         if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         if (self.source) |source| source.fail(.{ .kind = .network });
         if (self.relay_source) |source| source.fail(.{ .kind = .network });
+        // A request its observer still holds: the hold is dead (the fetch
+        // is dropped as one waiting for its transfer is).
+        if (self.intercepted) {
+            self.intercepted = false;
+            if (network.observer.of(self.job.request)) |o| if (o.interception_dropped) |dropped| dropped(o.context, self.job.request.request_id);
+        }
         self.letRelayGo();
         // A stream request body's branch still written to a worker: its body
         // fails there.
@@ -550,6 +560,15 @@ pub const AsyncFetch = struct {
                     return;
                 },
                 .network => |needed| {
+                    // Where Chrome's DevToolsURLLoaderInterceptor sits: the
+                    // request is final, the transfer not started. The
+                    // Browser's fetch observer may hold it.
+                    if (network.observer.of(self.job.request)) |o| if (o.intercept_request) |intercept| {
+                        const interception: network.observer.Interception = .{ .context = self, .resume_fn = resumeIntercepted, .request_id = self.job.request.request_id };
+                        self.intercepted = true;
+                        if (intercept(o.context, self.job.request, needed.request, interception)) return;
+                        self.intercepted = false;
+                    };
                     self.awaiting_head = true;
                     self.transfer = self.fetches.scheduler.startStreaming(
                         self.allocator,
@@ -565,6 +584,88 @@ pub const AsyncFetch = struct {
                 },
             }
         }
+    }
+
+    /// The observer's decision for the request it held (observer.zig
+    /// `Interception.decide`), on this fetch's thread: send it (changed as
+    /// asked), answer it, or fail it.
+    fn resumeIntercepted(context: *anyopaque, decision: *const network.observer.Decision) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        if (!self.intercepted) return;
+        self.intercepted = false;
+        switch (decision.*) {
+            .@"continue" => |overrides| {
+                self.job.overrideNetworkRequest(overrides) catch {
+                    return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+                };
+                const request = self.job.pendingNetworkRequest() orelse return;
+                self.awaiting_head = true;
+                self.transfer = self.fetches.scheduler.startStreaming(
+                    self.allocator,
+                    request,
+                    .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd, .encoded = networkEncoded },
+                ) catch |err| {
+                    self.awaiting_head = false;
+                    return self.advance(self.job.resumeNetwork(err));
+                };
+            },
+            .fulfill => |fulfillment| {
+                const response = fulfilledResponse(self.allocator, self.job.request.currentUrl(), fulfillment) catch {
+                    return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+                };
+                self.advance(self.job.resumeNetwork(response));
+            },
+            .fail => |reason| self.advance(self.job.resumeNetwork(switch (reason) {
+                .timed_out => NetworkError.RequestTimeout,
+                .name_not_resolved => NetworkError.DnsResolutionFailed,
+                .connection_refused => NetworkError.ConnectionRefused,
+                .connection_reset => NetworkError.ConnectionReset,
+                .address_unreachable => NetworkError.HostUnreachable,
+                .internet_disconnected => NetworkError.NetworkUnreachable,
+                .aborted, .blocked_by_client, .blocked_by_response => NetworkError.Aborted,
+                else => NetworkError.ConnectionRefused,
+            })),
+        }
+    }
+
+    /// The network's answer an observer gave (Fetch.fulfillRequest): what
+    /// the transfer would have made of a response with this head and body.
+    fn fulfilledResponse(allocator: Allocator, url: []const u8, f: network.observer.Fulfillment) Allocator.Error!NetworkResponse {
+        const headers = try allocator.alloc(NetworkResponse.Header, f.headers.len);
+        var made: usize = 0;
+        errdefer {
+            for (headers[0..made]) |h| {
+                allocator.free(h.name);
+                allocator.free(h.value);
+            }
+            allocator.free(headers);
+        }
+        for (f.headers, 0..) |h, i| {
+            const name = try allocator.dupe(u8, h.name);
+            errdefer allocator.free(name);
+            headers[i] = .{ .name = name, .value = try allocator.dupe(u8, h.value) };
+            made += 1;
+        }
+        const body = try allocator.dupe(u8, f.body);
+        errdefer allocator.free(body);
+        const final_url = try allocator.dupe(u8, url);
+        errdefer allocator.free(final_url);
+        const status_message = if (f.status_message.len > 0) try allocator.dupe(u8, f.status_message) else "";
+        return .{
+            .allocator = allocator,
+            .status = f.status,
+            .status_message = status_message,
+            .http_version = .http_1_1,
+            .headers = headers,
+            .body = body,
+            .encoded_body_size = body.len,
+            .final_url = final_url,
+            .total_time_ms = 0,
+            .time_to_first_byte_ms = 0,
+            .redirect_count = 0,
+            .remote_ip = null,
+            .remote_port = null,
+        };
     }
 
     /// The response's headers are in: fetch carries on from here, and its
@@ -627,6 +728,9 @@ pub const AsyncFetch = struct {
         const source = self.source orelse return;
         self.source = null;
         if (result) |_| source.finish() else |_| source.fail(.{ .kind = .network });
+        // The body of the response handed over: its observer hears its end
+        // (Network.loadingFinished / loadingFailed).
+        if (self.job.response != null) self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| false else |_| true);
         // Received, or failed: the job's report timing steps run now.
         self.endBody();
         if (self.awaiting_body) {

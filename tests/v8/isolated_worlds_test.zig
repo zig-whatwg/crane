@@ -493,3 +493,45 @@ test "a world's promise for a page promise keeps nothing of the world after it e
     try engine.performMicrotaskCheckpoint(page.agent);
     try expect(again, "got", "true");
 }
+
+// ---------------------------------------------------------------------------
+// Event handler attributes per world (Blink's EventTarget::
+// GetAttributeRegisteredEventListener / BelongsToTheCurrentWorld).
+// ---------------------------------------------------------------------------
+
+test "event handler attributes are per world: a world's onclick never replaces the page's, and each reads and clears its own" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(page.realm, "globalThis.log = []; globalThis.pageHandler = () => log.push('page'); document.body.onclick = pageHandler; 'ok'", "ok");
+    // The world has none of its own yet: the page's is not the world's.
+    try expect(world, "globalThis.log = []; globalThis.worldHandler = () => log.push('world'); String(document.body.onclick)", "null");
+    try expect(world, "document.body.onclick = worldHandler; String(document.body.onclick === worldHandler)", "true");
+    try expect(page.realm, "String(document.body.onclick === pageHandler)", "true");
+    // Both run on a dispatch, each in its own world.
+    try expect(page.realm, "document.body.dispatchEvent(new Event('click')); log.join(' ')", "page");
+    try expect(world, "log.join(' ')", "world");
+    // The world clears its own; the page's stays and runs alone.
+    try expect(world, "document.body.onclick = null; String(document.body.onclick)", "null");
+    try expect(page.realm, "log.length = 0; document.body.dispatchEvent(new Event('click')); String(document.body.onclick === pageHandler) + ' ' + log.join(' ')", "true page");
+    try expect(world, "log.join(' ')", "world");
+    // The page clears its own; the world's, set again, runs alone.
+    try expect(page.realm, "document.body.onclick = null; 'ok'", "ok");
+    try expect(world, "document.body.onclick = worldHandler; 'ok'", "ok");
+    try expect(page.realm, "log.length = 0; document.body.dispatchEvent(new Event('click')); String(document.body.onclick) + ':' + log.join(' ')", "null:");
+    try expect(world, "log.join(' ')", "world world");
+    // A Window's too: the world's onmessage is not the page's.
+    try expect(page.realm, "globalThis.pageOnMessage = () => {}; window.onmessage = pageOnMessage; 'ok'", "ok");
+    try expect(world, "window.onmessage = () => {}; 'ok'", "ok");
+    try expect(page.realm, "String(window.onmessage === pageOnMessage)", "true");
+}
+
+test "a world's event handler outlives its world realm as the world's: the page never reads it" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(world, "document.body.onclick = () => {}; 'ok'", "ok");
+    engine.destroyWorldRealms(page.realm);
+    try expect(page.realm, "String(document.body.onclick)", "null");
+    try expect(page.realm, "globalThis.pageHandler = () => {}; document.body.onclick = pageHandler; String(document.body.onclick === pageHandler)", "true");
+}

@@ -435,7 +435,7 @@ pub const Browser = struct {
         // it in memory, as before.
         if (config.profile_dir != null) {
             if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
-                if (state.browser) |browser_platform| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop);
+                if (state.browser) |browser_platform| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, config.profile_dir.?);
             }
         }
 

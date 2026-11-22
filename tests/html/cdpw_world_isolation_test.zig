@@ -218,3 +218,62 @@ test "a world's own policy blocks what the page allows, and reports nothing to t
     // Blink's isolated-world policy reports to the console only.
     try expect(page, "String(violations)", "0");
 }
+
+// ---------------------------------------------------------------------------
+// 4. Event handler content attributes, FrozenArray attributes and
+//    dictionaries across worlds
+// ---------------------------------------------------------------------------
+
+test "an event handler content attribute is the main world's: a world reads null, and its own handler leaves the page's" {
+    const browser = try makeBrowser(testing.allocator);
+    defer browser.deinit();
+    const page = try loadPage(browser, "<!doctype html><body onclick=\"globalThis.fromAttribute = (globalThis.fromAttribute || 0) + 1\"></body>");
+    const world = try isolated_worlds.createIsolatedWorld(page, navigable, "__handlers__", false);
+    try expect(page, "typeof document.body.onclick", "function");
+    try expect(world, "String(document.body.onclick)", "null");
+    try expect(world, "globalThis.worldClicks = 0; document.body.onclick = () => { worldClicks++; }; 'ok'", "ok");
+    try expect(page, "document.body.dispatchEvent(new Event('click')); typeof document.body.onclick + ' ' + String(fromAttribute)", "function 1");
+    try expect(world, "String(worldClicks)", "1");
+    // Removing the attribute deactivates the main world's handler only.
+    try expect(page, "document.body.removeAttribute('onclick'); String(document.body.onclick)", "null");
+    try expect(world, "typeof document.body.onclick", "function");
+}
+
+test "a FrozenArray attribute is one frozen array per world, the same array on every read" {
+    const browser = try makeBrowser(testing.allocator);
+    defer browser.deinit();
+    const page = try loadPage(browser, "<!doctype html><body></body>");
+    const world = try isolated_worlds.createIsolatedWorld(page, navigable, "__frozen__", false);
+    try expect(page, "const l = navigator.languages; String(Object.isFrozen(l) && l === navigator.languages && l.length > 0)", "true");
+    try expect(world,
+        \\const l = navigator.languages;
+        \\String(Object.isFrozen(l) && l === navigator.languages && l instanceof Array && l.length > 0 && typeof l[0] === 'string')
+    , "true");
+    // Its elements cross too: a port is the world's wrapper of it.
+    try expect(world,
+        \\globalThis.portsSeen = '';
+        \\document.body.addEventListener('ports', (e) => {
+        \\  const p = e.ports;
+        \\  portsSeen = String(p === e.ports && Object.isFrozen(p) && p instanceof Array && p.length === 1 && p[0] instanceof MessagePort);
+        \\});
+        \\'ok'
+    , "ok");
+    try expect(page, "const c = new MessageChannel(); document.body.dispatchEvent(new MessageEvent('ports', { ports: [c.port1] })); 'ok'", "ok");
+    try expect(world, "portsSeen", "true");
+}
+
+test "a dictionary an operation returns crosses worlds member by member: navigation.navigate()'s promises are the world's" {
+    const browser = try makeBrowser(testing.allocator);
+    defer browser.deinit();
+    const page = try loadPage(browser, "<!doctype html><body></body>");
+    const world = try isolated_worlds.createIsolatedWorld(page, navigable, "__dictionaries__", false);
+    try expect(world,
+        \\globalThis.settled = '';
+        \\const r = navigation.navigate('#cdpw-d');
+        \\r.committed.then(() => { settled = 'fulfilled'; }, (e) => { settled = 'rejected:' + String(e instanceof DOMException); });
+        \\r.finished.catch(() => {});
+        \\String(Object.getPrototypeOf(r) === Object.prototype && r.committed instanceof Promise && r.finished instanceof Promise)
+    , "true");
+    try pumpUntil(browser, world, "settled !== ''", 200);
+    try expect(world, "String(settled === 'fulfilled' || settled === 'rejected:true')", "true");
+}

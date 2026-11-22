@@ -2571,6 +2571,7 @@ fn startFetch(record: *Navigation) void {
             } else .document,
             .network_partition_key = partition_key,
             .mode = .navigate,
+            .navigation_id = record.id,
             // Step 9: "If sourceSnapshotParams's has transient activation is
             // true, then set request's user-activation to true" (Fetch
             // Metadata sends Sec-Fetch-User: ?1 for it; Chrome and Firefox:
@@ -2771,6 +2772,7 @@ fn startFetch(record: *Navigation) void {
         const request = navigation_fetch.navigationRequest(allocator, url, .{
             .destination = destination,
             .mode = .navigate,
+            .navigation_id = record.id,
             .redirect = .follow,
             // The blob URL store the entry is in: the Browser's.
             .blob_url_store = blobURLStoreOf(record.integration),
@@ -2838,6 +2840,7 @@ fn fetchResourceWithoutNetwork(record: *Navigation) void {
                 const request = navigation_fetch.navigationRequest(allocator, url, .{
                     .destination = destination,
                     .mode = .navigate,
+                    .navigation_id = record.id,
                     .policy_container = container,
                 }) catch {
                     record.response = navigation_fetch.networkErrorResult(allocator, url) catch null;
@@ -2856,6 +2859,7 @@ fn fetchResourceWithoutNetwork(record: *Navigation) void {
     record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
         .destination = destination,
         .mode = .navigate,
+        .navigation_id = record.id,
         .redirect = .follow,
     }) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
 }

@@ -258,6 +258,14 @@ pub const ContextData = struct {
     /// Spec: https://github.com/whatwg/html/pull/9893 ("principal realm")
     principal_realm: ?*ContextData = null,
 
+    /// The isolated world this realm is of (engine section 4.2a): 0, the
+    /// main world, for every realm but a world realm, whose engine adapter
+    /// sets it as it makes the realm and never clears it - so what the
+    /// realm's script left behind (an event handler on a page's node) is
+    /// still known as that world's after the realm ended, when
+    /// engine.worldOf answers the main world for it.
+    world: u32 = 0,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)

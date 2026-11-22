@@ -881,12 +881,42 @@ pub const Server = struct {
         if (devtools_side) {
             return dispatch.dispatch(browser_target.Handlers, session, arena, &command);
         }
+        // Page.handleJavaScriptDialog: answered here, by completing the
+        // dialog the Browser thread waits in - Chrome's browser process
+        // answers it (content/browser/devtools/protocol/page_handler.cc
+        // PageHandler::HandleJavaScriptDialog) while the renderer is blocked
+        // on the dialog; the session's other messages wait for the dialog
+        // to close (host_bridge.postSessionMessage queues them).
+        if (std.mem.eql(u8, command.method, protocol.Page.handleJavaScriptDialog.method)) {
+            return self.answerDialog(session, arena, &command);
+        }
         // A page session's message: to its Browser's thread.
         const page = session.page orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "Target is closing", null);
         const target = session.target.?;
         browser_side.MessageTask.post(target.context.side, page, raw) catch {
             dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "Target closed", null);
         };
+    }
+
+    fn answerDialog(self: *Server, session: *targets.Session, arena: Allocator, command: *const json_rpc.Command) void {
+        _ = self;
+        const P = protocol.Page.handleJavaScriptDialog;
+        const params = std.json.parseFromValueLeaky(P.Params, arena, command.params, .{ .ignore_unknown_fields = true }) catch |err| {
+            return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.invalid_params), "Invalid parameters", @errorName(err));
+        };
+        const target = session.target orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
+        const text = params.promptText orelse "";
+        // The host's answer for the tab's open dialog (the DialogAnswer the
+        // paused Browser thread waits on); before the host API has it, the
+        // answer the dialog_opening event carried.
+        const answered = host_bridge.answerUserPrompt(target.context.host, target.tab, params.accept, text) orelse blk: {
+            const dialog = target.dialog orelse break :blk false;
+            break :blk dialog.answer(dialog.context, params.accept, text);
+        };
+        target.dialog = null;
+        if (!answered) return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
+        const reply: dispatch.Reply(P) = .{ .link = session.link.retain(), .id = command.id };
+        reply.ok(.{});
     }
 
     // ------------------------------------------------------------------
@@ -912,6 +942,12 @@ pub const Server = struct {
                     t.url = url;
                     self.targetChanged(t);
                 }
+            },
+            .dialog_opening => |e| if (self.pageTargetOf(context, e.tab)) |t| {
+                t.dialog = e.answer;
+            },
+            .dialog_closed => |e| if (self.pageTargetOf(context, e.tab)) |t| {
+                t.dialog = null;
             },
             .run_if_waiting => |e| if (self.pageTargetOf(context, e.tab)) |t| {
                 for (self.sessions.items) |s| {
@@ -1091,8 +1127,9 @@ fn closeConnectionForStop(server: *Server, connection: *Connection) void {
         if (s.connection_id == connection.id) server.detach(s, false);
     }
     connection.implicit_session = null;
+    // The writer writes what is queued (a Browser.close reply) and then
+    // shuts the connection, which ends the reader.
     connection.outbound.finish();
-    connection.shutdown();
     for (server.connections.items, 0..) |c, at| if (c == connection) {
         _ = server.connections.orderedRemove(at);
         connection.release();

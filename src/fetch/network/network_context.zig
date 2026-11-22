@@ -92,6 +92,11 @@ pub const NetworkContext = struct {
     /// realm exists, fixed after - so read on any thread without a lock.
     /// Null: nothing is cleared (a context a test makes).
     site_data: ?SiteDataClearer = null,
+    /// The Browser's fetch observer (observer.zig): told of each fetch's
+    /// progress and able to hold a request before the network; set and
+    /// cleared on the Browser's window thread, read by its fetches. Null:
+    /// nobody observes.
+    observer: ?@import("observer.zig").Observer = null,
 
     pub const SiteDataClearer = @import("../algorithms/clear_site_data.zig").Clearer;
 

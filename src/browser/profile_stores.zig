@@ -17,12 +17,15 @@ const runtime = @import("runtime");
 const platform = @import("platform");
 const storage = @import("storage");
 const cookiestore = @import("cookiestore");
+const fetch = @import("fetch");
+const service_worker = @import("service_worker");
+const log = std.log.scoped(.profile_stores);
 const EventLoop = @import("event_loop.zig").EventLoop;
 
 /// Hand `browser` - the Browser's platform state, whose stores are under
 /// its profile directory - to each persisting part of the Browser's web
 /// state, with the Browser's event loop to arm its commits on.
-pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, loop: *EventLoop) !void {
+pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, loop: *EventLoop, profile_dir: []const u8) !void {
     // localStorage (D6 step 2): read per area on first use, committed in
     // batches (storage/profile.zig).
     const user_agent_storage = try scope.of(storage.UserAgentStorage);
@@ -31,12 +34,33 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     // changes committed in batches (cookiestore/storage_integration.zig).
     const jar = try scope.of(cookiestore.CookieJar);
     try jar.attachProfile(browser, commitTimer(loop));
+    // The HTTP cache (D6 step 5): a disk level under the memory cache,
+    // capped from the profile volume's free space (Chromium's
+    // PreferredCacheSize; fetch/cache/persistence.zig). A Browser
+    // configured with no HTTP cache has none to keep.
+    if (scope.existing(fetch.network.NetworkContext)) |network| {
+        if (network.http_cache) |cache| {
+            const space: ?platform.VolumeSpace = platform.volumeSpace(platform.Str.from(profile_dir)) catch null;
+            try cache.attachProfile(browser, commitTimer(loop), if (space) |s| s.available else null);
+        }
+    }
+    // Cache Storage (D6 step 5): it keeps its caches in the store already;
+    // the caches an earlier Browser deleted while Cache objects held them
+    // go now (service_worker/cache/store.zig).
+    const caches = try scope.of(service_worker.cache.store.Storage);
+    caches.purgeEarlierBrowsers(browser) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => log.err("the profile's deleted caches could not be purged ({s})", .{@errorName(err)}),
+    };
 }
 
 /// Write what is pending to the profile: the Browser's end.
 pub fn flush(scope: *runtime.BrowserScope) void {
     if (scope.existing(storage.UserAgentStorage)) |user_agent_storage| user_agent_storage.flushProfile();
     if (scope.existing(cookiestore.CookieJar)) |jar| jar.flush();
+    if (scope.existing(fetch.network.NetworkContext)) |network| {
+        if (network.http_cache) |cache| cache.flushProfile();
+    }
 }
 
 /// The Browser's event loop's timers as storage's commit timer: an owned
