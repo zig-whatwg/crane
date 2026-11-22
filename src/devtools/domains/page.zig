@@ -56,6 +56,19 @@ pub const State = struct {
     /// (idleness.zig: Blink's IdlenessDetector), for the networkAlmostIdle
     /// and networkIdle lifecycle events.
     idle: std.ArrayListUnmanaged(Idle) = .empty,
+    /// While this session's Page.navigate runs: same-document navigations
+    /// it makes wait here, so its answer goes first (Chrome answers a
+    /// fragment navigation before navigatedWithinDocument).
+    navigating: bool = false,
+    deferred: std.ArrayListUnmanaged(Deferred) = .empty,
+};
+
+/// A navigatedWithinDocument held until Page.navigate has answered.
+const Deferred = struct {
+    navigable: u64,
+    /// OWNED.
+    url: []u8,
+    kind: @import("html").navigation.observer.SameDocumentKind,
 };
 
 /// One frame's detector, for its current document, and the timer that
@@ -190,6 +203,8 @@ pub fn sessionEnded(session: *PageSession) void {
     s.pending.deinit(session.allocator);
     for (s.idle.items) |*entry| disarm(session, entry);
     s.idle.deinit(session.allocator);
+    for (s.deferred.items) |d| session.allocator.free(d.url);
+    s.deferred.deinit(session.allocator);
     s.* = .{};
 }
 
@@ -462,6 +477,13 @@ pub fn navigate(session: *PageSession, params: P.navigate.Params, reply: Reply(P
     const browser = session.browser orelse return session.fail("No frame for given id found");
     const bc = frames.frameNamed(session, params.frameId) orelse return session.fail("No frame with given id found");
     const navigable = bc.id;
+    const s = state(session);
+    // A same-document navigation's events wait until the answer has gone.
+    s.navigating = true;
+    defer {
+        s.navigating = false;
+        flushDeferred(session);
+    }
     const navigation_id = browser.navigateNavigable(navigable, params.url, .{
         .referrer = params.referrer,
         .referrer_policy = referrerPolicyOf(params.referrerPolicy),
@@ -475,7 +497,30 @@ pub fn navigate(session: *PageSession, params: P.navigate.Params, reply: Reply(P
         reply.ok(.{ .frameId = frame_id.slice() });
         return;
     }
-    try state(session).pending.append(session.allocator, .{ .navigation_id = navigation_id, .navigable = navigable, .reply = reply });
+    try s.pending.append(session.allocator, .{ .navigation_id = navigation_id, .navigable = navigable, .reply = reply });
+}
+
+/// The navigatedWithinDocument events a Page.navigate held, after its answer.
+fn flushDeferred(session: *PageSession) void {
+    const s = state(session);
+    for (s.deferred.items) |d| {
+        defer session.allocator.free(d.url);
+        if (s.enabled) emitWithinDocument(session, d.navigable, d.url, d.kind);
+    }
+    s.deferred.clearRetainingCapacity();
+}
+
+fn emitWithinDocument(session: *PageSession, navigable: u64, url: []const u8, kind: @import("html").navigation.observer.SameDocumentKind) void {
+    const frame_id = session.frameId(navigable);
+    session.emit(P.navigatedWithinDocument, .{
+        .frameId = frame_id.slice(),
+        .url = url,
+        .navigationType = switch (kind) {
+            .fragment => .fragment,
+            .push, .replace, .traverse => .historyApi,
+            .intercept => .other,
+        },
+    });
 }
 
 /// CDP's ReferrerPolicy as Fetch's.
@@ -680,7 +725,11 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
                 };
                 contexts.beforeCommit(session, navigable, &.{});
             }
-            if (s.enabled) {
+            // A child's initial about:blank (no navigation made it): Chrome
+            // sends its lifecycle init and no frameNavigated (lane cdpr's
+            // vue-e2e-browser log l.392-405).
+            const initial_child = milestone.navigation_id == 0 and navigable != session.tab;
+            if (s.enabled and !initial_child) {
                 var arena_state = std.heap.ArenaAllocator.init(session.allocator);
                 defer arena_state.deinit();
                 const frame = frames.describe(session, arena_state.allocator(), bc) catch return;
@@ -688,15 +737,13 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             }
         },
         .same_document => |same| if (s.enabled) {
-            session.emit(P.navigatedWithinDocument, .{
-                .frameId = frame_id.slice(),
-                .url = same.url,
-                .navigationType = switch (same.kind) {
-                    .fragment => .fragment,
-                    .push, .replace, .traverse => .historyApi,
-                    .intercept => .other,
-                },
-            });
+            if (s.navigating) {
+                // This session's Page.navigate made it: after its answer.
+                const url = session.allocator.dupe(u8, same.url) catch return;
+                s.deferred.append(session.allocator, .{ .navigable = navigable, .url = url, .kind = same.kind }) catch session.allocator.free(url);
+                return;
+            }
+            emitWithinDocument(session, navigable, same.url, same.kind);
         },
         .dom_content_loaded => |loaded| {
             const bc = frames.navigable(session, navigable) orelse return;

@@ -232,9 +232,42 @@ test "a fragment navigation answers at once with no loaderId and reports navigat
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>x\"}");
     _ = try h.waitEvent("Page.frameStoppedLoading", 0);
     const before = h.seen.items.len;
-    const answer = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>x#part\"}");
+    const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<p>x#part\"}");
+    const answer = try h.result(id);
     try testing.expect(answer.object.get("loaderId") == null);
-    _ = try h.waitEvent("Page.navigatedWithinDocument", before);
+    const event_index = try h.waitEvent("Page.navigatedWithinDocument", before);
+    // The answer goes first (Chrome; lane cdpr's react log l.1078-1079).
+    var answer_index: ?usize = null;
+    for (h.seen.items[before..], before..) |parsed, i| {
+        const got = parsed.value.object.get("id") orelse continue;
+        if (got == .integer and got.integer == id) answer_index = i;
+    }
+    try testing.expect(answer_index.? < event_index);
+}
+
+test "an iframe's initial about:blank: frameAttached and lifecycle init, no frameNavigated, no executionContextCreated" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const init_index = try h.waitEvent("Page.lifecycleEvent", attached);
+    try testing.expectEqualStrings(frame_id, h.seen.items[init_index].value.object.get("params").?.object.get("frameId").?.string);
+    // Two frames of the page later, nothing else was said of the frame.
+    const settled = try h.host.evaluate(h.allocator, h.tab, "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))", .{ .await_promise = true }, 5_000);
+    defer settled.deinit(h.allocator);
+    h.drain();
+    for (h.seen.items[attached..]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Page.frameNavigated") or std.mem.eql(u8, method, "Runtime.executionContextCreated")) return error.Unexpected;
+    }
 }
 
 test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, in its world when it names one" {
