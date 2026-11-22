@@ -70,7 +70,38 @@ fn state(session: *PageSession) *State {
     return &session.states.Page;
 }
 
+/// The session hears each new document of the Browser as it starts
+/// (host_events' document_start), to run its new-document scripts there.
+pub fn sessionStarted(session: *PageSession) void {
+    const browser = session.browser orelse return;
+    browser.addListener(documentStartListener(session)) catch {};
+}
+
+fn documentStartListener(session: *PageSession) @import("browser").host_events.Listener {
+    return .{ .context = session, .on_event = onHostEvent };
+}
+
+fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events.Event) void {
+    const session: *PageSession = @ptrCast(@alignCast(context));
+    switch (event.*) {
+        .document_start => |start| documentStarted(session, start),
+        else => {},
+    }
+}
+
+/// A new document of the session's tab is ready for host scripts, before any
+/// of its own (Blink's InspectorPageAgent::DidCreateMainWorldContext): the
+/// session's new-document scripts run in it, each in its world.
+fn documentStarted(session: *PageSession, start: *const @import("browser").host_events.DocumentStart) void {
+    if (state(session).scripts.items.len == 0) return;
+    if (!frames.inTab(session, start.navigable_id)) return;
+    const bc = frames.navigable(session, start.navigable_id) orelse return;
+    const realm: runtime.Context = @ptrCast(@alignCast(start.realm));
+    runNewDocumentScriptsIn(session, bc, realm);
+}
+
 pub fn sessionEnded(session: *PageSession) void {
+    if (session.browser) |browser| browser.removeListener(documentStartListener(session));
     const s = state(session);
     for (s.scripts.items) |script| freeScript(session.allocator, script);
     s.scripts.deinit(session.allocator);
@@ -482,26 +513,25 @@ fn answerPending(session: *PageSession, navigation_id: u64, outcome: @import("ht
 }
 
 // ============================================================================
-// Scripts on new documents (called by the Runtime glue once a commit's
-// contexts are registered, so the scripts' worlds are known first)
+// Scripts on new documents (html.navigation.document_start, after the
+// commit's contexts were registered by the Runtime glue)
 // ============================================================================
 
-/// Run the session's new-document scripts in `bc`'s current document, each
-/// in its world.
-pub fn runNewDocumentScripts(session: *PageSession, bc: *frames.BrowsingContext) void {
-    for (state(session).scripts.items) |script| runScript(session, bc, script);
+/// Run the session's new-document scripts in the document whose main world
+/// realm is `main`, each in its world.
+fn runNewDocumentScriptsIn(session: *PageSession, bc: *frames.BrowsingContext, main: runtime.Context) void {
+    for (state(session).scripts.items) |script| runScript(session, bc, main, script);
 }
 
 fn runScriptInTree(session: *PageSession, bc: *frames.BrowsingContext, script: Script) void {
-    runScript(session, bc, script);
+    if (frames.mainRealmOf(bc)) |main| runScript(session, bc, main, script);
     for (bc.children.items) |child| {
         if (child.is_closed or child.active_window == null) continue;
         runScriptInTree(session, child, script);
     }
 }
 
-fn runScript(session: *PageSession, bc: *frames.BrowsingContext, script: Script) void {
-    const main = frames.mainRealmOf(bc) orelse return;
+fn runScript(session: *PageSession, bc: *frames.BrowsingContext, main: runtime.Context, script: Script) void {
     const realm = if (script.world_name) |name| blk: {
         const made = worldRealm(main, bc.id, name, false) catch |err| {
             log.debug("the world '{s}' of a new-document script was not made: {}", .{ name, err });

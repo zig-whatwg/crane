@@ -450,6 +450,9 @@ pub const Browser = struct {
         // the hold point for paused tabs.
         const navigables = try scope.table(.navigables, html_mod.Navigables);
         navigables.observer = .{ .context = browser, .notify = notifyMilestone, .hold_first_navigation = holdsNavigation };
+        // And its document-start hook (html.navigation.document_start): the
+        // host's scripts for each new document, fanned out the same way.
+        navigables.document_start = .{ .context = browser, .run = runDocumentStart };
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -1764,6 +1767,14 @@ pub const Browser = struct {
             else => {},
         }
         self.listeners.emit(.{ .navigation = milestone });
+    }
+
+    /// html.navigation.document_start: a new document of one of the
+    /// Browser's navigables is ready for host scripts, before its own run -
+    /// passed to the listeners, which may run script for it.
+    fn runDocumentStart(context: *anyopaque, start: *const html_mod.navigation.document_start.Start) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .document_start = start });
     }
 
     /// html.navigation.observer: whether navigable `navigable_id`'s

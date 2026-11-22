@@ -15,7 +15,8 @@
 //!   them all;
 //! - at each cross-document commit, the last session on the tab registers
 //!   the new document's realms after every session's Page events
-//!   (contexts.zig), then runs each session's new-document scripts.
+//!   (contexts.zig); each session's new-document scripts then run at the
+//!   document-start hook (page.zig).
 
 const std = @import("std");
 const engine = @import("engine");
@@ -100,14 +101,8 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             if (!contexts.isEdgeSession(session, .last)) return;
             const bc = frames.navigable(session, milestone.navigable_id) orelse return;
             contexts.afterCommit(session, bc);
-            // TODO(cdph, life1's document-start hook): Blink runs these at
-            // DidCreateMainWorldContext, before any of the document's own
-            // scripts; life1 adds that generic hook (main, 6:53 PM ET), and
-            // they move there. Until then they run here, at the commit.
-            const side = session.side orelse return;
-            var buffer: [32]*PageSession = undefined;
-            const count = side.sessionsOn(session.tab, &buffer);
-            for (buffer[0..count]) |each| @import("page.zig").runNewDocumentScripts(each, bc);
+            // The sessions' new-document scripts run next, at the
+            // document-start hook (page.zig), in the contexts made known here.
         },
         else => {},
     }
