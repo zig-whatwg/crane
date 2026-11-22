@@ -87,9 +87,13 @@ RemoteValue as JSON), holds a tab's first navigation until `releaseTab` (CDP's
 waitForDebuggerOnStart), and hears tabs come and go (`host_events`: one listener list per
 Browser, on its thread). `BrowserHost` runs a Browser on a thread of its own for its whole life
 and takes commands from other threads through its loop's TaskSink (`post`, `call`); the
-WebDriver server's sessions and CDP's browser contexts are BrowserHosts. The C ABI is
-`include/crane.h` (src/browser/capi.zig, emitted by src/lib_exports.zig). Page-made tabs and
-frames reach the listeners once lane life1's navigation observer lands.
+WebDriver server's sessions and CDP's browser contexts are BrowserHosts. The listeners hear
+page-made tabs and frames too, every navigation milestone (life1's navigation observer), each
+new document's start, the simple dialogs (`dialog_opening` with its `DialogAnswer`, which any
+thread may call; `BrowserHost.answerUserPrompt`) and a page asking for a window
+(`window_open`). The C ABI is `include/crane.h` (src/browser/capi.zig, emitted by
+src/lib_exports.zig): the same events (`crane_event_t`, grown behind `struct_size`) and
+`crane_tab_answer_dialog`.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
