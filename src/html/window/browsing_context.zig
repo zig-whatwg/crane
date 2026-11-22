@@ -180,6 +180,12 @@ pub const Navigables = struct {
     /// sets to its own dispatcher (src/html/navigation/observer.zig): told
     /// each navigation milestone of these navigables, on the window thread.
     observer: ?@import("../navigation/observer.zig").Observer = null,
+    /// The Browser's document-start host script hook - its one slot, which
+    /// the Browser sets to its own dispatcher (src/html/navigation/
+    /// document_start.zig): run as each new document's Window realm is set
+    /// up, before its parser runs a script. Unlike the observer, it may run
+    /// script.
+    document_start: ?@import("../navigation/document_start.zig").Hook = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };

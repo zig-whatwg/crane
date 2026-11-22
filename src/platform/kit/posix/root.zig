@@ -376,6 +376,34 @@ fn fileKind(kind: std.Io.File.Kind) platform.FileKind {
     };
 }
 
+/// A Browser's hold on its profile directory: one live Browser per directory
+/// (docs/instances.md; Chrome's ProcessSingleton keeps a profile's
+/// SingletonLock, Firefox its parent.lock). `<dir>/LOCK`, created when it is
+/// not there, under an exclusive advisory lock (flock(2): released by the
+/// kernel when the holder exits, so a crash leaves no stale lock), taken
+/// without waiting: a directory another live Browser holds is error.Busy.
+pub const ProfileLock = struct {
+    file: std.Io.File,
+
+    pub fn acquire(directory: []const u8) Error!ProfileLock {
+        const io = host.io();
+        const cwd = std.Io.Dir.cwd();
+        cwd.createDirPath(io, directory) catch |err| return fileError(err);
+        var name_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const lock_path = std.fmt.bufPrint(&name_buffer, "{s}/LOCK", .{directory}) catch return error.Io;
+        const file = cwd.createFile(io, lock_path, .{ .truncate = false, .lock = .exclusive, .lock_nonblocking = true }) catch |err| return switch (err) {
+            error.WouldBlock => error.Busy,
+            else => fileError(err),
+        };
+        return .{ .file = file };
+    }
+
+    /// The directory is free again (closing the file drops its lock).
+    pub fn release(self: *ProfileLock) void {
+        self.file.close(host.io());
+    }
+};
+
 pub fn makeDirectoryPath(path: Str) Error!void {
     std.Io.Dir.cwd().createDirPath(host.io(), path.slice()) catch |err| return fileError(err);
 }
