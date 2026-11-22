@@ -424,8 +424,6 @@ test "benchmark: Print backend availability summary" {
     std.debug.print("Default Backend: {}\n", .{storage.getDefaultBackendType()});
     std.debug.print("\nBackend Availability:\n", .{});
     std.debug.print("  Memory:  {} (functional)\n", .{storage.isBackendAvailable(.memory)});
-    std.debug.print("  SQLite:  {} (stub)\n", .{storage.isBackendAvailable(.sqlite)});
-    std.debug.print("  LevelDB: {} (stub)\n", .{storage.isBackendAvailable(.leveldb)});
     std.debug.print("\nNote: SQLite and LevelDB benchmarks will be meaningful\n", .{});
     std.debug.print("      once FFI implementations are complete.\n", .{});
     std.debug.print("==========================================\n\n", .{});

@@ -28,6 +28,9 @@ const IDBObjectStore = @import("object_store.zig").IDBObjectStore;
 const IDBRequest = @import("request.zig").IDBRequest;
 const IDBError = @import("errors.zig").IDBError;
 const server_mod = @import("server.zig");
+const backing_store = @import("backing_store.zig");
+const stored_schema = @import("stored_schema.zig");
+const IDBKey = @import("key.zig").IDBKey;
 
 /// Transaction mode
 /// https://w3c.github.io/IndexedDB/#transaction-mode
@@ -94,6 +97,15 @@ pub const IDBTransaction = struct {
     /// Tells its owner it may be able to start (`serverNote`). Set by the
     /// owner of the transaction's task while that task lives.
     wake_hook: ?WakeHook = null,
+    /// Its view of the backing store - a snapshot taken at its first
+    /// request, after the scheduler started it, and its write batch
+    /// (backing_store.zig; lane prof1, D6 step 4). Written at commit, dropped
+    /// at abort.
+    backing_txn: ?*backing_store.Transaction = null,
+    /// The results its requests read from the backing store - a value's
+    /// bytes, a key - each freed when its request is consumed, or with the
+    /// transaction (what a native request held as a borrow of its records).
+    owned_results: std.ArrayListUnmanaged(OwnedResult) = .empty,
 
     /// Transaction mode
     mode: IDBTransactionMode,
@@ -118,6 +130,36 @@ pub const IDBTransaction = struct {
     onabort: ?*const fn (*Self) void,
     oncomplete: ?*const fn (*Self) void,
     onerror: ?*const fn (*Self) void,
+
+    pub const OwnedResult = struct {
+        request: *IDBRequest,
+        result: union(enum) { value: []u8, key: IDBKey },
+
+        fn deinit(self: *OwnedResult, allocator: std.mem.Allocator) void {
+            switch (self.result) {
+                .value => |bytes| allocator.free(bytes),
+                .key => |*key| key.deinit(),
+            }
+        }
+    };
+
+    /// Keep `result` for `request` (IDBRequest.prepare reserved the slot).
+    pub fn keepResult(self: *Self, request: *IDBRequest, result: @FieldType(OwnedResult, "result")) void {
+        self.owned_results.appendAssumeCapacity(.{ .request = request, .result = result });
+    }
+
+    /// `request` was consumed: its kept result goes.
+    pub fn releaseResult(self: *Self, request: *IDBRequest) void {
+        var i: usize = 0;
+        while (i < self.owned_results.items.len) {
+            if (self.owned_results.items[i].request != request) {
+                i += 1;
+                continue;
+            }
+            var kept = self.owned_results.swapRemove(i);
+            kept.deinit(self.allocator);
+        }
+    }
 
     pub const WakeHook = struct {
         context: *anyopaque,
@@ -193,7 +235,10 @@ pub const IDBTransaction = struct {
         self.references -= 1;
         if (self.references != 0) return;
         // A transaction that never finished (its task never ran) must not
-        // hold up the scheduler.
+        // hold up the scheduler; its batch is never written.
+        self.dropBacking();
+        for (self.owned_results.items) |*kept| kept.deinit(self.allocator);
+        self.owned_results.deinit(self.allocator);
         self.finishServerRecord(null);
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
         if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
@@ -229,6 +274,104 @@ pub const IDBTransaction = struct {
         self.retired_stores.deinit(self.allocator);
         self.db.deinit();
         if (self.destroy_on_release) self.allocator.destroy(self);
+    }
+
+    /// The transaction's view of the backing store, begun on first use.
+    pub fn backingTransaction(self: *Self) IDBError!*backing_store.Transaction {
+        if (self.backing_txn) |txn| return txn;
+        const store = try self.db.backingStore();
+        const txn = store.begin() catch |err| return backing_store.idbError(err);
+        self.backing_txn = txn;
+        return txn;
+    }
+
+    fn dropBacking(self: *Self) void {
+        const txn = self.backing_txn orelse return;
+        self.backing_txn = null;
+        txn.destroy();
+    }
+
+    /// deleteObjectStore: the store `definition_id`'s records, index
+    /// entries, reverse rows and schema record go, in this upgrade's batch.
+    pub fn dropStoreData(self: *Self, definition_id: u64) IDBError!void {
+        const txn = try self.backingTransaction();
+        const alloc = txn.gpa();
+        const db = self.db.databaseId();
+        for ([_]u8{ backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
+            const prefix = txn.buffer(.prefix);
+            try prefix.append(alloc, tag);
+            try backing_store.appendU64(prefix, alloc, db);
+            try backing_store.appendU64(prefix, alloc, definition_id);
+            const end = txn.buffer(.upper);
+            try backing_store.prefixEnd(end, alloc, prefix.items);
+            try txn.deleteRange(prefix.items, end.items);
+        }
+        const schema_key = txn.buffer(.key);
+        try backing_store.storeSchemaKey(schema_key, alloc, db, definition_id);
+        try txn.delete(schema_key.items);
+    }
+
+    /// deleteIndex: the index's entries go (its reverse rows are left to
+    /// the next write of each record, which drops every row it had).
+    pub fn dropIndexData(self: *Self, store_id: u64, index_id: u64) IDBError!void {
+        const txn = try self.backingTransaction();
+        const alloc = txn.gpa();
+        const prefix = txn.buffer(.prefix);
+        try backing_store.indexPrefix(prefix, alloc, self.db.databaseId(), store_id, index_id);
+        const end = txn.buffer(.upper);
+        try backing_store.prefixEnd(end, alloc, prefix.items);
+        try txn.deleteRange(prefix.items, end.items);
+    }
+
+    /// IDB 5.4 step 3: the transaction's changes, written to the database -
+    /// its batch, and the schema records of what it may have changed: an
+    /// upgrade's database record and every store's, a readwrite
+    /// transaction's scope's (their key generators). A database an upgrade
+    /// made gets its directory entry.
+    fn writeChanges(self: *Self) IDBError!void {
+        if (self.mode == .readonly) return;
+        // A readwrite transaction that wrote nothing (its first write takes
+        // the rollback snapshot) has nothing to write: no store transaction.
+        if (self.mode == .readwrite and self.rollback_schema == null) return;
+        const txn = try self.backingTransaction();
+        const alloc = txn.gpa();
+        const db = self.db.databaseId();
+        self.db.lockSchema();
+        defer self.db.unlockSchema();
+        const schema_map = self.db.schema();
+        if (self.mode == .versionchange) {
+            const durable = self.db.backing orelse self.db;
+            const record = try stored_schema.encodeDatabase(alloc, self.db.version, durable.next_store_id);
+            defer alloc.free(record);
+            const key = txn.buffer(.key);
+            try backing_store.databaseKey(key, alloc, db);
+            try txn.put(key.items, record);
+            if (self.db.server_database) |database| if (!database.persisted) {
+                const serialized = try database.storage_key.serialize(alloc);
+                defer alloc.free(serialized);
+                const directory = txn.buffer(.key);
+                try backing_store.directoryKey(directory, alloc, serialized, database.name);
+                var id: [8]u8 = undefined;
+                std.mem.writeInt(u64, &id, db, .big);
+                try txn.put(directory.items, &id);
+            };
+            var stores = schema_map.valueIterator();
+            while (stores.next()) |metadata| try putStoreSchema(txn, db, metadata);
+            return;
+        }
+        for (self.scope) |name| {
+            const metadata = schema_map.getPtr(name) orelse continue;
+            try putStoreSchema(txn, db, metadata);
+        }
+    }
+
+    fn putStoreSchema(txn: *backing_store.Transaction, db: u64, metadata: *const @import("database.zig").ObjectStoreMetadata) IDBError!void {
+        const alloc = txn.gpa();
+        const record = try stored_schema.encodeStore(alloc, metadata);
+        defer alloc.free(record);
+        const key = txn.buffer(.key);
+        try backing_store.storeSchemaKey(key, alloc, db, metadata.record_data.definition_id);
+        try txn.put(key.items, record);
     }
 
     /// IDB 5.5 step 2: keep the pre-write schema, records and generators until
@@ -402,6 +545,23 @@ pub const IDBTransaction = struct {
             return IDBError.InvalidStateError;
         }
 
+        // IDB 5.4 step 3: write the changes; "if an error occurs while
+        // writing the changes to the database, then abort a transaction
+        // with transaction and an appropriate DOMException" - and nothing
+        // of them is written.
+        const written: ?IDBError = blk: {
+            self.writeChanges() catch |err| break :blk err;
+            if (self.backing_txn) |txn| txn.commit() catch |err| break :blk backing_store.idbError(err);
+            break :blk null;
+        };
+        if (written) |err| return self.abortForError(err);
+        self.dropBacking();
+        if (self.mode == .versionchange) if (self.db.server_database) |database| {
+            database.server.lock();
+            database.persisted = true;
+            database.server.unlock();
+        };
+
         // ED 5.7: an upgrade's version becomes the database's when it
         // commits - in its server, with the scheduler record, under its lock.
         if (self.mode == .versionchange and self.server_id == null) self.db.publishVersion();
@@ -446,8 +606,11 @@ pub const IDBTransaction = struct {
         // Step 1: an already finished transaction is unchanged.
         if (self.state == .finished) return;
 
-        // IDB 5.5 step 2: restore schema, records and key generators atomically,
-        // under the schema lock: other threads read the map meanwhile.
+        // IDB 5.5 step 2: the batch is dropped - none of its records or
+        // index entries was written - and the schema and key generators are
+        // restored atomically, under the schema lock: other threads read the
+        // map meanwhile.
+        self.dropBacking();
         if (self.rollback_schema) |snapshot| {
             self.db.lockSchema();
             defer self.db.unlockSchema();

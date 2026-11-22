@@ -29,6 +29,8 @@ const RecordData = @import("object_store.zig").RecordData;
 const IDBError = @import("errors.zig").IDBError;
 const key_path_mod = @import("key_path.zig");
 const server_mod = @import("server.zig");
+const backing_store = @import("backing_store.zig");
+const platform = @import("platform");
 
 /// Options for createObjectStore
 pub const IDBObjectStoreParameters = struct {
@@ -115,6 +117,11 @@ pub const IDBDatabase = struct {
     /// standalone database, whose transactions schedule among themselves.
     server_database: ?*server_mod.UniqueIDBDatabase = null,
     connection_id: server_mod.Id = 0,
+    /// A standalone database's (a native caller's, with no server): a
+    /// Browser platform state and backing store of its own, made on first
+    /// use, so its transactions run on the same engine as every other
+    /// (kit/memory_store) - there is no second in-memory record list.
+    private_store: ?*PrivateStore = null,
     /// A connection's: fires versionchange at its platform object, on its
     /// thread (`serverNote`). Set by the owner of that object while it lives.
     version_change_hook: ?VersionChangeHook = null,
@@ -164,6 +171,39 @@ pub const IDBDatabase = struct {
             .versionchange => |change| if (self.version_change_hook) |hook| hook.call(hook.context, change.old_version, change.new_version, change.posted),
             else => {},
         }
+    }
+
+    pub const PrivateStore = struct {
+        browser: *platform.BrowserPlatform,
+        backing: backing_store.BackingStore,
+
+        fn ignore(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
+            _ = .{ context, event };
+        }
+    };
+
+    /// The backing store this database's records are in: its server's, or
+    /// a standalone database's own (made now). Null only when it cannot be
+    /// made.
+    pub fn backingStore(self: *Self) IDBError!*backing_store.BackingStore {
+        if (self.server_database) |database| return database.server.backingStore() orelse IDBError.InvalidStateError;
+        if (self.backing) |durable| return durable.backingStore();
+        if (self.private_store) |private| return &private.backing;
+        const private = try self.allocator.create(PrivateStore);
+        errdefer self.allocator.destroy(private);
+        const browser = platform.createBrowserPlatform(self.allocator, &.{}, .{ .context = null, .post = PrivateStore.ignore }) catch return IDBError.UnknownError;
+        errdefer platform.destroyBrowserPlatform(browser);
+        private.* = .{ .browser = browser, .backing = backing_store.BackingStore.init(self.allocator, browser) catch |err| return backing_store.idbError(err) };
+        self.private_store = private;
+        return &private.backing;
+    }
+
+    /// The database's id in its backing store (a standalone database's
+    /// store holds it alone: 1).
+    pub fn databaseId(self: *const Self) u64 {
+        if (self.server_database) |database| return database.id;
+        if (self.backing) |durable| return durable.databaseId();
+        return 1;
     }
 
     /// The server this connection's database belongs to.
@@ -335,6 +375,10 @@ pub const IDBDatabase = struct {
         self.transactions.deinit(self.allocator);
         self.scheduled_transactions.deinit(self.allocator);
         if (self.backing) |database| database.deinit();
+        if (self.private_store) |private| {
+            platform.destroyBrowserPlatform(private.browser);
+            self.allocator.destroy(private);
+        }
         if (self.owned_name) |name| self.allocator.free(name);
         if (self.destroy_on_release) self.allocator.destroy(self);
     }
@@ -524,6 +568,9 @@ pub const IDBDatabase = struct {
             try txn.retired_stores.ensureUnusedCapacity(txn.allocator, 1);
             try handle.preserveSchemaForRollback();
         }
+        // ED 5.? deleteObjectStore step 6: the store's records and index
+        // entries go with it - range deletions in the upgrade's batch.
+        try txn.dropStoreData(self.schema().getPtr(name).?.record_data.definition_id);
         var metadata = self.schema().fetchRemove(name).?.value;
         // Steps 5-7: invalidate every handle sharing this definition.
         metadata.record_data.markDeleted(true);

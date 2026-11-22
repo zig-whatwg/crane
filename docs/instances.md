@@ -120,8 +120,11 @@ an exclusive advisory lock for its life (kit/posix `ProfileLock`: flock, release
 process dies, so a crash leaves no stale lock); a second live Browser on the directory fails to start
 with `error.ProfileInUse`. Its stores open through the platform's storage engine (platform protocol
 6.6) under the directory - SQLite on every platform with a profile directory (the user's ruling,
-2026-11-21) - and kit/memory_store stays the engine of a Browser with none. Session state stays in
-memory either way, as in every browser across restarts: sessionStorage, session cookies, the tabs.
+2026-11-21) - and kit/memory_store stays the engine of a Browser with none. What persists (lane prof1,
+D6 steps 2-5): localStorage (Chromium's batched commits), persistent cookies, IndexedDB (which runs on
+the store in both modes), the HTTP cache (a disk level under the memory cache) and Cache Storage;
+each writes what is pending at the Browser's end (src/browser/profile_stores.zig). Session state stays
+in memory either way, as in every browser across restarts: sessionStorage, session cookies, the tabs.
 
 ## Rules for new state
 

@@ -17,7 +17,7 @@
 //!
 //! // Migrate from memory to SQLite
 //! var source = try storage.createBackend(allocator, .memory);
-//! var dest = try storage.createBackend(allocator, .sqlite);
+//! var dest = try storage.createBackend(allocator, .memory);
 //!
 //! try source.open("mydb", .{});
 //! try dest.open("mydb_migrated", .{ .create_if_missing = true });

@@ -32,8 +32,8 @@ test "IndexedDB index key generator retains nested multiEntry subkeys" {
     const inner = [_]idb.IDBKey{ idb.IDBKey.number(1), idb.IDBKey.number(2) };
     const subkeys = [_]idb.IDBKey{idb.IDBKey.array(&inner)};
     try kg.addIndexEntries(&index, .{ .multi_keys = &subkeys }, idb.IDBKey.number(4));
-    try std.testing.expectEqual(@as(usize, 1), index.entries.items.len);
-    try std.testing.expectEqual(idb.key.IDBKeyType.array, index.entries.items[0].index_key.key_type);
+    try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
+    try std.testing.expectEqual(idb.key.IDBKeyType.array, (try index.entryAt(0)).?.index_key.key_type);
 }
 
 test "IndexedDB native index extracts nested multiEntry subkeys" {
@@ -52,5 +52,5 @@ test "IndexedDB native index extracts nested multiEntry subkeys" {
     const elements = [_]kp.ExtractedValue{.{ .array = &inner }};
     const properties = [_]kp.ExtractedValue.Property{.{ .key = "tags", .value = .{ .array = &elements } }};
     try index.addEntriesForValue(allocator, .{ .object = &properties }, idb.IDBKey.number(4));
-    try std.testing.expectEqual(@as(usize, 1), index.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
 }

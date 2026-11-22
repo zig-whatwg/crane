@@ -35,7 +35,8 @@ fn evaluate(browser: *Browser, source: []const u8) ![]u8 {
 /// Run `body` - an async function's body whose result is a string - in the
 /// page, and answer its result once it settles.
 fn runInPage(browser: *Browser, body: []const u8) ![]u8 {
-    const launch = try std.fmt.allocPrint(testing.allocator, helpers ++ "globalThis.answer = 'pending'; (async () => {{{s}}})().then(r => {{ answer = String(r); }}, e => {{ answer = 'threw:' + e; }}); 'ok'", .{body});
+    // The helpers' braces are script, not format: they go in as an argument.
+    const launch = try std.fmt.allocPrint(testing.allocator, "{s}globalThis.answer = 'pending'; (async () => {{{s}}})().then(r => {{ answer = String(r); }}, e => {{ answer = 'threw:' + e; }}); 'ok'", .{ helpers, body });
     defer testing.allocator.free(launch);
     testing.allocator.free(try evaluate(browser, launch));
     for (0..2000) |_| {

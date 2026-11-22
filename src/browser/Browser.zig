@@ -56,11 +56,9 @@ const html_mod = @import("html");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
-const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
 const clock = @import("clock");
 const host = @import("host");
-const Storage = storage_mod.Storage;
 /// The page agent's event loop - the host's (HTML 8.1.7).
 const EventLoop = @import("event_loop.zig").EventLoop;
 const Process = @import("process.zig").Process;
@@ -94,18 +92,10 @@ const window_agent_hooks: engine.HostHooks = blk: {
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
-    /// Root directory of the legacy storage manager (storage/Storage.zig),
-    /// with `persist_storage`; null: ~/.whatwg/.
-    storage_root: ?[]const u8 = null,
-    /// Whether the legacy storage manager makes its directories under
-    /// `storage_root`. False by default: a Browser is in memory and writes
-    /// nothing to disk (docs/instances.md: "In memory by default; an
-    /// optional profile directory persists the Browser's stores"). It was
-    /// true, and every Browser left at the defaults made empty directories
-    /// in ~/.whatwg/ that nothing ever read: localStorage, cookies,
-    /// IndexedDB, the Cache API and the HTTP cache are all in memory today,
-    /// and persisting them under a profile directory is its own work
-    /// (STORAGE PERSISTENCE, tmp/plans/lane-console-handoff.md).
+    /// No effect since D6 (2026-11-21); removed before the test pass. (It
+    /// told the legacy storage manager, src/browser/storage/Storage.zig,
+    /// retired then, to make directories nothing read; a Browser's stores
+    /// persist under `profile_dir`.)
     persist_storage: bool = false,
     /// The Browser's profile directory (docs/instances.md): its stores
     /// persist under it, and it is the Browser's alone while it lives - a
@@ -197,8 +187,6 @@ pub const Browser = struct {
     agent_host: *@import("html").agent_host.AgentHost,
     /// Current browsing context (V8 context + DOM)
     current_context: ?*Context,
-    /// Persistent storage subsystem
-    storage: *Storage,
     /// Browser configuration
     config: BrowserConfig,
     /// Whether the browser has been initialized
@@ -388,10 +376,6 @@ pub const Browser = struct {
     ) !*Browser {
         errdefer engine.destroyAgent(agent);
 
-        // Create storage subsystem
-        const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
-        errdefer storage.deinit();
-
         // The agent's event loop, with its timers (the host's).
         const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
@@ -433,9 +417,12 @@ pub const Browser = struct {
         // given a profile directory persists its web state there, its
         // platform state's stores (profile_stores.zig); one with none keeps
         // it in memory, as before.
-        if (config.profile_dir != null) {
-            if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
-                if (state.browser) |browser_platform| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, config.profile_dir.?);
+        if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
+            if (state.browser) |browser_platform| {
+                // IndexedDB keeps its databases in the platform's stores in
+                // both modes (approved 8:44 PM ET).
+                try @import("profile_stores.zig").attachPlatform(scope, browser_platform);
+                if (config.profile_dir) |profile_dir| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, profile_dir);
             }
         }
 
@@ -451,7 +438,6 @@ pub const Browser = struct {
             .agent = agent,
             .agent_host = agent_host,
             .current_context = null,
-            .storage = storage,
             .config = config,
             .initialized = true,
             .event_loop = event_loop,
@@ -499,7 +485,8 @@ pub const Browser = struct {
     /// Deinitialize the browser and release all resources
     ///
     /// This destroys the V8 isolate and all associated contexts.
-    /// All storage is flushed to disk before cleanup.
+    /// What the profile's stores have pending is written first
+    /// (profile_stores.flush).
     pub fn deinit(self: *Browser) void {
         // Every worker thread of this Browser ends first - terminated, then
         // joined - before the page's teardown and before the runtime's
@@ -558,11 +545,6 @@ pub const Browser = struct {
         // the event loop and the platform state live; nothing without a
         // profile directory.
         @import("profile_stores.zig").flush(self.scope);
-
-        // Flush and cleanup storage
-        self.storage.flush() catch {};
-        self.storage.deinit();
-        self.allocator.destroy(self.storage);
 
         // Cleanup event loop. Platform events stop becoming its tasks first:
         // the platform's observers post until the platform state ends,
@@ -727,7 +709,6 @@ pub const Browser = struct {
         const ctx = try Context.init(
             self.allocator,
             agent,
-            self.storage,
             self.cookie_jar,
             serialized orelse url,
             self.event_loop,
@@ -1332,7 +1313,6 @@ pub const Browser = struct {
         const ctx = try Context.initWithOptions(
             self.allocator,
             agent,
-            self.storage,
             self.cookie_jar,
             "about:blank",
             self.event_loop,
@@ -1925,11 +1905,6 @@ pub const Browser = struct {
     pub fn getRealm(self: *Browser) ?runtime.Context {
         const ctx = self.current_context orelse return null;
         return ctx.realm;
-    }
-
-    /// Get the storage subsystem
-    pub fn getStorage(self: *Browser) *Storage {
-        return self.storage;
     }
 
     /// Check if the browser was initialized from a V8 snapshot

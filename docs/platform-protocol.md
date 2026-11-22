@@ -32,7 +32,7 @@ src/platform/kit/                    Crane's reusable implementations, one modul
                                      any platform - built-in or third-party - may use:
     posix/      clocks, files, entropy, threads over libc
     curl/       the network: libcurl + mbedTLS (moved from src/fetch/network, src/websocket)
-    sqlite/, leveldb/, memory_store/   storage engines
+    sqlite/, memory_store/   storage engines (no LevelDB: the user's ruling 2026-11-21)
     crypto/     WebCrypto primitives: Zig std.crypto + mbedTLS
     headless/   every capability's "unsupported" answer, and the headless defaults
     memory_clipboard/   a per-Browser in-memory clipboard (darwin, linux and testing; D2)
@@ -968,7 +968,7 @@ not verified is marked UNVERIFIED.
 | HTTP/2 framing | nghttp2 (inside macOS's libcurl only; no libnghttp2 in either SDK) | - | no public library | static nghttp2 (build.zig `enable_http2`) | static |
 | zlib (Content-Encoding gzip/deflate, Compression Streams) | libz.tbd, zlib 1.2.12 (zlib.h in both SDKs) | both | yes - stable API; Apple's security backports to 1.2.12 UNVERIFIED | static zlib (today's) | dynamic |
 | Brotli (Content-Encoding br and Compression Streams) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | future alternative after validating the streaming and allocator contract (6.7.1) | pinned Google Brotli v1.2.0 | static |
-| storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite (amalgamation); kit/leveldb (no system LevelDB on darwin - today's macOS link is Homebrew's) | dynamic |
+| storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite over the system library; no LevelDB (the user's ruling 2026-11-21; the Homebrew LevelDB link went with build.zig's configureStorageBackends, lane prof1 D6 step 6) | dynamic |
 | SHA-1/256/384/512 | CommonCrypto `CC_SHA*` (CommonDigest.h) | both | yes | kit/crypto | dynamic |
 | HMAC | CommonCrypto `CCHmac` (SHA-1, -224, -256, -384, -512) | both | yes | kit/crypto | dynamic |
 | PBKDF2 | CommonCrypto `CCKeyDerivationPBKDF` (SHA-1 to SHA-512 PRFs) | both | yes | kit/crypto | dynamic |
@@ -1021,7 +1021,7 @@ RHEL and Arch are UNVERIFIED.
 | HTTP client | libcurl4 7.88.1 (bookworm), libcurl4t64 8.14.1 (trixie); 7.81.0 (22.04), 8.5.0 (24.04), 8.18.0 (26.04) | all | no by default - WebSockets became official only in curl 8.11.0 (curl's 8.11.0 changelog), so bookworm, 22.04 and 24.04 lack it; whether trixie's and 26.04's builds enable WebSockets is UNVERIFIED. A build-time choice on distros that have it | kit/curl | static |
 | HTTP/2 framing | libnghttp2-14 1.52.0 (bookworm), 1.64.0 (trixie) | Debian (Ubuntu UNVERIFIED) | yes | static nghttp2 | dynamic |
 | zlib | zlib1g 1.2.13 (bookworm), 1.3.1 (trixie) | all | yes | static zlib | dynamic |
-| storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; kit/leveldb (libleveldb1d 1.23 exists in Debian but is not installed by default) | dynamic SQLite (replacing today's desktop LevelDB default) |
+| storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; no LevelDB (the user's ruling 2026-11-21) | dynamic SQLite |
 | WebCrypto primitives | OpenSSL 3 libcrypto (above) | Debian, Ubuntu | yes - covers every algorithm, OAEP labels, any PSS salt, any RSA exponent, HKDF, AES-KW; AES-CTR's counter-wrap rule is chosen per call as on darwin | kit/crypto | dynamic once the vectors pass |
 | Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
 | clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | static: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09); a run-time load with a display is the adapter's later choice |

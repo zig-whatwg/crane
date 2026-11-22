@@ -139,6 +139,9 @@ pub const IDBRequest = struct {
         const request = try allocator.create(Self);
         errdefer allocator.destroy(request);
         try transaction.requests.ensureUnusedCapacity(transaction.allocator, 1);
+        // A result read from the backing store is kept by the transaction
+        // (`keepResult`): its slot too, before anything changes.
+        try transaction.owned_results.ensureUnusedCapacity(transaction.allocator, 1);
         request.* = init(allocator);
         request.transaction = transaction;
         request.source_type = source;
@@ -156,6 +159,7 @@ pub const IDBRequest = struct {
         // ED 5.6.5.6.1: the native request is consumed before its binding
         // dispatches a result. Never leave freed requests in the borrowed list.
         if (self.transaction) |transaction| {
+            transaction.releaseResult(self);
             for (transaction.requests.items, 0..) |request, index| {
                 if (request == self) {
                     _ = transaction.requests.orderedRemove(index);
@@ -164,7 +168,23 @@ pub const IDBRequest = struct {
             }
             self.transaction = null;
         }
-        // Result bytes/keys are borrowed from their native store or cursor.
+        // A result the backing store gave lives until the request is
+        // consumed (above) or its transaction ends; any other is borrowed
+        // from its native cursor.
+    }
+
+    /// Complete a prepared request with `bytes` (made with the
+    /// transaction's allocator), kept for it by its transaction.
+    pub fn completeOwnedValue(self: *Self, bytes: []u8) void {
+        self.transaction.?.keepResult(self, .{ .value = bytes });
+        self.completePrepared(.{ .value = bytes });
+    }
+
+    /// Complete a prepared request with `key` (made with the transaction's
+    /// allocator), kept for it by its transaction.
+    pub fn completeOwnedKey(self: *Self, key: IDBKey) void {
+        self.transaction.?.keepResult(self, .{ .key = key });
+        self.completePrepared(.{ .key = key });
     }
 
     /// Get the result
