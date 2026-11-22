@@ -964,6 +964,10 @@ const TestLaunch = struct {
     /// `zig build test-launch`: the test executables alone, without the
     /// lints and checks `test` also runs.
     step: *std.Build.Step,
+    /// `zig build check-tests`: every test executable compiled, none run
+    /// (addSuiteRunWith adds each; lane cdpr, the integrator 2026-11-21
+    /// 10:05 PM ET: a test file no step builds hides its compile breaks).
+    check_tests: *std.Build.Step,
     launcher: *std.Build.Step.Compile,
     /// The launcher's own tests run by the build runner directly: they test
     /// the launcher, so they cannot run through it. The one exception
@@ -1125,6 +1129,8 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// each of `groups` keeps its own row of suite_configs, keyed by its tests'
 /// name prefix (`addGroupArgs`).
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
+    // `check-tests` compiles what the launcher would run.
+    launch.check_tests.dependOn(&test_exe.step);
     const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links the engine and the browser module. The
@@ -3511,9 +3517,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&launcher_tests.step);
         b.step("test-launcher", "Run tools/test_launcher's own tests").dependOn(&launcher_tests.step);
 
+        // Every test executable compiled, none run: tests/ directories and
+        // src's in-file test roots alike (addSuiteRunWith), and the
+        // launcher's own tests.
+        const check_tests_step = b.step("check-tests", "Compile every test executable - the tests/ directories and src's in-file test roots - without running them");
+        check_tests_step.dependOn(&own_tests.step);
         const l = b.allocator.create(TestLaunch) catch @panic("OOM");
         l.* = .{
             .step = launch_step,
+            .check_tests = check_tests_step,
             .launcher = launcher,
             .own_tests = own_tests,
             .batch = b.option(u32, "launch-batch", "Tests per child process for every suite, overriding build.zig's suite_configs (1 = a process per test; 0 = the whole suite in one process)"),
@@ -4143,6 +4155,9 @@ pub fn build(b: *std.Build) void {
         const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
         const run_fetch_tests = addSuiteRun(b, launch, fetch_tests, "src-fetch", null);
         test_step.dependOn(&run_fetch_tests.step);
+        // The HTTP cache's profile store tests (fetch/cache/persistence.zig)
+        // compile with the storage tests (approved 9:52 PM ET, lane prof2).
+        check_storage_tests.dependOn(&fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
@@ -4686,6 +4701,11 @@ pub fn build(b: *std.Build) void {
     const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
+        // The Browser's storage sequence and its platform state's stores,
+        // which the storage sequence tests hold (tests/browser/
+        // prof2_storage_sequence_test.zig).
+        .{ .name = "storage", .module = testing_graph.storage },
+        .{ .name = "platform", .module = testing_graph.platform },
     };
     if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
@@ -8715,6 +8735,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // "process cookie changes" step 2 (cookiestore imports neither
     // service_worker nor anything that does: no cycle).
     service_worker_mod.addImport("cookiestore", cookiestore_mod);
+    // Cache Storage's operations run on the Browser's storage sequence with
+    // a profile directory (storage.StorageSequence; lane prof2). storage
+    // imports nothing of service_worker: no cycle.
+    service_worker_mod.addImport("storage", storage_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)

@@ -175,13 +175,14 @@ pub const CookieJar = struct {
     /// The Browser has a profile directory (D6, the user's ruling
     /// 2026-11-21): the jar's persistent cookies are read from `browser`'s
     /// store "cookies" now, and its changes committed to it from here on
-    /// (storage_integration.zig), arming commits on `timer`. Browser.init's
-    /// (src/browser/profile_stores.zig), before any realm; the jar is empty.
-    /// A store that cannot be read leaves the jar with what was read, and
-    /// is logged; the jar still persists what changes.
-    pub fn attachProfile(self: *Self, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer) std.mem.Allocator.Error!void {
+    /// (storage_integration.zig), arming commits on `timer` and writing them
+    /// on `sequence`, the Browser's storage sequence (lane prof2).
+    /// Browser.init's (src/browser/profile_stores.zig), before any realm;
+    /// the jar is empty. A store that cannot be read leaves the jar with
+    /// what was read, and is logged; the jar still persists what changes.
+    pub fn attachProfile(self: *Self, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, sequence: *storage.StorageSequence) std.mem.Allocator.Error!void {
         std.debug.assert(self.persistence == null and self.cookies.items.len == 0);
-        const persistence = try CookiePersistence.create(self.allocator, browser, timer, self);
+        const persistence = try CookiePersistence.create(self.allocator, browser, timer, sequence, self);
         self.persistence = persistence;
         persistence.load() catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
@@ -189,9 +190,10 @@ pub const CookieJar = struct {
         };
     }
 
-    /// Commit what the jar has queued for its profile now: the Browser's
-    /// end, before its loop and its platform state end. Nothing without a
-    /// profile. Never under the jar's lock.
+    /// Hand what the jar has queued for its profile to the storage sequence
+    /// now: the Browser's end, before the sequence stops and its loop and
+    /// its platform state end. Nothing without a profile. Never under the
+    /// jar's lock.
     pub fn flush(self: *Self) void {
         if (self.persistence) |persistence| persistence.flush();
     }

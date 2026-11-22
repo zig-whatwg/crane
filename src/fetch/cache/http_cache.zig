@@ -147,15 +147,18 @@ pub const HttpCache = struct {
     /// The Browser has a profile directory (D6, the user's ruling
     /// 2026-11-21): its HTTP cache keeps a disk level in `browser`'s store
     /// "http_cache" (persistence.zig), capped from `available`, the free
-    /// bytes of the profile's volume (null: unknown), committing on `timer`.
-    /// Browser.init's (src/browser/profile_stores.zig), before any request.
-    pub fn attachProfile(self: *HttpCache, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, available: ?u64) Allocator.Error!void {
+    /// bytes of the profile's volume (null: unknown), committing on `timer`
+    /// and writing on `sequence`, the Browser's storage sequence (lane
+    /// prof2). Browser.init's (src/browser/profile_stores.zig), before any
+    /// request.
+    pub fn attachProfile(self: *HttpCache, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, sequence: *storage.StorageSequence, available: ?u64) Allocator.Error!void {
         std.debug.assert(self.persistence == null);
-        self.persistence = try Persistence.create(self.allocator, browser, timer, available);
+        self.persistence = try Persistence.create(self.allocator, browser, timer, sequence, available);
     }
 
-    /// Write what the disk level has queued now: the Browser's end, before
-    /// its loop and its platform state end.
+    /// Hand what the disk level has queued to the storage sequence now: the
+    /// Browser's end, before the sequence stops and its loop and its
+    /// platform state end.
     pub fn flushProfile(self: *HttpCache) void {
         if (self.persistence) |persistence| persistence.flush();
     }

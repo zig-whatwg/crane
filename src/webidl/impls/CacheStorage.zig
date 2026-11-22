@@ -31,6 +31,15 @@ pub const ImplError = error{
 /// No state of its own.
 pub const InternalState = struct {};
 
+/// With a profile directory the members' promises wait for the Browser's
+/// storage sequence (api.zig, lane prof2): a realm's calls still waiting are
+/// released at its end - a document's, and every worker's (a service
+/// worker's included: dom.unloading_cleanup runs for both) - on its own
+/// thread.
+pub fn installHooks() void {
+    @import("dom").unloading_cleanup.install(&api.environmentEnded);
+}
+
 /// Operation: match (5.5.1).
 pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.MultiCacheQueryOptions)) anyerror!runtime.JSValue {
     return api.storageMatch(instance, request, if (options.was_passed) options.value else null);

@@ -292,7 +292,7 @@ const RefererServer = struct {
         var reader = stream.reader(testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
         const head = reader.interface.buffered();
-        if (std.ascii.indexOfIgnoreCase(head, "\r\nreferer: ")) |at| {
+        if (indexOfIgnoreCase(head, "\r\nreferer: ")) |at| {
             const start_at = at + "\r\nreferer: ".len;
             const end_at = std.mem.indexOfPos(u8, head, start_at, "\r\n") orelse head.len;
             const value = head[start_at..end_at];
@@ -388,4 +388,16 @@ fn bfcacheRestoreIsCommitted() !void {
 
 test "a traversal back commits the document it shows again, restored from the back/forward cache or loaded" {
     try onFreshThread(bfcacheRestoreIsCommitted);
+}
+
+/// The first position of `needle` in `haystack`, ASCII case ignored (an HTTP
+/// header name is case-insensitive). Zig 0.17's std.ascii has no
+/// indexOfIgnoreCase.
+fn indexOfIgnoreCase(haystack: []const u8, needle: []const u8) ?usize {
+    if (needle.len > haystack.len) return null;
+    var i: usize = 0;
+    while (i + needle.len <= haystack.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return i;
+    }
+    return null;
 }
