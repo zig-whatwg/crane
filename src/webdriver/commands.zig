@@ -166,9 +166,9 @@ fn handleNewSession(ctx: CommandContext) !CommandResult {
     // (chromedriver): the session's Browser over the Chrome DevTools
     // Protocol, as Playwright's SELENIUM_REMOTE_URL route takes it
     // (devtools_endpoint.zig). A build without CDP answers neither.
-    session.cdp.start(ctx.allocator, session.host) catch |err| switch (err) {
-        error.CdpNotBuilt => {},
-        else => std.log.warn("WebDriver: the session's CDP endpoint did not start: {}", .{err}),
+    session.cdp.start(ctx.allocator, session.host) catch |err| {
+        const any: anyerror = err;
+        if (any != error.CdpNotBuilt) std.log.warn("WebDriver: the session's CDP endpoint did not start: {}", .{err});
     };
     var url_buffer: [160]u8 = undefined;
     var address_buffer: [32]u8 = undefined;
