@@ -100,7 +100,7 @@ pub fn crossOriginIsolationMode(realm: runtime.Context) bool {
         return browsing_context.groupIsCrossOriginIsolated();
     }
     const agent = realm.agent orelse return false;
-    const agent_host: *const AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return false));
+    const agent_host: *const AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return false;
     return agent_host.agent_cluster_cross_origin_isolated;
 }
 
@@ -110,7 +110,7 @@ pub fn crossOriginIsolationMode(realm: runtime.Context) bool {
 /// when none is known.
 pub fn ofRealm(realm: runtime.Context) u64 {
     const agent = realm.agent orelse return 0;
-    return agentClusterOf(engine.agentHost(agent), realm);
+    return agentClusterOf(@import("dom").agent_hosts.ofAgent(agent), realm);
 }
 
 /// A Window's agent cluster: its document's origin's site, or the origin when

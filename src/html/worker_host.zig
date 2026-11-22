@@ -969,17 +969,17 @@ pub const WorkerHost = struct {
         // crossOriginIsolationMode).
         self.agent_host.agent_cluster_cross_origin_isolated = start.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
-        const agent = try engine.createAgent(.{
+        // The agent's host and host state: this worker's AgentHost.
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&self.agent_host, .{
             .can_block = true,
             .from_snapshot = false,
             .hooks = &worker_hooks,
-            .host = &self.agent_host,
             .allocator = allocator,
             // A collected node's teardown is queued here, for the worker's
             // loop to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-        });
+        }));
         self.agent = agent;
         thread.loop.agent = agent;
         thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
@@ -1066,15 +1066,15 @@ pub const WorkerHost = struct {
         };
         self.agent_host.agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
-        const agent = try engine.createAgent(.{
+        // The agent's host and host state: this worker's AgentHost.
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&self.agent_host, .{
             .can_block = false,
             .from_snapshot = false,
             .hooks = &worker_hooks,
-            .host = &self.agent_host,
             .allocator = allocator,
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-        });
+        }));
         self.agent = agent;
         thread.loop.agent = agent;
         thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
@@ -4523,7 +4523,7 @@ pub fn serviceScopeOf(ctx: runtime.Context) ?ServiceScope {
 
 fn serviceHostOf(ctx: runtime.Context) ?*WorkerHost {
     const agent = ctx.agent orelse return null;
-    const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const agent_host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
     const host: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     if (host.service == null) return null;
     return host;

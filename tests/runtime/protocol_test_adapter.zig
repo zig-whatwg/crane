@@ -110,6 +110,10 @@ pub fn agentRestoredFromSnapshot(_: *Agent) bool {
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;
 }
+/// No agent is made here: none has host state.
+pub fn hostStateOf(_: *Agent) ?*engine.HostState {
+    return null;
+}
 /// No agent is made here: none has a queue.
 pub fn deferredTeardownOf(_: *Agent) ?*engine.DeferredTeardown {
     return null;

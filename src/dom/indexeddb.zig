@@ -563,7 +563,7 @@ pub fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
 /// agent's host, shared by that agent's window or worker realms.
 pub fn agentCleanupList(realm: runtime.Context) ?*CleanupList {
     const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("agent_hosts.zig").ofAgent(agent) orelse return null;
     return &host.indexeddb_cleanup;
 }
 
