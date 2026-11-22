@@ -133,12 +133,12 @@ pub fn setWindowBounds(scope: *runtime.BrowserScope, tab: u64, change: WindowCha
     changed(traversable, before);
 }
 
-/// The screen the tab's window is on (the platform's screenInfo): its
-/// whole area, or its available area at the origin.
+/// The screen the tab's window is on - the tab's (html.screen_info: an
+/// emulated device's, else the platform's) - its whole area, or its
+/// available area, at the origin.
 fn screenRect(traversable: *BrowsingContext, whole: bool) WindowRect {
     const window: *runtime.Instance = @ptrCast(@alignCast(traversable.getActiveWindow() orelse return default_window));
-    const browser = html.platform_state.of(window.ctx) orelse return default_window;
-    const screen = platform.screenInfo(browser);
+    const screen = html.screen_info.ofTraversable(window.ctx, traversable);
     return if (whole)
         .{ .width = screen.width, .height = screen.height }
     else
