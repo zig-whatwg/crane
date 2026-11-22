@@ -326,8 +326,10 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // A srcdoc Window walks to its ancestor document; a worker's realm
     // document URL is already its creation URL (Referrer Policy 8.3).
     client.request.referrer_source = if (settings.referrer_source) |source_of| source_of(global) else global.ctx.documentUrl();
-    // A Window stands in for its navigable's traversable.
-    if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
+    // A Window stands in for its navigable's traversable; any other global
+    // is the client whose user agent override its requests send (a
+    // dedicated worker's copy of its tab's).
+    if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global) else client.request.user_agent_client = @ptrCast(global);
     client.request.cookie_jar = cookieJarOf(global);
     // The blob URL store a blob: request's blob is obtained from: the
     // global's Browser's (its realm's scope).

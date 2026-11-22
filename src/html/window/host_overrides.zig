@@ -116,6 +116,67 @@ pub const HostOverrides = struct {
     }
 };
 
+/// A copy of a tab's user agent override, taken when a dedicated worker is
+/// made, which the worker's navigator and requests use for its life: Chrome
+/// copies its owner's user agent - the override applied
+/// (FrameLoader::UserAgent through probe::ApplyUserAgentOverride) - into the
+/// worker's creation params (DedicatedWorker::CreateGlobalScopeCreationParams
+/// `user_agent`, third_party/blink/renderer/core/workers/
+/// dedicated_worker.cc), and WorkerFetchContext::PrepareRequest sends that
+/// copy. An override set later reaches only workers made later. Thread-safe
+/// by construction: copied on the owner's thread before the worker's thread
+/// starts, read only on the worker's. OWNED; null fields: none.
+pub const UserAgentSnapshot = struct {
+    user_agent: ?[]u8 = null,
+    platform: ?[]u8 = null,
+    accept_language: ?[]u8 = null,
+
+    /// The override as `overrides` holds it now.
+    pub fn of(allocator: Allocator, overrides: *const HostOverrides) Allocator.Error!UserAgentSnapshot {
+        return copyOf(allocator, overrides.user_agent, overrides.platform, overrides.accept_language);
+    }
+
+    /// Another snapshot's copy (a nested dedicated worker takes its owner
+    /// worker's).
+    pub fn clone(self: *const UserAgentSnapshot, allocator: Allocator) Allocator.Error!UserAgentSnapshot {
+        return copyOf(allocator, self.user_agent, self.platform, self.accept_language);
+    }
+
+    fn copyOf(allocator: Allocator, user_agent: ?[]const u8, platform: ?[]const u8, accept_language: ?[]const u8) Allocator.Error!UserAgentSnapshot {
+        var copy: UserAgentSnapshot = .{};
+        errdefer copy.deinit(allocator);
+        if (user_agent) |text| copy.user_agent = try allocator.dupe(u8, text);
+        if (platform) |text| copy.platform = try allocator.dupe(u8, text);
+        if (accept_language) |text| copy.accept_language = try allocator.dupe(u8, text);
+        return copy;
+    }
+
+    pub fn deinit(self: *UserAgentSnapshot, allocator: Allocator) void {
+        if (self.user_agent) |text| allocator.free(text);
+        if (self.platform) |text| allocator.free(text);
+        if (self.accept_language) |text| allocator.free(text);
+        self.* = .{};
+    }
+};
+
+test "a worker's user agent snapshot is a copy: the tab's override changing later leaves it" {
+    const allocator = std.testing.allocator;
+    var overrides: HostOverrides = .{};
+    defer overrides.deinit(allocator);
+    try overrides.setUserAgent(allocator, 1, "UA-one", "", "fr-FR");
+    var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
+    defer snapshot.deinit(allocator);
+    var nested = try snapshot.clone(allocator);
+    defer nested.deinit(allocator);
+    try overrides.setUserAgent(allocator, 1, "UA-two", null, null);
+    try std.testing.expectEqualStrings("UA-one", snapshot.user_agent.?);
+    try std.testing.expectEqualStrings("fr-FR", nested.accept_language.?);
+    try std.testing.expect(nested.platform == null);
+    var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
+    defer none.deinit(allocator);
+    try std.testing.expect(none.user_agent == null);
+}
+
 test "a setter that goes clears only what it set; strings are owned" {
     const allocator = std.testing.allocator;
     var overrides: HostOverrides = .{};

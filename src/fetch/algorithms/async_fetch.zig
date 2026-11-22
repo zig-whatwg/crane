@@ -359,6 +359,7 @@ pub const AsyncFetch = struct {
         request.integrity_violation_reporter = null;
         request.coep_violation_reporter = null;
         if (request.traversable_for_user_prompts == .traversable) request.traversable_for_user_prompts = .no_traversable;
+        request.user_agent_client = null;
     }
 
     /// A kept fetch's client: no one. A response is dropped as it comes.

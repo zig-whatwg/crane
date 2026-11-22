@@ -373,6 +373,12 @@ pub const InternalRequest = struct {
     /// Traversable for user prompts
     traversable_for_user_prompts: TraversableForUserPrompts = .client,
 
+    /// A worker client's global, whose user agent override the request
+    /// sends (RequestClient.user_agent_client; http_fetch.
+    /// userAgentOverrideOf). BORROWED: cleared, as the traversable is, when
+    /// a kept fetch outlives its client.
+    user_agent_client: ?*anyopaque = null,
+
     // === Request Metadata ===
 
     /// Keep request alive after environment terminates
@@ -966,6 +972,7 @@ pub const InternalRequest = struct {
             .reserved_client = self.reserved_client,
             .replaces_client_id = self.replaces_client_id,
             .traversable_for_user_prompts = self.traversable_for_user_prompts,
+            .user_agent_client = self.user_agent_client,
             .keepalive = self.keepalive,
             .initiator_type = self.initiator_type,
             .service_workers_mode = self.service_workers_mode,
