@@ -115,6 +115,12 @@ pub const FetchJob = struct {
     /// was canceled, and says so.
     observed_start: bool = false,
     observed_end: bool = false,
+    /// The observer heard the response handed over (response_received) with
+    /// its body still arriving: the driver reports that body's end
+    /// (`observeBodyEnd`) whoever holds the response by then - a streamed
+    /// response is the client's once handed over (`takeResult`), so the job
+    /// no longer has it when its body ends.
+    observed_handover: bool = false,
     /// The driver reported body bytes to the observer (`observeData`): a
     /// body whole at its handover is not reported again.
     observed_data: bool = false,
@@ -558,6 +564,7 @@ pub const FetchJob = struct {
             return;
         }
         if (o.response_received) |received| received(o.context, self.request, response);
+        self.observed_handover = true;
         if (!bodyArriving(response)) {
             // A body whole at its handover (scheme fetch's, the HTTP cache's,
             // the blocking driver's, a fulfilled one): its bytes, unless the
@@ -646,8 +653,11 @@ pub const FetchJob = struct {
 
     /// The driver's word that the handed-over response's body ended, with
     /// `encoded_length` bytes as they came over the network, or failed.
+    /// Nothing before the handover: a body main fetch waits for whole (step
+    /// 23) is reported at its handover (`observeHandover`), after
+    /// response_received, as Chrome orders them.
     pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failed: bool) void {
-        if (self.observed_end) return;
+        if (self.observed_end or !self.observed_handover) return;
         self.observed_end = true;
         const o = self.observer() orelse return;
         if (failed) {

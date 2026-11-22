@@ -972,8 +972,15 @@ pub const AsyncFetch = struct {
         self.source = null;
         if (result) |_| source.finish() else |_| source.fail(.{ .kind = .network });
         // The body of the response handed over: its observer hears its end
-        // (Network.loadingFinished / loadingFailed).
-        if (self.job.response != null) self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| false else |_| true);
+        // (Network.loadingFinished / loadingFailed) - the job knows whether
+        // it handed one over. It asked `self.job.response != null`, which is
+        // null exactly when the response was handed over streaming (the
+        // client took it): a navigation's document, a fetch() read as it
+        // arrives. Their end went unreported, and the job's destroy then
+        // reported them canceled - Playwright's page.goto failed with
+        // net::ERR_ABORTED on every navigation (lane tpf, htmx's and Vue's
+        // runners).
+        self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| false else |_| true);
         // Received, or failed: the job's report timing steps run now.
         self.endBody();
         if (self.awaiting_body) {
@@ -1280,6 +1287,8 @@ pub const AsyncFetch = struct {
         self.body_bytes = relay.drained;
         self.encoded_bytes = relay.drained;
         if (end == .open) return true;
+        // A service worker's body handed over: its end, as networkEnd's.
+        self.job.observeBodyEnd(relay.drained, end == .errored);
         self.relay_source = null;
         relay.release();
         self.relay = null;
