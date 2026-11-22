@@ -31,6 +31,8 @@ pub const DialogOpening = @import("html").navigation.user_prompts.Opening;
 pub const DialogClosed = @import("html").navigation.user_prompts.Closed;
 pub const DialogAnswer = @import("html").navigation.user_prompts.DialogAnswer;
 pub const DialogKind = @import("html").navigation.user_prompts.Kind;
+/// A page asking for a new window (html.navigation.window_open).
+pub const WindowOpen = @import("html").navigation.window_open.Opened;
 /// An open dialog as a host reads it from any thread
 /// (BrowserHost.userPromptOf).
 pub const UserPromptInfo = @import("html").simple_dialogs.Info;
@@ -80,6 +82,17 @@ pub const Event = union(enum) {
     /// The dialog closed, whoever answered (WebDriver BiDi "user prompt
     /// closed"). BORROWED for the call.
     dialog_closed: *const DialogClosed,
+    /// A page asks for a new window - window.open(), or a link or form whose
+    /// target names none - before the new top-level traversable is made
+    /// (CDP's Page.windowOpen; Blink's probe::WindowOpen): the opener's tab
+    /// and navigable, the URL, the name and the features. tab_created
+    /// follows when the window is made. BORROWED for the call.
+    window_open: *const WindowOpen,
+    /// Script reached, for the first time, the Window of a child navigable
+    /// still on its initial about:blank (html_core BrowsingContext.
+    /// touchedByScript): a host announces its main world context now, as
+    /// Blink makes it lazily (LocalWindowProxy::Initialize on first access).
+    frame_touched: struct { navigable: u64 },
 
     pub const TabCreated = struct {
         tab: TabId,

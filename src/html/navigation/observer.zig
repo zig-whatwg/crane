@@ -126,6 +126,11 @@ pub const Event = union(enum) {
     /// A navigable is gone - after its close steps: its documents unloaded
     /// and destroyed. Never sent while the navigable still runs.
     navigable_destroyed,
+    /// document.open() ran the document open steps on the navigable's
+    /// active document - no navigation: its URL may now be the entry
+    /// document's (CDP Page.documentOpened and lifecycleEvent init; Blink's
+    /// FrameLoader::DidExplicitOpen -> probe::DidOpenDocument).
+    document_opened: struct { url: []const u8, document: DocumentRef },
 };
 
 /// The Browser's observer (`Navigables.observer`).

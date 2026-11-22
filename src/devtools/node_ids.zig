@@ -14,11 +14,15 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 
 pub const NodeIds = struct {
     allocator: Allocator,
     by_node: std.AutoHashMapUnmanaged(usize, Entry) = .empty,
     by_id: std.AutoHashMapUnmanaged(i64, Entry) = .empty,
+    /// Both maps lose entries as nodes go (infra.tombstones).
+    by_node_guard: TombstoneGuard = .{},
+    by_id_guard: TombstoneGuard = .{},
     /// Chrome's first id is 1; 0 is "no node".
     next_id: i64 = 1,
 
@@ -44,10 +48,12 @@ pub const NodeIds = struct {
         if (self.by_node.get(address)) |entry| {
             if (entry.generation == generation) return entry.id;
             // The slot holds another node now: the old one's id goes.
-            _ = self.by_id.remove(entry.id);
+            if (self.by_id.remove(entry.id)) self.by_id_guard.noteRemoval(&self.by_id);
         }
         const entry: Entry = .{ .id = self.next_id, .node = address, .generation = generation };
+        self.by_id_guard.beforeInsert(&self.by_id);
         try self.by_id.ensureUnusedCapacity(self.allocator, 1);
+        self.by_node_guard.beforeInsert(&self.by_node);
         try self.by_node.put(self.allocator, address, entry);
         self.by_id.putAssumeCapacity(entry.id, entry);
         self.next_id += 1;
@@ -59,8 +65,8 @@ pub const NodeIds = struct {
         const entry = self.by_id.get(id) orelse return null;
         const node: *runtime.Instance = @ptrFromInt(entry.node);
         if (runtime.SlabAllocator.generationOf(node) != entry.generation) {
-            _ = self.by_id.remove(id);
-            _ = self.by_node.remove(entry.node);
+            if (self.by_id.remove(id)) self.by_id_guard.noteRemoval(&self.by_id);
+            if (self.by_node.remove(entry.node)) self.by_node_guard.noteRemoval(&self.by_node);
             return null;
         }
         return node;

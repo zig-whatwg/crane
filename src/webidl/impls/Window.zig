@@ -249,7 +249,6 @@ pub const InternalState = struct {
     screen_y: i32 = 0,
     scroll_x: f64 = 0.0,
     scroll_y: f64 = 0.0,
-    device_pixel_ratio: f64 = 1.0,
 
     /// V8 global object that this Window IS bound to (for cross-realm support)
     /// When this is set, `instanceToV8` returns this global directly instead of
@@ -1593,6 +1592,8 @@ pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtim
     // Get the child browsing context's Window
     const child_ctx = children.items[index].browsing_context;
     const child_window = child_ctx.getActiveWindow() orelse return null;
+    // window[i] reaches the child's Window: a host announces its context now.
+    child_ctx.touchedByScript();
 
     // Cast the InstancePtr (anyopaque) to runtime.Instance
     return @ptrCast(@alignCast(child_window));
@@ -1966,7 +1967,41 @@ pub fn get_pageYOffset(instance: *runtime.Instance) anyerror!f64 {
 /// Per spec: Returns the X position of the window on the screen.
 pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // The window's (its tab's window rect: the platform's, a host's - CDP
+    // Browser.setWindowBounds -, or moveTo's), else this Window's own.
+    if (tabWindowRect(internal)) |rect| return rect.x;
     return internal.screen_x;
+}
+
+/// The rect of the window this Window's tab is shown in, once one is known
+/// (html BrowsingContext.window_rect); null for a Window with no browsing
+/// context or a tab with no rect yet.
+fn tabWindowRect(internal: *InternalState) ?html_core.window.browsing_context.WindowRect {
+    if (internal.closed) return null;
+    return internal.browsing_context.windowRect();
+}
+
+/// moveTo/moveBy/resizeTo/resizeBy: the tab's window takes `rect` when it
+/// has one (BrowsingContext.requestWindowRect), its resize steps at the next
+/// rendering opportunity; else this Window's own fields do.
+fn moveOrResize(instance: *runtime.Instance, internal: *InternalState, rect: html_core.window.browsing_context.WindowRect) void {
+    _ = instance;
+    if (internal.browsing_context.requestWindowRect(rect)) {
+        // A headless window's size is its viewport: the resize steps run at
+        // the next rendering opportunity.
+        const document = internal.document orelse return;
+        @import("dom").update_the_rendering.requestFrame(document);
+        return;
+    }
+    internal.screen_x = rect.x;
+    internal.screen_y = rect.y;
+    internal.outer_width = rect.width;
+    internal.outer_height = rect.height;
+}
+
+/// The window's rect as this Window reports it now.
+fn currentWindowRect(internal: *InternalState) html_core.window.browsing_context.WindowRect {
+    return tabWindowRect(internal) orelse .{ .x = internal.screen_x, .y = internal.screen_y, .width = internal.outer_width, .height = internal.outer_height };
 }
 
 /// Getter for screenLeft - Same as screenX
@@ -1979,6 +2014,7 @@ pub fn get_screenLeft(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the Y position of the window on the screen.
 pub fn get_screenY(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.y;
     return internal.screen_y;
 }
 
@@ -1992,6 +2028,7 @@ pub fn get_screenTop(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the width of the window including chrome.
 pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.width;
     return internal.outer_width;
 }
 
@@ -1999,14 +2036,18 @@ pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the height of the window including chrome.
 pub fn get_outerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.height;
     return internal.outer_height;
 }
 
 /// Getter for devicePixelRatio
 /// Per spec: Returns the ratio of CSS pixels to physical pixels.
 pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.device_pixel_ratio;
+    // CSSOM View: the output device's pixel ratio - the tab's screen, an
+    // emulated device's scale first (html.screen_info; CDP
+    // Emulation.setDeviceMetricsOverride's deviceScaleFactor).
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    return @import("html").screen_info.ofWindow(instance).device_pixel_ratio;
 }
 
 /// Getter for launchQueue
@@ -2791,11 +2832,11 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
         return;
     }
 
-    // Update outer dimensions
-    internal.outer_width = width;
-    internal.outer_height = height;
-
-    // TODO: Notify platform to actually resize the window
+    // Update outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width = width;
+    rect.height = height;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: showSaveFilePicker
@@ -3254,6 +3295,12 @@ const IdleTimeout = struct {
 /// WebIDL "invoke" an IdleRequestCallback with a new IdleDeadline in
 /// `realm`, reporting what it throws. `callback` stays the caller's.
 fn invokeIdleCallback(realm: runtime.Context, callback: engine.CallbackFunction, deadline: idle_periods.Deadline) void {
+    // Timed for a host's handler violation (Blink's ScriptedIdleTaskController
+    // probe::UserCallback "requestIdleCallback", recurring) - one load while
+    // none listens.
+    const monitor = @import("dom").performance_monitor.active(realm);
+    const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
+    defer if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(realm, "requestIdleCallback", true, duration);
     const deadline_arg = idle_periods.createDeadline(realm, deadline) catch |err| {
         log.debug("an idle callback was not invoked: {}", .{err});
         return;
@@ -3439,11 +3486,11 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Apply delta to screen position
-    internal.screen_x += x;
-    internal.screen_y += y;
-
-    // TODO: Notify platform to actually move the window
+    // Apply delta to screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x +%= x;
+    rect.y +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: getSelection
@@ -3494,11 +3541,11 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
         return;
     }
 
-    // Apply delta to outer dimensions
-    internal.outer_width += x;
-    internal.outer_height += y;
-
-    // TODO: Notify platform to actually resize the window
+    // Apply delta to outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width +%= x;
+    rect.height +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: open
@@ -3640,6 +3687,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // entry global. Step 8: with its sandboxed auxiliary navigation browsing
     // context flag set no new top-level traversable is made, and (step 14)
     // "if targetNavigable is null, then return null".
+    // Step 8.4's opener policy check (below) decides the new window's name
+    // and noopener, which a host is told first.
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
+    // A host hears that a new window is asked for (CDP's Page.windowOpen,
+    // html_core.navigation.window_open) before the sandbox's check and
+    // before the window exists: Blink's probe::WindowOpen in
+    // CreateNewWindow (core/page/create_window.cc) runs there, after the
+    // target name found no frame. Its user gesture is the activation before
+    // step 13 consumes it.
+    notifyWindowOpen(this, url_record orelse "", if (coop_noopener) "_blank" else target_str, window_features.geometry, window_features.popup and !(noopener or coop_noopener), noopener or coop_noopener, source_activated);
     const current_flags = sandboxingFlagsOfWindow(this);
     if (current_flags.auxiliary_navigation) return null;
 
@@ -3657,7 +3714,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // that are cross-origin with their top-level browsing context's active
     // document always set noopener to true" (currentDocument: this's
     // navigable's active document).
-    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
     const new_noopener = noopener or coop_noopener;
     const new_target = if (coop_noopener) "_blank" else target_str;
     const is_popup = window_features.popup and !new_noopener;
@@ -3845,6 +3901,26 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     return .{ .integration = integration, .window = created.window };
 }
 
+/// Tell the opener's Browser that a page asks for a new window
+/// (html_core.navigation.window_open; CDP's Page.windowOpen): `opener`'s
+/// tab and navigable, the URL (empty: none), the name the window gets, and
+/// the features Blink's InspectorPageAgent lists.
+fn notifyWindowOpen(opener: *runtime.Instance, url: []const u8, name: []const u8, geometry: html_core.window.browsing_context.WindowGeometry, is_popup: bool, noopener: bool, user_gesture: bool) void {
+    const bc = @import("dom").browser_state.browsingContextOf(opener) orelse return;
+    const window_open = html_core.navigation.window_open;
+    if (bc.navigables == null or bc.navigables.?.window_open == null) return;
+    var features: window_open.FeatureList = .{};
+    features.fill(geometry, is_popup, noopener);
+    window_open.opened(bc.navigables, &.{
+        .tab = bc.getTop().id,
+        .navigable = bc.id,
+        .url = url,
+        .name = name,
+        .features = features.slice(),
+        .user_gesture = user_gesture,
+    });
+}
+
 /// `window`'s associated Document's active sandboxing flag set: what "the
 /// rules for choosing a navigable" read as sandboxingFlagSet for the
 /// navigable whose active window `window` is. Empty with no document.
@@ -3858,7 +3934,7 @@ fn sandboxingFlagsOfWindow(window: *runtime.Instance) @import("dom").sandboxing.
 /// for a hyperlink or a form whose target names no frame of its page - an
 /// open popup of that name in the page's group (step 7), else a new
 /// top-level traversable (step 8).
-fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?@import("dom").auxiliary_navigables.Chosen {
+fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool, url: []const u8) ?@import("dom").auxiliary_navigables.Chosen {
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (popupByName(current_window, target)) |found| return .{
             .integration = if (found.integration) |integration| @ptrCast(integration) else null,
@@ -3868,10 +3944,14 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     // Step 8: no new top-level traversable for a document whose active
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
     // context flag set.
-    if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
     // Step 8.4: a nested document cross-origin with its top-level origin
     // under "same-origin" opens with noopener, named "_blank".
     const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(current_window);
+    // A host hears the new window asked for, before the sandbox's check
+    // (Blink's probe::WindowOpen, as in open() above). A link or form names
+    // no features; its user gesture is the window's transient activation.
+    notifyWindowOpen(current_window, url, if (coop_noopener) "_blank" else target, .{}, false, noopener or coop_noopener, @import("html").user_activation.hasTransientActivation(current_window));
+    if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
     const created = (newTopLevelTraversable(current_window, if (coop_noopener) "_blank" else target, noopener or coop_noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
@@ -4199,11 +4279,11 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Update screen position
-    internal.screen_x = x;
-    internal.screen_y = y;
-
-    // TODO: Notify platform to actually move the window
+    // Update screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x = x;
+    rect.y = y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: prompt
@@ -4462,7 +4542,10 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
     } else return null;
     var children = documentTreeChildNavigables(window, internal, internal.allocator);
     defer children.deinit(internal.allocator);
-    return childNavigableNamedIn(window, internal, children.items, name);
+    const found = childNavigableNamedIn(window, internal, children.items, name);
+    // A named frame reaches the child's Window: a host announces its context.
+    if (found) |child| if (@import("dom").browser_state.browsingContextOf(child)) |bc| bc.touchedByScript();
+    return found;
 }
 
 /// The first same-named child decides visibility, even when its origin

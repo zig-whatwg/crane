@@ -8,10 +8,11 @@
 //! `post` only queues tasks on the event loops that need the event, through
 //! their TaskSinks, which is what any other thread may touch of a loop.
 //!
-//! Three events are turned into steps so far: the system visibility state of
+//! Four events are turned into steps so far: the system visibility state of
 //! a tab (`visibility_changed`, HTML 6.2: `systemVisibilityChanged`), a tab's
-//! window rect (`window_rect_changed`: its viewport, src/browser/viewport.zig)
-//! and memory pressure. What the browsers do with memory pressure (read 2026-11-16):
+//! window rect (`window_rect_changed`: its viewport, src/browser/viewport.zig),
+//! a tab's screen (`screen_changed`: html.screen_info.screenChanged - screen.*,
+//! the media queries, screen.orientation) and memory pressure. What the browsers do with memory pressure (read 2026-11-16):
 //!
 //! - Chromium: every level reaches V8. content/renderer/
 //!   blink_isolates_pressure_listener.cc OnReleaseMemory ->
@@ -137,6 +138,7 @@ pub const PlatformEvents = struct {
             },
             .visibility_changed => self.postSystemVisibility(event.tab, event.visibility),
             .window_rect_changed => self.postWindowRect(event.tab, event.rect),
+            .screen_changed => self.postScreen(event.tab, event.screen),
             // Not turned into steps yet (docs/platform-protocol.md 7; no
             // platform posts them).
             else => {},
@@ -157,6 +159,22 @@ pub const PlatformEvents = struct {
         change.* = .{ .allocator = self.allocator, .scope = scope, .tab = tab, .rect = rect };
         // The sink takes the task whatever happens (see postSystemVisibility).
         _ = held.post(.{ .run = WindowRectChange.run, .drop = WindowRectChange.drop, .data = change });
+    }
+
+    /// `screen_changed(tab, screen)`: one task for the window's loop, which
+    /// makes `screen` the tab's reported screen (html.screen_info.
+    /// screenChanged). Any thread.
+    fn postScreen(self: *PlatformEvents, tab: platform.TabId, screen: platform.ScreenInfo) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        const sink = if (self.sink) |held| held.retain() else null;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = sink orelse return;
+        defer held.release();
+        const scope = self.scope orelse return;
+        const change = self.allocator.create(ScreenChange) catch return;
+        change.* = .{ .allocator = self.allocator, .scope = scope, .tab = tab, .screen = screen };
+        // The sink takes the task whatever happens (see postSystemVisibility).
+        _ = held.post(.{ .run = ScreenChange.run, .drop = ScreenChange.drop, .data = change });
     }
 
     /// `visibility_changed(tab, visibility)`: one task for the window's
@@ -228,6 +246,25 @@ const WindowRectChange = struct {
 
     fn drop(data: ?*anyopaque) void {
         const self: *WindowRectChange = @ptrCast(@alignCast(data orelse return));
+        self.allocator.destroy(self);
+    }
+};
+
+/// A tab's new screen, on its way to the window's loop.
+const ScreenChange = struct {
+    allocator: std.mem.Allocator,
+    scope: *runtime.BrowserScope,
+    tab: platform.TabId,
+    screen: platform.ScreenInfo,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *ScreenChange = @ptrCast(@alignCast(data orelse return));
+        defer self.allocator.destroy(self);
+        html.screen_info.screenChanged(self.scope, self.tab, self.screen);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *ScreenChange = @ptrCast(@alignCast(data orelse return));
         self.allocator.destroy(self);
     }
 };

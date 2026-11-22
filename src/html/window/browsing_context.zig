@@ -191,6 +191,16 @@ pub const Navigables = struct {
     /// opened and closed). One slot, which the Browser sets to its own
     /// dispatcher.
     user_prompts: ?@import("../navigation/user_prompts.zig").Hook = null,
+    /// The Browser's new-window hook (navigation/window_open.zig): told as a
+    /// page asks for a new top-level traversable, before it is made (CDP's
+    /// Page.windowOpen). One slot, which the Browser sets to its own
+    /// dispatcher.
+    window_open: ?@import("../navigation/window_open.zig").Hook = null,
+    /// The Browser's hook for a child navigable whose initial about:blank
+    /// script reached for the first time (`BrowsingContext.touchedByScript`):
+    /// a host announces its main world context then, as Blink makes it
+    /// lazily (LocalWindowProxy::Initialize on first access).
+    frame_touched: ?FrameTouched = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
@@ -375,12 +385,29 @@ pub const WindowGeometry = struct {
     height: ?i32 = null,
 };
 
+/// A window's rect on the screen, in CSS pixels (its outer edges).
+pub const WindowRect = struct {
+    x: i32 = 0,
+    y: i32 = 0,
+    width: i32,
+    height: i32,
+};
+
+/// A window's state (CDP Browser.WindowState).
+pub const WindowState = enum { normal, minimized, maximized, fullscreen };
+
 /// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
 pub const SystemVisibility = enum { visible, hidden };
 
 /// A viewport's size in CSS pixels (CSSOM View innerWidth/innerHeight are
 /// `long`).
 pub const ViewportSize = struct { width: i32, height: i32 };
+
+/// `Navigables.frame_touched`.
+pub const FrameTouched = struct {
+    context: *anyopaque,
+    touched: *const fn (context: *anyopaque, navigable: u64) void,
+};
 
 pub const BrowsingContext = struct {
     /// Allocator used for this context
@@ -502,11 +529,35 @@ pub const BrowsingContext = struct {
     /// and the media queries that read them, read it through
     /// `traversableViewport`.
     viewport: ?ViewportSize = null,
+    /// The window a top-level traversable is shown in: its rect on the
+    /// screen in CSS pixels - CSSOM View's screenX/screenY and outerWidth/
+    /// outerHeight - as the platform reports it (`window_rect_changed`), a
+    /// host sets it (CDP Browser.setWindowBounds) or moveTo/resizeTo ask for
+    /// it; null while none has (each Window's own then). The tab's, kept
+    /// across its documents, as a browser window outlives what it shows.
+    window_rect: ?WindowRect = null,
+    /// That window's state (CDP Browser.WindowState; Chrome's
+    /// ui::WindowShowState as BrowserHandler reports it).
+    window_state: WindowState = .normal,
+    /// The rect a minimized, maximized or fullscreen window goes back to
+    /// when it is normal again.
+    restore_rect: ?WindowRect = null,
     /// A host's override of that viewport (an automation client's device
     /// metrics: CDP Emulation.setDeviceMetricsOverride, as Chrome's
     /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
     /// page), which wins over the platform's while set.
     viewport_override: ?ViewportSize = null,
+    /// A top-level traversable's screen as the platform last reported it
+    /// (`screen_changed(tab, screen)`, docs/platform-protocol.md section 7),
+    /// or null while it has reported none (the platform's `screenInfo`
+    /// answers then). html.screen_info reads it, under a host's override.
+    reported_screen: ?@import("platform").ScreenInfo = null,
+    /// A child navigable on its initial about:blank whose main world a host
+    /// (CDP's Runtime) has not announced yet: the first script to reach its
+    /// Window - its container's contentWindow/contentDocument, window[i],
+    /// a named frame, window.open by its name - announces it
+    /// (`touchedByScript`).
+    inspector_pending: bool = false,
     /// A host's overrides of the platform's other answers for this tab -
     /// media, touch points, user agent (host_overrides.zig: CDP Emulation,
     /// WebDriver BiDi emulation). A top-level traversable's; read through
@@ -1012,6 +1063,17 @@ pub const BrowsingContext = struct {
     /// The system visibility state of this navigable's traversable navigable
     /// (HTML 6.2): what "set the initial visibility state" gives a document
     /// it makes active.
+    /// Script reached this navigable's Window: one load unless a host waits
+    /// to announce its context (`inspector_pending`), then the Browser's
+    /// `frame_touched` hook, once.
+    pub fn touchedByScript(self: *BrowsingContext) void {
+        if (!self.inspector_pending) return;
+        self.inspector_pending = false;
+        const list = self.navigables orelse return;
+        const hook = list.frame_touched orelse return;
+        hook.touched(hook.context, self.id);
+    }
+
     pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
         return self.getTop().system_visibility;
     }
@@ -1023,6 +1085,24 @@ pub const BrowsingContext = struct {
     pub fn traversableViewport(self: *BrowsingContext) ?ViewportSize {
         const top = self.getTop();
         return top.viewport_override orelse top.viewport;
+    }
+
+    /// The rect of the window this navigable's top-level traversable is
+    /// shown in, once one is known (`window_rect`).
+    pub fn windowRect(self: *BrowsingContext) ?WindowRect {
+        return self.getTop().window_rect;
+    }
+
+    /// moveTo/moveBy/resizeTo/resizeBy (CSSOM View "move"/"resize" the
+    /// window): the window's new rect is `rect`; false while no rect is
+    /// known (the Window keeps its own then). The viewport follows a
+    /// headless window's size, which IS its viewport.
+    pub fn requestWindowRect(self: *BrowsingContext, rect: WindowRect) bool {
+        const top = self.getTop();
+        if (top.window_rect == null) return false;
+        top.window_rect = rect;
+        top.viewport = .{ .width = @max(rect.width, 0), .height = @max(rect.height, 0) };
+        return true;
     }
 
     /// Check if two browsing contexts are same origin

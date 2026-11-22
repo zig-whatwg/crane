@@ -120,6 +120,10 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             // scripts run in them.
             if (!contexts.isEdgeSession(session, .last)) return;
             const bc = frames.navigable(session, milestone.navigable_id) orelse return;
+            // A child's initial about:blank: no executionContextCreated, as
+            // Chrome (its context is made when script first touches it;
+            // lane cdpr's vue-e2e-browser log l.392-405).
+            if (milestone.navigation_id == 0 and milestone.navigable_id != session.tab) return;
             contexts.afterCommit(session, bc);
             // The sessions' new-document scripts run next, at the
             // document-start hook (page.zig), in the contexts made known here.

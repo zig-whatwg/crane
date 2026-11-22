@@ -53,6 +53,12 @@ pub const Scripts = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#pending-parsing-blocking-script
     pending_parsing_blocking_script: ?*runtime.Instance = null,
 
+    /// How many document.write() calls are inserting into the document's
+    /// parser now (Blink's Document::IsInDocumentWrite): a parser-blocking
+    /// script prepared meanwhile was written by one, which a host's
+    /// blockedParser violation reports (dom.performance_monitor).
+    document_write_depth: u32 = 0,
+
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
     scripts_to_execute_asap: std.ArrayList(*runtime.Instance) = .empty,
 

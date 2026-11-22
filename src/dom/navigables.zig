@@ -244,7 +244,11 @@ pub const TraversalWaiter = struct {
 /// own to find.)
 pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
     const impl = implementation.get() orelse return null;
-    return impl.find_by_name(current_document, name);
+    const found = impl.find_by_name(current_document, name);
+    // window.open(url, name) and a link's target reach the frame's Window: a
+    // host announces its context now (BrowsingContext.touchedByScript).
+    if (found) |window| if (@import("browser_state.zig").browsingContextOf(window)) |bc| bc.touchedByScript();
+    return found;
 }
 
 /// The owning container's integration for an html_core.BrowsingContext.

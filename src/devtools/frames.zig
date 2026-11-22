@@ -45,6 +45,8 @@ pub const Frames = struct {
     /// By navigable id: the document last seen committed there, and its
     /// loader id.
     records: std.AutoHashMapUnmanaged(u64, Record) = .empty,
+    /// Navigables come and go (infra.tombstones).
+    records_guard: @import("infra").tombstones.TombstoneGuard = .{},
     next_synthetic: u64 = 1,
 
     const Record = struct {
@@ -70,15 +72,17 @@ pub const Frames = struct {
             if (self.records.get(navigable_id)) |record| {
                 if (record.document == document and record.generation == generation) return;
             }
+            self.records_guard.beforeInsert(&self.records);
             self.records.put(self.allocator, navigable_id, .{ .document = document, .generation = generation, .loader = self.synthetic() }) catch {};
             return;
         }
+        self.records_guard.beforeInsert(&self.records);
         self.records.put(self.allocator, navigable_id, .{ .document = document, .generation = generation, .loader = navigation_id }) catch {};
     }
 
     /// The navigable is gone.
     pub fn forget(self: *Frames, navigable_id: u64) void {
-        _ = self.records.remove(navigable_id);
+        if (self.records.remove(navigable_id)) self.records_guard.noteRemoval(&self.records);
     }
 
     /// The loader id of `bc`'s active document.
@@ -89,6 +93,7 @@ pub const Frames = struct {
             if (record.document == document and record.generation == generation) return record.loader;
         }
         const loader = self.synthetic();
+        self.records_guard.beforeInsert(&self.records);
         self.records.put(self.allocator, bc.id, .{ .document = document, .generation = generation, .loader = loader }) catch {};
         return loader;
     }
@@ -108,7 +113,14 @@ pub fn of(browser: *host_bridge.Browser) ?*Frames {
 /// Browser - the requestId of the navigation request that made the document
 /// (lane cdpt's Network domain uses this function for it).
 pub fn loaderToken(session: *const PageSession, loader: u64) ids.Token {
-    return ids.Token.of(session.side.?.token, loader_bit | loader);
+    return loaderTokenOf(session.side.?.token, loader);
+}
+
+/// loaderToken for a Browser's devtools token, where no session is at hand
+/// (fetch_observer's Log entries, which run for the tab with or without a
+/// Network session).
+pub fn loaderTokenOf(browser_token: u64, loader: u64) ids.Token {
+    return ids.Token.of(browser_token, loader_bit | loader);
 }
 
 /// The navigable with id `id` in the session's Browser, while it lives.
@@ -166,10 +178,13 @@ pub fn describe(session: *const PageSession, arena: Allocator, bc: *BrowsingCont
     const url = if (document) |d| try documentUrl(arena, d) else "about:blank";
     // The URL without its fragment, and the fragment with its '#'.
     const hash = std.mem.indexOfScalar(u8, url, '#');
+    // An opaque origin reads "://", as Chrome's SecurityOrigin::ToRawString
+    // of an opaque origin gives (contexts.zig the same).
     const origin: []const u8 = blk: {
-        const window = windowOf(bc) orelse break :blk "null";
-        const text = interfaces.Window.get_origin(window) catch break :blk "null";
+        const window = windowOf(bc) orelse break :blk "://";
+        const text = interfaces.Window.get_origin(window) catch break :blk "://";
         defer window.ctx.allocator.free(text);
+        if (std.mem.eql(u8, text, "null")) break :blk "://";
         break :blk try arena.dupe(u8, text);
     };
     const mime: []const u8 = blk: {
