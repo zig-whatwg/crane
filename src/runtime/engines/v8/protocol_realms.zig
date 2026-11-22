@@ -839,12 +839,6 @@ fn detach(realm: Context, state: *WindowRealmState) void {
         top.* = ending.next;
     };
 
-    // Inside its isolate (`enterForEnd`): a host tab's realm, entered per
-    // call, is detached by the navigation that replaced its Window from a
-    // task that entered nothing, with no page entered for its life beside it.
-    var end_entry = enterForEnd(realm, state, false);
-    defer end_entry.leave();
-
     // Its world realms end now (protocol_worlds.zig): Blink disposes every
     // world's context of a frame at its navigation or removal
     // (WindowProxyManager::ClearForNavigation, ClearForClose), and no world
@@ -1016,26 +1010,23 @@ fn isLive(context: *ffi.Context) bool {
     return !ffi.v8_Global_IsEmpty(@ptrCast(context));
 }
 
-/// The entries a realm's end or detach makes for itself when its agent is
-/// not the current one (`enterForEnd`). A realm entered only per call - a
-/// host tab's (WindowRealmOptions.entered_for_life false), a frame's, a
-/// popup's - can end, or be detached by its navigation, outside any call
-/// into it: its host closes the tab, a navigation's task replaces its
-/// Window, the collector's queue ends it. With no page entered for its life
-/// beside it (the host's first page closed, or never made) no isolate is
-/// current then, and every engine call of the end - the context's key, its
-/// global, a HandleScope - needs one (lane tpg: cdph_host_realm_entry_test
-/// and cdph_host_tabs_test "the first page closes like any tab" crashed in
-/// HandleScope::Initialize, at the null isolate's 0x228). Blink's
-/// LocalWindowProxy::DisposeContext runs under the frame's isolate and a
-/// ScriptState::Scope on the context it disposes (local_window_proxy.cc);
-/// an entered-for-life realm's end here always ran inside both.
+/// The context a realm's end enters for itself (`enterForEnd`). A realm
+/// entered only per call - a host tab's (WindowRealmOptions.entered_for_life
+/// false), a frame's, a popup's - can end outside any call into it: its host
+/// closes the tab, the collector's queue ends it. With no page entered for
+/// its life beside it (the host's first page closed, or never made) no
+/// context is entered then, and the end runs in its own, as an
+/// entered-for-life realm's end always did: Blink's
+/// LocalWindowProxy::DisposeContext runs under a ScriptState::Scope on the
+/// context it disposes (local_window_proxy.cc). Its agent's isolate is
+/// current already: the agent's thread keeps it entered for the agent's life
+/// (protocol_agents createAgent; lane tpg - before that, such an end read a
+/// null isolate in its first HandleScope, SIGSEGV at 0x228, in
+/// cdph_host_realm_entry_test and cdph_host_tabs_test).
 const EndEntry = struct {
-    /// The isolate this entry entered, if any.
-    isolate: ?*ffi.Isolate = null,
-    /// The context this entry entered, if any (a realm's end only): exited
-    /// at the end's step 3, where an entered-for-life realm's is
-    /// (`exitContext`), or here, by an end that returned before it.
+    /// The context this entry entered, if any: exited at the end's step 3,
+    /// where an entered-for-life realm's is (`exitContext`), or here, by an
+    /// end that returned before it.
     context: ?*ffi.Context = null,
 
     /// Exit the context this entry entered, if it is still entered.
@@ -1045,33 +1036,31 @@ const EndEntry = struct {
         ffi.v8_Context_Exit(context);
     }
 
-    /// Leave what this entry entered: the context if the end returned before
-    /// its step 3, then the isolate - after the context's handle is released.
     fn leave(self: *EndEntry) void {
         self.exitContext();
-        if (self.isolate) |isolate| ffi.v8_Isolate_Exit(isolate);
     }
 };
 
-/// Enter `realm`'s isolate when it is not the current one, and then - when
-/// `with_context` and the realm's context still lives - its context, as an
-/// entered-for-life realm's end runs inside both. A realm whose isolate is
-/// current already (a frame's end inside its parent's script, a tab's end
-/// beside the host's first page) is left as it was.
-fn enterForEnd(realm: Context, state: ?*WindowRealmState, with_context: bool) EndEntry {
+/// Enter `realm`'s context for its end when its agent is current and no
+/// context is entered at all - the end of a realm entered per call, outside
+/// any call. A realm whose end runs inside an entered context (a frame's
+/// inside its parent's script, a tab's beside the host's first page) is
+/// left as it was.
+fn enterForEnd(realm: Context, state: ?*WindowRealmState) EndEntry {
     const s = state orelse return .{};
-    if (ffi.v8_Isolate_GetCurrent() == s.isolate) return .{};
-    ffi.v8_Isolate_Enter(s.isolate);
-    var entry: EndEntry = .{ .isolate = s.isolate };
-    if (!with_context or s.context_entered) return entry;
+    if (s.context_entered) return .{};
+    if (ffi.v8_Isolate_GetCurrent() != s.isolate) return .{};
+    if (ffi.v8_Isolate_GetEnteredOrMicrotaskContext(s.isolate)) |entered| {
+        ffi.v8_Context_Dispose(entered);
+        return .{};
+    }
     // A detached realm's context is its record's handle - weak, and empty
     // once collected; entered, the collector cannot take it before the end
     // releases it.
-    const context: *ffi.Context = if (s.detached) |d| d.context else contextOf(realm) orelse return entry;
-    if (!isLive(context)) return entry;
+    const context: *ffi.Context = if (s.detached) |d| d.context else contextOf(realm) orelse return .{};
+    if (!isLive(context)) return .{};
     ffi.v8_Context_Enter(context);
-    entry.context = context;
-    return entry;
+    return .{ .context = context };
 }
 
 /// The end of a Window realm: its frames' realms first, then the Window,
@@ -1094,11 +1083,10 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         top.* = ending.next;
     };
 
-    // The end runs inside its isolate and its context, as an entered-for-life
-    // realm's always did (`enterForEnd`): a realm entered per call may end
-    // with no isolate current. The isolate is left last, after the context's
-    // handle is released (this defer runs after every later one).
-    var end_entry = enterForEnd(realm, stateOf(realm), true);
+    // The end runs inside its context, as an entered-for-life realm's always
+    // did (`enterForEnd`): a realm entered per call may end with no context
+    // entered. Left last - after its step 3, or on an early return.
+    var end_entry = enterForEnd(realm, stateOf(realm));
     defer end_entry.leave();
 
     // Its world realms end before it (protocol_worlds.zig): each one's

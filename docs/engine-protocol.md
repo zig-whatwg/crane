@@ -311,6 +311,27 @@ realm's global - and the next bind sets it again. A removed frame's realm,
 which the collector takes whole, then returns its document's slots at its end
 like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
 
+**An agent's operations run on its own thread, with its engine current for
+the agent's life.** `createAgent` makes the agent its thread's: from then until
+`destroyAgent`, every operation on that thread finds the agent's engine current
+- in or out of a call into any realm, whether or not a realm is entered for its
+life - and every one of the agent's operations runs on that thread. A Browser
+makes and ends its agent on its own thread (Browser.init and deinit, on the
+BrowserHost thread for a host), each worker its own on the worker's
+(worker_host initOnThread, worker_thread's end), the console its own on its
+main thread. A realm's own entries nest inside, and `destroyAgent` ends the
+agent's after every realm ended. V8 meets it by entering the isolate in
+`createAgent` and exiting it in `destroyAgent` (protocol_agents.zig
+`AgentRecord.entered_for_life`), as a renderer's main thread keeps its isolate
+entered for the thread's life and each worker thread its own; the
+JavaScriptCore adapter meets it its own way. Before (lane tpg, 2026-11-22),
+the Browser's first page - its realm entered for its life - was what kept the
+isolate current, and once a host closed it, a tab's navigation, end or any
+operation that asked for the current isolate failed or crashed (a null
+isolate's HandleScope). An agent made while another engine instance is
+current on the thread - a test's second agent - is not its thread's, and is
+entered per call.
+
 ### Errors
 
 `Error = { OperationFailed, ExceptionReported, OutOfMemory, TypeError, ExceptionPending, DataCloneError, NotSupported, MutedScriptError }`
