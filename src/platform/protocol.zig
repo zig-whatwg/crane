@@ -3538,7 +3538,8 @@ pub inline fn releaseAddressSpace(range: AddressRange) void {
 // 4 writes). Blocking calls, made from the remote end's own threads, never
 // from a Browser thread: a connection's reader blocks in `devtoolsRead`, its
 // writer in `devtoolsWrite`, and `devtoolsShutdown` from another thread ends
-// a blocked read (the connection's end). Darwin and Linux: kit/posix. iOS has
+// a blocked read of a socket (the connection's end); a pipe's reader reads
+// with `devtoolsReadTimeout` and sees its connection's end between waits. Darwin and Linux: kit/posix. iOS has
 // no remote debugging: kit/headless answers `error.NotSupported`.
 
 /// A listening socket, OWNED until `devtoolsCloseListener`. `port` is the
@@ -3581,6 +3582,18 @@ pub inline fn devtoolsAccept(listener: DevtoolsListener, timeout_ms: u32) Error!
 pub inline fn devtoolsRead(stream: DevtoolsStream, buffer: []u8) Error!usize {
     comptime gate(.devtools_transport, "devtoolsRead");
     return impl.devtoolsRead(stream, buffer);
+}
+
+/// `devtoolsRead`, waiting at most `timeout_ms` for something to arrive:
+/// null when nothing did in that time (the caller checks whether its
+/// connection was shut, then reads again) - as `devtoolsAccept` waits. The
+/// pipe's reader needs it: `devtoolsShutdown` cannot end a read blocked on
+/// a pipe (shutdown(2) is for sockets), so the reader polls and sees its
+/// connection's end itself (Chrome's DevToolsPipeHandler never waits for
+/// its pipe reader instead: devtools_pipe_handler.cc PipeIOBase::Shutdown).
+pub inline fn devtoolsReadTimeout(stream: DevtoolsStream, buffer: []u8, timeout_ms: u32) Error!?usize {
+    comptime gate(.devtools_transport, "devtoolsReadTimeout");
+    return impl.devtoolsReadTimeout(stream, buffer, timeout_ms);
 }
 
 /// Write all of `bytes` (BORROWED), blocking until the OS has taken them.

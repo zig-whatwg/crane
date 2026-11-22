@@ -32,6 +32,19 @@ pub fn outer(node: *runtime.Instance) !runtime.DOMString {
     return serialize(node.ctx.allocator, node, false, try isHtmlDocument(node), true);
 }
 
+/// `outer` with every shadow root `shadow_roots` names serialized as a
+/// declarative one (HTML fragment serialization step 4's shadowRoots input):
+/// DevTools' DOM.getOuterHTML with includeShadowDOM, which passes every
+/// shadow root in the node (Blink's kIncludeAllShadowRootsForInspector).
+pub fn outerWithShadowRoots(node: *runtime.Instance, shadow_roots: []const *runtime.Instance) !runtime.DOMString {
+    const html = try isHtmlDocument(node);
+    var writer = Writer{ .allocator = node.ctx.allocator, .html = html, .well_formed = true, .shadow_roots = shadow_roots };
+    defer writer.deinit();
+    if (!html) try writer.bindings.append(writer.allocator, .{ .prefix = "xml", .namespace = xml_ns });
+    try writer.walk(node, false, null);
+    return runtime.DOMString.initOwned(try writer.output.toOwnedSlice(writer.allocator));
+}
+
 pub fn xml(allocator: std.mem.Allocator, node: *runtime.Instance) !runtime.DOMString {
     // HTML XMLSerializer.serializeToString: require well-formed is false.
     return serialize(allocator, node, false, false, false);

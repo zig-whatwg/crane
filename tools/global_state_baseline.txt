@@ -115,6 +115,7 @@ src/dom/range_boundaries.zig providers 1 G H decl:be5530a70dc2c879
 src/dom/refcount.zig hooks 1 G H decl:25197d739fa0326e
 src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/refcount_audit.zig audit_requested 1 G P-res decl:4b877655cb3bb361
+src/dom/resize_observations.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/script_elements.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/script_elements.zig svg_implementation 1 G H decl:7c1a7ac87b91c26f
 src/dom/selected_content.zig read_disabled 1 G H decl:28a95206c60640e5

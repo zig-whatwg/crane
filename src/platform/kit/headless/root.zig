@@ -887,6 +887,11 @@ pub fn devtoolsRead(stream: platform.DevtoolsStream, buffer: []u8) Error!usize {
     return error.NotSupported;
 }
 
+pub fn devtoolsReadTimeout(stream: platform.DevtoolsStream, buffer: []u8, timeout_ms: u32) Error!?usize {
+    _ = .{ stream, buffer, timeout_ms };
+    return error.NotSupported;
+}
+
 pub fn devtoolsWrite(stream: platform.DevtoolsStream, bytes: Bytes) Error!void {
     _ = .{ stream, bytes };
     return error.NotSupported;

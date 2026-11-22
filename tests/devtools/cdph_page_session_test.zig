@@ -748,6 +748,159 @@ test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not 
     try testing.expect(node.get("children") == null);
 }
 
+/// Load `url` in the harness's tab and wait for its frameStoppedLoading.
+fn loadUrl(h: *Harness, url: []const u8) !void {
+    _ = try h.call("Page.enable", "{}");
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"url\":\"{s}\"}}", .{url});
+    defer h.allocator.free(params);
+    _ = try h.call("Page.navigate", params);
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+}
+
+fn child(node: std.json.Value, index: usize) std.json.ObjectMap {
+    return node.object.get("children").?.array.items[index].object;
+}
+
+/// The setChildNodes events from index `from` of `seen`: "parentId:nodeName,nodeName" each.
+fn setChildNodesSince(h: *Harness, from: usize, out: *std.ArrayList(u8)) !void {
+    h.drain();
+    for (h.seen.items[from..]) |parsed| {
+        const m = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, m.string, "DOM.setChildNodes")) continue;
+        const params = parsed.value.object.get("params").?.object;
+        try out.print(h.allocator, "{d}:", .{params.get("parentId").?.integer});
+        for (params.get("nodes").?.array.items, 0..) |node, i| {
+            if (i > 0) try out.append(h.allocator, ',');
+            try out.appendSlice(h.allocator, node.object.get("nodeName").?.string);
+        }
+        try out.append(h.allocator, '\n');
+    }
+}
+
+test "DOM.getDocument binds nodeIds to depth 2 with Chrome's document fields (InspectorDOMAgent::getDocument)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head><title>t</title></head><body><div id=a><span>x</span></div><p>y</p></body></html>");
+
+    const got = try h.call("DOM.getDocument", "{}");
+    const root = got.object.get("root").?;
+    const root_id = root.object.get("nodeId").?.integer;
+    try testing.expect(root_id != 0);
+    try testing.expectEqual(@as(i64, 9), root.object.get("nodeType").?.integer);
+    try testing.expectEqualStrings("#document", root.object.get("nodeName").?.string);
+    try testing.expect(std.mem.startsWith(u8, root.object.get("documentURL").?.string, "data:text/html,"));
+    // No DOCTYPE: quirks mode.
+    try testing.expectEqualStrings("QuirksMode", root.object.get("compatibilityMode").?.string);
+    try testing.expectEqual(@as(i64, 1), root.object.get("childNodeCount").?.integer);
+    // Depth 2: <html> and its children, whose own children are only counted.
+    const html = child(root, 0);
+    try testing.expectEqualStrings("HTML", html.get("nodeName").?.string);
+    try testing.expectEqual(root_id, html.get("parentId").?.integer);
+    try testing.expect(html.get("frameId") != null);
+    const html_value: std.json.Value = .{ .object = html };
+    const body = child(html_value, 1);
+    try testing.expectEqualStrings("BODY", body.get("nodeName").?.string);
+    try testing.expectEqual(@as(i64, 2), body.get("childNodeCount").?.integer);
+    try testing.expect(body.get("children") == null);
+    // An only text child is pushed with its element even past the depth:
+    // <title>'s "t" is not (the title is at depth 0 under <head>, which has
+    // an element child, so <head> has no children array).
+    const head = child(html_value, 0);
+    try testing.expectEqual(@as(i64, 1), head.get("childNodeCount").?.integer);
+    try testing.expect(head.get("children") == null);
+    // Every id is distinct.
+    try testing.expect(html.get("nodeId").?.integer != body.get("nodeId").?.integer);
+}
+
+test "DOM.querySelector pushes the result's path as DOM.setChildNodes and answers its nodeId; describeNode, resolveNode and getOuterHTML take it (PushNodePathToFrontend)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head></head><body><div id=a><span>x</span></div><p>y</p></body></html>");
+
+    const got = try h.call("DOM.getDocument", "{}");
+    const root_id = got.object.get("root").?.object.get("nodeId").?.integer;
+    const html = child(got.object.get("root").?, 0);
+    const body_id = child(.{ .object = html }, 1).get("nodeId").?.integer;
+
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"span\"}}", .{root_id});
+    defer h.allocator.free(params);
+    const found = try h.call("DOM.querySelector", params);
+    const span_id = found.object.get("nodeId").?.integer;
+    try testing.expect(span_id != 0);
+    // <body>'s children, then <div>'s (its only text child "x" comes with <span>).
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try setChildNodesSince(&h, before, &lines);
+    const expected_body = try std.fmt.allocPrint(h.allocator, "{d}:DIV,P\n", .{body_id});
+    defer h.allocator.free(expected_body);
+    try testing.expect(std.mem.startsWith(u8, lines.items, expected_body));
+    try testing.expect(std.mem.endsWith(u8, lines.items, ":SPAN\n"));
+
+    // The same node again: the same id, nothing more pushed.
+    const again = try h.call("DOM.querySelector", params);
+    try testing.expectEqual(span_id, again.object.get("nodeId").?.integer);
+    // No match: 0.
+    const none_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"table\"}}", .{root_id});
+    defer h.allocator.free(none_params);
+    try testing.expectEqual(@as(i64, 0), (try h.call("DOM.querySelector", none_params)).object.get("nodeId").?.integer);
+    // querySelectorAll: both, in document order.
+    const all_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"p, div\"}}", .{root_id});
+    defer h.allocator.free(all_params);
+    const all = try h.call("DOM.querySelectorAll", all_params);
+    try testing.expectEqual(@as(usize, 2), all.object.get("nodeIds").?.array.items.len);
+    // By nodeId: describeNode, getOuterHTML.
+    const by_id = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d}}}", .{span_id});
+    defer h.allocator.free(by_id);
+    const described = try h.call("DOM.describeNode", by_id);
+    try testing.expectEqualStrings("span", described.object.get("node").?.object.get("localName").?.string);
+    try testing.expectEqual(span_id, described.object.get("node").?.object.get("nodeId").?.integer);
+    const outer = try h.call("DOM.getOuterHTML", by_id);
+    try testing.expectEqualStrings("<span>x</span>", outer.object.get("outerHTML").?.string);
+    // Errors: an unknown id, a selector on a text node, a bad selector.
+    try testing.expectError(error.CommandFailed, h.call("DOM.querySelector", "{\"nodeId\":999999,\"selector\":\"a\"}"));
+    const bad_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"[\"}}", .{root_id});
+    defer h.allocator.free(bad_params);
+    try testing.expectError(error.CommandFailed, h.call("DOM.querySelector", bad_params));
+    try testing.expectError(error.CommandFailed, h.call("DOM.resolveNode", "{}"));
+}
+
+test "DOM.requestChildNodes pushes a node's children; a new document discards the nodeIds and sends DOM.documentUpdated" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head></head><body><b>1</b><i>2</i></body></html>");
+
+    _ = try h.call("DOM.enable", "{}");
+    const got = try h.call("DOM.getDocument", "{\"depth\":1}");
+    const html = child(got.object.get("root").?, 0);
+    const html_id = html.get("nodeId").?.integer;
+    try testing.expect(html.get("children") == null);
+
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d}}}", .{html_id});
+    defer h.allocator.free(params);
+    _ = try h.call("DOM.requestChildNodes", params);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try setChildNodesSince(&h, before, &lines);
+    const expected = try std.fmt.allocPrint(h.allocator, "{d}:HEAD,BODY\n", .{html_id});
+    defer h.allocator.free(expected);
+    try testing.expectEqualStrings(expected, lines.items);
+    const zero = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"depth\":0}}", .{html_id});
+    defer h.allocator.free(zero);
+    try testing.expectError(error.CommandFailed, h.call("DOM.requestChildNodes", zero));
+
+    // A new document: documentUpdated, and the old ids name nothing.
+    const at = h.seen.items.len;
+    try loadUrl(&h, "data:text/html,<p>next</p>");
+    _ = try h.waitEvent("DOM.documentUpdated", at);
+    try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", params));
+}
+
 test "lifecycle init comes before executionContextsCleared at a commit (Chrome's order)" {
     var h: Harness = undefined;
     try h.init(testing.allocator);

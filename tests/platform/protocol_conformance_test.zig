@@ -84,8 +84,10 @@ test "conformance: the bound platform matches every operation" {
     // since lane idle1 added releaseFreeMemory (6.1) and detachThread (6.4);
     // 245 since lane cdpt added the DevTools transport (devtoolsListen,
     // devtoolsAccept, devtoolsRead, devtoolsWrite, devtoolsShutdown,
-    // devtoolsClose, devtoolsCloseListener, devtoolsOpenInheritedPipe).
-    try testing.expectEqual(@as(usize, 245), count);
+    // devtoolsClose, devtoolsCloseListener, devtoolsOpenInheritedPipe); 246
+    // since lane tpw added devtoolsReadTimeout (a pipe reader that ends on
+    // its connection's shutdown without the client's EOF).
+    try testing.expectEqual(@as(usize, 246), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
