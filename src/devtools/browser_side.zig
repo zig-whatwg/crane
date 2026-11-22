@@ -276,6 +276,50 @@ pub const InstallTask = struct {
     }
 };
 
+/// Install `side` on its Browser and wait until it has: the remote end's
+/// start (Server.start), from a thread that is not the Browser's. `install`
+/// posts a tab_created for every tab that exists already, so those reach
+/// the devtools thread's inbox before any connection is accepted - a
+/// client's first Target.setAutoAttach finds the console's first tab as an
+/// existing target, attached not waiting and before its reply, as Chrome's
+/// browser process knows its tabs when the client connects (lane cdpr's
+/// Playwright replay: posted and not waited for, the tab could arrive after
+/// setAutoAttach and be attached as a new, held target). A session message
+/// (host_bridge.postSessionMessage), so a Browser already sitting in a
+/// simple dialog's or a pause's nested loop runs it.
+pub fn installAndWait(side: *BrowserSide) void {
+    const Wait = struct {
+        side: *BrowserSide,
+        /// 1 once the install ran, or the Browser went without it.
+        done: std.atomic.Value(u32) = .init(0),
+
+        fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.side.install(browser) catch |err| log.warn("devtools: listening to the Browser's events failed: {t}", .{err});
+            self.signal();
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.signal();
+        }
+
+        fn signal(self: *@This()) void {
+            self.done.store(1, .release);
+            futexIo().futexWake(u32, &self.done.raw, 1);
+        }
+    };
+    var wait: Wait = .{ .side = side };
+    // False: the Browser has gone, and `drop` ran already.
+    if (!host_bridge.postSessionMessage(side.host, &wait, Wait.run, Wait.drop)) {
+        log.warn("devtools: the Browser did not take the remote end's listener: it has gone", .{});
+        return;
+    }
+    while (wait.done.load(.acquire) == 0) {
+        futexIo().futexWaitTimeout(u32, &wait.done.raw, 0, .{ .duration = .{ .raw = .fromMilliseconds(20), .clock = .awake } }) catch {};
+    }
+}
+
 /// Attach an allocated session.
 pub const AttachTask = struct {
     session: *PageSession,
