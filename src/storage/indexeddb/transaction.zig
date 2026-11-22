@@ -102,6 +102,17 @@ pub const IDBTransaction = struct {
     /// (backing_store.zig; lane prof1, D6 step 4). Written at commit, dropped
     /// at abort.
     backing_txn: ?*backing_store.Transaction = null,
+    /// The stores and indexes this upgrade deleted, whose records, index
+    /// entries and reverse rows go from the batch when it is written
+    /// (`writeChanges`), not at the deletion: a request accepted before the
+    /// deletion still runs after it and reads them, as its operation is
+    /// queued before the deletion's in Chromium's transaction
+    /// (IndexedDBDatabase::DeleteObjectStoreOperation, scheduled with
+    /// IndexedDBTransaction::ScheduleTask after the earlier requests' tasks)
+    /// and Firefox's (DeleteObjectStoreOp, dispatched in order). Definition
+    /// ids are never reused, so nothing a later store or index writes is
+    /// under them. Cleared with the batch.
+    dropped: std.ArrayListUnmanaged(Dropped) = .empty,
     /// The results its requests read from the backing store - a value's
     /// bytes, a key - each freed when its request is consumed, or with the
     /// transaction (what a native request held as a borrow of its records).
@@ -245,6 +256,7 @@ pub const IDBTransaction = struct {
         // A transaction that never finished (its task never ran) must not
         // hold up the scheduler; its batch is never written.
         self.dropBacking();
+        self.dropped.deinit(self.allocator);
         for (self.owned_results.items) |*kept| kept.deinit(self.allocator);
         self.owned_results.deinit(self.allocator);
         self.finishServerRecord(null);
@@ -294,41 +306,60 @@ pub const IDBTransaction = struct {
     }
 
     fn dropBacking(self: *Self) void {
+        self.dropped.clearRetainingCapacity();
         const txn = self.backing_txn orelse return;
         self.backing_txn = null;
         txn.destroy();
     }
 
-    /// deleteObjectStore: the store `definition_id`'s records, index
-    /// entries, reverse rows and schema record go, in this upgrade's batch.
+    /// A deleted store's or index's data, to go when the batch is written.
+    const Dropped = union(enum) {
+        store: u64,
+        index: struct { store: u64, index: u64 },
+    };
+
+    /// deleteObjectStore: the store `definition_id`'s schema record goes
+    /// from this upgrade's batch now; its records, index entries and reverse
+    /// rows when the batch is written (`dropped`).
     pub fn dropStoreData(self: *Self, definition_id: u64) IDBError!void {
         const txn = try self.backingTransaction();
-        const alloc = txn.gpa();
-        const db = self.db.databaseId();
-        for ([_]u8{ backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
-            const prefix = txn.buffer(.prefix);
-            try prefix.append(alloc, tag);
-            try backing_store.appendU64(prefix, alloc, db);
-            try backing_store.appendU64(prefix, alloc, definition_id);
-            const end = txn.buffer(.upper);
-            try backing_store.prefixEnd(end, alloc, prefix.items);
-            try txn.deleteRange(prefix.items, end.items);
-        }
+        try self.dropped.ensureUnusedCapacity(self.allocator, 1);
         const schema_key = txn.buffer(.key);
-        try backing_store.storeSchemaKey(schema_key, alloc, db, definition_id);
+        try backing_store.storeSchemaKey(schema_key, txn.gpa(), self.db.databaseId(), definition_id);
         try txn.delete(schema_key.items);
+        self.dropped.appendAssumeCapacity(.{ .store = definition_id });
     }
 
-    /// deleteIndex: the index's entries go (its reverse rows are left to
-    /// the next write of each record, which drops every row it had).
+    /// deleteIndex: the index's entries go when the batch is written
+    /// (`dropped`; its reverse rows are left to the next write of each
+    /// record, which drops every row it had).
     pub fn dropIndexData(self: *Self, store_id: u64, index_id: u64) IDBError!void {
-        const txn = try self.backingTransaction();
+        try self.dropped.ensureUnusedCapacity(self.allocator, 1);
+        self.dropped.appendAssumeCapacity(.{ .index = .{ .store = store_id, .index = index_id } });
+    }
+
+    /// The range deletions of every store and index this upgrade deleted.
+    fn writeDropped(self: *Self, txn: *backing_store.Transaction) IDBError!void {
         const alloc = txn.gpa();
-        const prefix = txn.buffer(.prefix);
-        try backing_store.indexPrefix(prefix, alloc, self.db.databaseId(), store_id, index_id);
-        const end = txn.buffer(.upper);
-        try backing_store.prefixEnd(end, alloc, prefix.items);
-        try txn.deleteRange(prefix.items, end.items);
+        const db = self.db.databaseId();
+        for (self.dropped.items) |dropped| switch (dropped) {
+            .store => |definition_id| for ([_]u8{ backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
+                const prefix = txn.buffer(.prefix);
+                try prefix.append(alloc, tag);
+                try backing_store.appendU64(prefix, alloc, db);
+                try backing_store.appendU64(prefix, alloc, definition_id);
+                const end = txn.buffer(.upper);
+                try backing_store.prefixEnd(end, alloc, prefix.items);
+                try txn.deleteRange(prefix.items, end.items);
+            },
+            .index => |index| {
+                const prefix = txn.buffer(.prefix);
+                try backing_store.indexPrefix(prefix, alloc, db, index.store, index.index);
+                const end = txn.buffer(.upper);
+                try backing_store.prefixEnd(end, alloc, prefix.items);
+                try txn.deleteRange(prefix.items, end.items);
+            },
+        };
     }
 
     /// IDB 5.4 step 3: the transaction's changes, written to the database -
@@ -344,6 +375,7 @@ pub const IDBTransaction = struct {
         const txn = try self.backingTransaction();
         const alloc = txn.gpa();
         const db = self.db.databaseId();
+        try self.writeDropped(txn);
         self.db.lockSchema();
         defer self.db.unlockSchema();
         const schema_map = self.db.schema();
@@ -553,6 +585,12 @@ pub const IDBTransaction = struct {
     /// with an event loop uses `startCommit`, and is told.
     pub fn commit(self: *Self) IDBError!void {
         _ = try self.startCommit(null);
+        // A write that failed aborted the transaction instead (IDB 5.4 step
+        // 3.1): the engine-free caller, which hears no abort event, is told
+        // the error the abort carries - as the binding's caller is told by
+        // its "abort" (impls/IDBTransaction). Silent, the allocation-failure
+        // walks went on with a schema the abort had rolled back (lane tpg).
+        if (self.state == .finished) if (self.err) |err| return err;
     }
 
     pub const CommitProgress = enum {

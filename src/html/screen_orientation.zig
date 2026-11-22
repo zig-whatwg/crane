@@ -257,7 +257,10 @@ fn update(registry: *Registry, document: *runtime.Instance) void {
         .type = screen.orientation,
         .angle = screen.orientation_angle,
     };
-    loop.queueTask(.{ .callback = ChangeTask.run, .context = task, .drop = ChangeTask.drop, .document = @ptrCast(document) });
+    // Named by identity and slab generation, as the loop reads a task's
+    // document (HTML 8.1.7.1, runnable while fully active): a generation
+    // left at 0 reads "gone", and the task was dropped unrun (lane tpg).
+    loop.queueTask(.{ .callback = ChangeTask.run, .context = task, .drop = ChangeTask.drop, .document = @ptrCast(document), .document_generation = runtime.SlabAllocator.generationOf(document) });
 }
 
 /// "Update the screen orientation" step 5's task.

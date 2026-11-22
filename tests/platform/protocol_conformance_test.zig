@@ -81,8 +81,11 @@ test "conformance: the bound platform matches every operation" {
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
     // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
     // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder); 237
-    // since lane idle1 added releaseFreeMemory (6.1) and detachThread (6.4).
-    try testing.expectEqual(@as(usize, 237), count);
+    // since lane idle1 added releaseFreeMemory (6.1) and detachThread (6.4);
+    // 245 since lane cdpt added the DevTools transport (devtoolsListen,
+    // devtoolsAccept, devtoolsRead, devtoolsWrite, devtoolsShutdown,
+    // devtoolsClose, devtoolsCloseListener, devtoolsOpenInheritedPipe).
+    try testing.expectEqual(@as(usize, 245), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
