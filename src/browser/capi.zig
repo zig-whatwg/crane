@@ -34,6 +34,12 @@ pub const Status = enum(c_int) {
     process_not_started = 8,
     timeout = 9,
     internal = 10,
+    /// crane_tab_answer_dialog: no dialog is open in the tab, or it was
+    /// answered already (WebDriver's "no such alert").
+    no_such_dialog = 11,
+    /// A dialog opened in the tab while the call waited for it (WebDriver's
+    /// "unexpected alert open"): answer it, then call again.
+    user_prompt_open = 12,
 };
 
 pub const Readiness = enum(c_int) { none = 0, interactive = 1, complete = 2 };
@@ -54,20 +60,92 @@ pub const Proxy = extern struct {
     pac_url: ?[*:0]const u8 = null,
 };
 
-pub const EventKind = enum(u32) { tab_created = 1, tab_destroyed = 2, frame_created = 3, frame_destroyed = 4 };
+/// What a Zig host hears (host_events.Event), for a C host: the tab and
+/// frame events, each navigation milestone (html.navigation.observer), a new
+/// document's start, the simple dialogs and a page's request for a window.
+pub const EventKind = enum(u32) {
+    tab_created = 1,
+    tab_destroyed = 2,
+    frame_created = 3,
+    frame_destroyed = 4,
+    /// A cross-document navigation started loading: `url`; `detail` a
+    /// NavigationInitiator.
+    navigation_started = 5,
+    /// Its response is in and decided, before anything unloads (CDP
+    /// Page.navigate's answer): `url`, `detail` a ReadyOutcome, `http_status`,
+    /// `extra` the MIME type, `message` the error text of a network error.
+    navigation_ready = 6,
+    /// The new document is the navigable's active document: `url`, `extra`
+    /// its MIME type, `detail` CommittedFlags.
+    navigation_committed = 7,
+    /// A same-document navigation: `url`, `detail` a SameDocumentKind.
+    navigation_same_document = 8,
+    /// A started navigation ended without committing: `detail` an
+    /// AbortReason.
+    navigation_aborted = 9,
+    /// The document's DOMContentLoaded fired.
+    dom_content_loaded = 10,
+    /// The document's load fired.
+    load = 11,
+    /// The navigable is done loading.
+    stopped_loading = 12,
+    /// A new document's realm is set up, before any of its own scripts.
+    document_start = 13,
+    /// A simple dialog opens in `related` (the tab: `tab`): `detail` a
+    /// DialogKind, `message`, `extra` prompt()'s default, `url` the
+    /// document's. With BrowserOptions.answers_dialogs the embedder answers
+    /// it (crane_tab_answer_dialog, from any thread - the callback included);
+    /// else the platform's dialog does.
+    dialog_opening = 14,
+    /// The dialog closed: `flag` accepted, `message` what a prompt was
+    /// answered with.
+    dialog_closed = 15,
+    /// A page asks for a new window, before it is made (CDP
+    /// Page.windowOpen): `related` the navigable asking, `url`, `message`
+    /// the window name, `extra` the features, comma-separated, `flag` a user
+    /// gesture. tab_created follows when the window is made.
+    window_open = 16,
+};
+
+pub const NavigationInitiator = enum(u32) { browser_ui = 0, document = 1 };
+pub const ReadyOutcome = enum(u32) { document = 0, network_error = 1, no_document = 2, download = 3 };
+pub const SameDocumentKind = enum(u32) { fragment = 0, push = 1, replace = 2, traverse = 3, intercept = 4 };
+pub const AbortReason = enum(u32) { superseded = 0, stopped = 1, canceled_by_beforeunload = 2, navigable_gone = 3, blocked = 4 };
+pub const DialogKind = enum(u32) { alert = 0, confirm = 1, prompt = 2, beforeunload = 3 };
+/// navigation_committed's `detail` bits.
+pub const committed_error_page: u32 = 1;
+pub const committed_restored: u32 = 2;
 
 pub const Event = extern struct {
     struct_size: u32,
     kind: u32,
-    /// The tab, or the frame's navigable.
+    /// The tab, or the navigable the event is about (a frame's, a
+    /// navigation's, a new document's).
     tab: u64,
     /// tab_created: the traversable whose page opened it, 0 for none;
-    /// frame_created: the parent navigable.
+    /// frame_created: the parent navigable; dialog_* and window_open: the
+    /// navigable it happens in.
     related: u64,
     /// tab_created: made by a page's script (a popup).
     created_by_web_content: bool,
-    /// tab_created: where its first navigation goes. BORROWED for the call.
+    /// tab_created: where its first navigation goes; the URL of a
+    /// navigation, a dialog's document, a window asked for. BORROWED for the
+    /// call.
     url: ?[*:0]const u8,
+    // Since the navigation events: a C host reads them when struct_size
+    // covers them.
+    /// The navigation's id (CDP's loaderId; navigate step 7), 0 for none.
+    navigation_id: u64 = 0,
+    /// The kind's detail (see EventKind).
+    detail: u32 = 0,
+    /// navigation_ready: the response's status.
+    http_status: u32 = 0,
+    /// See EventKind. BORROWED for the call.
+    message: ?[*:0]const u8 = null,
+    /// See EventKind. BORROWED for the call.
+    extra: ?[*:0]const u8 = null,
+    /// dialog_closed: accepted; window_open: a user gesture.
+    flag: bool = false,
 };
 
 pub const EventFn = *const fn (context: ?*anyopaque, event: *const Event) callconv(.c) void;
@@ -81,6 +159,10 @@ pub const BrowserOptions = extern struct {
     accept_insecure_certs: bool = false,
     on_event: ?EventFn = null,
     event_context: ?*anyopaque = null,
+    /// The embedder answers every simple dialog itself
+    /// (crane_tab_answer_dialog after CRANE_EVENT_DIALOG_OPENING); false:
+    /// the platform's dialog answers. Read when struct_size covers it.
+    answers_dialogs: bool = false,
 };
 
 pub const TabInfo = extern struct {
@@ -115,6 +197,7 @@ const CBrowser = struct {
     host: *BrowserHost,
     on_event: ?EventFn,
     event_context: ?*anyopaque,
+    answers_dialogs: bool = false,
     /// Copies of what the options borrowed, kept for the Browser's life.
     strings: std.ArrayListUnmanaged([]u8) = .empty,
 
@@ -125,8 +208,12 @@ const CBrowser = struct {
     /// On the Browser's thread: the embedder's callback, given the event.
     fn deliver(context: *anyopaque, event: *const host_events.Event) void {
         const self: *CBrowser = @ptrCast(@alignCast(context));
+        // A dialog is claimed whether or not anyone listens: the embedder
+        // said it answers them.
+        if (event.* == .dialog_opening and self.answers_dialogs) event.dialog_opening.claim.* = true;
         const callback = self.on_event orelse return;
-        var url_buffer: [2048:0]u8 = undefined;
+        var strings: CallStrings = .{};
+        defer strings.deinit();
         var out: Event = .{ .struct_size = @sizeOf(Event), .kind = 0, .tab = 0, .related = 0, .created_by_web_content = false, .url = null };
         switch (event.*) {
             .tab_created => |created| {
@@ -134,10 +221,7 @@ const CBrowser = struct {
                 out.tab = created.tab;
                 out.related = created.opener orelse 0;
                 out.created_by_web_content = created.made_by == .page;
-                const len = @min(created.url.len, url_buffer.len);
-                @memcpy(url_buffer[0..len], created.url[0..len]);
-                url_buffer[len] = 0;
-                out.url = url_buffer[0..len :0].ptr;
+                out.url = strings.z(created.url);
             },
             .tab_destroyed => |destroyed| {
                 out.kind = @backingInt(EventKind.tab_destroyed);
@@ -152,9 +236,38 @@ const CBrowser = struct {
                 out.kind = @backingInt(EventKind.frame_destroyed);
                 out.tab = frame.navigable;
             },
-            // Navigation milestones and document starts are not in the C
-            // ABI's events yet.
-            .navigation, .document_start, .dialog_opening, .dialog_closed => return,
+            .navigation => |milestone| if (!navigationEvent(&out, &strings, milestone)) return,
+            .document_start => |start| {
+                out.kind = @backingInt(EventKind.document_start);
+                out.tab = start.navigable_id;
+                out.navigation_id = start.navigation_id;
+            },
+            .dialog_opening => |opening| {
+                out.kind = @backingInt(EventKind.dialog_opening);
+                out.tab = opening.tab;
+                out.related = opening.navigable;
+                out.detail = dialogKind(opening.kind);
+                out.url = strings.z(opening.url);
+                out.message = strings.z(opening.message);
+                out.extra = strings.z(opening.default_prompt);
+            },
+            .dialog_closed => |closed| {
+                out.kind = @backingInt(EventKind.dialog_closed);
+                out.tab = closed.tab;
+                out.related = closed.navigable;
+                out.detail = dialogKind(closed.kind);
+                out.flag = closed.accepted;
+                out.message = strings.z(closed.user_input);
+            },
+            .window_open => |opened| {
+                out.kind = @backingInt(EventKind.window_open);
+                out.tab = opened.tab;
+                out.related = opened.navigable;
+                out.url = strings.z(opened.url);
+                out.message = strings.z(opened.name);
+                out.extra = strings.joined(opened.features, ',');
+                out.flag = opened.user_gesture;
+            },
         }
         callback(self.event_context, &out);
     }
@@ -178,6 +291,96 @@ const CBrowser = struct {
     }
 };
 
+/// A navigation milestone as a C event; false for the ones the tab and
+/// frame events already are (a navigable made or destroyed).
+fn navigationEvent(out: *Event, strings: *CallStrings, milestone: *const host_events.Milestone) bool {
+    out.tab = milestone.navigable_id;
+    out.navigation_id = milestone.navigation_id;
+    switch (milestone.event) {
+        .started => |started| {
+            out.kind = @backingInt(EventKind.navigation_started);
+            out.url = strings.z(started.url);
+            out.detail = switch (started.initiator) {
+                inline else => |tag| @backingInt(@field(NavigationInitiator, @tagName(tag))),
+            };
+        },
+        .ready_to_commit => |ready| {
+            out.kind = @backingInt(EventKind.navigation_ready);
+            out.url = strings.z(ready.url);
+            out.detail = switch (ready.outcome) {
+                inline else => |tag| @backingInt(@field(ReadyOutcome, @tagName(tag))),
+            };
+            out.http_status = ready.status;
+            out.extra = strings.z(ready.mime_type);
+            out.message = strings.z(ready.error_text);
+        },
+        .committed => |committed| {
+            out.kind = @backingInt(EventKind.navigation_committed);
+            out.url = strings.z(committed.url);
+            out.extra = strings.z(committed.mime_type);
+            if (committed.error_page) out.detail |= committed_error_page;
+            if (committed.restored) out.detail |= committed_restored;
+        },
+        .same_document => |same| {
+            out.kind = @backingInt(EventKind.navigation_same_document);
+            out.url = strings.z(same.url);
+            out.detail = switch (same.kind) {
+                inline else => |tag| @backingInt(@field(SameDocumentKind, @tagName(tag))),
+            };
+        },
+        .aborted => |aborted| {
+            out.kind = @backingInt(EventKind.navigation_aborted);
+            out.detail = switch (aborted.reason) {
+                inline else => |tag| @backingInt(@field(AbortReason, @tagName(tag))),
+            };
+        },
+        .dom_content_loaded => out.kind = @backingInt(EventKind.dom_content_loaded),
+        .load => out.kind = @backingInt(EventKind.load),
+        .stopped_loading => out.kind = @backingInt(EventKind.stopped_loading),
+        .navigable_created, .navigable_destroyed => return false,
+    }
+    return true;
+}
+
+fn dialogKind(kind: host_events.DialogKind) u32 {
+    return switch (kind) {
+        inline else => |tag| @backingInt(@field(DialogKind, @tagName(tag))),
+    };
+}
+
+/// The NUL-terminated copies one event's callback borrows, freed after it.
+/// A copy that cannot be made is null.
+const CallStrings = struct {
+    made: [8][:0]u8 = undefined,
+    len: usize = 0,
+
+    fn z(self: *CallStrings, text: []const u8) ?[*:0]const u8 {
+        if (self.len == self.made.len) return null;
+        const copy = allocator.dupeSentinel(u8, text, 0) catch return null;
+        self.made[self.len] = copy;
+        self.len += 1;
+        return copy.ptr;
+    }
+
+    /// `items` joined by `separator`.
+    fn joined(self: *CallStrings, items: []const []const u8, separator: u8) ?[*:0]const u8 {
+        var total: usize = 0;
+        for (items) |item| total += item.len + 1;
+        var buffer = std.ArrayListUnmanaged(u8).initCapacity(allocator, total) catch return null;
+        defer buffer.deinit(allocator);
+        for (items, 0..) |item, i| {
+            if (i > 0) buffer.appendAssumeCapacity(separator);
+            buffer.appendSliceAssumeCapacity(item);
+        }
+        return self.z(buffer.items);
+    }
+
+    fn deinit(self: *CallStrings) void {
+        for (self.made[0..self.len]) |copy| allocator.free(copy);
+        self.len = 0;
+    }
+};
+
 fn statusOf(err: anyerror) Status {
     return switch (err) {
         error.OutOfMemory => .out_of_memory,
@@ -188,6 +391,7 @@ fn statusOf(err: anyerror) Status {
         error.Timeout => .timeout,
         error.NetworkError, error.NavigationAborted, error.NavigationTimedOut => .navigation_failed,
         error.ProcessNotStarted => .process_not_started,
+        error.UserPromptOpen => .user_prompt_open,
         else => .internal,
     };
 }
@@ -226,11 +430,18 @@ pub export fn crane_process_shutdown() callconv(.c) void {}
 pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBrowser) callconv(.c) Status {
     const result = out orelse return .invalid_argument;
     result.* = null;
-    const o: BrowserOptions = if (options) |given| given.* else .{ .struct_size = @sizeOf(BrowserOptions) };
-    if (o.struct_size < @sizeOf(u32)) return .invalid_argument;
+    // Only the fields the caller's struct_size covers: an older embedder's
+    // struct is shorter, and what it lacks keeps its default.
+    var o: BrowserOptions = .{ .struct_size = @sizeOf(BrowserOptions) };
+    if (options) |given| {
+        if (given.struct_size < @sizeOf(u32)) return .invalid_argument;
+        const covered = @min(given.struct_size, @sizeOf(BrowserOptions));
+        const from: [*]const u8 = @ptrCast(given);
+        @memcpy(std.mem.asBytes(&o)[0..covered], from[0..covered]);
+    }
     if (o.profile_dir != null) return .unsupported;
     const self = allocator.create(CBrowser) catch return .out_of_memory;
-    self.* = .{ .host = undefined, .on_event = o.on_event, .event_context = o.event_context };
+    self.* = .{ .host = undefined, .on_event = o.on_event, .event_context = o.event_context, .answers_dialogs = o.answers_dialogs };
     var config: BrowserConfig = .{ .accept_insecure_certs = o.accept_insecure_certs };
     const failed: ?Status = blk: {
         config.user_agent = self.keep(o.user_agent) catch break :blk .out_of_memory;
@@ -254,7 +465,7 @@ pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBr
         freeBrowser(self);
         return statusOf(err);
     };
-    if (self.on_event != null) self.host.call(self, CBrowser.addListener) catch {};
+    if (self.on_event != null or self.answers_dialogs) self.host.call(self, CBrowser.addListener) catch {};
     result.* = self;
     return .ok;
 }
@@ -270,7 +481,7 @@ fn freeBrowser(self: *CBrowser) void {
 pub export fn crane_browser_destroy(browser: ?*CBrowser) callconv(.c) void {
     const self = browser orelse return;
     if (self.host.isBrowserThread()) return;
-    if (self.on_event != null) self.host.call(self, CBrowser.removeListener) catch {};
+    if (self.on_event != null or self.answers_dialogs) self.host.call(self, CBrowser.removeListener) catch {};
     self.host.stop();
     freeBrowser(self);
 }
@@ -408,4 +619,15 @@ pub export fn crane_tab_close(browser: ?*CBrowser, tab: u64, prompt_unload: bool
     const self = browser orelse return .invalid_argument;
     self.host.closeTab(tab, .{ .prompt_unload = prompt_unload }) catch |err| return statusOf(err);
     return .ok;
+}
+
+/// Answer the simple dialog open in a tab (WebDriver's Accept Alert /
+/// Dismiss Alert / Send Alert Text; CDP Page.handleJavaScriptDialog): from
+/// any thread, the event callback included - the Browser's thread waits in
+/// the dialog until it is answered. `text` (NULL: none) is what a prompt()
+/// returns when accepted. CRANE_ERR_NO_SUCH_DIALOG when none is open.
+pub export fn crane_tab_answer_dialog(browser: ?*CBrowser, tab: u64, accept: bool, text: ?[*:0]const u8) callconv(.c) Status {
+    const self = browser orelse return .invalid_argument;
+    const prompt_text: []const u8 = if (text) |t| std.mem.span(t) else "";
+    return if (self.host.answerUserPrompt(tab, accept, prompt_text)) .ok else .no_such_dialog;
 }
