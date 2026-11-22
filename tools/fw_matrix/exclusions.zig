@@ -182,16 +182,21 @@ pub fn percentEncode(w: *std.Io.Writer, s: []const u8) !void {
 
 /// How a page's result is read: QUnit's and Mocha's HTML reports, or the
 /// console output of Jasmine's console reporter (web-test-runner's manual
-/// mode, Angular), which names only the failed specs.
-pub const Reader = enum { qunit, mocha, jasmine_console };
+/// mode, Angular), which names only the failed specs. `runner_report`: a
+/// suite whose results come only from the project's own runner driving the
+/// browser (Playwright, Puppeteer, Vitest over CDP), read by `fw_matrix
+/// import` from that runner's report; `fw_matrix run` has no page of it to
+/// open, and its exclusion list is applied at import.
+pub const Reader = enum { qunit, mocha, jasmine_console, runner_report };
 
 /// The query parameters that make the framework skip `entries` itself
 /// (empty when there are none): QUnit `filter=!/^(?:...)$/`, Mocha
 /// `grep=^(?:...)$&invert=true`.
 pub fn filterQuery(arena: Allocator, reader: Reader, entries: []const Entry) ![]const u8 {
     if (entries.len == 0) return "";
-    // web-test-runner's page takes no filter: such a suite lists none.
-    if (reader == .jasmine_console) return error.NoFilterForReader;
+    // web-test-runner's page takes no filter: such a suite lists none. A
+    // runner_report suite's list is applied when its report is imported.
+    if (reader == .jasmine_console or reader == .runner_report) return error.NoFilterForReader;
     const re = try alternation(arena, entries);
     var out: std.Io.Writer.Allocating = .init(arena);
     switch (reader) {
@@ -205,7 +210,7 @@ pub fn filterQuery(arena: Allocator, reader: Reader, entries: []const Entry) ![]
             try percentEncode(&out.writer, re);
             try out.writer.writeAll("&invert=true");
         },
-        .jasmine_console => unreachable,
+        .jasmine_console, .runner_report => unreachable,
     }
     return out.written();
 }

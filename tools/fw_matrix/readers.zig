@@ -168,15 +168,17 @@ pub fn consoleInput(arena: Allocator, reader: Reader, budget_ms: u64, stall_ms: 
     // page open for its budget, and the harness ends it once the report is
     // printed (jasmineEnded).
     if (reader == .jasmine_console) return std.fmt.allocPrint(arena, "await new Promise((resolve) => setTimeout(resolve, {d}))\n.exit\n", .{budget_ms});
+    // A runner_report suite has no page of its own for the console to open.
+    if (reader == .runner_report) return error.NoConsolePage;
     const wait_src = switch (reader) {
         .qunit => qunit_wait,
         .mocha => mocha_wait,
-        .jasmine_console => unreachable,
+        .jasmine_console, .runner_report => unreachable,
     };
     const read_src = switch (reader) {
         .qunit => qunit_read,
         .mocha => mocha_read,
-        .jasmine_console => unreachable,
+        .jasmine_console, .runner_report => unreachable,
     };
     const b = try std.fmt.allocPrint(arena, "{d}", .{budget_ms});
     const s = try std.fmt.allocPrint(arena, "{d}", .{stall_ms});
@@ -401,6 +403,8 @@ pub fn parse(arena: Allocator, reader: Reader, json: []const u8) ParseError!Page
         .qunit => parseQUnit(arena, json),
         .mocha => parseMocha(arena, json),
         .jasmine_console => parseJasmineConsole(arena, json),
+        // Read from the project's runner's report (`fw_matrix import`).
+        .runner_report => error.BadReport,
     };
 }
 
@@ -427,6 +431,7 @@ pub fn countProblems(arena: Allocator, reader: Reader, r: PageResult) ![]const [
         .jasmine_console => {
             if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "Jasmine's summary says {d} failures; its report names {d}", .{ n, fail }));
         },
+        .runner_report => {},
         .mocha => {
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha selects {d} tests; its report lists {d}", .{ n, all }));
             if (r.reported_passed) |n| if (n != pass) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha's stats say {d} passes; its report lists {d}", .{ n, pass }));
@@ -457,6 +462,8 @@ test "the console input: three lines, the budget and stall filled in, no newline
     // QUnit's wait matches only the final summary, never its progress line.
     const q = try consoleInput(a, .qunit, 1, 1);
     try testing.expect(std.mem.indexOf(u8, q, "tests completed in \\d+ milliseconds") != null);
+    // A suite read from its project's runner has no page for the console.
+    try testing.expectError(error.NoConsolePage, consoleInput(a, .runner_report, 1, 1));
 }
 
 test "findResult: the last marker's line, or null" {
@@ -1342,6 +1349,9 @@ pub const WtrTest = struct {
     /// Mocha's full title: the suite titles and the test's, joined by spaces.
     id: []const u8,
     state: WtrState,
+    /// A failure's first line, when the runner's report gives one (Vitest's
+    /// and Playwright's JSON reports do; web-test-runner's tree does not).
+    message: ?[]const u8 = null,
 };
 
 fn isWord(s: []const u8) bool {
@@ -1439,4 +1449,274 @@ test "web-test-runner's report: each test under its file and suites, its mark, M
     try testing.expectEqualStrings("__initializeTriggers unit tests intersect modifiers passes threshold modifier to IntersectionObserver", t[3].id);
     try testing.expectEqual(WtrState.failed, t[4].state);
     try testing.expectError(error.BadReport, parseWtrTree(a, "nothing here\n"));
+}
+
+// ============================================================================
+// Vitest's JSON reporter (`--reporter=json --outputFile=<f>`: Svelte's
+// runtime-browser suite, Vue's e2e and e2e-browser projects). Per test file
+// (`testResults[]`, `name` its absolute path) every test (`assertionResults[]`):
+// `ancestorTitles` (its describe blocks), `title`, `status` (passed, failed,
+// skipped, pending, todo) and `failureMessages`. A file that failed before any
+// of its tests ran has `status` "failed", a `message` and no tests.
+// ============================================================================
+
+pub const RunnerReportError = error{ BadReport, OutOfMemory };
+
+/// The first line of a runner's failure text, ANSI colours removed; null
+/// for none.
+fn firstLine(arena: Allocator, text: []const u8) !?[]const u8 {
+    const plain = try stripAnsi(arena, text);
+    var it = std.mem.splitScalar(u8, plain, '\n');
+    while (it.next()) |l| {
+        const t = std.mem.trim(u8, l, " \r\t");
+        if (t.len > 0) return t;
+    }
+    return null;
+}
+
+/// `path` below `root` (a directory, with or without its slash); null when
+/// it is not below it.
+fn below(root: []const u8, path: []const u8) ?[]const u8 {
+    const r = std.mem.trimEnd(u8, root, "/");
+    if (r.len == 0 or path.len <= r.len + 1) return null;
+    if (!std.mem.startsWith(u8, path, r) or path[r.len] != '/') return null;
+    return path[r.len + 1 ..];
+}
+
+fn jsonStr(o: std.json.ObjectMap, k: []const u8) ?[]const u8 {
+    const v = o.get(k) orelse return null;
+    return if (v == .string) v.string else null;
+}
+
+fn jsonArray(o: std.json.ObjectMap, k: []const u8) RunnerReportError![]const std.json.Value {
+    const v = o.get(k) orelse return &.{};
+    if (v != .array) return error.BadReport;
+    return v.array.items;
+}
+
+/// Titles joined by " > " (the ids of tests a runner's JSON report names).
+fn joinTitles(arena: Allocator, titles: []const []const u8, last: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    for (titles) |t| {
+        try out.appendSlice(arena, t);
+        try out.appendSlice(arena, " > ");
+    }
+    try out.appendSlice(arena, last);
+    return out.items;
+}
+
+/// Each test of a Vitest JSON report, its file named below `root` (the
+/// project's directory: a path outside it is refused, so no run host's path
+/// reaches a journal).
+pub fn parseVitestJson(arena: Allocator, text: []const u8, root: []const u8) RunnerReportError![]const WtrTest {
+    const doc = std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{}) catch return error.BadReport;
+    if (doc != .object) return error.BadReport;
+    var out: std.ArrayList(WtrTest) = .empty;
+    for (try jsonArray(doc.object, "testResults")) |f| {
+        if (f != .object) return error.BadReport;
+        const file = below(root, jsonStr(f.object, "name") orelse return error.BadReport) orelse return error.BadReport;
+        const tests = try jsonArray(f.object, "assertionResults");
+        if (tests.len == 0) {
+            // A file that failed before any test ran is one failure, named
+            // by the file; a file with nothing in it is nothing.
+            const status = jsonStr(f.object, "status") orelse return error.BadReport;
+            if (!std.mem.eql(u8, status, "failed")) continue;
+            const msg = try firstLine(arena, jsonStr(f.object, "message") orelse "");
+            try out.append(arena, .{ .file = file, .module = file, .name = file, .id = file, .state = .failed, .message = msg orelse "the file failed before its tests ran" });
+            continue;
+        }
+        for (tests) |t| {
+            if (t != .object) return error.BadReport;
+            var titles: std.ArrayList([]const u8) = .empty;
+            for (try jsonArray(t.object, "ancestorTitles")) |at| {
+                if (at != .string) return error.BadReport;
+                try titles.append(arena, at.string);
+            }
+            const name = jsonStr(t.object, "title") orelse return error.BadReport;
+            const status = jsonStr(t.object, "status") orelse return error.BadReport;
+            const state: WtrState = if (std.mem.eql(u8, status, "passed"))
+                .passed
+            else if (std.mem.eql(u8, status, "failed"))
+                .failed
+            else if (std.mem.eql(u8, status, "skipped") or std.mem.eql(u8, status, "pending") or std.mem.eql(u8, status, "todo"))
+                .skipped
+            else
+                return error.BadReport;
+            var message: ?[]const u8 = null;
+            if (state == .failed) {
+                const msgs = try jsonArray(t.object, "failureMessages");
+                if (msgs.len > 0 and msgs[0] == .string) message = try firstLine(arena, msgs[0].string);
+            }
+            try out.append(arena, .{
+                .file = file,
+                .module = if (titles.items.len > 0) try std.mem.join(arena, " > ", titles.items) else file,
+                .name = name,
+                .id = try joinTitles(arena, titles.items, name),
+                .state = state,
+                .message = message,
+            });
+        }
+    }
+    if (out.items.len == 0) return error.BadReport;
+    return out.items;
+}
+
+const vitest_json =
+    \\{"numTotalTestSuites":3,"numTotalTests":4,"success":false,"testResults":[
+    \\ {"assertionResults":[
+    \\   {"ancestorTitles":["e2e: commits"],"fullName":"e2e: commits classic","status":"passed","title":"classic","failureMessages":[]},
+    \\   {"ancestorTitles":["e2e: commits"],"fullName":"e2e: commits composition","status":"failed","title":"composition","failureMessages":["\u001b[31mError: expected 'a' to be 'b'\u001b[39m\n    at commits.spec.ts:10:3"]}
+    \\  ],"status":"failed","message":"","name":"/work/vue/packages/vue/__tests__/e2e/commits.spec.ts"},
+    \\ {"assertionResults":[
+    \\   {"ancestorTitles":[],"fullName":"todo one","status":"todo","title":"todo one","failureMessages":[]},
+    \\   {"ancestorTitles":["a","b"],"fullName":"a b skipped one","status":"skipped","title":"skipped one","failureMessages":[]}
+    \\  ],"status":"passed","message":"","name":"/work/vue/packages/vue/__tests__/e2e/tree.spec.ts"},
+    \\ {"assertionResults":[],"status":"failed","message":"Failed to load url ./missing.js\nmore","name":"/work/vue/packages/vue/__tests__/e2e/broken.spec.ts"}
+    \\]}
+;
+
+test "Vitest's JSON report: each test under its file below the root, its describes, its state and first failure line; a file that never ran its tests is one failure" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const t = try parseVitestJson(a, vitest_json, "/work/vue/");
+    try testing.expectEqual(@as(usize, 5), t.len);
+    try testing.expectEqualStrings("packages/vue/__tests__/e2e/commits.spec.ts", t[0].file);
+    try testing.expectEqualStrings("e2e: commits", t[0].module);
+    try testing.expectEqualStrings("classic", t[0].name);
+    try testing.expectEqualStrings("e2e: commits > classic", t[0].id);
+    try testing.expectEqual(WtrState.passed, t[0].state);
+    try testing.expectEqual(@as(?[]const u8, null), t[0].message);
+    try testing.expectEqual(WtrState.failed, t[1].state);
+    try testing.expectEqualStrings("Error: expected 'a' to be 'b'", t[1].message.?);
+    // No describe: the file is the module; todo and skipped are skips.
+    try testing.expectEqualStrings("packages/vue/__tests__/e2e/tree.spec.ts", t[2].module);
+    try testing.expectEqualStrings("todo one", t[2].id);
+    try testing.expectEqual(WtrState.skipped, t[2].state);
+    try testing.expectEqualStrings("a > b > skipped one", t[3].id);
+    try testing.expectEqual(WtrState.skipped, t[3].state);
+    // The file that failed to load.
+    try testing.expectEqualStrings("packages/vue/__tests__/e2e/broken.spec.ts", t[4].id);
+    try testing.expectEqual(WtrState.failed, t[4].state);
+    try testing.expectEqualStrings("Failed to load url ./missing.js", t[4].message.?);
+    // Refused: a file outside the root (its path would be published), an
+    // unknown status, no tests at all.
+    try testing.expectError(error.BadReport, parseVitestJson(a, vitest_json, "/elsewhere"));
+    try testing.expectError(error.BadReport, parseVitestJson(a, try std.mem.replaceOwned(u8, a, vitest_json, "\"status\":\"todo\"", "\"status\":\"maybe\""), "/work/vue"));
+    try testing.expectError(error.BadReport, parseVitestJson(a, "{\"testResults\":[]}", "/work/vue"));
+    try testing.expectError(error.BadReport, parseVitestJson(a, "[]", "/work/vue"));
+}
+
+// ============================================================================
+// Playwright's JSON reporter (`--reporter=json`, PLAYWRIGHT_JSON_OUTPUT_NAME:
+// React's fixtures/flight, react-devtools-inline and compiler playground
+// suites). `suites[]` is a tree: a file's suite (`file` relative to the
+// config's testDir), its describe blocks as child suites, `specs[]` in each;
+// a spec's `tests[]` has one entry per project, with `status` expected,
+// unexpected, flaky (failed, then passed on a retry) or skipped, and its
+// attempts in `results[]` (`status`, `errors[].message`).
+// ============================================================================
+
+pub fn parsePlaywrightJson(arena: Allocator, text: []const u8) RunnerReportError![]const WtrTest {
+    const doc = std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{}) catch return error.BadReport;
+    if (doc != .object) return error.BadReport;
+    var out: std.ArrayList(WtrTest) = .empty;
+    var titles: std.ArrayList([]const u8) = .empty;
+    for (try jsonArray(doc.object, "suites")) |file_suite| {
+        if (file_suite != .object) return error.BadReport;
+        const file = jsonStr(file_suite.object, "file") orelse return error.BadReport;
+        titles.clearRetainingCapacity();
+        try playwrightSuite(arena, &out, &titles, file, file_suite.object);
+    }
+    if (out.items.len == 0) return error.BadReport;
+    return out.items;
+}
+
+/// One suite's specs, then its child suites (describe blocks), depth first.
+fn playwrightSuite(arena: Allocator, out: *std.ArrayList(WtrTest), titles: *std.ArrayList([]const u8), file: []const u8, suite: std.json.ObjectMap) RunnerReportError!void {
+    for (try jsonArray(suite, "specs")) |spec| {
+        if (spec != .object) return error.BadReport;
+        const name = jsonStr(spec.object, "title") orelse return error.BadReport;
+        for (try jsonArray(spec.object, "tests")) |t| {
+            if (t != .object) return error.BadReport;
+            const status = jsonStr(t.object, "status") orelse return error.BadReport;
+            const results = try jsonArray(t.object, "results");
+            // The last attempt that failed, and its first error's first line.
+            var failed_msg: ?[]const u8 = null;
+            for (results) |r| {
+                if (r != .object) return error.BadReport;
+                const errors = try jsonArray(r.object, "errors");
+                if (errors.len > 0 and errors[0] == .object) if (jsonStr(errors[0].object, "message")) |m| {
+                    failed_msg = try firstLine(arena, m);
+                };
+            }
+            const state: WtrState, const message: ?[]const u8 = if (std.mem.eql(u8, status, "expected"))
+                .{ .passed, null }
+            else if (std.mem.eql(u8, status, "skipped"))
+                .{ .skipped, null }
+            else if (std.mem.eql(u8, status, "unexpected"))
+                .{ .failed, failed_msg orelse "failed in the runner's report" }
+            else if (std.mem.eql(u8, status, "flaky"))
+                // A flake is a bug (AGENTS.md "Flakes are bugs"): counted as
+                // a failure, saying what it was.
+                .{ .failed, try std.fmt.allocPrint(arena, "flaky: passed only on a retry, after: {s}", .{failed_msg orelse "a failed attempt"}) }
+            else
+                return error.BadReport;
+            try out.append(arena, .{
+                .file = file,
+                .module = if (titles.items.len > 0) try std.mem.join(arena, " > ", titles.items) else file,
+                .name = name,
+                .id = try joinTitles(arena, titles.items, name),
+                .state = state,
+                .message = message,
+            });
+        }
+    }
+    for (try jsonArray(suite, "suites")) |child| {
+        if (child != .object) return error.BadReport;
+        const title = jsonStr(child.object, "title") orelse return error.BadReport;
+        try titles.append(arena, title);
+        try playwrightSuite(arena, out, titles, file, child.object);
+        titles.items.len -= 1;
+    }
+}
+
+const playwright_json =
+    \\{"config":{"version":"1.51.1"},"suites":[
+    \\ {"title":"smoke.test.js","file":"smoke.test.js","specs":[
+    \\   {"title":"smoke test","file":"smoke.test.js","tests":[{"expectedStatus":"passed","projectName":"chromium","status":"unexpected","results":[
+    \\     {"status":"failed","retry":0,"errors":[{"message":"Error: \u001b[2mexpect(\u001b[22mreceived).toEqual(expected)\n\n- Expected"}]},
+    \\     {"status":"failed","retry":1,"errors":[{"message":"Error: second attempt\nmore"}]}]}]}
+    \\  ],"suites":[
+    \\   {"title":"Components","file":"smoke.test.js","specs":[
+    \\     {"title":"shows","file":"smoke.test.js","tests":[{"expectedStatus":"passed","status":"expected","results":[{"status":"passed","errors":[]}]}]},
+    \\     {"title":"flaky one","file":"smoke.test.js","tests":[{"expectedStatus":"passed","status":"flaky","results":[{"status":"failed","errors":[{"message":"Timeout 30000ms exceeded."}]},{"status":"passed","errors":[]}]}]},
+    \\     {"title":"skipped one","file":"smoke.test.js","tests":[{"expectedStatus":"skipped","status":"skipped","results":[{"status":"skipped","errors":[]}]}]}
+    \\    ],"suites":[]}
+    \\  ]}
+    \\],"errors":[],"stats":{"expected":1,"skipped":1,"unexpected":1,"flaky":1}}
+;
+
+test "Playwright's JSON report: each test under its file and describes, flaky as a failure, the last failing attempt's first line" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const t = try parsePlaywrightJson(a, playwright_json);
+    try testing.expectEqual(@as(usize, 4), t.len);
+    try testing.expectEqualStrings("smoke.test.js", t[0].file);
+    try testing.expectEqualStrings("smoke.test.js", t[0].module);
+    try testing.expectEqualStrings("smoke test", t[0].name);
+    try testing.expectEqualStrings("smoke test", t[0].id);
+    try testing.expectEqual(WtrState.failed, t[0].state);
+    try testing.expectEqualStrings("Error: second attempt", t[0].message.?);
+    try testing.expectEqualStrings("Components", t[1].module);
+    try testing.expectEqualStrings("Components > shows", t[1].id);
+    try testing.expectEqual(WtrState.passed, t[1].state);
+    // A flake is a bug (AGENTS.md): it counts as a failure, and says so.
+    try testing.expectEqual(WtrState.failed, t[2].state);
+    try testing.expectEqualStrings("flaky: passed only on a retry, after: Timeout 30000ms exceeded.", t[2].message.?);
+    try testing.expectEqual(WtrState.skipped, t[3].state);
+    // Refused: an unknown status; a report with no test.
+    try testing.expectError(error.BadReport, parsePlaywrightJson(a, try std.mem.replaceOwned(u8, a, playwright_json, "\"status\":\"expected\"", "\"status\":\"odd\"")));
+    try testing.expectError(error.BadReport, parsePlaywrightJson(a, "{\"suites\":[],\"errors\":[]}"));
 }
