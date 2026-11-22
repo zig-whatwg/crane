@@ -11,6 +11,14 @@
 //! The platform state ends BEFORE the scope's supplements (Browser.deinit),
 //! so no supplement touches a store at its own end: what is pending is
 //! written here.
+//!
+//! Every write to the profile's stores runs on the Browser's storage
+//! sequence (storage.StorageSequence; lane prof2) - a thread `attach` starts
+//! and `flush` stops once every store handed over its last batch, so the
+//! stop writes them all before the platform state ends - as Chromium writes
+//! DOM storage, cookies, the disk cache and IndexedDB on sequences of their
+//! own, never on the thread that made the change. A Browser with no profile
+//! directory has no sequence and no thread.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,13 +34,22 @@ const EventLoop = @import("event_loop.zig").EventLoop;
 /// its profile directory - to each persisting part of the Browser's web
 /// state, with the Browser's event loop to arm its commits on.
 pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, loop: *EventLoop, profile_dir: []const u8) !void {
+    // Every part that persists exists before the storage sequence: the
+    // scope ends its supplements in the reverse of the order they were made,
+    // so a Browser whose start fails after this stops the sequence - running
+    // what it was handed - while they still live (StorageSequence.deinit).
+    const user_agent_storage = try scope.of(storage.UserAgentStorage);
+    const jar = try scope.of(cookiestore.CookieJar);
+    const caches = try scope.of(service_worker.cache.store.Storage);
+    // The storage sequence: the thread every write below runs on.
+    const sequence = try scope.of(storage.StorageSequence);
+    try sequence.start();
+    errdefer sequence.stop();
     // localStorage (D6 step 2): read per area on first use, committed in
     // batches (storage/profile.zig).
-    const user_agent_storage = try scope.of(storage.UserAgentStorage);
-    try user_agent_storage.attachProfile(browser, commitTimer(loop));
+    try user_agent_storage.attachProfile(browser, commitTimer(loop), sequence);
     // Cookies (D6 step 3): the jar's persistent cookies read now, its
     // changes committed in batches (cookiestore/storage_integration.zig).
-    const jar = try scope.of(cookiestore.CookieJar);
     try jar.attachProfile(browser, commitTimer(loop));
     // The HTTP cache (D6 step 5): a disk level under the memory cache,
     // capped from the profile volume's free space (Chromium's
@@ -47,7 +64,6 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
     // Cache Storage (D6 step 5): it keeps its caches in the store already;
     // the caches an earlier Browser deleted while Cache objects held them
     // go now (service_worker/cache/store.zig).
-    const caches = try scope.of(service_worker.cache.store.Storage);
     caches.purgeEarlierBrowsers(browser) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => log.err("the profile's deleted caches could not be purged ({s})", .{@errorName(err)}),
@@ -68,13 +84,18 @@ pub fn attachPlatform(scope: *runtime.BrowserScope, browser: *platform.BrowserPl
     };
 }
 
-/// Write what is pending to the profile: the Browser's end.
+/// Write what is pending to the profile: the Browser's end. Each store hands
+/// its last batch to the storage sequence, then the sequence stops - it runs
+/// everything it was handed, IndexedDB's commits included, and its thread
+/// is joined (Chromium's BLOCK_SHUTDOWN sequences) - before the event loop
+/// and the platform state end. A post after this is dropped.
 pub fn flush(scope: *runtime.BrowserScope) void {
     if (scope.existing(storage.UserAgentStorage)) |user_agent_storage| user_agent_storage.flushProfile();
     if (scope.existing(cookiestore.CookieJar)) |jar| jar.flush();
     if (scope.existing(fetch.network.NetworkContext)) |network| {
         if (network.http_cache) |cache| cache.flushProfile();
     }
+    if (scope.existing(storage.StorageSequence)) |sequence| sequence.stop();
 }
 
 /// The Browser's event loop's timers as storage's commit timer: an owned
