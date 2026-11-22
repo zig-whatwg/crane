@@ -21,8 +21,6 @@ const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 const outbound = devtools.outbound;
 
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
-
 /// A Browser on its own thread with one page session on a tab, and the
 /// messages the session sends.
 const Harness = struct {
@@ -55,10 +53,8 @@ const Harness = struct {
     fn sinkPost(context: *anyopaque, side: *devtools.BrowserSide, event: devtools.browser_side.TargetEvent) void {
         _ = context;
         switch (event) {
-            .tab_changed => |changed| {
-                side.allocator.free(changed.url);
-                side.allocator.free(changed.title);
-            },
+            // The event owns its URL (TargetSink.post).
+            .navigated => |navigated| side.allocator.free(navigated.url),
             else => {},
         }
     }
@@ -154,10 +150,8 @@ const Harness = struct {
 };
 
 test "setLifecycleEventsEnabled replays the current document's lifecycle as Chrome does" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -186,10 +180,8 @@ test "setLifecycleEventsEnabled replays the current document's lifecycle as Chro
 }
 
 test "Page.navigate answers when ready to commit, then the commit, DOMContentLoaded and load arrive in Chrome's order" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -198,6 +190,8 @@ test "Page.navigate answers when ready to commit, then the commit, DOMContentLoa
     const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<title>t</title><p>x\"}");
     const answer = try h.result(id);
     try testing.expectEqual(@as(usize, 32), answer.object.get("loaderId").?.string.len);
+    // isDownload is always in the answer, as Chrome's.
+    try testing.expect(!answer.object.get("isDownload").?.bool);
     _ = try h.waitEvent("Page.frameStoppedLoading", before);
     var lines: std.ArrayList(u8) = .empty;
     defer lines.deinit(h.allocator);
@@ -230,26 +224,55 @@ test "Page.navigate answers when ready to commit, then the commit, DOMContentLoa
 }
 
 test "a fragment navigation answers at once with no loaderId and reports navigatedWithinDocument" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>x\"}");
     _ = try h.waitEvent("Page.frameStoppedLoading", 0);
     const before = h.seen.items.len;
-    const answer = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>x#part\"}");
+    const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<p>x#part\"}");
+    const answer = try h.result(id);
     try testing.expect(answer.object.get("loaderId") == null);
-    _ = try h.waitEvent("Page.navigatedWithinDocument", before);
+    const event_index = try h.waitEvent("Page.navigatedWithinDocument", before);
+    // The answer goes first (Chrome; lane cdpr's react log l.1078-1079).
+    var answer_index: ?usize = null;
+    for (h.seen.items[before..], before..) |parsed, i| {
+        const got = parsed.value.object.get("id") orelse continue;
+        if (got == .integer and got.integer == id) answer_index = i;
+    }
+    try testing.expect(answer_index.? < event_index);
+}
+
+test "an iframe's initial about:blank: frameAttached and lifecycle init, no frameNavigated, no executionContextCreated" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const init_index = try h.waitEvent("Page.lifecycleEvent", attached);
+    try testing.expectEqualStrings(frame_id, h.seen.items[init_index].value.object.get("params").?.object.get("frameId").?.string);
+    // Two frames of the page later, nothing else was said of the frame.
+    const settled = try h.host.evaluate(h.allocator, h.tab, "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))", .{ .await_promise = true }, 5_000);
+    defer settled.deinit(h.allocator);
+    h.drain();
+    for (h.seen.items[attached..]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Page.frameNavigated") or std.mem.eql(u8, method, "Runtime.executionContextCreated")) return error.Unexpected;
+    }
 }
 
 test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, in its world when it names one" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.enable", "{}");
@@ -265,10 +288,8 @@ test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, i
 }
 
 test "setDocumentContent replaces the document's content through open, write and close" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     const frame_id = devtools.ids.frameId(0xC0FFEE, h.tab);
@@ -281,10 +302,8 @@ test "setDocumentContent replaces the document's content through open, write and
 }
 
 test "Emulation overrides reach the page and a detaching session takes its own away" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false}");
@@ -298,16 +317,298 @@ test "Emulation overrides reach the page and a detaching session takes its own a
     try testing.expectError(error.CommandFailed, h.call("Emulation.setLocaleOverride", "{\"locale\":\"fr-FR\"}"));
 }
 
-test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not found" {
-    var gpa: LeakChecked = .init;
-    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+test "setDeviceMetricsOverride emulates the device's screen, scale and orientation; clearing gives the platform's back" {
     var h: Harness = undefined;
-    try h.init(gpa.allocator());
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // Playwright's phone: a screen, a scale, an orientation.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":390,\"height\":664,\"deviceScaleFactor\":3,\"mobile\":true,\"screenWidth\":390,\"screenHeight\":844,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":0}}");
+    const phone = try h.host.evaluate(h.allocator, h.tab, "[innerWidth, screen.width, screen.height, screen.availHeight, devicePixelRatio, screen.orientation.type, screen.orientation.angle, matchMedia('(resolution: 3dppx)').matches].join('|')", .{}, 5_000);
+    defer phone.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"390|390|844|844|3|portrait-primary|0|true\"}", phone.json);
+    // Puppeteer's: no screen size on a desktop device keeps the real screen.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":2,\"mobile\":false}");
+    // (screen.orientation's [[type]] follows in a task of its own: the
+    // change steps queue it, html.screen_orientation.)
+    const desktop = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio].join('|')", .{}, 5_000);
+    defer desktop.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|2\"}", desktop.json);
+    // Chrome's checks.
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":-1,\"mobile\":false}"));
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":360}}"));
+    _ = try h.call("Emulation.clearDeviceMetricsOverride", "{}");
+    const cleared = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio].join('|')", .{}, 5_000);
+    defer cleared.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|1\"}", cleared.json);
+}
+
+test "a dedicated worker made after Emulation.setUserAgentOverride reports the override; one made before keeps its copy" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    const ask =
+        \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
+        \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.userAgent + "|" + navigator.platform)'], { type: 'text/javascript' })));
+        \\globalThis.before = makeWorker(); 1
+    ;
+    const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"CraneWorker/1\",\"platform\":\"WorkerOS\"}");
+    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer after.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"CraneWorker/1|WorkerOS\"}", after.json);
+    // Chrome's copy is taken at creation: a worker made before keeps the
+    // Browser's user agent.
+    const earlier = try h.host.evaluate(h.allocator, h.tab, "askWorker(before).then((v) => v.startsWith('CraneWorker/1'))", .{ .await_promise = true }, 5_000);
+    defer earlier.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
+}
+
+test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "document.open(); document.write('<p>x</p>'); document.close(); 1", .{}, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.documentOpened", from);
+    const init_index = try h.waitEvent("Page.lifecycleEvent", index);
+    const init_params = h.seen.items[init_index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("init", init_params.get("name").?.string);
+    // The same loader as the frame documentOpened carries.
+    const frame = h.seen.items[index].value.object.get("params").?.object.get("frame").?.object;
+    try testing.expectEqualStrings(frame.get("loaderId").?.string, init_params.get("loaderId").?.string);
+}
+
+test "setUserAgentOverride with an empty userAgent overrides the languages alone (Playwright's locale call)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"fr-FR\"}");
+    const seen = try h.host.evaluate(h.allocator, h.tab, "[navigator.userAgent.length > 0, navigator.language].join('|')", .{}, 5_000);
+    defer seen.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"true|fr-FR\"}", seen.json);
+}
+
+test "Log violations: document.write and a slow listener and timer are reported as Chrome's PerformanceMonitor does" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // Not enabled: refused, as InspectorLogAgent.
+    try testing.expectError(error.CommandFailed, h.call("Log.startViolationsReport", "{\"config\":[]}"));
+    _ = try h.call("Log.enable", "{}");
+    _ = try h.call("Log.startViolationsReport", "{\"config\":[{\"name\":\"discouragedAPIUse\",\"threshold\":-1},{\"name\":\"handler\",\"threshold\":1},{\"name\":\"recurringHandler\",\"threshold\":1},{\"name\":\"longTask\",\"threshold\":1}]}");
+    const from = h.seen.items.len;
+    const ran = try h.host.evaluate(h.allocator, h.tab,
+        \\document.body.addEventListener('click', () => { const t = performance.now(); while (performance.now() - t < 5); });
+        \\document.body.click();
+        \\setTimeout(() => { const t = performance.now(); while (performance.now() - t < 5); }, 0);
+        \\document.write('<p>w</p>'); 1
+    , .{}, 5_000);
+    defer ran.deinit(h.allocator);
+    var texts: std.ArrayList(u8) = .empty;
+    defer texts.deinit(h.allocator);
+    var at = from;
+    var seen_handler = false;
+    var seen_timer = false;
+    var seen_write = false;
+    while (!(seen_handler and seen_timer and seen_write)) {
+        const index = try h.waitEvent("Log.entryAdded", at);
+        at = index + 1;
+        const entry = h.seen.items[index].value.object.get("params").?.object.get("entry").?.object;
+        try testing.expectEqualStrings("violation", entry.get("source").?.string);
+        try testing.expectEqualStrings("verbose", entry.get("level").?.string);
+        const text = entry.get("text").?.string;
+        if (std.mem.startsWith(u8, text, "'click' handler took ")) seen_handler = true;
+        if (std.mem.startsWith(u8, text, "'setTimeout' handler took ")) seen_timer = true;
+        if (std.mem.startsWith(u8, text, "Avoid using document.write().")) seen_write = true;
+        // longTask is subscribed but never reported (no ReportLongTask).
+        try testing.expect(std.mem.indexOf(u8, text, "long task") == null);
+    }
+    _ = try h.call("Log.stopViolationsReport", "{}");
+}
+
+/// A fresh iframe named `name` on its initial about:blank, then `touch` run
+/// in the page: its main world context is announced only then (Blink's lazy
+/// LocalWindowProxy::Initialize), carrying its frameId.
+fn expectContextOnTouch(h: *Harness, name: []const u8, touch: []const u8) !void {
+    const from = h.seen.items.len;
+    const make = try std.fmt.allocPrint(h.allocator, "const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); 1", .{ name, name });
+    defer h.allocator.free(make);
+    const made = try h.host.evaluate(h.allocator, h.tab, make, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const before_touch = h.seen.items.len;
+    for (h.seen.items[attached..before_touch]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Runtime.executionContextCreated")) {
+            const aux = parsed.value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+            if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return error.AnnouncedBeforeTouch;
+        }
+    }
+    const touched = try h.host.evaluate(h.allocator, h.tab, touch, .{}, 5_000);
+    defer touched.deinit(h.allocator);
+    var at = before_touch;
+    while (true) {
+        const index = try h.waitEvent("Runtime.executionContextCreated", at);
+        at = index + 1;
+        const aux = h.seen.items[index].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+        if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return;
+    }
+}
+
+test "a fresh iframe's main world context is announced when script first reaches it, by every route" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    try expectContextOnTouch(&h, "a", "void document.getElementById('a').contentWindow; 1");
+    try expectContextOnTouch(&h, "b", "void document.getElementById('b').contentDocument; 1");
+    try expectContextOnTouch(&h, "c", "void window[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "d", "void window.frames[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "e", "void window.e; 1");
+    try expectContextOnTouch(&h, "g", "void window.open('', 'g'); 1");
+}
+
+test "a session targeting a fresh iframe (Page.createIsolatedWorld) announces its main world first" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"frameId\":\"{s}\",\"worldName\":\"util\"}}", .{frame_id});
+    defer h.allocator.free(params);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.createIsolatedWorld", params);
+    const first = try h.waitEvent("Runtime.executionContextCreated", before);
+    const aux = h.seen.items[first].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+    try testing.expect(aux.get("isDefault").?.bool);
+    try testing.expectEqualStrings(frame_id, aux.get("frameId").?.string);
+}
+
+test "Page.windowOpen tells the opener's session of window.open before the window exists" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "void window.open('about:blank#p', 'named', 'width=300,height=200')", .{ .user_activation = true }, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.windowOpen", from);
+    const params = h.seen.items[index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("about:blank#p", params.get("url").?.string);
+    try testing.expectEqualStrings("named", params.get("windowName").?.string);
+    try testing.expect(params.get("userGesture").?.bool);
+    const features = params.get("windowFeatures").?.array.items;
+    try testing.expectEqualStrings("width=300", features[0].string);
+    try testing.expectEqualStrings("height=200", features[1].string);
+}
+
+test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not found" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
     defer h.deinit();
 
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<div id=d class=c>x</div>\"}");
-    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
     // No inspector session yet (lane cdpw's bridge): by an unknown id.
     try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", "{\"backendNodeId\":999999}"));
     try testing.expectError(error.CommandFailed, h.call("DOM.getContentQuads", "{\"backendNodeId\":999999}"));
+    // With no depth: childNodeCount, no children (Chrome's depth.value_or(0)).
+    _ = try h.call("Runtime.enable", "{}");
+    const object = try h.call("Runtime.evaluate", "{\"expression\":\"document.getElementById('d')\"}");
+    const object_id = object.object.get("result").?.object.get("objectId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"objectId\":\"{s}\"}}", .{object_id});
+    defer h.allocator.free(params);
+    const described = try h.call("DOM.describeNode", params);
+    const node = described.object.get("node").?.object;
+    try testing.expectEqual(@as(i64, 1), node.get("childNodeCount").?.integer);
+    try testing.expect(node.get("children") == null);
+}
+
+test "lifecycle init comes before executionContextsCleared at a commit (Chrome's order)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const before = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>o\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.transcript(before, &lines);
+    const init_at = std.mem.indexOf(u8, lines.items, "Page.lifecycleEvent:init") orelse return error.NoInit;
+    const cleared_at = std.mem.indexOf(u8, lines.items, "Runtime.executionContextsCleared") orelse return error.NoCleared;
+    const navigated_at = std.mem.indexOf(u8, lines.items, "Page.frameNavigated") orelse return error.NoNavigated;
+    try testing.expect(init_at < cleared_at and cleared_at < navigated_at);
+}
+
+test "an opaque origin's frame reports securityOrigin \"://\", as Chrome" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>opaque\"}");
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const tree = try h.call("Page.getFrameTree", "{}");
+    try testing.expectEqualStrings("://", tree.object.get("frameTree").?.object.get("frame").?.object.get("securityOrigin").?.string);
+}
+
+test "a frame's first navigation is requested as initialFrameNavigation" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "const f = document.createElement('iframe'); f.src = 'data:text/html,<p>child'; document.body.append(f); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const index = try h.waitEvent("Page.frameRequestedNavigation", from);
+    try testing.expectEqualStrings("initialFrameNavigation", h.seen.items[index].value.object.get("params").?.object.get("reason").?.string);
+}
+
+test "a new-document script's world has universal access, as EnsureDOMWrapperWorld(frame, name, true)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"1\",\"worldName\":\"cdph-world\"}");
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>w\"}");
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const Check = struct {
+        universal: bool = false,
+        found: bool = false,
+        fn run(ctx: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            const worlds = browser_mod.isolated_worlds.of(b.scope) catch return;
+            for (worlds.worlds.items) |world| if (std.mem.eql(u8, world.name, "cdph-world")) {
+                self.found = true;
+                self.universal = world.universal_access;
+            };
+        }
+    };
+    var check: Check = .{};
+    try h.host.call(&check, Check.run);
+    try testing.expect(check.found and check.universal);
 }

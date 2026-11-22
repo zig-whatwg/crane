@@ -82,6 +82,13 @@ pub const BrowserScope = struct {
     /// cleared. Read by every thread of the Browser (a worker's conversions
     /// read their realm's), hence atomic.
     isolated_worlds_active: std.atomic.Value(bool) = .init(false),
+    /// The Browser's performance monitor (dom.performance_monitor.Monitor)
+    /// while a host is subscribed to a violation, else null: the hot paths
+    /// - listener invoke, timer fire - load it and branch, reading no clock
+    /// when it is null, as Blink's PerformanceMonitor::enabled_. Set and
+    /// cleared on the window thread; read by any thread of the Browser (a
+    /// worker's dispatch tests it too), hence atomic.
+    performance_monitor: std.atomic.Value(?*anyopaque) = .init(null),
     /// Protects `supplements` and the making of tables. Never held across a
     /// supplement's own steps beyond its `init`.
     mutex: std.Io.Mutex = .init,

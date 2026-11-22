@@ -15,7 +15,8 @@ const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const BrowserHost = browser_mod.BrowserHost;
 
-const LeakChecked = std.heap.DebugAllocator(.{ .thread_safe = true });
+/// A poisoning leak-checker (tests/AGENTS.md: never a bare std.heap.DebugAllocator).
+const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true, .stack_trace_frames = 0 });
 
 test "a host starts a Browser on its own thread, opens and navigates a tab, evaluates in it and stops" {
     var gpa: LeakChecked = .init;

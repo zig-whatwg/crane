@@ -161,6 +161,7 @@ pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return a string representing the platform on which the browser is executing."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    if (userAgentOverrideOf(instance)) |snapshot| if (snapshot.platform) |platform| return try runtime.DOMString.initDupe(instance.ctx.allocator, platform);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getPlatform());
@@ -191,12 +192,23 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
+/// The user agent override of the worker this navigator is of (a
+/// dedicated worker's copy of its tab's), or null.
+fn userAgentOverrideOf(instance: *runtime.Instance) ?*const @import("html").window.host_overrides.UserAgentSnapshot {
+    return @import("html").worker_host.userAgentOverrideOfRealm(instance.ctx);
+}
+
 /// Getter for userAgent
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the default User-Agent value."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // A dedicated worker's copy of its tab's user agent override, taken as
+    // it was made: Chrome's WorkerNavigator answers the global scope's user
+    // agent, which DedicatedWorker::CreateGlobalScopeCreationParams copied
+    // from its owner with the override applied (html.worker_host).
+    if (userAgentOverrideOf(instance)) |snapshot| if (snapshot.user_agent) |ua| return try runtime.DOMString.initDupe(instance.ctx.allocator, ua);
     // HTML NavigatorID: the worker's settings object's environment default
     // `User-Agent` value - its Browser's (a worker realm carries its
     // creator's Browser scope).

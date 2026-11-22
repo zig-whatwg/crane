@@ -79,14 +79,17 @@ fn nodeOfObject(session: *PageSession, id: []const u8) !*runtime.Instance {
 }
 
 /// Describe a node (InspectorDOMAgent::describeNode): its kind, names and
-/// value, child count and attributes, to `depth` levels of children (1 by
-/// default; -1 for all), with no nodeId (0).
+/// value, child count and attributes, to `depth` levels of children, with no
+/// nodeId (0). With no depth, no children - only childNodeCount: Blink calls
+/// BuildObjectForNode with depth.value_or(0) and no node map, so nothing
+/// forces children (Chrome 157 returned none in 1229 describeNode results,
+/// lane cdpr's trace), although the protocol text says the default is 1.
 pub fn describeNode(session: *PageSession, params: D.describeNode.Params, reply: Reply(D.describeNode)) !void {
     if (params.nodeId) |id| if (id != 0) return session.fail("Could not find node with given id");
     const node = try nodeNamed(session, params.backendNodeId, params.objectId);
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const depth = params.depth orelse 1;
+    const depth = params.depth orelse 0;
     const described = try buildNode(session, arena_state.allocator(), node, depth, params.pierce orelse false);
     reply.ok(.{ .node = described });
 }
