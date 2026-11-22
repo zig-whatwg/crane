@@ -22,6 +22,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const v8 = @import("v8");
 const test_process = @import("test_process.zig");
 
 const supported = engine.capabilities.inspector_protocol != .unsupported;
@@ -91,6 +92,12 @@ const Page = struct {
     realm: runtime.Context,
 
     fn make() !Page {
+        return makeWith(&.{}, null);
+    }
+
+    /// With the agent's host hooks (BORROWED for the page's life) and the
+    /// host they are passed.
+    fn makeWith(hooks: *const engine.HostHooks, host: ?*anyopaque) !Page {
         test_process.start();
         const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
         errdefer own_runtime.end();
@@ -98,8 +105,7 @@ const Page = struct {
         errdefer testing.allocator.destroy(browser);
         browser.* = runtime.BrowserScope.init(testing.allocator);
         errdefer browser.deinit();
-        const hooks: *const engine.HostHooks = &.{};
-        const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = hooks, .allocator = testing.allocator });
+        const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = hooks, .host = host, .allocator = testing.allocator });
         errdefer engine.destroyAgent(agent);
         const realm = try engine.createWindowRealm(&.{
             .agent_cluster_cross_origin_isolated = true,
@@ -341,4 +347,65 @@ fn replBesideSession() !void {
 
 test "the console's REPL keeps answering beside a host session on the agent's one inspector" {
     if (supported) try replBesideSession() else return error.SkipZigTest;
+}
+
+/// A host that, as html/rejected_promises does for the inspector's report,
+/// captures the stack where each unhandled rejection was made - inside the
+/// call that rejected (HostPromiseRejectionTracker's "reject").
+const RejectionSites = struct {
+    rejected: usize = 0,
+    captured: usize = 0,
+
+    fn tracker(host: ?*anyopaque, realm: runtime.Context, promise: engine.Owned, operation: engine.RejectionOperation, reason: ?engine.Owned) void {
+        const self: *RejectionSites = @ptrCast(@alignCast(host.?));
+        defer promise.release();
+        defer if (reason) |value| value.release();
+        if (operation != .reject) return;
+        self.rejected += 1;
+        if (engine.inspectorCaptureStack(realm)) |stack| {
+            self.captured += 1;
+            engine.inspectorReleaseStack(stack);
+        }
+    }
+
+    const hooks: engine.HostHooks = .{ .promiseRejectionTracker = tracker };
+};
+
+/// How many stack captures the agent's inspector asked of V8.
+fn captureAsks(page: *const Page) u64 {
+    const inspector = v8.protocol_agents.existingInspectorOf(@ptrCast(@alignCast(page.agent))) orelse return 0;
+    return inspector.capture_asks;
+}
+
+fn captureOnlyForRegisteredRealms() !void {
+    var sites: RejectionSites = .{};
+    var page = try Page.makeWith(&RejectionSites.hooks, &sites);
+    defer page.end();
+    // The agent's inspector exists - a session on the tab's group made it -
+    // but the realm is in no group yet: Crane's Browser with no session.
+    var received: Received = .{};
+    defer received.deinit();
+    const session = try engine.inspectorConnect(page.agent, 1, received.channel());
+    defer engine.inspectorDisconnect(session);
+
+    const reject = "function rejectHere() { Promise.reject(new Error('site')).catch(() => {}); }\nrejectHere(); 'ok'";
+    // Not registered: V8 would capture nothing (V8Debugger::captureStackTrace
+    // returns nullptr for context group 0), so nothing is asked of it.
+    const first = try eval(page.realm, reject);
+    testing.allocator.free(first);
+    try testing.expectEqual(@as(usize, 1), sites.rejected);
+    try testing.expectEqual(@as(usize, 0), sites.captured);
+    try testing.expectEqual(@as(u64, 0), captureAsks(&page));
+
+    // Registered: asked, and the reject call's stack comes back.
+    _ = try registerMain(&page);
+    const second = try eval(page.realm, reject);
+    testing.allocator.free(second);
+    try testing.expectEqual(@as(usize, 2), sites.rejected);
+    try testing.expectEqual(@as(usize, 1), sites.captured);
+    try testing.expectEqual(@as(u64, 1), captureAsks(&page));
+}
+
+test "a rejection's stack is asked of V8 only for a realm the inspector registered (V8 captures none for group 0)" {
+    if (supported) try captureOnlyForRegisteredRealms() else return error.SkipZigTest;
 }
