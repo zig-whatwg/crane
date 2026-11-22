@@ -460,7 +460,7 @@ test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not 
     defer h.deinit();
 
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<div id=d class=c>x</div>\"}");
-    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
     // No inspector session yet (lane cdpw's bridge): by an unknown id.
     try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", "{\"backendNodeId\":999999}"));
     try testing.expectError(error.CommandFailed, h.call("DOM.getContentQuads", "{\"backendNodeId\":999999}"));
@@ -502,7 +502,7 @@ test "an opaque origin's frame reports securityOrigin \"://\", as Chrome" {
     defer h.deinit();
 
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>opaque\"}");
-    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
     const tree = try h.call("Page.getFrameTree", "{}");
     try testing.expectEqualStrings("://", tree.object.get("frameTree").?.object.get("frame").?.object.get("securityOrigin").?.string);
 }
@@ -528,7 +528,7 @@ test "a new-document script's world has universal access, as EnsureDOMWrapperWor
     _ = try h.call("Page.enable", "{}");
     _ = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"1\",\"worldName\":\"cdph-world\"}");
     _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>w\"}");
-    _ = try h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
     const Check = struct {
         universal: bool = false,
         found: bool = false,

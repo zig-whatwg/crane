@@ -192,7 +192,9 @@ pub fn setUserAgentOverride(session: *PageSession, params: E.setUserAgentOverrid
     // ApplyOverrides): `userAgent: ""` with an acceptLanguage - Playwright's
     // call for every locale - overrides the languages and leaves the user
     // agent the Browser's. All empty clears this session's override.
-    const all_empty = params.userAgent.len == 0 and (params.acceptLanguage orelse "").len == 0 and (params.platform orelse "").len == 0;
+    const no_language = if (params.acceptLanguage) |given| given.len == 0 else true;
+    const no_platform = if (params.platform) |given| given.len == 0 else true;
+    const all_empty = params.userAgent.len == 0 and no_language and no_platform;
     if (all_empty) {
         if (bc.host_overrides.user_agent_owner == owner(session)) try bc.host_overrides.setUserAgent(bc.allocator, 0, null, null, null);
         return .{};

@@ -86,7 +86,7 @@ test "the C ABI refuses what it cannot do: a profile directory, a PAC proxy, nul
 /// thread; the test reads after its blocking calls return, or after an
 /// atomic it waits on).
 const Heard = struct {
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
     kinds: [64]u32 = undefined,
     tabs: [64]u64 = undefined,
     len: usize = 0,
@@ -114,8 +114,8 @@ const Heard = struct {
 
     fn onEvent(context: ?*anyopaque, event: *const capi.Event) callconv(.c) void {
         const self: *Heard = @ptrCast(@alignCast(context.?));
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.len < self.kinds.len) {
             self.kinds[self.len] = event.kind;
             self.tabs[self.len] = event.tab;
@@ -141,8 +141,8 @@ const Heard = struct {
 
     /// The position of the first `kind` heard for `tab` at or after `from`.
     fn indexOf(self: *Heard, kind: capi.EventKind, tab: u64, from: usize) ?usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var i = from;
         while (i < self.len) : (i += 1) {
             if (self.kinds[i] == @backingInt(kind) and self.tabs[i] == tab) return i;
@@ -233,12 +233,12 @@ test "window.open is told to a C embedder before the new tab: URL, name, feature
     capi.crane_evaluate_result_free(&result);
     const asked = heard.indexOf(.window_open, tab, 0) orelse return error.NoWindowOpen;
     // tab_created of the popup comes after.
-    heard.mutex.lock();
+    std.Io.Threaded.mutexLockUncancelable(&heard.mutex);
     var created_after = false;
     for (heard.kinds[asked..heard.len]) |kind| {
         if (kind == @backingInt(capi.EventKind.tab_created)) created_after = true;
     }
-    heard.mutex.unlock();
+    std.Io.Threaded.mutexUnlock(&heard.mutex);
     try testing.expect(created_after);
     try testing.expectEqualStrings("about:blank#popup", heard.window_url[0..heard.window_url_len]);
     try testing.expectEqualStrings("named", heard.window_name[0..heard.window_name_len]);
