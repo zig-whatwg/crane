@@ -9,6 +9,7 @@ const types = @import("types.zig");
 const duplicates = @import("duplicates.zig");
 const member_overrides = @import("member_overrides.zig");
 const member_removals = @import("member_removals.zig");
+const include_removals = @import("include_removals.zig");
 const type_registry_mod = @import("type_registry.zig");
 
 // Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
@@ -124,6 +125,10 @@ pub const IR = struct {
     /// The source keys of supplementary files (markSupplementary); owns its
     /// keys.
     supplementary: std.StringHashMap(void),
+
+    /// Which include_removals.zig entries an includes statement matched
+    /// (processIncludes); checkIncludeRemovals fails on one that none did.
+    include_removals_matched: [include_removals.table.len]bool = @splat(false),
 
     allocator: std.mem.Allocator,
 
@@ -594,6 +599,13 @@ pub const IR = struct {
     /// a later add rebuilds the name without its mixins.
     pub fn processIncludes(self: *IR, includes_list: []const types.Includes) !void {
         for (includes_list) |inc| {
+            // An includes statement all three browsers decline
+            // (include_removals.zig, golden rule 2): the interface takes none
+            // of the mixin's members.
+            if (include_removals.indexOf(&include_removals.table, inc.target, inc.mixin)) |i| {
+                self.include_removals_matched[i] = true;
+                continue;
+            }
             // Find the target interface
             const target_iface = self.interfaces.getPtr(inc.target);
             if (target_iface == null) {
@@ -624,6 +636,23 @@ pub const IR = struct {
                 if (inherited.operation) |*op| op.mixin = mixin_name;
                 try target_iface.?.members.append(self.allocator, inherited);
             }
+        }
+    }
+
+    /// After the last processIncludes of a whole source set: an
+    /// include_removals.zig entry no includes statement matched is stale -
+    /// the snapshot update that dropped the statement drops the entry too.
+    /// Sources without the entry's interface (a test's own IDL) say nothing.
+    pub fn checkIncludeRemovals(self: *const IR) !void {
+        const Defined = struct {
+            fn f(ir: *const IR, name: []const u8) bool {
+                return ir.occurrences.contains(name);
+            }
+        };
+        if (include_removals.firstStale(&include_removals.table, &self.include_removals_matched, self, Defined.f)) |entry| {
+            // Printed, not logged: the caller reports the error.
+            std.debug.print("  error: include_removals.zig lists {s} includes {s}, which no includes statement says: delete the entry\n", .{ entry.target, entry.mixin });
+            return error.StaleIncludeRemoval;
         }
     }
 
