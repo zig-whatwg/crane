@@ -83,8 +83,8 @@ pub fn devtoolsWakeNew() Error!platform.DevtoolsWake {
 pub fn devtoolsWake(wake: platform.DevtoolsWake) void {
     // One byte, never read: the read end stays readable, so every wait on it
     // - this one and any later one - returns at once.
-    const byte: u8 = 1;
-    while (c.write(fdOf(wake.write), &byte, 1) < 0) {
+    const byte = [1]u8{1};
+    while (c.write(fdOf(wake.write), &byte, byte.len) < 0) {
         if (lastError() != .INTR) return;
     }
 }
