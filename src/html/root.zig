@@ -169,8 +169,6 @@ pub const WindowProxyError = window.WindowProxyError;
 pub const IFrameIntegration = window.IFrameIntegration;
 pub const IFrameState = window.IFrameState;
 pub const IFrameError = window.IFrameError;
-pub const UIBackend = window.UIBackend;
-pub const StubUIBackend = window.StubUIBackend;
 
 // Navigation & History (§7.2-7.4)
 pub const navigation = @import("navigation/root.zig");

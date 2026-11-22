@@ -6,9 +6,10 @@
 //! WebDriver session - each told every event, in order, on the Browser's
 //! thread.
 //!
-//! A listener only records or queues: it must not run script, and must not
-//! close or create tabs from inside the call (the Browser is in the middle of
-//! the step that made the event). It may add or remove listeners; one removed
+//! A listener only records or queues: it must not run script - except for
+//! `document_start`, which exists for that - and must not close or create
+//! tabs from inside the call (the Browser is in the middle of the step that
+//! made the event). It may add or remove listeners; one removed
 //! during a delivery is not called again.
 //!
 //! The source is the Browser's navigation observer (lane life1's
@@ -23,6 +24,16 @@ const std = @import("std");
 
 /// A navigation milestone (html.navigation.observer.Milestone).
 pub const Milestone = @import("html").navigation.observer.Milestone;
+/// A new document ready for host scripts (html.navigation.document_start).
+pub const DocumentStart = @import("html").navigation.document_start.Start;
+/// A simple dialog opening and closing (html.navigation.user_prompts).
+pub const DialogOpening = @import("html").navigation.user_prompts.Opening;
+pub const DialogClosed = @import("html").navigation.user_prompts.Closed;
+pub const DialogAnswer = @import("html").navigation.user_prompts.DialogAnswer;
+pub const DialogKind = @import("html").navigation.user_prompts.Kind;
+/// An open dialog as a host reads it from any thread
+/// (BrowserHost.userPromptOf).
+pub const UserPromptInfo = @import("html").simple_dialogs.Info;
 
 /// A tab: its top-level traversable's browsing context id (process-unique,
 /// kept for its life; the BiDi navigable id, the source of CDP's target id).
@@ -52,6 +63,23 @@ pub const Event = union(enum) {
     /// A navigation milestone of one of the Browser's navigables, at its
     /// spec step (html.navigation.observer: BORROWED for the call).
     navigation: *const Milestone,
+    /// A new document's Window realm is set up and none of the document's
+    /// own scripts has run (html.navigation.document_start; Blink's
+    /// DidCreateMainWorldContext): the one event a listener MAY run script
+    /// for - a host's scripts for every new document (CDP
+    /// Page.addScriptToEvaluateOnNewDocument), in its main world or in world
+    /// realms it makes. BORROWED for the call.
+    document_start: *const DocumentStart,
+    /// A simple dialog opens (WebDriver BiDi "user prompt opened"; HTML
+    /// 8.9.1, beforeunload's prompt), before the Browser thread pauses for
+    /// it: its tab, kind, message, default and URL, the `answer` any host may
+    /// call from ANY thread (at most once; false when already answered or
+    /// closed), and `claim`, which a host that will answer sets (else the
+    /// platform's dialog answers). BORROWED for the call.
+    dialog_opening: *const DialogOpening,
+    /// The dialog closed, whoever answered (WebDriver BiDi "user prompt
+    /// closed"). BORROWED for the call.
+    dialog_closed: *const DialogClosed,
 
     pub const TabCreated = struct {
         tab: TabId,

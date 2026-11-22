@@ -8832,6 +8832,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         devtools_mod.addImport("engine", engine_mod);
         devtools_mod.addImport("fetch", fetch_mod);
         devtools_mod.addImport("infra", infra_mod);
+        // The page-side domains read documents and nodes through their
+        // generated interfaces (DOM.describeNode, Page.getFrameTree), as the
+        // console does - never an impl.
+        devtools_mod.addImport("interfaces", interfaces_mod);
         devtools_mod.addOptions("build_options", build_options);
         // GET /json/protocol serves the pinned definitions (server.zig
         // protocolJson).

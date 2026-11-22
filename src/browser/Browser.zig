@@ -249,6 +249,12 @@ pub const Browser = struct {
     /// (`holdTabsOpenedByPages`; CDP Target.setAutoAttach
     /// {waitForDebuggerOnStart}).
     hold_page_tabs: bool = false,
+    /// The agent's inspector client (installed at init when the engine has
+    /// inspector_protocol), BORROWED by the engine for the agent's life.
+    inspector_client: engine.InspectorClient = .{},
+    /// The debugger asked its paused message loop to end
+    /// (quitMessageLoopOnPause).
+    debugger_quit: bool = false,
     /// Host evaluations awaiting a promise (`evaluateInTab` with
     /// await_promise): each is told its result when the promise settles, or
     /// that the Browser ended first.
@@ -450,6 +456,25 @@ pub const Browser = struct {
         // the hold point for paused tabs.
         const navigables = try scope.table(.navigables, html_mod.Navigables);
         navigables.observer = .{ .context = browser, .notify = notifyMilestone, .hold_first_navigation = holdsNavigation };
+        // And its document-start hook (html.navigation.document_start): the
+        // host's scripts for each new document, fanned out the same way.
+        navigables.document_start = .{ .context = browser, .run = runDocumentStart };
+        // And its user prompt hook (html.navigation.user_prompts): each
+        // simple dialog's opening and closing.
+        navigables.user_prompts = .{ .context = browser, .opening = dialogOpening, .closed = dialogClosed };
+        // The agent's inspector client (the engine protocol's
+        // inspector_protocol): Runtime.runIfWaitingForDebugger releases the
+        // tab's start hold, and a debugger pause runs the Browser's nested
+        // message loop (runtime.BrowserPause, policy .debugger).
+        if (comptime engine.capabilities.inspector_protocol != .unsupported) {
+            browser.inspector_client = .{
+                .host = browser,
+                .runIfWaitingForDebugger = inspectorRunIfWaiting,
+                .runMessageLoopOnPause = inspectorRunMessageLoopOnPause,
+                .quitMessageLoopOnPause = inspectorQuitMessageLoopOnPause,
+            };
+            engine.installInspectorClient(agent, &browser.inspector_client);
+        }
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -558,6 +583,9 @@ pub const Browser = struct {
             // (dom.teardown_sweeps) - never another Browser's.
             @import("dom").teardown_sweeps.runAll(self.scope);
 
+            // The agent's inspector client points at this Browser: gone
+            // before the agent ends.
+            if (comptime engine.capabilities.inspector_protocol != .unsupported) engine.installInspectorClient(agent, null);
             // Release the rejection tracker's promise handles - this agent's,
             // on its host, and no other Browser's - while the agent that
             // owns them still exists.
@@ -1043,6 +1071,43 @@ pub const Browser = struct {
         // A "browser UI" navigation: no sourceDocument, the user's own
         // (navigate step 5) - as the host page's address bar navigates.
         integration.navigate(serialized, .{ .browser_ui = true });
+    }
+
+    /// What `navigateNavigable` carries besides its URL (N5: CDP
+    /// Page.navigate's `referrer` and `referrerPolicy`).
+    pub const NavigateNavigableOptions = struct {
+        /// The request's referrer, a URL. BORROWED for the call.
+        referrer: ?[]const u8 = null,
+        referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    };
+
+    /// HTML "navigate" navigable `id` - a tab, or a frame in one - to `url`
+    /// as the browser's UI does (user involvement "browser UI", no
+    /// sourceDocument), with `options`' referrer: CDP Page.navigate,
+    /// whatever frame it names (Chrome: NavigationController::LoadURL on
+    /// that frame's FrameTreeNode). The navigation runs as tasks; returns
+    /// the id of the cross-document navigation it started (the navigation
+    /// observer's navigation_id, CDP's loaderId), or 0 when none started (a
+    /// fragment navigation, one refused). error.NoSuchTab for an id that
+    /// names no live navigable of this Browser; error.InvalidUrl.
+    pub fn navigateNavigable(self: *Browser, id: u64, url: []const u8, options: NavigateNavigableOptions) !u64 {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return error.NoSuchTab;
+        const bc = navigables.byId(id) orelse return error.NoSuchTab;
+        if (bc.is_closed or bc.active_window == null) return error.NoSuchTab;
+        const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
+        defer self.allocator.free(serialized);
+        if (bc.parent == null) if (self.hostContextOf(bc)) |ctx| {
+            return ctx.navigateWithOptions(serialized, .{ .referrer = options.referrer, .referrer_policy = options.referrer_policy });
+        };
+        const integration = integrationOf(bc) orelse return error.NoSuchTab;
+        var started: u64 = 0;
+        integration.navigate(serialized, .{
+            .browser_ui = true,
+            .referrer_url = options.referrer,
+            .referrer_policy = options.referrer_policy,
+            .started_navigation_id = &started,
+        });
+        return started;
     }
 
     /// HTML "reload" traversable `id`'s navigable, as the browser's reload
@@ -1727,6 +1792,64 @@ pub const Browser = struct {
             else => {},
         }
         self.listeners.emit(.{ .navigation = milestone });
+    }
+
+    /// html.navigation.document_start: a new document of one of the
+    /// Browser's navigables is ready for host scripts, before its own run -
+    /// passed to the listeners, which may run script for it.
+    fn runDocumentStart(context: *anyopaque, start: *const html_mod.navigation.document_start.Start) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .document_start = start });
+    }
+
+    /// html.navigation.user_prompts: a simple dialog opens - told to the
+    /// listeners (host_events' dialog_opening), before this thread pauses.
+    fn dialogOpening(context: *anyopaque, opening: *const html_mod.navigation.user_prompts.Opening) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .dialog_opening = opening });
+    }
+
+    /// html.navigation.user_prompts: the dialog closed.
+    fn dialogClosed(context: *anyopaque, closed: *const html_mod.navigation.user_prompts.Closed) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .dialog_closed = closed });
+    }
+
+    /// The inspector client's runIfWaitingForDebugger: group `group` is a
+    /// tab (devtools contexts.groupOf), whose start hold goes.
+    fn inspectorRunIfWaiting(client_host: ?*anyopaque, group: engine.InspectorGroup) void {
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        self.releaseTab(group);
+    }
+
+    /// The inspector client's runMessageLoopOnPause: the debugger paused
+    /// script of tab `group`. This thread blocks in a nested loop that runs
+    /// only the session messages posted to it (BrowserHost.postSessionMessage
+    /// - the inspector's, which resume or step) until quitMessageLoopOnPause:
+    /// no task, timer or rendering runs meanwhile. Blink's
+    /// MainThreadDebugger::runMessageLoopOnPause -> ClientMessageLoop::Run
+    /// (third_party/blink/renderer/core/inspector/main_thread_debugger.cc;
+    /// BSD-3, reproduced, not copied).
+    fn inspectorRunMessageLoopOnPause(client_host: ?*anyopaque, group: engine.InspectorGroup) void {
+        _ = group;
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        const pause = self.scope.of(runtime.BrowserPause) catch return;
+        self.debugger_quit = false;
+        const Quit = struct {
+            fn met(context: *anyopaque) bool {
+                const browser: *Browser = @ptrCast(@alignCast(context));
+                return browser.debugger_quit;
+            }
+        };
+        pause.pauseUntil(.{ .context = self, .met = Quit.met }, .debugger);
+    }
+
+    /// The inspector client's quitMessageLoopOnPause (Debugger.resume, a
+    /// step): the nested loop ends after the message that asked.
+    fn inspectorQuitMessageLoopOnPause(client_host: ?*anyopaque) void {
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        self.debugger_quit = true;
+        if (self.scope.existing(runtime.BrowserPause)) |pause| pause.notify();
     }
 
     /// html.navigation.observer: whether navigable `navigable_id`'s

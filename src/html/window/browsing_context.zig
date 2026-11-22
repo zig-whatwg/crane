@@ -186,6 +186,11 @@ pub const Navigables = struct {
     /// up, before its parser runs a script. Unlike the observer, it may run
     /// script.
     document_start: ?@import("../navigation/document_start.zig").Hook = null,
+    /// The Browser's user prompt hook (navigation/user_prompts.zig): told as
+    /// each simple dialog opens and closes (WebDriver BiDi's user prompt
+    /// opened and closed). One slot, which the Browser sets to its own
+    /// dispatcher.
+    user_prompts: ?@import("../navigation/user_prompts.zig").Hook = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
@@ -502,6 +507,11 @@ pub const BrowsingContext = struct {
     /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
     /// page), which wins over the platform's while set.
     viewport_override: ?ViewportSize = null,
+    /// A host's overrides of the platform's other answers for this tab -
+    /// media, touch points, user agent (host_overrides.zig: CDP Emulation,
+    /// WebDriver BiDi emulation). A top-level traversable's; read through
+    /// `getTop()`. Owned: freed by `deinit`.
+    host_overrides: @import("host_overrides.zig").HostOverrides = .{},
 
     /// HTML's one permitted sandboxed navigator: the browsing context that
     /// opened this one from a document with the sandboxed navigation browsing
@@ -795,6 +805,7 @@ pub const BrowsingContext = struct {
 
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
+        self.host_overrides.deinit(self.allocator);
         // The tree's links end at both ends before the memory goes: off the
         // parent's children list, and every child's link to this context
         // gone. Each context is owned elsewhere - an IFrameIntegration, a
