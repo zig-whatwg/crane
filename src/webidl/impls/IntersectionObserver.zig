@@ -644,13 +644,20 @@ fn queueIntersectionObserverTask(document: *runtime.Instance) void {
     if (document_internals.intersectionObserverTaskQueued(document)) return;
     const loop = document.ctx.getOptionalEventLoop() orelse return;
     const allocator = document.ctx.allocator;
-    const task = allocator.create(NotifyTask) catch return;
+    // Out of memory, the task is not queued now and nothing is lost: the
+    // entries stay in their observers' [[QueuedEntries]] and the flag stays
+    // false, so the next update - asked for here - queues it (its step finds
+    // the entries waiting). A rendering step has no caller to report to (HTML
+    // "update the rendering" has no failure path; its steps return nothing),
+    // and Crane's other steps drop an allocation failure the same way
+    // (Document's reveal step, ResizeObserver's gather).
+    const task = allocator.create(NotifyTask) catch return retryNextFrame(document);
     const generation = runtime.SlabAllocator.generationOf(document);
     task.* = .{ .allocator = allocator, .document = document, .generation = generation };
     // 2. Set document's IntersectionObserverTaskQueued flag to true.
     document_internals.setIntersectionObserverTaskQueued(document, true) catch {
         allocator.destroy(task);
-        return;
+        return retryNextFrame(document);
     };
     // 3. Queue a task on the IntersectionObserver task source associated
     //    with the document's event loop to notify intersection observers.
@@ -663,6 +670,12 @@ fn queueIntersectionObserverTask(document: *runtime.Instance) void {
         .document = document,
         .document_generation = generation,
     });
+}
+
+/// The update that could not queue its task asks for the next rendering
+/// opportunity, whose step queues it.
+fn retryNextFrame(document: *runtime.Instance) void {
+    @import("dom").update_the_rendering.requestFrame(document);
 }
 
 /// The task never runs (its loop ends, or its document can never be fully
