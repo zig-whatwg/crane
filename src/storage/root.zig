@@ -107,6 +107,10 @@ pub const TraversableStorageSheds = standard.TraversableStorageSheds;
 /// A Browser's profile directory, as its local storage persists there
 /// (the user's ruling D6, 2026-11-21).
 pub const profile = @import("profile.zig");
+/// A Browser's storage sequence: the thread that writes its profile's
+/// stores, made only for a Browser with a profile directory (lane prof2).
+pub const sequence = @import("sequence.zig");
+pub const StorageSequence = sequence.StorageSequence;
 
 // StorageManager interface (Phase 3.10)
 pub const storage_manager = @import("storage_manager.zig");
@@ -145,4 +149,5 @@ test {
     _ = persistence;
     _ = indexeddb;
     _ = profile;
+    _ = sequence;
 }
