@@ -8,8 +8,10 @@
 //! thread, where DevToolsSession routes it; DevToolsPipeHandler
 //! (devtools_pipe_handler.cc) reads and writes the pipe on two threads of
 //! its own. Crane's shape is the same:
-//! - the ACCEPTOR thread waits for TCP connections (devtoolsAccept with a
-//!   timeout, so it sees the server stopping);
+//! - the ACCEPTOR thread waits for TCP connections (devtoolsAccept, with no
+//!   timeout: the server's stop wakes it, so an idle server makes no
+//!   syscalls - Chrome's socket watcher on its IO thread's message loop
+//!   wakes only for a connection or a quit);
 //! - each connection has a READER thread (HTTP request head, then WebSocket
 //!   frames - or the pipe's NUL-delimited messages) and a WRITER thread (its
 //!   outbound FIFO, framed for its transport). Both are pumps: they decide
@@ -94,9 +96,9 @@ pub const Callback = struct {
     run: *const fn (?*anyopaque) void,
 };
 
-/// How long the acceptor waits for a connection before it looks at whether
-/// the server is stopping.
-const accept_poll_ms: u32 = 200;
+/// How long the acceptor waits after a failed accept (out of descriptors)
+/// before it tries again.
+const accept_retry_ms: u32 = 200;
 
 pub const Server = struct {
     /// Thread-safe.
@@ -108,6 +110,8 @@ pub const Server = struct {
     browser_id: ids.Token,
     port: u16 = 0,
     listener: ?platform.DevtoolsListener = null,
+    /// Ends the acceptor's wait: `stopThreads` wakes it.
+    accept_wake: ?platform.DevtoolsWake = null,
     acceptor: ?platform.Thread = null,
     devtools_thread: ?platform.Thread = null,
     stopping: std.atomic.Value(bool) = .init(false),
@@ -167,6 +171,8 @@ pub const Server = struct {
             self.port = listener.port;
         }
         errdefer if (self.listener) |l| platform.devtoolsCloseListener(l);
+        if (self.listener != null) self.accept_wake = try platform.devtoolsWakeNew();
+        errdefer if (self.accept_wake) |w| platform.devtoolsWakeClose(w);
 
         self.devtools_thread = try platform.spawnThread(.{ .name = .from("devtools") }, devtoolsMain, self);
         if (self.listener != null) {
@@ -214,6 +220,7 @@ pub const Server = struct {
         self.inbox.close();
         self.inbox.release();
         if (self.listener) |l| platform.devtoolsCloseListener(l);
+        if (self.accept_wake) |w| platform.devtoolsWakeClose(w);
         for (self.target_list.items) |t| self.freeTarget(t);
         self.target_list.deinit(self.allocator);
         for (self.sessions.items) |s| self.freeSession(s);
@@ -234,6 +241,8 @@ pub const Server = struct {
             self.devtools_thread = null;
         }
         if (self.acceptor) |thread| {
+            // Its wait has no timeout: the wake ends it.
+            platform.devtoolsWake(self.accept_wake.?);
             platform.joinThread(thread);
             self.acceptor = null;
         }
@@ -805,11 +814,13 @@ pub const Server = struct {
     fn acceptorMain(context: ?*anyopaque) callconv(.c) void {
         const self: *Server = @ptrCast(@alignCast(context.?));
         const listener = self.listener.?;
+        const wake = self.accept_wake.?;
         while (!self.stopping.load(.acquire)) {
             _ = self.accept_waits.fetchAdd(1, .monotonic);
-            const stream = platform.devtoolsAccept(listener, accept_poll_ms) catch |err| {
+            // Null: the server's stop woke the wait.
+            const stream = platform.devtoolsAccept(listener, wake) catch |err| {
                 log.warn("devtools: accept failed: {t}", .{err});
-                platform.sleepThread(accept_poll_ms * std.time.ns_per_ms);
+                platform.sleepThread(accept_retry_ms * std.time.ns_per_ms);
                 continue;
             } orelse continue;
             self.openConnection(.{ .socket = stream }) catch |err| {
@@ -1330,11 +1341,14 @@ pub const Connection = struct {
     /// WebSocket upgrade is accepted, or at once for the pipe.
     mode: std.atomic.Value(Mode) = .init(.http),
     refs: std.atomic.Value(u32) = .init(1),
-    /// `shutdown` ran: the connection has ended. The pipe's reader reads with
-    /// a timeout and ends when it sees this - shutdown(2) does nothing to a
-    /// pipe, so a client that keeps its end open would otherwise hold the
-    /// reader, and Server.stop with it, for ever.
+    /// `shutdown` ran: the connection has ended. The pipe's reader ends when
+    /// it sees this - shutdown(2) does nothing to a pipe, so a client that
+    /// keeps its end open would otherwise hold the reader, and Server.stop
+    /// with it, for ever; `read_wake` ends its wait.
     shut: std.atomic.Value(bool) = .init(false),
+    /// A pipe's: what `shutdown` wakes the reader's wait with (it has no
+    /// timeout). Null for a socket, whose shutdown ends a blocked read.
+    read_wake: ?platform.DevtoolsWake = null,
     /// The devtools thread's: the connection's own session (no sessionId).
     implicit_session: ?*targets.Session = null,
 
@@ -1348,11 +1362,17 @@ pub const Connection = struct {
     fn create(server: *Server, transport: Transport) !*Connection {
         const self = try server.allocator.create(Connection);
         errdefer server.allocator.destroy(self);
+        const read_wake: ?platform.DevtoolsWake = switch (transport) {
+            .socket => null,
+            .pipe => try platform.devtoolsWakeNew(),
+        };
+        errdefer if (read_wake) |w| platform.devtoolsWakeClose(w);
         self.* = .{
             .server = server,
             .id = @atomicRmw(u32, &server.next_connection_id, .Add, 1, .monotonic),
             .transport = transport,
             .outbound = try outbound.Outbound.create(server.allocator),
+            .read_wake = read_wake,
         };
         return self;
     }
@@ -1371,14 +1391,16 @@ pub const Connection = struct {
                 platform.devtoolsClose(p.write);
             },
         }
+        if (self.read_wake) |w| platform.devtoolsWakeClose(w);
         self.outbound.release();
         self.server.allocator.destroy(self);
     }
 
     /// End both directions: a socket's reader's read returns 0; a pipe's
-    /// reader sees `shut` within one `pipe_read_timeout_ms`.
+    /// reader's wait is woken and it sees `shut`.
     fn shutdown(self: *Connection) void {
         self.shut.store(true, .release);
+        if (self.read_wake) |w| platform.devtoolsWake(w);
         switch (self.transport) {
             .socket => |s| platform.devtoolsShutdown(s),
             .pipe => |p| {
@@ -1527,9 +1549,6 @@ pub const Connection = struct {
         }
     }
 
-    /// How long a pipe read waits before the reader looks at `shut` again.
-    const pipe_read_timeout_ms: u32 = 100;
-
     /// --remote-debugging-pipe: messages separated by NUL
     /// (devtools_pipe_handler.cc PipeReader::ReadLoop, kNullCharacter).
     ///
@@ -1541,8 +1560,8 @@ pub const Connection = struct {
     /// a real pipe; CancelIoEx on Windows) and never waits for the reader:
     /// its join is a CONTINUE_ON_SHUTDOWN pool task. Crane's reader points
     /// at its server, which Server.stop frees once its readers end, so it
-    /// may not be left behind: it reads with a timeout and checks `shut`
-    /// between reads - the reader ends within `pipe_read_timeout_ms` of the
+    /// may not be left behind: its wait (no timeout) is woken by `shutdown`
+    /// (`read_wake`) and it checks `shut` - the reader ends at the
     /// connection's end, whatever the client does with its descriptors.
     fn readPipe(self: *Connection) void {
         const allocator = self.server.allocator;
@@ -1551,7 +1570,8 @@ pub const Connection = struct {
         var chunk: [64 * 1024]u8 = undefined;
         while (true) {
             if (self.shut.load(.acquire)) return;
-            const n = (platform.devtoolsReadTimeout(self.readStream(), &chunk, pipe_read_timeout_ms) catch return) orelse continue;
+            // Null: `shutdown` woke the wait.
+            const n = (platform.devtoolsReadOrWake(self.readStream(), &chunk, self.read_wake.?) catch return) orelse return;
             if (n == 0) return;
             var rest = chunk[0..n];
             while (std.mem.indexOfScalar(u8, rest, 0)) |end| {
