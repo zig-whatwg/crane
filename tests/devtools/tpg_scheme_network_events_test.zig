@@ -37,6 +37,7 @@ const Event = struct {
     mime_type: []const u8 = "",
     last_modified: bool = false,
     encoded_length: f64 = -1,
+    error_text: []const u8 = "",
 };
 
 const Page = struct {
@@ -112,6 +113,7 @@ const Page = struct {
             if (cdp.stringAt(v, "params.loaderId")) |l| e.loader_id = try arena.dupe(u8, l);
             if (cdp.stringAt(v, "params.type")) |t| e.type = try arena.dupe(u8, t);
             if (cdp.stringAt(v, "params.request.url")) |u| e.url = try arena.dupe(u8, u);
+            if (cdp.stringAt(v, "params.errorText")) |t| e.error_text = try arena.dupe(u8, t);
             if (cdp.at(v, "params.response")) |response| {
                 e.url = try arena.dupe(u8, cdp.stringAt(response, "url").?);
                 e.protocol = try arena.dupe(u8, cdp.stringAt(response, "protocol") orelse "");
@@ -294,4 +296,148 @@ test "a page that is not a file: document cannot load a file: URL in its frame" 
     const events = try page.eventsUntilEnded(arena_state.allocator(), 2);
     try testing.expect(eventFor(events, target, "Network.loadingFailed") != null);
     try testing.expect(eventFor(events, target, "Network.responseReceived") == null);
+}
+
+// ============================================================================
+// Lane tpw: loadingFailed's errorText, fetch()'s type for a data: URL, and
+// Response.protocol, as Chrome for Testing 157 reports them (lane tpw's CDP
+// probe, tmp/plans/tpw-evidence/netprobe-chrome157.txt).
+// ============================================================================
+
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
+const resetClose = @import("loopback_listener").resetClose;
+
+/// A loopback site whose paths fail in the ways a network does: one request
+/// per connection, answered on the listener's thread.
+const FailSite = struct {
+    listener: LoopbackListener,
+    thread: ?std.Thread = null,
+
+    fn start(self: *FailSite) !void {
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
+    }
+
+    fn stop(self: *FailSite) void {
+        self.listener.stop();
+        self.thread.?.join();
+        self.listener.close();
+    }
+
+    fn url(self: *const FailSite, buffer: []u8, path: []const u8) ![]const u8 {
+        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}{s}", .{ self.listener.port(), path });
+    }
+
+    fn serve(self: *FailSite) void {
+        while (self.listener.accept()) |stream| answer(stream);
+    }
+
+    fn answer(stream: std.Io.net.Stream) void {
+        var input: [8192]u8 = undefined;
+        var reader = stream.reader(std.testing.io, &input);
+        while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) reader.interface.fillMore() catch return stream.close(std.testing.io);
+        const head = reader.interface.buffered();
+        const line_end = std.mem.indexOf(u8, head, "\r\n") orelse return stream.close(std.testing.io);
+        var parts = std.mem.tokenizeScalar(u8, head[0..line_end], ' ');
+        _ = parts.next();
+        const path = parts.next() orelse return stream.close(std.testing.io);
+        // No response at all, and a reset: the stream goes unanswered.
+        if (std.mem.eql(u8, path, "/empty")) return stream.close(std.testing.io);
+        if (std.mem.eql(u8, path, "/reset")) return resetClose(stream);
+        var output: [1024]u8 = undefined;
+        var writer = stream.writer(std.testing.io, &output);
+        const out = &writer.interface;
+        defer stream.close(std.testing.io);
+        const page = "<!doctype html><p>page</p>";
+        if (std.mem.eql(u8, path, "/loop")) {
+            out.writeAll("HTTP/1.1 302 Found\r\nLocation: /loop\r\nContent-Length: 0\r\nConnection: close\r\n\r\n") catch return;
+        } else if (std.mem.eql(u8, path, "/bad-gzip")) {
+            out.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: 15\r\nConnection: close\r\n\r\nthis is no gzip") catch return;
+        } else if (std.mem.eql(u8, path, "/v10")) {
+            out.print("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello", .{}) catch return;
+        } else {
+            out.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {d}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{s}", .{ page.len, page }) catch return;
+        }
+        out.flush() catch {};
+    }
+};
+
+/// A loopback port nothing listens on: one a listener had, then gave back.
+fn closedPort() !u16 {
+    var listener = try LoopbackListener.open(.{});
+    const port = listener.port();
+    listener.stop();
+    listener.close();
+    return port;
+}
+
+test "loadingFailed's errorText is Chrome's net error: refused, unsafe port, empty response, reset, redirect loop, bad content coding, invalid data: URL, aborted" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var page = try Page.open(gpa.allocator());
+    defer page.close();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var site: FailSite = undefined;
+    try site.start();
+    defer site.stop();
+    var buffer: [128]u8 = undefined;
+    try page.navigate(try site.url(&buffer, "/page.html"));
+    _ = try page.eventsUntilEnded(arena, 1);
+
+    const refused = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/", .{try closedPort()});
+    const Case = struct { url: []const u8, expected: []const u8 };
+    const cases = [_]Case{
+        .{ .url = refused, .expected = "net::ERR_CONNECTION_REFUSED" },
+        .{ .url = "http://127.0.0.1:9/", .expected = "net::ERR_UNSAFE_PORT" },
+        .{ .url = try arena.dupe(u8, try site.url(&buffer, "/empty")), .expected = "net::ERR_EMPTY_RESPONSE" },
+        .{ .url = try arena.dupe(u8, try site.url(&buffer, "/reset")), .expected = "net::ERR_CONNECTION_RESET" },
+        .{ .url = try arena.dupe(u8, try site.url(&buffer, "/loop")), .expected = "net::ERR_TOO_MANY_REDIRECTS" },
+        .{ .url = try arena.dupe(u8, try site.url(&buffer, "/bad-gzip")), .expected = "net::ERR_CONTENT_DECODING_FAILED" },
+        .{ .url = "data:bad", .expected = "net::ERR_INVALID_URL" },
+    };
+    for (cases) |case| {
+        const expression = try std.fmt.allocPrint(arena, "fetch('{s}').then(r => r.text()).catch(e => String(e))", .{case.url});
+        try page.evaluate(expression);
+        const events = try page.eventsUntilEnded(arena, 1);
+        const failed = eventFor(events, case.url, "Network.loadingFailed") orelse {
+            std.debug.print("no loadingFailed for {s}\n", .{case.url});
+            return error.NotFailed;
+        };
+        if (!std.mem.eql(u8, case.expected, failed.error_text)) std.debug.print("{s}: expected {s}, got {s}\n", .{ case.url, case.expected, failed.error_text });
+        try testing.expectEqualStrings(case.expected, failed.error_text);
+    }
+}
+
+test "fetch() of a data: URL is type Other, an XHR of one XHR; Response.protocol is the HTTP version the response came over" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var page = try Page.open(gpa.allocator());
+    defer page.close();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var site: FailSite = undefined;
+    try site.start();
+    defer site.stop();
+    var buffer: [128]u8 = undefined;
+    const page_url = try arena.dupe(u8, try site.url(&buffer, "/page.html"));
+    try page.navigate(page_url);
+    const loaded = try page.eventsUntilEnded(arena, 1);
+    try testing.expectEqualStrings("http/1.1", (eventFor(loaded, page_url, "Network.responseReceived") orelse return error.NoPageResponse).protocol);
+
+    try page.evaluate("fetch('data:text/plain,hi').then(r => r.text())");
+    const fetched = try page.eventsUntilEnded(arena, 1);
+    try testing.expectEqualStrings("Other", (eventFor(fetched, "data:text/plain,hi", "Network.requestWillBeSent") orelse return error.NoFetch).type);
+    try testing.expectEqualStrings("Other", (eventFor(fetched, "data:text/plain,hi", "Network.responseReceived") orelse return error.NoFetchResponse).type);
+
+    try page.evaluate("new Promise(r => { const x = new XMLHttpRequest(); x.open('GET', 'data:text/plain,yo'); x.onloadend = () => r(x.status); x.send(); })");
+    const xhr = try page.eventsUntilEnded(arena, 1);
+    try testing.expectEqualStrings("XHR", (eventFor(xhr, "data:text/plain,yo", "Network.requestWillBeSent") orelse return error.NoXhr).type);
+
+    const v10 = try arena.dupe(u8, try site.url(&buffer, "/v10"));
+    try page.evaluate(try std.fmt.allocPrint(arena, "fetch('{s}').then(r => r.text())", .{v10}));
+    const old = try page.eventsUntilEnded(arena, 1);
+    try testing.expectEqualStrings("http/1.0", (eventFor(old, v10, "Network.responseReceived") orelse return error.NoV10Response).protocol);
 }
