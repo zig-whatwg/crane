@@ -1123,8 +1123,9 @@ fn closeConnectionForStop(server: *Server, connection: *Connection) void {
         if (s.connection_id == connection.id) server.detach(s, false);
     }
     connection.implicit_session = null;
+    // The writer writes what is queued (a Browser.close reply) and then
+    // shuts the connection, which ends the reader.
     connection.outbound.finish();
-    connection.shutdown();
     for (server.connections.items, 0..) |c, at| if (c == connection) {
         _ = server.connections.orderedRemove(at);
         connection.release();
