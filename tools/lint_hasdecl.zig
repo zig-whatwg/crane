@@ -51,6 +51,19 @@ const scanned_roots = [_][]const u8{ "src", "tools", "tests" };
 /// Not built (codegen's stubs for hand merging), or not ours (upstream WPT).
 const exempt_prefixes = [_][]const u8{ "src/webidl/impls_tmp/", "tests/wpt/" };
 
+/// Whether the walk leaves the directory `path` (no trailing '/') without
+/// reading it: an exempt tree, or a build's cache or output.
+pub fn skipsDirectory(path: []const u8) bool {
+    const base = std.fs.path.basename(path);
+    if (std.mem.eql(u8, base, ".zig-cache") or std.mem.eql(u8, base, "zig-out")) return true;
+    for (exempt_prefixes) |prefix| {
+        // `prefix` names a directory with its trailing '/'.
+        if (std.mem.eql(u8, path, prefix[0 .. prefix.len - 1])) return true;
+        if (std.mem.startsWith(u8, path, prefix)) return true;
+    }
+    return false;
+}
+
 pub fn isScanned(path: []const u8) bool {
     if (!std.mem.endsWith(u8, path, ".zig")) return false;
     if (std.mem.indexOf(u8, path, ".zig-cache/") != null) return false;
@@ -886,13 +899,21 @@ fn scan(model: *Model, io: std.Io) !void {
         defer dir.close(io);
         var walker = try dir.walk(arena);
         defer walker.deinit();
+        var buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
         while (try walker.next(io)) |entry| {
-            if (entry.kind != .file) continue;
-            const path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ root, entry.path });
+            const path = std.fmt.bufPrint(&buffer, "{s}/{s}", .{ root, entry.path }) catch continue;
             std.mem.replaceScalar(u8, path, '\\', '/');
-            if (!isScanned(path)) continue;
-            const text = try std.Io.Dir.cwd().readFileAllocOptions(io, path, arena, .limited(64 << 20), .of(u8), 0);
-            try addFile(model, path, text);
+            // Never into a tree no file of is scanned (the WPT checkout under
+            // tests/wpt/ is the size of everything else together: walked
+            // through, the lint took ten minutes on chat2 - lane tpf).
+            if (entry.kind == .directory) {
+                if (skipsDirectory(path)) walker.leave(io);
+                continue;
+            }
+            if (entry.kind != .file or !isScanned(path)) continue;
+            const owned = try arena.dupe(u8, path);
+            const text = try std.Io.Dir.cwd().readFileAllocOptions(io, owned, arena, .limited(64 << 20), .of(u8), 0);
+            try addFile(model, owned, text);
         }
     }
 }
@@ -1163,6 +1184,17 @@ test "build.zig's graphModule names map to their root files" {
     );
     try testing.expectEqualStrings("src/css/root.zig", model.modules.get("css").?);
     try testing.expectEqualStrings("src/runtime/engine_protocol.zig", model.modules.get("engine").?);
+}
+
+test "the walk leaves exempt trees and build output" {
+    try testing.expect(skipsDirectory("tests/wpt"));
+    try testing.expect(skipsDirectory("tests/wpt/html"));
+    try testing.expect(skipsDirectory("src/webidl/impls_tmp"));
+    try testing.expect(skipsDirectory("tools/.zig-cache"));
+    try testing.expect(skipsDirectory("tests/zig-out"));
+    try testing.expect(!skipsDirectory("tests/wpt_runner"));
+    try testing.expect(!skipsDirectory("src/webidl/impls"));
+    try testing.expect(!skipsDirectory("tests/dom"));
 }
 
 test "the scanned trees" {
