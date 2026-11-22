@@ -2137,12 +2137,15 @@ V8ModuleCompileResult* v8_Module_Compile_Safe(
     result->module = nullptr;
     result->error = nullptr;
     
-    // Create ScriptOrigin for module (is_module = true)
+    // Create ScriptOrigin for module (is_module = true). Shared cross-origin
+    // always, as Blink's JSModuleScript::CreateScriptOrigin: CORS is enforced
+    // on module scripts, so their errors are never muted (and V8's inspector
+    // reports their exceptions' values, V8ConsoleMessage::reportToFrontend).
     ScriptOrigin origin(
         local_name,        // resource name
         0,                 // line offset
         0,                 // column offset
-        false,             // is_shared_cross_origin
+        true,              // is_shared_cross_origin
         -1,                // script id
         Local<Value>(),    // source_map_url
         false,             // is_opaque
@@ -9794,12 +9797,15 @@ Global<Module>* v8_Module_Compile(
     // This ensures the module is compiled in the right realm
     Context::Scope context_scope(local_context);
 
-    // Create ScriptOrigin for module (is_module = true)
+    // Create ScriptOrigin for module (is_module = true). Shared cross-origin
+    // always, as Blink's JSModuleScript::CreateScriptOrigin: CORS is enforced
+    // on module scripts, so their errors are never muted (and V8's inspector
+    // reports their exceptions' values, V8ConsoleMessage::reportToFrontend).
     ScriptOrigin origin(
         local_name,        // resource name
         0,                 // line offset
         0,                 // column offset
-        false,             // is_shared_cross_origin
+        true,              // is_shared_cross_origin
         -1,                // script id
         Local<Value>(),    // source_map_url
         false,             // is_opaque
@@ -17771,7 +17777,15 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
 
     Local<Data> host_defined_options;
     if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
-    ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
+    // A classic script's origin as Blink's ClassicScript::CreateScriptOrigin
+    // makes it (third_party/blink/renderer/core/script/classic_script.cc;
+    // BSD-3 - reproduced, not copied): shared cross-origin unless its errors
+    // are muted, opaque when they are. V8's inspector reads the first - it
+    // puts a Runtime.exceptionThrown's `exception` in only for an exception
+    // of a shared cross-origin script (V8ConsoleMessage::reportToFrontend) -
+    // so a page script's own errors and rejections reached CDP clients as
+    // text alone (lane tpf).
+    ScriptOrigin origin(local_resource_name, line_offset, column_offset, !muted_errors, -1, Local<Value>(), muted_errors, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
     MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source, &origin);
@@ -17824,7 +17838,15 @@ int v8_Script_RunRethrowingErrors(
 
     Local<Data> host_defined_options;
     if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
-    ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
+    // A classic script's origin as Blink's ClassicScript::CreateScriptOrigin
+    // makes it (third_party/blink/renderer/core/script/classic_script.cc;
+    // BSD-3 - reproduced, not copied): shared cross-origin unless its errors
+    // are muted, opaque when they are. V8's inspector reads the first - it
+    // puts a Runtime.exceptionThrown's `exception` in only for an exception
+    // of a shared cross-origin script (V8ConsoleMessage::reportToFrontend) -
+    // so a page script's own errors and rejections reached CDP clients as
+    // text alone (lane tpf).
+    ScriptOrigin origin(local_resource_name, line_offset, column_offset, !muted_errors, -1, Local<Value>(), muted_errors, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
     Local<Script> script;
@@ -17957,7 +17979,9 @@ V8ModuleCompileResult* v8_Module_CompileWithHostDefined_Safe(
 
     Local<Data> host_defined_options;
     if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 1, host_defined);
-    ScriptOrigin origin(local_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, true, host_defined_options);
+    // Shared cross-origin, as Blink's JSModuleScript::CreateScriptOrigin
+    // (module scripts are CORS: their errors are never muted).
+    ScriptOrigin origin(local_name, line_offset, column_offset, true, -1, Local<Value>(), false, false, true, host_defined_options);
     ScriptCompiler::Source script_source(local_source, origin);
 
     TryCatch try_catch(isolate);
@@ -21630,6 +21654,7 @@ unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>
     std::vector<uint16_t> wide_url;
     v8_inspector::StringView url_view = CraneMessageView(url ? url : reinterpret_cast<const uint8_t*>(""), url ? url_length : 0, wide_url);
     int script_id = 0;
+    std::string message_url;
     if (site && site->trace && !site->trace->isEmpty()) {
         if (!stack) stack = site->trace->clone();
         if (!url || url_length == 0) {
@@ -21638,6 +21663,33 @@ unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>
             line = static_cast<unsigned>(site->trace->topLineNumber());
             column = static_cast<unsigned>(site->trace->topColumnNumber());
             script_id = site->trace->topScriptId();
+        }
+    } else if (!url || url_length == 0) {
+        // No location given and none captured (a promise reaction's throw:
+        // its frame had unwound when it rejected): the exception's own
+        // message's, as Blink's CaptureSourceLocation reads it from
+        // v8::Exception::CreateMessage (core/inspector/source_location.cc,
+        // via V8Initializer::PromiseRejectHandler; BSD-3 - reproduced, not
+        // copied). Its script is what V8's inspector asks whether the
+        // exception may be shown (V8ConsoleMessage::reportToFrontend).
+        Local<Message> message = Exception::CreateMessage(isolate, value);
+        if (!message.IsEmpty()) {
+            script_id = message->GetScriptOrigin().ScriptId();
+            Local<Value> name = message->GetScriptOrigin().ResourceName();
+            if (!name.IsEmpty() && name->IsString()) {
+                String::Utf8Value utf8(isolate, name);
+                if (*utf8 && utf8.length() > 0) {
+                    message_url.assign(*utf8, utf8.length());
+                    url_view = CraneMessageView(reinterpret_cast<const uint8_t*>(message_url.data()), message_url.size(), wide_url);
+                }
+            }
+            line = static_cast<unsigned>(message->GetLineNumber(local).FromMaybe(0));
+            int start = message->GetStartColumn(local).FromMaybe(-1);
+            column = start >= 0 ? static_cast<unsigned>(start + 1) : 0;
+            if (!stack) {
+                Local<StackTrace> trace = message->GetStackTrace();
+                if (!trace.IsEmpty() && trace->GetFrameCount() > 0) stack = inspector->inspector()->createStackTrace(trace);
+            }
         }
     }
     if (!stack) stack = inspector->inspector()->captureStackTrace(false);

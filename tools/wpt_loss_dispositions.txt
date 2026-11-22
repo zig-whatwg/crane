@@ -2351,3 +2351,18 @@ kind = user-ruling
 why = 3 -> 0: lane blk5 (merge 5c31228a3, commit 3ae3dcaba) made an about:srcdoc navigation by the frame's parent load the frame's srcdoc content, as Chrome 157 and Safari 27.2 do (Chromium CheckAboutSrcDoc reproduced), which unblocks grandparent_location_aboutsrcdoc (+6). This file then fails all 3 subtests with exactly the assertion Chrome and Safari fail with ('Received message "srcdoc ready" but expected to receive no message'; aligned wpt.fyi runs at 2358bd4835: Chrome 0/3, Safari 0/3, Firefox 3/3); it carries a follows-majority gate entry (matches chrome, safari).
 date = 2026-11-20
 decision = The user, 2026-11-20 5:01 PM ET: "Accept" (keep about:srcdoc-by-parent loading srcdoc content, Chrome + Safari; +6 grandparent / -3 this file).
+
+
+[editing/run/insertparagraph.html]
+generation = 236
+kind = user-ruling
+why = 7167 -> 7166 (-1): the one row lost is editing/run/insertparagraph.html?1-1000 [["insertparagraph",""]] "<table><tbody data-start=0 data-end=1><tr><td>foo<td>bar<tr><td>baz<td>quz</table>" compare innerHTML - lane edit4 (merge 6ad078fcb) implemented ruling B2: insertParagraph with the caret in col/colgroup/tbody/tr puts it in the first cell, as Chrome 157 and Safari 27.2 do, over the Editing spec's row (+4 gained elsewhere). Confirmed row-exact by edit4's subdiff --full and by lane tpw's FULL A/Bs vs generation 235 (window-1 at fc3734701, window-3 at 68027eca4 and the final window at a3a465d25: the same single LOST row).
+date = 2026-11-21
+decision = The user, 2026-11-21 2:12-2:25 PM ET (AskUserQuestion via main, recorded 2:25 PM ET): B2 table-structure insertParagraph - follow Chrome + Safari (first cell); the one spec row is a user-ruling loss.
+
+[navigation-timing/test-timing-reload.html]
+generation = 236
+kind = user-ruling
+why = 21 -> 19 (-2): the subtests "unloadEventStart is different after the reload." and "unloadEventEnd is different after the reload." are created only when the frame's first unloadEventStart/End are not 0; main's dda7baecf (lane maj6, merge ee7b1b9b9: no unload times from a frame's first navigation from its initial about:blank, as Chrome, Firefox and Safari report) makes them 0, so the file now has 19 subtests and passes all 19 - exactly Chrome 158, Firefox 160 and Safari 27.2 (19/19 each, wpt.fyi aligned run a3830cd8f7). The same change takes navigation-timing/test-no-previous-document.html 3 -> 5 and unload-event-same-origin-check.html 4 -> 10.
+date = 2026-11-21
+decision = The user, 2026-11-21 7:24 AM ET (via main, lane maj6): "accept" - the 2 vanished test-timing-reload rows are accepted; main records them as user-ruling losses at the generation containing the merge.
