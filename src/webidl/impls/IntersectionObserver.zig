@@ -96,13 +96,6 @@ pub const InternalState = struct {
     /// Context for creating entries
     ctx: runtime.Context = undefined,
 
-    /// A queued "notify intersection observers" task will deliver this
-    /// observer's [[QueuedEntries]]: the document's
-    /// IntersectionObserverTaskQueued flag, kept per observer (an impl
-    /// keeps no state on the Document) - set when the task is queued for
-    /// it, cleared when the task runs (`queueIntersectionObserverTask`).
-    notify_task_queued: bool = false,
-
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -416,13 +409,13 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     // For each target in this's [[ObservationTargets]]: 1. remove the
     // registration from target; 2. remove target from [[ObservationTargets]].
     internal.observations.clearRetainingCapacity();
-    holdWhileObserving(instance, internal);
 
     // Clear queued entries
     for (internal.queued_entries.items) |entry| {
         runtime.Instance.deinit(entry);
     }
     internal.queued_entries.clearRetainingCapacity();
+    holdWhileObserving(instance, internal);
 }
 
 /// Operation: takeRecords
@@ -436,6 +429,8 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // 2. Clear this's internal [[QueuedEntries]] slot.
     const entries = try internal.queued_entries.toOwnedSlice(internal.allocator);
     defer internal.allocator.free(entries);
+    // No entries wait now: an observer that observes nothing leaves the list.
+    listWhileActive(instance, internal);
 
     // 3. Return queue - a sequence<IntersectionObserverEntry>, an Array of
     // the current realm. Wrapping hands each entry to the wrapper cache,
@@ -467,12 +462,21 @@ fn holdWhileObserving(instance: *runtime.Instance, internal: *InternalState) voi
     if (internal.observations.items.len > 0) {
         if (!internal.kept_alive) engine.keepPlatformObjectAlive(instance);
         internal.kept_alive = true;
-        joinObserving(instance);
     } else {
         if (internal.kept_alive) engine.releasePlatformObject(instance);
         internal.kept_alive = false;
-        leaveObserving(instance);
     }
+    listWhileActive(instance, internal);
+}
+
+/// The Browser's list (`joinObserving`) holds every observer the update and
+/// notify steps can reach: one that observes something, and one whose
+/// [[QueuedEntries]] still wait for "notify intersection observers" (its
+/// root is still in the DOM tree of its document, so step 2 lists it, though
+/// it observes nothing now). Membership is not the keep: an observer that
+/// observes nothing may be collected, entries and all.
+fn listWhileActive(instance: *runtime.Instance, internal: *InternalState) void {
+    if (internal.observations.items.len > 0 or internal.queued_entries.items.len > 0) joinObserving(instance) else leaveObserving(instance);
 }
 
 /// The observers that observe something are their Browser's list
@@ -548,26 +552,28 @@ const Held = struct {
 };
 
 /// The Document whose "run the update intersection observations steps"
-/// processes the observer: an explicit root's node document ("whose root is
-/// in the DOM tree of document"), else - an implicit root observer - the
-/// associated Document of the Window the observer was made in. Stated
-/// deviation: the spec lists implicit root observers in the TOP-LEVEL
-/// browsing context's document; Crane takes them in their own document,
-/// which the same "update the rendering" processes (its documents in the
-/// spec's order), so the delivery task is queued in the same frame. Null for
+/// processes the observer, and whose "notify intersection observers" calls
+/// it: the one its root is in the DOM tree of. An explicit root's is the
+/// root's node document (or the root, a Document); an implicit root
+/// observer's root is "the top-level browsing context's document node"
+/// (3.1, the implicit root) - step 1: "For the top-level browsing context,
+/// this includes implicit root observers" - the active document of the
+/// top-level traversable the observer's Window's document is in. Null for
 /// an observer of a realm with no Window (nothing renders there).
 fn observingDocument(internal: *InternalState) ?*runtime.Instance {
     if (internal.root) |root| return (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
     const record = internal.ctx.realm orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     if (global.vtable != &interfaces.Window.vtable) return null;
-    return interfaces.Window.get_document(global) catch null;
+    const document = (interfaces.Window.get_document(global) catch null) orelse return null;
+    return @import("html").focus.topLevelDocumentOf(document);
 }
 
 /// "Run the update intersection observations steps" step 1 and "notify
-/// intersection observers" step 2: the IntersectionObservers of `document`
-/// that observe something (dom.browser_object_lists `.intersection_observers`,
-/// in the order they began observing). A snapshot: callbacks may add or
+/// intersection observers" step 2: the IntersectionObservers whose root is
+/// in the DOM tree of `document` (`observingDocument`), from the Browser's
+/// list (dom.browser_object_lists `.intersection_observers`, in the order
+/// they joined it: `listWhileActive`). A snapshot: callbacks may add or
 /// remove observers. OWNED by `allocator`.
 fn observersOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]Held {
     const observing = browser_object_lists.existing(document, .intersection_observers) orelse return null;
@@ -601,8 +607,7 @@ fn updateIntersectionObservationsStep(document: *runtime.Instance, frame: @impor
     //    DOM tree of document.
     const observers = observersOf(document, allocator) orelse return;
     defer allocator.free(observers);
-    var newly_queued: std.ArrayListUnmanaged(Held) = .empty;
-    defer newly_queued.deinit(allocator);
+    var queued = false;
     // 2. For each observer in observer list: for each target, compute its
     //    intersection and queue an IntersectionObserverEntry when its
     //    threshold index or intersecting state changed (computeIntersections).
@@ -613,87 +618,88 @@ fn updateIntersectionObservationsStep(document: *runtime.Instance, frame: @impor
             std.log.err("IntersectionObserver: computeIntersections failed: {}", .{err});
             continue;
         };
-        // "Queue an IntersectionObserverEntry" step 3, for the observers
-        // whose entries no queued task will deliver yet.
-        if (internal.queued_entries.items.len > 0 and !internal.notify_task_queued) {
-            newly_queued.append(allocator, held) catch continue;
-        }
+        if (internal.queued_entries.items.len > 0) queued = true;
+        listWhileActive(held.observer, internal);
     }
-    if (newly_queued.items.len > 0) queueIntersectionObserverTask(document, newly_queued.items);
+    // "Queue an IntersectionObserverEntry" step 3, once for the step's
+    // entries: queue an intersection observer task for document.
+    if (queued) queueIntersectionObserverTask(document);
 }
 
-/// A queued "notify intersection observers" task: the observers it
-/// delivers, and their document (the task's document: a task of a document
-/// that can never be fully active again is dropped).
+/// A queued "notify intersection observers" task's document.
 const NotifyTask = struct {
     allocator: std.mem.Allocator,
-    observers: []Held,
+    document: *runtime.Instance,
+    generation: u64,
 };
 
 /// Intersection Observer "queue an intersection observer task" (3.2.4) for
-/// `document`, for `observers`: 1-2. the IntersectionObserverTaskQueued
-/// flag - each observer's `notify_task_queued` - set; 3. a task on the
-/// IntersectionObserver task source of the document's event loop to notify
-/// intersection observers.
+/// `document`.
 ///
 /// Spec: https://w3c.github.io/IntersectionObserver/#queue-intersection-observer-task
-fn queueIntersectionObserverTask(document: *runtime.Instance, observers: []const Held) void {
+fn queueIntersectionObserverTask(document: *runtime.Instance) void {
+    const document_internals = @import("dom").document_internals;
+    // 1. If document's IntersectionObserverTaskQueued flag is set to true,
+    //    return.
+    if (document_internals.intersectionObserverTaskQueued(document)) return;
     const loop = document.ctx.getOptionalEventLoop() orelse return;
     const allocator = document.ctx.allocator;
     const task = allocator.create(NotifyTask) catch return;
-    task.* = .{ .allocator = allocator, .observers = allocator.dupe(Held, observers) catch {
-        allocator.destroy(task);
-        return;
-    } };
-    for (observers) |held| if (held.live()) |internal| {
-        internal.notify_task_queued = true;
-    };
+    const generation = runtime.SlabAllocator.generationOf(document);
+    task.* = .{ .allocator = allocator, .document = document, .generation = generation };
+    // 2. Set document's IntersectionObserverTaskQueued flag to true.
+    document_internals.setIntersectionObserverTaskQueued(document, true);
+    // 3. Queue a task on the IntersectionObserver task source associated
+    //    with the document's event loop to notify intersection observers.
+    //    The task's document is `document`: one that can never be fully
+    //    active again drops it (`dropNotifyTask`).
     loop.queueTask(.{
         .callback = notifyIntersectionObservers,
         .context = task,
         .drop = dropNotifyTask,
         .document = document,
-        .document_generation = runtime.SlabAllocator.generationOf(document),
+        .document_generation = generation,
     });
 }
 
 /// The task never runs (its loop ends, or its document can never be fully
-/// active again): only its context goes. An observer it named delivers its
-/// entries from the next task an update queues for it.
+/// active again): its context goes, and the flag with it, if the document
+/// is still the one it was queued for.
 fn dropNotifyTask(data: ?*anyopaque) void {
     const task: *NotifyTask = @ptrCast(@alignCast(data orelse return));
-    for (task.observers) |held| if (held.live()) |internal| {
-        internal.notify_task_queued = false;
-    };
-    task.allocator.free(task.observers);
+    if (runtime.SlabAllocator.generationOf(task.document) == task.generation) {
+        @import("dom").document_internals.setIntersectionObserverTaskQueued(task.document, false);
+    }
     task.allocator.destroy(task);
 }
 
-/// Intersection Observer "notify intersection observers" (3.2.5), for the
-/// observers the task was queued for. Step 2's notify list is the document's
-/// observers when the task runs; this task's are those whose entries were
-/// queued when it was queued - one observer that queues entries while the
-/// task waits has its own task queued by that update, so each observer's
-/// callback still runs once per task with all of its entries.
+/// Intersection Observer "notify intersection observers" (3.2.5) for the
+/// task's document.
 ///
 /// Spec: https://w3c.github.io/IntersectionObserver/#notify-intersection-observers-algo
 fn notifyIntersectionObservers(data: ?*anyopaque) void {
     const task: *NotifyTask = @ptrCast(@alignCast(data orelse return));
-    defer {
-        task.allocator.free(task.observers);
-        task.allocator.destroy(task);
-    }
-    // 1. Set the IntersectionObserverTaskQueued flag to false.
-    for (task.observers) |held| if (held.live()) |internal| {
-        internal.notify_task_queued = false;
-    };
-    // 3. For each observer: 3.1-3.5 (invokeCallback). A callback may end
-    //    another observer, which `live` sees.
-    for (task.observers) |held| {
+    const document = task.document;
+    const generation = task.generation;
+    task.allocator.destroy(task);
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    // 1. Set document's IntersectionObserverTaskQueued flag to false.
+    @import("dom").document_internals.setIntersectionObserverTaskQueued(document, false);
+    // 2. Let notify list be a list of all IntersectionObservers whose root
+    //    is in the DOM tree of document.
+    const allocator = document.ctx.allocator;
+    const observers = observersOf(document, allocator) orelse return;
+    defer allocator.free(observers);
+    // 3. For each observer in notify list: 3.1-3.5 (invokeCallback). A
+    //    callback may end another observer, which `live` sees.
+    for (observers) |held| {
         const internal = held.live() orelse continue;
         invokeCallback(internal) catch |err| {
             std.log.err("IntersectionObserver: invokeCallback failed: {}", .{err});
         };
+        // Its entries delivered, an observer that observes nothing leaves
+        // the list (`listWhileActive`).
+        if (held.live()) |after| listWhileActive(held.observer, after);
     }
 }
 
