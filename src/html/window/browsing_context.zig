@@ -822,8 +822,12 @@ pub const BrowsingContext = struct {
     /// per removed iframe for the Browser's whole life.
     pub fn discard(self: *BrowsingContext) bool {
         self.container = null;
-        self.removeFromParent();
+        // Closed while it still has its parent: `close` tells the
+        // navigation observer of a top-level traversable's end only - a
+        // child's end was told by "destroy a child navigable"
+        // (dom.navigables), once.
         self.close();
+        self.removeFromParent();
         self.releaseChildren();
         if (self.window_holds == 0) return true;
         self.orphaned = true;
