@@ -359,7 +359,10 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   the calls that run in it (it is made while the parent's script runs), and
   ends before its parent does if it has not already. A parentless realm that
   is not `auxiliary` - the host's page - is the agent's entered realm for its
-  life. A realm whose WindowProxy went on
+  life, unless it is made with `WindowRealmOptions.entered_for_life = false`:
+  a tab the host opened beside its first page (Browser.createTab), entered
+  only for the calls that run in it, so that tabs end in any order (lane
+  cdph). A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
   That realm - a frame's, or a parentless top-level page's - is detached by

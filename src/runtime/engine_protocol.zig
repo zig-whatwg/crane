@@ -997,6 +997,20 @@ pub const WindowRealmOptions = struct {
     /// True: the global keeps it. No default: every caller decides (a
     /// default would keep the constructor wherever a caller forgot).
     agent_cluster_cross_origin_isolated: bool,
+    /// For a realm with no `parent` that is not `auxiliary` - a top-level
+    /// traversable the host made: whether it stays the agent's entered realm
+    /// for its life (true, the default: the Browser's first page, as before)
+    /// or is entered only for the calls that run in it, as a frame's and a
+    /// popup's are (false: a tab the host opened beside it - Browser.createTab,
+    /// CDP's Target.createTarget). An engine can exit entered realms only in
+    /// the reverse order of entering them, and two host tabs end in any order:
+    /// every tab after the first is entered per call, so ending one never
+    /// leaves another's context entered under it (lane console's HOST-OPENED
+    /// TABS design, step 1; lane cdph). A navigation's next realm for the same
+    /// tab passes the same value. Ignored for a realm with a parent or an
+    /// auxiliary one (always per call), and by an engine that enters no realm
+    /// for its life.
+    entered_for_life: bool = true,
 };
 
 /// An agent's heap, for the diagnostics tier.

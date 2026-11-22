@@ -127,6 +127,16 @@ fn forceModuleCompilation() void {
 }
 
 // ============================================================================
+// C ABI Exports - the host API (include/crane.h)
+// ============================================================================
+
+// Browsers on threads of their own and their tabs: crane_process_*,
+// crane_browser_*, crane_tab_* (src/browser/capi.zig; lane cdph).
+comptime {
+    _ = browser.capi;
+}
+
+// ============================================================================
 // C ABI Exports - Browser Lifecycle
 // ============================================================================
 

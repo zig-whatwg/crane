@@ -77,6 +77,19 @@ as its session history does - not with the Browser. The registries tabs share (B
 shared workers, Web Locks, service worker registrations and clients, permissions, cookies, storage,
 blob URLs) are each a BrowserScope supplement; tests/html/inst2_tabs_sharing_test.zig shows the
 tabs of one Browser sharing them, and inst2_instances_registries_test.zig two Browsers sharing none.
+The host API (2026-11-21, lane cdph; roadmap item "Host API"): a host opens tabs of its own
+beside its Browser's first page (`Browser.createTab`: a top-level traversable in a new browsing
+context group, its realms entered per call - `engine.WindowRealmOptions.entered_for_life` - so
+tabs close in any order), closes them with HTML "close a top-level traversable" (pagehide and
+unload; beforeunload only when prompting - `closeTab`), lists them (`listTabs`, `navigableTree`),
+activates, navigates, reloads, traverses and evaluates in them (`evaluateInTab`: BiDi's
+RemoteValue as JSON), holds a tab's first navigation until `releaseTab` (CDP's
+waitForDebuggerOnStart), and hears tabs come and go (`host_events`: one listener list per
+Browser, on its thread). `BrowserHost` runs a Browser on a thread of its own for its whole life
+and takes commands from other threads through its loop's TaskSink (`post`, `call`); the
+WebDriver server's sessions and CDP's browser contexts are BrowserHosts. The C ABI is
+`include/crane.h` (src/browser/capi.zig, emitted by src/lib_exports.zig). Page-made tabs and
+frames reach the listeners once lane life1's navigation observer lands.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.

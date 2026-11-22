@@ -40,6 +40,17 @@
 pub const Browser = @import("Browser.zig").Browser;
 pub const BrowserConfig = @import("Browser.zig").BrowserConfig;
 
+/// A Browser on a thread of its own, driven from other threads by commands
+/// posted to its loop: the host API's thread-safe surface (lane cdph).
+pub const BrowserHost = @import("BrowserHost.zig").BrowserHost;
+/// What a Browser tells its host as it happens: tabs and frames.
+pub const host_events = @import("host_events.zig");
+/// A script value as the host API hands it out (BiDi's RemoteValue, JSON).
+pub const remote_value = @import("remote_value.zig");
+/// The host API's C ABI (include/crane.h): its `crane_*` symbols are
+/// emitted only by an artifact that references this (src/lib_exports.zig).
+pub const capi = @import("capi.zig");
+
 /// What every Browser shares, started once before any (docs/instances.md).
 pub const process = @import("process.zig");
 pub const Process = process.Process;
@@ -70,6 +81,9 @@ pub const SessionStorage = storage.SessionStorage;
 
 test {
     _ = @import("Browser.zig");
+    _ = @import("BrowserHost.zig");
+    _ = @import("host_events.zig");
+    _ = @import("remote_value.zig");
     _ = @import("process.zig");
     _ = @import("Context.zig");
     _ = @import("rendering.zig");
