@@ -199,9 +199,17 @@ fn joinPeak(shape: JoinShape) !JoinRun {
 /// mem1_fresh_node_release_test pins those), and the same again with the
 /// queue's byte bound at half the live DOM instead of all of it, with 2,560
 /// nodes freed inside the callback in every variant. The bound is 2.5x on
-/// those measurements. What the remaining 1.9x is made of is under
-/// investigation (lane mem1's handoff: the census of live objects by
-/// interface, one callback against spread).
+/// those measurements. What the remaining 1.9x is, by a census of live
+/// objects by interface at each callback's end (lane mem1): the trees the
+/// queue holds under its byte bound's 2 MB FLOOR - 14,440 queued nodes,
+/// 2,025,600 bytes dying against 638,928 live, where max(2 MB, live) is the
+/// floor - against 800 queued nodes and 112,000 bytes for the largest
+/// spread callback; the paragraphs, spans, texts and b elements are 11,060
+/// of the 11,210 extra objects, Ranges 156. The floor is V8's own smallest
+/// step for its old generation's limit in its conservative mode
+/// (MemoryController::MinimumAllocationLimitGrowingStep, 2 pages of at
+/// least 1 MB; 8 otherwise: V8 15.7.112.43 src/heap/heap-controller.cc:
+/// 134-142), so a test whose live DOM is under 2 MB keeps up to 2 MB of it.
 fn oneCallbackStaysNearTheSpreadPeak() !void {
     const spread = try joinPeak(.spread);
     const one = try joinPeak(.one_callback);
