@@ -186,6 +186,11 @@ pub const Navigables = struct {
     /// up, before its parser runs a script. Unlike the observer, it may run
     /// script.
     document_start: ?@import("../navigation/document_start.zig").Hook = null,
+    /// The Browser's user prompt hook (navigation/user_prompts.zig): told as
+    /// each simple dialog opens and closes (WebDriver BiDi's user prompt
+    /// opened and closed). One slot, which the Browser sets to its own
+    /// dispatcher.
+    user_prompts: ?@import("../navigation/user_prompts.zig").Hook = null,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator, .traversable_storage = .init(allocator) };

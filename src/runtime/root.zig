@@ -291,6 +291,11 @@ pub const task_sink = @import("task_sink.zig");
 pub const TaskSink = task_sink.TaskSink;
 pub const CrossThreadTask = task_sink.CrossThreadTask;
 
+/// A Browser thread's pause - HTML's "pause" for its dialogs, and the
+/// debugger's nested message loop - and its queue of session messages.
+pub const browser_pause = @import("browser_pause.zig");
+pub const BrowserPause = browser_pause.BrowserPause;
+
 /// A Browser's scope: its per-Browser state, as supplements reached through
 /// the realm (ContextData.browser_scope; docs/instances.md rule 2).
 pub const BrowserScope = @import("browser_scope.zig").BrowserScope;

@@ -222,6 +222,9 @@ pub const InternalState = struct {
     /// HTML "ready for post-load tasks", reached by "the end" step 11.
     /// Document.open preserves this independently of readiness/loaded time.
     ready_for_post_load_tasks: bool = false,
+    /// HTML "print when loaded": print() was called before the document was
+    /// ready for post-load tasks; "the end" step 12 runs the printing steps.
+    print_when_loaded: bool = false,
     /// HTML "is initial about:blank": the document "create a new browsing
     /// context and document" made, until something replaces it.
     is_initial_about_blank: bool = false,
