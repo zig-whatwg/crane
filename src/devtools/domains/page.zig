@@ -35,6 +35,8 @@ const Reply = @import("../dispatch.zig").Reply;
 const host_bridge = @import("../host_bridge.zig");
 const frames = @import("../frames.zig");
 const contexts = @import("../contexts.zig");
+const idleness = @import("../idleness.zig");
+const fetch_observer = @import("../fetch_observer.zig");
 const P = protocol.Page;
 
 const log = std.log.scoped(.devtools);
@@ -50,6 +52,31 @@ pub const State = struct {
     /// Page.navigate calls waiting for their navigation to be ready to
     /// commit (or to end).
     pending: std.ArrayListUnmanaged(Pending) = .empty,
+    /// Each frame's network idleness since its document's DOMContentLoaded
+    /// (idleness.zig: Blink's IdlenessDetector), for the networkAlmostIdle
+    /// and networkIdle lifecycle events.
+    idle: std.ArrayListUnmanaged(Idle) = .empty,
+};
+
+/// One frame's detector, for its current document, and the timer that
+/// stands for Blink's next-task check.
+const Idle = struct {
+    navigable: u64,
+    /// The document it started for (by identity and slab generation).
+    document: *anyopaque,
+    generation: u64,
+    detector: idleness.Detector,
+    /// The armed check's timer and its ticket (OWNED by the timer while
+    /// armed), or 0.
+    timer: runtime.TimerId = 0,
+    ticket: ?*IdleTicket = null,
+};
+
+/// What an idleness timer carries: which session's which frame.
+const IdleTicket = struct {
+    allocator: Allocator,
+    session: *PageSession,
+    navigable: u64,
 };
 
 const Script = struct {
@@ -161,6 +188,8 @@ pub fn sessionEnded(session: *PageSession) void {
     s.scripts.deinit(session.allocator);
     for (s.pending.items) |pending| pending.reply.drop();
     s.pending.deinit(session.allocator);
+    for (s.idle.items) |*entry| disarm(session, entry);
+    s.idle.deinit(session.allocator);
     s.* = .{};
 }
 
@@ -214,14 +243,17 @@ fn replayLifecycle(session: *PageSession, bc: *frames.BrowsingContext) void {
         const ready = interfaces.Document.get_readyState(document) catch ._loading_;
         emitLifecycle(session, bc, "commit");
         if (ready != ._loading_) emitLifecycle(session, bc, "DOMContentLoaded");
-        if (ready == ._complete_) {
-            emitLifecycle(session, bc, "load");
-            // TODO(cdpt P5): networkAlmostIdle/networkIdle from the
-            // document's fetch group's in-flight counts (Blink's
-            // IdlenessDetector); a loaded document with none in flight is
-            // idle, which is what the counts will say for a page at rest.
-            emitLifecycle(session, bc, "networkAlmostIdle");
-            emitLifecycle(session, bc, "networkIdle");
+        if (ready == ._complete_) emitLifecycle(session, bc, "load");
+        // The idleness reached so far (Blink's replay reads the frame's
+        // IdlenessDetector: GetNetworkAlmostIdleTime / GetNetworkIdleTime).
+        // A document past its DOMContentLoaded that this session has no
+        // detector for (attached after it) starts one now: what is due
+        // follows live.
+        if (ready != ._loading_) {
+            if (idleOf(session, bc.id, document)) |entry| {
+                if (entry.detector.almost_idle_at) |at| emitLifecycleAt(session, bc, "networkAlmostIdle", at);
+                if (entry.detector.idle_at) |at| emitLifecycleAt(session, bc, "networkIdle", at);
+            } else startIdleness(session, bc.id, document);
         }
     }
     for (bc.children.items) |child| {
@@ -231,6 +263,15 @@ fn replayLifecycle(session: *PageSession, bc: *frames.BrowsingContext) void {
 }
 
 fn emitLifecycle(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8) void {
+    emitLifecycleTimed(session, bc, name, frames.monotonicSeconds());
+}
+
+/// A lifecycle event stamped with the monotonic moment `at_ns`.
+fn emitLifecycleAt(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8, at_ns: i64) void {
+    emitLifecycleTimed(session, bc, name, @as(f64, @floatFromInt(at_ns)) / std.time.ns_per_s);
+}
+
+fn emitLifecycleTimed(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8, timestamp: f64) void {
     const frame_id = session.frameId(bc.id);
     const loader = if (frames.of(session.browser.?)) |f| f.loaderOf(bc) else 0;
     const loader_id = frames.loaderToken(session, loader);
@@ -238,8 +279,125 @@ fn emitLifecycle(session: *PageSession, bc: *frames.BrowsingContext, name: []con
         .frameId = frame_id.slice(),
         .loaderId = loader_id.slice(),
         .name = name,
-        .timestamp = frames.monotonicSeconds(),
+        .timestamp = timestamp,
     });
+}
+
+// ============================================================================
+// Network idleness (idleness.zig, Blink's IdlenessDetector)
+// ============================================================================
+
+fn monotonicNs() i64 {
+    return @intCast(@import("platform").monotonicNow().ns);
+}
+
+fn idleOf(session: *PageSession, navigable: u64, document: *runtime.Instance) ?*Idle {
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        if (entry.document != @as(*anyopaque, @ptrCast(document)) or entry.generation != runtime.SlabAllocator.generationOf(document)) return null;
+        return entry;
+    }
+    return null;
+}
+
+/// IdlenessDetector::DomContentLoadedEventFired -> Start: the frame's
+/// document has fired DOMContentLoaded; what is in flight now is counted
+/// from here (fetch_observer.inFlight: ResourceFetcher::ActiveRequestCount).
+fn startIdleness(session: *PageSession, navigable: u64, document: *runtime.Instance) void {
+    const s = state(session);
+    stopIdleness(session, navigable);
+    const side = session.side orelse return;
+    const count = fetch_observer.inFlight(side, navigable);
+    s.idle.append(session.allocator, .{
+        .navigable = navigable,
+        .document = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+        .detector = idleness.Detector.start(count, monotonicNs()),
+    }) catch return;
+    schedule(session, &s.idle.items[s.idle.items.len - 1]);
+}
+
+/// The frame's detector goes (a new document, the frame's end).
+fn stopIdleness(session: *PageSession, navigable: u64) void {
+    const s = state(session);
+    for (s.idle.items, 0..) |*entry, i| {
+        if (entry.navigable != navigable) continue;
+        disarm(session, entry);
+        _ = s.idle.swapRemove(i);
+        return;
+    }
+}
+
+/// fetch_observer: `navigable`'s count of fetches in flight is `in_flight`.
+pub fn onNetworkActivity(session: *PageSession, navigable: u64, in_flight: u32) void {
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        entry.detector.moved(in_flight, monotonicNs());
+        schedule(session, entry);
+        return;
+    }
+}
+
+/// Arm the check for the detector's next due moment, or none.
+fn schedule(session: *PageSession, entry: *Idle) void {
+    disarm(session, entry);
+    const next = entry.detector.nextCheck() orelse return;
+    const browser = session.browser orelse return;
+    const loop = browser.event_loop orelse return;
+    const timers = loop.timerInterface() orelse return;
+    const ticket = session.allocator.create(IdleTicket) catch return;
+    ticket.* = .{ .allocator = session.allocator, .session = session, .navigable = entry.navigable };
+    const wait_ns = @max(next - monotonicNs(), 0);
+    const wait_ms: u64 = @intCast(@divFloor(wait_ns + std.time.ns_per_ms - 1, std.time.ns_per_ms));
+    const id = timers.setTimeoutOwned(wait_ms, idleCheck, ticket, dropTicket);
+    if (id == 0) {
+        session.allocator.destroy(ticket);
+        return;
+    }
+    entry.timer = id;
+    entry.ticket = ticket;
+}
+
+/// Cancel the detector's armed check. The session's thread is the timer's:
+/// a check cannot be running while this runs.
+fn disarm(session: *PageSession, entry: *Idle) void {
+    if (entry.timer == 0) return;
+    const ticket = entry.ticket;
+    const cancelled = blk: {
+        const browser = session.browser orelse break :blk false;
+        const loop = browser.event_loop orelse break :blk false;
+        const timers = loop.timerInterface() orelse break :blk false;
+        break :blk timers.clearTimeout(entry.timer);
+    };
+    if (cancelled) if (ticket) |t| t.allocator.destroy(t);
+    entry.timer = 0;
+    entry.ticket = null;
+}
+
+fn dropTicket(data: ?*anyopaque) void {
+    const ticket: *IdleTicket = @ptrCast(@alignCast(data orelse return));
+    ticket.allocator.destroy(ticket);
+}
+
+/// The check (Blink's WillProcessTask): what is due fires, stamped with its
+/// quiet period's start.
+fn idleCheck(data: ?*anyopaque) void {
+    const ticket: *IdleTicket = @ptrCast(@alignCast(data orelse return));
+    const session = ticket.session;
+    const navigable = ticket.navigable;
+    ticket.allocator.destroy(ticket);
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        entry.timer = 0;
+        entry.ticket = null;
+        const due = entry.detector.check(monotonicNs());
+        if (state(session).lifecycle_events) if (frames.navigable(session, navigable)) |bc| {
+            if (due.almost_idle) |at| emitLifecycleAt(session, bc, "networkAlmostIdle", at);
+            if (due.idle) |at| emitLifecycleAt(session, bc, "networkIdle", at);
+        };
+        schedule(session, entry);
+        return;
+    }
 }
 
 /// A script to run in every new document of the tab, in its main world or
@@ -468,6 +626,7 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
         .ready_to_commit => |ready| return answerPending(session, milestone.navigation_id, ready.outcome, ready.error_text),
         .aborted => return answerPending(session, milestone.navigation_id, .network_error, "net::ERR_ABORTED"),
         .navigable_destroyed => {
+            stopIdleness(session, navigable);
             if (frames.of(session.browser.?)) |f| f.forget(navigable);
             if (s.enabled and navigable != session.tab and frames.inTab(session, navigable)) {
                 const frame_id = session.frameId(navigable);
@@ -503,6 +662,8 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             session.emit(P.frameStartedLoading, .{ .frameId = frame_id.slice() });
         },
         .committed => |committed| {
+            // A new document: the old one's idleness is over.
+            stopIdleness(session, navigable);
             if (frames.of(session.browser.?)) |f| f.noteCommitted(navigable, committed.document.document, committed.document.generation, milestone.navigation_id);
             // The tab's contexts cleared before any session's Page events
             // (contexts.zig: Chrome's order) - by the first session only.
@@ -527,10 +688,14 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
                 },
             });
         },
-        .dom_content_loaded => {
+        .dom_content_loaded => |loaded| {
             const bc = frames.navigable(session, navigable) orelse return;
             if (s.enabled and navigable == session.tab) session.emit(P.domContentEventFired, .{ .timestamp = frames.monotonicSeconds() });
             if (s.lifecycle_events) emitLifecycle(session, bc, "DOMContentLoaded");
+            // IdlenessDetector::DomContentLoadedEventFired: idleness is
+            // watched from here.
+            if (runtime.SlabAllocator.generationOf(@ptrCast(@alignCast(loaded.document.document))) == loaded.document.generation)
+                startIdleness(session, navigable, @ptrCast(@alignCast(loaded.document.document)));
         },
         .load => {
             const bc = frames.navigable(session, navigable) orelse return;
