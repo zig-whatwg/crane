@@ -4143,6 +4143,9 @@ pub fn build(b: *std.Build) void {
         const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
         const run_fetch_tests = addSuiteRun(b, launch, fetch_tests, "src-fetch", null);
         test_step.dependOn(&run_fetch_tests.step);
+        // The HTTP cache's profile store tests (fetch/cache/persistence.zig)
+        // compile with the storage tests (approved 9:52 PM ET, lane prof2).
+        check_storage_tests.dependOn(&fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
