@@ -28,7 +28,8 @@ const svg_window_event_handlers = "SVG 2's IDL says `SVGSVGElement includes Wind
     "Safari 27 (SVGSVGElement.prototype has no onafterprint; HTMLBodyElement.prototype does). w3c/svgwg#741, open since " ++
     "2019, asks whether the line is meant at all (\"ideally we do not expose more events as attributes than are " ++
     "implemented in UAs\"); no engine has a bug to add it. Angular's zone.js suite depends on the browsers' shape " ++
-    "(\"should patch all possible on properties on svg element\")";
+    "(\"should patch all possible on properties on svg element\"). User ruling 2026-11-22: the 18 WPT subtests this " ++
+    "takes away (html/dom/idlharness.https.html, \"SVGSVGElement interface: attribute on*\") are accepted as golden rule 2";
 
 pub const table = [_]Removal{
     .{ .target = "SVGSVGElement", .mixin = "WindowEventHandlers", .reason = svg_window_event_handlers },
