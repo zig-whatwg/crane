@@ -30,6 +30,7 @@ pub const DocumentStart = @import("html").navigation.document_start.Start;
 pub const DialogOpening = @import("html").navigation.user_prompts.Opening;
 pub const DialogClosed = @import("html").navigation.user_prompts.Closed;
 pub const DialogAnswer = @import("html").navigation.user_prompts.DialogAnswer;
+pub const DialogKind = @import("html").navigation.user_prompts.Kind;
 /// An open dialog as a host reads it from any thread
 /// (BrowserHost.userPromptOf).
 pub const UserPromptInfo = @import("html").simple_dialogs.Info;
