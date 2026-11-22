@@ -221,6 +221,14 @@ pub const DialogAnswer = if (have_host_events and @hasDecl(browser.host_events, 
     answer: *const fn (context: *anyopaque, accept: bool, prompt_text: []const u8) bool,
 };
 
+/// Answer the simple dialog open on `tab`, from ANY thread (lane cdph's
+/// BrowserHost.answerUserPrompt: the same call as the dialog's
+/// DialogAnswer). False when none is open, or it was answered already.
+pub fn answerUserPrompt(host: *BrowserHost, tab: TabId, accept: bool, prompt_text: []const u8) ?bool {
+    if (comptime @hasDecl(BrowserHost, "answerUserPrompt")) return host.answerUserPrompt(tab, accept, prompt_text);
+    return null;
+}
+
 /// Browser thread. Start delivering host events to `listener`.
 pub fn addListener(b: *Browser, listener: Listener) !void {
     if (comptime have_host_events) return b.addListener(listener);

@@ -905,12 +905,16 @@ pub const Server = struct {
             return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.invalid_params), "Invalid parameters", @errorName(err));
         };
         const target = session.target orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
-        const dialog = target.dialog orelse return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
-        if (!dialog.answer(dialog.context, params.accept, params.promptText orelse "")) {
-            target.dialog = null;
-            return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
-        }
+        const text = params.promptText orelse "";
+        // The host's answer for the tab's open dialog (the DialogAnswer the
+        // paused Browser thread waits on); before the host API has it, the
+        // answer the dialog_opening event carried.
+        const answered = host_bridge.answerUserPrompt(target.context.host, target.tab, params.accept, text) orelse blk: {
+            const dialog = target.dialog orelse break :blk false;
+            break :blk dialog.answer(dialog.context, params.accept, text);
+        };
         target.dialog = null;
+        if (!answered) return dispatch.sendError(session.link, command.id, @backingInt(json_rpc.Code.server_error), "No dialog is showing", null);
         const reply: dispatch.Reply(P) = .{ .link = session.link.retain(), .id = command.id };
         reply.ok(.{});
     }
