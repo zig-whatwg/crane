@@ -120,6 +120,7 @@ pub const Scope = enum {
 /// The scope of `path` (repo-relative, `/`-separated).
 pub fn scopeOf(path: []const u8) Scope {
     if (std.mem.eql(u8, path, "src/runtime/engine_build_protocol.zig")) return .none;
+    if (std.mem.eql(u8, path, "src/platform/platform_build_protocol.zig")) return .none;
     if (std.mem.startsWith(u8, path, "src/runtime/engines/")) return .none;
     if (std.mem.startsWith(u8, path, "src/platform/")) return .engine_only;
     return .all;
@@ -674,6 +675,7 @@ test "scope: the engine's build files are not counted, the platform's only for e
     // A neutral file beside the protocol's build file is neutral.
     try testing.expectEqual(Scope.all, scopeOf("src/runtime/engine_protocol.zig"));
     try testing.expectEqual(Scope.none, scopeOf("src/runtime/engine_build_protocol.zig"));
+    try testing.expectEqual(Scope.none, scopeOf("src/platform/platform_build_protocol.zig"));
     try testing.expectEqual(Scope.none, scopeOf("src/runtime/engines/v8/engine_build.zig"));
     try testing.expectEqual(Scope.none, scopeOf("src/runtime/engines/v8/build/archives.zig"));
     try testing.expectEqual(Scope.none, scopeOf("src/runtime/engines/jsc/engine_build.zig"));

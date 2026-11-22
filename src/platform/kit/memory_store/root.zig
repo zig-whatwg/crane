@@ -122,6 +122,10 @@ fn inRange(range: platform.KeyRange, key: []const u8) bool {
 }
 
 const StoreData = struct {
+    /// The protocol handle of this store is this field's address: a Browser
+    /// whose stores are of two engines (kit/browser_state: kit/sqlite under
+    /// a profile directory) tells them apart by it.
+    engine: platform.StorageEngine = .memory,
     allocator: std.mem.Allocator,
     name: []u8,
     mutex: std.Io.Mutex = .init,
@@ -163,14 +167,14 @@ pub const Stores = struct {
     pub fn open(self: *Stores, name: platform.Str, options: platform.StoreOptions) StoreError!*platform.Store {
         lock(&self.mutex);
         defer unlock(&self.mutex);
-        if (self.lookup(name.slice())) |i| return @ptrCast(self.stores.items[i]);
+        if (self.lookup(name.slice())) |i| return @ptrCast(&self.stores.items[i].engine);
         if (!options.create) return error.NotFound;
         const data = try self.allocator.create(StoreData);
         errdefer self.allocator.destroy(data);
         data.* = .{ .allocator = self.allocator, .name = try self.allocator.dupe(u8, name.slice()) };
         errdefer self.allocator.free(data.name);
         try self.stores.append(self.allocator, data);
-        return @ptrCast(data);
+        return @ptrCast(&data.engine);
     }
 
     /// The protocol's `deleteStore`.
@@ -184,7 +188,8 @@ pub const Stores = struct {
 };
 
 fn storeData(store: *platform.Store) *StoreData {
-    return @ptrCast(@alignCast(store));
+    const engine: *platform.StorageEngine = @ptrCast(@alignCast(store));
+    return @fieldParentPtr("engine", engine);
 }
 
 /// Stores live as long as their Browser (or until deleted): closing a handle
@@ -194,13 +199,16 @@ pub fn closeStore(store: *platform.Store) void {
 }
 
 const Transaction = struct {
+    /// The handle is this field's address (see StoreData.engine).
+    engine: platform.StorageEngine = .memory,
     data: *StoreData,
     mode: platform.TransactionMode,
     view: Table,
 };
 
 fn transactionOf(transaction: *platform.StoreTransaction) *Transaction {
-    return @ptrCast(@alignCast(transaction));
+    const engine: *platform.StorageEngine = @ptrCast(@alignCast(transaction));
+    return @fieldParentPtr("engine", engine);
 }
 
 pub fn beginTransaction(store: *platform.Store, mode: platform.TransactionMode) StoreError!*platform.StoreTransaction {
@@ -214,7 +222,7 @@ pub fn beginTransaction(store: *platform.Store, mode: platform.TransactionMode) 
     errdefer data.allocator.destroy(transaction);
     transaction.* = .{ .data = data, .mode = mode, .view = try data.table.clone(data.allocator) };
     if (mode == .write) data.writer_open = true;
-    return @ptrCast(transaction);
+    return @ptrCast(&transaction.engine);
 }
 
 fn end(transaction: *Transaction) void {
@@ -277,6 +285,8 @@ pub fn storeDeleteRange(handle: *platform.StoreTransaction, range: platform.KeyR
 }
 
 const Cursor = struct {
+    /// The handle is this field's address (see StoreData.engine).
+    engine: platform.StorageEngine = .memory,
     transaction: *Transaction,
     range: platform.KeyRange,
     direction: platform.CursorDirection,
@@ -306,11 +316,16 @@ pub fn openCursor(handle: *platform.StoreTransaction, range: platform.KeyRange, 
         .lower = lower,
         .upper = upper,
     };
-    return @ptrCast(cursor);
+    return @ptrCast(&cursor.engine);
+}
+
+fn cursorOf(handle: *platform.StoreCursor) *Cursor {
+    const engine: *platform.StorageEngine = @ptrCast(@alignCast(handle));
+    return @fieldParentPtr("engine", engine);
 }
 
 pub fn cursorNext(handle: *platform.StoreCursor, allocator: std.mem.Allocator) StoreError!?platform.KeyValue {
-    const cursor: *Cursor = @ptrCast(@alignCast(handle));
+    const cursor = cursorOf(handle);
     const entries = cursor.transaction.view.entries.items;
     while (true) {
         const entry = switch (cursor.direction) {
@@ -334,7 +349,7 @@ pub fn cursorNext(handle: *platform.StoreCursor, allocator: std.mem.Allocator) S
 }
 
 pub fn closeCursor(handle: *platform.StoreCursor) void {
-    const cursor: *Cursor = @ptrCast(@alignCast(handle));
+    const cursor = cursorOf(handle);
     const allocator = cursor.transaction.data.allocator;
     allocator.free(cursor.lower);
     allocator.free(cursor.upper);
