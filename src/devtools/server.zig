@@ -111,6 +111,9 @@ pub const Server = struct {
     acceptor: ?platform.Thread = null,
     devtools_thread: ?platform.Thread = null,
     stopping: std.atomic.Value(bool) = .init(false),
+    /// How many waits for a connection the acceptor began (its test's
+    /// measure: an idle server begins one).
+    accept_waits: std.atomic.Value(u32) = .init(0),
     /// 1 once Browser.close or the pipe's end asked the embedder to end:
     /// the futex word `waitUntilClosed` waits on.
     closed: std.atomic.Value(u32) = .init(0),
@@ -803,6 +806,7 @@ pub const Server = struct {
         const self: *Server = @ptrCast(@alignCast(context.?));
         const listener = self.listener.?;
         while (!self.stopping.load(.acquire)) {
+            _ = self.accept_waits.fetchAdd(1, .monotonic);
             const stream = platform.devtoolsAccept(listener, accept_poll_ms) catch |err| {
                 log.warn("devtools: accept failed: {t}", .{err});
                 platform.sleepThread(accept_poll_ms * std.time.ns_per_ms);

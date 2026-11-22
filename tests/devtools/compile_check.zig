@@ -19,6 +19,7 @@ test {
     _ = @import("cdph_page_session_test.zig");
     _ = @import("tpf_remote_objects_test.zig");
     _ = @import("tpc_console_replay_test.zig");
+    _ = @import("tpc_idle_server_test.zig");
     _ = @import("tpf_resize_observer_test.zig");
     _ = @import("tpf_streamed_document_test.zig");
     _ = @import("tpf_console_webcompat_test.zig");
