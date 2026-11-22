@@ -438,6 +438,8 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     realm.secure_context = main.secure_context;
     realm.task_sink = main.task_sink;
     realm.principal_realm = main;
+    // Kept after the realm ends (runtime.ContextData.world).
+    realm.world = world;
 
     if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
     interface_bindings.installConditionalConstructs(.Window, context);

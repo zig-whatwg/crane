@@ -35,6 +35,9 @@ pub const Implementation = struct {
     /// Make the handler for the event type an internal raw uncompiled
     /// handler, and activate it.
     set_raw: ?*const fn (*runtime.Instance, []const u8, RawSource) anyerror!void = null,
+    /// The event handler content attribute was removed: deactivate the
+    /// handler it set - the main world's (`deactivateForContentAttribute`).
+    deactivate_content_attribute: ?*const fn (*runtime.Instance, []const u8) void = null,
     erase: *const fn (*runtime.Instance) void,
     /// Whether the target's event listener list holds a listener that is not
     /// removed - an activated event handler's included.
@@ -123,6 +126,18 @@ pub fn setRaw(target: *runtime.Instance, event_type: []const u8, source: RawSour
     const steps = implementation.get() orelse return error.NotSupported;
     const set_raw = steps.set_raw orelse return error.NotSupported;
     return set_raw(target, event_type, source);
+}
+
+/// The event handler content attribute change steps' "If value is null,
+/// deactivate an event handler given eventTarget and name", for an element
+/// whose attribute `event_type`'s content attribute was removed: the main
+/// world's handler - the one the content attribute sets - whatever world's
+/// script removed it (engine section 4.2a; EventTarget keeps a handler per
+/// isolated world).
+pub fn deactivateForContentAttribute(target: *runtime.Instance, event_type: []const u8) void {
+    const steps = implementation.get() orelse return;
+    const deactivate = steps.deactivate_content_attribute orelse return;
+    deactivate(target, event_type);
 }
 
 /// Compile `target`'s raw uncompiled handler for `event_type`

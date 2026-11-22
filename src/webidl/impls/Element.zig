@@ -2783,7 +2783,9 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const target = dom.event_handlers.determineTarget(instance, local_name) orelse return;
     const event_type = dom.event_handlers.eventTypeOf(local_name);
     const body = value orelse {
-        dom.event_handlers.set(typedefs.EventHandler, target, event_type, null) catch {};
+        // The main world's handler, the one the attribute set
+        // (dom.event_handlers.deactivateForContentAttribute).
+        dom.event_handlers.deactivateForContentAttribute(target, event_type);
         return;
     };
     // Step 5.1: a CSP-blocked replacement leaves the OLD handler value.
