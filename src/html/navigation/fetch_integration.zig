@@ -18,8 +18,6 @@ const Allocator = std.mem.Allocator;
 // Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
 const fetch = @import("fetch");
 
-const navigate_steps = @import("navigate_steps.zig");
-
 /// The response `resultFromResponse` takes, as Fetch hands it over.
 pub const InternalResponse = fetch.internal.InternalResponse;
 
@@ -468,55 +466,16 @@ pub const NavigationFetchError = error{
     FetchNotAvailable,
 };
 
-/// Fetch a navigation resource.
-///
-/// HTML Standard §7.4.3 step 13+:
-/// "If navigationType is not reload, then: ... Fetch request."
-///
-/// This function performs the actual network fetch for a navigation request
-/// using the Fetch module infrastructure.
-///
-/// Returns a NavigationFetchResult containing:
-/// - status: HTTP status code
-/// - final_url: URL after redirects
-/// - content_type: Content-Type header
-/// - body: Response body bytes
-/// - ok: Whether status is 2xx
-/// - is_network_error: Whether network error occurred
+/// "Create navigation params by fetching" steps 1-3 and the fetch, blocking
+/// until the response is in: what a navigation needs of the response to
+/// `url`, whatever its scheme. Every scheme goes through Fetch - about:
+/// (scheme fetch "about": about:blank, anything else a network error),
+/// data: (the data: URL processor, a URL it rejects a network error), file:
+/// (file_fetch.zig), blob: and http(s) - so main fetch's steps (CSP, the
+/// Browser's fetch observer) run for each. A navigation built its own
+/// request and calls `fetchRequestNow` (HTMLIFrameElement's
+/// fetchResourceWithoutNetwork); this is the same without one.
 pub fn fetchNavigationResource(
-    allocator: Allocator,
-    url: []const u8,
-    options: NavigationFetchOptions,
-) NavigationFetchError!NavigationFetchResult {
-    // Check for special URLs that don't need fetching
-    if (std.mem.startsWith(u8, url, "about:")) {
-        return handleAboutUrl(allocator, url);
-    }
-
-    if (std.mem.startsWith(u8, url, "data:")) {
-        return handleDataUrl(allocator, url);
-    }
-
-    if (std.mem.startsWith(u8, url, "javascript:")) {
-        return handleJavascriptUrl(allocator, url);
-    }
-
-    if (std.mem.startsWith(u8, url, "file:")) {
-        return handleFileUrl(allocator, url);
-    }
-
-    // HTTP(S) URLs, and blob: URLs - Fetch's scheme fetch answers a blob URL
-    // from the blob URL store, with no network - go through the fetch module.
-    return fetchHttpResource(allocator, url, options);
-}
-
-/// Fetch an HTTP(S) resource using the fetch module, blocking until the
-/// response is in.
-///
-/// HTML Standard §7.4.3:
-/// Creates an internal request with appropriate destination and mode,
-/// then executes the fetch algorithm.
-fn fetchHttpResource(
     allocator: Allocator,
     url: []const u8,
     options: NavigationFetchOptions,
@@ -809,162 +768,6 @@ pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetch
     return result;
 }
 
-/// Fetch "scheme fetch", "about": "If request's current URL's path is the
-/// string "blank", then return a new response whose status message is `OK`,
-/// header list is « (`Content-Type`, `text/html;charset=utf-8`) », and body
-/// is the empty byte sequence as a body. URLs such as "about:config" are
-/// handled during navigation and result in a network error in the context
-/// of fetching top-level navigables."
-///
-/// about:srcdoc is such a URL: an iframe srcdoc document is made from the
-/// srcdoc attribute (the navigation's srcdoc resource, never this fetch),
-/// and a navigation to about:srcdoc by any other route - location, a link,
-/// window.open() - is a network error, whose document has an opaque origin
-/// (html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-
-/// navigation-blocked.window.js; wpt.fyi stable: Chrome 157 0/3, Firefox
-/// 160 3/3, Safari 27.2 0/3). Golden rule 2, the user's ruling (2026-11-12
-/// 01:01 UTC): the spec, which Firefox ships. Chrome and Safari lag rather
-/// than deviate: Chromium's own open bug 40165505 (crbug 1169736),
-/// "Navigation to about:srcdoc should fail per HTML Standard", wrote this
-/// WPT, and whatwg/html#6316 (annevk, 2021) confirms the network error;
-/// no engine declined. A 404 page for an unknown about: URL had no spec.
-fn handleAboutUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
-    var result = NavigationFetchResult.init(allocator);
-    errdefer result.deinit();
-    result.final_url = try allocator.dupe(u8, url);
-
-    if (navigate_steps.matchesAboutBlank(url)) {
-        result.status = 200;
-        result.ok = true;
-        result.is_network_error = false;
-        result.content_type = try allocator.dupe(u8, "text/html;charset=utf-8");
-        result.body = try allocator.dupe(u8, "");
-    }
-    // Otherwise a network error, as init made it.
-    return result;
-}
-
-/// Handle data: URLs
-fn handleDataUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
-    var result = NavigationFetchResult.init(allocator);
-    errdefer result.deinit();
-    result.final_url = try allocator.dupe(u8, url);
-
-    // Fetch's data: URL processor, including step 2's excluded fragment.
-    // Keep the complete navigation URL above for location.hash and :target.
-    const processed = fetch.algorithms.processDataUrl(allocator, url) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => null,
-    };
-    const data = processed orelse {
-        result.status = 400;
-        result.ok = false;
-        result.is_network_error = false;
-        return result;
-    };
-
-    // Transfer the processor's two owned slices to the navigation result.
-    result.content_type = data.mime_type;
-    result.body = data.body;
-    result.status = 200;
-    result.ok = true;
-    result.is_network_error = false;
-
-    return result;
-}
-
-/// Handle javascript: URLs
-fn handleJavascriptUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
-    _ = allocator;
-    _ = url;
-    // javascript: URLs don't return a document through fetch
-    // They are executed inline and may produce a new document
-    return NavigationFetchError.SecurityError;
-}
-
-/// Maximum bytes read from a file: URL. A navigation response has to be held
-/// whole in memory to be parsed, so the cap is what keeps a stray path from
-/// exhausting the process.
-const max_file_navigation_bytes: usize = 32 * 1024 * 1024;
-
-/// Handle file: URLs.
-///
-/// A navigation to a file: URL reads it as scheme fetch "file" does
-/// (fetch/algorithms/file_fetch.zig, through the platform's file access) and
-/// synthesises the response a navigation needs: the MIME type comes from the
-/// file extension, which is the only supplied type a local file has.
-fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
-    var result = NavigationFetchResult.init(allocator);
-    errdefer result.deinit();
-
-    result.final_url = allocator.dupe(u8, url) catch return NavigationFetchError.OutOfMemory;
-    result.is_network_error = false;
-    result.is_cross_origin = false;
-
-    // file://host/path names another machine: only file:///path,
-    // file://localhost/path and file:/path are read.
-    const found = fetch.algorithms.file_fetch.read(allocator, url, max_file_navigation_bytes) catch return NavigationFetchError.OutOfMemory;
-    const file = switch (found) {
-        .file => |f| f,
-        .bad_host => {
-            result.status = 400;
-            return result;
-        },
-        .not_found => {
-            result.status = 404;
-            return result;
-        },
-    };
-    defer allocator.free(file.path);
-    result.body = file.bytes;
-    result.status = 200;
-    result.ok = true;
-    result.last_modified = if (@import("platform").fileInfo(@import("platform").Str.from(file.path))) |info| info.modified else |_| null;
-    result.content_type = allocator.dupe(u8, file.mime_type) catch {
-        return NavigationFetchError.OutOfMemory;
-    };
-
-    return result;
-}
-
-/// Percent-decode a string
-/// URL "percent-decode" (URL Standard 1.3) of a data: URL's body: a "%"
-/// followed by two hex digits is that byte, and every other byte stays -
-/// "+" included, which only application/x-www-form-urlencoded reads as a
-/// space.
-fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
-    // Pre-calculate the maximum size needed
-    var result = try allocator.alloc(u8, input.len);
-    var write_idx: usize = 0;
-
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            const hex = input[i + 1 .. i + 3];
-            const byte = std.fmt.parseInt(u8, hex, 16) catch {
-                // Invalid hex, keep as-is
-                result[write_idx] = input[i];
-                write_idx += 1;
-                i += 1;
-                continue;
-            };
-            result[write_idx] = byte;
-            write_idx += 1;
-            i += 3;
-        } else {
-            result[write_idx] = input[i];
-            write_idx += 1;
-            i += 1;
-        }
-    }
-
-    // Resize to actual size
-    if (write_idx < result.len) {
-        return allocator.realloc(result, write_idx);
-    }
-    return result;
-}
-
 /// Check if a response is HTML based on Content-Type
 pub fn isHtmlResponse(content_type: ?[]const u8) bool {
     const ct = content_type orelse return false;
@@ -1028,10 +831,10 @@ fn extractOrigin(url: []const u8) ?[]const u8 {
 // Tests
 // =============================================================================
 
-test "handleAboutUrl - about:blank" {
+test "fetchNavigationResource - about:blank, through scheme fetch \"about\"" {
     const allocator = std.testing.allocator;
 
-    var result = try handleAboutUrl(allocator, "about:blank");
+    var result = try fetchNavigationResource(allocator, "about:blank", .{});
     defer result.deinit();
 
     try std.testing.expectEqual(@as(u16, 200), result.status);
@@ -1040,27 +843,27 @@ test "handleAboutUrl - about:blank" {
     try std.testing.expectEqualStrings("text/html;charset=utf-8", result.content_type.?);
 }
 
-test "handleAboutUrl - about:srcdoc and every about: URL but about:blank are network errors" {
+test "fetchNavigationResource - about:srcdoc and every about: URL but about:blank are network errors" {
     // Fetch "scheme fetch", "about": a path "blank" is an empty response;
     // anything else - about:srcdoc included - is a network error.
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "about:srcdoc", "about:srcdoc?query", "about:srcdoc#x", "about:unknown" }) |url| {
-        var result = try handleAboutUrl(allocator, url);
+        var result = try fetchNavigationResource(allocator, url, .{});
         defer result.deinit();
         try std.testing.expect(result.is_network_error);
         try std.testing.expect(!result.ok);
         try std.testing.expect(result.body == null);
     }
-    var blank = try handleAboutUrl(allocator, "about:blank?x#y");
+    var blank = try fetchNavigationResource(allocator, "about:blank?x#y", .{});
     defer blank.deinit();
     try std.testing.expect(!blank.is_network_error);
     try std.testing.expect(blank.ok);
 }
 
-test "handleDataUrl - text data" {
+test "fetchNavigationResource - a data: URL, through scheme fetch \"data\"" {
     const allocator = std.testing.allocator;
 
-    var result = try handleDataUrl(allocator, "data:text/plain,Hello%20World");
+    var result = try fetchNavigationResource(allocator, "data:text/plain,Hello%20World", .{});
     defer result.deinit();
 
     try std.testing.expectEqual(@as(u16, 200), result.status);
@@ -1069,11 +872,11 @@ test "handleDataUrl - text data" {
     try std.testing.expectEqualStrings("Hello World", result.body.?);
 }
 
-test "handleDataUrl - base64 data" {
+test "fetchNavigationResource - a base64 data: URL" {
     const allocator = std.testing.allocator;
 
     // "Hello" in base64 is "SGVsbG8="
-    var result = try handleDataUrl(allocator, "data:text/plain;base64,SGVsbG8=");
+    var result = try fetchNavigationResource(allocator, "data:text/plain;base64,SGVsbG8=", .{});
     defer result.deinit();
 
     try std.testing.expectEqual(@as(u16, 200), result.status);

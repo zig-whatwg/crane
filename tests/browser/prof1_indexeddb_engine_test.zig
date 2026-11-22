@@ -197,7 +197,13 @@ test "a unique index is checked against the transaction's own writes and the sto
         \\t = db.transaction('s', 'readwrite');
         \\s = t.objectStore('s');
         \\const results = [];
-        \\const attempt = async (value, key) => { try { await settled(s.put(value, key)); results.push('ok'); } catch (e) { e.preventDefault && 0; results.push(e.name); } };
+        \\// A ConstraintError's error event is canceled, so the transaction goes
+        \\// on (IndexedDB "fire an error event": an uncanceled one aborts it).
+        \\const attempt = async (value, key) => {
+        \\  const r = s.put(value, key);
+        \\  try { await new Promise((resolve, reject) => { r.onsuccess = resolve; r.onerror = (e) => { e.preventDefault(); reject(r.error); }; }); results.push('ok'); }
+        \\  catch (e) { results.push(e.name); }
+        \\};
         \\await attempt({ mail: 'a' }, 2);
         \\await attempt({ mail: 'b' }, 3);
         \\await attempt({ mail: 'b' }, 4);

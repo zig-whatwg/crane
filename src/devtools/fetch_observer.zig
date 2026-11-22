@@ -218,10 +218,43 @@ const Head = struct {
             .connectionId = 0,
             .encodedDataLength = encoded_length,
             .securityState = securityStateOf(self.url),
-            .protocol = "http/1.1",
+            .protocol = protocolOf(self.url),
         };
     }
 };
+
+/// Network.Response.protocol. A response that did not come over HTTP names
+/// its URL's scheme: Blink's InspectorNetworkAgent (BuildObjectForResource
+/// Response) takes response.CurrentRequestUrl().Protocol() when there is no
+/// ALPN protocol and the response is not HTTP - Chrome 157 (CDP probe, lane
+/// tpg): "data" for a data: document, script, image, fetch() and XHR,
+/// "file" for a file: document and its subresources, "blob" for a blob:
+/// fetch. An HTTP response says "http/1.1" (the version and ALPN's "h2" are
+/// not told here yet).
+fn protocolOf(url: []const u8) []const u8 {
+    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return "http/1.1";
+    const scheme = url[0..colon];
+    if (std.ascii.eqlIgnoreCase(scheme, "http") or std.ascii.eqlIgnoreCase(scheme, "https")) return "http/1.1";
+    return scheme;
+}
+
+/// Whether Blink would serve `request` as static data from its memory
+/// cache: a data: URL of a resource its ResourceFetcher loads - a script, a
+/// stylesheet, an image, a font - never a raw one (fetch(), XHR) or a
+/// navigation. ResourceFetcher::ResourceForStaticData makes the resource
+/// from the URL itself and the load reports probe::MarkResourceAsCached, so
+/// DevTools hears Network.requestServedFromCache before responseReceived,
+/// and loadingFinished's encodedDataLength is 0 (Chrome 157, CDP probe, lane
+/// tpg: a data: script, stylesheet and image - parser-inserted or not - do;
+/// fetch() and XHR of a data: URL, and a data: document, do not).
+fn isStaticData(request: *const InternalRequest) bool {
+    if (request.mode == .navigate) return false;
+    if (!std.ascii.startsWithIgnoreCase(request.currentUrl(), "data:")) return false;
+    return switch (request.destination) {
+        .script, .style, .image, .font => true,
+        else => false,
+    };
+}
 
 fn freeHeaders(allocator: Allocator, headers: *std.json.ObjectMap) void {
     var it = headers.iterator();
@@ -730,9 +763,11 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
     const has_extra_info = if (info) |i| i.extra_info else false;
     const pending = if (info) |i| i.pending_data else 0;
     if (info) |i| i.pending_data = 0;
+    const static_data = isStaticData(request);
     for (sessions) |s| {
         if (s.states.Network.resources) |*res| res.responseReceived(request.request_id, head.mime_type, head.charset) catch {};
         const request_id = requestIdText(s, request.request_id, &id_buffer);
+        if (static_data) s.emit(N.requestServedFromCache, .{ .requestId = request_id });
         s.emit(N.responseReceived, .{
             .requestId = request_id,
             .loaderId = loaderText(s, who.loader, &loader_buffer),
@@ -776,12 +811,14 @@ fn loadingFinished(context: *anyopaque, request: *const InternalRequest, encoded
     endRequest(side, request.request_id, who.tab);
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
+    // Served from Blink's memory cache: nothing came over any wire.
+    const reported_length: u64 = if (isStaticData(request)) 0 else encoded_length;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
         if (s.states.Network.resources) |*res| res.finished(request.request_id);
         s.emit(N.loadingFinished, .{
             .requestId = requestIdText(s, request.request_id, &id_buffer),
             .timestamp = monotonicSeconds(),
-            .encodedDataLength = @floatFromInt(encoded_length),
+            .encodedDataLength = @floatFromInt(reported_length),
         });
     }
 }

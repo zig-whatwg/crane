@@ -398,6 +398,21 @@ pub const TargetDomain = struct {
             log.warn("devtools: a browser context could not start: {t}", .{err});
             return session.fail("Failed to create browser context");
         };
+        // A new context has no tab until the client makes one (Chrome:
+        // TargetHandler::CreateBrowserContext makes an off-the-record profile
+        // with no window - Playwright's newContext, then its createTarget):
+        // the Browser's own first page closes before the context is known,
+        // so no target of it is ever reported (lane tpg: cdpt_targets'
+        // Playwright launch read that page's attachedToTarget for the one it
+        // created). A Browser lives on with its first page closed (its agent
+        // keeps its isolate entered: protocol_agents createAgent).
+        const CloseFirstPage = struct {
+            fn run(_: ?*anyopaque, b: *host_bridge.Browser) void {
+                const first = b.hostTraversableId() orelse return;
+                b.closeTab(first, .{}) catch |err| log.warn("devtools: a new context's first page did not close: {t}", .{err});
+            }
+        };
+        host.call(null, CloseFirstPage.run) catch {};
         const context = server.addContext(host, true) catch |err| {
             host.stop();
             return err;

@@ -139,18 +139,25 @@ test "Fetch: a request the patterns match pauses before the network; fulfillRequ
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var page = try Page.open(gpa.allocator(), "data:text/html,<p>x");
     defer page.close();
-    const enabled = try page.call("Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"http://127.0.0.1:9/*\"}]}");
+    const enabled = try page.call("Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"http://127.0.0.1:39/*\"}]}");
     enabled.deinit();
-    // Port 9 (discard) answers nothing: only the interception can.
-    gpa.allocator().free(try page.evaluate("window.answer = fetch('http://127.0.0.1:9/x').then(r => r.status + ':' + r.headers.get('x-crane') + ':' + r.text()); 0"));
+    // Port 39 answers nothing here: only the interception can. (Not port 9:
+    // a bad port - Fetch 2.10 "port blocking", main fetch step 7 - is a
+    // network error before any interception, as in Chrome: the request never
+    // paused, and the test waited for good.)
+    gpa.allocator().free(try page.evaluate("window.answer = fetch('http://127.0.0.1:39/x').then(r => r.status + ':' + r.headers.get('x-crane') + ':' + r.text()); 0"));
     const paused = try page.client.waitEvent("Fetch.requestPaused");
     defer paused.deinit();
-    try testing.expectEqualStrings("http://127.0.0.1:9/x", cdp.stringAt(paused.value, "params.request.url").?);
+    try testing.expectEqualStrings("http://127.0.0.1:39/x", cdp.stringAt(paused.value, "params.request.url").?);
     const id = cdp.stringAt(paused.value, "params.requestId").?;
     try testing.expect(std.mem.startsWith(u8, id, "interception-job-"));
     var params_buffer: [256]u8 = undefined;
-    // body: base64("hi")
-    const fulfilled = try page.call("Fetch.fulfillRequest", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\",\"responseCode\":201,\"responseHeaders\":[{{\"name\":\"x-crane\",\"value\":\"yes\"}}],\"body\":\"aGk=\"}}", .{id}));
+    // body: base64("hi"). The page is a data: document - an opaque origin -
+    // so its fetch is cross-origin, and a fulfilled response is held to CORS
+    // as any other (Chrome too: the renderer checks what the interceptor
+    // answered): without Access-Control-Allow-Origin the fetch failed, and
+    // x-crane is read only when exposed.
+    const fulfilled = try page.call("Fetch.fulfillRequest", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\",\"responseCode\":201,\"responseHeaders\":[{{\"name\":\"x-crane\",\"value\":\"yes\"}},{{\"name\":\"Access-Control-Allow-Origin\",\"value\":\"*\"}},{{\"name\":\"Access-Control-Expose-Headers\",\"value\":\"x-crane\"}}],\"body\":\"aGk=\"}}", .{id}));
     defer fulfilled.deinit();
     try testing.expect(cdp.at(fulfilled.value, "result") != null);
     const answer = try page.evaluate("window.answer.then(async s => s)");
@@ -170,7 +177,7 @@ test "Fetch.failRequest makes the page's fetch reject with a network error" {
     defer page.close();
     const enabled = try page.call("Fetch.enable", "{}");
     enabled.deinit();
-    gpa.allocator().free(try page.evaluate("window.answer = fetch('http://127.0.0.1:9/y').then(() => 'resolved', e => e.name); 0"));
+    gpa.allocator().free(try page.evaluate("window.answer = fetch('http://127.0.0.1:39/y').then(() => 'resolved', e => e.name); 0"));
     const paused = try page.client.waitEvent("Fetch.requestPaused");
     defer paused.deinit();
     var params_buffer: [160]u8 = undefined;

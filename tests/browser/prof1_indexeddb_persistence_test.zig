@@ -135,7 +135,13 @@ const read_back =
     \\const byName = (await settled(people.index('by_name').getAllKeys())).join(',');
     \\const byTag = (await settled(people.index('by_tag').getAllKeys(IDBKeyRange.only('b')))).join(',');
     \\let unique = 'ok';
-    \\try { await settled(people.add({ id: 5, name: 'dup', mail: 'a@x', tags: [] })); unique = 'not unique'; } catch (e) { unique = e.name; }
+    \\// The ConstraintError's error event is canceled, so the transaction goes on
+    \\// (IndexedDB "fire an error event": an uncanceled one aborts it).
+    \\try {
+    \\  const r = people.add({ id: 5, name: 'dup', mail: 'a@x', tags: [] });
+    \\  await new Promise((resolve, reject) => { r.onsuccess = resolve; r.onerror = (e) => { e.preventDefault(); reject(r.error); }; });
+    \\  unique = 'not unique';
+    \\} catch (e) { unique = e.name; }
     \\const keyTypes = (await settled(t.objectStore('keys').getAll())).join(',');
     \\const counter = t.objectStore('counter');
     \\const next = await settled(counter.add('third'));

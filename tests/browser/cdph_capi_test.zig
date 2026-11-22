@@ -185,7 +185,7 @@ test "a C embedder that answers dialogs answers a prompt from another thread; th
     try startHeard(&heard, true);
     defer capi.crane_browser_destroy(heard.handle);
     var tab: u64 = 0;
-    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(heard.handle, "data:text/html,<p>d</p>", false, &tab));
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(heard.handle, null, false, &tab));
     const source = "globalThis.answer = prompt('Name?', 'nobody')";
     var result: capi.EvaluateResult = .{};
     try testing.expectEqual(capi.Status.user_prompt_open, capi.crane_tab_evaluate(heard.handle, tab, source.ptr, source.len, 0, &result));
@@ -211,7 +211,7 @@ test "a C embedder may answer a dialog from inside its event callback" {
     try startHeard(&heard, true);
     defer capi.crane_browser_destroy(heard.handle);
     var tab: u64 = 0;
-    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(heard.handle, "data:text/html,<p>d</p>", false, &tab));
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(heard.handle, null, false, &tab));
     const source = "globalThis.answer = prompt('Name?')";
     var result: capi.EvaluateResult = .{};
     try testing.expectEqual(capi.Status.user_prompt_open, capi.crane_tab_evaluate(heard.handle, tab, source.ptr, source.len, 0, &result));
@@ -254,8 +254,12 @@ test "an embedder's older, shorter options struct keeps the newer fields' defaul
     try testing.expectEqual(capi.Status.ok, capi.crane_browser_create(&options, &handle));
     defer capi.crane_browser_destroy(handle);
     // Not claimed: the platform's dialog answers (headless: prompt is null).
+    // The tab stays on its initial about:blank: a URL to load raced the two
+    // evaluations - the first ran in the initial document, its navigation
+    // then committed, and the second read a new Window (lane tpg: flaky on
+    // a loaded chat2). The dialog tests above do the same.
     var tab: u64 = 0;
-    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(handle, "data:text/html,<p>p</p>", false, &tab));
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(handle, null, false, &tab));
     const source = "globalThis.answer = String(prompt('x'))";
     var result: capi.EvaluateResult = .{};
     // The dialog opens (the evaluation ends with it open) and the platform

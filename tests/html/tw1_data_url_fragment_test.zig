@@ -51,10 +51,13 @@ test "data navigation decodes the body without losing its fragment URL" {
 }
 
 test "data navigation rejects a comma that occurs only in its fragment" {
+    // Scheme fetch "data": "If dataURLStruct is failure, then return a
+    // network error" - Chrome 157's net::ERR_INVALID_URL (a CDP probe: the
+    // navigation's Network.loadingFailed, and an error page).
     var result = try navigation.fetchNavigationResource(std.testing.allocator, "data:text/plain#fragment,body", .{});
     defer result.deinit();
     try std.testing.expect(!result.ok);
-    try std.testing.expectEqual(@as(u16, 400), result.status);
+    try std.testing.expect(result.is_network_error);
     try std.testing.expect(result.body == null);
 }
 

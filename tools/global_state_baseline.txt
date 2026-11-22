@@ -41,7 +41,7 @@ src/dom/document_rendering.zig internal_resource_links 1 G H decl:b58900497016d0
 src/dom/document_scripts.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/dom_exceptions.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/drag_data_store.zig implementation 1 G H decl:3ff874087001da34
-src/dom/editor_states.zig free_step 1 G H decl:fe8d4e0096fdc5f1
+src/dom/editor_states.zig steps 1 G H decl:b2503bead4c9677b
 src/dom/element_attributes.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/element_data.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/event_construction.zig event_steps 1 G H decl:a6c4867694b40595
@@ -84,6 +84,7 @@ src/dom/indexeddb.zig transactions 1 G H decl:767da84fdc7ee6d5
 src/dom/instance_bridge.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/intersection_targets.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/live_collections.zig implementation 1 G H decl:ff436fb405f84ffb
+src/dom/local_event_steps.zig steps 1 G H decl:fd0ef800b557e170
 src/dom/media_elements.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/message_ports.zig steps 1 G H decl:b2503bead4c9677b
 src/dom/mutation.zig children_changed_callbacks 1 G H decl:7b5bc27b7f8aa8af
@@ -104,6 +105,7 @@ src/dom/navigation_objects.zig transitions 1 G H decl:6eca0be50ed09ec4
 src/dom/node_creation.zig node_steps 1 G H decl:25197d739fa0326e
 src/dom/node_document.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/node_lists.zig implementation 1 G H decl:ff436fb405f84ffb
+src/dom/nonce_hiding.zig steps 1 G H decl:b2503bead4c9677b
 src/dom/observer_registrations.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/performance_timeline.zig hooks 1 G H decl:25197d739fa0326e
 src/dom/pointer_states.zig implementation 1 G H decl:ff436fb405f84ffb
@@ -113,6 +115,7 @@ src/dom/range_boundaries.zig providers 1 G H decl:be5530a70dc2c879
 src/dom/refcount.zig hooks 1 G H decl:25197d739fa0326e
 src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/refcount_audit.zig audit_requested 1 G P-res decl:4b877655cb3bb361
+src/dom/resize_observations.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/script_elements.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/script_elements.zig svg_implementation 1 G H decl:7c1a7ac87b91c26f
 src/dom/selected_content.zig read_disabled 1 G H decl:28a95206c60640e5
@@ -120,6 +123,8 @@ src/dom/selection.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/service_worker_clients.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/shadow_hosts.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/slot_helpers.zig implementation 1 G H decl:ff436fb405f84ffb
+src/dom/smil/document_animations.zig animation_steps 1 G H decl:2e606c3bfe010a7c
+src/dom/smil/document_animations.zig svg_steps 1 G H decl:8853db032546469f
 src/dom/string_lists.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/style/hooks.zig hooks 1 G P-res decl:25197d739fa0326e
 src/dom/style/ua_sheet.zig built 1 G P-res decl:263246c0f5b6d40a
@@ -144,6 +149,7 @@ src/dom/user_activation_state.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/visibility_state.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/window_documents.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/window_globals.zig hooks 1 G H decl:25197d739fa0326e
+src/fetch/algorithms/http_fetch.zig user_agent_override_reader 1 G H decl:8e1df89afaba1f2a
 src/fetch/algorithms/scheme_fetch.zig blob_resolver 1 G H decl:485ae4e747cdbb77
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920

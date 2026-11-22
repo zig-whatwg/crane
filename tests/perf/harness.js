@@ -81,9 +81,29 @@
   }
 
   // A page's uncaught errors go to the run's log: the engines without a console in the
-  // runner's view still say what went wrong.
-  addEventListener('error', (e) => { post('log', { message: 'error: ' + (e.message || describe(e.error)) }); });
-  addEventListener('unhandledrejection', (e) => { post('log', { message: 'unhandled rejection: ' + describe(e.reason) }); });
+  // runner's view still say what went wrong. The first `maxPostedErrors` of them, each with a
+  // POST of its own; the rest are counted and the count is posted before the page's done mark.
+  // Without the bound, a workload that reports many errors (reportError in a loop) timed the
+  // harness's own POSTs, thousands in flight at once, not the workload (lane tpc, 2026-11-22).
+  const maxPostedErrors = 20;
+  let postedErrors = 0;
+  let unpostedErrors = 0;
+  function logError(message) {
+    if (postedErrors < maxPostedErrors) {
+      postedErrors++;
+      post('log', { message });
+    } else {
+      unpostedErrors++;
+    }
+  }
+  async function postUnpostedErrors() {
+    if (unpostedErrors === 0) return;
+    const count = unpostedErrors;
+    unpostedErrors = 0;
+    await post('log', { message: count + ' more error events, not posted one by one' });
+  }
+  addEventListener('error', (e) => { logError('error: ' + (e.message || describe(e.error))); });
+  addEventListener('unhandledrejection', (e) => { logError('unhandled rejection: ' + describe(e.reason)); });
 
   async function runOne(w) {
     const ctx = {};
@@ -131,6 +151,7 @@
     for (const w of workloads) await runOne(w);
     // The settle time was spent after the last workload: the done mark is the page's steady
     // footprint.
+    await postUnpostedErrors();
     await post('done', {});
   }
 
@@ -177,6 +198,7 @@
     } catch (e) {
       await post('error', { workload: w.name, message: describe(e), unsupported: e instanceof Unsupported });
     }
+    await postUnpostedErrors();
     await post('done', { kept: kept === ctx });
   }
 
@@ -187,6 +209,7 @@
       next.searchParams.set('step', String(step + 1));
       location.assign(next.href);
     } else {
+      await postUnpostedErrors();
       await post('done', {});
     }
   }

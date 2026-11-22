@@ -680,6 +680,15 @@ fn resolve(model: *Model, file: *File, scope: *Scope, range: Range, depth: usize
     return result;
 }
 
+/// `items` onto `list`, each container once: a list kept with its
+/// duplicates doubled at every generic a type passes through twice, and a
+/// chain of them in the tree grew past 10 GB.
+fn appendDistinct(arena: Allocator, list: *std.ArrayList(*Scope), items: []const *Scope) !void {
+    for (items) |item| {
+        if (std.mem.indexOfScalar(*Scope, list.items, item) == null) try list.append(arena, item);
+    }
+}
+
 fn resolveUncached(model: *Model, file: *File, scope: *Scope, range: Range, depth: usize) anyerror!?[]const *Scope {
     if (depth > 10 or range.end <= range.start) return null;
     const arena = model.arena;
@@ -699,7 +708,7 @@ fn resolveUncached(model: *Model, file: *File, scope: *Scope, range: Range, dept
             .container => |c| try current.append(arena, c),
             .init => |init| {
                 const r = (try resolve(model, init.owner.file, init.owner, init.range, depth + 1)) orelse return null;
-                try current.appendSlice(arena, r);
+                try appendDistinct(arena, &current, r);
             },
             .param => |param| {
                 const func = param.func;
@@ -710,7 +719,7 @@ fn resolveUncached(model: *Model, file: *File, scope: *Scope, range: Range, dept
                     const args = try site.argsOf(arena);
                     if (index >= args.len) continue;
                     const r = (try resolve(model, site.scope.file, site.scope, args[index], depth + 1)) orelse continue;
-                    try current.appendSlice(arena, r);
+                    try appendDistinct(arena, &current, r);
                 }
                 if (current.items.len == 0) return null;
             },
@@ -725,7 +734,7 @@ fn resolveUncached(model: *Model, file: *File, scope: *Scope, range: Range, dept
         var next: std.ArrayList(*Scope) = .empty;
         for (current.items) |c| {
             const m = (try member(model, c, name, depth)) orelse return null;
-            try next.appendSlice(arena, m);
+            try appendDistinct(arena, &next, m);
         }
         current = next;
         at += 2;
@@ -914,8 +923,19 @@ fn scan(model: *Model, io: std.Io) !void {
     const arena = model.arena;
     const build_zig = try std.Io.Dir.cwd().readFileAllocOptions(io, "build.zig", arena, .limited(64 << 20), .of(u8), 0);
     try readModules(model, build_zig);
+    try scanTree(model, io, std.Io.Dir.cwd());
+}
+
+/// Every scanned file under `top`, parsed into `model` in path order: what a
+/// probe resolves to depends on the order the files were parsed in (the memo
+/// cuts a cycle where it is first met), and a walk lists a directory in its
+/// file system's order - sorted on APFS, by hash on ext4 - so parsed as
+/// listed, one tree gave macOS and Linux different reports.
+fn scanTree(model: *Model, io: std.Io, top: std.Io.Dir) !void {
+    const arena = model.arena;
+    var paths: std.ArrayList([]const u8) = .empty;
     for (scanned_roots) |root| {
-        var dir = std.Io.Dir.cwd().openDir(io, root, .{ .iterate = true }) catch |err| switch (err) {
+        var dir = top.openDir(io, root, .{ .iterate = true }) catch |err| switch (err) {
             error.FileNotFound => continue,
             else => return err,
         };
@@ -934,15 +954,18 @@ fn scan(model: *Model, io: std.Io) !void {
                 continue;
             }
             if (entry.kind != .file or !isScanned(path)) continue;
-            const owned = try arena.dupe(u8, path);
-            const text = try std.Io.Dir.cwd().readFileAllocOptions(io, owned, arena, .limited(64 << 20), .of(u8), 0);
-            try addFile(model, owned, text);
+            try paths.append(arena, try arena.dupe(u8, path));
         }
+    }
+    std.mem.sort([]const u8, paths.items, {}, lessThan);
+    for (paths.items) |path| {
+        const text = try top.readFileAllocOptions(io, path, arena, .limited(64 << 20), .of(u8), 0);
+        try addFile(model, path, text);
     }
 }
 
 fn usage() noreturn {
-    std.debug.print("usage: lint_hasdecl [--update | --list]\n", .{});
+    std.debug.print("usage: lint_hasdecl [--update | --list] [--time]\n", .{});
     std.process.exit(2);
 }
 
@@ -954,16 +977,37 @@ pub fn main(init: std.process.Init) !void {
 
     var update = false;
     var list = false;
+    var time = false;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--update")) update = true else if (std.mem.eql(u8, arg, "--list")) list = true else usage();
+        if (std.mem.eql(u8, arg, "--update")) update = true else if (std.mem.eql(u8, arg, "--list")) list = true else if (std.mem.eql(u8, arg, "--time")) time = true else usage();
     }
 
     var model: Model = .{ .arena = arena };
+    const started = std.Io.Timestamp.now(io, .awake);
     try scan(&model, io);
+    const scanned = std.Io.Timestamp.now(io, .awake);
     const report = try analyze(&model);
+    if (time) {
+        // Where the run's time and memory go (`--time`).
+        var tokens: usize = 0;
+        var bytes: usize = 0;
+        var files = model.files.valueIterator();
+        while (files.next()) |file| {
+            tokens += file.*.tokens.len;
+            bytes += file.*.source.len;
+        }
+        var calls: usize = 0;
+        var names = model.calls.valueIterator();
+        while (names.next()) |sites| calls += sites.items.len;
+        const scan_ns = started.untilNow(io, .awake).toNanoseconds() - scanned.untilNow(io, .awake).toNanoseconds();
+        const analyze_ns = scanned.untilNow(io, .awake).toNanoseconds();
+        std.debug.print("hasdecl --time: {d} files, {d} bytes, {d} tokens, {d} calls under {d} names, {d} probes, {d} memoized resolutions, arena {d} bytes; scan+parse {d} ms, analysis {d} ms\n", .{
+            model.files.count(), bytes, tokens, calls, model.calls.count(), model.probes.items.len, model.memo.count(), arena_state.queryCapacity(), @divTrunc(scan_ns, 1_000_000), @divTrunc(analyze_ns, 1_000_000),
+        });
+    }
 
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = stdout_stream.writer(io, &stdout_buf);
@@ -1176,6 +1220,60 @@ test "a generic struct's parameter, an alias of it and @This() resolve" {
     std.mem.sort([]const u8, &names, {}, lessThan);
     try testing.expectEqualStrings("clear", names[0]);
     try testing.expectEqualStrings("deinit", names[1]);
+}
+
+test "a probe reached through many call sites resolves to each container once" {
+    // Each level calls the next twice with its own type parameter: kept
+    // with its duplicates, the probe's list doubled at every level - 2^5
+    // here; in the tree, a chain of generics through busy call sites grew
+    // lists past 10 GB on chat2 (in one order of the files, where no cycle
+    // cut the expansion short).
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const r = try testReport(arena_state.allocator(), &.{.{ .path = "src/g.zig", .source =
+        \\fn level0(comptime T: type) void {
+        \\    if (@hasDecl(T, "drop")) {}
+        \\}
+        \\fn level1(comptime T: type) void { level0(T); level0(T); }
+        \\fn level2(comptime T: type) void { level1(T); level1(T); }
+        \\fn level3(comptime T: type) void { level2(T); level2(T); }
+        \\fn level4(comptime T: type) void { level3(T); level3(T); }
+        \\const Task = struct {
+        \\    fn drop() void {}
+        \\};
+        \\fn use() void { level4(Task); level4(Task); }
+    }});
+    var model = r.model;
+    const probe = model.probes.items[0];
+    const targets = (try resolve(&model, probe.file, probe.scope, probe.arg, 0)).?;
+    try testing.expectEqual(@as(usize, 1), targets.len);
+    try testing.expectEqual(@as(usize, 1), r.report.private.items.len);
+}
+
+test "the files are read in path order, whatever order the directory lists them in" {
+    // The memo cuts a cycle where it is first met, so what a probe resolves
+    // to - and the baseline's count - follows the order the files were
+    // parsed in. The walk's order is the file system's (APFS lists names
+    // sorted, ext4 by hash): parsed as listed, the same tree counted
+    // differently on macOS and Linux. Sixteen files, written in reverse.
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(testing.io, "src/sub");
+    var name_buffer: [32]u8 = undefined;
+    var i: usize = 16;
+    while (i > 0) {
+        i -= 1;
+        const sub_path = try std.fmt.bufPrint(&name_buffer, "{s}/f{d:0>2}.zig", .{ if (i % 4 == 3) "src/sub" else "src", i });
+        try tmp.dir.writeFile(testing.io, .{ .sub_path = sub_path, .data = "fn f(comptime T: type) void { if (@hasDecl(T, \"x\")) {} }\n" });
+    }
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    var model: Model = .{ .arena = arena_state.allocator() };
+    try scanTree(&model, testing.io, tmp.dir);
+    try testing.expectEqual(@as(usize, 16), model.probes.items.len);
+    for (model.probes.items[0 .. model.probes.items.len - 1], model.probes.items[1..]) |a, b| {
+        try testing.expect(std.mem.order(u8, a.file.path, b.file.path) == .lt);
+    }
 }
 
 test "the baseline round-trips and only an increase is a violation" {

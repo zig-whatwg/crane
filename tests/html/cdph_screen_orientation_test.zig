@@ -201,7 +201,10 @@ fn visibleAgainHearsTheChange() !void {
     // A hidden document hears no change ("update the screen orientation"
     // step 1)...
     try post(browser, .{ .kind = .screen_changed, .tab = tab, .screen = portrait });
-    try settle(browser, page);
+    // Not `settle`: a hidden document has no rendering opportunity, so its
+    // animation frames wait for it to be visible (life1_system_visibility_
+    // test); the loop's tasks run meanwhile.
+    _ = try browser.runEventLoopBlocking(50);
     try expectEval(page, "[changes.length, screen.orientation.type].join()", "0,landscape-primary");
     // ...until it is visible again: HTML "update the visibility state" step
     // 4 runs the change steps, once.

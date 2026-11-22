@@ -239,7 +239,18 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// The agent ends (its hooks forgotten, the adapter's per-isolate modules
 /// torn down, its garbage collected) before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    // Read before endAgent forgets the agent's record.
+    const entered_for_life = protocol_agents.enteredForLife(isolate);
     protocol_agents.endAgent(agent);
+    // The entry createAgent made for the agent's life, last: every realm's
+    // own entry is gone by now, so it is the thread's current one - an agent
+    // ended out of the order its thread made its agents in would leave
+    // another isolate current under a stale entry.
+    if (entered_for_life) {
+        if (ffi.v8_Isolate_GetCurrent() != isolate) std.debug.panic("destroyAgent: the agent's isolate is not its thread's current one - an isolate entered after it is still entered", .{});
+        ffi.v8_Isolate_Exit(isolate);
+    }
     worker_realm.destroyAgent(agent);
 }
 

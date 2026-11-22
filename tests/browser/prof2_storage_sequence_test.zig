@@ -274,6 +274,13 @@ fn endDrainsPendingWrites() !void {
             browser.deinit();
             return err;
         };
+        // The localStorage area is loaded first: its first read waits for
+        // the sequence (a barrier, as Chrome's renderer reads an area with a
+        // sync GetAll), which the held job below would block for good.
+        expectInPage(browser, "localStorage.getItem('kept'); return 'loaded';", "loaded") catch |err| {
+            browser.deinit();
+            return err;
+        };
         var held: Held = .{};
         sequence.post(&held.job);
         const posted = sequence.postedCount();

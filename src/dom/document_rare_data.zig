@@ -125,6 +125,14 @@ pub const DocumentRareData = struct {
     /// Empty for a document with no SVG animation.
     smil: @import("smil/document_animations.zig").DocumentState = .{},
 
+    /// Intersection Observer's IntersectionObserverTaskQueued flag ("Each
+    /// document has an IntersectionObserverTaskQueued flag which is
+    /// initialized to false"): a "notify intersection observers" task is
+    /// queued for this document (dom.document_internals, for
+    /// IntersectionObserver). Rare data: only a document whose observers
+    /// queued an entry ever sets it.
+    intersection_observer_task_queued: bool = false,
+
     fn init(allocator: std.mem.Allocator) DocumentRareData {
         return .{
             .import_map_imports = .init(allocator),
