@@ -1326,6 +1326,11 @@ pub const Connection = struct {
     /// WebSocket upgrade is accepted, or at once for the pipe.
     mode: std.atomic.Value(Mode) = .init(.http),
     refs: std.atomic.Value(u32) = .init(1),
+    /// `shutdown` ran: the connection has ended. The pipe's reader reads with
+    /// a timeout and ends when it sees this - shutdown(2) does nothing to a
+    /// pipe, so a client that keeps its end open would otherwise hold the
+    /// reader, and Server.stop with it, for ever.
+    shut: std.atomic.Value(bool) = .init(false),
     /// The devtools thread's: the connection's own session (no sessionId).
     implicit_session: ?*targets.Session = null,
 
@@ -1366,8 +1371,10 @@ pub const Connection = struct {
         self.server.allocator.destroy(self);
     }
 
-    /// End both directions: the reader's read returns 0.
+    /// End both directions: a socket's reader's read returns 0; a pipe's
+    /// reader sees `shut` within one `pipe_read_timeout_ms`.
     fn shutdown(self: *Connection) void {
+        self.shut.store(true, .release);
         switch (self.transport) {
             .socket => |s| platform.devtoolsShutdown(s),
             .pipe => |p| {
@@ -1516,15 +1523,31 @@ pub const Connection = struct {
         }
     }
 
+    /// How long a pipe read waits before the reader looks at `shut` again.
+    const pipe_read_timeout_ms: u32 = 100;
+
     /// --remote-debugging-pipe: messages separated by NUL
     /// (devtools_pipe_handler.cc PipeReader::ReadLoop, kNullCharacter).
+    ///
+    /// The reader ends at the client's EOF, or once its connection is shut,
+    /// without the client's EOF. Chrome's PipeIOBase::Shutdown
+    /// (devtools_pipe_handler.cc, BSD-3; reproduced, not copied) sets
+    /// shutting_down_, "discards" the read end (shutdown(2) on POSIX, which
+    /// ends a read of the socketpairs libuv gives a child's stdio, but not of
+    /// a real pipe; CancelIoEx on Windows) and never waits for the reader:
+    /// its join is a CONTINUE_ON_SHUTDOWN pool task. Crane's reader points
+    /// at its server, which Server.stop frees once its readers end, so it
+    /// may not be left behind: it reads with a timeout and checks `shut`
+    /// between reads - the reader ends within `pipe_read_timeout_ms` of the
+    /// connection's end, whatever the client does with its descriptors.
     fn readPipe(self: *Connection) void {
         const allocator = self.server.allocator;
         var pending: std.ArrayList(u8) = .empty;
         defer pending.deinit(allocator);
         var chunk: [64 * 1024]u8 = undefined;
         while (true) {
-            const n = platform.devtoolsRead(self.readStream(), &chunk) catch return;
+            if (self.shut.load(.acquire)) return;
+            const n = (platform.devtoolsReadTimeout(self.readStream(), &chunk, pipe_read_timeout_ms) catch return) orelse continue;
             if (n == 0) return;
             var rest = chunk[0..n];
             while (std.mem.indexOfScalar(u8, rest, 0)) |end| {
