@@ -255,6 +255,12 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return a valid BCP 47 language tag representing the user's preferred language."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // A dedicated worker's copy of its tab's Accept-Language override, taken
+    // as it was made (as userAgent's above): Chrome's NavigatorLanguage::
+    // EnsureUpdatedLanguage answers the override in a worker too
+    // (html.window.host_overrides.UserAgentSnapshot.language). The copy
+    // never changes, so the languages array made from it stays right.
+    if (userAgentOverrideOf(instance)) |snapshot| if (snapshot.language()) |language| return try runtime.DOMString.initDupe(instance.ctx.allocator, language);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getLanguage());

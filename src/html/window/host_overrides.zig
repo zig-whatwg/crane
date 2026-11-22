@@ -137,13 +137,21 @@ pub const HostOverrides = struct {
     /// The first language of the Accept-Language override ("de-DE,de;q=0.9"
     /// -> "de-DE"), or null.
     pub fn language(self: *const HostOverrides) ?[]const u8 {
-        const list = self.accept_language orelse return null;
-        var parts = std.mem.splitScalar(u8, list, ',');
-        const first = std.mem.trim(u8, parts.first(), " ");
-        const tag = if (std.mem.indexOfScalar(u8, first, ';')) |i| first[0..i] else first;
-        return if (tag.len > 0) tag else null;
+        return firstLanguageOf(self.accept_language);
     }
 };
+
+/// The first language tag of an Accept-Language list ("de-DE,de;q=0.9" ->
+/// "de-DE"): the text before the first ',', trimmed, without its ";q=" -
+/// or null for none. The Window's navigator (HostOverrides.language) and a
+/// dedicated worker's (UserAgentSnapshot.language) read it alike.
+fn firstLanguageOf(accept_language: ?[]const u8) ?[]const u8 {
+    const list = accept_language orelse return null;
+    var parts = std.mem.splitScalar(u8, list, ',');
+    const first = std.mem.trim(u8, parts.first(), " ");
+    const tag = std.mem.trim(u8, if (std.mem.indexOfScalar(u8, first, ';')) |i| first[0..i] else first, " ");
+    return if (tag.len > 0) tag else null;
+}
 
 /// A copy of a tab's user agent override, taken when a dedicated worker is
 /// made, which the worker's navigator and requests use for its life: Chrome
@@ -163,6 +171,16 @@ pub const UserAgentSnapshot = struct {
     /// The override as `overrides` holds it now.
     pub fn of(allocator: Allocator, overrides: *const HostOverrides) Allocator.Error!UserAgentSnapshot {
         return copyOf(allocator, overrides.user_agent, overrides.platform, overrides.accept_language);
+    }
+
+    /// The first language of the copied Accept-Language override, or null:
+    /// the worker's navigator.language (and its languages, built from it).
+    /// Chrome's workers answer the override too - NavigatorLanguage::
+    /// EnsureUpdatedLanguage reads probe::ApplyAcceptLanguageOverride first,
+    /// "required to allow for workers to respect the override"
+    /// (third_party/blink/renderer/core/frame/navigator_language.cc).
+    pub fn language(self: *const UserAgentSnapshot) ?[]const u8 {
+        return firstLanguageOf(self.accept_language);
     }
 
     /// Another snapshot's copy (a nested dedicated worker takes its owner
@@ -204,6 +222,20 @@ test "a worker's user agent snapshot is a copy: the tab's override changing late
     var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
     defer none.deinit(allocator);
     try std.testing.expect(none.user_agent == null);
+}
+
+test "a worker's snapshot names the first language of its Accept-Language copy, as the tab's override does" {
+    const allocator = std.testing.allocator;
+    var overrides: HostOverrides = .{};
+    defer overrides.deinit(allocator);
+    try overrides.setUserAgent(allocator, 1, "", null, " de-DE;q=1, de;q=0.9");
+    var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
+    defer snapshot.deinit(allocator);
+    try std.testing.expectEqualStrings("de-DE", snapshot.language().?);
+    try std.testing.expectEqualStrings(overrides.language().?, snapshot.language().?);
+    var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
+    defer none.deinit(allocator);
+    try std.testing.expect(none.language() == null);
 }
 
 test "an empty user agent overrides the languages alone (Playwright's locale call)" {

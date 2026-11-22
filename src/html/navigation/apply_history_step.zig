@@ -567,6 +567,11 @@ pub const ApplyItem = struct {
     fn unloadingCanceled(self: *ApplyItem, top: *BrowsingContext, history: *JointHistory, target: u32, crossing: []const *BrowsingContext, skipped: []const *BrowsingContext) !bool {
         const allocator = self.allocator;
         var before: []const *BrowsingContext = skipped;
+        // Step 2: "Let unloadPromptShown be false" - one for the whole
+        // check: step 4's beforeunload at the traversable's document sets it
+        // (4.4.1.2), step 7's at the others reads and sets it (7.1-7.2), so
+        // at most one prompt to unload is shown.
+        var unload_prompt_shown = false;
         // Step 4: the traversable's own navigate event, when its entry
         // changes within its origin - with its beforeunload first, when it
         // crosses documents ("because we want beforeunload events to fire
@@ -578,7 +583,7 @@ pub const ApplyItem = struct {
                 std.mem.eql(u8, current.?.origin, target_entry.?.origin))
             {
                 if (crossing.len > 0 and crossing[0] == top) {
-                    if (history_traversal.beforeUnloadCanceled(&.{top}, allocator)) return true;
+                    if (history_traversal.beforeUnloadCanceled(&.{top}, allocator, &unload_prompt_shown)) return true;
                     // The traversable's document had its beforeunload: the
                     // rest have theirs below.
                     before = skipped[1..];
@@ -593,7 +598,7 @@ pub const ApplyItem = struct {
         }
         // Steps 5-8: beforeunload at the other crossing documents, and
         // their descendants', parents first.
-        if (history_traversal.beforeUnloadCanceled(before, allocator)) return true;
+        if (history_traversal.beforeUnloadCanceled(before, allocator, &unload_prompt_shown)) return true;
         // A reload's navigation API state is the entry's once navigate and
         // beforeunload permit it.
         if (self.kind == .reload) {

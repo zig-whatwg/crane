@@ -183,6 +183,129 @@ test "print() fires beforeprint and afterprint, and waits for the load when call
     try testing.expectEqualStrings("before:complete,after", now);
 }
 
+/// A host on the Browser's thread that claims every dialog and answers it
+/// as it opens - accept: "leave" for a prompt to unload - counting the
+/// prompts to unload (a DialogAnswer may be called from the callback).
+const Answerer = struct {
+    beforeunload: std.atomic.Value(u32) = .init(0),
+
+    fn listener(self: *Answerer) host_events.Listener {
+        return .{ .context = self, .on_event = onEvent };
+    }
+
+    fn onEvent(context: *anyopaque, event: *const host_events.Event) void {
+        const self: *Answerer = @ptrCast(@alignCast(context));
+        switch (event.*) {
+            .dialog_opening => |opening| {
+                opening.claim.* = true;
+                if (opening.kind == .beforeunload) _ = self.beforeunload.fetchAdd(1, .acq_rel);
+                _ = opening.answer.call(true, "");
+            },
+            else => {},
+        }
+    }
+
+    fn add(ctx: ?*anyopaque, b: *Browser) void {
+        const self: *Answerer = @ptrCast(@alignCast(ctx.?));
+        b.addListener(self.listener()) catch {};
+    }
+
+    fn remove(ctx: ?*anyopaque, b: *Browser) void {
+        const self: *Answerer = @ptrCast(@alignCast(ctx.?));
+        b.removeListener(self.listener());
+    }
+};
+
+test "a frame's navigation prompts to unload once for its document and its child's (one unloadPromptShown per check)" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    var answerer: Answerer = .{};
+    try host.call(&answerer, Answerer.add);
+    defer host.call(&answerer, Answerer.remove) catch {};
+    const tab = try host.createTab(.{});
+
+    // A frame whose document has a frame of its own, both same origin with
+    // the page (srcdoc), each with a beforeunload handler that asks.
+    const built = try host.evaluate(allocator, tab,
+        \\globalThis.outer = document.createElement('iframe');
+        \\outer.srcdoc = '<iframe srcdoc="<p>inner</p>"></iframe>';
+        \\new Promise((resolve) => { outer.onload = resolve; document.body.append(outer); }).then(() => {
+        \\  const ask = (e) => e.preventDefault();
+        \\  outer.contentWindow.addEventListener('beforeunload', ask);
+        \\  outer.contentWindow.frames[0].addEventListener('beforeunload', ask);
+        \\  globalThis.navigated = new Promise((resolve) => { outer.onload = () => resolve(outer.contentDocument.body.textContent); });
+        \\  return outer.contentWindow.frames.length;
+        \\})
+    , .{ .await_promise = true }, 5_000);
+    defer built.deinit(allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":1}", built.json);
+    // A user's activation reaches the page and its same-origin frames (HTML
+    // "activation notification" step 4): both documents have sticky
+    // activation, so both handlers' asks may be shown.
+    const activated = try host.evaluate(allocator, tab, "1", .{ .user_activation = true }, 5_000);
+    defer activated.deinit(allocator);
+
+    // Navigate the outer frame: navigate step 24.1 checks if unloading is
+    // canceled for its document and its child's. The outer's handler shows
+    // the prompt (answered "leave"); the inner's is told one was shown
+    // (steps to fire beforeunload step 6: unloadPromptShown is false) and
+    // shows none. The prompt ends the evaluation waiting on the tab.
+    try testing.expectError(error.UserPromptOpen, host.evaluate(allocator, tab, "outer.srcdoc = '<p>next</p>'; navigated", .{ .await_promise = true }, 5_000));
+    const next = try host.evaluate(allocator, tab, "navigated", .{ .await_promise = true }, 5_000);
+    defer next.deinit(allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"next\"}", next.json);
+    try testing.expectEqual(@as(u32, 1), answerer.beforeunload.load(.acquire));
+}
+
+test "a traversal that takes two frames to other documents prompts to unload once (one unloadPromptShown per check)" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const host = try BrowserHost.start(allocator, .{});
+    defer host.stop();
+    var answerer: Answerer = .{};
+    try host.call(&answerer, Answerer.add);
+    defer host.call(&answerer, Answerer.remove) catch {};
+    const tab = try host.createTab(.{});
+
+    // Two same-origin frames (srcdoc), each then navigated once (a new
+    // session history step each), each new document with a beforeunload
+    // handler that asks.
+    const built = try host.evaluate(allocator, tab,
+        \\const frame = (text) => new Promise((resolve) => { const f = document.createElement('iframe'); f.srcdoc = text; f.onload = () => resolve(f); document.body.append(f); });
+        \\const renavigate = (f, text) => new Promise((resolve) => { f.onload = () => resolve(f); f.srcdoc = text; });
+        \\(async () => {
+        \\  globalThis.A = await frame('<p>a1</p>');
+        \\  globalThis.B = await frame('<p>b1</p>');
+        \\  await renavigate(A, '<p>a2</p>');
+        \\  await renavigate(B, '<p>b2</p>');
+        \\  const ask = (e) => e.preventDefault();
+        \\  A.contentWindow.addEventListener('beforeunload', ask);
+        \\  B.contentWindow.addEventListener('beforeunload', ask);
+        \\  const a2 = A.contentDocument, b2 = B.contentDocument;
+        \\  globalThis.restored = () => new Promise((resolve) => { const check = () => (A.contentDocument !== a2 && B.contentDocument !== b2) ? resolve('restored') : setTimeout(check, 10); check(); });
+        \\  return history.length;
+        \\})()
+    , .{ .await_promise = true }, 5_000);
+    defer built.deinit(allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":3}", built.json);
+    const activated = try host.evaluate(allocator, tab, "1", .{ .user_activation = true }, 5_000);
+    defer activated.deinit(allocator);
+
+    // Back two steps: both frames cross documents ("apply the history step"
+    // step 4's navigablesCrossingDocuments), the page does not, so "check if
+    // unloading is canceled" fires beforeunload at both in step 7 with one
+    // unloadPromptShown: A's prompt ("leave"), none for B.
+    try testing.expectError(error.UserPromptOpen, host.evaluate(allocator, tab, "history.go(-2); restored()", .{ .await_promise = true }, 5_000));
+    const back = try host.evaluate(allocator, tab, "restored()", .{ .await_promise = true }, 5_000);
+    defer back.deinit(allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"restored\"}", back.json);
+    try testing.expectEqual(@as(u32, 1), answerer.beforeunload.load(.acquire));
+}
+
 test "a beforeunload handler with sticky activation asks the user; a claimed prompt answered 'stay' cancels the close" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");

@@ -20,6 +20,7 @@ const host_bridge = @import("host_bridge.zig");
 const page_domains = @import("domains/page_domains.zig");
 const PageSession = @import("page_session.zig").PageSession;
 const fetch_observer = @import("fetch_observer.zig");
+const log_domain = @import("domains/log.zig");
 const fetch = @import("fetch");
 
 const log = std.log.scoped(.devtools);
@@ -68,6 +69,8 @@ pub const BrowserSide = struct {
     wait_for_debugger: std.atomic.Value(bool) = .init(false),
     /// Browser thread only: the fetch observer's state (fetch_observer.zig).
     fetch_state: fetch_observer.State = .{},
+    /// Browser thread only: each tab's kept Log entries (domains/log.zig).
+    log_storage: log_domain.Storage = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -113,6 +116,7 @@ pub const BrowserSide = struct {
         }
         self.fetch_state.deinit(self.allocator);
         self.fetch_state = .{};
+        self.log_storage.deinit(self.allocator);
     }
 
     fn listener(self: *BrowserSide) host_bridge.Listener {
@@ -127,7 +131,10 @@ pub const BrowserSide = struct {
                 .opener = created.opener,
                 .opened_by_page = openedByPage(created),
             } }),
-            .tab_destroyed => |destroyed| self.sink.post(self.sink.context, self, .{ .tab_destroyed = .{ .tab = destroyed.tab } }),
+            .tab_destroyed => |destroyed| {
+                log_domain.tabGone(self, destroyed.tab);
+                self.sink.post(self.sink.context, self, .{ .tab_destroyed = .{ .tab = destroyed.tab } });
+            },
             .navigation => |milestone| self.fanOutNavigation(milestone),
             // Lane cdph's dialog events (named, so this compiles before they
             // exist): the devtools thread keeps the open dialog's answer.
@@ -152,6 +159,7 @@ pub const BrowserSide = struct {
     /// the navigable's new URL (Target.targetInfoChanged).
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
         fetch_observer.onMilestone(self, milestone);
+        log_domain.onMilestone(self, milestone);
         switch (milestone.event) {
             .committed => |c| self.postNavigated(milestone.navigable_id, c.url),
             .same_document => |c| self.postNavigated(milestone.navigable_id, c.url),
