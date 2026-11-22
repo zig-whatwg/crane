@@ -326,6 +326,31 @@ test "setDeviceMetricsOverride emulates the device's screen, scale and orientati
     try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|1\"}", cleared.json);
 }
 
+test "a dedicated worker made after Emulation.setUserAgentOverride reports the override; one made before keeps its copy" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var h: Harness = undefined;
+    try h.init(gpa.allocator());
+    defer h.deinit();
+
+    const ask =
+        \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
+        \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.userAgent + "|" + navigator.platform)'], { type: 'text/javascript' })));
+        \\globalThis.before = makeWorker(); 1
+    ;
+    const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"CraneWorker/1\",\"platform\":\"WorkerOS\"}");
+    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer after.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"CraneWorker/1|WorkerOS\"}", after.json);
+    // Chrome's copy is taken at creation: a worker made before keeps the
+    // Browser's user agent.
+    const earlier = try h.host.evaluate(h.allocator, h.tab, "askWorker(before).then((v) => v.startsWith('CraneWorker/1'))", .{ .await_promise = true }, 5_000);
+    defer earlier.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
+}
+
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
