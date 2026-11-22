@@ -230,6 +230,18 @@ pub fn answerUserPrompt(host: *BrowserHost, tab: TabId, accept: bool, prompt_tex
     return null;
 }
 
+/// Dismiss the simple dialog open in the Browser, if any (any thread): the
+/// answer a closing remote end gives one nobody else will (Chrome's
+/// PageHandler::Disable answers a pending dialog false when no dialog
+/// manager takes it).
+pub fn dismissUserPrompt(host: *BrowserHost, allocator: std.mem.Allocator) void {
+    if (comptime @hasDecl(BrowserHost, "userPromptOf") and @hasDecl(BrowserHost, "answerUserPrompt")) {
+        const info = (host.userPromptOf(allocator) catch return) orelse return;
+        defer info.deinit(allocator);
+        _ = host.answerUserPrompt(info.tab, false, "");
+    }
+}
+
 /// Browser thread. Start delivering host events to `listener`.
 pub fn addListener(b: *Browser, listener: Listener) !void {
     if (comptime have_host_events) return b.addListener(listener);

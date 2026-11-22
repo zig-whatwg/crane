@@ -373,15 +373,55 @@ pub const HoldPopupsTask = struct {
 };
 
 /// Run `uninstall` on the Browser thread and wait for it (before the
-/// Browser stops).
+/// Browser stops, or the server does) - without ever blocking on the page
+/// (CDP part 1 gap 6):
+/// - it goes as a page session's message does (host_bridge.
+///   postSessionMessage): in order with the sessions' messages, and inside
+///   the nested loop of a debugger pause, where detaching the sessions ends
+///   the V8 inspector session, which resumes the paused agent (V8's
+///   V8DebuggerAgentImpl::disable continues a paused program; Blink runs a
+///   session's detach as an interrupting task of the paused loop the same
+///   way);
+/// - while it waits, a simple dialog the Browser thread sits in is
+///   dismissed - Chrome's PageHandler::Disable answers a pending dialog
+///   false when no dialog manager takes it (headless; content/browser/
+///   devtools/protocol/page_handler.cc) - and a request a blocking fetch
+///   waits on a holder for is let go (the interceptor's Detach:
+///   fetch_interception.release), each again if another opens before the
+///   uninstall runs.
 pub fn uninstallAndWait(side: *BrowserSide) void {
-    if (comptime @hasDecl(host_bridge.BrowserHost, "call")) {
-        side.host.call(side, struct {
-            fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
-                _ = browser;
-                const s: *BrowserSide = @ptrCast(@alignCast(context.?));
-                s.uninstall();
-            }
-        }.run) catch |err| log.warn("devtools: uninstalling from the Browser failed: {t}", .{err});
+    const Wait = struct {
+        side: *BrowserSide,
+        /// 1 once the uninstall ran, or the Browser went without it.
+        done: std.atomic.Value(u32) = .init(0),
+
+        fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
+            _ = browser;
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.side.uninstall();
+            self.signal();
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.signal();
+        }
+
+        fn signal(self: *@This()) void {
+            self.done.store(1, .release);
+            futexIo().futexWake(u32, &self.done.raw, 1);
+        }
+    };
+    var wait: Wait = .{ .side = side };
+    // False: the Browser has gone, and `drop` ran already.
+    if (!host_bridge.postSessionMessage(side.host, &wait, Wait.run, Wait.drop)) return;
+    while (wait.done.load(.acquire) == 0) {
+        host_bridge.dismissUserPrompt(side.host, side.allocator);
+        fetch_interception.release(side, null, .blocking);
+        futexIo().futexWaitTimeout(u32, &wait.done.raw, 0, .{ .duration = .{ .raw = .fromMilliseconds(20), .clock = .awake } }) catch {};
     }
+}
+
+fn futexIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
 }
