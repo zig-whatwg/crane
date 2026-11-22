@@ -71,8 +71,8 @@ fn sessionEndedLive(session: *PageSession) void {
 
 /// What the inspector sends this session's client: a CDP response or event,
 /// with the session's id added.
-fn sendToClient(context: *anyopaque, message: []const u8) void {
-    const session: *PageSession = @ptrCast(@alignCast(context));
+fn sendToClient(context: ?*anyopaque, message: []const u8) void {
+    const session: *PageSession = @ptrCast(@alignCast(context orelse return));
     session.sendRaw(message);
 }
 

@@ -79,15 +79,14 @@ fn registerLive(session: *const PageSession, realm: runtime.Context, bc: *frames
     }) catch return null;
     var origin_buffer: [256]u8 = undefined;
     const origin = originOf(bc, &origin_buffer);
-    engine.inspectorContextCreated(&.{
+    return engine.inspectorContextCreated(&.{
         .realm = realm,
         .group = groupOf(bc.getTop().id),
         .name = world_name orelse "",
         .origin = origin,
         .aux_data = aux,
         .is_default = is_default,
-    }) catch return null;
-    return engine.inspectorContextId(realm);
+    }) catch null;
 }
 
 fn originOf(bc: *frames.BrowsingContext, buffer: []u8) []const u8 {
