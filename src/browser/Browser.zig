@@ -423,6 +423,16 @@ pub const Browser = struct {
         // state, never another's (src/browser/clear_site_data.zig).
         (try scope.of(@import("fetch").network.NetworkContext)).site_data = @import("clear_site_data.zig").clearerFor(scope);
 
+        // The profile's stores (D6, the user's ruling 2026-11-21): a Browser
+        // given a profile directory persists its web state there, its
+        // platform state's stores (profile_stores.zig); one with none keeps
+        // it in memory, as before.
+        if (config.profile_dir != null) {
+            if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
+                if (state.browser) |browser_platform| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop);
+            }
+        }
+
         // The back/forward cache, on the Browser's loop, as configured.
         (try scope.of(@import("back_forward_cache.zig").BackForwardCache)).configure(event_loop, config.back_forward_cache_size, config.back_forward_cache_ttl_seconds);
 
@@ -515,6 +525,12 @@ pub const Browser = struct {
         // The page's fetches still in flight release what they hold - a
         // promise, and through it the realm - while the isolate lives.
         _ = self.agent_host.fetches.sweep();
+
+        // What the profile's stores still have pending is written now
+        // (profile_stores.zig; Chromium LocalStorageImpl::ShutDown), while
+        // the event loop and the platform state live; nothing without a
+        // profile directory.
+        @import("profile_stores.zig").flush(self.scope);
 
         // Flush and cleanup storage
         self.storage.flush() catch {};

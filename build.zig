@@ -8794,6 +8794,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
     browser_mod.addImport("cookiestore", cookiestore_mod);
+    // The Browser hands its profile directory's stores to its storage
+    // (src/browser/profile_stores.zig).
+    browser_mod.addImport("storage", storage_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
