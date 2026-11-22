@@ -524,6 +524,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // a node its tree's teardown frees, or at the realm's end - and the
         // shadow root must go on working as a DocumentFragment. Its `host`
         // then answers InvalidStateError (ShadowRoot.get_host).
+        //
+        // Every hand-out's owner ends its edge (rare_data.keptEndHandOut,
+        // lane mem1). Today this finds nothing: attachShadow's second edge,
+        // the shadow root's to its host, wraps a host script never wrapped
+        // (a declarative shadow root's), which draws the waiting edge at
+        // once (tests/html/mem1_kept_edge_teardown_test.zig pins that the
+        // shadow root goes with such a host).
+        rare_data.keptEndHandOut(internal.rareHolder().*, .shadow_root, instance);
         rare_data.keptRelease(internal.rareHolder(), .shadow_root, forgetHost);
         if (rare_data.get(internal.rareHolder().*, .references) != null) dom.element_references.State.releaseUnwrapped(instance);
         // The NamedNodeMap's edge (`get_attributes`), here and not in
@@ -3182,7 +3190,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Here, in the step itself, so every attach - scripted and declarative -
     // runs it.
     dom.shadow_hosts.attached(instance, shadow_root);
-    rare_data.keptHandOut(internal.rareHolder(), .shadow_root, instance, shadow_root, .{ .name = "shadowRoot" });
+    rare_data.keptHandOut(internal.rareHolder(), .shadow_root, instance, shadow_root);
     // And the shadow root keeps its host, whose `host` it answers for its
     // whole life: script routinely holds only the shadow root
     // (`document.createElement("div").attachShadow(...)`). Blink traces it

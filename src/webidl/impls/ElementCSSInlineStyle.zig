@@ -55,7 +55,7 @@ fn keptStyle(instance: *runtime.Instance) !*runtime.Instance {
 
     // The same object for the element's whole life.
     if (rare_data.keptGet(a.holder.*, .style)) |style| {
-        rare_data.keptHandOut(a.holder, .style, instance, style, .{ .name = "style" });
+        rare_data.keptHandOut(a.holder, .style, instance, style);
         return style;
     }
 
@@ -68,7 +68,7 @@ fn keptStyle(instance: *runtime.Instance) !*runtime.Instance {
     // In place, through the holder read now: making the object may have
     // added fields and moved the block (Blink 601c5205e1d5).
     rare_data.keptSet(a.holder, .style, style);
-    rare_data.keptHandOut(a.holder, .style, instance, style, .{ .name = "style" });
+    rare_data.keptHandOut(a.holder, .style, instance, style);
     return style;
 }
 
