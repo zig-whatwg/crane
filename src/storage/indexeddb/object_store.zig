@@ -43,6 +43,7 @@ const IDBKeyRange = @import("key_range.zig").IDBKeyRange;
 const IDBError = @import("errors.zig").IDBError;
 const key_path_mod = @import("key_path.zig");
 const KeyPath = key_path_mod.KeyPath;
+const backing_store = @import("backing_store.zig");
 const ExtractedValue = key_path_mod.ExtractedValue;
 
 /// Options for createIndex
@@ -75,7 +76,9 @@ pub const RecordData = struct {
     /// Set by an upgrade (which excludes every other transaction) and read
     /// by any thread's handles: accessed atomically (`isDeleted`, `markDeleted`).
     deleted: bool = false,
-    records: std.ArrayListUnmanaged(Record) = .empty,
+    /// The store's records are in the backing store under (database,
+    /// definition_id) - backing_store.zig - never here (lane prof1, D6
+    /// step 4): a definition is the schema alone.
     key_generator: u64 = 1,
     indexes: std.StringHashMapUnmanaged(*@import("index.zig").IndexData) = .empty,
 
@@ -83,13 +86,6 @@ pub const RecordData = struct {
         const copy = try self.allocator.create(RecordData);
         copy.* = .{ .allocator = self.allocator, .key_generator = self.key_generator, .deleted = self.isDeleted(), .definition_id = self.definition_id, .next_index_id = self.next_index_id };
         errdefer copy.release();
-        try copy.records.ensureTotalCapacity(self.allocator, self.records.items.len);
-        for (self.records.items) |record| {
-            var key = try record.key.clone(self.allocator);
-            errdefer key.deinit();
-            const value = try self.allocator.dupe(u8, record.value);
-            copy.records.appendAssumeCapacity(.{ .key = key, .value = value });
-        }
         try copy.indexes.ensureTotalCapacity(self.allocator, self.indexes.count());
         var definitions = self.indexes.valueIterator();
         while (definitions.next()) |definition| {
@@ -112,8 +108,6 @@ pub const RecordData = struct {
         const before = self.references.fetchSub(1, .acq_rel);
         std.debug.assert(before > 0);
         if (before != 1) return;
-        for (self.records.items) |*record| record.deinit(self.allocator);
-        self.records.deinit(self.allocator);
         var definitions = self.indexes.valueIterator();
         while (definitions.next()) |definition| definition.*.release();
         self.indexes.deinit(self.allocator);
@@ -168,11 +162,12 @@ pub const IDBObjectStore = struct {
     record_data: ?*RecordData = null,
     retired_indexes: std.ArrayListUnmanaged(*IDBIndex) = .empty,
 
-    /// Records for a standalone handle
-    records: std.ArrayListUnmanaged(Record),
-
-    /// Current auto-increment key value
+    /// A standalone handle's key generator until it has a definition
+    /// (`data`).
     key_generator: u64,
+    /// The record `recordAt` read last, held until the next read or the
+    /// handle's end.
+    peeked: ?Record = null,
 
     /// Initialize a new object store handle
     pub fn init(allocator: std.mem.Allocator, name: []const u8, transaction: *IDBTransaction) Self {
@@ -184,7 +179,6 @@ pub const IDBObjectStore = struct {
             .compound_key_path = null,
             .auto_increment = false,
             .indexes = std.StringHashMap(*IDBIndex).init(allocator),
-            .records = .empty,
             .key_generator = 1,
         };
     }
@@ -305,12 +299,120 @@ pub const IDBObjectStore = struct {
         for (self.retired_indexes.items) |handle| handle.rollbackSchema(if (original) |metadata| metadata.record_data else null);
     }
 
-    pub fn recordsList(self: *Self) *std.ArrayListUnmanaged(Record) {
-        return if (self.record_data) |data| &data.records else &self.records;
+    /// The definition whose records this handle reads and writes. A
+    /// standalone handle (a native caller's, made with `init` alone) gets a
+    /// definition of its own in its database on first use.
+    pub fn recordData(self: *Self) IDBError!*RecordData {
+        if (self.record_data) |existing| return existing;
+        const made = try self.allocator.create(RecordData);
+        made.* = .{ .allocator = self.allocator, .definition_id = self.transaction.db.allocateStoreId(), .key_generator = self.key_generator };
+        self.record_data = made;
+        return made;
     }
 
-    fn generator(self: *const Self) *u64 {
-        return if (self.record_data) |data| &data.key_generator else @constCast(&self.key_generator);
+    /// The transaction's view of the backing store (its snapshot and its
+    /// write batch).
+    pub fn backing(self: *Self) IDBError!*backing_store.Transaction {
+        return self.transaction.backingTransaction();
+    }
+
+    /// The database's id in the backing store.
+    pub fn databaseId(self: *Self) u64 {
+        return self.transaction.db.databaseId();
+    }
+
+    /// 03 db store, in the transaction's buffer `slot`.
+    pub fn recordPrefixIn(self: *Self, txn: *backing_store.Transaction, slot: backing_store.Transaction.Slot) IDBError![]const u8 {
+        const definition = (try self.recordData()).definition_id;
+        const out = txn.buffer(slot);
+        try backing_store.recordPrefix(out, txn.gpa(), self.databaseId(), definition);
+        return out.items;
+    }
+
+    /// 05 db store, in the transaction's buffer `slot`.
+    pub fn reversePrefixIn(self: *Self, txn: *backing_store.Transaction, slot: backing_store.Transaction.Slot) IDBError![]const u8 {
+        const definition = (try self.recordData()).definition_id;
+        const out = txn.buffer(slot);
+        try backing_store.reversePrefix(out, txn.gpa(), self.databaseId(), definition);
+        return out.items;
+    }
+
+    /// The record key of `key`, in the transaction's key buffer.
+    pub fn recordKeyIn(self: *Self, txn: *backing_store.Transaction, key: IDBKey) IDBError![]const u8 {
+        _ = try self.recordPrefixIn(txn, .key);
+        const out = &txn.scratch[@backingInt(backing_store.Transaction.Slot.key)];
+        try backing_store.appendKey(out, txn.gpa(), key);
+        return out.items;
+    }
+
+    /// The bounds of the records in `range` (null: every record).
+    pub fn recordBoundsIn(self: *Self, txn: *backing_store.Transaction, range: ?IDBKeyRange) IDBError!backing_store.Bounds {
+        const prefix = try self.recordPrefixIn(txn, .prefix);
+        const r = range orelse IDBKeyRange.unbounded();
+        return backing_store.keyRangeBounds(txn.gpa(), prefix, r.lower, r.lower_open, r.upper, r.upper_open, txn.buffer(.lower), txn.buffer(.upper));
+    }
+
+    /// The value of the record `key`, if any. OWNED (`allocator`).
+    pub fn recordValue(self: *Self, allocator: std.mem.Allocator, key: IDBKey) IDBError!?[]u8 {
+        const txn = try self.backing();
+        const record_key = try self.recordKeyIn(txn, key);
+        return txn.get(allocator, record_key) catch |err| backing_store.idbError(err);
+    }
+
+    /// The first record in `range`, its key decoded. OWNED (`allocator`).
+    pub fn firstRecord(self: *Self, allocator: std.mem.Allocator, range: ?IDBKeyRange) IDBError!?struct { key: IDBKey, value: []u8 } {
+        const txn = try self.backing();
+        const bounds = try self.recordBoundsIn(txn, range);
+        const prefix_len = 1 + 8 + 8;
+        const entry = (txn.first(allocator, bounds, .forward) catch |err| return backing_store.idbError(err)) orelse return null;
+        defer allocator.free(entry.key);
+        errdefer allocator.free(entry.value);
+        var reader: backing_store.Reader = .{ .bytes = entry.key, .at = prefix_len };
+        const key = reader.key(allocator) catch |err| return backing_store.idbError(err);
+        return .{ .key = key, .value = entry.value };
+    }
+
+    /// How many records the transaction sees in `range` (null: all).
+    pub fn recordCount(self: *Self, range: ?IDBKeyRange) IDBError!u64 {
+        const txn = try self.backing();
+        const bounds = try self.recordBoundsIn(txn, range);
+        var walk = txn.iterate(bounds, .forward) catch |err| return backing_store.idbError(err);
+        defer walk.close();
+        var counted: u64 = 0;
+        while (walk.next(txn.gpa()) catch |err| return backing_store.idbError(err)) |entry| {
+            entry.deinit(txn.gpa());
+            counted += 1;
+        }
+        return counted;
+    }
+
+    /// The `n`th record in key order, if any: held by the handle until the
+    /// next read (a native caller's look at one record).
+    pub fn recordAt(self: *Self, n: usize) IDBError!?*const Record {
+        const txn = try self.backing();
+        const bounds = try self.recordBoundsIn(txn, null);
+        const prefix_len = 1 + 8 + 8;
+        var walk = txn.iterate(bounds, .forward) catch |err| return backing_store.idbError(err);
+        defer walk.close();
+        var i: usize = 0;
+        while (walk.next(self.allocator) catch |err| return backing_store.idbError(err)) |entry| : (i += 1) {
+            if (i != n) {
+                entry.deinit(self.allocator);
+                continue;
+            }
+            defer self.allocator.free(entry.key);
+            errdefer self.allocator.free(entry.value);
+            var reader: backing_store.Reader = .{ .bytes = entry.key, .at = prefix_len };
+            const key = reader.key(self.allocator) catch |err| return backing_store.idbError(err);
+            if (self.peeked) |*old| old.deinit(self.allocator);
+            self.peeked = .{ .key = key, .value = entry.value };
+            return &self.peeked.?;
+        }
+        return null;
+    }
+
+    fn generator(self: *Self) *u64 {
+        return if (self.record_data) |definition| &definition.key_generator else &self.key_generator;
     }
 
     /// Set a single key path (simple key)
@@ -420,12 +522,8 @@ pub const IDBObjectStore = struct {
         }
         self.retired_indexes.deinit(self.allocator);
 
-        if (self.record_data) |data| {
-            data.release();
-        } else {
-            for (self.records.items) |*record| record.deinit(self.allocator);
-            self.records.deinit(self.allocator);
-        }
+        if (self.record_data) |definition| definition.release();
+        if (self.peeked) |*record| record.deinit(self.allocator);
         if (self.destroy_on_release) self.allocator.destroy(self);
     }
 
@@ -489,11 +587,13 @@ pub const IDBObjectStore = struct {
         const old_generator = self.generator().*;
         errdefer self.generator().* = old_generator;
 
+        _ = try self.recordData();
         // Get or generate key
-        var record_key: IDBKey = undefined;
+        var owned_key: IDBKey = undefined;
 
         if (key) |k| {
-            record_key = try k.clone(self.allocator);
+            // The request's result: the transaction keeps it.
+            owned_key = try k.clone(self.transaction.allocator);
 
             // If auto-increment and key is a number, possibly update generator
             if (self.auto_increment and k.key_type == .number) {
@@ -501,52 +601,28 @@ pub const IDBObjectStore = struct {
             }
         } else if (self.auto_increment) {
             // Generate key using key generator
-            record_key = try self.generateKey();
+            owned_key = try self.generateKey();
         } else {
             return IDBError.DataError;
         }
-        errdefer {
-            var k = record_key;
-            k.deinit();
-        }
+        // The request owns the key once it completes.
+        var owned = false;
+        errdefer if (!owned) owned_key.deinit();
+        const key_for_record = owned_key;
 
         // IDB 6.1 step 2: a failed add leaves the existing record intact.
-        var existing: ?usize = null;
-        var insertion: usize = self.recordsList().items.len;
-        for (self.recordsList().items, 0..) |record, record_index| {
-            const order = @import("key.zig").compare(record.key, record_key);
-            if (order == 0) {
-                if (no_overwrite) return IDBError.ConstraintError;
-                existing = record_index;
-                break;
-            }
-            if (order > 0 and insertion == self.recordsList().items.len) insertion = record_index;
+        const txn = try self.backing();
+        const record_key = try self.recordKeyIn(txn, key_for_record);
+        if (no_overwrite and (txn.has(txn.gpa(), record_key) catch |err| return backing_store.idbError(err))) return IDBError.ConstraintError;
+        const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
+        errdefer {
+            request.deinit();
+            self.allocator.destroy(request);
         }
-
-        // Allocate every fallible resource before transferring the key/value.
-        const value_copy = try self.allocator.dupe(u8, value);
-        errdefer self.allocator.free(value_copy);
-        const request = try self.allocator.create(IDBRequest);
-        errdefer self.allocator.destroy(request);
-        try self.transaction.requests.ensureUnusedCapacity(self.allocator, 1);
-        if (existing == null) try self.recordsList().ensureUnusedCapacity(self.allocator, 1);
-
-        // IDB 6.1 steps 3-4: replace the value, or publish a new record.
-        const result_key = if (existing) |record_index| blk: {
-            const record = &self.recordsList().items[record_index];
-            self.allocator.free(record.value);
-            record.value = value_copy;
-            record_key.deinit();
-            break :blk record.key;
-        } else blk: {
-            self.recordsList().insertAssumeCapacity(insertion, .{ .key = record_key, .value = value_copy });
-            break :blk record_key;
-        };
-        request.* = IDBRequest.init(self.allocator);
-        request.transaction = self.transaction;
-        request.source_type = .object_store;
-        request.setResult(.{ .key = result_key });
-        self.transaction.requests.appendAssumeCapacity(request);
+        // IDB 6.1 steps 3-4: the record, in the transaction's batch.
+        try txn.put(record_key, value);
+        request.completeOwnedKey(owned_key);
+        owned = true;
         return request;
     }
 
@@ -585,7 +661,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Get the current key generator value (for testing/debugging)
-    pub fn getCurrentKeyGeneratorValue(self: *const Self) u64 {
+    pub fn getCurrentKeyGeneratorValue(self: *Self) u64 {
         return self.generator().*;
     }
 
@@ -606,25 +682,67 @@ pub const IDBObjectStore = struct {
         try self.transaction.ensureRollbackSnapshot();
 
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
-
-        // ED 6.4 steps 1-2: records and all referencing index entries change
-        // together, after the last fallible allocation.
-        self.removeIndexEntries(query);
-        var i: usize = 0;
-        while (i < self.recordsList().items.len) {
-            const record = &self.recordsList().items[i];
-            if (query.includes(record.key)) {
-                var removed = self.recordsList().orderedRemove(i);
-                removed.deinit(self.allocator);
-            } else {
-                i += 1;
-            }
+        errdefer {
+            request.deinit();
+            self.allocator.destroy(request);
         }
+
+        // ED 6.4 steps 1-2: the records and every index entry that refers
+        // to them, in the transaction's batch.
+        try self.deleteRecords(query);
 
         // Create request
         request.completePrepared(.{ .undefined = {} });
 
         return request;
+    }
+
+    /// Delete the records in `range` and the index entries that refer to
+    /// them - found through their reverse rows (05), so no key path runs.
+    pub fn deleteRecords(self: *Self, range: IDBKeyRange) IDBError!void {
+        const txn = try self.backing();
+        const alloc = txn.gpa();
+        // The index entries the reverse rows in range name, collected first:
+        // the walk ends before the batch changes.
+        var doomed: std.ArrayListUnmanaged([]u8) = .empty;
+        defer {
+            for (doomed.items) |key| alloc.free(key);
+            doomed.deinit(alloc);
+        }
+        const reverse_prefix = try self.reversePrefixIn(txn, .prefix);
+        const reverse_bounds = try backing_store.keyRangeBounds(alloc, reverse_prefix, range.lower, range.lower_open, range.upper, range.upper_open, txn.buffer(.aux_lower), txn.buffer(.aux_upper));
+        {
+            var walk = txn.iterate(reverse_bounds, .forward) catch |err| return backing_store.idbError(err);
+            defer walk.close();
+            while (walk.next(alloc) catch |err| return backing_store.idbError(err)) |row| {
+                defer row.deinit(alloc);
+                try collectIndexEntries(alloc, row.key, row.value, reverse_prefix.len, &doomed);
+            }
+        }
+        for (doomed.items) |key| try txn.delete(key);
+        try txn.deleteRange(reverse_bounds.lower.?, reverse_bounds.upper.?);
+        const bounds = try self.recordBoundsIn(txn, range);
+        try txn.deleteRange(bounds.lower.?, bounds.upper.?);
+    }
+
+    /// The index entry keys (04 db store index key(index) key(primary)) a
+    /// reverse row (05 db store key(primary) index -> key(index)...) names.
+    pub fn collectIndexEntries(alloc: std.mem.Allocator, row_key: []const u8, row_value: []const u8, prefix_len: usize, out: *std.ArrayListUnmanaged([]u8)) IDBError!void {
+        if (row_key.len < prefix_len + 8) return IDBError.UnknownError;
+        const primary = row_key[prefix_len .. row_key.len - 8];
+        const index_id = row_key[row_key.len - 8 ..];
+        var reader: backing_store.Reader = .{ .bytes = row_value };
+        while (!reader.done()) {
+            const start = reader.at;
+            reader.skipKey() catch return IDBError.UnknownError;
+            const index_key = row_value[start..reader.at];
+            // 04, then the reverse row's db and store (its bytes 1..17).
+            const entry = try std.mem.concat(alloc, u8, &.{ &.{backing_store.tag_index}, row_key[1..17], index_id, index_key, primary });
+            out.append(alloc, entry) catch |err| {
+                alloc.free(entry);
+                return err;
+            };
+        }
     }
 
     /// Clear all records
@@ -644,14 +762,14 @@ pub const IDBObjectStore = struct {
         try self.transaction.ensureRollbackSnapshot();
 
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
-
-        // Remove all records
-        for (self.recordsList().items) |*record| {
-            record.deinit(self.allocator);
+        errdefer {
+            request.deinit();
+            self.allocator.destroy(request);
         }
-        self.recordsList().clearRetainingCapacity();
-        // ED 6.6 step 2: clear every referencing index as well.
-        self.removeIndexEntries(IDBKeyRange.unbounded());
+
+        // ED 6.6 steps 1-2: every record, and every index entry and reverse
+        // row of the store - three range deletions.
+        try self.clearRecords();
 
         // Create request
         request.completePrepared(.{ .undefined = {} });
@@ -659,17 +777,20 @@ pub const IDBObjectStore = struct {
         return request;
     }
 
-    fn removeIndexEntries(self: *Self, range: IDBKeyRange) void {
-        if (self.record_data) |data| {
-            var indexes = data.indexes.valueIterator();
-            while (indexes.next()) |index_data| index_data.*.removeEntriesInRange(range);
-        } else {
-            var indexes = self.indexes.valueIterator();
-            while (indexes.next()) |index_handle| index_handle.*.removeEntriesInRange(range);
+    /// Every record of the store, its index entries and its reverse rows.
+    pub fn clearRecords(self: *Self) IDBError!void {
+        const txn = try self.backing();
+        const alloc = txn.gpa();
+        const definition = (try self.recordData()).definition_id;
+        for ([_]u8{ backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
+            const prefix = txn.buffer(.prefix);
+            try prefix.append(alloc, tag);
+            try backing_store.appendU64(prefix, alloc, self.databaseId());
+            try backing_store.appendU64(prefix, alloc, definition);
+            const end = txn.buffer(.upper);
+            try backing_store.prefixEnd(end, alloc, prefix.items);
+            try txn.deleteRange(prefix.items, end.items);
         }
-        // Already accepted operations can still name a subsequently deleted
-        // index; its retained physical data follows the same ordered deletion.
-        for (self.retired_indexes.items) |index_handle| index_handle.removeEntriesInRange(range);
     }
 
     /// Get a record
@@ -681,20 +802,19 @@ pub const IDBObjectStore = struct {
             return IDBError.InvalidStateError;
         }
 
-        // Find first matching record
-        var found_value: ?[]const u8 = null;
-        for (self.recordsList().items) |*record| {
-            if (query.includes(record.key)) {
-                found_value = record.value;
-                break;
-            }
-        }
+        // The first record in the range, read from the backing store - the
+        // result's bytes the transaction keeps (its allocator).
+        const kept = self.transaction.allocator;
+        const found = try self.firstRecord(kept, query);
+        var found_key = if (found) |record| record.key else null;
+        defer if (found_key) |*key| key.deinit();
+        errdefer if (found) |record| kept.free(record.value);
 
         // Create request
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
 
-        if (found_value) |v| {
-            request.completePrepared(.{ .value = v });
+        if (found) |record| {
+            request.completeOwnedValue(record.value);
         } else {
             request.completePrepared(.{ .undefined = {} });
         }
@@ -711,20 +831,19 @@ pub const IDBObjectStore = struct {
             return IDBError.InvalidStateError;
         }
 
-        // Find first matching record
-        var found_key: ?IDBKey = null;
-        for (self.recordsList().items) |*record| {
-            if (query.includes(record.key)) {
-                found_key = record.key;
-                break;
-            }
-        }
+        // The first record's key in the range (the transaction keeps it).
+        const kept = self.transaction.allocator;
+        const found = try self.firstRecord(kept, query);
+        if (found) |record| kept.free(record.value);
+        var found_key = if (found) |record| record.key else null;
+        errdefer if (found_key) |*key| key.deinit();
 
         // Create request
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
 
         if (found_key) |k| {
-            request.completePrepared(.{ .key = k });
+            found_key = null;
+            request.completeOwnedKey(k);
         } else {
             request.completePrepared(.{ .undefined = {} });
         }
@@ -742,16 +861,7 @@ pub const IDBObjectStore = struct {
         }
 
         // Count matching records
-        var cnt: u64 = 0;
-        for (self.recordsList().items) |*record| {
-            if (query) |q| {
-                if (q.includes(record.key)) {
-                    cnt += 1;
-                }
-            } else {
-                cnt += 1;
-            }
-        }
+        const cnt = try self.recordCount(query);
 
         // Create request
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
@@ -904,6 +1014,8 @@ pub const IDBObjectStore = struct {
         try self.preserveSchemaForRollback();
         try self.transaction.ensureRollbackSnapshot();
         if (self.record_data) |records| {
+            // Its entries go in the upgrade's batch, before the definition.
+            try self.transaction.dropIndexData(records.definition_id, records.indexes.get(name).?.definition_id);
             const removed = records.indexes.fetchRemove(name).?;
             removed.value.release();
         }

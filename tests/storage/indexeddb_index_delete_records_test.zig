@@ -21,10 +21,10 @@ test "IndexedDB delete and clear remove persistent index entries" {
     const deleted = try store.delete(idb.IDBKeyRange.only(idb.IDBKey.number(1)));
     defer allocator.destroy(deleted);
     defer deleted.deinit();
-    try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
-    try std.testing.expectEqual(@as(f64, 2), index.entriesList().items[0].primary_key.value.number);
+    try std.testing.expectEqual(@as(usize, 1), (try index.entryCount(null)));
+    try std.testing.expectEqual(@as(f64, 2), (try index.entryAt(0)).?.primary_key.value.number);
     const cleared = try store.clear();
     defer allocator.destroy(cleared);
     defer cleared.deinit();
-    try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
+    try std.testing.expectEqual(@as(usize, 0), (try index.entryCount(null)));
 }

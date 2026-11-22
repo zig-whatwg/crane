@@ -37,9 +37,8 @@
 //!   process out (kit/posix ProfileLock), and writers never queue (Conflict).
 //! - temp_store=MEMORY: WebKit's SQLiteDatabase::open.
 //!
-//! The C API is declared here (`c`), as src/storage/backends/sqlite.zig
-//! declares it: no header is needed on any host, only the library, which the
-//! adapters declare (their platform_build.zig, src/platform/
+//! The C API is declared here (`c`): no header is needed on any host, only
+//! the library, which the adapters declare (their platform_build.zig, src/platform/
 //! platform_build_protocol.zig).
 const std = @import("std");
 const platform = @import("platform");

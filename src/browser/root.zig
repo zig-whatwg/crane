@@ -3,7 +3,8 @@
 //! Implements a browser abstraction with:
 //! - Single V8 isolate lifecycle
 //! - Per-navigation V8 contexts
-//! - Persistent storage (cookies, localStorage, IndexedDB, etc.)
+//! - Its web state's stores in the platform's storage engine, persisted
+//!   under a profile directory when it has one (profile_stores.zig)
 //! - WPT test harness integration
 //!
 //! ## Architecture
@@ -14,12 +15,10 @@
 //!     │       ├── Window globals
 //!     │       ├── Document
 //!     │       └── WebIDL bindings
-//!     └── Storage (persisted)
-//!             ├── Cookies
-//!             ├── LocalStorage
-//!             ├── SessionStorage
-//!             ├── IndexedDB
-//!             └── Cache
+//!     └── scope supplements: cookie jar, user agent storage (localStorage),
+//!         IndexedDB server, network context (HTTP cache), Cache Storage -
+//!         their stores the platform's (kit/memory_store, or kit/sqlite
+//!         under a profile directory)
 //! ```
 //!
 //! ## Usage
@@ -74,11 +73,6 @@ pub const ContextType = @import("Context.zig").ContextType;
 /// registry of world ids by navigable and name, and their realms.
 pub const isolated_worlds = @import("isolated_worlds.zig");
 
-pub const storage = @import("storage/Storage.zig");
-pub const Storage = storage.Storage;
-pub const LocalStorage = storage.LocalStorage;
-pub const SessionStorage = storage.SessionStorage;
-
 test {
     _ = @import("Browser.zig");
     _ = @import("BrowserHost.zig");
@@ -89,6 +83,5 @@ test {
     _ = @import("rendering.zig");
     _ = @import("viewport.zig");
     _ = @import("memory_release.zig");
-    _ = @import("storage/Storage.zig");
     _ = @import("isolated_worlds.zig");
 }

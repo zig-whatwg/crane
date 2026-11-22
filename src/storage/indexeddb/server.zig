@@ -71,6 +71,10 @@ const database_mod = @import("database.zig");
 const IDBDatabase = database_mod.IDBDatabase;
 const IDBTransactionMode = @import("transaction.zig").IDBTransactionMode;
 const IDBError = @import("errors.zig").IDBError;
+const backing_store = @import("backing_store.zig");
+const stored_schema = @import("stored_schema.zig");
+const platform = @import("platform");
+const log = std.log.scoped(.indexeddb);
 
 pub const Id = u64;
 
@@ -224,6 +228,11 @@ pub const UniqueIDBDatabase = struct {
     transactions: std.ArrayListUnmanaged(*TransactionRecord) = .empty,
     /// Agent natives and tasks in flight that point at this record.
     holders: u32 = 0,
+    /// The database's id in the backing store (0: it has none yet).
+    id: u64 = 0,
+    /// Its directory entry and records are in the backing store (an
+    /// upgrade committed it); false for one made and never committed.
+    persisted: bool = false,
 
     fn idle(self: *const UniqueIDBDatabase) bool {
         return self.holders == 0 and self.durable == null and self.queue.items.len == 0 and
@@ -304,6 +313,16 @@ pub const IDBServer = struct {
     /// map holds the lock an insert needs.
     guard: @import("infra").tombstones.TombstoneGuard = .{},
     next_id: Id = 1,
+    /// Where every database's records are (backing_store.zig; lane prof1,
+    /// D6 step 4): the Browser's store "indexeddb", given at Browser.init
+    /// in both modes (`attachPlatform`).
+    backing: ?backing_store.BackingStore = null,
+    /// A server no Browser gave a platform (an engine-free test's): a
+    /// platform state of its own, made on first use, so its databases run
+    /// on the same engine (kit/memory_store).
+    private_platform: ?*platform.BrowserPlatform = null,
+    /// Guards `backing` and `private_platform` while they are made.
+    backing_mutex: std.Io.Mutex = .init,
 
     const Key = struct { storage_key: StorageKey, name: []const u8 };
     const KeyContext = struct {
@@ -326,6 +345,37 @@ pub const IDBServer = struct {
         var it = self.databases.valueIterator();
         while (it.next()) |entry| self.destroyDatabase(entry.*);
         self.databases.deinit(self.allocator);
+        if (self.private_platform) |browser| platform.destroyBrowserPlatform(browser);
+    }
+
+    /// The Browser's platform state, whose store "indexeddb" holds its
+    /// databases: kit/memory_store with no profile directory, kit/sqlite
+    /// with one. Browser.init's, before any realm.
+    pub fn attachPlatform(self: *IDBServer, browser: *platform.BrowserPlatform) backing_store.Error!void {
+        std.Io.Threaded.mutexLockUncancelable(&self.backing_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.backing_mutex);
+        std.debug.assert(self.backing == null);
+        self.backing = try backing_store.BackingStore.init(self.allocator, browser);
+    }
+
+    fn ignoreEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
+        _ = .{ context, event };
+    }
+
+    /// The backing store: the Browser's, or - for a server no Browser gave
+    /// a platform - one of its own, made now. Null only when it cannot be
+    /// made.
+    pub fn backingStore(self: *IDBServer) ?*backing_store.BackingStore {
+        std.Io.Threaded.mutexLockUncancelable(&self.backing_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.backing_mutex);
+        if (self.backing) |*backing| return backing;
+        const browser = platform.createBrowserPlatform(self.allocator, &.{}, .{ .context = null, .post = ignoreEvent }) catch return null;
+        self.backing = backing_store.BackingStore.init(self.allocator, browser) catch {
+            platform.destroyBrowserPlatform(browser);
+            return null;
+        };
+        self.private_platform = browser;
+        return &self.backing.?;
     }
 
     pub fn lock(self: *IDBServer) void {
@@ -399,7 +449,69 @@ pub const IDBServer = struct {
         made.* = .{ .server = self, .storage_key = key_copy, .name = name_copy, .holders = 1 };
         found.key_ptr.* = .{ .storage_key = made.storage_key, .name = made.name };
         found.value_ptr.* = made;
+        // A database an earlier Browser on the profile made: its schema,
+        // read from the backing store (its records stay there).
+        self.loadLocked(made) catch |err| switch (err) {
+            error.OutOfMemory => {
+                _ = self.databases.remove(.{ .storage_key = made.storage_key, .name = made.name });
+                self.guard.noteRemoval(&self.databases);
+                self.destroyDatabase(made);
+                return error.OutOfMemory;
+            },
+            else => log.err("an IndexedDB database's schema could not be read ({s}); it opens empty", .{@errorName(err)}),
+        };
         return made;
+    }
+
+    /// With the lock: `database`'s directory entry and schema, if the
+    /// backing store has them, read into a durable database.
+    fn loadLocked(self: *IDBServer, database: *UniqueIDBDatabase) backing_store.Error!void {
+        const backing = self.backingStore() orelse return;
+        const allocator = self.allocator;
+        const txn = try backing.begin();
+        defer txn.destroy();
+        const serialized = try database.storage_key.serialize(allocator);
+        defer allocator.free(serialized);
+        const directory = txn.buffer(.key);
+        try backing_store.directoryKey(directory, allocator, serialized, database.name);
+        const id_bytes = (try txn.get(allocator, directory.items)) orelse return;
+        defer allocator.free(id_bytes);
+        if (id_bytes.len != 8) return error.Corrupt;
+        const id = std.mem.readInt(u64, id_bytes[0..8], .big);
+        const record_key = txn.buffer(.key);
+        try backing_store.databaseKey(record_key, allocator, id);
+        const record_bytes = (try txn.get(allocator, record_key.items)) orelse return error.Corrupt;
+        defer allocator.free(record_bytes);
+        const record = try stored_schema.decodeDatabase(record_bytes);
+
+        const durable = try allocator.create(IDBDatabase);
+        const name = allocator.dupe(u8, database.name) catch |err| {
+            allocator.destroy(durable);
+            return err;
+        };
+        durable.* = IDBDatabase.init(allocator, name, record.version);
+        durable.owned_name = name;
+        durable.schema_mutex = &self.mutex;
+        durable.next_store_id = record.next_store_id;
+        errdefer durable.releaseHeapOwnership();
+        // Its stores' schema records: 02 id 01 store.
+        const lower = txn.buffer(.lower);
+        try lower.append(allocator, backing_store.tag_schema);
+        try backing_store.appendU64(lower, allocator, id);
+        try lower.append(allocator, 0x01);
+        const upper = txn.buffer(.upper);
+        try backing_store.prefixEnd(upper, allocator, lower.items);
+        var walk = try txn.iterate(.{ .lower = lower.items, .upper = upper.items, .upper_open = true }, .forward);
+        defer walk.close();
+        while (try walk.next(allocator)) |entry| {
+            defer entry.deinit(allocator);
+            if (entry.key.len != lower.items.len + 8) return error.Corrupt;
+            const definition_id = std.mem.readInt(u64, entry.key[lower.items.len..][0..8], .big);
+            try stored_schema.decodeStoreInto(durable, definition_id, entry.value);
+        }
+        database.durable = durable;
+        database.id = id;
+        database.persisted = true;
     }
 
     /// Hold `database` once more (an agent native that keeps it).
@@ -441,7 +553,65 @@ pub const IDBServer = struct {
                 return err;
             };
         }
+        // And those the backing store has that no record here names yet
+        // (an earlier Browser's on the profile).
+        self.persistedInfosLocked(storage_key, allocator, &list) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => log.warn("IndexedDB's directory could not be read ({s})", .{@errorName(err)}),
+        };
         return list.toOwnedSlice(allocator);
+    }
+
+    /// With the lock: the directory's databases of `storage_key` that the
+    /// map has no record of, with their versions, appended to `list`.
+    fn persistedInfosLocked(self: *IDBServer, storage_key: StorageKey, allocator: Allocator, list: *std.ArrayListUnmanaged(DatabaseInfo)) backing_store.Error!void {
+        const backing = self.backingStore() orelse return;
+        const scratch = self.allocator;
+        const txn = try backing.begin();
+        defer txn.destroy();
+        const serialized = try storage_key.serialize(scratch);
+        defer scratch.free(serialized);
+        const prefix = txn.buffer(.prefix);
+        try prefix.append(scratch, backing_store.tag_directory);
+        try backing_store.appendEscaped(prefix, scratch, serialized);
+        const upper = txn.buffer(.upper);
+        try backing_store.prefixEnd(upper, scratch, prefix.items);
+        var found: std.ArrayListUnmanaged(struct { name: []u8, id: u64 }) = .empty;
+        defer {
+            for (found.items) |item| scratch.free(item.name);
+            found.deinit(scratch);
+        }
+        {
+            var walk = try txn.iterate(.{ .lower = prefix.items, .upper = upper.items, .upper_open = true }, .forward);
+            defer walk.close();
+            while (try walk.next(scratch)) |entry| {
+                defer entry.deinit(scratch);
+                if (entry.value.len != 8) return error.Corrupt;
+                var reader: backing_store.Reader = .{ .bytes = entry.key, .at = prefix.items.len };
+                var name: std.ArrayListUnmanaged(u8) = .empty;
+                errdefer name.deinit(scratch);
+                try reader.escaped(&name, scratch);
+                const owned = try name.toOwnedSlice(scratch);
+                found.append(scratch, .{ .name = owned, .id = std.mem.readInt(u64, entry.value[0..8], .big) }) catch |err| {
+                    scratch.free(owned);
+                    return err;
+                };
+            }
+        }
+        for (found.items) |item| {
+            if (self.databases.contains(.{ .storage_key = storage_key, .name = item.name })) continue;
+            const key = txn.buffer(.key);
+            try backing_store.databaseKey(key, scratch, item.id);
+            const bytes = (try txn.get(scratch, key.items)) orelse continue;
+            defer scratch.free(bytes);
+            const record = try stored_schema.decodeDatabase(bytes);
+            if (record.version == 0) continue;
+            const name = try allocator.dupe(u8, item.name);
+            list.append(allocator, .{ .name = name, .version = record.version }) catch |err| {
+                allocator.free(name);
+                return err;
+            };
+        }
     }
 
     /// The durable database's version (0: none).
@@ -636,7 +806,36 @@ pub const IDBServer = struct {
         const old_version = durable.version;
         database.durable = null;
         durable.releaseHeapOwnership();
+        // Its records, index entries, reverse rows, schema and directory
+        // entry go from the backing store (5.3 step 10: "delete database").
+        if (database.persisted) self.deleteStoredLocked(database) catch |err| {
+            log.err("an IndexedDB database could not be deleted from its backing store ({s})", .{@errorName(err)});
+        };
+        database.id = 0;
+        database.persisted = false;
         return old_version;
+    }
+
+    /// With the lock: every key of `database` in the backing store.
+    fn deleteStoredLocked(self: *IDBServer, database: *UniqueIDBDatabase) backing_store.Error!void {
+        const backing = self.backingStore() orelse return;
+        const allocator = self.allocator;
+        const txn = try backing.begin();
+        defer txn.destroy();
+        for ([_]u8{ backing_store.tag_schema, backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
+            const prefix = txn.buffer(.prefix);
+            try prefix.append(allocator, tag);
+            try backing_store.appendU64(prefix, allocator, database.id);
+            const end = txn.buffer(.upper);
+            try backing_store.prefixEnd(end, allocator, prefix.items);
+            try txn.deleteRange(prefix.items, end.items);
+        }
+        const serialized = try database.storage_key.serialize(allocator);
+        defer allocator.free(serialized);
+        const directory = txn.buffer(.key);
+        try backing_store.directoryKey(directory, allocator, serialized, database.name);
+        try txn.delete(directory.items);
+        try txn.commit();
     }
 
     pub const Opened = struct {
@@ -676,6 +875,10 @@ pub const IDBServer = struct {
             durable.owned_name = name;
             durable.schema_mutex = &self.mutex;
             database.durable = durable;
+            // Its id in the backing store, written by its first upgrade's
+            // commit with its directory entry.
+            database.id = if (self.backingStore()) |backing| backing.allocateDatabaseId() else 1;
+            database.persisted = false;
         }
         const durable = database.durable.?;
         const old_version = if (made_now) 0 else durable.version;
