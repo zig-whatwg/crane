@@ -326,7 +326,12 @@ pub fn systemVisibilityChanged(scope: *runtime.BrowserScope, tab: platform.TabId
                 .visible => .visible,
                 .hidden => .hidden,
             } };
-            loop.queueTask(.{ .callback = dom.visibility_state.UpdateTask.run, .context = task, .drop = dom.visibility_state.UpdateTask.drop, .document = @ptrCast(entry.document) });
+            // The task names its document by identity AND slab generation:
+            // the loop runs a task only while its document is fully active
+            // (HTML 8.1.7.1), read by that pair - a generation left at 0
+            // reads "gone", and the task was dropped unrun (lane tpg:
+            // life1_system_visibility_test never saw a document hidden).
+            loop.queueTask(.{ .callback = dom.visibility_state.UpdateTask.run, .context = task, .drop = dom.visibility_state.UpdateTask.drop, .document = @ptrCast(entry.document), .document_generation = entry.generation });
         }
     }
 }
