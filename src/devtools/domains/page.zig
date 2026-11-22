@@ -703,6 +703,18 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             if (s.lifecycle_events) emitLifecycle(session, bc, "load");
         },
         .stopped_loading => if (s.enabled) session.emit(P.frameStoppedLoading, .{ .frameId = frame_id.slice() }),
+        // document.open(): InspectorPageAgent::DidOpenDocument -
+        // documentOpened with the frame as it now is, then lifecycle init.
+        .document_opened => {
+            const bc = frames.navigable(session, navigable) orelse return;
+            if (s.enabled) {
+                var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+                defer arena_state.deinit();
+                const frame = frames.describe(session, arena_state.allocator(), bc) catch return;
+                session.emit(P.documentOpened, .{ .frame = frame });
+            }
+            if (s.lifecycle_events) emitLifecycle(session, bc, "init");
+        },
         else => {},
     }
 }

@@ -105,6 +105,8 @@ pub const EventKind = enum(u32) {
     /// the window name, `extra` the features, comma-separated, `flag` a user
     /// gesture. tab_created follows when the window is made.
     window_open = 16,
+    /// document.open() ran on the navigable's document: `url` its URL now.
+    document_opened = 17,
 };
 
 pub const NavigationInitiator = enum(u32) { browser_ui = 0, document = 1 };
@@ -333,6 +335,10 @@ fn navigationEvent(out: *Event, strings: *CallStrings, milestone: *const host_ev
             out.detail = switch (aborted.reason) {
                 inline else => |tag| @backingInt(@field(AbortReason, @tagName(tag))),
             };
+        },
+        .document_opened => |opened| {
+            out.kind = @backingInt(EventKind.document_opened);
+            out.url = strings.z(opened.url);
         },
         .dom_content_loaded => out.kind = @backingInt(EventKind.dom_content_loaded),
         .load => out.kind = @backingInt(EventKind.load),

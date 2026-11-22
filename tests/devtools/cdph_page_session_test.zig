@@ -352,6 +352,23 @@ test "a dedicated worker made after Emulation.setUserAgentOverride reports the o
     try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
 }
 
+test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var h: Harness = undefined;
+    try h.init(gpa.allocator());
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "document.open(); document.write('<p>x</p>'); document.close(); 1", .{}, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.documentOpened", from);
+    const init_index = try h.waitEvent("Page.lifecycleEvent", index);
+    try testing.expectEqualStrings("init", h.seen.items[init_index].value.object.get("params").?.object.get("name").?.string);
+}
+
 test "Page.windowOpen tells the opener's session of window.open before the window exists" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");

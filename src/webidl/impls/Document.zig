@@ -2727,6 +2727,21 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 18: update readiness after erasing the old listeners.
     updateReadiness(instance, ._loading_);
 
+    // A host hears the document was opened (html_core.navigation.observer
+    // document_opened: CDP Page.documentOpened), once its steps are done -
+    // Blink's Document::open ends in FrameLoader::DidExplicitOpen ->
+    // probe::DidOpenDocument. A document no navigable shows tells no one.
+    if (internal.default_view) |window| if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
+        if (interfaces.Document.get_URL(instance)) |url| {
+            defer instance.ctx.allocator.free(url);
+            const observer = html_core.navigation.observer;
+            observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .document_opened = .{
+                .url = url,
+                .document = .{ .document = instance, .generation = runtime.SlabAllocator.generationOf(instance) },
+            } } });
+        } else |_| {}
+    };
+
     // Return the document
     return instance;
 }

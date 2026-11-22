@@ -93,10 +93,11 @@ typedef enum {
                                                  extra: prompt()'s default; url */
     CRANE_EVENT_DIALOG_CLOSED = 15,           /* flag: accepted; message: the
                                                  prompt's answer */
-    CRANE_EVENT_WINDOW_OPEN = 16              /* before the window exists: related:
+    CRANE_EVENT_WINDOW_OPEN = 16,             /* before the window exists: related:
                                                  the navigable asking; url; message:
                                                  the window name; extra: features,
                                                  comma-separated; flag: user gesture */
+    CRANE_EVENT_DOCUMENT_OPENED = 17          /* document.open() ran: url, its URL now */
 } crane_event_kind;
 
 typedef enum { CRANE_INITIATOR_BROWSER_UI = 0, CRANE_INITIATOR_DOCUMENT = 1 } crane_navigation_initiator;
