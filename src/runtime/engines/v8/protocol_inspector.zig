@@ -514,6 +514,18 @@ pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const
     // One lookup, and nothing more for an agent with no inspector.
     const inspector = existingOfRealm(realm) orelse return;
     if (inspector.ended or method.len == 0) return;
+    // Nothing for a realm the inspector does not know (no contextCreated):
+    // V8's console delegate drops such a call itself - ConsoleHelper::
+    // reportCall returns when the calling context's group is 0
+    // (src/inspector/v8-console.cc:124 at 15.7.112.43; V8InspectorImpl::
+    // contextGroupId answers 0 for a context id contextCreated never named) -
+    // so a call that cannot be reported or stored costs no handles, entry or
+    // call into the engine's console (lane tpc: about a microsecond per
+    // console call with -Dcdp, on every Browser with no session). Every
+    // registration goes through Inspector.register (the host's
+    // inspectorContextCreated, the console's replContextOf), so `realms` is
+    // the inspector's whole list.
+    if (inspector.registeredOf(realm) == null) return;
     const entered = support.enter(realm) catch return;
     defer entered.leave();
     // Each argument as a handle of the realm - a platform object as its
