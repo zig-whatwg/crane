@@ -6685,7 +6685,7 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
         // window).
         .none => {
             const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
-            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener) orelse return;
+            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener, request.url) orelse return;
             const opaque_integration = chosen_top.integration orelse {
                 var host_request = request;
                 host_request.target = "_self";
@@ -7447,6 +7447,10 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // works correctly for cross-realm scenarios.
     if (navigableContext(internal.integration)) |realm| {
         if (windowOfRealm(realm)) |window| {
+            // contentWindow (and contentDocument, which reads it) reaches
+            // the child's Window: a host announces its context now
+            // (BrowsingContext.touchedByScript).
+            if (internal.integration.browsing_context) |bc| bc.touchedByScript();
             // WindowProxy typedef is *runtime.Instance
             return window;
         }

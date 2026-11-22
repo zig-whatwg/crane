@@ -930,6 +930,17 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
     // Step 4: If listener's passive is null, then set it to the default
     // passive value given listener's type and eventTarget.
     const passive = options.passive orelse defaultPassiveValue(@"type", instance);
+    // A host's discouragedAPIUse violation: a listener for a scroll-blocking
+    // event left non-passive without saying so (Blink's EventTarget::
+    // SetDefaultAddEventListenerOptions). One load while no host listens.
+    if (options.passive == null and !passive) if (dom_module.performance_monitor.active(instance.ctx)) |monitor| {
+        if (dom_module.performance_monitor.isScrollBlocking(@"type")) {
+            var buffer: [256]u8 = undefined;
+            if (std.fmt.bufPrint(&buffer, "Added non-passive event listener to a scroll-blocking '{s}' event. Consider marking event handler as 'passive' to make the page more responsive. See https://www.chromestatus.com/feature/5745543795965952", .{@"type"})) |text| {
+                monitor.report(instance.ctx, .discouraged_api_use, text, 0);
+            } else |_| {}
+        }
+    };
 
     // Step 5: If eventTarget's event listener list does not contain an event
     // listener whose type is listener's type, callback is listener's
@@ -1812,6 +1823,12 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     // for the walk: false - one load - for a Browser with no isolated world.
     const handlers_per_world = worldsActive(current_target);
 
+    // A host's performance monitor (dom.performance_monitor: handler and
+    // blockedEvent violations): one load and a branch while none listens,
+    // and no clock read then (Blink's PerformanceMonitor::enabled_).
+    const monitor = dom_module.performance_monitor.active(current_target.ctx);
+    const blocked_delay: ?i64 = if (monitor) |m| blockedEventDelay(m, event, current_target) else null;
+
     // Step 1: "Let found be false."
     var found = false;
 
@@ -1845,10 +1862,12 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // the callers', around the call. A listener's callback is the
         // list's - borrowed until callListener takes a hold of its own, before
         // any script runs - or, for a once listener, this call's.
+        const started: ?i64 = if (monitor) |m| m.willCallback(false) else null;
         switch (listener.bits.kind) {
             .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw, only_world),
             .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw, only_world, if (handlers_per_world) handlerListenerWorld(listener) else null),
         }
+        if (monitor) |m| reportListenerViolations(m, event, current_target, listener.bits.id, listener.bits.passive, started, blocked_delay);
 
         // The callback ran: the list may have moved, grown or gone.
         list = listeners.current();
@@ -1862,6 +1881,36 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
 
     // Step 3
     return found;
+}
+
+/// blockedEvent's delay for this dispatch: how long ago a cancelable
+/// scroll-blocking event was made, when that is past the subscribed
+/// threshold (Blink's BlockedEventsWarningThreshold and FireEventListeners'
+/// `now - event.PlatformTimeStamp() > threshold`); else null.
+fn blockedEventDelay(monitor: *dom_module.performance_monitor.Monitor, event: *runtime.Instance, target: *runtime.Instance) ?i64 {
+    const limit = monitor.threshold(.blocked_event) orelse return null;
+    if (!(interfaces.Event.get_cancelable(event) catch false)) return null;
+    var event_type = interfaces.Event.get_type(event) catch return null;
+    defer event_type.deinit(event.ctx.allocator);
+    if (!dom_module.performance_monitor.isScrollBlocking(event_type.asSlice())) return null;
+    const now_ms = dom_module.performance_timeline.now(target.ctx) orelse return null;
+    const made_ms = interfaces.Event.get_timeStamp(event) catch return null;
+    const delay: i64 = @intFromFloat((now_ms - made_ms) * std.time.ns_per_ms);
+    return if (delay > limit) delay else null;
+}
+
+/// After a listener ran, with a performance monitor listening: the handler
+/// violation when it took the threshold (PerformanceMonitor::Did), and the
+/// blockedEvent one for a non-passive listener that did not cancel
+/// (FireEventListeners' ReportBlockedEvent).
+fn reportListenerViolations(monitor: *dom_module.performance_monitor.Monitor, event: *runtime.Instance, target: *runtime.Instance, listener_id: u64, passive: bool, started: ?i64, blocked_delay: ?i64) void {
+    const took = monitor.didCallback(false, started);
+    const blocked = if (blocked_delay) |delay| (if (!passive and !(interfaces.Event.get_defaultPrevented(event) catch true)) delay else null) else null;
+    if (took == null and blocked == null) return;
+    var event_type = interfaces.Event.get_type(event) catch return;
+    defer event_type.deinit(event.ctx.allocator);
+    if (took) |duration| monitor.reportHandler(target.ctx, event_type.asSlice(), false, duration);
+    if (blocked) |delay| monitor.reportBlockedEvent(target.ctx, event_type.asSlice(), listener_id, delay);
 }
 
 /// DOM §2.7 "remove an event listener", for inner invoke's step 2.5: the

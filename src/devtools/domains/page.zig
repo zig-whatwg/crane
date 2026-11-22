@@ -15,7 +15,7 @@
 //! seq-svelte.txt):
 //! - Page.navigate answers when the navigation is ready to commit, before
 //!   frameNavigated (Chrome answers from NavigationRequest's ready-to-commit);
-//! - at a cross-document commit: executionContextsCleared, lifecycle "init",
+//! - at a cross-document commit: lifecycle "init", executionContextsCleared,
 //!   frameNavigated, then executionContextCreated (contexts.zig);
 //! - DOMContentLoaded: domContentEventFired, then lifecycle
 //!   "DOMContentLoaded"; load: loadEventFired, then lifecycle "load"; then
@@ -35,6 +35,8 @@ const Reply = @import("../dispatch.zig").Reply;
 const host_bridge = @import("../host_bridge.zig");
 const frames = @import("../frames.zig");
 const contexts = @import("../contexts.zig");
+const idleness = @import("../idleness.zig");
+const fetch_observer = @import("../fetch_observer.zig");
 const P = protocol.Page;
 
 const log = std.log.scoped(.devtools);
@@ -50,6 +52,44 @@ pub const State = struct {
     /// Page.navigate calls waiting for their navigation to be ready to
     /// commit (or to end).
     pending: std.ArrayListUnmanaged(Pending) = .empty,
+    /// Each frame's network idleness since its document's DOMContentLoaded
+    /// (idleness.zig: Blink's IdlenessDetector), for the networkAlmostIdle
+    /// and networkIdle lifecycle events.
+    idle: std.ArrayListUnmanaged(Idle) = .empty,
+    /// While this session's Page.navigate runs: same-document navigations
+    /// it makes wait here, so its answer goes first (Chrome answers a
+    /// fragment navigation before navigatedWithinDocument).
+    navigating: bool = false,
+    deferred: std.ArrayListUnmanaged(Deferred) = .empty,
+};
+
+/// A navigatedWithinDocument held until Page.navigate has answered.
+const Deferred = struct {
+    navigable: u64,
+    /// OWNED.
+    url: []u8,
+    kind: @import("html").navigation.observer.SameDocumentKind,
+};
+
+/// One frame's detector, for its current document, and the timer that
+/// stands for Blink's next-task check.
+const Idle = struct {
+    navigable: u64,
+    /// The document it started for (by identity and slab generation).
+    document: *anyopaque,
+    generation: u64,
+    detector: idleness.Detector,
+    /// The armed check's timer and its ticket (OWNED by the timer while
+    /// armed), or 0.
+    timer: runtime.TimerId = 0,
+    ticket: ?*IdleTicket = null,
+};
+
+/// What an idleness timer carries: which session's which frame.
+const IdleTicket = struct {
+    allocator: Allocator,
+    session: *PageSession,
+    navigable: u64,
 };
 
 const Script = struct {
@@ -88,6 +128,8 @@ fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events
         .document_start => |start| documentStarted(session, start),
         .dialog_opening => |opening| dialogOpening(session, opening),
         .dialog_closed => |closed| dialogClosed(session, closed),
+        .window_open => |opened| windowOpened(session, opened),
+        .frame_touched => |touched| frameTouched(session, touched.navigable),
         else => {},
     }
 }
@@ -128,6 +170,30 @@ fn dialogClosed(session: *PageSession, closed: *const @import("browser").host_ev
     });
 }
 
+/// Script reached a frame of the tab still on its initial about:blank: its
+/// main world context is announced now (Blink makes it then:
+/// LocalWindowProxy::Initialize -> DidCreateMainWorldContext), by the last
+/// session on the tab, as a commit's are (contexts.zig).
+fn frameTouched(session: *PageSession, navigable: u64) void {
+    if (!frames.inTab(session, navigable) or !contexts.isEdgeSession(session, .last)) return;
+    const bc = frames.navigable(session, navigable) orelse return;
+    contexts.registerNavigable(session, bc);
+}
+
+/// A page of the session's tab asks for a new window, before it is made:
+/// Page.windowOpen (Blink's InspectorPageAgent::WindowOpen, from
+/// probe::WindowOpen in CreateNewWindow), so it precedes the new tab's
+/// Target events. Playwright reads its features for the popup's size.
+fn windowOpened(session: *PageSession, opened: *const @import("browser").host_events.WindowOpen) void {
+    if (!state(session).enabled or opened.tab != session.tab) return;
+    session.emit(P.windowOpen, .{
+        .url = opened.url,
+        .windowName = opened.name,
+        .windowFeatures = opened.features,
+        .userGesture = opened.user_gesture,
+    });
+}
+
 /// A new document of the session's tab is ready for host scripts, before any
 /// of its own (Blink's InspectorPageAgent::DidCreateMainWorldContext): the
 /// session's new-document scripts run in it, each in its world.
@@ -146,6 +212,10 @@ pub fn sessionEnded(session: *PageSession) void {
     s.scripts.deinit(session.allocator);
     for (s.pending.items) |pending| pending.reply.drop();
     s.pending.deinit(session.allocator);
+    for (s.idle.items) |*entry| disarm(session, entry);
+    s.idle.deinit(session.allocator);
+    for (s.deferred.items) |d| session.allocator.free(d.url);
+    s.deferred.deinit(session.allocator);
     s.* = .{};
 }
 
@@ -199,14 +269,17 @@ fn replayLifecycle(session: *PageSession, bc: *frames.BrowsingContext) void {
         const ready = interfaces.Document.get_readyState(document) catch ._loading_;
         emitLifecycle(session, bc, "commit");
         if (ready != ._loading_) emitLifecycle(session, bc, "DOMContentLoaded");
-        if (ready == ._complete_) {
-            emitLifecycle(session, bc, "load");
-            // TODO(cdpt P5): networkAlmostIdle/networkIdle from the
-            // document's fetch group's in-flight counts (Blink's
-            // IdlenessDetector); a loaded document with none in flight is
-            // idle, which is what the counts will say for a page at rest.
-            emitLifecycle(session, bc, "networkAlmostIdle");
-            emitLifecycle(session, bc, "networkIdle");
+        if (ready == ._complete_) emitLifecycle(session, bc, "load");
+        // The idleness reached so far (Blink's replay reads the frame's
+        // IdlenessDetector: GetNetworkAlmostIdleTime / GetNetworkIdleTime).
+        // A document past its DOMContentLoaded that this session has no
+        // detector for (attached after it) starts one now: what is due
+        // follows live.
+        if (ready != ._loading_) {
+            if (idleOf(session, bc.id, document)) |entry| {
+                if (entry.detector.almost_idle_at) |at| emitLifecycleAt(session, bc, "networkAlmostIdle", at);
+                if (entry.detector.idle_at) |at| emitLifecycleAt(session, bc, "networkIdle", at);
+            } else startIdleness(session, bc.id, document);
         }
     }
     for (bc.children.items) |child| {
@@ -216,6 +289,15 @@ fn replayLifecycle(session: *PageSession, bc: *frames.BrowsingContext) void {
 }
 
 fn emitLifecycle(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8) void {
+    emitLifecycleTimed(session, bc, name, frames.monotonicSeconds());
+}
+
+/// A lifecycle event stamped with the monotonic moment `at_ns`.
+fn emitLifecycleAt(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8, at_ns: i64) void {
+    emitLifecycleTimed(session, bc, name, @as(f64, @floatFromInt(at_ns)) / std.time.ns_per_s);
+}
+
+fn emitLifecycleTimed(session: *PageSession, bc: *frames.BrowsingContext, name: []const u8, timestamp: f64) void {
     const frame_id = session.frameId(bc.id);
     const loader = if (frames.of(session.browser.?)) |f| f.loaderOf(bc) else 0;
     const loader_id = frames.loaderToken(session, loader);
@@ -223,8 +305,125 @@ fn emitLifecycle(session: *PageSession, bc: *frames.BrowsingContext, name: []con
         .frameId = frame_id.slice(),
         .loaderId = loader_id.slice(),
         .name = name,
-        .timestamp = frames.monotonicSeconds(),
+        .timestamp = timestamp,
     });
+}
+
+// ============================================================================
+// Network idleness (idleness.zig, Blink's IdlenessDetector)
+// ============================================================================
+
+fn monotonicNs() i64 {
+    return @intCast(@import("platform").monotonicNow().ns);
+}
+
+fn idleOf(session: *PageSession, navigable: u64, document: *runtime.Instance) ?*Idle {
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        if (entry.document != @as(*anyopaque, @ptrCast(document)) or entry.generation != runtime.SlabAllocator.generationOf(document)) return null;
+        return entry;
+    }
+    return null;
+}
+
+/// IdlenessDetector::DomContentLoadedEventFired -> Start: the frame's
+/// document has fired DOMContentLoaded; what is in flight now is counted
+/// from here (fetch_observer.inFlight: ResourceFetcher::ActiveRequestCount).
+fn startIdleness(session: *PageSession, navigable: u64, document: *runtime.Instance) void {
+    const s = state(session);
+    stopIdleness(session, navigable);
+    const side = session.side orelse return;
+    const count = fetch_observer.inFlight(side, navigable);
+    s.idle.append(session.allocator, .{
+        .navigable = navigable,
+        .document = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+        .detector = idleness.Detector.start(count, monotonicNs()),
+    }) catch return;
+    schedule(session, &s.idle.items[s.idle.items.len - 1]);
+}
+
+/// The frame's detector goes (a new document, the frame's end).
+fn stopIdleness(session: *PageSession, navigable: u64) void {
+    const s = state(session);
+    for (s.idle.items, 0..) |*entry, i| {
+        if (entry.navigable != navigable) continue;
+        disarm(session, entry);
+        _ = s.idle.swapRemove(i);
+        return;
+    }
+}
+
+/// fetch_observer: `navigable`'s count of fetches in flight is `in_flight`.
+pub fn onNetworkActivity(session: *PageSession, navigable: u64, in_flight: u32) void {
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        entry.detector.moved(in_flight, monotonicNs());
+        schedule(session, entry);
+        return;
+    }
+}
+
+/// Arm the check for the detector's next due moment, or none.
+fn schedule(session: *PageSession, entry: *Idle) void {
+    disarm(session, entry);
+    const next = entry.detector.nextCheck() orelse return;
+    const browser = session.browser orelse return;
+    const loop = browser.event_loop orelse return;
+    const timers = loop.timerInterface() orelse return;
+    const ticket = session.allocator.create(IdleTicket) catch return;
+    ticket.* = .{ .allocator = session.allocator, .session = session, .navigable = entry.navigable };
+    const wait_ns = @max(next - monotonicNs(), 0);
+    const wait_ms: u64 = @intCast(@divFloor(wait_ns + std.time.ns_per_ms - 1, std.time.ns_per_ms));
+    const id = timers.setTimeoutOwned(wait_ms, idleCheck, ticket, dropTicket);
+    if (id == 0) {
+        session.allocator.destroy(ticket);
+        return;
+    }
+    entry.timer = id;
+    entry.ticket = ticket;
+}
+
+/// Cancel the detector's armed check. The session's thread is the timer's:
+/// a check cannot be running while this runs.
+fn disarm(session: *PageSession, entry: *Idle) void {
+    if (entry.timer == 0) return;
+    const ticket = entry.ticket;
+    const cancelled = blk: {
+        const browser = session.browser orelse break :blk false;
+        const loop = browser.event_loop orelse break :blk false;
+        const timers = loop.timerInterface() orelse break :blk false;
+        break :blk timers.clearTimeout(entry.timer);
+    };
+    if (cancelled) if (ticket) |t| t.allocator.destroy(t);
+    entry.timer = 0;
+    entry.ticket = null;
+}
+
+fn dropTicket(data: ?*anyopaque) void {
+    const ticket: *IdleTicket = @ptrCast(@alignCast(data orelse return));
+    ticket.allocator.destroy(ticket);
+}
+
+/// The check (Blink's WillProcessTask): what is due fires, stamped with its
+/// quiet period's start.
+fn idleCheck(data: ?*anyopaque) void {
+    const ticket: *IdleTicket = @ptrCast(@alignCast(data orelse return));
+    const session = ticket.session;
+    const navigable = ticket.navigable;
+    ticket.allocator.destroy(ticket);
+    for (state(session).idle.items) |*entry| {
+        if (entry.navigable != navigable) continue;
+        entry.timer = 0;
+        entry.ticket = null;
+        const due = entry.detector.check(monotonicNs());
+        if (state(session).lifecycle_events) if (frames.navigable(session, navigable)) |bc| {
+            if (due.almost_idle) |at| emitLifecycleAt(session, bc, "networkAlmostIdle", at);
+            if (due.idle) |at| emitLifecycleAt(session, bc, "networkIdle", at);
+        };
+        schedule(session, entry);
+        return;
+    }
 }
 
 /// A script to run in every new document of the tab, in its main world or
@@ -267,6 +466,12 @@ pub fn removeScriptToEvaluateOnNewDocument(session: *PageSession, params: P.remo
 pub fn createIsolatedWorld(session: *PageSession, params: P.createIsolatedWorld.Params) !P.createIsolatedWorld.Result {
     const bc = frames.frameNamed(session, params.frameId) orelse return session.fail("No frame for given id found");
     const main = frames.mainRealmOf(bc) orelse return session.fail("No frame for given id found");
+    // A session targeting a frame on its initial about:blank: its main world
+    // is announced first, if it was not (a lazy context, as Blink's).
+    if (bc.inspector_pending) {
+        bc.inspector_pending = false;
+        _ = contexts.register(session, main, bc);
+    }
     const realm = worldRealm(main, bc.id, params.worldName orelse "", params.grantUniveralAccess orelse false) catch
         return session.fail("Could not create isolated world");
     const id = contexts.register(session, realm, bc) orelse return session.fail("Could not create isolated world");
@@ -289,6 +494,13 @@ pub fn navigate(session: *PageSession, params: P.navigate.Params, reply: Reply(P
     const browser = session.browser orelse return session.fail("No frame for given id found");
     const bc = frames.frameNamed(session, params.frameId) orelse return session.fail("No frame with given id found");
     const navigable = bc.id;
+    const s = state(session);
+    // A same-document navigation's events wait until the answer has gone.
+    s.navigating = true;
+    defer {
+        s.navigating = false;
+        flushDeferred(session);
+    }
     const navigation_id = browser.navigateNavigable(navigable, params.url, .{
         .referrer = params.referrer,
         .referrer_policy = referrerPolicyOf(params.referrerPolicy),
@@ -302,7 +514,30 @@ pub fn navigate(session: *PageSession, params: P.navigate.Params, reply: Reply(P
         reply.ok(.{ .frameId = frame_id.slice() });
         return;
     }
-    try state(session).pending.append(session.allocator, .{ .navigation_id = navigation_id, .navigable = navigable, .reply = reply });
+    try s.pending.append(session.allocator, .{ .navigation_id = navigation_id, .navigable = navigable, .reply = reply });
+}
+
+/// The navigatedWithinDocument events a Page.navigate held, after its answer.
+fn flushDeferred(session: *PageSession) void {
+    const s = state(session);
+    for (s.deferred.items) |d| {
+        defer session.allocator.free(d.url);
+        if (s.enabled) emitWithinDocument(session, d.navigable, d.url, d.kind);
+    }
+    s.deferred.clearRetainingCapacity();
+}
+
+fn emitWithinDocument(session: *PageSession, navigable: u64, url: []const u8, kind: @import("html").navigation.observer.SameDocumentKind) void {
+    const frame_id = session.frameId(navigable);
+    session.emit(P.navigatedWithinDocument, .{
+        .frameId = frame_id.slice(),
+        .url = url,
+        .navigationType = switch (kind) {
+            .fragment => .fragment,
+            .push, .replace, .traverse => .historyApi,
+            .intercept => .other,
+        },
+    });
 }
 
 /// CDP's ReferrerPolicy as Fetch's.
@@ -453,6 +688,7 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
         .ready_to_commit => |ready| return answerPending(session, milestone.navigation_id, ready.outcome, ready.error_text),
         .aborted => return answerPending(session, milestone.navigation_id, .network_error, "net::ERR_ABORTED"),
         .navigable_destroyed => {
+            stopIdleness(session, navigable);
             if (frames.of(session.browser.?)) |f| f.forget(navigable);
             if (s.enabled and navigable != session.tab and frames.inTab(session, navigable)) {
                 const frame_id = session.frameId(navigable);
@@ -473,9 +709,13 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
         },
         .started => |started| if (s.enabled) {
             const loader_id = frames.loaderToken(session, milestone.navigation_id);
+            // A frame's first navigation away from its initial about:blank
+            // is Chrome's kInitialFrameNavigation (an iframe's src as it is
+            // inserted: HTMLFrameOwnerElement::LoadOrRedirectSubframe).
+            const initial_frame = navigable != session.tab and if (frames.navigable(session, navigable)) |bc| (if (frames.documentOf(bc)) |document| @import("dom").document_lifecycle.isInitialAboutBlank(document) else true) else false;
             if (started.initiator == .document) session.emit(P.frameRequestedNavigation, .{
                 .frameId = frame_id.slice(),
-                .reason = .scriptInitiated,
+                .reason = if (initial_frame) .initialFrameNavigation else .scriptInitiated,
                 .url = started.url,
                 .disposition = .currentTab,
             });
@@ -488,13 +728,28 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             session.emit(P.frameStartedLoading, .{ .frameId = frame_id.slice() });
         },
         .committed => |committed| {
+            // A new document: the old one's idleness is over.
+            stopIdleness(session, navigable);
             if (frames.of(session.browser.?)) |f| f.noteCommitted(navigable, committed.document.document, committed.document.generation, milestone.navigation_id);
-            // The tab's contexts cleared before any session's Page events
-            // (contexts.zig: Chrome's order) - by the first session only.
-            if (contexts.isEdgeSession(session, .first)) contexts.beforeCommit(session, navigable, &.{});
             const bc = frames.navigable(session, navigable) orelse return;
-            if (s.lifecycle_events) emitLifecycle(session, bc, "init");
-            if (s.enabled) {
+            // Chrome's order (its Puppeteer log, lane cdpr): lifecycle
+            // "init" for every session of the tab, then the tab's contexts
+            // cleared (contexts.zig), then each session's frameNavigated -
+            // the first session does the first two for all.
+            if (contexts.isEdgeSession(session, .first)) {
+                if (session.side) |side| for (side.sessions.items) |other| {
+                    if (other.tab == session.tab and state(other).lifecycle_events) emitLifecycle(other, bc, "init");
+                };
+                contexts.beforeCommit(session, navigable, &.{});
+            }
+            // A child's initial about:blank (no navigation made it): Chrome
+            // sends its lifecycle init and no frameNavigated (lane cdpr's
+            // vue-e2e-browser log l.392-405).
+            const initial_child = milestone.navigation_id == 0 and navigable != session.tab;
+            // Its context waits for the first script to reach it
+            // (BrowsingContext.touchedByScript) or a session to target it.
+            if (initial_child) bc.inspector_pending = true;
+            if (s.enabled and !initial_child) {
                 var arena_state = std.heap.ArenaAllocator.init(session.allocator);
                 defer arena_state.deinit();
                 const frame = frames.describe(session, arena_state.allocator(), bc) catch return;
@@ -502,20 +757,22 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             }
         },
         .same_document => |same| if (s.enabled) {
-            session.emit(P.navigatedWithinDocument, .{
-                .frameId = frame_id.slice(),
-                .url = same.url,
-                .navigationType = switch (same.kind) {
-                    .fragment => .fragment,
-                    .push, .replace, .traverse => .historyApi,
-                    .intercept => .other,
-                },
-            });
+            if (s.navigating) {
+                // This session's Page.navigate made it: after its answer.
+                const url = session.allocator.dupe(u8, same.url) catch return;
+                s.deferred.append(session.allocator, .{ .navigable = navigable, .url = url, .kind = same.kind }) catch session.allocator.free(url);
+                return;
+            }
+            emitWithinDocument(session, navigable, same.url, same.kind);
         },
-        .dom_content_loaded => {
+        .dom_content_loaded => |loaded| {
             const bc = frames.navigable(session, navigable) orelse return;
             if (s.enabled and navigable == session.tab) session.emit(P.domContentEventFired, .{ .timestamp = frames.monotonicSeconds() });
             if (s.lifecycle_events) emitLifecycle(session, bc, "DOMContentLoaded");
+            // IdlenessDetector::DomContentLoadedEventFired: idleness is
+            // watched from here.
+            if (runtime.SlabAllocator.generationOf(@ptrCast(@alignCast(loaded.document.document))) == loaded.document.generation)
+                startIdleness(session, navigable, @ptrCast(@alignCast(loaded.document.document)));
         },
         .load => {
             const bc = frames.navigable(session, navigable) orelse return;
@@ -523,6 +780,18 @@ pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) v
             if (s.lifecycle_events) emitLifecycle(session, bc, "load");
         },
         .stopped_loading => if (s.enabled) session.emit(P.frameStoppedLoading, .{ .frameId = frame_id.slice() }),
+        // document.open(): InspectorPageAgent::DidOpenDocument -
+        // documentOpened with the frame as it now is, then lifecycle init.
+        .document_opened => {
+            const bc = frames.navigable(session, navigable) orelse return;
+            if (s.enabled) {
+                var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+                defer arena_state.deinit();
+                const frame = frames.describe(session, arena_state.allocator(), bc) catch return;
+                session.emit(P.documentOpened, .{ .frame = frame });
+            }
+            if (s.lifecycle_events) emitLifecycle(session, bc, "init");
+        },
         else => {},
     }
 }
@@ -542,10 +811,12 @@ fn answerPending(session: *PageSession, navigation_id: u64, outcome: @import("ht
         const frame_id = session.frameId(pending.navigable);
         const loader_id = frames.loaderToken(session, navigation_id);
         switch (outcome) {
-            .document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice() }),
-            .network_error => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = if (error_text.len > 0) error_text else "net::ERR_FAILED" }),
+            // isDownload always present, as Chrome's PageHandler::Navigate
+            // answers.
+            .document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .isDownload = false }),
+            .network_error => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = if (error_text.len > 0) error_text else "net::ERR_FAILED", .isDownload = false }),
             // A 204/205: no document, the navigation ends without one.
-            .no_document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED" }),
+            .no_document => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED", .isDownload = false }),
             .download => pending.reply.ok(.{ .frameId = frame_id.slice(), .loaderId = loader_id.slice(), .errorText = "net::ERR_ABORTED", .isDownload = true }),
         }
     }
@@ -572,7 +843,10 @@ fn runScriptInTree(session: *PageSession, bc: *frames.BrowsingContext, script: S
 
 fn runScript(session: *PageSession, bc: *frames.BrowsingContext, main: runtime.Context, script: Script) void {
     const realm = if (script.world_name) |name| blk: {
-        const made = worldRealm(main, bc.id, name, false) catch |err| {
+        // With universal access, as InspectorPageAgent::
+        // EvaluateScriptOnNewDocument asks EnsureDOMWrapperWorld(frame,
+        // world_name, /*grant_universal_access=*/true).
+        const made = worldRealm(main, bc.id, name, true) catch |err| {
             log.debug("the world '{s}' of a new-document script was not made: {}", .{ name, err });
             return;
         };
@@ -595,6 +869,10 @@ fn reportToPage(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The realm whose script threw: a world's new-document script's
+        // exception is that world's, and fires no error event at the page
+        // (engine section 4.2a; lane cdpw's world-scoped error events).
+        .realm = info.realm,
     };
     _ = @import("html").report_exception.reportErrorInfo(window, &extracted, .{});
 }

@@ -152,6 +152,7 @@ fn installHooks() void {
     @import("mixins").process_hooks.install();
     @import("Context.zig").installHooks();
     @import("html").platform_state.installHooks();
+    @import("html").user_agent_override.installHooks();
 }
 
 /// The engine, started with the snapshot of the first candidate it takes

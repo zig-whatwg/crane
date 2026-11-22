@@ -87,7 +87,9 @@ pub const Chosen = struct {
 /// everything its navigation carries (a form's POST resource, the
 /// hyperlink's referrer policy and source element).
 pub const TopLevelChooser = struct {
-    choose: *const fn (current_window: *runtime.Instance, target: []const u8, noopener: bool) ?Chosen,
+    /// `url`: the URL the hyperlink or form navigates to, serialized - what
+    /// a host is told the new window opens (CDP's Page.windowOpen).
+    choose: *const fn (current_window: *runtime.Instance, target: []const u8, noopener: bool, url: []const u8) ?Chosen,
 };
 
 /// A hook like `implementation`: one stateless function, installed once at
@@ -107,9 +109,9 @@ pub fn installTopLevelChooser(impl: TopLevelChooser) void {
 /// group, or a new top-level traversable (named `target` unless "_blank";
 /// with no opener and in a group of its own when `noopener`). Null when
 /// none can be made.
-pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?Chosen {
+pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noopener: bool, url: []const u8) ?Chosen {
     const impl = top_level_chooser.get() orelse return null;
-    return impl.choose(current_window, target, noopener);
+    return impl.choose(current_window, target, noopener, url);
 }
 
 /// A new auxiliary navigable opened by `opener_browsing_context` (an

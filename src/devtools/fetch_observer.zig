@@ -17,12 +17,15 @@
 //! target in Chrome, and part 1 reports no worker targets (decision D10). Its
 //! observer calls come on the worker's thread and are ignored here.
 //!
-//! Ids: a navigation's request is named by its navigation id (its loaderId
-//! too, both as the 32-hex token Chrome prints); any other request by a
-//! counter of the Browser's, printed as Chrome prints a renderer's request
-//! ids ("<n>.<counter>"). A request's loaderId is its document's: the
-//! navigation id that committed it (lane life1's N4, kept here from the
-//! `committed` milestones).
+//! Ids: a navigation's request is named by its navigation id, printed as
+//! its loaderId (frames.loaderToken: Chrome's loaderId IS the navigation
+//! request's requestId); any other request by a counter of the Browser's,
+//! printed as Chrome prints a renderer's request ids ("<n>.<counter>"). A
+//! request's loaderId is its document's, read from the ONE record the Page
+//! domain reads too (frames.zig Frames: the navigation that committed the
+//! document, or the id an initial about:blank was given) - never a copy of
+//! it here (lane cdpr's G3: two loaderIds for one navigation, and
+//! Playwright's goto answered null).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -34,6 +37,7 @@ const runtime = @import("runtime");
 const protocol = @import("protocol/root.zig");
 const ids = @import("ids.zig");
 const host_bridge = @import("host_bridge.zig");
+const frames = @import("frames.zig");
 const BrowserSide = @import("browser_side.zig").BrowserSide;
 const PageSession = @import("page_session.zig").PageSession;
 
@@ -44,6 +48,7 @@ const N = protocol.Network;
 const F = protocol.Fetch;
 
 const log = std.log.scoped(.devtools);
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 
 /// The high bit marks a request id that is a counter, not a navigation id.
 const counter_bit: u64 = 1 << 63;
@@ -52,10 +57,9 @@ const counter_bit: u64 = 1 << 63;
 pub const State = struct {
     next_request: u64 = 1,
     next_interception: u64 = 1,
-    /// Navigation id -> the navigable it navigates (`started` milestones).
+    /// Navigation id -> the navigable it navigates (`started` milestones):
+    /// which frame a navigation request is for.
     navigations: std.AutoHashMapUnmanaged(u64, u64) = .empty,
-    /// A committed document (by address) -> its loader.
-    documents: std.AutoHashMapUnmanaged(usize, DocumentLoader) = .empty,
     /// A redirect's response, kept from redirect_received to the next
     /// will_send_request of the same fetch.
     redirects: std.AutoHashMapUnmanaged(u64, Head) = .empty,
@@ -67,12 +71,18 @@ pub const State = struct {
     /// a fetch of.
     in_flight: std.AutoHashMapUnmanaged(u64, u32) = .empty,
     counted: std.AutoHashMapUnmanaged(u64, u64) = .empty,
+    /// Each map's tombstones, bounded: their keys - navigations, requests,
+    /// interceptions, frames - come and go for as long as the remote end is
+    /// on the Browser (infra.tombstones.TombstoneGuard;
+    /// tools/lint_tombstones.zig).
+    navigations_guard: TombstoneGuard = .{},
+    redirects_guard: TombstoneGuard = .{},
+    paused_guard: TombstoneGuard = .{},
+    in_flight_guard: TombstoneGuard = .{},
+    counted_guard: TombstoneGuard = .{},
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         self.navigations.deinit(allocator);
-        var docs = self.documents.valueIterator();
-        while (docs.next()) |d| allocator.free(d.url);
-        self.documents.deinit(allocator);
         var heads = self.redirects.valueIterator();
         while (heads.next()) |h| h.deinit(allocator);
         self.redirects.deinit(allocator);
@@ -97,11 +107,12 @@ pub fn inFlight(side: *BrowserSide, navigable: u64) u32 {
 /// IdlenessDetector).
 fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void {
     const state = &side.fetch_state;
+    state.in_flight_guard.beforeInsert(&state.in_flight);
     const entry = state.in_flight.getOrPut(side.allocator, navigable) catch return;
     if (!entry.found_existing) entry.value_ptr.* = 0;
     if (delta > 0) entry.value_ptr.* += 1 else entry.value_ptr.* -|= 1;
     const now = entry.value_ptr.*;
-    if (now == 0) _ = state.in_flight.remove(navigable);
+    if (now == 0 and state.in_flight.remove(navigable)) state.in_flight_guard.noteRemoval(&state.in_flight);
     const page_domains = @import("domains/page_domains.zig");
     var buffer: [16]*PageSession = undefined;
     var n: usize = 0;
@@ -117,13 +128,6 @@ fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void 
         }
     }
 }
-
-const DocumentLoader = struct {
-    generation: u64,
-    navigation_id: u64,
-    /// OWNED.
-    url: []u8,
-};
 
 /// A response's head, OWNED copies.
 const Head = struct {
@@ -252,30 +256,30 @@ pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) 
     const state = &side.fetch_state;
     switch (milestone.event) {
         .started => if (milestone.navigation_id != 0) {
+            state.navigations_guard.beforeInsert(&state.navigations);
             state.navigations.put(side.allocator, milestone.navigation_id, milestone.navigable_id) catch {};
         },
         .committed => |c| {
-            const url = side.allocator.dupe(u8, c.url) catch return;
-            const key = @intFromPtr(c.document.document);
-            const entry = state.documents.getOrPut(side.allocator, key) catch {
-                side.allocator.free(url);
-                return;
-            };
-            if (entry.found_existing) side.allocator.free(entry.value_ptr.url);
-            entry.value_ptr.* = .{ .generation = c.document.generation, .navigation_id = milestone.navigation_id, .url = url };
-            _ = state.navigations.remove(milestone.navigation_id);
+            // The document's loader id, in the record the Page domain reads
+            // (frames.zig): noted here first, as this hears the milestone
+            // before any handler, so a subresource fetch of the new
+            // document finds it whether or not a session has Page on.
+            if (side.browser) |b| if (frames.of(b)) |f| f.noteCommitted(milestone.navigable_id, c.document.document, c.document.generation, milestone.navigation_id);
+            if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations);
         },
-        .aborted => _ = state.navigations.remove(milestone.navigation_id),
+        .aborted => if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations),
         else => {},
     }
 }
 
-/// Whom a request is for: its tab, frame, document's loader and URL.
+/// Whom a request is for: its tab, frame and document's loader, and the
+/// document whose fetch it is (null for a navigation request, whose
+/// documentURL is its own URL).
 const Attribution = struct {
     tab: u64,
     frame: u64,
     loader: u64,
-    document_url: []const u8,
+    document: ?*runtime.Instance,
 };
 
 fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attribution {
@@ -283,7 +287,7 @@ fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attribution {
     if (request.navigation_id != 0) {
         const navigable_id = side.fetch_state.navigations.get(request.navigation_id) orelse return null;
         const bc = navigables.byId(navigable_id) orelse return null;
-        return .{ .tab = bc.getTop().id, .frame = bc.id, .loader = request.navigation_id, .document_url = request.currentUrl() };
+        return .{ .tab = bc.getTop().id, .frame = bc.id, .loader = request.navigation_id, .document = null };
     }
     const window_ptr = switch (request.traversable_for_user_prompts) {
         .traversable => |t| t,
@@ -291,32 +295,34 @@ fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attribution {
     };
     const window: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
     const bc = dom.browser_state.browsingContextOf(window) orelse return null;
-    var loader: u64 = 0;
-    var document_url: []const u8 = "";
-    if (bc.getActiveDocument()) |document| {
-        if (side.fetch_state.documents.get(@intFromPtr(document))) |d| {
-            if (d.generation == runtime.SlabAllocator.generationOf(@ptrCast(@alignCast(document)))) {
-                loader = d.navigation_id;
-                document_url = d.url;
-            }
-        }
-    }
-    return .{ .tab = bc.getTop().id, .frame = bc.id, .loader = loader, .document_url = document_url };
+    // The document's loader id: the Page domain's record (Frames.loaderOf -
+    // an initial about:blank's own id included), the one source.
+    const loader: u64 = if (frames.of(side.browser.?)) |f| f.loaderOf(bc) else 0;
+    return .{ .tab = bc.getTop().id, .frame = bc.id, .loader = loader, .document = frames.documentOf(bc) };
 }
 
-/// The Network.RequestId text of `id`.
-fn requestIdText(side: *const BrowserSide, id: u64, buffer: *[48]u8) []const u8 {
+/// The request's documentURL (Network.requestWillBeSent): a navigation
+/// request's own URL, else its document's.
+fn documentUrlOf(arena: Allocator, who: Attribution, request: *const InternalRequest) []const u8 {
+    const document = who.document orelse return request.currentUrl();
+    return frames.documentUrl(arena, document) catch "";
+}
+
+/// The Network.RequestId text of `id`, as `session` (any session of the
+/// Browser) prints it: a navigation request's is its loaderId
+/// (frames.loaderToken - Chrome's loaderId IS the navigation request's
+/// requestId), any other a counter in Chrome's "<n>.<counter>" form.
+fn requestIdText(session: *const PageSession, id: u64, buffer: *[48]u8) []const u8 {
     if (id & counter_bit != 0) {
-        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ side.token % 100000, id & ~counter_bit }) catch "";
+        return std.fmt.bufPrint(buffer, "{d}.{d}", .{ session.side.?.token % 100000, id & ~counter_bit }) catch "";
     }
-    const token = ids.Token.of(side.token, id);
+    const token = frames.loaderToken(session, id);
     @memcpy(buffer[0..32], token.slice());
     return buffer[0..32];
 }
 
-fn loaderText(side: *const BrowserSide, loader: u64, buffer: *[32]u8) []const u8 {
-    const token = ids.Token.of(side.token, loader);
-    buffer.* = token.text;
+fn loaderText(session: *const PageSession, loader: u64, buffer: *[32]u8) []const u8 {
+    buffer.* = frames.loaderToken(session, loader).text;
     return buffer;
 }
 
@@ -406,6 +412,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     const who = attribute(side, request) orelse return id;
     // A subresource fetch's first hop: one more in flight for its frame.
     if (request.request_id == 0 and request.navigation_id == 0) {
+        side.fetch_state.counted_guard.beforeInsert(&side.fetch_state.counted);
         if (side.fetch_state.counted.put(side.allocator, id, who.frame)) |_| {
             countInFlight(side, who.tab, who.frame, 1);
         } else |_| {}
@@ -413,6 +420,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
     var redirect = side.fetch_state.redirects.fetchRemove(id);
+    if (redirect != null) side.fetch_state.redirects_guard.noteRemoval(&side.fetch_state.redirects);
     defer if (redirect) |*r| r.value.deinit(side.allocator);
     if (sessions.len == 0) return id;
 
@@ -426,9 +434,9 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     const frame = ids.frameId(side.token, who.frame);
     frame_buffer = frame.text;
     const params: N.requestWillBeSent.Params = .{
-        .requestId = requestIdText(side, id, &id_buffer),
-        .loaderId = loaderText(side, who.loader, &loader_buffer),
-        .documentURL = who.document_url,
+        .requestId = requestIdText(sessions[0], id, &id_buffer),
+        .loaderId = loaderText(sessions[0], who.loader, &loader_buffer),
+        .documentURL = documentUrlOf(arena, who, request),
         .request = n_request,
         .timestamp = monotonicSeconds(),
         .wallTime = wallSeconds(),
@@ -447,6 +455,7 @@ fn redirectReceived(context: *anyopaque, request: *const InternalRequest, respon
     const side = sideOf(context) orelse return;
     if (request.request_id == 0) return;
     const head = Head.of(side.allocator, response) catch return;
+    side.fetch_state.redirects_guard.beforeInsert(&side.fetch_state.redirects);
     const entry = side.fetch_state.redirects.getOrPut(side.allocator, request.request_id) catch {
         var h = head;
         h.deinit(side.allocator);
@@ -462,13 +471,21 @@ fn servedFromCache(context: *anyopaque, request: *const InternalRequest) void {
     var buffer: [16]*PageSession = undefined;
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
-        s.emit(N.requestServedFromCache, .{ .requestId = requestIdText(side, request.request_id, &id_buffer) });
+        s.emit(N.requestServedFromCache, .{ .requestId = requestIdText(s, request.request_id, &id_buffer) });
     }
 }
 
 fn responseReceived(context: *anyopaque, request: *const InternalRequest, response: *const InternalResponse) void {
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse return;
+    // Log.entryAdded "Failed to load resource: the server responded with a
+    // status of N (text)" for the tab's Log sessions (lane cdph's
+    // domains/log.zig; Blink's ResourceLoadObserverForFrame::
+    // DidReceiveResponse, status >= 400) - whether or not Network is on.
+    if (response.status >= 400) {
+        var log_id_buffer: [48]u8 = undefined;
+        @import("domains/log.zig").errorResponse(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &log_id_buffer), response.status, response.status_message);
+    }
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
     if (sessions.len == 0) return;
@@ -478,8 +495,8 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
     var loader_buffer: [32]u8 = undefined;
     var frame_buffer: [32]u8 = ids.frameId(side.token, who.frame).text;
     const params: N.responseReceived.Params = .{
-        .requestId = requestIdText(side, request.request_id, &id_buffer),
-        .loaderId = loaderText(side, who.loader, &loader_buffer),
+        .requestId = requestIdText(sessions[0], request.request_id, &id_buffer),
+        .loaderId = loaderText(sessions[0], who.loader, &loader_buffer),
         .timestamp = monotonicSeconds(),
         .type = resourceTypeOf(request),
         .response = head.toResponse(0),
@@ -492,6 +509,7 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
 /// A counted fetch ended: one fewer in flight for its frame.
 fn uncount(side: *BrowserSide, request: *const InternalRequest, tab: u64) void {
     const removed = side.fetch_state.counted.fetchRemove(request.request_id) orelse return;
+    side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
     countInFlight(side, tab, removed.value, -1);
 }
 
@@ -503,7 +521,7 @@ fn loadingFinished(context: *anyopaque, request: *const InternalRequest, encoded
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
         s.emit(N.loadingFinished, .{
-            .requestId = requestIdText(side, request.request_id, &id_buffer),
+            .requestId = requestIdText(s, request.request_id, &id_buffer),
             .timestamp = monotonicSeconds(),
             .encodedDataLength = @floatFromInt(encoded_length),
         });
@@ -514,7 +532,7 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse {
         // Its frame went: the count goes with the frame.
-        _ = side.fetch_state.counted.remove(request.request_id);
+        if (side.fetch_state.counted.remove(request.request_id)) side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
         return;
     };
     uncount(side, request, who.tab);
@@ -522,13 +540,17 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
     var id_buffer: [48]u8 = undefined;
     for (sessionsWith(side, who.tab, "Network", &buffer)) |s| {
         s.emit(N.loadingFailed, .{
-            .requestId = requestIdText(side, request.request_id, &id_buffer),
+            .requestId = requestIdText(s, request.request_id, &id_buffer),
             .timestamp = monotonicSeconds(),
             .type = resourceTypeOf(request),
             .errorText = if (canceled) "net::ERR_ABORTED" else error_text,
             .canceled = if (canceled) true else null,
         });
     }
+    // Log.entryAdded "Failed to load resource: ..." for the tab's Log
+    // sessions - not for a cancellation (lane cdph's domains/log.zig;
+    // Blink's FrameConsole::DidFailLoading).
+    if (!canceled) @import("domains/log.zig").loadingFailed(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &id_buffer), error_text);
 }
 
 /// Network.setCacheDisabled: a tab whose session disabled the cache sends
@@ -607,12 +629,13 @@ fn interceptRequest(context: *anyopaque, request: *const InternalRequest, networ
 
     const interception_id = side.fetch_state.next_interception;
     side.fetch_state.next_interception += 1;
+    side.fetch_state.paused_guard.beforeInsert(&side.fetch_state.paused);
     side.fetch_state.paused.put(side.allocator, interception_id, .{ .interception = interception, .session = holder }) catch return false;
 
     var arena_state = std.heap.ArenaAllocator.init(side.allocator);
     defer arena_state.deinit();
     const n_request = requestOf(arena_state.allocator(), request) catch {
-        _ = side.fetch_state.paused.remove(interception_id);
+        if (side.fetch_state.paused.remove(interception_id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
         return false;
     };
     var paused_buffer: [48]u8 = undefined;
@@ -623,7 +646,7 @@ fn interceptRequest(context: *anyopaque, request: *const InternalRequest, networ
         .request = n_request,
         .frameId = &frame_buffer,
         .resourceType = resource_type,
-        .networkId = requestIdText(side, request.request_id, &network_buffer),
+        .networkId = requestIdText(holder, request.request_id, &network_buffer),
     });
     return true;
 }
@@ -633,7 +656,7 @@ fn interceptionDropped(context: *anyopaque, request_id: u64) void {
     var it = side.fetch_state.paused.iterator();
     while (it.next()) |e| {
         if (e.value_ptr.interception.request_id == request_id) {
-            _ = side.fetch_state.paused.remove(e.key_ptr.*);
+            if (side.fetch_state.paused.remove(e.key_ptr.*)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
             return;
         }
     }
@@ -659,7 +682,7 @@ pub fn decide(session: *PageSession, interception_text: []const u8, decision: ob
     const id = parseInterceptionId(interception_text) orelse return false;
     const held = side.fetch_state.paused.get(id) orelse return false;
     if (held.session != session) return false;
-    _ = side.fetch_state.paused.remove(id);
+    if (side.fetch_state.paused.remove(id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
     held.interception.decide(decision);
     return true;
 }
@@ -673,6 +696,7 @@ pub fn releaseHeldBy(session: *PageSession) void {
             if (e.value_ptr.session == session) break e.key_ptr.*;
         } else break;
         const held = side.fetch_state.paused.fetchRemove(found).?.value;
+        side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
         held.interception.decide(.{ .@"continue" = .{} });
     }
 }

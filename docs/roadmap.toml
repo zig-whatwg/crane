@@ -571,6 +571,7 @@ progress = [
   "7905e783ef7..aa1d486e942 - service workers batch 6: the service worker timing info reaches navigation timing (fetchStart after activation); a worker's response keeps the client's timing allowed only as its own fetch did, its CORS sizes hidden where it substituted another origin's response, Cache Storage keeping the flag; TAO step 6 fails a redirect-tainted navigation; Upgrade-Insecure-Requests on every navigation; module imports re-fetched with the graph's request on update (sw1-b6 lane)",
   "da81e0faae7..4c15e890977 - the HTTP cache is the Browser's: one in-memory RFC 9111 cache on its network context (BrowserConfig.http_cache, 50 MiB, an eighth per response, LRU), shared by its tabs, frames and workers and by no other Browser, partitioned by network partition key; HTTP-network-or-cache fetch reads, revalidates and stores through it; frames, popups and service worker scripts carry their key; Clear-Site-Data cache clears it (httpcache1 lane)",
   "3e77e681cb6..48dc80fa2a6 - tabs share their Browser's state and keep their own: a tab's session storage shed is the Browser's navigables' and ends with its top-level browsing context's record (Storage 4.3; Firefox's SessionStorageManager on Top()), not with the Browser - one shed per closed tab, and per WPT file, no longer kept; tests: the tabs of one Browser share localStorage and its events, cookies and cookieStore events, BroadcastChannel, one shared worker, Web Locks, blob URLs, a service worker registration and permission changes and keep their own sessionStorage, and two Browsers on two threads share none of the registries (inst2 lane)",
+  "2aeeab6fa..ae4c1bd23 (lane cdph, CDP phase: implemented and compile-checked on Linux; tests written, run in the CDP test pass) - the host API: Browser.createTab (a host-opened tab in a new browsing context group, its realms entered per call - engine WindowRealmOptions.entered_for_life), closeTab (HTML close, beforeunload only when prompting), releaseTab/holdTabsOpenedByPages (life1's hold point), activateTab, listTabs, navigableTree, evaluateInTab (BiDi RemoteValue JSON), navigateNavigable; host_events from the navigation observer, the document-start hook and the user prompt hook (tabs, frames, milestones, dialogs); BrowserHost (a Browser on its own thread: post, call, postSessionMessage, answerUserPrompt); the C ABI include/crane.h; WebDriver sessions on BrowserHost threads with Back/Forward/Refresh, window handles and the user prompt commands; Browser.navigate unloads the page it replaces; simple dialogs and printing through HTML 8.9.1-8.9.2 with one pause primitive (runtime.BrowserPause)",
 ]
 
   [[infra.items]]
@@ -591,7 +592,7 @@ progress = [
 
   [[infra.items]]
   name = "Host API (Zig and C ABI): instance create/destroy with profile options; tab create, list, activate, navigate, evaluate, close; events for tabs script opens and closes"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"

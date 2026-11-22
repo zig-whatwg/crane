@@ -72,8 +72,13 @@ pub fn parse(arena: Allocator, raw: []const u8) Allocator.Error!Parsed {
         .string => |text| text,
         else => return .{ .failure = .{ .code = .invalid_request, .message = "Message must have string 'method' property", .id = id, .session_id = session_id } },
     } else return .{ .failure = .{ .code = .invalid_request, .message = "Message must have string 'method' property", .id = id, .session_id = session_id } };
+    // "params": an object, absent, or null - crdtp's Dispatchable::
+    // MaybeParseParams takes a CBOR null as no params (Chrome answered
+    // Vitest's `"params":null` HeapProfiler.collectGarbage, cdp1-evidence
+    // vue-e2e-browser.protocol.log); anything else is refused.
     const params: json.Value = if (object.get("params")) |v| switch (v) {
         .object => v,
+        .null => .{ .object = .empty },
         else => return .{ .failure = .{ .code = .invalid_request, .message = "Message has property 'params' but it is not an object", .id = id, .session_id = session_id } },
     } else .{ .object = .empty };
     return .{ .command = .{ .id = id, .method = method, .params = params, .session_id = session_id, .raw = raw } };
@@ -180,6 +185,23 @@ test "parse: crdtp's errors for malformed messages" {
     const no_method = (try parse(a, "{\"id\":3}")).failure;
     try std.testing.expectEqual(@as(?i64, 3), no_method.id);
     try std.testing.expectEqual(Code.invalid_request, (try parse(a, "{\"id\":1,\"method\":\"X.y\",\"params\":[]}")).failure.code);
+}
+
+test "parse: \"params\": null is a command with no params (crdtp MaybeParseParams)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // Vitest browser mode's cdp().send('HeapProfiler.collectGarbage') -
+    // Playwright's CDPSession sends `"params":null` (190 times in
+    // tmp/plans/cdp1-evidence/vue-e2e-browser.protocol.log); Chrome answers.
+    const parsed = try parse(arena.allocator(), "{\"id\":50,\"method\":\"HeapProfiler.collectGarbage\",\"params\":null,\"sessionId\":\"S8\"}");
+    const cmd = parsed.command;
+    try std.testing.expectEqual(@as(i64, 50), cmd.id);
+    try std.testing.expectEqualStrings("HeapProfiler.collectGarbage", cmd.method);
+    try std.testing.expectEqualStrings("S8", cmd.session_id);
+    try std.testing.expectEqual(@as(usize, 0), cmd.params.object.count());
+    // Any other non-object is still refused.
+    try std.testing.expectEqual(Code.invalid_request, (try parse(arena.allocator(), "{\"id\":1,\"method\":\"X.y\",\"params\":3}")).failure.code);
+    try std.testing.expectEqual(Code.invalid_request, (try parse(arena.allocator(), "{\"id\":1,\"method\":\"X.y\",\"params\":\"{}\"}")).failure.code);
 }
 
 test "encode: result, error and an event, sessionId last" {

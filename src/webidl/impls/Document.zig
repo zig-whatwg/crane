@@ -141,12 +141,13 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
     values.width = @floatFromInt(interfaces.Window.get_innerWidth(window) catch 1024);
     values.height = @floatFromInt(interfaces.Window.get_innerHeight(window) catch 768);
     values.scripting = if (@import("dom").document_scripts.scriptingEnabled(instance)) .enabled else .none;
+    // The tab's screen - an emulated device's first (html.screen_info).
+    const screen = @import("html").screen_info.ofWindow(window);
+    values.device_width = @floatFromInt(screen.width);
+    values.device_height = @floatFromInt(screen.height);
+    values.resolution = screen.device_pixel_ratio;
+    values.color_bits = screen.color_depth / 3;
     if (@import("html").platform_state.of(instance.ctx)) |browser| {
-        const screen = platform.screenInfo(browser);
-        values.device_width = @floatFromInt(screen.width);
-        values.device_height = @floatFromInt(screen.height);
-        values.resolution = screen.device_pixel_ratio;
-        values.color_bits = screen.color_depth / 3;
         const preferences = platform.userPreferences(browser);
         values.prefers_color_scheme = if (preferences.color_scheme == .dark) .dark else .light;
         values.prefers_reduced_motion = if (preferences.reduced_motion == .reduce) .reduce else .no_preference;
@@ -2726,6 +2727,21 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 18: update readiness after erasing the old listeners.
     updateReadiness(instance, ._loading_);
 
+    // A host hears the document was opened (html_core.navigation.observer
+    // document_opened: CDP Page.documentOpened), once its steps are done -
+    // Blink's Document::open ends in FrameLoader::DidExplicitOpen ->
+    // probe::DidOpenDocument. A document no navigable shows tells no one.
+    if (internal.default_view) |window| if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
+        if (interfaces.Document.get_URL(instance)) |url| {
+            defer instance.ctx.allocator.free(url);
+            const observer = html_core.navigation.observer;
+            observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .document_opened = .{
+                .url = url,
+                .document = .{ .document = instance, .generation = runtime.SlabAllocator.generationOf(instance) },
+            } } });
+        } else |_| {}
+    };
+
     // Return the document
     return instance;
 }
@@ -2892,6 +2908,15 @@ pub fn call_write(instance: *runtime.Instance, text: []const typedefs.TrustedHTM
     return documentWriteSteps(instance, text, false, "Document write");
 }
 
+/// A host's discouragedAPIUse violation for a write that reaches a parser
+/// (dom.performance_monitor; Blink's Document::write reports it there, before
+/// parser_->insert).
+fn reportDocumentWrite(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const view = internal.default_view orelse return;
+    @import("dom").performance_monitor.reportUntimed(view.ctx, .discouraged_api_use, "Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write");
+}
+
 /// The document write steps, given `instance`, `text`, `line_feed` and
 /// `sink`.
 ///
@@ -2937,6 +2962,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // Step 8: "If document's active parser was aborted is true, then return."
     if (internal.active_parser_was_aborted) return;
 
+    // In document.write() (Blink's IsInDocumentWrite) while it inserts and
+    // parses: a parser-blocking script prepared meanwhile was written.
+    const write_lists = @import("dom").document_scripts.of(instance);
+    if (write_lists) |lists| lists.document_write_depth += 1;
+    defer if (write_lists) |lists| {
+        lists.document_write_depth -|= 1;
+    };
+
     // Keep document.open()'s parser alive through nested script and through
     // processInserted restoring the stream's limits. Reentrant open/close
     // can detach it before the outer write has returned.
@@ -2952,6 +2985,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // that script's write() inserted.
     if (internal.input_stream_manager) |stream| {
         if (stream.hasInsertionPoint()) {
+            reportDocumentWrite(instance);
             // Step 10: "Insert string into the input stream just before the
             // insertion point."
             try stream.insert(string.items);
@@ -2989,6 +3023,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         if (kept_parser) |parser| parser_call = try parser.protect();
     }
     const stream = internal.input_stream_manager orelse return;
+    reportDocumentWrite(instance);
     // Steps 10-11 apply to the newly created parser as to an existing one.
     try stream.insert(string.items);
     if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();
@@ -5112,7 +5147,11 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // Step 2: set it.
     internal.visibility_state = state;
     internal.hidden = state == ._hidden_;
-    // Step 6: "Fire an event named visibilitychange at document, with its
+    // Step 4: "Run the screen orientation change steps with document"
+    // (html.screen_orientation: a document that is visible again hears the
+    // orientation it missed).
+    @import("html").screen_orientation.changeSteps(document);
+    // Step 7: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);
     // A hidden document has no rendering opportunity (update the rendering

@@ -74,6 +74,7 @@ const webassembly_streaming = @import("webassembly_streaming.zig");
 
 // Worker types from html_core
 const html_core = @import("html_core");
+const UserAgentSnapshot = html_core.window.host_overrides.UserAgentSnapshot;
 const workers = html_core.workers;
 const WorkerType = workers.WorkerType;
 
@@ -791,6 +792,12 @@ pub const WorkerHost = struct {
     origin_nonce: ?u128 = null,
     has_cross_site_ancestor: bool = false,
 
+    /// A dedicated worker's copy of its owner's tab's user agent override,
+    /// taken as it was made (html_core.window.host_overrides.
+    /// UserAgentSnapshot: Chrome's creation-params copy). Its navigator and
+    /// its requests (`userAgentOverrideOfRealm`) read it. OWNED.
+    user_agent_override: UserAgentSnapshot = .{},
+
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
     /// an address and slab generation, never dereferenced on this thread. An
@@ -950,6 +957,8 @@ pub const WorkerHost = struct {
         self.origin_nonce = start.origin_nonce;
         start.storage_top_level_site = null;
         self.has_cross_site_ancestor = start.has_cross_site_ancestor;
+        self.user_agent_override = start.user_agent_override;
+        start.user_agent_override = .{};
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
         // serializes is bound to and one it receives is checked against
@@ -1372,6 +1381,7 @@ pub const WorkerHost = struct {
         if (self.top_level_site) |site| self.allocator.free(site);
         if (self.top_level_origin) |origin| self.allocator.free(origin);
         if (self.storage_top_level_site) |site| self.allocator.free(site);
+        self.user_agent_override.deinit(self.allocator);
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
@@ -3007,6 +3017,27 @@ fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory
 /// the worker's. A nested worker's owner is a worker realm, whose answer is
 /// the site it captured in turn. Shared workers use the creator's partition,
 /// as their storage-key-based identity does.
+/// A dedicated worker's copy of its owner's tab's user agent override, on
+/// the owner's thread: a Window owner's top-level traversable's override
+/// (html_core.window.host_overrides), or a dedicated worker owner's own copy.
+fn ownerUserAgentOverride(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!UserAgentSnapshot {
+    if (forScope(realm)) |owner| return owner.user_agent_override.clone(allocator);
+    if (!realm.isWindow()) return .{};
+    const record = realm.getRealm() orelse return .{};
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return .{}));
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return .{};
+    return UserAgentSnapshot.of(allocator, &bc.getTop().host_overrides);
+}
+
+/// The user agent override of a worker global scope's realm `ctx` - a
+/// dedicated worker's copy of its tab's - or null: its navigator and its
+/// requests (the fetch user agent override reader) read it, on the worker's
+/// thread. BORROWED for the worker's life.
+pub fn userAgentOverrideOfRealm(ctx: runtime.Context) ?*const UserAgentSnapshot {
+    const host = forScope(ctx) orelse return null;
+    return &host.user_agent_override;
+}
+
 fn ownerTopLevelSite(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!?[]u8 {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -3994,6 +4025,10 @@ const ThreadHost = struct {
         /// Whether the owner upgrades insecure requests, read on its thread:
         /// a fetched script's container inherits it (UIR 3.3).
         owner_upgrades_insecure_requests: bool = false,
+        /// A dedicated worker's copy of its owner's tab's user agent
+        /// override, taken on the owner's thread (`ownerUserAgentOverride`).
+        /// OWNED.
+        user_agent_override: UserAgentSnapshot = .{},
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -4023,6 +4058,12 @@ const ThreadHost = struct {
         var owner_embedder_policy: fetch_mod.internal.EmbedderPolicy = if (owner_container) |owner| try owner.embedderPolicy().clone(allocator) else .{};
         errdefer owner_embedder_policy.deinit(allocator);
         const owner_upgrades_insecure_requests = if (owner_container) |owner| owner.upgradesInsecureRequests() else false;
+        // On the owner's thread: a dedicated worker's copy of its tab's user
+        // agent override, as Chrome's DedicatedWorker copies its owner's
+        // user agent into the worker's creation params. A shared worker has
+        // no one tab.
+        var user_agent_override: UserAgentSnapshot = if (start.shared == null) try ownerUserAgentOverride(allocator, start.owner_realm) else .{};
+        errdefer user_agent_override.deinit(allocator);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -4066,6 +4107,7 @@ const ThreadHost = struct {
                 .csp_relay = start.csp_relay,
                 .owner_embedder_policy = owner_embedder_policy,
                 .owner_upgrades_insecure_requests = owner_upgrades_insecure_requests,
+                .user_agent_override = user_agent_override,
             },
         };
         return self;
@@ -4111,6 +4153,7 @@ const ThreadHost = struct {
         if (self.start.request_url) |url| self.allocator.free(url);
         self.start.request_url = null;
         self.start.owner_embedder_policy.deinit(self.allocator);
+        self.start.user_agent_override.deinit(self.allocator);
     }
 
     /// The worker's realm is a service worker client: it takes the reserved

@@ -71,6 +71,7 @@ const ffi = @import("ffi.zig");
 const context_manager = @import("context_manager.zig");
 const protocol_agents = @import("protocol_agents.zig");
 const protocol_realms = @import("protocol_realms.zig");
+const tombstones = @import("webidl").utils.tombstones;
 const realm_global = @import("realm_global.zig");
 const page_realm = @import("page_realm.zig");
 const interface_bindings = @import("interface_bindings.zig");
@@ -151,6 +152,13 @@ pub const AgentWorlds = struct {
     definitions: std.AutoHashMapUnmanaged(WorldId, Definition) = .empty,
     /// WindowProxies a navigation kept for the next main realm's worlds.
     handed: std.AutoHashMapUnmanaged(Context, std.ArrayListUnmanaged(HandedProxy)) = .empty,
+    /// Bound `realms`', `by_main`'s and `handed`'s tombstones: their keys
+    /// are realms, and a page's main realm and its world realms are made
+    /// and ended with every navigation for the agent's life
+    /// (infra.tombstones.TombstoneGuard; tools/lint_tombstones.zig).
+    realms_guard: tombstones.TombstoneGuard = .{},
+    by_main_guard: tombstones.TombstoneGuard = .{},
+    handed_guard: tombstones.TombstoneGuard = .{},
     /// engine.installWorldObserver.
     observer: ?*const engine.WorldObserver = null,
     observer_host: ?*anyopaque = null,
@@ -466,8 +474,13 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
 
     const key = context_manager.keyOf(context) orelse return error.OperationFailed;
     state.* = .{ .realm = realm, .main = main, .world = world, .context = context, .key = key, .window = facts.window };
+    worlds.realms_guard.beforeInsert(&worlds.realms);
     worlds.realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
-    errdefer _ = worlds.realms.remove(realm);
+    errdefer {
+        _ = worlds.realms.remove(realm);
+        worlds.realms_guard.noteRemoval(&worlds.realms);
+    }
+    worlds.by_main_guard.beforeInsert(&worlds.by_main);
     const by_main = worlds.by_main.getOrPut(std.heap.c_allocator, main) catch return error.OutOfMemory;
     if (!by_main.found_existing) by_main.value_ptr.* = .empty;
     by_main.value_ptr.append(std.heap.c_allocator, state) catch return error.OutOfMemory;
@@ -511,6 +524,7 @@ pub fn handOnWorldProxies(old_main: Context, new_main: Context) void {
     if (!worlds.active) return;
     const list = worlds.by_main.get(old_main) orelse return;
     if (list.items.len == 0) return;
+    worlds.handed_guard.beforeInsert(&worlds.handed);
     const handed = worlds.handed.getOrPut(std.heap.c_allocator, new_main) catch return;
     if (!handed.found_existing) handed.value_ptr.* = .empty;
     for (list.items) |w| {
@@ -546,11 +560,13 @@ fn destroyWorldRealmsIn(worlds: *AgentWorlds, main: Context) void {
         const w = list.pop() orelse {
             list.deinit(std.heap.c_allocator);
             _ = worlds.by_main.remove(main);
+            worlds.by_main_guard.noteRemoval(&worlds.by_main);
             break;
         };
         endWorldRealm(worlds, w);
     }
     if (worlds.handed.fetchRemove(main)) |kv| {
+        worlds.handed_guard.noteRemoval(&worlds.handed);
         var proxies = kv.value;
         for (proxies.items) |handed| ffi.v8_Object_Dispose(handed.proxy);
         proxies.deinit(std.heap.c_allocator);
@@ -572,7 +588,7 @@ fn isLive(context: *ffi.Context) bool {
 fn endWorldRealm(worlds: *AgentWorlds, w: *WorldRealm) void {
     defer std.heap.c_allocator.destroy(w);
     if (worlds.observer) |observer| observer.destroyed(worlds.observer_host, w.realm);
-    _ = worlds.realms.remove(w.realm);
+    if (worlds.realms.remove(w.realm)) worlds.realms_guard.noteRemoval(&worlds.realms);
     const realm = w.realm;
     const context = w.context;
     const isolate = isolateOf(realm);

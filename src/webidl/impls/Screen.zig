@@ -1,4 +1,7 @@
-//! Implementation for Screen interface
+//! Implementation for Screen interface (CSSOM View 4.3; Screen
+//! Orientation's `orientation`). Every answer is the window's tab's screen
+//! (html.screen_info): a host's emulated device, else the platform's last
+//! `screen_changed` report, else its `screenInfo`.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -16,9 +19,6 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -35,59 +35,45 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-// Default screen dimensions for stub implementation
-// These match common desktop display values
-const DEFAULT_WIDTH: i32 = 1920;
-const DEFAULT_HEIGHT: i32 = 1080;
-const DEFAULT_AVAIL_WIDTH: i32 = 1920;
-const DEFAULT_AVAIL_HEIGHT: i32 = 1040; // Minus taskbar
-const DEFAULT_COLOR_DEPTH: u32 = 24;
-const DEFAULT_PIXEL_DEPTH: u32 = 24;
+/// The screen of this Screen's window's tab (html.screen_info).
+fn screenOf(instance: *runtime.Instance) @import("html").screen_info.Screen {
+    const html = @import("html");
+    const window = html.user_activation.windowOfRealm(instance.ctx) orelse return html.screen_info.ofRealm(instance.ctx);
+    return html.screen_info.ofWindow(window);
+}
 
-/// Getter for availWidth
-/// Per CSSOM View spec: available width of the rendering surface
+/// Getter for availWidth (CSSOM View: the available width of the output
+/// device's rendering surface).
 pub fn get_availWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return DEFAULT_AVAIL_WIDTH;
+    return screenOf(instance).avail_width;
 }
 
 /// Getter for availHeight
-/// Per CSSOM View spec: available height of the rendering surface
 pub fn get_availHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return DEFAULT_AVAIL_HEIGHT;
+    return screenOf(instance).avail_height;
 }
 
-/// Getter for width
-/// Per CSSOM View spec: width of the output device
+/// Getter for width (CSSOM View: the width of the output device)
 pub fn get_width(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return DEFAULT_WIDTH;
+    return screenOf(instance).width;
 }
 
 /// Getter for height
-/// Per CSSOM View spec: height of the output device
 pub fn get_height(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return DEFAULT_HEIGHT;
+    return screenOf(instance).height;
 }
 
 /// Getter for colorDepth
-/// Per CSSOM View spec: color depth of the output device
 pub fn get_colorDepth(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return DEFAULT_COLOR_DEPTH;
+    return screenOf(instance).color_depth;
 }
 
 /// Getter for pixelDepth
-/// Per CSSOM View spec: pixel depth of the output device
 pub fn get_pixelDepth(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return DEFAULT_PIXEL_DEPTH;
+    return screenOf(instance).pixel_depth;
 }
 
 /// Getter for isExtended
@@ -103,10 +89,19 @@ pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler 
     return error.NotImplemented;
 }
 
-/// Getter for orientation
+/// Getter for orientation (Screen Orientation, "Extensions to the Screen
+/// interface"): the Window's associated ScreenOrientation, made on the
+/// first read and initialized then (html.screen_orientation.register). The
+/// generated [SameObject] getter caches it and traces it from this Screen
+/// (dom.same_object_cache), which the Window's own cache traces in turn, so
+/// an `onchange` set on it lives as long as the Window.
 pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const html = @import("html");
+    const window = html.user_activation.windowOfRealm(instance.ctx) orelse return error.InvalidStateError;
+    const orientation = try interfaces.ScreenOrientation.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(orientation);
+    try html.screen_orientation.register(orientation, window);
+    return orientation;
 }
 
 /// Setter for onchange
