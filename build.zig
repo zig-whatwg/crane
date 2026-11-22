@@ -4151,7 +4151,22 @@ pub fn build(b: *std.Build) void {
     // `check-devtools` compiles the unit tests without running them.
     if (enable_cdp) {
         const devtools_tests = addModuleTestWithEngine(b, testing_graph.devtools, target, tests_engine_link);
-        b.step("check-devtools", "Compile src/devtools and its unit tests (nothing runs)").dependOn(&devtools_tests.step);
+        const check_devtools = b.step("check-devtools", "Compile src/devtools, its unit tests and tests/devtools (nothing runs)");
+        check_devtools.dependOn(&devtools_tests.step);
+        // tests/devtools in one compile (tests/devtools/compile_check.zig):
+        // the client tests compile without the suite running.
+        const devtools_client_check = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/devtools/compile_check.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "devtools", .module = testing_graph.devtools },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "platform", .module = testing_graph.platform },
+            },
+        }) });
+        tests_engine_link.into(b, devtools_client_check.root_module);
+        check_devtools.dependOn(&devtools_client_check.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "devtools")) {
             test_step.dependOn(&addSuiteRun(b, launch, devtools_tests, "src-devtools", null).step);
             const devtools_imports = [_]std.Build.Module.Import{
@@ -5029,6 +5044,19 @@ pub fn build(b: *std.Build) void {
         if (previous_linux_check) |previous| sub_build.step.dependOn(previous);
         previous_linux_check = &sub_build.step;
         check_linux_step.dependOn(&sub_build.step);
+    }
+
+    // -Dcdp=false: the build without the Chrome DevTools Protocol remote end
+    // still compiles - the console and the WebDriver server answer "built
+    // without CDP support" (src/devtools/unavailable.zig). A sub-build of its
+    // own, as check-linux; nothing runs. The integrator's flag-off check.
+    {
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "crane-check", "repl-exe", "-Dcdp=false", "-j2" });
+        sub_build.addArg("--cache-dir");
+        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        sub_build.setCwd(b.path("."));
+        sub_build.has_side_effects = true;
+        b.step("check-cdp-off", "Compile crane (src/webdriver) and the console with -Dcdp=false (nothing runs)").dependOn(&sub_build.step);
     }
 
     // lib-full for aarch64-ios, its own `zig build` like check-linux: a static
