@@ -117,3 +117,29 @@ test "a rejection's captured stack goes with its record: handled in the same tas
         \\{"expression":"Promise.reject('left'); 'ok'"}
     , session));
 }
+
+test "a page's own script's unhandled rejections, during its load: each Runtime.exceptionThrown names its reason - one rejected in a function, one thrown in a promise reaction" {
+    var gpa: replay.LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+    const site = try replay.Site.start(allocator);
+    defer site.stop();
+    const fx = try replay.Fixture.start(allocator);
+    defer fx.stop();
+    const rec = &fx.rec;
+    const session = try pageSession(allocator, rec);
+    defer allocator.free(session);
+    _ = try rec.result(try rec.send("Page.enable", "{}", session));
+
+    var url_buffer: [96]u8 = undefined;
+    var params_buffer: [160]u8 = undefined;
+    const start = rec.log.items.len;
+    _ = try rec.result(try rec.send("Page.navigate", try std.fmt.bufPrint(&params_buffer, "{{\"url\":\"{s}\"}}", .{try site.url(&url_buffer, "/reject.html")}), session));
+    const first = try rec.awaitEvent("Runtime.exceptionThrown", session, start, &.{});
+    const second = try rec.awaitEvent("Runtime.exceptionThrown", session, first + 1, &.{});
+    const a = cdp.at(rec.at(first), "params.exceptionDetails") orelse return error.NoDetails;
+    const b = cdp.at(rec.at(second), "params.exceptionDetails") orelse return error.NoDetails;
+    try testing.expectEqualStrings("from page", cdp.stringAt(a, "exception.value") orelse "(none)");
+    try testing.expectEqualStrings("rejectInPage", cdp.stringAt(topFrame(a) orelse return error.NoStackTrace, "functionName") orelse "(none)");
+    try testing.expectEqualStrings("from reaction", cdp.stringAt(b, "exception.value") orelse "(none)");
+}
