@@ -47,6 +47,7 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const realm_finalizers = @import("realm_finalizers.zig");
+const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const context_manager = @import("context_manager.zig");
 const protocol_agents = @import("protocol_agents.zig");
 const realm_entry = @import("realm_entry.zig");
@@ -115,7 +116,7 @@ pub const Inspector = struct {
         self.ended = true;
         for (self.sessions.items) |session| session.endNative();
         while (self.realms.pop()) |registered| {
-            registered.node.unlink();
+            unlinkRegistered(registered);
             self.allocator.destroy(registered);
         }
         ffi.v8_Inspector_DetachContexts(self.native);
@@ -189,17 +190,21 @@ pub const Inspector = struct {
         const id = ffi.v8_Inspector_ContextCreated(self.native, context, info.group, info.name.ptr, info.name.len, info.origin.ptr, info.origin.len, info.aux_data.ptr, info.aux_data.len);
         if (id == 0) return error.OperationFailed;
         registered.* = .{ .inspector = self, .realm = realm, .id = id, .group = info.group, .is_default = info.is_default };
-        if (list) |l| l.add(&registered.node) catch {
-            ffi.v8_Inspector_ContextDestroyed(self.native, id);
-            return error.OperationFailed;
-        };
+        if (list) |l| {
+            l.add(&registered.node) catch {
+                ffi.v8_Inspector_ContextDestroyed(self.native, id);
+                return error.OperationFailed;
+            };
+            registered.cache = cacheOfList(l);
+            registered.cache.?.inspector_registrations += 1;
+        }
         self.realms.appendAssumeCapacity(registered);
         return id;
     }
 
     /// Forget `registered`: contextDestroyed, off its realm's list.
     fn forget(self: *Inspector, registered: *Registered) void {
-        registered.node.unlink();
+        unlinkRegistered(registered);
         self.remove(registered);
         const id = registered.id;
         self.allocator.destroy(registered);
@@ -222,7 +227,7 @@ pub const Inspector = struct {
             i -= 1;
             const registered = self.realms.items[i];
             if (registered.group != group) continue;
-            registered.node.unlink();
+            unlinkRegistered(registered);
             _ = self.realms.swapRemove(i);
             self.allocator.destroy(registered);
         }
@@ -241,6 +246,38 @@ pub const RegisterInfo = struct {
     is_default: bool = false,
 };
 
+/// The realm adapter state a realm's finalizer list belongs to
+/// (WrapperCache.finalizers).
+fn cacheOfList(list: *realm_finalizers.List) *WrapperCache {
+    return @alignCast(@fieldParentPtr("finalizers", list));
+}
+
+/// Take `registered` off its realm's list, and out of the realm's count of
+/// registrations (WrapperCache.inspector_registrations).
+fn unlinkRegistered(registered: *Registered) void {
+    if (registered.node.list != null) {
+        if (registered.cache) |cache| cache.inspector_registrations -= 1;
+        registered.cache = null;
+    }
+    registered.node.unlink();
+}
+
+/// Whether the agent's inspector may know `realm`, read from the realm's
+/// own adapter state with no lock (WrapperCache.inspector_registrations):
+/// false when no registration of it stands, so the caller returns before
+/// the agent registry's locked lookup (protocol_agents.recordOf, about
+/// 127 ns) that finding the inspector is. True - the lookup goes on, and
+/// is counted (WrapperCache.inspector_lookups) - when one does, and for a
+/// realm with no wrapper cache (a context a test made by hand, one already
+/// retired), which has no count.
+fn mayBeRegistered(realm: Context) bool {
+    const list = realm_finalizers.listOf(realm) orelse return true;
+    const cache = cacheOfList(list);
+    if (cache.inspector_registrations == 0) return false;
+    cache.inspector_lookups += 1;
+    return true;
+}
+
 /// A realm the inspector knows: on its realm's list until it ends.
 const Registered = struct {
     inspector: *Inspector,
@@ -249,11 +286,20 @@ const Registered = struct {
     group: c_int,
     is_default: bool,
     node: realm_finalizers.Node = .{ .drop = realmEnded },
+    /// The realm adapter state whose list `node` is on, and whose count of
+    /// registrations (WrapperCache.inspector_registrations) this is one of;
+    /// null when it is on none.
+    cache: ?*WrapperCache = null,
 
     /// The realm ended (realm_finalizers.List.drain; unlinked already): the
     /// inspector forgets its context now, while it exists.
     fn realmEnded(node: *realm_finalizers.Node) void {
         const self: *Registered = @fieldParentPtr("node", node);
+        // The drain took it off the list (its `list` is null now): its
+        // count, on the cache that is draining it - never through the realm,
+        // which a cache's own end outlives.
+        if (self.cache) |cache| cache.inspector_registrations -= 1;
+        self.cache = null;
         const inspector = self.inspector;
         inspector.remove(self);
         const id = self.id;
@@ -540,7 +586,11 @@ pub fn inspectorUnwrap(opaque_session: *engine.InspectorSession, object_id: []co
 /// `realm` (the realm kept it at its making, -Dcdp), so V8's console delegate
 /// - the inspector's - reports and stores the message as Chrome's does.
 pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
-    // One lookup, and nothing more for an agent with no inspector.
+    // Nothing - not even the agent registry's locked lookup - for a realm
+    // no registration stands for (see below: V8 drops its call), read from
+    // the realm itself (`mayBeRegistered`; lane tpc: the lookup was most of
+    // what a console call cost a Browser with no session after daa01f91a).
+    if (!mayBeRegistered(realm)) return;
     const inspector = existingOfRealm(realm) orelse return;
     if (inspector.ended or method.len == 0) return;
     // Nothing for a realm the inspector does not know (no contextCreated):
@@ -573,6 +623,12 @@ pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const
 
 /// engine.inspectorExceptionThrown.
 pub fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const engine.InspectorExceptionDetails) u32 {
+    // Nothing for a realm no registration stands for, read with no lock
+    // (`mayBeRegistered`): V8 drops the report itself - V8InspectorImpl::
+    // exceptionThrown returns 0 for context group 0 (v8-inspector-impl.cc:379
+    // at 15.7.112.43) - and every reported exception of a Browser with no
+    // session paid the agent registry's locked lookup for it.
+    if (!mayBeRegistered(realm)) return 0;
     const inspector = existingOfRealm(realm) orelse return 0;
     if (inspector.ended) return 0;
     if (inspector.registeredOf(realm) == null) return 0;
@@ -602,8 +658,6 @@ const CapturedStack = struct {
 /// made after the call returned, as Blink's V8Initializer::
 /// PromiseRejectHandler captures its SourceLocation.
 pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
-    const inspector = existingOfRealm(realm) orelse return null;
-    if (inspector.ended) return null;
     // Nothing for a realm the inspector does not know (no contextCreated):
     // V8 captures nothing for it - V8Debugger::captureStackTrace returns
     // nullptr when the current context's group is 0 (src/inspector/
@@ -616,9 +670,15 @@ pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
     // Inspector.register. Blink's V8Initializer::PromiseRejectHandler
     // captures at every rejection because every Blink context is in a group
     // (MainThreadDebugger::ContextCreated); a Browser with no session
-    // registers none, and paid the call, the handle scope and V8's group
-    // lookup for nothing on every unhandled rejection (lane tpc cost pass:
-    // promises.unhandled 1.049x time, 1.033x instructions).
+    // registers none. Read first from the realm itself, with no lock
+    // (WrapperCache.inspector_registrations): finding the agent's inspector
+    // is the agent registry's locked lookup (protocol_agents.recordOf,
+    // about 127 ns), which every unhandled rejection paid for nothing (lane
+    // tpc cost pairs: promises.unhandled 1.049x time before the guard, 1.039x
+    // with the guard behind that lookup).
+    if (!mayBeRegistered(realm)) return null;
+    const inspector = existingOfRealm(realm) orelse return null;
+    if (inspector.ended) return null;
     if (inspector.registeredOf(realm) == null) return null;
     inspector.capture_asks += 1;
     const native = ffi.v8_Inspector_CaptureStack(inspector.native) orelse return null;

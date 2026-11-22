@@ -1447,6 +1447,21 @@ pub const WrapperCache = struct {
     /// realm's objects are torn down (context_manager.removeContextByKey);
     /// the cache's own end drains what is left.
     finalizers: realm_finalizers.List = .{},
+    /// How many of `finalizers` are the agent's inspector's registrations of
+    /// this realm (protocol_inspector `Registered`: contextCreated, and not
+    /// forgotten): kept by protocol_inspector as each joins and leaves, so
+    /// whether a realm is known to the inspector is read here, on the realm,
+    /// with no lock - the agent registry's (protocol_agents.recordOf) costs
+    /// about 127 ns, paid on every unhandled rejection of a Browser with no
+    /// session, and on every console call and reported exception, before
+    /// (lane tpc). At most one in practice: a realm is
+    /// registered once, in one group.
+    inspector_registrations: u32 = 0,
+    /// How many times protocol_inspector went past that check to find the
+    /// agent's inspector - for a rejection's stack, a console call, a
+    /// reported exception (`mayBeRegistered`; tests read it:
+    /// tests/v8/inspector_bridge_test.zig).
+    inspector_lookups: u64 = 0,
 
     /// The agent's deferred teardown queue (engine.AgentOptions.
     /// deferred_teardown), looked up by the first collected node this cache
