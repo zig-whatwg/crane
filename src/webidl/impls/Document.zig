@@ -141,12 +141,13 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
     values.width = @floatFromInt(interfaces.Window.get_innerWidth(window) catch 1024);
     values.height = @floatFromInt(interfaces.Window.get_innerHeight(window) catch 768);
     values.scripting = if (@import("dom").document_scripts.scriptingEnabled(instance)) .enabled else .none;
+    // The tab's screen - an emulated device's first (html.screen_info).
+    const screen = @import("html").screen_info.ofWindow(window);
+    values.device_width = @floatFromInt(screen.width);
+    values.device_height = @floatFromInt(screen.height);
+    values.resolution = screen.device_pixel_ratio;
+    values.color_bits = screen.color_depth / 3;
     if (@import("html").platform_state.of(instance.ctx)) |browser| {
-        const screen = platform.screenInfo(browser);
-        values.device_width = @floatFromInt(screen.width);
-        values.device_height = @floatFromInt(screen.height);
-        values.resolution = screen.device_pixel_ratio;
-        values.color_bits = screen.color_depth / 3;
         const preferences = platform.userPreferences(browser);
         values.prefers_color_scheme = if (preferences.color_scheme == .dark) .dark else .light;
         values.prefers_reduced_motion = if (preferences.reduced_motion == .reduce) .reduce else .no_preference;
@@ -5112,7 +5113,11 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // Step 2: set it.
     internal.visibility_state = state;
     internal.hidden = state == ._hidden_;
-    // Step 6: "Fire an event named visibilitychange at document, with its
+    // Step 4: "Run the screen orientation change steps with document"
+    // (html.screen_orientation: a document that is visible again hears the
+    // orientation it missed).
+    @import("html").screen_orientation.changeSteps(document);
+    // Step 7: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);
     // A hidden document has no rendering opportunity (update the rendering

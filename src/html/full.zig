@@ -313,6 +313,8 @@ pub const user_activation = @import("user_activation.zig");
 /// HTML 8.9.1 simple dialogs and 8.9.2's printing steps: the checks, the
 /// host's user prompt hook, the pause until the answer.
 pub const simple_dialogs = @import("simple_dialogs.zig");
+pub const screen_info = @import("screen_info.zig");
+pub const screen_orientation = @import("screen_orientation.zig");
 pub const close_watchers = @import("close_watchers.zig");
 
 // "same origin-domain" between the entry settings object and a Window (the

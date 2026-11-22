@@ -249,7 +249,6 @@ pub const InternalState = struct {
     screen_y: i32 = 0,
     scroll_x: f64 = 0.0,
     scroll_y: f64 = 0.0,
-    device_pixel_ratio: f64 = 1.0,
 
     /// V8 global object that this Window IS bound to (for cross-realm support)
     /// When this is set, `instanceToV8` returns this global directly instead of
@@ -2005,8 +2004,11 @@ pub fn get_outerHeight(instance: *runtime.Instance) anyerror!i32 {
 /// Getter for devicePixelRatio
 /// Per spec: Returns the ratio of CSS pixels to physical pixels.
 pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.device_pixel_ratio;
+    // CSSOM View: the output device's pixel ratio - the tab's screen, an
+    // emulated device's scale first (html.screen_info; CDP
+    // Emulation.setDeviceMetricsOverride's deviceScaleFactor).
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    return @import("html").screen_info.ofWindow(instance).device_pixel_ratio;
 }
 
 /// Getter for launchQueue

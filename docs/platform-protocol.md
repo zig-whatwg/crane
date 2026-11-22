@@ -800,7 +800,7 @@ pub const EventSink = extern struct {
 
 | Event | Crane's steps |
 |---|---|
-| `screen_changed(ScreenInfo)` | ScreenOrientation `change`, resize-dependent steps |
+| `screen_changed(tab, ScreenInfo)` | DELIVERED (lane cdph, 2026-11-21): the tab's reported screen - every top-level traversable's for tab 0 - which screen.\*, devicePixelRatio and the device-width/device-height/resolution media features read (src/html/screen_info.zig; a host's emulated device, CDP Emulation.setDeviceMetricsOverride, wins while set; before any report, `screenInfo` answers). A change asks for a rendering opportunity (the media queries) and runs the screen orientation change steps: screen.orientation's `change` (src/html/screen_orientation.zig) |
 | `online_changed(bool)` | `online` / `offline` at every Window and WorkerGlobalScope (HTML 8.10.1.3) |
 | `languages_changed` | `languagechange` (HTML 8.10.1.2) |
 | `preferences_changed(UserPreferences)` | media query re-evaluation |
@@ -814,7 +814,7 @@ pub const EventSink = extern struct {
 | `position(watch, PositionResult)`, `sensor_reading(sensor, reading)`, `orientation(reading)` | the APIs' events |
 | `device_event(handle, DeviceEvent)` | HID `inputreport`, GATT `characteristicvaluechanged`, NFC `reading`, MIDI `midimessage`, disconnects |
 | `gamepad_connected(index, bool)`, `battery_changed`, `idle_changed`, `pressure_changed`, `connection_changed`, `key_session_message`, `speech_event`, `virtual_keyboard_geometry` | the APIs' events |
-| `window_rect_changed(tab, Rect)` | DELIVERED (lane life1; the integrator's ruling C, 2026-11-21: no viewport operation of its own). The rect's size, in CSS pixels, is the tab's top-level viewport - a headless window has no chrome (src/browser/viewport.zig; tab 0: every top-level traversable): innerWidth/innerHeight and the media queries read it, and a change asks for a rendering opportunity, where the resize steps fire `resize` (update the rendering step 8) and the media queries report their changes (step 10). A host's override (`viewport.setOverride`, CDP Emulation.setDeviceMetricsOverride) wins while set. `screen_changed` still reaches nothing |
+| `window_rect_changed(tab, Rect)` | DELIVERED (lane life1; the integrator's ruling C, 2026-11-21: no viewport operation of its own). The rect's size, in CSS pixels, is the tab's top-level viewport - a headless window has no chrome (src/browser/viewport.zig; tab 0: every top-level traversable): innerWidth/innerHeight and the media queries read it, and a change asks for a rendering opportunity, where the resize steps fire `resize` (update the rendering step 8) and the media queries report their changes (step 10). A host's override (`viewport.setOverride`, CDP Emulation.setDeviceMetricsOverride) wins while set |
 
 ## 8. The permission model
 

@@ -39,40 +39,34 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for type
+/// Getter for type: [[type]] (Screen Orientation, "type attribute").
 pub fn get_type(instance: *runtime.Instance) anyerror!enums.OrientationType {
-    _ = instance;
-    return error.NotImplemented;
+    return switch (@import("html").screen_orientation.typeOf(instance)) {
+        .portrait_primary => ._portrait_primary_,
+        .portrait_secondary => ._portrait_secondary_,
+        .landscape_primary => ._landscape_primary_,
+        .landscape_secondary => ._landscape_secondary_,
+    };
 }
 
-/// Getter for angle
+/// Getter for angle: [[angle]] (Screen Orientation, "angle attribute").
 pub fn get_angle(instance: *runtime.Instance) anyerror!u16 {
-    _ = instance;
-    return error.NotImplemented;
+    return @import("html").screen_orientation.angleOf(instance);
 }
 
-/// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
+// onchange: the generated EventTarget event handler attribute (event type
+// "change"), which html.screen_orientation's change steps fire.
 
-/// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: unlock
+/// Operation: unlock (Screen Orientation, "unlock() method";
+/// html.screen_orientation.unlock).
 pub fn call_unlock(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    try @import("html").screen_orientation.unlock(instance);
 }
 
-/// Operation: lock
+/// Operation: lock (Screen Orientation, "lock() method";
+/// html.screen_orientation.lock): every orientation is one the user agent
+/// does not support locking to, as Chrome desktop.
 pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLockType) anyerror!runtime.JSValue {
-    _ = instance;
     _ = orientation;
-    return error.NotImplemented;
+    return @import("html").screen_orientation.lock(instance);
 }

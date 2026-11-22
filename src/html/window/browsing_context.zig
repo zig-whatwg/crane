@@ -512,6 +512,11 @@ pub const BrowsingContext = struct {
     /// EmulationHandler and Blink's InspectorEmulationAgent keep one per
     /// page), which wins over the platform's while set.
     viewport_override: ?ViewportSize = null,
+    /// A top-level traversable's screen as the platform last reported it
+    /// (`screen_changed(tab, screen)`, docs/platform-protocol.md section 7),
+    /// or null while it has reported none (the platform's `screenInfo`
+    /// answers then). html.screen_info reads it, under a host's override.
+    reported_screen: ?@import("platform").ScreenInfo = null,
     /// A host's overrides of the platform's other answers for this tab -
     /// media, touch points, user agent (host_overrides.zig: CDP Emulation,
     /// WebDriver BiDi emulation). A top-level traversable's; read through

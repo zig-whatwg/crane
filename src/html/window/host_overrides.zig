@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const platform = @import("platform");
 
 pub const MediaType = enum { screen, print };
 pub const ColorScheme = enum { light, dark };
@@ -34,6 +35,24 @@ pub const Media = struct {
     forced_colors: ?bool = null,
 };
 
+/// The screen an emulated device reports (CDP's
+/// Emulation.setDeviceMetricsOverride; Blink's ScreenMetricsEmulator):
+/// screen.width/height - availWidth/availHeight with them, as the emulator
+/// sets the available rect to the screen rect - devicePixelRatio and the
+/// current orientation type and angle. Null fields answer as the platform
+/// does.
+pub const Screen = struct {
+    width: ?i32 = null,
+    height: ?i32 = null,
+    device_pixel_ratio: ?f64 = null,
+    orientation: ?Orientation = null,
+
+    pub const Orientation = struct {
+        type: platform.OrientationType,
+        angle: u16,
+    };
+};
+
 /// An opaque token naming who set an override; 0 is nobody.
 pub const Owner = usize;
 
@@ -43,6 +62,9 @@ pub const HostOverrides = struct {
     /// navigator.maxTouchPoints (Pointer Events 3).
     max_touch_points: ?i32 = null,
     touch_owner: Owner = 0,
+    /// The emulated device's screen (html.screen_info reads it).
+    screen: ?Screen = null,
+    screen_owner: Owner = 0,
     /// navigator.userAgent, navigator.platform and the navigator's languages
     /// (from an Accept-Language list). OWNED.
     user_agent: ?[]u8 = null,
@@ -64,6 +86,11 @@ pub const HostOverrides = struct {
     pub fn setMaxTouchPoints(self: *HostOverrides, owner: Owner, points: ?i32) void {
         self.max_touch_points = points;
         self.touch_owner = if (points != null) owner else 0;
+    }
+
+    pub fn setScreen(self: *HostOverrides, owner: Owner, screen: ?Screen) void {
+        self.screen = screen;
+        self.screen_owner = if (screen != null) owner else 0;
     }
 
     /// Replace the user agent override with copies of `user_agent`,
@@ -92,6 +119,7 @@ pub const HostOverrides = struct {
         if (owner == 0) return;
         if (self.media_owner == owner) self.setMedia(0, null);
         if (self.touch_owner == owner) self.setMaxTouchPoints(0, null);
+        if (self.screen_owner == owner) self.setScreen(0, null);
         if (self.user_agent_owner == owner) self.freeUserAgent(allocator);
     }
 
@@ -184,10 +212,12 @@ test "a setter that goes clears only what it set; strings are owned" {
     try overrides.setUserAgent(allocator, 1, "UA-one", "Plat", "de-DE,de;q=0.9");
     overrides.setMedia(2, .{ .color_scheme = .dark });
     overrides.setMaxTouchPoints(1, 5);
+    overrides.setScreen(1, .{ .width = 390, .height = 844, .device_pixel_ratio = 3 });
     try std.testing.expectEqualStrings("de-DE", overrides.language().?);
     overrides.clearOwnedBy(allocator, 1);
     try std.testing.expect(overrides.user_agent == null);
     try std.testing.expect(overrides.max_touch_points == null);
+    try std.testing.expect(overrides.screen == null);
     try std.testing.expectEqual(ColorScheme.dark, overrides.media.?.color_scheme.?);
     // The last setter wins: setter 3 replaces 2's media; 2 going leaves 3's.
     overrides.setMedia(3, .{ .media_type = .print });

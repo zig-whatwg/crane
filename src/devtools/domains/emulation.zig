@@ -45,18 +45,41 @@ pub fn sessionEnded(session: *PageSession) void {
     }
     const bc = tabOf(session) orelse return;
     const had_media = bc.host_overrides.media_owner == owner(session);
+    const had_screen = bc.host_overrides.screen_owner == owner(session);
     bc.host_overrides.clearOwnedBy(bc.allocator, owner(session));
     if (had_media) mediaChanged(bc);
+    if (had_screen) @import("html").screen_info.changed(bc.getTop());
 }
 
-/// The viewport (and the screen it implies) as the client's device: width
-/// and height 0 give that dimension back to the platform's window (Chrome:
-/// "0 disables the override"). Device scale and screen size are not yet
-/// overridden: devicePixelRatio and screen.* keep the platform's answers.
+/// The viewport and the screen as the client's device: width and height 0
+/// give that dimension back to the platform's window (Chrome: "0 disables
+/// the override"); the device's screen (html_core host_overrides Screen,
+/// read through html.screen_info) is its scale - devicePixelRatio and the
+/// resolution media feature, 0 the platform's - its size - screenWidth and
+/// screenHeight, else for a mobile device the view's size, while a desktop
+/// one keeps the real screen - and its orientation (screenOrientation, which
+/// screen.orientation reports and fires `change` for). Blink's
+/// ScreenMetricsEmulator::Apply and Chrome's EmulationHandler::
+/// SetDeviceMetricsOverride (its checks and messages), reproduced.
 pub fn setDeviceMetricsOverride(session: *PageSession, params: E.setDeviceMetricsOverride.Params) !E.setDeviceMetricsOverride.Result {
     const browser = session.browser orelse return session.fail("Target is not a page");
     const bc = tabOf(session) orelse return session.fail("Target is not a page");
-    if (params.width < 0 or params.height < 0) return session.failWithCode(.invalid_params, "Width and height values must be positive, not greater than 10000000");
+    const max_size = 10_000_000;
+    if (params.width < 0 or params.height < 0 or params.width > max_size or params.height > max_size) return session.failWithCode(.invalid_params, "Width and height values must be positive, not greater than 10000000");
+    const screen_width = params.screenWidth orelse 0;
+    const screen_height = params.screenHeight orelse 0;
+    if (screen_width < 0 or screen_height < 0 or screen_width > max_size or screen_height > max_size) return session.failWithCode(.invalid_params, "Screen width and height values must be positive, not greater than 10000000");
+    if (params.deviceScaleFactor < 0) return session.failWithCode(.invalid_params, "deviceScaleFactor must be non-negative");
+    var orientation: ?host_overrides.Screen.Orientation = null;
+    if (params.screenOrientation) |given| {
+        if (given.angle < 0 or given.angle >= 360) return session.failWithCode(.invalid_params, "Screen orientation angle must be non-negative, less than 360");
+        orientation = .{ .type = switch (given.type) {
+            .portraitPrimary => .portrait_primary,
+            .portraitSecondary => .portrait_secondary,
+            .landscapePrimary => .landscape_primary,
+            .landscapeSecondary => .landscape_secondary,
+        }, .angle = @intCast(given.angle) };
+    }
     const size: ?frames.ViewportSize = if (params.width == 0 and params.height == 0) null else blk: {
         const window = bc.viewport;
         const width: i32 = if (params.width > 0) @intCast(@min(params.width, std.math.maxInt(i32))) else if (window) |w| w.width else 0;
@@ -65,6 +88,17 @@ pub fn setDeviceMetricsOverride(session: *PageSession, params: E.setDeviceMetric
     };
     if (!browser_mod.viewport.setOverride(browser.scope, session.tab, size)) return session.fail("Target is not a page");
     session.states.Emulation.viewport_set = size != null;
+    var screen: host_overrides.Screen = .{ .orientation = orientation };
+    if (params.deviceScaleFactor > 0) screen.device_pixel_ratio = params.deviceScaleFactor;
+    if (screen_width > 0 and screen_height > 0) {
+        screen.width = @intCast(screen_width);
+        screen.height = @intCast(screen_height);
+    } else if (params.mobile) if (size) |view| {
+        screen.width = view.width;
+        screen.height = view.height;
+    };
+    const any = screen.width != null or screen.device_pixel_ratio != null or screen.orientation != null;
+    setScreen(session, bc, if (any) screen else null);
     // Chrome tells the page's sessions its frame was resized.
     if (session.states.Page.enabled) session.emit(protocol.Page.frameResized, .{});
     return .{};
@@ -75,7 +109,20 @@ pub fn clearDeviceMetricsOverride(session: *PageSession, params: E.clearDeviceMe
     const browser = session.browser orelse return .{};
     _ = browser_mod.viewport.setOverride(browser.scope, session.tab, null);
     session.states.Emulation.viewport_set = false;
+    if (tabOf(session)) |bc| setScreen(session, bc, null);
     return .{};
+}
+
+/// The tab's emulated screen is `screen` (null: the platform's again); a
+/// change reaches the media queries and screen.orientation
+/// (html.screen_info.changed).
+fn setScreen(session: *PageSession, bc: *frames.BrowsingContext, screen: ?host_overrides.Screen) void {
+    const top = bc.getTop();
+    const before = top.host_overrides.screen;
+    top.host_overrides.setScreen(owner(session), screen);
+    if (before == null and screen == null) return;
+    if (before) |b| if (screen) |a| if (std.meta.eql(a, b)) return;
+    @import("html").screen_info.changed(top);
 }
 
 /// The media type and the media features the tab's media queries see
