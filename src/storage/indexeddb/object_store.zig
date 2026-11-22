@@ -1014,7 +1014,8 @@ pub const IDBObjectStore = struct {
         try self.preserveSchemaForRollback();
         try self.transaction.ensureRollbackSnapshot();
         if (self.record_data) |records| {
-            // Its entries go in the upgrade's batch, before the definition.
+            // Its entries go from the upgrade's batch when it is written
+            // (IDBTransaction.dropped), before the definition goes now.
             try self.transaction.dropIndexData(records.definition_id, records.indexes.get(name).?.definition_id);
             const removed = records.indexes.fetchRemove(name).?;
             removed.value.release();
