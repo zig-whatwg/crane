@@ -29,6 +29,7 @@ const whitespace = @import("whitespace.zig");
 const split_parent = @import("split_parent.zig");
 const dom = @import("dom");
 const overrides = @import("overrides.zig");
+const style_values = @import("style_values.zig");
 const inline_formatting = @import("inline.zig");
 const block_formatting = @import("block.zig");
 const lists = @import("lists.zig");
@@ -1102,12 +1103,13 @@ fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
         }
         changed = true;
         const source_parent = (try common.parent(node)) orelse continue;
-        const style = try interfaces.HTMLElement.get_style(node);
-        var css_text = try interfaces.CSSStyleDeclaration.get_cssText(style);
-        defer css_text.deinit(node.ctx.allocator);
-        if (css_text.asSlice().len > 0) {
+        // The style attribute's declarations, serialized (element.style's
+        // cssText), read natively (style_values.inlineCssText).
+        const css_text = try style_values.inlineCssText(edit.allocator, node);
+        defer edit.allocator.free(css_text);
+        if (css_text.len > 0) {
             const fresh = try edit.createElement("span");
-            try common.setAttribute(fresh, "style", css_text.asSlice());
+            try common.setAttribute(fresh, "style", css_text);
             try edit.insertBefore(source_parent, fresh, node);
             for (moved.items) |m| try edit.movePreservingRanges(m, fresh, try common.childCount(fresh));
             try rebuilt.append(edit.allocator, fresh);

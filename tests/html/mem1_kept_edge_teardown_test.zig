@@ -126,3 +126,36 @@ fn deleteJoinKeepsNoStyleObjectPastItsElement(page: Page) !void {
 test "a delete-join loop past the undo bound keeps no element.style object past its element" {
     try native_read_page.onPage(deleteJoinKeepsNoStyleObjectPastItsElement);
 }
+
+fn editingStyleReadsMakeNoStyleObject(page: Page) !void {
+    // Joins whose typing-style record reads the inline style of every
+    // element on the way up (overrides.recordTypingStyleAcrossMerge ->
+    // specifyingDepth), and a span whose own style attribute the join reads
+    // (delete.zig, the span's cssText): reads, which Blink makes from
+    // Element::InlineStyle() with no CSSOM object (lane mem1).
+    const held = try page.browser.evaluateScript(
+        \\const host = document.body.appendChild(document.createElement('div'));
+        \\host.contentEditable = 'true';
+        \\host.focus();
+        \\for (let i = 0; i < 10; i++) {
+        \\  host.innerHTML = '<p><b>foo</b></p><p><span style="color:red">bar</span></p>';
+        \\  const r = document.createRange();
+        \\  r.setStart(host.lastChild.firstChild.firstChild, 0);
+        \\  r.collapse(true);
+        \\  getSelection().removeAllRanges();
+        \\  getSelection().addRange(r);
+        \\  document.execCommand('delete');
+        \\}
+        \\if (host.childNodes.length !== 1) throw new Error('no join: ' + host.innerHTML);
+    );
+    held.release();
+    const census = Census.take(page);
+    if (census.styles != 0) {
+        std.debug.print("{d} CSSStyleProperties made by editing's reads\n", .{census.styles});
+        return error.EditingReadMadeAStyleObject;
+    }
+}
+
+test "editing's inline-style reads make no element.style object" {
+    try native_read_page.onPage(editingStyleReadsMakeNoStyleObject);
+}

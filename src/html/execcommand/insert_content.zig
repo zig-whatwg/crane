@@ -13,6 +13,7 @@ const common = @import("common.zig");
 const delete = @import("delete.zig");
 const overrides = @import("overrides.zig");
 const block_formatting = @import("block.zig");
+const style_values = @import("style_values.zig");
 const dom_parser = @import("../dom_parser.zig");
 
 const Edit = common.Edit;
@@ -322,13 +323,10 @@ fn styleHasOnlyEditingProperties(element: *Instance) !bool {
         "caret-color",            "-webkit-text-fill-color", "-webkit-text-stroke-color", "-webkit-text-stroke-width",
         "background-color",       "text-decoration-line",
     };
-    const style = try interfaces.HTMLElement.get_style(element);
-    const length = try interfaces.CSSStyleDeclaration.get_length(style);
-    var index: u32 = 0;
-    while (index < length) : (index += 1) {
-        var property = try interfaces.CSSStyleDeclaration.call_item(style, index);
-        defer property.deinit(element.ctx.allocator);
-        if (!common.nameIn(property.asSlice(), &editing)) return false;
+    // Read natively (style_values.inlineItem), never through element.style.
+    var index: usize = 0;
+    while (try style_values.inlineItem(element, index)) |property| : (index += 1) {
+        if (!common.nameIn(property, &editing)) return false;
     }
     return true;
 }
