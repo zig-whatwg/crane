@@ -648,7 +648,10 @@ fn queueIntersectionObserverTask(document: *runtime.Instance) void {
     const generation = runtime.SlabAllocator.generationOf(document);
     task.* = .{ .allocator = allocator, .document = document, .generation = generation };
     // 2. Set document's IntersectionObserverTaskQueued flag to true.
-    document_internals.setIntersectionObserverTaskQueued(document, true);
+    document_internals.setIntersectionObserverTaskQueued(document, true) catch {
+        allocator.destroy(task);
+        return;
+    };
     // 3. Queue a task on the IntersectionObserver task source associated
     //    with the document's event loop to notify intersection observers.
     //    The task's document is `document`: one that can never be fully
@@ -668,7 +671,7 @@ fn queueIntersectionObserverTask(document: *runtime.Instance) void {
 fn dropNotifyTask(data: ?*anyopaque) void {
     const task: *NotifyTask = @ptrCast(@alignCast(data orelse return));
     if (runtime.SlabAllocator.generationOf(task.document) == task.generation) {
-        @import("dom").document_internals.setIntersectionObserverTaskQueued(task.document, false);
+        @import("dom").document_internals.setIntersectionObserverTaskQueued(task.document, false) catch {};
     }
     task.allocator.destroy(task);
 }
@@ -684,7 +687,7 @@ fn notifyIntersectionObservers(data: ?*anyopaque) void {
     task.allocator.destroy(task);
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
     // 1. Set document's IntersectionObserverTaskQueued flag to false.
-    @import("dom").document_internals.setIntersectionObserverTaskQueued(document, false);
+    @import("dom").document_internals.setIntersectionObserverTaskQueued(document, false) catch {};
     // 2. Let notify list be a list of all IntersectionObservers whose root
     //    is in the DOM tree of document.
     const allocator = document.ctx.allocator;

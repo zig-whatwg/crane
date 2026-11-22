@@ -238,12 +238,6 @@ pub const InternalState = struct {
     /// fire load at the iframe whose content navigable shows this document
     /// (steps 5-7).
     iframe_load_in_progress: bool = false,
-    /// Intersection Observer's IntersectionObserverTaskQueued flag ("Each
-    /// document has an IntersectionObserverTaskQueued flag which is
-    /// initialized to false"): a "notify intersection observers" task is
-    /// queued for this document (dom.document_internals, for
-    /// IntersectionObserver).
-    intersection_observer_task_queued: bool = false,
     /// HTML "mute iframe load": the document was opened (document open steps
     /// step 14) while its iframe load was in progress, and the iframe load
     /// event steps fire no load for it (step 3).

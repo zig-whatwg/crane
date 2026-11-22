@@ -82,15 +82,24 @@ pub fn setEncoding(instance: *runtime.Instance, name: []const u8) !void {
 /// document `instance` (false for an instance with no Document state).
 pub fn intersectionObserverTaskQueued(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.intersection_observer_task_queued;
+    const rare = internal.rareData() orelse return false;
+    return rare.intersection_observer_task_queued;
 }
 
 /// Set the document's IntersectionObserverTaskQueued flag ("queue an
 /// intersection observer task" step 2; "notify intersection observers"
-/// step 1).
-pub fn setIntersectionObserverTaskQueued(instance: *runtime.Instance, queued: bool) void {
+/// step 1), in its rare data (made to set it). Out of memory the flag stays
+/// unset: the caller queues no task (`ensure` failed means nothing was
+/// promised).
+pub fn setIntersectionObserverTaskQueued(instance: *runtime.Instance, queued: bool) error{OutOfMemory}!void {
     const internal = getInternal(instance) orelse return;
-    internal.intersection_observer_task_queued = queued;
+    if (!queued) {
+        const rare = internal.rareData() orelse return;
+        rare.intersection_observer_task_queued = false;
+        return;
+    }
+    const rare = try internal.ensureRareData(instance);
+    rare.intersection_observer_task_queued = true;
 }
 
 /// Set the document's referrer (HTML "the document's referrer", what
