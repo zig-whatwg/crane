@@ -154,6 +154,27 @@ fn sendObserved(allocator: Allocator, job: *FetchJob, needed: FetchJob.NetworkSt
     var answer = sendBlocking(allocator, .{ .request = request });
     if (answer) |*response| job.observeResponseHead(response) else |_| {}
     if (job.isPreflight()) return answer;
+    // A challenge HTTP-network-or-cache fetch will prompt for: whoever
+    // answers prompts is asked first (Chrome: OnAuthRequired before the
+    // response reaches the interceptor's response stage), and Fetch's
+    // prompt takes the answer. With credentials the challenge's response
+    // goes straight to Fetch, which sends the request again.
+    if (answer) |*response| {
+        if (job.promptFor(response) catch null) |owned| {
+            defer owned.deinit(allocator);
+            const challenge = owned.challenge();
+            var auth_hold: BlockingHold = .{ .allocator = allocator };
+            defer auth_hold.deinit();
+            if (auth_hold.ask(.auth, job, null, .{ .challenge = &challenge }, 0)) {
+                const given: network.observer.AuthAnswer = switch (auth_hold.decision.?) {
+                    .auth => |a| a,
+                    else => .default,
+                };
+                job.answerPromptEarly(given) catch {};
+                if (given == .provide) return answer;
+            }
+        }
+    } else |_| {}
     var hold: BlockingHold = .{ .allocator = allocator };
     defer hold.deinit();
     const net_answer: network.observer.NetworkAnswer = if (answer) |*response| .{ .response = response } else |err| .{ .failed = err };

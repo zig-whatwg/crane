@@ -146,6 +146,10 @@ pub const AsyncFetch = struct {
     held_head: ?NetworkResponse = null,
     held_pipe: ?*body_pipe.BodyPipe = null,
     held_error: ?NetworkError = null,
+    /// The auth stage was asked as the challenge arrived (`held_head` is its
+    /// response, nothing having read it), with this challenge - Chrome's
+    /// order: authRequired before the response stage. OWNED.
+    head_challenge: ?FetchJob.OwnedChallenge = null,
     /// Interception.readBody: a second reader of the held body (`tee`), what
     /// it read, and who waits for its end. The held pipe keeps every byte
     /// for the fetch, whatever the decision.
@@ -425,6 +429,8 @@ pub const AsyncFetch = struct {
         self.held_pipe = null;
         if (self.held_head) |*head| head.deinit();
         self.held_head = null;
+        if (self.head_challenge) |c| c.deinit(self.allocator);
+        self.head_challenge = null;
         self.letRelayGo();
         // A stream request body's branch still written to a worker: its body
         // fails there.
@@ -662,6 +668,43 @@ pub const AsyncFetch = struct {
         return false;
     }
 
+    /// The auth stage asked as the challenge arrives (`FetchJob.promptFor`):
+    /// whether the observer answers it.
+    fn holdAuthAtHead(self: *AsyncFetch, head: *const NetworkResponse) bool {
+        const o = network.observer.of(self.job.request) orelse return false;
+        const intercept = o.intercept_auth orelse return false;
+        const owned = (self.job.promptFor(head) catch null) orelse return false;
+        self.head_challenge = owned;
+        const challenge = owned.challenge();
+        self.held = .auth;
+        if (intercept(o.context, self.job.request, &challenge, self.interceptionAt(.auth))) return true;
+        self.held = null;
+        self.head_challenge = null;
+        owned.deinit(self.allocator);
+        return false;
+    }
+
+    /// The answer to a challenge asked as it arrived: Fetch takes it when it
+    /// prompts. With credentials, the challenge's response goes to Fetch now
+    /// (it prompts, is answered, and sends the request again); without, the
+    /// response goes on - through the response stage first, Chrome's order.
+    fn resumeAuthAtHead(self: *AsyncFetch, answer: network.observer.AuthAnswer) void {
+        if (self.head_challenge) |c| c.deinit(self.allocator);
+        self.head_challenge = null;
+        self.job.answerPromptEarly(answer) catch {};
+        if (answer != .provide) if (self.holdResponse(.{ .response = &self.held_head.? })) return;
+        const head = self.held_head.?;
+        const pipe = self.held_pipe.?;
+        self.held_head = null;
+        self.held_pipe = null;
+        const ended = self.source == null;
+        // A challenge answered with credentials is no response of the
+        // page's: its body is nobody's.
+        if (answer != .provide) self.job.observeData(pipe.buffered.items);
+        self.advance(self.job.resumeNetworkHead(head, pipe));
+        if (ended and self.reporting and self.job.awaitsBodyEnd()) self.job.bodyEnded(.{ .encoded = self.encoded_bytes, .decoded = self.body_bytes });
+    }
+
     /// The auth stage: whether the observer answers the prompt.
     fn holdAuth(self: *AsyncFetch, challenge: *const network.observer.AuthChallenge) bool {
         const o = network.observer.of(self.job.request) orelse return false;
@@ -681,10 +724,14 @@ pub const AsyncFetch = struct {
         switch (stage) {
             .request => self.resumeRequestStage(decision.*),
             .response => self.resumeResponseStage(decision.*),
-            .auth => self.advance(self.job.resumeAuth(switch (decision.*) {
-                .auth => |answer| answer,
-                else => .default,
-            })),
+            .auth => {
+                const answer: network.observer.AuthAnswer = switch (decision.*) {
+                    .auth => |a| a,
+                    else => .default,
+                };
+                if (self.head_challenge != null) return self.resumeAuthAtHead(answer);
+                self.advance(self.job.resumeAuth(answer));
+            },
         }
     }
 
@@ -868,6 +915,14 @@ pub const AsyncFetch = struct {
         // The head as it came, for the observer
         // (Network.responseReceivedExtraInfo) - before anything holds it.
         self.job.observeResponseHead(&head);
+        // A challenge HTTP-network-or-cache fetch will prompt for: whoever
+        // answers prompts is asked first (Chrome: OnAuthRequired before the
+        // response reaches the interceptor's response stage).
+        if (self.holdAuthAtHead(&head)) {
+            self.held_head = head;
+            self.held_pipe = pipe;
+            return;
+        }
         // The response stage: the observer may hold it; the body goes on
         // arriving into the held pipe meanwhile.
         if (self.holdResponse(.{ .response = &head })) {

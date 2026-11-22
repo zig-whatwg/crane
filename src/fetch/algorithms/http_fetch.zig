@@ -946,6 +946,33 @@ pub fn promptAnswered(allocator: Allocator, params: *FetchParams, options: HttpF
     }
 }
 
+/// Whether HTTP-network-or-cache fetch will prompt the end user (step
+/// 15.3.2 for a 401, 16.4 for a 407) for a network answer of `status` and
+/// `headers` - asked as the answer arrives, before Fetch reads it, so a host
+/// that answers prompts hears the challenge before anything holds the
+/// response (Chrome's URLLoader raises OnAuthRequired before
+/// OnReceiveResponse, and DevTools' authRequired comes before the
+/// response stage). The same conditions as `httpNetworkOrCacheFetchFinish`
+/// (step 17's 421 and every other status: no). The challenge's Basic realm,
+/// OWNED.
+pub fn wouldPrompt(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, status: u16, headers: []const NetworkResponse.Header) Allocator.Error!?struct { source: enum { server, proxy }, realm: []u8 } {
+    const request = params.request;
+    if (params.isCanceled()) return null;
+    if (status == 407) {
+        if (request.traversable_for_user_prompts != .traversable) return null;
+        const realm = (try basicChallengeRealmIn(allocator, headers, "Proxy-Authenticate")) orelse return null;
+        return .{ .source = .proxy, .realm = realm };
+    }
+    if (status != 401) return null;
+    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request) or
+        request.traversable_for_user_prompts != .traversable) return null;
+    // 15.2: a stream body with no source is a network error, never a prompt.
+    if (request.body) |body| if (body == .body and body.body.source == .none) return null;
+    if (request.use_url_credentials and !options.is_authentication_fetch) return null;
+    const realm = (try basicChallengeRealmIn(allocator, headers, "WWW-Authenticate")) orelse return null;
+    return .{ .source = .server, .realm = realm };
+}
+
 /// HTTP-network-or-cache fetch 15 (formerly 14): a 401 challenge, and 16, a
 /// 407. Consumes the response on every path; never starts I/O or runs a
 /// callback itself.
@@ -1176,100 +1203,116 @@ fn basicChallengeRealm(allocator: Allocator, headers: *const @import("../interna
 fn basicChallengeRealmOf(allocator: Allocator, headers: *const @import("../internal/header_list.zig").HeaderList, header_name: []const u8) !?[]u8 {
     for (headers.iterator()) |header| {
         if (!std.ascii.eqlIgnoreCase(header.name, header_name)) continue;
-        var is_basic = false;
-        var realm: ?[]u8 = null;
-        defer if (realm) |r| allocator.free(r);
-        var start: usize = 0;
-        while (start < header.value.len) {
-            var end = start;
-            var quoted = false;
-            while (end < header.value.len) : (end += 1) {
-                const c = header.value[end];
-                if (quoted and c == '\\' and end + 1 < header.value.len) {
-                    end += 1;
-                    continue;
-                }
-                if (c == '"') quoted = !quoted;
-                if (!quoted and c == ',') break;
-            }
-            var item = std.mem.trim(u8, header.value[start..end], " \t");
-            start = end + 1;
-            var token_end: usize = 0;
-            while (token_end < item.len and validation.isValidHeaderName(item[token_end .. token_end + 1])) : (token_end += 1) {}
-            if (token_end == 0) {
-                is_basic = false;
+        if (try basicRealmOfValue(allocator, header.value)) |realm| return realm;
+    }
+    return null;
+}
+
+/// basicChallengeRealmOf over a network answer's headers, as they came.
+fn basicChallengeRealmIn(allocator: Allocator, headers: []const NetworkResponse.Header, header_name: []const u8) !?[]u8 {
+    for (headers) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, header_name)) continue;
+        if (try basicRealmOfValue(allocator, header.value)) |realm| return realm;
+    }
+    return null;
+}
+
+/// The realm of a Basic challenge in one challenge-list header value
+/// (OWNED), or null.
+fn basicRealmOfValue(allocator: Allocator, header_value: []const u8) !?[]u8 {
+    var is_basic = false;
+    var realm: ?[]u8 = null;
+    defer if (realm) |r| allocator.free(r);
+    var start: usize = 0;
+    while (start < header_value.len) {
+        var end = start;
+        var quoted = false;
+        while (end < header_value.len) : (end += 1) {
+            const c = header_value[end];
+            if (quoted and c == '\\' and end + 1 < header_value.len) {
+                end += 1;
                 continue;
             }
-            const rest = std.mem.trimStart(u8, item[token_end..], " \t");
-            if (rest.len == 0 or rest[0] != '=') {
-                if (is_basic and realm != null) {
-                    const result = realm;
-                    realm = null;
-                    return result;
-                }
-                if (realm) |r| allocator.free(r);
+            if (c == '"') quoted = !quoted;
+            if (!quoted and c == ',') break;
+        }
+        var item = std.mem.trim(u8, header_value[start..end], " \t");
+        start = end + 1;
+        var token_end: usize = 0;
+        while (token_end < item.len and validation.isValidHeaderName(item[token_end .. token_end + 1])) : (token_end += 1) {}
+        if (token_end == 0) {
+            is_basic = false;
+            continue;
+        }
+        const rest = std.mem.trimStart(u8, item[token_end..], " \t");
+        if (rest.len == 0 or rest[0] != '=') {
+            if (is_basic and realm != null) {
+                const result = realm;
                 realm = null;
-                is_basic = std.ascii.eqlIgnoreCase(item[0..token_end], "Basic");
-                item = rest;
+                return result;
             }
-            if (!is_basic) continue;
-            const equals = std.mem.indexOfScalar(u8, item, '=') orelse {
-                is_basic = false;
-                continue;
-            };
-            const name = std.mem.trim(u8, item[0..equals], " \t");
-            const value = std.mem.trim(u8, item[equals + 1 ..], " \t");
-            if (!validation.isValidHeaderName(name)) {
-                is_basic = false;
-                continue;
-            }
-            var parsed: std.ArrayListUnmanaged(u8) = .empty;
-            defer parsed.deinit(allocator);
-            if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
-                var i: usize = 1;
-                var valid = true;
-                while (i < value.len - 1) : (i += 1) {
-                    var c = value[i];
-                    if (c == '\\') {
-                        i += 1;
-                        if (i >= value.len - 1) {
-                            valid = false;
-                            break;
-                        }
-                        c = value[i];
-                    } else if (c == '"') {
-                        valid = false;
-                        break;
-                    }
-                    if ((c < 0x20 and c != '\t') or c == 0x7f) {
-                        valid = false;
-                        break;
-                    }
-                    try parsed.append(allocator, c);
-                }
-                if (!valid) {
-                    is_basic = false;
-                    continue;
-                }
-            } else if (validation.isValidHeaderName(value)) {
-                try parsed.appendSlice(allocator, value);
-            } else {
-                is_basic = false;
-                continue;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "realm")) {
-                if (realm != null) {
-                    is_basic = false;
-                    continue;
-                }
-                realm = try parsed.toOwnedSlice(allocator);
-            }
-        }
-        if (is_basic and realm != null) {
-            const result = realm;
+            if (realm) |r| allocator.free(r);
             realm = null;
-            return result;
+            is_basic = std.ascii.eqlIgnoreCase(item[0..token_end], "Basic");
+            item = rest;
         }
+        if (!is_basic) continue;
+        const equals = std.mem.indexOfScalar(u8, item, '=') orelse {
+            is_basic = false;
+            continue;
+        };
+        const name = std.mem.trim(u8, item[0..equals], " \t");
+        const value = std.mem.trim(u8, item[equals + 1 ..], " \t");
+        if (!validation.isValidHeaderName(name)) {
+            is_basic = false;
+            continue;
+        }
+        var parsed: std.ArrayListUnmanaged(u8) = .empty;
+        defer parsed.deinit(allocator);
+        if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+            var i: usize = 1;
+            var valid = true;
+            while (i < value.len - 1) : (i += 1) {
+                var c = value[i];
+                if (c == '\\') {
+                    i += 1;
+                    if (i >= value.len - 1) {
+                        valid = false;
+                        break;
+                    }
+                    c = value[i];
+                } else if (c == '"') {
+                    valid = false;
+                    break;
+                }
+                if ((c < 0x20 and c != '\t') or c == 0x7f) {
+                    valid = false;
+                    break;
+                }
+                try parsed.append(allocator, c);
+            }
+            if (!valid) {
+                is_basic = false;
+                continue;
+            }
+        } else if (validation.isValidHeaderName(value)) {
+            try parsed.appendSlice(allocator, value);
+        } else {
+            is_basic = false;
+            continue;
+        }
+        if (std.ascii.eqlIgnoreCase(name, "realm")) {
+            if (realm != null) {
+                is_basic = false;
+                continue;
+            }
+            realm = try parsed.toOwnedSlice(allocator);
+        }
+    }
+    if (is_basic and realm != null) {
+        const result = realm;
+        realm = null;
+        return result;
     }
     return null;
 }

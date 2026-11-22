@@ -383,3 +383,26 @@ test "Fetch commands of a session that never enabled the domain: Chrome's messag
     defer r.deinit();
     try testing.expectEqualStrings("Fetch domain is not enabled", cdp.stringAt(r.value, "error.message").?);
 }
+
+test "G17: Chrome's order - the challenge (authRequired) comes before a 401 is held at the response stage, which then holds the 401 after CancelAuth" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var page = try Page.open(gpa.allocator());
+    defer page.close();
+    try page.ok("Fetch.enable", "{\"handleAuthRequests\":true,\"patterns\":[{\"urlPattern\":\"*auth\",\"requestStage\":\"Response\"}]}");
+    var url_buffer: [96]u8 = undefined;
+    var source_buffer: [256]u8 = undefined;
+    gpa.allocator().free(try page.evaluate(try std.fmt.bufPrint(&source_buffer, "window.answer = fetch('{s}').then(r => r.status); 0", .{try page.url(&url_buffer, "/auth")})));
+    const first = try page.client.nextEventOf(&.{ "Fetch.authRequired", "Fetch.requestPaused" });
+    defer first.deinit();
+    try testing.expectEqualStrings("Fetch.authRequired", cdp.stringAt(first.value, "method").?);
+    var params_buffer: [256]u8 = undefined;
+    try page.ok("Fetch.continueWithAuth", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\",\"authChallengeResponse\":{{\"response\":\"CancelAuth\"}}}}", .{cdp.stringAt(first.value, "params.requestId").?}));
+    const paused = try page.client.waitEvent("Fetch.requestPaused");
+    defer paused.deinit();
+    try testing.expectEqual(@as(i64, 401), cdp.at(paused.value, "params.responseStatusCode").?.integer);
+    try page.ok("Fetch.continueRequest", try std.fmt.bufPrint(&params_buffer, "{{\"requestId\":\"{s}\"}}", .{cdp.stringAt(paused.value, "params.requestId").?}));
+    const answer = try page.evaluate("window.answer");
+    defer gpa.allocator().free(answer);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":401}", answer);
+}
