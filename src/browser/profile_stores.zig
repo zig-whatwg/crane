@@ -67,12 +67,10 @@ pub fn attach(scope: *runtime.BrowserScope, browser: *platform.BrowserPlatform, 
         }
     }
     // Cache Storage (D6 step 5): it keeps its caches in the store already;
-    // the caches an earlier Browser deleted while Cache objects held them
-    // go now (service_worker/cache/store.zig).
-    caches.purgeEarlierBrowsers(browser) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => log.err("the profile's deleted caches could not be purged ({s})", .{@errorName(err)}),
-    };
+    // its operations run on the sequence from now on, the first of them
+    // purging the caches an earlier Browser deleted while Cache objects held
+    // them (service_worker/cache/store.zig).
+    try caches.attachProfile(browser, sequence);
 }
 
 /// Hand `browser` - the Browser's platform state - to the parts of its web

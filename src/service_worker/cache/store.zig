@@ -33,11 +33,21 @@
 //! legacy/legacy_cache_storage.cc, SimpleCacheLoader::LoadIndex: "Delete
 //! caches that are not in the index", DeleteUnreferencedFiles).
 //!
+//! With a profile directory these operations run on the Browser's storage
+//! sequence (storage.StorageSequence; lane prof2), one at a time in the
+//! order called, as Chromium runs every Cache Storage operation through its
+//! CacheStorageScheduler on the cache storage's own sequence (content/
+//! browser/cache_storage/): api.zig hands each to the sequence as a job and
+//! settles its promise from a task posted back to the realm. The algorithms
+//! here are the same on either thread; with no profile directory they run on
+//! the caller's thread, as before.
+//!
 //! Spec: https://w3c.github.io/ServiceWorker/#cache-objects
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const platform = @import("platform");
+const storage_mod = @import("storage");
 const records = @import("records.zig");
 
 pub const Entry = records.Entry;
@@ -95,6 +105,10 @@ pub const Storage = struct {
     handles: std.AutoHashMapUnmanaged(u64, u32) = .empty,
     /// Caches deleted from their map while objects still represent them.
     doomed: std.ArrayListUnmanaged(u64) = .empty,
+    /// The Browser's storage sequence, which runs every operation of a
+    /// Browser with a profile directory (`attachProfile`, before any realm).
+    /// Null: they run on the caller's thread.
+    sequence: ?*storage_mod.StorageSequence = null,
 
     /// A BrowserScope supplement's init: with the scope's lock held.
     pub fn init(allocator: Allocator) Storage {
@@ -464,10 +478,43 @@ pub const Storage = struct {
         }
     }
 
+    /// The Browser has a profile directory: its Cache Storage operations run
+    /// on `sequence` from now on, and the first of them purges what earlier
+    /// Browsers on the profile left (`purgeEarlierBrowsers`). The Browser's
+    /// start (src/browser/profile_stores.zig), before any realm.
+    pub fn attachProfile(self: *Storage, browser: *platform.BrowserPlatform, sequence: *storage_mod.StorageSequence) Allocator.Error!void {
+        const job = try self.allocator.create(PurgeJob);
+        job.* = .{ .storage = self, .browser = browser };
+        self.sequence = sequence;
+        sequence.post(&job.job);
+    }
+
+    /// `purgeEarlierBrowsers`, on the storage sequence.
+    const PurgeJob = struct {
+        job: storage_mod.sequence.Job = .{ .run = run, .drop = drop },
+        storage: *Storage,
+        browser: *platform.BrowserPlatform,
+
+        fn run(job: *storage_mod.sequence.Job) void {
+            const self: *PurgeJob = @fieldParentPtr("job", job);
+            const owner = self.storage;
+            const browser = self.browser;
+            owner.allocator.destroy(self);
+            owner.purgeEarlierBrowsers(browser) catch |err| {
+                std.log.scoped(.service_worker).err("the profile's deleted caches could not be purged ({s})", .{@errorName(err)});
+            };
+        }
+
+        fn drop(job: *storage_mod.sequence.Job) void {
+            const self: *PurgeJob = @fieldParentPtr("job", job);
+            self.storage.allocator.destroy(self);
+        }
+    };
+
     /// The caches earlier Browsers on this profile deleted while Cache
     /// objects held them, and ended with: their entries and marks go. The
-    /// Browser's start (src/browser/profile_stores.zig), before any realm -
-    /// nothing of this Browser holds them.
+    /// Browser's start, before any realm - nothing of this Browser holds
+    /// them; on the storage sequence (`attachProfile`).
     pub fn purgeEarlierBrowsers(self: *Storage, browser: *platform.BrowserPlatform) Error!void {
         self.lock();
         defer self.unlock();

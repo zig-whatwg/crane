@@ -31,6 +31,22 @@
 //! - A store failure rejects with an "UnknownError" DOMException (as
 //!   Chromium's backend errors do); the spec names none.
 //!
+//! With a profile directory (lane prof2) the store work of every member - a
+//! read or a write - is a job on the Browser's storage sequence, run in the
+//! order called, and its promise settles from a task posted back to the
+//! realm's loop: Chromium runs every Cache Storage operation through its
+//! CacheStorageScheduler on the cache storage's own sequence and answers the
+//! renderer asynchronously (content/browser/cache_storage/
+//! cache_storage_scheduler.cc), and the spec's steps that read or change the
+//! lists run "in parallel" and settle the promise from a task. The promise
+//! waits in a pending call of the realm (`PendingCalls`), released on the
+//! realm's own thread - by its answer, or by the realm's end (an unloading
+//! cleanup step, which a worker's end runs too). With no profile directory
+//! the steps run at once, as above. A router's cache source (`routerMatch`)
+//! stays synchronous - Handle Fetch needs the answer now - and waits for the
+//! sequence's earlier work first (`barrier`): the requests it waits behind
+//! are the ones Chromium's matcher would be queued behind.
+//!
 //! Spec: https://w3c.github.io/ServiceWorker/#cache-objects
 
 const std = @import("std");
@@ -46,6 +62,8 @@ const fetch = @import("fetch");
 const platform = @import("platform");
 const store_mod = @import("store.zig");
 const records = @import("records.zig");
+const storage_mod = @import("storage");
+const Job = storage_mod.sequence.Job;
 
 const Storage = store_mod.Storage;
 const InternalRequest = fetch.internal.InternalRequest;
@@ -413,6 +431,9 @@ fn routerMatchSteps(realm: runtime.Context, allocator: Allocator, storage_key: [
     const browser = html.platform_state.of(realm) orelse return null;
     var stored = try storedRequestOf(allocator, request);
     defer stored.deinit(allocator);
+    // The work handed to the storage sequence before this, done first:
+    // Handle Fetch waits for the answer here, on this thread.
+    if (storage.sequence) |sequence| sequence.barrier();
     // 13.3.3.6-7: the storage key's caches, queried in order.
     var entry = (storage.routerMatch(browser, allocator, storage_key, cache_name, store_mod.Query.of(&stored)) catch return null) orelse return null;
     defer entry.deinit(allocator);
@@ -430,6 +451,24 @@ pub fn storageMatch(cache_storage: *runtime.Instance, request: RequestInfo, opti
     var scope = try Scope.of(realm);
     defer scope.deinit();
     const allocator = realm.allocator;
+    if (scope.storage.sequence) |sequence| {
+        const query_options = queryOptionsOf(if (options) |o| o.base else null);
+        var stored = try storedRequestFromInfo(realm, request);
+        defer stored.deinit(allocator);
+        // matchAll()'s step 2.1.2: a Request object whose method is not GET
+        // matches nothing, without ignoreMethod - no cache to ask.
+        if (request == .request and !query_options.ignore_method and !std.mem.eql(u8, stored.method, "GET")) return resolved(realm, runtime.JSValue.jsUndefined);
+        const store_allocator = scope.storage.allocator;
+        const work: Call.Work = built: {
+            var built: Call.Work = .{ .match_storage = .{ .request = try stored.clone(store_allocator), .options = query_options } };
+            errdefer built.deinit(store_allocator);
+            if (options) |o| if (o.cacheName) |name| {
+                built.match_storage.cache_name = try store_allocator.dupe(u8, name.asSlice());
+            };
+            break :built built;
+        };
+        return Call.start(&scope, sequence, work, .first_response);
+    }
     const caches = scope.storage.caches(scope.browser, allocator, scope.storage_key) catch |err| return storeError(err);
     defer {
         for (caches) |c| allocator.free(c.name);
@@ -457,6 +496,7 @@ pub fn storageHas(cache_storage: *runtime.Instance, name: []const u8) !runtime.J
     const realm = cache_storage.ctx;
     var scope = try Scope.of(realm);
     defer scope.deinit();
+    if (scope.storage.sequence) |sequence| return Call.start(&scope, sequence, .{ .has = try scope.storage.allocator.dupe(u8, name) }, .boolean);
     const found = scope.storage.hasCache(scope.browser, scope.storage_key, name) catch |err| return storeError(err);
     return resolved(realm, runtime.JSValue.fromBoolean(found));
 }
@@ -467,6 +507,7 @@ pub fn storageOpen(cache_storage: *runtime.Instance, name: []const u8) !runtime.
     const realm = cache_storage.ctx;
     var scope = try Scope.of(realm);
     defer scope.deinit();
+    if (scope.storage.sequence) |sequence| return Call.start(&scope, sequence, .{ .open = try scope.storage.allocator.dupe(u8, name) }, .cache);
     const id = scope.storage.openCache(scope.browser, scope.storage_key, name) catch |err| return storeError(err);
     const object = try wrapNow(realm, try interfaces.Cache.initWith(realm.allocator, realm, .{ .cache = CacheHandle{ .storage = scope.storage, .cache = id } }));
     return resolved(realm, runtime.JSValue.fromInstance(object));
@@ -477,6 +518,7 @@ pub fn storageDelete(cache_storage: *runtime.Instance, name: []const u8) !runtim
     const realm = cache_storage.ctx;
     var scope = try Scope.of(realm);
     defer scope.deinit();
+    if (scope.storage.sequence) |sequence| return Call.start(&scope, sequence, .{ .delete_cache = try scope.storage.allocator.dupe(u8, name) }, .boolean);
     const deleted = scope.storage.deleteCache(scope.browser, scope.storage_key, name) catch |err| return storeError(err);
     return resolved(realm, runtime.JSValue.fromBoolean(deleted));
 }
@@ -487,6 +529,7 @@ pub fn storageKeys(cache_storage: *runtime.Instance) !runtime.JSValue {
     var scope = try Scope.of(realm);
     defer scope.deinit();
     const allocator = realm.allocator;
+    if (scope.storage.sequence) |sequence| return Call.start(&scope, sequence, .names, .names);
     const names = scope.storage.cacheNames(scope.browser, allocator, scope.storage_key) catch |err| return storeError(err);
     defer {
         for (names) |n| allocator.free(n);
@@ -620,7 +663,29 @@ fn matchIn(scope: *Scope, cache: u64, request: RequestInfo, options: store_mod.Q
 pub fn match(cache_object: *runtime.Instance, handle: CacheHandle, request: RequestInfo, options: ?dictionaries.CacheQueryOptions) !runtime.JSValue {
     var scope = try Scope.of(cache_object.ctx);
     defer scope.deinit();
+    if (scope.storage.sequence) |sequence| return startQuery(&scope, sequence, handle.cache, request, queryOptionsOf(options), .first_response);
     return matchIn(&scope, handle.cache, request, queryOptionsOf(options));
+}
+
+/// match(), matchAll() and keys() on the storage sequence: the query made
+/// there, its answer made of the entries here (`answer`).
+fn startQuery(scope: *Scope, sequence: *storage_mod.StorageSequence, cache: u64, request: ?RequestInfo, options: store_mod.QueryOptions, answer: Call.Answer) !runtime.JSValue {
+    const realm = scope.realm;
+    var work: Call.Work = .{ .query = .{ .cache = cache, .options = options } };
+    if (request) |info| {
+        var stored = try storedRequestFromInfo(realm, info);
+        defer stored.deinit(realm.allocator);
+        // 2.1.2. A Request object whose method is not GET: nothing, without
+        // ignoreMethod - no list to read.
+        if (info == .request and !options.ignore_method and !std.mem.eql(u8, stored.method, "GET")) {
+            if (answer == .first_response) return resolved(realm, runtime.JSValue.jsUndefined);
+            const array = try engine.createFrozenArray(realm, &[_]runtime.JSValue{});
+            defer array.release();
+            return resolved(realm, array.borrow());
+        }
+        work.query.request = try stored.clone(scope.storage.allocator);
+    }
+    return Call.start(scope, sequence, work, answer);
 }
 
 /// matchAll(request, options) (5.4.2): a new Response object for each
@@ -630,6 +695,7 @@ pub fn matchAll(cache_object: *runtime.Instance, handle: CacheHandle, request: ?
     var scope = try Scope.of(realm);
     defer scope.deinit();
     const allocator = realm.allocator;
+    if (scope.storage.sequence) |sequence| return startQuery(&scope, sequence, handle.cache, request, queryOptionsOf(options), .responses);
     const entries = try findEntries(&scope, handle.cache, request, queryOptionsOf(options));
     defer records.freeEntries(allocator, entries);
     // 5.4. A blocked opaque response rejects with a TypeError.
@@ -649,6 +715,7 @@ pub fn keys(cache_object: *runtime.Instance, handle: CacheHandle, request: ?Requ
     var scope = try Scope.of(realm);
     defer scope.deinit();
     const allocator = realm.allocator;
+    if (scope.storage.sequence) |sequence| return startQuery(&scope, sequence, handle.cache, request, queryOptionsOf(options), .requests);
     const entries = try findEntries(&scope, handle.cache, request, queryOptionsOf(options));
     defer records.freeEntries(allocator, entries);
     const values = try allocator.alloc(runtime.JSValue, entries.len);
@@ -672,7 +739,18 @@ pub fn delete(cache_object: *runtime.Instance, handle: CacheHandle, request: Req
     // 2.2. A Request object whose method is not GET: false, without
     // ignoreMethod.
     if (request == .request and !query_options.ignore_method and !std.mem.eql(u8, stored.method, "GET")) return resolved(realm, runtime.JSValue.fromBoolean(false));
-    // 4-12. One delete operation.
+    // 4-12. One delete operation - on the storage sequence with a profile
+    // directory.
+    if (scope.storage.sequence) |sequence| {
+        const store_allocator = scope.storage.allocator;
+        const operations = made: {
+            const made = try store_allocator.alloc(Call.OwnedOperation, 1);
+            errdefer store_allocator.free(made);
+            made[0] = .{ .kind = .delete, .request = try stored.clone(store_allocator), .options = query_options };
+            break :made made;
+        };
+        return Call.start(&scope, sequence, .{ .batch = .{ .cache = handle.cache, .operations = operations } }, .removed_any);
+    }
     const removed = scope.storage.batch(scope.browser, handle.cache, &.{.{ .kind = .delete, .request = &stored, .options = query_options }}) catch |err| return storeError(err);
     return resolved(realm, runtime.JSValue.fromBoolean(removed > 0));
 }
@@ -919,6 +997,9 @@ const PutOp = struct {
             self.settled = false;
             return self.failWith(error.InvalidStateError);
         };
+        // With a profile directory, the batch is the storage sequence's: the
+        // promise settles from its answer (`Call`), this op held until then.
+        if (self.handle.storage.sequence) |sequence| return self.commitOnSequence(sequence, browser, operations);
         _ = self.handle.storage.batch(browser, self.handle.cache, operations) catch |err| {
             const exception = storeException(self.realm, err) catch return;
             defer exception.release();
@@ -926,6 +1007,20 @@ const PutOp = struct {
             return;
         };
         engine.resolvePromise(&self.capability, runtime.JSValue.jsUndefined) catch {};
+    }
+
+    /// Batch Cache Operations of `operations` (borrowed from the slots),
+    /// copied into a job of the storage sequence.
+    fn commitOnSequence(self: *PutOp, sequence: *storage_mod.StorageSequence, browser: *platform.BrowserPlatform, operations: []const store_mod.Operation) void {
+        const store_allocator = self.handle.storage.allocator;
+        const owned = Call.OwnedOperation.copyAll(store_allocator, operations) catch {
+            self.settled = false;
+            return self.failWith(error.OutOfMemory);
+        };
+        Call.startPut(self, sequence, browser, .{ .batch = .{ .cache = self.handle.cache, .operations = owned } }) catch |err| {
+            self.settled = false;
+            self.failWith(err);
+        };
     }
 
     /// One reaction of the op: to a fetch, then to its response's body.
@@ -1132,6 +1227,533 @@ const InternalBodyRead = struct {
         const op = self.op;
         op.allocator.destroy(self);
         op.release();
+    }
+};
+
+// ============================================================================
+// On the Browser's storage sequence (lane prof2)
+// ============================================================================
+
+/// The Cache Storage calls of a Browser's realms still waiting for their
+/// answer from the storage sequence: a BrowserScope supplement, shared by
+/// every thread of the Browser. A pending call holds its promise - engine
+/// handles of its realm's agent - so it is released on that realm's thread
+/// only: by its answer's task, or at the realm's end (`environmentEnded`),
+/// never by the sequence or a dropped task.
+pub const PendingCalls = struct {
+    allocator: Allocator,
+    mutex: std.Io.Mutex = .init,
+    calls: std.ArrayListUnmanaged(*PendingCall) = .empty,
+    next_id: u64 = 1,
+
+    pub fn init(allocator: Allocator) PendingCalls {
+        return .{ .allocator = allocator };
+    }
+
+    /// With the Browser's scope, after every realm ended - each released
+    /// its calls (`environmentEnded`). What is left has no agent to release
+    /// its handles in: its memory goes.
+    pub fn deinit(self: *PendingCalls) void {
+        if (self.calls.items.len != 0) log.warn("{d} Cache Storage calls outlived their realms", .{self.calls.items.len});
+        for (self.calls.items) |call| call.allocator.destroy(call);
+        self.calls.deinit(self.allocator);
+    }
+
+    fn lock(self: *PendingCalls) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+    }
+
+    fn unlock(self: *PendingCalls) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+
+    /// List `call`, giving it its id.
+    fn add(self: *PendingCalls, call: *PendingCall) Allocator.Error!void {
+        self.lock();
+        defer self.unlock();
+        try self.calls.append(self.allocator, call);
+        call.id = self.next_id;
+        self.next_id += 1;
+    }
+
+    /// The call `id`, taken off the list: null when its realm ended first.
+    fn take(self: *PendingCalls, id: u64) ?*PendingCall {
+        self.lock();
+        defer self.unlock();
+        for (self.calls.items, 0..) |call, i| {
+            if (call.id == id) return self.calls.swapRemove(i);
+        }
+        return null;
+    }
+
+    /// Every call of `realm`, taken off the list into `out`.
+    fn takeRealm(self: *PendingCalls, realm: runtime.Context, out: *std.ArrayListUnmanaged(*PendingCall), out_allocator: Allocator) void {
+        self.lock();
+        defer self.unlock();
+        var i: usize = 0;
+        while (i < self.calls.items.len) {
+            const call = self.calls.items[i];
+            if (call.realm != realm) {
+                i += 1;
+                continue;
+            }
+            out.append(out_allocator, call) catch {
+                // No room to move it out: released here, under the lock
+                // (it releases engine handles of this thread only).
+                _ = self.calls.swapRemove(i);
+                call.destroy();
+                continue;
+            };
+            _ = self.calls.swapRemove(i);
+        }
+    }
+};
+
+/// The end of an environment (dom.unloading_cleanup, installed by
+/// CacheStorage; it runs for a document's end and for every worker's, a
+/// service worker's included): its Cache Storage calls still waiting for the
+/// storage sequence are released, on its own thread - their promises are
+/// never settled, as Chromium drops the callbacks of a destroyed execution
+/// context. Their jobs still run; their answers find no call.
+pub fn environmentEnded(environment: runtime.Context) void {
+    const browser_scope = environment.browserScope() orelse return;
+    const pending = browser_scope.existing(PendingCalls) orelse return;
+    var ended: std.ArrayListUnmanaged(*PendingCall) = .empty;
+    defer ended.deinit(environment.allocator);
+    pending.takeRealm(environment, &ended, environment.allocator);
+    for (ended.items) |call| call.destroy();
+}
+
+/// How a call's answer becomes its promise's value, in its realm.
+const PendingCall = struct {
+    id: u64 = 0,
+    /// The realm's: the call is made and released on its thread.
+    allocator: Allocator,
+    realm: runtime.Context,
+    storage: *Storage,
+    answer: Call.Answer,
+    target: union(enum) {
+        promise: engine.PromiseCapability,
+        /// put()'s and addAll()'s batch: their op settles its own promise.
+        put: *PutOp,
+    },
+
+    /// On the realm's thread, its agent alive.
+    fn destroy(self: *PendingCall) void {
+        switch (self.target) {
+            .promise => |*capability| engine.releasePromiseCapability(capability),
+            .put => |op| op.release(),
+        }
+        self.allocator.destroy(self);
+    }
+
+    fn resolve(self: *PendingCall, value: runtime.JSValue) !void {
+        switch (self.target) {
+            .promise => |*capability| try engine.resolvePromise(capability, value),
+            .put => |op| {
+                // The op was marked settled when its batch was handed over.
+                try engine.resolvePromise(&op.capability, value);
+            },
+        }
+    }
+
+    fn reject(self: *PendingCall, err: anyerror) !void {
+        const exception = try exceptionFor(self.realm, err);
+        defer exception.release();
+        switch (self.target) {
+            .promise => |*capability| try engine.rejectPromise(capability, exception.borrow()),
+            .put => |op| try engine.rejectPromise(&op.capability, exception.borrow()),
+        }
+    }
+
+    /// The answer, as the member's steps settle the promise with it - the
+    /// same values the members make when they run at once.
+    fn settle(self: *PendingCall, outcome: *const Call.Outcome) !void {
+        const realm = self.realm;
+        switch (outcome.*) {
+            .failure => |err| return self.reject(err),
+            else => {},
+        }
+        switch (self.answer) {
+            .boolean => try self.resolve(runtime.JSValue.fromBoolean(outcome.boolean)),
+            // open() step 2.4: a new Cache object representing the cache.
+            .cache => {
+                const object = try wrapNow(realm, try interfaces.Cache.initWith(realm.allocator, realm, .{ .cache = CacheHandle{ .storage = self.storage, .cache = outcome.cache } }));
+                try self.resolve(runtime.JSValue.fromInstance(object));
+            },
+            .names => {
+                const names = outcome.names;
+                const values = try realm.allocator.alloc(runtime.JSValue, names.len);
+                defer realm.allocator.free(values);
+                for (names, values) |name, *value| value.* = runtime.JSValue.fromStringRef(name);
+                const array = try engine.createSequenceOfValues(realm, values);
+                defer array.release();
+                try self.resolve(array.borrow());
+            },
+            // match() (5.4.1) and CacheStorage's match() (5.5.1): matchAll()'s
+            // step 5.4 over every match, then the first, or undefined.
+            .first_response => {
+                const entries = outcome.entries;
+                if (try corpBlocks(realm, entries)) return self.reject(error.TypeError);
+                if (entries.len == 0) return self.resolve(runtime.JSValue.jsUndefined);
+                try self.resolve(runtime.JSValue.fromInstance(try responseObject(realm, &entries[0].response)));
+            },
+            .responses => {
+                const entries = outcome.entries;
+                if (try corpBlocks(realm, entries)) return self.reject(error.TypeError);
+                const values = try realm.allocator.alloc(runtime.JSValue, entries.len);
+                defer realm.allocator.free(values);
+                for (entries, values) |*entry, *value| value.* = runtime.JSValue.fromInstance(try responseObject(realm, &entry.response));
+                const array = try engine.createFrozenArray(realm, values);
+                defer array.release();
+                try self.resolve(array.borrow());
+            },
+            .requests => {
+                const entries = outcome.entries;
+                const values = try realm.allocator.alloc(runtime.JSValue, entries.len);
+                defer realm.allocator.free(values);
+                for (entries, values) |*entry, *value| value.* = runtime.JSValue.fromInstance(try requestObject(realm, &entry.request));
+                const array = try engine.createFrozenArray(realm, values);
+                defer array.release();
+                try self.resolve(array.borrow());
+            },
+            .removed_any => try self.resolve(runtime.JSValue.fromBoolean(outcome.removed > 0)),
+            .put => try self.resolve(runtime.JSValue.jsUndefined),
+        }
+    }
+};
+
+/// The exception a call's failure rejects with: a store error's, matchAll()
+/// step 5.4's TypeError, or - a step of ours that failed - a TypeError.
+fn exceptionFor(realm: runtime.Context, err: anyerror) !engine.Owned {
+    return switch (err) {
+        error.TypeError, error.InvalidStateError, error.QuotaExceeded, error.StoreFailed => storeException(realm, @errorCast(err)),
+        error.OutOfMemory => error.OutOfMemory,
+        else => engine.createSimpleException(realm, .TypeError, "The cache operation failed"),
+    };
+}
+
+/// One Cache Storage call's store work, on the Browser's storage sequence:
+/// its inputs (copies, the storage's allocator: freed on the sequence), its
+/// outcome (made there, read on the realm's thread), and the way back - the
+/// realm's task sink and the id of its pending call.
+const Call = struct {
+    job: Job = .{ .run = run, .drop = drop },
+    /// The storage's: thread-safe.
+    allocator: Allocator,
+    storage: *Storage,
+    /// BORROWED: the Browser's platform state, which outlives the sequence.
+    browser: *platform.BrowserPlatform,
+    pending: *PendingCalls,
+    id: u64,
+    /// A reference to the realm's task sink, for the answer. Null: the realm
+    /// has no loop, and its caller waits (`barrier`) and settles.
+    sink: ?*runtime.TaskSink,
+    /// OWNED.
+    storage_key: []u8,
+    work: Work,
+    outcome: Outcome = .none,
+    /// The pending call, once the answer's task took it (its realm's
+    /// thread; a task queued again for a page in the back/forward cache).
+    record: ?*PendingCall = null,
+
+    const Answer = enum { boolean, cache, names, first_response, responses, requests, removed_any, put };
+
+    /// A batch operation, owning its request and response.
+    const OwnedOperation = struct {
+        kind: @FieldType(store_mod.Operation, "kind"),
+        request: records.StoredRequest,
+        response: ?records.StoredResponse = null,
+        options: ?store_mod.QueryOptions = null,
+
+        fn deinit(self: *OwnedOperation, allocator: Allocator) void {
+            self.request.deinit(allocator);
+            if (self.response) |*response| response.deinit(allocator);
+        }
+
+        /// Copies of `operations`. OWNED.
+        fn copyAll(allocator: Allocator, operations: []const store_mod.Operation) Allocator.Error![]OwnedOperation {
+            const owned = try allocator.alloc(OwnedOperation, operations.len);
+            var made: usize = 0;
+            errdefer {
+                for (owned[0..made]) |*operation| operation.deinit(allocator);
+                allocator.free(owned);
+            }
+            for (operations) |operation| {
+                var request = try operation.request.clone(allocator);
+                errdefer request.deinit(allocator);
+                const response: ?records.StoredResponse = if (operation.response) |r| try r.clone(allocator) else null;
+                owned[made] = .{ .kind = operation.kind, .request = request, .response = response, .options = operation.options };
+                made += 1;
+            }
+            return owned;
+        }
+    };
+
+    const Work = union(enum) {
+        has: []u8,
+        open: []u8,
+        delete_cache: []u8,
+        names,
+        match_storage: struct { request: records.StoredRequest, options: store_mod.QueryOptions, cache_name: ?[]u8 = null },
+        query: struct { cache: u64, request: ?records.StoredRequest = null, options: store_mod.QueryOptions },
+        batch: struct { cache: u64, operations: []OwnedOperation },
+
+        fn deinit(self: *Work, allocator: Allocator) void {
+            switch (self.*) {
+                .has, .open, .delete_cache => |name| allocator.free(name),
+                .names => {},
+                .match_storage => |*m| {
+                    m.request.deinit(allocator);
+                    if (m.cache_name) |name| allocator.free(name);
+                },
+                .query => |*q| if (q.request) |*request| request.deinit(allocator),
+                .batch => |b| {
+                    for (b.operations) |*operation| operation.deinit(allocator);
+                    allocator.free(b.operations);
+                },
+            }
+            self.* = .names;
+        }
+    };
+
+    const Outcome = union(enum) {
+        none,
+        failure: store_mod.Error,
+        boolean: bool,
+        /// open()'s cache, held for the Cache object the answer makes.
+        cache: u64,
+        names: [][]u8,
+        entries: []records.Entry,
+        removed: usize,
+    };
+
+    /// Hand `work` (taken, whatever happens) to the sequence for `scope`'s
+    /// realm; the promise it answers. The realm's thread.
+    fn start(scope: *Scope, sequence: *storage_mod.StorageSequence, work: Work, answer: Answer) !runtime.JSValue {
+        var owned_work = work;
+        errdefer owned_work.deinit(scope.storage.allocator);
+        const realm = scope.realm;
+        var capability = try engine.createPromise(realm);
+        var capability_owned = true;
+        errdefer if (capability_owned) engine.releasePromiseCapability(&capability);
+        const promise = try engine.retainValue(realm, capability.promise);
+        errdefer promise.release();
+        const record = try realm.allocator.create(PendingCall);
+        record.* = .{ .allocator = realm.allocator, .realm = realm, .storage = scope.storage, .answer = answer, .target = .{ .promise = capability } };
+        capability_owned = false;
+        errdefer {
+            // Still the record's, never listed: released here.
+            record.destroy();
+        }
+        try hand(scope.storage, sequence, scope.browser, scope.storage_key, &owned_work, record);
+        return promise.take();
+    }
+
+    /// put()'s and addAll()'s batch (`work`, taken): `op` settles when the
+    /// sequence answers. The op's realm's thread.
+    fn startPut(op: *PutOp, sequence: *storage_mod.StorageSequence, browser: *platform.BrowserPlatform, work: Work) !void {
+        var owned_work = work;
+        errdefer owned_work.deinit(op.handle.storage.allocator);
+        const realm = op.realm;
+        const record = try realm.allocator.create(PendingCall);
+        record.* = .{ .allocator = realm.allocator, .realm = realm, .storage = op.handle.storage, .answer = .put, .target = .{ .put = op.retain() } };
+        errdefer record.destroy();
+        try hand(op.handle.storage, sequence, browser, "", &owned_work, record);
+    }
+
+    /// Make the job for `record` (listed by this), taking `work.*` once
+    /// nothing can fail, and post it. A realm with no loop to answer on
+    /// waits for the sequence here and is answered at once.
+    fn hand(store: *Storage, sequence: *storage_mod.StorageSequence, browser: *platform.BrowserPlatform, storage_key: []const u8, work: *Work, record: *PendingCall) !void {
+        const realm = record.realm;
+        const browser_scope = realm.browserScope() orelse return error.InvalidStateError;
+        const pending = try browser_scope.of(PendingCalls);
+        const key = try store.allocator.dupe(u8, storage_key);
+        errdefer store.allocator.free(key);
+        const self = try store.allocator.create(Call);
+        errdefer store.allocator.destroy(self);
+        try pending.add(record);
+        // Nothing below fails: the work and the record are the call's.
+        self.* = .{
+            .allocator = store.allocator,
+            .storage = store,
+            .browser = browser,
+            .pending = pending,
+            .id = record.id,
+            .sink = if (realm.task_sink) |sink| sink.retain() else null,
+            .storage_key = key,
+            .work = work.*,
+        };
+        work.* = .names;
+        const answered_here = self.sink == null;
+        sequence.post(&self.job);
+        if (!answered_here) return;
+        // No loop to post the answer to: waited for, and settled now - the
+        // caller is this realm's script.
+        sequence.barrier();
+        const taken = pending.take(self.id) orelse return self.destroy();
+        defer taken.destroy();
+        defer self.destroy();
+        taken.settle(&self.outcome) catch |err| taken.reject(err) catch {};
+    }
+
+    /// On the storage sequence: the store work, then the answer posted.
+    fn run(job: *Job) void {
+        const self: *Call = @fieldParentPtr("job", job);
+        self.outcome = self.perform() catch |err| .{ .failure = err };
+        self.work.deinit(self.allocator);
+        self.postAnswer();
+    }
+
+    /// The sequence had stopped (the Browser is ending, after its realms):
+    /// a store failure, answered as one.
+    fn drop(job: *Job) void {
+        const self: *Call = @fieldParentPtr("job", job);
+        self.outcome = .{ .failure = error.StoreFailed };
+        self.work.deinit(self.allocator);
+        self.postAnswer();
+    }
+
+    fn postAnswer(self: *Call) void {
+        // A realm with no loop: its caller settles after `barrier`.
+        const sink = self.sink orelse return;
+        _ = sink.post(.{ .run = answerRun, .drop = answerDrop, .data = self });
+    }
+
+    fn perform(self: *Call) store_mod.Error!Outcome {
+        const store = self.storage;
+        const browser = self.browser;
+        const allocator = self.allocator;
+        const key = self.storage_key;
+        switch (self.work) {
+            .has => |name| return .{ .boolean = try store.hasCache(browser, key, name) },
+            .open => |name| {
+                const cache = try store.openCache(browser, key, name);
+                // Held now, before any later job can delete it: the Cache
+                // object the answer makes takes over (Chromium's backend
+                // hands the renderer a cache handle as open() completes).
+                try store.retain(cache);
+                return .{ .cache = cache };
+            },
+            .delete_cache => |name| return .{ .boolean = try store.deleteCache(browser, key, name) },
+            .names => return .{ .names = try store.cacheNames(browser, allocator, key) },
+            .match_storage => |*m| return .{ .entries = try matchStorage(store, browser, allocator, key, m.request, m.options, m.cache_name) },
+            .query => |*q| return .{ .entries = try store.query(browser, allocator, q.cache, if (q.request) |*request| store_mod.Query.of(request) else null, q.options) },
+            .batch => |b| {
+                const operations = try allocator.alloc(store_mod.Operation, b.operations.len);
+                defer allocator.free(operations);
+                for (b.operations, operations) |*owned, *operation| operation.* = .{
+                    .kind = owned.kind,
+                    .request = &owned.request,
+                    .response = if (owned.response) |*response| response else null,
+                    .options = owned.options,
+                };
+                return .{ .removed = try store.batch(browser, b.cache, operations) };
+            },
+        }
+    }
+
+    /// CacheStorage's match() (5.5.1), on the sequence: the named cache's
+    /// entries for the request (none when the map has no such cache), or
+    /// those of the first cache in the map with a match. OWNED.
+    fn matchStorage(store: *Storage, browser: *platform.BrowserPlatform, allocator: Allocator, key: []const u8, request: records.StoredRequest, options: store_mod.QueryOptions, cache_name: ?[]const u8) store_mod.Error![]records.Entry {
+        const caches = try store.caches(browser, allocator, key);
+        defer {
+            for (caches) |c| allocator.free(c.name);
+            allocator.free(caches);
+        }
+        // 1. options["cacheName"]: that cache's match(), or undefined.
+        if (cache_name) |name| {
+            for (caches) |c| {
+                if (std.mem.eql(u8, c.name, name)) return store.query(browser, allocator, c.cache, store_mod.Query.of(&request), options);
+            }
+            return allocator.alloc(records.Entry, 0);
+        }
+        // 2. Each cache in order, until one matches.
+        for (caches) |c| {
+            const entries = try store.query(browser, allocator, c.cache, store_mod.Query.of(&request), options);
+            if (entries.len != 0) return entries;
+            allocator.free(entries);
+        }
+        return allocator.alloc(records.Entry, 0);
+    }
+
+    /// The realm's thread: the pending call settled, if its realm still
+    /// waits for it.
+    fn answerRun(data: ?*anyopaque) void {
+        const self: *Call = @ptrCast(@alignCast(data.?));
+        const record = self.pending.take(self.id) orelse return self.destroy();
+        self.record = record;
+        // A Window whose page is in the back/forward cache: the task waits
+        // with the page (dom.document_activity).
+        if (record.realm.hasEngine()) if (globalOf(record.realm)) |global| {
+            if (dom.document_activity.queuedUntilFullyActive(global, answerAgain, answerDropped, self)) return;
+        };
+        self.settleRecord();
+    }
+
+    /// The task queued again with its page, now run.
+    fn answerAgain(data: ?*anyopaque) void {
+        const self: *Call = @ptrCast(@alignCast(data.?));
+        self.settleRecord();
+    }
+
+    /// Its page was evicted: the call goes unanswered (the window thread).
+    fn answerDropped(data: ?*anyopaque) void {
+        const self: *Call = @ptrCast(@alignCast(data.?));
+        if (self.record) |record| record.destroy();
+        self.record = null;
+        self.destroy();
+    }
+
+    fn settleRecord(self: *Call) void {
+        const record = self.record.?;
+        self.record = null;
+        defer {
+            record.destroy();
+            self.destroy();
+        }
+        if (!record.realm.hasEngine()) return;
+        var settling: Settling = .{ .call = self, .record = record };
+        engine.runTaskInRealm(record.realm, Settling.steps, &settling) catch |err| {
+            log.debug("a Cache Storage answer not run: {s}", .{@errorName(err)});
+        };
+    }
+
+    const Settling = struct {
+        call: *Call,
+        record: *PendingCall,
+
+        fn steps(data: ?*anyopaque) void {
+            const self: *Settling = @ptrCast(@alignCast(data.?));
+            self.record.settle(&self.call.outcome) catch |err| self.record.reject(err) catch {};
+        }
+    };
+
+    /// Never run (the realm's loop ended): nothing to settle - the realm's
+    /// end released the pending call. Any thread.
+    fn answerDrop(data: ?*anyopaque) void {
+        const self: *Call = @ptrCast(@alignCast(data.?));
+        self.destroy();
+    }
+
+    /// Any thread: the outcome (open()'s hold let go), the key, the sink.
+    fn destroy(self: *Call) void {
+        const allocator = self.allocator;
+        switch (self.outcome) {
+            .cache => |cache| self.storage.release(cache),
+            .names => |names| {
+                for (names) |name| allocator.free(name);
+                allocator.free(names);
+            },
+            .entries => |entries| records.freeEntries(allocator, entries),
+            else => {},
+        }
+        self.work.deinit(allocator);
+        allocator.free(self.storage_key);
+        if (self.sink) |sink| sink.release();
+        allocator.destroy(self);
     }
 };
 

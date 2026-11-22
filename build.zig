@@ -8723,6 +8723,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // "process cookie changes" step 2 (cookiestore imports neither
     // service_worker nor anything that does: no cycle).
     service_worker_mod.addImport("cookiestore", cookiestore_mod);
+    // Cache Storage's operations run on the Browser's storage sequence with
+    // a profile directory (storage.StorageSequence; lane prof2). storage
+    // imports nothing of service_worker: no cycle.
+    service_worker_mod.addImport("storage", storage_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)
