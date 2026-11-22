@@ -57,17 +57,6 @@ fn sessionStartedLive(session: *PageSession) void {
         log.warn("devtools: no inspector session for a page session: {}", .{err});
         break :blk null;
     };
-    // The tab's live realms are the inspector's from the session's start, as
-    // Blink's are from their making (MainThreadDebugger::ContextCreated runs
-    // for every context, a DevTools session attached or not;
-    // core/inspector/main_thread_debugger.cc): Runtime.evaluate,
-    // Debugger.enable's breakpoints and `debugger;` statements reach the
-    // page's main world before - or with no - Runtime.enable. Only
-    // Runtime.enable registered them, so an attach to a loaded tab answered
-    // Runtime.evaluate "Cannot find default execution context" and never
-    // paused (lane tpg: cdpt2_browser_test's gap 6). The inspector tells a
-    // session of them only once its Runtime is enabled (V8's own rule).
-    if (frames.navigable(session, session.tab)) |top| contexts.registerTree(session, top);
 }
 
 pub fn sessionEnded(session: *PageSession) void {

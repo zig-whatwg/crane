@@ -116,6 +116,8 @@ pub const BrowserSide = struct {
             self.postNavigated(t.id, t.url, true);
             if (t.title.len > 0) self.postTitle(t.id, t.title);
         }
+        // And their realms are the inspector's from now on (contexts.onServed).
+        @import("contexts.zig").onServed(self);
     }
 
     /// Browser thread: detach every session and stop listening.

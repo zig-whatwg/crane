@@ -229,6 +229,42 @@ fn onServedCommitLive(side: *const BrowserSide, milestone: *const frames.Milesto
     _ = registerWithToken(side.token, main, bc);
 }
 
+/// A Browser becomes served (BrowserSide.install): the live realms it shows
+/// already - a tab loaded before the server started, its frames, their
+/// worlds - are made known now, as `onServedCommit` makes each later
+/// commit's: from the moment a devtools server can reach the Browser, its
+/// inspector knows every context, as Blink's does from the context's making.
+/// A session that attaches finds them: Runtime.evaluate and Debugger's pauses
+/// reach a loaded page before (or with no) Runtime.enable - with only
+/// Runtime.enable registering them, an attach to a tab loaded before the
+/// server answered "Cannot find default execution context" and never paused
+/// (lane tpg: cdpt2_browser_test's gap 6). One path with `onServedCommit`
+/// and the sessions' `afterCommit`: `registerWithToken`, which knows a realm
+/// once. A child's initial about:blank waits for script to reach it, as
+/// there; nothing is sent - V8 tells a session of its contexts only once its
+/// Runtime is enabled.
+pub fn onServed(side: *const BrowserSide) void {
+    if (comptime have_inspector) onServedLive(side);
+}
+
+/// `onServed` with the engine's inspector operations: analysed only when the
+/// engine protocol has them.
+fn onServedLive(side: *const BrowserSide) void {
+    const browser = side.browser orelse return;
+    const navigables = @import("dom").browser_state.existingNavigablesIn(browser.scope) orelse return;
+    for (navigables.contexts()) |bc| {
+        if (bc.is_closed or bc.active_window == null) continue;
+        if (bc.parent != null and bc.inspector_pending) continue;
+        const main = frames.mainRealmOf(bc) orelse continue;
+        _ = registerWithToken(side.token, main, bc);
+        if (comptime @hasDecl(engine, "worldRealmsOf")) {
+            var worlds: [16]runtime.Context = undefined;
+            const count = @min(engine.worldRealmsOf(main, &worlds), worlds.len);
+            for (worlds[0..count]) |world| _ = registerWithToken(side.token, world, bc);
+        }
+    }
+}
+
 /// Whether a page session is attached to tab `tab` of `side`'s Browser.
 fn sessionOnTab(side: *const BrowserSide, tab: u64) bool {
     for (side.sessions.items) |s| {
