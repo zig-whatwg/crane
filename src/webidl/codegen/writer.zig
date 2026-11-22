@@ -675,6 +675,8 @@ pub fn writeMetadata(
 
     // [SameObject]: the binding ties these children to their owner.
     if (!is_mixin) try writeSameObjectAttributes(writer, own_attributes, type_registry);
+    // FrozenArray<T>: the binding knows the getter's array as one.
+    if (!is_mixin) try writeFrozenArrayAttributes(writer, own_attributes, type_registry);
 
     // Generate [PutForwards] metadata for attributes with setter forwarding
     // Per WebIDL spec §4.3.10: [PutForwards=X] means setting the attribute
@@ -5327,6 +5329,56 @@ pub fn writeSameObjectAttributes(writer: anytype, own_attributes: []const types.
     try writer.writeAll("        };\n");
 }
 
+/// Whether `attr`'s IDL type is a FrozenArray<T> (nullable or not), named
+/// directly or through typedefs (`isFrozenArrayType`): its generated getter
+/// returns a runtime.JSValue like an `any` attribute's, so the binding
+/// learns the type from `Meta.frozen_array_attributes`.
+pub fn isFrozenArrayAttribute(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) bool {
+    return isFrozenArrayType(attr.idlType, type_registry, 0);
+}
+
+/// Whether `idl_type` is a FrozenArray<T>: itself, or a typedef the registry
+/// resolves to one - through typedefs of typedefs, as `interfaceNamed`
+/// resolves them (bounded: a cycle the IR would refuse cannot loop here).
+fn isFrozenArrayType(idl_type: types.IDLType, type_registry: ?*const @import("ir.zig").TypeRegistry, depth: u8) bool {
+    if (std.mem.eql(u8, idl_type.type, "FrozenArray")) return true;
+    if (depth >= 8) return false;
+    const reg = type_registry orelse return false;
+    const info = reg.resolve(idl_type.type) orelse return false;
+    if (info.kind != .typedef) return false;
+    return isFrozenArrayType(info.underlying_type orelse return false, type_registry, depth + 1);
+}
+
+/// `Meta.frozen_array_attributes`: the instance attributes typed
+/// FrozenArray<T>, by their getter's name less `get_`. The getter returns
+/// the array as a runtime.JSValue, as an `any` attribute's value; the
+/// binding (engines/v8 interface.zig `frozenArrayAttribute`,
+/// binding_plumbing.finishGetter) reads this list at compile time so that
+/// an isolated world gets a frozen array of its own for it (engine section
+/// 4.2a; Blink's FrozenArray, a JS array per world) - a type it would
+/// otherwise have to guess at run time.
+pub fn writeFrozenArrayAttributes(writer: anytype, own_attributes: []const types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) !void {
+    var any = false;
+    for (own_attributes) |attr| {
+        if (!attr.static and isFrozenArrayAttribute(attr, type_registry)) {
+            any = true;
+            break;
+        }
+    }
+    if (!any) return;
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and\n");
+    try writer.writeAll("        /// the binding gives each isolated world a frozen array of its own.\n");
+    try writer.writeAll("        pub const frozen_array_attributes = .{\n");
+    for (own_attributes) |attr| {
+        if (attr.static or !isFrozenArrayAttribute(attr, type_registry)) continue;
+        try writer.writeAll("            \"");
+        try writeSanitizedName(writer, attr.name);
+        try writer.writeAll("\",\n");
+    }
+    try writer.writeAll("        };\n");
+}
+
 /// How `writeDelegateFunctions` writes one file's delegates.
 pub const DelegateOptions = struct {
     /// Cache a [SameObject] attribute's value in the file's own `State`. False
@@ -6287,6 +6339,57 @@ test "writeIterableSupport publishes a pair iterable's live entries and its impl
     defer value_only.deinit();
     try writeIterableSupport(&value_only.writer, "ListImpl", .{ .keyType = .{ .type = "Node" } });
     try testing.expectEqualStrings("", value_only.written());
+}
+
+test "writeFrozenArrayAttributes lists the instance attributes typed FrozenArray<T>, nullable too, and nothing else" {
+    const attributes = [_]types.Attribute{
+        .{ .name = "languages", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true },
+        .{ .name = "ariaLabelledByElements", .idlType = .{ .type = "FrozenArray", .generic = "Element", .nullable = true } },
+        .{ .name = "data", .idlType = .{ .type = "any" }, .readonly = true },
+        .{ .name = "knownSources", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true, .static = true },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeFrozenArrayAttributes(&buffer.writer, &attributes, null);
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub const frozen_array_attributes = .{") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"languages\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"ariaLabelledByElements\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"data\"") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"knownSources\"") == null);
+
+    // An interface with none writes nothing.
+    var none: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer none.deinit();
+    try writeFrozenArrayAttributes(&none.writer, attributes[2..3], null);
+    try testing.expectEqualStrings("", none.written());
+}
+
+test "writeFrozenArrayAttributes resolves typedefs: an alias of a FrozenArray<T>, through another typedef too, is one" {
+    var reg = ir.TypeRegistry.init(testing.allocator);
+    defer reg.deinit();
+    // `typedef FrozenArray<DOMString> LanguageList;` and an alias of it.
+    try reg.registerTypedef("LanguageList", "test.idl", .{ .type = "FrozenArray", .generic = "DOMString" });
+    try reg.registerTypedef("PreferredLanguages", "test.idl", .{ .type = "LanguageList" });
+    // A typedef of something else is not one.
+    try reg.registerTypedef("Names", "test.idl", .{ .type = "sequence", .generic = "DOMString" });
+    const attributes = [_]types.Attribute{
+        .{ .name = "languages", .idlType = .{ .type = "LanguageList" }, .readonly = true },
+        .{ .name = "preferred", .idlType = .{ .type = "PreferredLanguages", .nullable = true }, .readonly = true },
+        .{ .name = "names", .idlType = .{ .type = "Names" }, .readonly = true },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeFrozenArrayAttributes(&buffer.writer, &attributes, &reg);
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "\"languages\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"preferred\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"names\"") == null);
+    // Without the registry the aliases cannot be told.
+    var unresolved: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer unresolved.deinit();
+    try writeFrozenArrayAttributes(&unresolved.writer, &attributes, null);
+    try testing.expectEqualStrings("", unresolved.written());
 }
 
 test "writeHeader writes basic header" {

@@ -37,6 +37,9 @@ pub const World = struct {
     name: []u8,
     id: engine.WorldId,
     universal_access: bool,
+    /// The world's own Content Security Policy, OWNED by the registry; null:
+    /// the page's governs it (engine.WorldRealmOptions.content_security_policy).
+    content_security_policy: ?[]u8 = null,
 };
 
 /// The Browser's worlds (a BrowserScope supplement: `init`, `deinit`).
@@ -54,7 +57,7 @@ pub const IsolatedWorlds = struct {
     }
 
     pub fn deinit(self: *IsolatedWorlds) void {
-        for (self.worlds.items) |world| self.allocator.free(world.name);
+        for (self.worlds.items) |world| self.freeWorld(world);
         self.worlds.deinit(self.allocator);
         self.* = undefined;
     }
@@ -71,6 +74,13 @@ pub const IsolatedWorlds = struct {
     /// EnsureDOMWrapperWorld): its id. A world made before keeps the access
     /// it was made with, as Blink's keeps the security origin it set first.
     pub fn ensure(self: *IsolatedWorlds, navigable: u64, name: []const u8, universal_access: bool) Allocator.Error!engine.WorldId {
+        return self.ensureWithPolicy(navigable, name, universal_access, null);
+    }
+
+    /// `ensure` for a world with a Content Security Policy of its own (an
+    /// extension's content-script world: Blink's IsolatedWorldCSP), recorded
+    /// when the world is made.
+    pub fn ensureWithPolicy(self: *IsolatedWorlds, navigable: u64, name: []const u8, universal_access: bool, content_security_policy: ?[]const u8) Allocator.Error!engine.WorldId {
         self.lock();
         defer self.unlock();
         for (self.worlds.items) |world| {
@@ -78,10 +88,17 @@ pub const IsolatedWorlds = struct {
         }
         try self.worlds.ensureUnusedCapacity(self.allocator, 1);
         const owned = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned);
+        const policy: ?[]u8 = if (content_security_policy) |text| try self.allocator.dupe(u8, text) else null;
         const id = self.next_id;
         self.next_id += 1;
-        self.worlds.appendAssumeCapacity(.{ .navigable = navigable, .name = owned, .id = id, .universal_access = universal_access });
+        self.worlds.appendAssumeCapacity(.{ .navigable = navigable, .name = owned, .id = id, .universal_access = universal_access, .content_security_policy = policy });
         return id;
+    }
+
+    fn freeWorld(self: *IsolatedWorlds, world: World) void {
+        self.allocator.free(world.name);
+        if (world.content_security_policy) |policy| self.allocator.free(policy);
     }
 
     /// The world named `name` of `navigable`, if one was made.
@@ -119,7 +136,7 @@ pub const IsolatedWorlds = struct {
                 i += 1;
                 continue;
             }
-            self.allocator.free(world.name);
+            self.freeWorld(world);
             _ = self.worlds.orderedRemove(i);
         }
     }
@@ -146,9 +163,17 @@ pub const Error = engine.Error || Allocator.Error || error{NoBrowser};
 /// engine's operations given that realm. `main` must be a live Window realm
 /// of a Browser.
 pub fn createIsolatedWorld(main: runtime.Context, navigable: u64, name: []const u8, universal_access: bool) Error!runtime.Context {
+    return createIsolatedWorldWithPolicy(main, navigable, name, universal_access, null);
+}
+
+/// `createIsolatedWorld` for a world with a Content Security Policy of its
+/// own, which its script is checked against instead of the page's (Blink's
+/// IsolatedWorldCSP: an extension's content scripts; "" checks nothing). A
+/// DevTools world has none.
+pub fn createIsolatedWorldWithPolicy(main: runtime.Context, navigable: u64, name: []const u8, universal_access: bool, content_security_policy: ?[]const u8) Error!runtime.Context {
     const scope = main.browser_scope orelse return error.NoBrowser;
     const registry = try of(scope);
-    const id = try registry.ensure(navigable, name, universal_access);
+    const id = try registry.ensureWithPolicy(navigable, name, universal_access, content_security_policy);
     return worldRealm(main, id);
 }
 
@@ -159,7 +184,7 @@ pub fn worldRealm(main: runtime.Context, id: engine.WorldId) Error!runtime.Conte
     const scope = main.browser_scope orelse return error.NoBrowser;
     const registry = existing(scope) orelse return error.OperationFailed;
     const world = registry.lookup(id) orelse return error.OperationFailed;
-    return engine.createWorldRealm(main, &.{ .world = id, .name = world.name, .universal_access = world.universal_access });
+    return engine.createWorldRealm(main, &.{ .world = id, .name = world.name, .universal_access = world.universal_access, .content_security_policy = world.content_security_policy });
 }
 
 /// The world realms of `main` that exist now - its main realm's isolated

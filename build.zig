@@ -8613,8 +8613,15 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const platform_mod = platform_binding.facade;
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
+    // A profile directory's HTTP cache commits on storage's commit timer
+    // (fetch/cache/persistence.zig).
+    fetch_mod.addImport("storage", storage_mod);
     dom_mod.addImport("platform", platform_mod);
     storage_mod.addImport("platform", platform_mod);
+    // The cookie jar's persistence in a profile directory: the platform's
+    // stores, and storage's commit timer (cookiestore/storage_integration.zig).
+    cookiestore_mod.addImport("platform", platform_mod);
+    cookiestore_mod.addImport("storage", storage_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
@@ -8823,6 +8830,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
     browser_mod.addImport("cookiestore", cookiestore_mod);
+    // The Browser hands its profile directory's stores to its storage
+    // (src/browser/profile_stores.zig).
+    browser_mod.addImport("storage", storage_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);

@@ -32,6 +32,7 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const test_process = @import("test_process.zig");
+const ffi = @import("v8").ffi;
 
 const Host = struct {
     fn window(r: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
@@ -350,4 +351,187 @@ test "HTML element constructors are the main world's: an isolated world's is an 
     defer page.end();
     const world = try page.world(1);
     try expect(world, "try { new HTMLElement(); 'constructed' } catch (e) { e.constructor.name }", "TypeError");
+}
+
+// ---------------------------------------------------------------------------
+// Values across worlds (protocol_worlds.acrossWorlds; Blink's
+// WorldSafeV8Reference::GetAcrossWorld and ScriptPromiseProperty): a value an
+// impl keeps - a CustomEvent's detail - or a callback's argument never
+// reaches one world's script as another world's object.
+// ---------------------------------------------------------------------------
+
+test "a value one world stored reaches another as its own: a clone, its wrapper, or null - never the other world's object" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(world,
+        \\globalThis.seen = [];
+        \\document.body.addEventListener('detail', (event) => {
+        \\  const d = event.detail;
+        \\  if (d === null) { seen.push('null'); return; }
+        \\  if (typeof d !== 'object') { seen.push(typeof d + ':' + String(d)); return; }
+        \\  if (d instanceof Node) { seen.push('node:' + String(d === document.body) + ':' + String(d.pageExpando)); return; }
+        \\  seen.push('object:' + String(Object.getPrototypeOf(d) === Object.prototype) + ':' + String(d.a) + ':' +
+        \\    String(Array.isArray(d.list) && d.list instanceof Array) + ':' + String(typeof d.pageOnly));
+        \\});
+        \\'ok'
+    , "ok");
+    try expect(page.realm,
+        \\document.body.pageExpando = 'page';
+        \\const fire = (detail) => document.body.dispatchEvent(new CustomEvent('detail', { detail }));
+        \\fire({ a: 1, list: [1, 2] });
+        \\fire(document.body);
+        \\fire(() => 1);
+        \\fire({ f: () => 1 });
+        \\fire(7);
+        \\fire('text');
+        \\'ok'
+    , "ok");
+    // A plain object: cloned into the world (the world's Object.prototype);
+    // a node: the world's wrapper of it (no page expando); what cannot be
+    // cloned: null, with nothing thrown; a primitive: itself.
+    try expect(world, "seen.join(' ')", "object:true:1:true:undefined node:true:undefined null null number:7 string:text");
+    // The page reads its own object, the same one.
+    try expect(page.realm, "const d = { a: 2 }; const e = new CustomEvent('x', { detail: d }); String(e.detail === d)", "true");
+    // And a world's object reaches the page's listener as the page's.
+    try expect(page.realm,
+        \\globalThis.pageSeen = [];
+        \\document.body.addEventListener('from-world', (event) => {
+        \\  pageSeen.push(String(Object.getPrototypeOf(event.detail) === Object.prototype) + ':' + String(event.detail.n));
+        \\});
+        \\'ok'
+    , "ok");
+    try expect(world, "document.body.dispatchEvent(new CustomEvent('from-world', { detail: { n: 3 } })); 'ok'", "ok");
+    try expect(page.realm, "pageSeen.join(' ')", "true:3");
+}
+
+test "a promise of one world reaches another as that world's promise: one per world, settled with the value as the world sees it" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(world,
+        \\globalThis.results = [];
+        \\document.body.addEventListener('promise', (event) => {
+        \\  const p = event.detail;
+        \\  results.push(String(p instanceof Promise) + ':' + String(p === event.detail));
+        \\  p.then((value) => {
+        \\    results.push('resolved:' + String(value === document.body) + ':' + String(value instanceof HTMLBodyElement));
+        \\  });
+        \\});
+        \\'ok'
+    , "ok");
+    try expect(page.realm,
+        \\globalThis.pagePromise = Promise.resolve(document.body);
+        \\document.body.dispatchEvent(new CustomEvent('promise', { detail: pagePromise }));
+        \\'ok'
+    , "ok");
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try expect(world, "results.join(' ')", "true:true resolved:true:true");
+    // The page's promise is still its own.
+    try expect(page.realm, "const e = new CustomEvent('x', { detail: pagePromise }); String(e.detail === pagePromise)", "true");
+}
+
+test "a callback of one world is handed another world's held value as its own" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    var reports: Reports = .{};
+    const reporter: engine.Reporter = .{ .report = Reports.report, .host = &reports };
+    const function = try engine.evaluateClassicScript(world, .{ .utf8 = "(arg) => { globalThis.argSeen = String(Object.getPrototypeOf(arg) === Object.prototype) + ':' + String(arg.v); }" }, "", null, reporter);
+    const callback: engine.CallbackFunction = .{ .function = function, .context = world };
+    defer callback.release();
+    const argument = try engine.evaluateClassicScript(page.realm, .{ .utf8 = "({ v: 5 })" }, "", null, reporter);
+    defer argument.release();
+    const completion = try engine.invokeCallbackFunction(page.realm, &callback, .undefined, &.{argument.value}, .rethrow);
+    switch (completion) {
+        .normal => |value| value.release(),
+        .throw => |thrown| {
+            thrown.release();
+            return error.CallbackThrew;
+        },
+    }
+    try testing.expectEqual(@as(usize, 0), reports.count);
+    try expect(world, "argSeen", "true:5");
+}
+
+test "a world's promise for a page promise keeps nothing of the world after it ends: the page's promise lives on, the world's context is collected" {
+    var page = try Page.make();
+    defer page.end();
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
+    for (0..3) |_| engine.requestGarbageCollection(page.agent);
+    var contexts_before: usize = 0;
+    ffi.v8_Isolate_GetContextCounts(isolate, &contexts_before, null);
+
+    const world = try page.world(1);
+    // The page keeps a pending promise; the world reads it twice - one
+    // promise of the world's for it, kept on it, and a reaction waiting on it.
+    try expect(page.realm, "globalThis.pending = new Promise((resolve) => { globalThis.settle = resolve; }); 'ok'", "ok");
+    try expect(world, "globalThis.mirrors = []; document.body.addEventListener('p', (e) => { mirrors.push(e.detail, e.detail); }); 'ok'", "ok");
+    try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('p', { detail: pending })); 'ok'", "ok");
+    try expect(world, "String(mirrors.length === 2 && mirrors[0] === mirrors[1] && mirrors[0] instanceof Promise)", "true");
+
+    // The world ends while the page's promise is pending: its kept promise
+    // is taken off the page's, and its reaction holds nothing of it.
+    engine.destroyWorldRealms(page.realm);
+    for (0..4) |_| engine.requestGarbageCollection(page.agent);
+    var contexts_after: usize = 0;
+    ffi.v8_Isolate_GetContextCounts(isolate, &contexts_after, null);
+    try testing.expectEqual(contexts_before, contexts_after);
+
+    // The page's promise lives on and settles, with no world left to tell.
+    try expect(page.realm, "settle(document.body); pending.then(() => { globalThis.settled = true; }); 'ok'", "ok");
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try expect(page.realm, "String(globalThis.settled === true)", "true");
+
+    // A new world realm reads it afresh: a promise of its own, settled.
+    const again = try page.world(1);
+    try expect(again, "globalThis.got = ''; document.body.addEventListener('q', (e) => { e.detail.then((v) => { got = String(v === document.body); }); }); 'ok'", "ok");
+    try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('q', { detail: pending })); 'ok'", "ok");
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try engine.performMicrotaskCheckpoint(page.agent);
+    try expect(again, "got", "true");
+}
+
+// ---------------------------------------------------------------------------
+// Event handler attributes per world (Blink's EventTarget::
+// GetAttributeRegisteredEventListener / BelongsToTheCurrentWorld).
+// ---------------------------------------------------------------------------
+
+test "event handler attributes are per world: a world's onclick never replaces the page's, and each reads and clears its own" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(page.realm, "globalThis.log = []; globalThis.pageHandler = () => log.push('page'); document.body.onclick = pageHandler; 'ok'", "ok");
+    // The world has none of its own yet: the page's is not the world's.
+    try expect(world, "globalThis.log = []; globalThis.worldHandler = () => log.push('world'); String(document.body.onclick)", "null");
+    try expect(world, "document.body.onclick = worldHandler; String(document.body.onclick === worldHandler)", "true");
+    try expect(page.realm, "String(document.body.onclick === pageHandler)", "true");
+    // Both run on a dispatch, each in its own world.
+    try expect(page.realm, "document.body.dispatchEvent(new Event('click')); log.join(' ')", "page");
+    try expect(world, "log.join(' ')", "world");
+    // The world clears its own; the page's stays and runs alone.
+    try expect(world, "document.body.onclick = null; String(document.body.onclick)", "null");
+    try expect(page.realm, "log.length = 0; document.body.dispatchEvent(new Event('click')); String(document.body.onclick === pageHandler) + ' ' + log.join(' ')", "true page");
+    try expect(world, "log.join(' ')", "world");
+    // The page clears its own; the world's, set again, runs alone.
+    try expect(page.realm, "document.body.onclick = null; 'ok'", "ok");
+    try expect(world, "document.body.onclick = worldHandler; 'ok'", "ok");
+    try expect(page.realm, "log.length = 0; document.body.dispatchEvent(new Event('click')); String(document.body.onclick) + ':' + log.join(' ')", "null:");
+    try expect(world, "log.join(' ')", "world world");
+    // A Window's too: the world's onmessage is not the page's.
+    try expect(page.realm, "globalThis.pageOnMessage = () => {}; window.onmessage = pageOnMessage; 'ok'", "ok");
+    try expect(world, "window.onmessage = () => {}; 'ok'", "ok");
+    try expect(page.realm, "String(window.onmessage === pageOnMessage)", "true");
+}
+
+test "a world's event handler outlives its world realm as the world's: the page never reads it" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    try expect(world, "document.body.onclick = () => {}; 'ok'", "ok");
+    engine.destroyWorldRealms(page.realm);
+    try expect(page.realm, "String(document.body.onclick)", "null");
+    try expect(page.realm, "globalThis.pageHandler = () => {}; document.body.onclick = pageHandler; String(document.body.onclick === pageHandler)", "true");
 }

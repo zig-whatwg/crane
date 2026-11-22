@@ -583,7 +583,8 @@ fn handlerEventType(local_name: []const u8) ?[]const u8 {
 /// three name another (SVG 2 15.8; Blink SVGSMILElement::ParseAttribute).
 fn handlerAttributeChanged(element: *runtime.Instance, event_type: []const u8, value: ?[]const u8) void {
     const body = value orelse {
-        event_handlers.set(?*anyopaque, element, event_type, null) catch {};
+        // The main world's handler (event_handlers.deactivateForContentAttribute).
+        event_handlers.deactivateForContentAttribute(element, event_type);
         return;
     };
     // Step 5.1: a CSP-blocked replacement leaves the old handler value.

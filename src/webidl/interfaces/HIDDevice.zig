@@ -53,6 +53,12 @@ pub const HIDDevice = struct {
             .{ "collections", "get_collections", null },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "collections",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 0 },

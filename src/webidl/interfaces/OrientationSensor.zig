@@ -44,6 +44,12 @@ pub const OrientationSensor = struct {
             .{ "quaternion", "get_quaternion", null },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "quaternion",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "populateMatrix", "call_populateMatrix", 1 },

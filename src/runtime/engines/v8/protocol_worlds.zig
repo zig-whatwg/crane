@@ -95,6 +95,9 @@ const Definition = struct {
     /// OWNED (c_allocator).
     name: []u8,
     universal_access: bool,
+    /// The world's own policy (engine.WorldRealmOptions.
+    /// content_security_policy), OWNED (c_allocator); null: the page's.
+    content_security_policy: ?[]u8 = null,
 };
 
 /// A world realm the adapter made and that has not ended.
@@ -113,6 +116,17 @@ const WorldRealm = struct {
     /// The world's WindowProxy went on to the next world realm of the same
     /// navigable (`handOnWorldProxies`): this realm's end leaves it alone.
     window_proxy_handed_on: bool = false,
+    /// The promises and FrozenArrays of other worlds this realm's own for
+    /// them is kept on (`mirrorPromise`, `mirrorFrozenArray`), as WEAK handles OWNED: each mirror is taken off its
+    /// source at the realm's end (`dropMirrors`), so a source that outlives
+    /// the realm keeps nothing of it alive. Handles whose source was
+    /// collected are swept as the list grows (`mirrored_sweep_at`).
+    mirrored: std.ArrayListUnmanaged(*ffi.Value) = .empty,
+    mirrored_sweep_at: usize = 16,
+    /// Its promises for other worlds' promises still to settle (`Mirror`),
+    /// cut at its end (`dropMirrors`): their reactions are the source
+    /// realms', and must hold nothing of this realm after it.
+    pending: std.ArrayListUnmanaged(*Mirror) = .empty,
 };
 
 /// A world's WindowProxy waiting for the next world realm of its navigable,
@@ -177,6 +191,14 @@ fn find(worlds: *const AgentWorlds, main: Context, world: WorldId) ?*WorldRealm 
 /// own tests), and with none has no world.
 pub inline fn mayConvertInWorld(instance: *engine.Instance) bool {
     return realmMayHaveWorlds(instance.ctx);
+}
+
+/// Whether `isolate`'s agent has made a world realm (`noteActive` tells its
+/// node wrapper registry): one call into the isolate's record, no lock - the
+/// gate of a conversion with no realm at hand (conversions.memberAcrossWorlds).
+pub fn agentHasWorlds(isolate: *ffi.Isolate) bool {
+    const registry = node_wrappers.registryOf(isolate) orelse return false;
+    return registry.worlds != null;
 }
 
 pub fn realmMayHaveWorlds(realm: Context) bool {
@@ -255,7 +277,9 @@ fn define(worlds: *AgentWorlds, options: *const engine.WorldRealmOptions) Error!
     if (worlds.definitions.get(options.world)) |known| return known;
     const name = std.heap.c_allocator.dupe(u8, options.name) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.free(name);
-    const definition: Definition = .{ .name = name, .universal_access = options.universal_access };
+    const policy: ?[]u8 = if (options.content_security_policy) |text| std.heap.c_allocator.dupe(u8, text) catch return error.OutOfMemory else null;
+    errdefer if (policy) |p| std.heap.c_allocator.free(p);
+    const definition: Definition = .{ .name = name, .universal_access = options.universal_access, .content_security_policy = policy };
     worlds.definitions.put(std.heap.c_allocator, options.world, definition) catch return error.OutOfMemory;
     return definition;
 }
@@ -286,10 +310,19 @@ pub fn mainRealmOf(realm: Context) Context {
 
 /// engine.worldInfoOf.
 pub fn worldInfoOf(realm: Context) ?engine.WorldInfo {
+    // No lookup for a Browser that made no world: the host asks on every
+    // eval's code generation check.
+    if (!realmMayHaveWorlds(realm)) return null;
     const worlds = worldsOfRealm(realm) orelse return null;
     const w = worlds.realms.get(realm) orelse return null;
     const definition = worlds.definitions.get(w.world) orelse return .{ .world = w.world, .name = "", .universal_access = false, .main = w.main };
-    return .{ .world = w.world, .name = definition.name, .universal_access = definition.universal_access, .main = w.main };
+    return .{
+        .world = w.world,
+        .name = definition.name,
+        .universal_access = definition.universal_access,
+        .content_security_policy = definition.content_security_policy,
+        .main = w.main,
+    };
 }
 
 /// engine.worldRealmsOf.
@@ -413,6 +446,8 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     realm.secure_context = main.secure_context;
     realm.task_sink = main.task_sink;
     realm.principal_realm = main;
+    // Kept after the realm ends (runtime.ContextData.world).
+    realm.world = world;
 
     if (!restored) interface_bindings.installSnapshotIntrinsics(isolate, context);
     interface_bindings.installConditionalConstructs(.Window, context);
@@ -550,6 +585,9 @@ fn endWorldRealm(worlds: *AgentWorlds, w: *WorldRealm) void {
     page_realm.frameWindowDestroyed(realm);
     page_realm.endWindowOperations(realm);
 
+    // Its promises for other worlds' promises are taken off them.
+    dropMirrors(w);
+
     if (isLive(context)) {
         // The callbacks this realm's script registered on objects - the
         // page's nodes' listeners included - tagged with its key: kept from
@@ -591,7 +629,10 @@ pub fn endAgent(isolate: *ffi.Isolate, worlds: *AgentWorlds) void {
     }
     worlds.handed.deinit(std.heap.c_allocator);
     var definitions = worlds.definitions.valueIterator();
-    while (definitions.next()) |definition| std.heap.c_allocator.free(definition.name);
+    while (definitions.next()) |definition| {
+        std.heap.c_allocator.free(definition.name);
+        if (definition.content_security_policy) |policy| std.heap.c_allocator.free(policy);
+    }
     worlds.definitions.deinit(std.heap.c_allocator);
     var states = worlds.realms.valueIterator();
     while (states.next()) |state| std.heap.c_allocator.destroy(state.*);
@@ -616,6 +657,369 @@ pub fn endAllOfAgent(isolate: *ffi.Isolate) void {
         destroyWorldRealmsIn(worlds, main);
     }
 }
+
+// ============================================================================
+// Values across worlds
+// ============================================================================
+
+/// JavaScript null, as a value to hand back (V8's null is a root: it is
+/// never absent).
+fn jsNull(isolate: *ffi.Isolate) *ffi.Value {
+    return ffi.v8_Null(isolate) orelse unreachable;
+}
+
+/// `value`, about to reach script of the realm whose context is `context` -
+/// a JSValue an impl hands back (an attribute's, an operation's: a value it
+/// stored, a traced value) or a callback's argument - as a value of that
+/// realm's world (engine section 4.2a): Blink's WorldSafeV8Reference::
+/// GetAcrossWorld (third_party/blink/renderer/platform/bindings/
+/// world_safe_v8_reference.h and .cc, ToWorldSafeValue; BSD-3 - reproduced,
+/// not copied), so no object of one world reaches another's script:
+/// - a primitive is every world's: kept;
+/// - an object made in the target realm's world: kept;
+/// - a platform object of another world: the target world's wrapper of the
+///   same instance (one object, a wrapper per world);
+/// - a promise of another world: the target world's promise for it, settled
+///   with the value across worlds (`mirrorPromise`: Blink's
+///   ScriptPromiseProperty keeps a promise per world);
+/// - any other object of another world: structured-cloned into the target
+///   realm - and null when it cannot be (a function, a symbol inside), as
+///   Blink's serialization swallows the exception and answers null (`Clone`).
+/// The worlds are compared - the value's creation context's against the
+/// target context's - before any conversion work. OWNED: a new handle; null
+/// when `value` is kept as it is.
+///
+/// THE FAST PATH is the callers': they ask only for a `.handle` value of a
+/// realm whose Browser made an isolated world (`realmMayHaveWorlds`: two
+/// loads, no lookup), so a page with no world pays one predictable branch.
+pub fn acrossWorlds(isolate: *ffi.Isolate, value: *ffi.Value, context: *ffi.Context) ?*ffi.Value {
+    if (!ffi.v8_Value_IsObject(value)) return null;
+    // The worlds first: the common case - the value is the target world's
+    // own - does no conversion work.
+    const target_world = worldOfContext(context);
+    const creation = ffi.v8_Object_GetCreationContext(@ptrCast(value)) orelse return null;
+    defer ffi.v8_Context_Dispose(creation);
+    const source_world = worldOfContext(creation);
+    if (source_world == target_world) return null;
+
+    // A platform object: its wrapper in the target world.
+    if (@import("platform_anchor.zig").instanceOf(@ptrCast(value))) |raw| {
+        const instance: *engine.Instance = @ptrCast(@alignCast(raw));
+        const wrapper = @import("conversions.zig").instanceToV8InWorld(isolate, instance, target_world) catch return jsNull(isolate);
+        // An undefined is the conversion's own (no wrapper there): owned.
+        if (ffi.v8_Value_IsUndefined(wrapper)) return wrapper;
+        return ffi.v8_Global_Clone(wrapper) orelse jsNull(isolate);
+    }
+
+    // A promise: the target world's own promise for it (`mirrorPromise`) -
+    // a structured clone cannot carry one.
+    if (ffi.v8_Value_IsPromise(value)) {
+        const source_realm = context_manager.get(creation) orelse return jsNull(isolate);
+        return mirrorPromise(isolate, value, source_realm, context);
+    }
+
+    // Any other object: a structured clone into the target realm, its
+    // exceptions swallowed (`Clone`).
+    var clone: Clone = .{
+        .source_realm = context_manager.get(creation) orelse return jsNull(isolate),
+        .target_realm = context_manager.get(context) orelse return jsNull(isolate),
+        .value = value,
+    };
+    var exception: ?*ffi.Value = null;
+    _ = ffi.v8_RunCatching(isolate, Clone.run, &clone, &exception);
+    if (exception) |thrown| ffi.v8_Global_Dispose(thrown);
+    return clone.result orelse jsNull(isolate);
+}
+
+/// `value`, the array a FrozenArray<T> attribute's getter returned - the
+/// binding knows the IDL type at compile time (codegen's
+/// `Meta.frozen_array_attributes`, binding_plumbing.finishGetter) - as script
+/// of `context`'s realm reads it: an array of another world becomes that
+/// realm's own frozen array of the same elements, each across worlds
+/// (`acrossWorlds`: a node or a port is its wrapper there). Blink's
+/// FrozenArray makes its JS array per world (third_party/blink/renderer/
+/// bindings/core/v8/frozen_array_base.cc, FrozenArrayBase::ToV8; BSD-3 -
+/// reproduced, not copied). One per (array, world realm), kept on the array
+/// as a promise's mirror is (`keepMirror`; taken off at the realm's end):
+/// the world reads one array until the attribute's value changes - the
+/// impl hands out a new array - as the page does. A value that is no array
+/// goes as `acrossWorlds` takes it. OWNED; null when `value` is kept as it is.
+pub fn frozenArrayAcrossWorlds(isolate: *ffi.Isolate, value: *ffi.Value, context: *ffi.Context) ?*ffi.Value {
+    if (!ffi.v8_Value_IsArray(value)) return acrossWorlds(isolate, value, context);
+    const target_world = worldOfContext(context);
+    const creation = ffi.v8_Object_GetCreationContext(@ptrCast(value)) orelse return null;
+    defer ffi.v8_Context_Dispose(creation);
+    if (worldOfContext(creation) == target_world) return null;
+    return mirrorFrozenArray(isolate, value, creation, context);
+}
+
+/// `frozenArrayAcrossWorlds`'s array for `context`'s realm: kept (a world
+/// realm's), or made - each element of `source` across worlds, then frozen
+/// (WebIDL 3.2.36: "SetIntegrityLevel(array, "frozen")").
+fn mirrorFrozenArray(isolate: *ffi.Isolate, source: *ffi.Value, source_context: *ffi.Context, context: *ffi.Context) *ffi.Value {
+    const target_realm = context_manager.get(context) orelse return jsNull(isolate);
+    const state = stateOf(target_realm);
+    var key_buffer: [48]u8 = undefined;
+    const key: ?[]const u8 = if (state) |w| mirrorKey(&key_buffer, w) else null;
+    if (key) |k| if (ffi.v8_Object_GetPrivateRef(@ptrCast(source), k.ptr, @intCast(k.len))) |kept| {
+        if (madeIn(kept, context)) return kept;
+        ffi.v8_Global_Dispose(kept);
+    };
+    const length = ffi.v8_Array_Length(@ptrCast(source));
+    const array = ffi.v8_Array_NewInContext(context, @intCast(length)) orelse return jsNull(isolate);
+    const made: *ffi.Value = @ptrCast(array);
+    var index: u32 = 0;
+    while (index < length) : (index += 1) {
+        const element = ffi.v8_Array_Get(source_context, @ptrCast(source), index) orelse {
+            ffi.v8_Global_Dispose(made);
+            return jsNull(isolate);
+        };
+        defer ffi.v8_Global_Dispose(element);
+        const across = acrossWorlds(isolate, element, context);
+        defer if (across) |converted| ffi.v8_Global_Dispose(converted);
+        if (!ffi.v8_Array_Set(array, context, index, across orelse element)) {
+            ffi.v8_Global_Dispose(made);
+            return jsNull(isolate);
+        }
+    }
+    if (!ffi.v8_Object_Freeze(@ptrCast(array), context)) {
+        ffi.v8_Global_Dispose(made);
+        return jsNull(isolate);
+    }
+    if (state) |w| keepMirror(w, source, key.?, made);
+    return made;
+}
+
+/// `acrossWorlds`'s structured clone of `value` from `source_realm` into
+/// `target_realm`, run under a TryCatch: what cannot be cloned - a function,
+/// a node inside, a getter that throws - answers null with nothing left
+/// pending, as Blink's SerializedScriptValue::SerializeAndSwallowExceptions
+/// does for WorldSafeV8Reference.
+const Clone = struct {
+    source_realm: Context,
+    target_realm: Context,
+    value: *ffi.Value,
+    result: ?*ffi.Value = null,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *Clone = @ptrCast(@alignCast(data.?));
+        const protocol = @import("protocol.zig");
+        const bytes = protocol.structuredSerializeForStorage(self.source_realm, .{ .handle = .{ .ptr = self.value } }, std.heap.c_allocator) catch return;
+        defer std.heap.c_allocator.free(bytes);
+        const cloned = protocol.structuredDeserialize(self.target_realm, bytes) catch return;
+        switch (cloned.value) {
+            .handle => |h| self.result = @ptrCast(@alignCast(h.ptr)),
+            else => cloned.release(),
+        }
+    }
+};
+
+/// The target world's promise for `source`, a promise of another world:
+/// Blink's ScriptPromiseProperty, which keeps one promise per world and
+/// settles each with the value as that world sees it (third_party/blink/
+/// renderer/bindings/core/v8/script_promise_property.h, ScriptPromiseProperty
+/// ::Promise(DOMWrapperWorld&); BSD-3 - reproduced, not copied).
+///
+/// For a world realm, one per (promise, realm): kept on `source` under a
+/// private key naming the realm, so the world reads one promise every time
+/// (`document.fonts.ready === document.fonts.ready` in a world too). Nothing
+/// of `source` keeps the world realm once it ends (`dropMirrors`): the kept
+/// promise is taken off every source still alive, and the reaction that
+/// settles it - made in `source_realm`, so its functions are the source
+/// world's - lets go of the world's resolver (`Mirror.resolver`). A main
+/// realm reading a world's promise (one a world stored in a page object) is
+/// handed a new one each read, its reaction the main realm's.
+///
+/// Marked handled: a rejection is reported once, by `source`'s own realm.
+/// OWNED; null when it cannot be made.
+fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Context, context: *ffi.Context) *ffi.Value {
+    const target_realm = context_manager.get(context) orelse return jsNull(isolate);
+    const state = stateOf(target_realm);
+    var key_buffer: [48]u8 = undefined;
+    const key: ?[]const u8 = if (state) |w| mirrorKey(&key_buffer, w) else null;
+    if (key) |k| if (ffi.v8_Object_GetPrivateRef(@ptrCast(source), k.ptr, @intCast(k.len))) |kept| {
+        // Made in this realm (`madeIn`: a guard - the key names the realm,
+        // and the realm's end deletes it).
+        if (madeIn(kept, context)) return kept;
+        ffi.v8_Global_Dispose(kept);
+    };
+    const resolver = ffi.v8_PromiseResolver_New(context) orelse return jsNull(isolate);
+    const promise: *ffi.Value = @ptrCast(ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        ffi.v8_PromiseResolver_Dispose(resolver);
+        return jsNull(isolate);
+    });
+    ffi.v8_Promise_MarkAsHandled(promise);
+    const mirror = Mirror.allocator.create(Mirror) catch {
+        ffi.v8_PromiseResolver_Dispose(resolver);
+        ffi.v8_Global_Dispose(promise);
+        return jsNull(isolate);
+    };
+    mirror.* = .{ .resolver = resolver, .realm = target_realm };
+    // A world realm's: on its pending list, to be cut at its end. No room:
+    // no mirror.
+    if (state) |w| w.pending.append(std.heap.c_allocator, mirror) catch {
+        mirror.release();
+        ffi.v8_Global_Dispose(promise);
+        return jsNull(isolate);
+    };
+    if (state) |w| mirror.index = w.pending.items.len - 1;
+    // The reaction: the source's realm's for a world realm's mirror (its
+    // functions hold nothing of the world), the target's otherwise. Fails
+    // only when that realm's end is under way: no mirror then, and what it
+    // holds is freed here (`data` stays the caller's).
+    const reaction_realm = if (state != null) source_realm else target_realm;
+    @import("protocol_promises.zig").reactToPromise(reaction_realm, .{ .handle = .{ .ptr = source } }, &Mirror.steps, mirror) catch {
+        mirror.release();
+        ffi.v8_Global_Dispose(promise);
+        return jsNull(isolate);
+    };
+    if (state) |w| keepMirror(w, source, key.?, promise);
+    return promise;
+}
+
+/// The private key `w`'s value for another world's - its promise for a
+/// promise, its frozen array for a FrozenArray - is kept under on it: one per
+/// realm (the context manager's key, unique while the realm lives,
+/// and deleted from every source at its end).
+fn mirrorKey(buffer: *[48]u8, w: *const WorldRealm) []const u8 {
+    return std.fmt.bufPrint(buffer, "crane:world-mirror:{x}", .{w.key}) catch unreachable;
+}
+
+/// Keep `kept`, `w`'s value for `source` (`mirrorKey`), on `source` under `key` -
+/// and a weak handle of `source` on `w`, to take it off at `w`'s end. When
+/// there is no room for the handle the promise is not kept (the next read
+/// makes another).
+fn keepMirror(w: *WorldRealm, source: *ffi.Value, key: []const u8, kept: *ffi.Value) void {
+    const weak = ffi.v8_Global_Clone(source) orelse return;
+    w.mirrored.append(std.heap.c_allocator, weak) catch {
+        ffi.v8_Global_Dispose(weak);
+        return;
+    };
+    ffi.v8_Global_SetWeak(@ptrCast(weak), null, noteSourceCollected);
+    ffi.v8_Object_SetPrivateRef(@ptrCast(source), key.ptr, @intCast(key.len), kept);
+    if (w.mirrored.items.len < w.mirrored_sweep_at) return;
+    // The sources the collector took: their handles are empty.
+    var i: usize = 0;
+    while (i < w.mirrored.items.len) {
+        if (ffi.v8_Global_IsEmpty(w.mirrored.items[i])) {
+            ffi.v8_Global_Dispose(w.mirrored.swapRemove(i));
+        } else i += 1;
+    }
+    w.mirrored_sweep_at = @max(16, w.mirrored.items.len * 2);
+}
+
+/// A kept mirror's source was collected: its handle is empty now, swept by
+/// `keepMirror` or disposed at the realm's end. (V8's first pass: nothing
+/// may be done here.)
+fn noteSourceCollected(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
+    _ = data;
+    _ = length_in_bytes;
+}
+
+/// `w` ends: nothing of another world's promise keeps it alive after. Its
+/// promise kept on each source still alive is taken off it - the private
+/// edge deleted, in `w`'s context - and each mirror still pending lets go of
+/// its resolver (`Mirror.cut`): the reaction, the source realm's, settles
+/// or drops it later with nothing to do.
+fn dropMirrors(w: *WorldRealm) void {
+    for (w.pending.items) |mirror| mirror.cut();
+    w.pending.deinit(std.heap.c_allocator);
+    w.pending = .empty;
+    defer {
+        for (w.mirrored.items) |weak| ffi.v8_Global_Dispose(weak);
+        w.mirrored.deinit(std.heap.c_allocator);
+        w.mirrored = .empty;
+    }
+    if (w.mirrored.items.len == 0 or !isLive(w.context)) return;
+    var key_buffer: [48]u8 = undefined;
+    const key = mirrorKey(&key_buffer, w);
+    ffi.v8_Context_Enter(w.context);
+    defer ffi.v8_Context_Exit(w.context);
+    for (w.mirrored.items) |weak| {
+        if (!ffi.v8_Global_IsEmpty(weak)) ffi.v8_Object_DeletePrivateRef(@ptrCast(weak), key.ptr, @intCast(key.len));
+    }
+}
+
+/// Whether `object`'s creation context is `context`.
+fn madeIn(object: *ffi.Value, context: *ffi.Context) bool {
+    const creation = ffi.v8_Object_GetCreationContext(@ptrCast(object)) orelse return false;
+    defer ffi.v8_Context_Dispose(creation);
+    const made = ffi.v8_Context_GetRawAddress(creation) orelse return false;
+    const target = ffi.v8_Context_GetRawAddress(context) orelse return false;
+    return made == target;
+}
+
+/// A world's promise for another world's (`mirrorPromise`): its resolver,
+/// settled once by the reaction to the source. Freed when the reaction ends
+/// (it settles, or is dropped); a world realm's is on the realm's `pending`
+/// list until then, or until the realm's end cuts it.
+const Mirror = struct {
+    /// The target realm's resolver, OWNED; null once the target realm ended
+    /// (`cut`).
+    resolver: ?*ffi.PromiseResolver,
+    /// The target realm: read only while `resolver` is set.
+    realm: Context,
+    /// Its place on its world realm's `pending` list; null for a main
+    /// realm's mirror, which is on none.
+    index: ?usize = null,
+
+    const allocator = std.heap.c_allocator;
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = dropped };
+
+    fn fulfilled(data: ?*anyopaque, value: engine.JSValue) void {
+        settle(@ptrCast(@alignCast(data.?)), value, false);
+    }
+
+    fn rejected(data: ?*anyopaque, reason: engine.JSValue) void {
+        settle(@ptrCast(@alignCast(data.?)), reason, true);
+    }
+
+    /// The reaction's realm ended, or the source was collected, first: the
+    /// world's promise stays pending.
+    fn dropped(data: ?*anyopaque) void {
+        const self: *Mirror = @ptrCast(@alignCast(data.?));
+        self.release();
+    }
+
+    fn settle(self: *Mirror, value: engine.JSValue, is_rejection: bool) void {
+        defer self.release();
+        const resolver = self.resolver orelse return;
+        const entered = @import("protocol_support.zig").enter(self.realm) catch return;
+        defer entered.leave();
+        const context = entered.context();
+        const raw = @import("realm_entry.zig").EngineValue.of(entered.isolate, context, value) catch return;
+        defer raw.release();
+        // The value as the target world sees it.
+        const across = acrossWorlds(entered.isolate, raw.ptr, context);
+        defer if (across) |converted| ffi.v8_Global_Dispose(converted);
+        const settled = across orelse raw.ptr;
+        _ = if (is_rejection)
+            ffi.v8_PromiseResolver_Reject(resolver, context, settled)
+        else
+            ffi.v8_PromiseResolver_Resolve(resolver, context, settled);
+    }
+
+    /// The target world realm ends (`dropMirrors`, which empties its list
+    /// after): the resolver goes, and the reaction finds nothing to settle.
+    fn cut(self: *Mirror) void {
+        if (self.resolver) |resolver| ffi.v8_PromiseResolver_Dispose(resolver);
+        self.resolver = null;
+        self.index = null;
+    }
+
+    /// The end of the record: off its realm's list (the realm lives while
+    /// the resolver is set), its resolver released.
+    fn release(self: *Mirror) void {
+        if (self.resolver) |resolver| {
+            if (self.index) |index| if (stateOf(self.realm)) |w| {
+                _ = w.pending.swapRemove(index);
+                if (index < w.pending.items.len) w.pending.items[index].index = index;
+            };
+            ffi.v8_PromiseResolver_Dispose(resolver);
+        }
+        allocator.destroy(self);
+    }
+};
 
 // ============================================================================
 // The walk and node teardown

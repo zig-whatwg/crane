@@ -18,11 +18,20 @@
 //!                                         cache id (u64 BE) ++ cache name
 //!   0x02 cache id (u64 BE) seq (u64 BE)   a request response list's entry
 //!                                         (records.encode), in list order
+//!   0x03 cache id (u64 BE)                a cache deleted from its map while
+//!                                         a Cache object held it (empty)
 //!
 //! A cache deleted from its map while Cache objects still represent it stays
 //! functional for them ("the existing DOM objects ... should remain
 //! functional"): its entries live on until the last such object has gone
-//! (`retain` / `release`), then the next operation removes them.
+//! (`retain` / `release`), then the next operation removes them. With a
+//! profile directory such a cache is marked in the store (0x03), so one the
+//! Browser ended with is removed when the next Browser on the profile starts
+//! (`purgeEarlierBrowsers`, lane prof1, D6 step 5) - no Cache object
+//! outlives its Browser - as Chromium's Cache Storage deletes the caches no
+//! index references when it starts (content/browser/cache_storage/
+//! legacy/legacy_cache_storage.cc, SimpleCacheLoader::LoadIndex: "Delete
+//! caches that are not in the index", DeleteUnreferencedFiles).
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#cache-objects
 
@@ -187,7 +196,9 @@ pub const Storage = struct {
         defer self.allocator.free(found.key);
         try txn.delete(found.key);
         if (self.isHeld(found.cache)) {
-            try self.doomed.append(self.allocator, found.cache);
+            try self.doomed.ensureUnusedCapacity(self.allocator, 1);
+            try txn.put(&doomedKey(found.cache), "");
+            self.doomed.appendAssumeCapacity(found.cache);
         } else {
             try deleteEntries(&txn, found.cache);
         }
@@ -448,10 +459,46 @@ pub const Storage = struct {
                 continue;
             }
             try deleteEntries(txn, cache);
+            try txn.delete(&doomedKey(cache));
             _ = self.doomed.swapRemove(i);
         }
     }
+
+    /// The caches earlier Browsers on this profile deleted while Cache
+    /// objects held them, and ended with: their entries and marks go. The
+    /// Browser's start (src/browser/profile_stores.zig), before any realm -
+    /// nothing of this Browser holds them.
+    pub fn purgeEarlierBrowsers(self: *Storage, browser: *platform.BrowserPlatform) Error!void {
+        self.lock();
+        defer self.unlock();
+        var txn = try Txn.begin(browser, .write, self.allocator);
+        errdefer txn.abort();
+        var marked: std.ArrayListUnmanaged(u64) = .empty;
+        defer marked.deinit(self.allocator);
+        {
+            var cursor = try txn.prefixCursor(&.{0x03});
+            defer cursor.close();
+            while (try cursor.next(self.allocator)) |kv| {
+                defer kv.free(self.allocator);
+                if (kv.key.len != 9) return error.StoreFailed;
+                try marked.append(self.allocator, std.mem.readInt(u64, kv.key[1..9], .big));
+            }
+        }
+        for (marked.items) |cache| {
+            try deleteEntries(&txn, cache);
+            try txn.delete(&doomedKey(cache));
+        }
+        try txn.commit();
+    }
 };
+
+/// The mark of a cache deleted while held.
+fn doomedKey(cache: u64) [9]u8 {
+    var key: [9]u8 = undefined;
+    key[0] = 0x03;
+    std.mem.writeInt(u64, key[1..9], cache, .big);
+    return key;
+}
 
 /// A request response list's entry as it was loaded.
 const Loaded = struct {
@@ -724,4 +771,66 @@ fn storeError(err: platform.StoreError) Error {
         error.QuotaExceeded => error.QuotaExceeded,
         else => error.StoreFailed,
     };
+}
+
+fn ignoreEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
+    _ = .{ context, event };
+}
+
+test "a cache deleted while a Cache object held it is purged when the next Browser on the profile starts" {
+    const testing = std.testing;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(base);
+    const directory = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
+    defer testing.allocator.free(directory);
+    const no_events: platform.EventSink = .{ .context = null, .post = ignoreEvent };
+    {
+        const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+        defer platform.destroyBrowserPlatform(browser);
+        var storage = Storage.init(testing.allocator);
+        defer storage.deinit();
+        const kept = try storage.openCache(browser, "k", "kept");
+        const held = try storage.openCache(browser, "k", "held");
+        // An entry for each, as Batch Cache Operations writes them.
+        var txn = try Txn.begin(browser, .write, testing.allocator);
+        for ([_]u64{ kept, held }) |cache| {
+            const key = try entryKey(testing.allocator, cache, 1);
+            defer testing.allocator.free(key);
+            try txn.put(key, "entry");
+        }
+        try txn.commit();
+        try storage.retain(held);
+        try testing.expect(try storage.deleteCache(browser, "k", "held"));
+        // The Browser ends with the Cache object still holding it.
+    }
+    const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    var storage = Storage.init(testing.allocator);
+    defer storage.deinit();
+    try storage.purgeEarlierBrowsers(browser);
+    var txn = try Txn.begin(browser, .read, testing.allocator);
+    defer txn.end();
+    // One entry left - the kept cache's - and no mark.
+    var entries: usize = 0;
+    {
+        var cursor = try txn.prefixCursor(&.{0x02});
+        defer cursor.close();
+        while (try cursor.next(testing.allocator)) |kv| {
+            kv.free(testing.allocator);
+            entries += 1;
+        }
+    }
+    try testing.expectEqual(@as(usize, 1), entries);
+    var cursor = try txn.prefixCursor(&.{0x03});
+    defer cursor.close();
+    try testing.expect((try cursor.next(testing.allocator)) == null);
+    const names = try storage.cacheNames(browser, testing.allocator, "k");
+    defer {
+        for (names) |name| testing.allocator.free(name);
+        testing.allocator.free(names);
+    }
+    try testing.expectEqual(@as(usize, 1), names.len);
+    try testing.expectEqualStrings("kept", names[0]);
 }
