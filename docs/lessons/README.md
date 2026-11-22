@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Answer a command the page may be blocked on off the page's thread](architecture-answer-a-command-the-page-may-be-blocked-on-off-the-pages-thread.md) - **Before putting a CDP command on the page session, ask whether the page's thread can be waiting for exactly that command; if it can, answer it where Chrome's browser process does - on the devtools thread, through state the page's thread only writes under a lock.**
 - [A supplement cannot write a platform store at its end - flush before the platform state ends](architecture-a-supplement-cannot-write-a-platform-store-at-its-end.md) - **In Crane a Browser's platform state dies before its supplements: persist through an explicit flush that runs before it, and open stores per operation.**
 - [A paused thread is answered through shared state, never through its own task queue](architecture-a-paused-thread-is-answered-through-state-not-its-task-queue.md) - **Design the answer path of every pause first: it must work while the paused thread runs nothing - shared state plus a wake, never a task for that thread.**
 - [A realm is made before its document commits - announce it at the commit](architecture-a-realm-is-made-before-its-document-commits-announce-it-at-the-commit.md) - **The engine knows when a realm exists; only the navigation knows when its document is the frame's - announce contexts at the commit, in the order the browser's clients were measured to expect.**
@@ -1312,6 +1313,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A probe test prints only when it fails](testing-a-probe-test-prints-only-when-it-fails.md) - **A probe must fail to be heard: end it with an error, read its prints from the failure report, and delete it before the gate.**
 
 ### Debugging
+- [A removal that takes several entries invalidates every index](debugging-a-removal-that-takes-several-entries-invalidates-every-index.md) - **If the removal call can cascade, never iterate the list by index around it: loop "find one, remove it" until none is found.**
 - [Debugging: A ring-off footprint gap can be live pages the kernel's ledger calls reclaimable](debugging-a-ring-off-footprint-gap-can-be-live-pages-the-ledger-calls-reclaimable.md) - Identical live heap plus Malloc Small reclaimable greater than its free space means the lower footprint is under-counting; fix what both sides hold instead.
 - [Debugging: An engine-owned value is never isUndefined() - ask engine.typeOf](debugging-an-engine-owned-value-is-never-isundefined-ask-typeof.md) - An Owned value is a handle: only engine.typeOf says it is undefined; and a native test that bypasses the remote end proves nothing about its parsing.
 - [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
