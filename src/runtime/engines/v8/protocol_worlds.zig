@@ -95,6 +95,9 @@ const Definition = struct {
     /// OWNED (c_allocator).
     name: []u8,
     universal_access: bool,
+    /// The world's own policy (engine.WorldRealmOptions.
+    /// content_security_policy), OWNED (c_allocator); null: the page's.
+    content_security_policy: ?[]u8 = null,
 };
 
 /// A world realm the adapter made and that has not ended.
@@ -255,7 +258,9 @@ fn define(worlds: *AgentWorlds, options: *const engine.WorldRealmOptions) Error!
     if (worlds.definitions.get(options.world)) |known| return known;
     const name = std.heap.c_allocator.dupe(u8, options.name) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.free(name);
-    const definition: Definition = .{ .name = name, .universal_access = options.universal_access };
+    const policy: ?[]u8 = if (options.content_security_policy) |text| std.heap.c_allocator.dupe(u8, text) catch return error.OutOfMemory else null;
+    errdefer if (policy) |p| std.heap.c_allocator.free(p);
+    const definition: Definition = .{ .name = name, .universal_access = options.universal_access, .content_security_policy = policy };
     worlds.definitions.put(std.heap.c_allocator, options.world, definition) catch return error.OutOfMemory;
     return definition;
 }
@@ -286,10 +291,19 @@ pub fn mainRealmOf(realm: Context) Context {
 
 /// engine.worldInfoOf.
 pub fn worldInfoOf(realm: Context) ?engine.WorldInfo {
+    // No lookup for a Browser that made no world: the host asks on every
+    // eval's code generation check.
+    if (!realmMayHaveWorlds(realm)) return null;
     const worlds = worldsOfRealm(realm) orelse return null;
     const w = worlds.realms.get(realm) orelse return null;
     const definition = worlds.definitions.get(w.world) orelse return .{ .world = w.world, .name = "", .universal_access = false, .main = w.main };
-    return .{ .world = w.world, .name = definition.name, .universal_access = definition.universal_access, .main = w.main };
+    return .{
+        .world = w.world,
+        .name = definition.name,
+        .universal_access = definition.universal_access,
+        .content_security_policy = definition.content_security_policy,
+        .main = w.main,
+    };
 }
 
 /// engine.worldRealmsOf.
@@ -591,7 +605,10 @@ pub fn endAgent(isolate: *ffi.Isolate, worlds: *AgentWorlds) void {
     }
     worlds.handed.deinit(std.heap.c_allocator);
     var definitions = worlds.definitions.valueIterator();
-    while (definitions.next()) |definition| std.heap.c_allocator.free(definition.name);
+    while (definitions.next()) |definition| {
+        std.heap.c_allocator.free(definition.name);
+        if (definition.content_security_policy) |policy| std.heap.c_allocator.free(policy);
+    }
     worlds.definitions.deinit(std.heap.c_allocator);
     var states = worlds.realms.valueIterator();
     while (states.next()) |state| std.heap.c_allocator.destroy(state.*);
