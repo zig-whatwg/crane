@@ -4385,6 +4385,12 @@ pub const InspectorHooks = extern struct {
     quit_message_loop_on_pause: ?*const fn (host: ?*anyopaque) callconv(.c) void,
     /// BORROWED: the realm record's own context handle.
     default_context: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) ?*Context,
+    /// valueSubtype for a platform object's instance: STATIC NUL-terminated
+    /// UTF-8, or null.
+    value_subtype: ?*const fn (host: ?*anyopaque, instance: *anyopaque) callconv(.c) ?[*:0]const u8,
+    /// descriptionForValueSubtype: UTF-8 written into `buffer` (at most
+    /// `capacity` bytes); its length, 0 for none.
+    description: ?*const fn (host: ?*anyopaque, instance: *anyopaque, buffer: [*]u8, capacity: usize) callconv(.c) usize,
 };
 pub extern fn v8_Inspector_New(isolate: *Isolate) ?*Inspector;
 pub extern fn v8_Inspector_Delete(inspector: ?*Inspector) void;

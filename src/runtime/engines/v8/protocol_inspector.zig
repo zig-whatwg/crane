@@ -95,6 +95,8 @@ pub const Inspector = struct {
             .run_message_loop_on_pause = runMessageLoopOnPause,
             .quit_message_loop_on_pause = quitMessageLoopOnPause,
             .default_context = defaultContext,
+            .value_subtype = valueSubtype,
+            .description = description,
         };
         ffi.v8_Inspector_SetHooks(native, &self.hooks);
         return self;
@@ -326,6 +328,30 @@ fn defaultContext(host: ?*anyopaque, group: c_int) callconv(.c) ?*ffi.Context {
         return @ptrCast(@alignCast(engine_ctx));
     }
     return null;
+}
+
+/// V8InspectorClient::valueSubtype for a platform object: the host's answer
+/// (engine.InspectorClient.valueSubtype), NUL-terminated for the C++ side.
+fn valueSubtype(host: ?*anyopaque, instance: *anyopaque) callconv(.c) ?[*:0]const u8 {
+    const inspector = inspectorOfHost(host) orelse return null;
+    const client = inspector.client orelse return null;
+    const steps = client.valueSubtype orelse return null;
+    const subtype = steps(client.host, @ptrCast(@alignCast(instance))) orelse return null;
+    // The protocol's subtypes, as static NUL-terminated text.
+    inline for (.{ "node", "array", "error", "blob", "trustedtype" }) |known| {
+        if (std.mem.eql(u8, subtype, known)) return known;
+    }
+    return null;
+}
+
+/// V8InspectorClient::descriptionForValueSubtype: the host's answer into the
+/// C++ side's buffer.
+fn description(host: ?*anyopaque, instance: *anyopaque, buffer: [*]u8, capacity: usize) callconv(.c) usize {
+    const inspector = inspectorOfHost(host) orelse return 0;
+    const client = inspector.client orelse return 0;
+    const steps = client.descriptionForValueSubtype orelse return 0;
+    const written = steps(client.host, @ptrCast(@alignCast(instance)), buffer[0..capacity]) orelse return 0;
+    return written.len;
 }
 
 // ============================================================================
