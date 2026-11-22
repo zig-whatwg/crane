@@ -8,7 +8,7 @@
 **What Happened**: main's binary passed 10/10 at rest and 50/50 beside four loops of its own test file (load 7-8 on chat2's 8 cores). With `taskpolicy -c background` on the test and on 8 `while :; do :; done` shells, the test competed for chat2's 4 E cores at low priority, and main's binary FAILED 5 of 5 (160-180 s a run). The fix, which turns until the slice queue is empty, PASSED 50 of 50 under the same starvation (11 s a run). The starvation stays on the E cores, so other jobs on the host keep the P cores.
 
 **Fix**:
-1. Reproduce with starvation: `taskpolicy -c background <launcher> <exe> --filter=...` beside N background-QoS spinners in the same job, and stop the spinners when the runs end.
+1. Reproduce with starvation: `taskpolicy -c background <launcher> <exe> --filter=...` beside N background-QoS spinners in the same job, and stop the spinners when the runs end. On Linux (server1), pin the launcher and N spinners to ONE CPU (`taskset -c <cpu>`): 8 spinners reproduced edges_svg_script_queue's gate flake 6 of 10 runs, and no other core is touched (lane mem1, 2026-11-22; the recurrence in testing-a-test-that-waits-one-turn-races-a-step-that-went-parallel.md).
 2. Fix the test to wait on the condition it asserts (here: the deferred-teardown queue empty), with a deadline only as a failure guard.
 3. Prove it under the same starvation, x50.
 
