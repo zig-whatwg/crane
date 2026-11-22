@@ -469,6 +469,14 @@ fn servedFromCache(context: *anyopaque, request: *const InternalRequest) void {
 fn responseReceived(context: *anyopaque, request: *const InternalRequest, response: *const InternalResponse) void {
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse return;
+    // Log.entryAdded "Failed to load resource: the server responded with a
+    // status of N (text)" for the tab's Log sessions (lane cdph's
+    // domains/log.zig; Blink's ResourceLoadObserverForFrame::
+    // DidReceiveResponse, status >= 400) - whether or not Network is on.
+    if (response.status >= 400) {
+        var log_id_buffer: [48]u8 = undefined;
+        @import("domains/log.zig").errorResponse(side, who.tab, request.getUrl(), requestIdText(side, request.request_id, &log_id_buffer), response.status, response.status_message);
+    }
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
     if (sessions.len == 0) return;
