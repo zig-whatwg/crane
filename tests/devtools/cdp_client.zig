@@ -359,10 +359,15 @@ pub const Client = struct {
         return std.mem.eql(u8, on, session_id);
     }
 
+    /// Whether `text` is the event `method`: a message whose first member is
+    /// its "method" (Crane writes an event's method first, a response's
+    /// "id"). Not "no `"id":` anywhere": an event's params have ids of their
+    /// own - Page.frameNavigated's frame, executionContextCreated's context -
+    /// and a wait for one of those never matched (G3 hung on frameNavigated).
     fn isEvent(text: []const u8, method: []const u8) bool {
         var needle_buffer: [128]u8 = undefined;
-        const needle = std.fmt.bufPrint(&needle_buffer, "\"method\":\"{s}\"", .{method}) catch return false;
-        return std.mem.indexOf(u8, text, needle) != null and std.mem.indexOf(u8, text, "\"id\":") == null;
+        const needle = std.fmt.bufPrint(&needle_buffer, "{{\"method\":\"{s}\"", .{method}) catch return false;
+        return std.mem.startsWith(u8, text, needle);
     }
 };
 
