@@ -48,6 +48,7 @@ const N = protocol.Network;
 const F = protocol.Fetch;
 
 const log = std.log.scoped(.devtools);
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 
 /// The high bit marks a request id that is a counter, not a navigation id.
 const counter_bit: u64 = 1 << 63;
@@ -70,6 +71,15 @@ pub const State = struct {
     /// a fetch of.
     in_flight: std.AutoHashMapUnmanaged(u64, u32) = .empty,
     counted: std.AutoHashMapUnmanaged(u64, u64) = .empty,
+    /// Each map's tombstones, bounded: their keys - navigations, requests,
+    /// interceptions, frames - come and go for as long as the remote end is
+    /// on the Browser (infra.tombstones.TombstoneGuard;
+    /// tools/lint_tombstones.zig).
+    navigations_guard: TombstoneGuard = .{},
+    redirects_guard: TombstoneGuard = .{},
+    paused_guard: TombstoneGuard = .{},
+    in_flight_guard: TombstoneGuard = .{},
+    counted_guard: TombstoneGuard = .{},
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         self.navigations.deinit(allocator);
@@ -97,11 +107,12 @@ pub fn inFlight(side: *BrowserSide, navigable: u64) u32 {
 /// IdlenessDetector).
 fn countInFlight(side: *BrowserSide, tab: u64, navigable: u64, delta: i32) void {
     const state = &side.fetch_state;
+    state.in_flight_guard.beforeInsert(&state.in_flight);
     const entry = state.in_flight.getOrPut(side.allocator, navigable) catch return;
     if (!entry.found_existing) entry.value_ptr.* = 0;
     if (delta > 0) entry.value_ptr.* += 1 else entry.value_ptr.* -|= 1;
     const now = entry.value_ptr.*;
-    if (now == 0) _ = state.in_flight.remove(navigable);
+    if (now == 0 and state.in_flight.remove(navigable)) state.in_flight_guard.noteRemoval(&state.in_flight);
     const page_domains = @import("domains/page_domains.zig");
     var buffer: [16]*PageSession = undefined;
     var n: usize = 0;
@@ -245,6 +256,7 @@ pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) 
     const state = &side.fetch_state;
     switch (milestone.event) {
         .started => if (milestone.navigation_id != 0) {
+            state.navigations_guard.beforeInsert(&state.navigations);
             state.navigations.put(side.allocator, milestone.navigation_id, milestone.navigable_id) catch {};
         },
         .committed => |c| {
@@ -253,9 +265,9 @@ pub fn onMilestone(side: *BrowserSide, milestone: *const host_bridge.Milestone) 
             // before any handler, so a subresource fetch of the new
             // document finds it whether or not a session has Page on.
             if (side.browser) |b| if (frames.of(b)) |f| f.noteCommitted(milestone.navigable_id, c.document.document, c.document.generation, milestone.navigation_id);
-            _ = state.navigations.remove(milestone.navigation_id);
+            if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations);
         },
-        .aborted => _ = state.navigations.remove(milestone.navigation_id),
+        .aborted => if (state.navigations.remove(milestone.navigation_id)) state.navigations_guard.noteRemoval(&state.navigations),
         else => {},
     }
 }
@@ -400,6 +412,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     const who = attribute(side, request) orelse return id;
     // A subresource fetch's first hop: one more in flight for its frame.
     if (request.request_id == 0 and request.navigation_id == 0) {
+        side.fetch_state.counted_guard.beforeInsert(&side.fetch_state.counted);
         if (side.fetch_state.counted.put(side.allocator, id, who.frame)) |_| {
             countInFlight(side, who.tab, who.frame, 1);
         } else |_| {}
@@ -407,6 +420,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
     var buffer: [16]*PageSession = undefined;
     const sessions = sessionsWith(side, who.tab, "Network", &buffer);
     var redirect = side.fetch_state.redirects.fetchRemove(id);
+    if (redirect != null) side.fetch_state.redirects_guard.noteRemoval(&side.fetch_state.redirects);
     defer if (redirect) |*r| r.value.deinit(side.allocator);
     if (sessions.len == 0) return id;
 
@@ -441,6 +455,7 @@ fn redirectReceived(context: *anyopaque, request: *const InternalRequest, respon
     const side = sideOf(context) orelse return;
     if (request.request_id == 0) return;
     const head = Head.of(side.allocator, response) catch return;
+    side.fetch_state.redirects_guard.beforeInsert(&side.fetch_state.redirects);
     const entry = side.fetch_state.redirects.getOrPut(side.allocator, request.request_id) catch {
         var h = head;
         h.deinit(side.allocator);
@@ -486,6 +501,7 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
 /// A counted fetch ended: one fewer in flight for its frame.
 fn uncount(side: *BrowserSide, request: *const InternalRequest, tab: u64) void {
     const removed = side.fetch_state.counted.fetchRemove(request.request_id) orelse return;
+    side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
     countInFlight(side, tab, removed.value, -1);
 }
 
@@ -508,7 +524,7 @@ fn loadingFailed(context: *anyopaque, request: *const InternalRequest, error_tex
     const side = sideOf(context) orelse return;
     const who = attribute(side, request) orelse {
         // Its frame went: the count goes with the frame.
-        _ = side.fetch_state.counted.remove(request.request_id);
+        if (side.fetch_state.counted.remove(request.request_id)) side.fetch_state.counted_guard.noteRemoval(&side.fetch_state.counted);
         return;
     };
     uncount(side, request, who.tab);
@@ -601,12 +617,13 @@ fn interceptRequest(context: *anyopaque, request: *const InternalRequest, networ
 
     const interception_id = side.fetch_state.next_interception;
     side.fetch_state.next_interception += 1;
+    side.fetch_state.paused_guard.beforeInsert(&side.fetch_state.paused);
     side.fetch_state.paused.put(side.allocator, interception_id, .{ .interception = interception, .session = holder }) catch return false;
 
     var arena_state = std.heap.ArenaAllocator.init(side.allocator);
     defer arena_state.deinit();
     const n_request = requestOf(arena_state.allocator(), request) catch {
-        _ = side.fetch_state.paused.remove(interception_id);
+        if (side.fetch_state.paused.remove(interception_id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
         return false;
     };
     var paused_buffer: [48]u8 = undefined;
@@ -627,7 +644,7 @@ fn interceptionDropped(context: *anyopaque, request_id: u64) void {
     var it = side.fetch_state.paused.iterator();
     while (it.next()) |e| {
         if (e.value_ptr.interception.request_id == request_id) {
-            _ = side.fetch_state.paused.remove(e.key_ptr.*);
+            if (side.fetch_state.paused.remove(e.key_ptr.*)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
             return;
         }
     }
@@ -653,7 +670,7 @@ pub fn decide(session: *PageSession, interception_text: []const u8, decision: ob
     const id = parseInterceptionId(interception_text) orelse return false;
     const held = side.fetch_state.paused.get(id) orelse return false;
     if (held.session != session) return false;
-    _ = side.fetch_state.paused.remove(id);
+    if (side.fetch_state.paused.remove(id)) side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
     held.interception.decide(decision);
     return true;
 }
@@ -667,6 +684,7 @@ pub fn releaseHeldBy(session: *PageSession) void {
             if (e.value_ptr.session == session) break e.key_ptr.*;
         } else break;
         const held = side.fetch_state.paused.fetchRemove(found).?.value;
+        side.fetch_state.paused_guard.noteRemoval(&side.fetch_state.paused);
         held.interception.decide(.{ .@"continue" = .{} });
     }
 }
