@@ -40,6 +40,14 @@ const std = @import("std");
 // stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
 const stdout_stream = @import("stdout_stream.zig");
 const Token = std.zig.Token;
+
+/// A token as the lint keeps it: 12 bytes where std's is 24 - the scanned
+/// trees are ~15 million tokens.
+const Tok = struct {
+    tag: Token.Tag,
+    start: u32,
+    end: u32,
+};
 const Allocator = std.mem.Allocator;
 
 const baseline_path = "tools/hasdecl_baseline.txt";
@@ -145,13 +153,13 @@ const Scope = struct {
 const File = struct {
     path: []const u8,
     source: [:0]const u8,
-    tokens: []const Token,
+    tokens: []const Tok,
     line_starts: []const u32,
     root: *Scope = undefined,
 
     fn text(self: *const File, index: u32) []const u8 {
-        const loc = self.tokens[index].loc;
-        return self.source[loc.start..loc.end];
+        const t = self.tokens[index];
+        return self.source[t.start..t.end];
     }
 
     fn tag(self: *const File, index: u32) Token.Tag {
@@ -167,7 +175,7 @@ const File = struct {
     }
 
     fn lineOf(self: *const File, index: u32) u32 {
-        const offset: u32 = @intCast(self.tokens[index].loc.start);
+        const offset: u32 = self.tokens[index].start;
         var lo: usize = 0;
         var hi: usize = self.line_starts.len;
         while (hi - lo > 1) {
@@ -187,10 +195,23 @@ const Probe = struct {
     names: []const []const u8,
 };
 
+/// A call `f(...)`: where it is. Its arguments are split only when a
+/// generic's parameter asks for them (`argsOf`) - a few hundred of the
+/// millions of calls the trees make; splitting every one made the parse the
+/// lint's cost (lane tpf: minutes on a loaded chat2).
 const Call = struct {
     scope: *Scope,
-    args: []const Range,
+    /// The `(`'s token.
+    open: u32,
     dotted: bool,
+    args: ?[]const Range = null,
+
+    fn argsOf(self: *Call, arena: Allocator) ![]const Range {
+        if (self.args) |known| return known;
+        const split = try callArgs(arena, self.scope.file, self.open);
+        self.args = split.args;
+        return split.args;
+    }
 };
 
 pub const Model = struct {
@@ -208,15 +229,17 @@ pub const Model = struct {
 // Reading a file
 // ---------------------------------------------------------------------------
 
-fn tokenize(arena: Allocator, source: [:0]const u8) ![]const Token {
-    var list: std.ArrayList(Token) = .empty;
+fn tokenize(arena: Allocator, source: [:0]const u8) ![]const Tok {
+    var list: std.ArrayList(Tok) = .empty;
+    // About one token per six bytes: one allocation, mostly.
+    try list.ensureTotalCapacity(arena, source.len / 6 + 16);
     var tokenizer = std.zig.Tokenizer.init(source);
     while (true) {
         const tok = tokenizer.next();
         if (tok.tag == .eof) break;
         // Doc comments are tokens; nothing here reads them.
         if (tok.tag == .doc_comment or tok.tag == .container_doc_comment) continue;
-        try list.append(arena, tok);
+        try list.append(arena, .{ .tag = tok.tag, .start = @intCast(tok.loc.start), .end = @intCast(tok.loc.end) });
     }
     return list.items;
 }
@@ -522,10 +545,9 @@ fn parseFile(model: *Model, file: *File) !void {
 
         // A call `f(...)`, `x.f(...)`: what a generic's type parameter is.
         if (tag == .identifier and i + 1 < n and file.tag(i + 1) == .l_paren and !(i >= 1 and file.tag(i - 1) == .keyword_fn)) {
-            const call = try callArgs(arena, file, i + 1);
             const gop = try model.calls.getOrPut(arena, file.text(i));
             if (!gop.found_existing) gop.value_ptr.* = .empty;
-            try gop.value_ptr.append(arena, .{ .scope = top, .args = call.args, .dotted = i >= 1 and file.tag(i - 1) == .period });
+            try gop.value_ptr.append(arena, .{ .scope = top, .open = i + 1, .dotted = i >= 1 and file.tag(i - 1) == .period });
         }
     }
 }
@@ -682,11 +704,12 @@ fn resolveUncached(model: *Model, file: *File, scope: *Scope, range: Range, dept
             .param => |param| {
                 const func = param.func;
                 if (!func.params[param.index].is_type) return null;
-                const sites = model.calls.get(func.name) orelse return null;
-                for (sites.items) |site| {
+                const sites = model.calls.getPtr(func.name) orelse return null;
+                for (sites.items) |*site| {
                     const index = if (func.is_method and site.dotted) (std.math.sub(usize, param.index, 1) catch continue) else param.index;
-                    if (index >= site.args.len) continue;
-                    const r = (try resolve(model, site.scope.file, site.scope, site.args[index], depth + 1)) orelse continue;
+                    const args = try site.argsOf(arena);
+                    if (index >= args.len) continue;
+                    const r = (try resolve(model, site.scope.file, site.scope, args[index], depth + 1)) orelse continue;
                     try current.appendSlice(arena, r);
                 }
                 if (current.items.len == 0) return null;
