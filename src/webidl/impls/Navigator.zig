@@ -133,9 +133,23 @@ pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Getter for maxTouchPoints
+///
+/// Pointer Events 3: "the maximum number of simultaneous touch contacts
+/// supported by the device" - none on a headless device (0, as headless
+/// Chrome answers), unless the host emulates touch for the tab
+/// (html.window.host_overrides: CDP Emulation.setTouchEmulationEnabled).
 pub fn get_maxTouchPoints(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (hostOverridesOf(instance)) |overrides| if (overrides.max_touch_points) |points| return points;
+    return 0;
+}
+
+/// The host's overrides for the tab this navigator's Window shows
+/// (html.window.host_overrides: CDP's Emulation, WebDriver BiDi's
+/// emulation), if it is a Window's.
+fn hostOverridesOf(instance: *runtime.Instance) ?*const @import("html").window.host_overrides.HostOverrides {
+    const window = @import("html").user_activation.windowOfRealm(instance.ctx) orelse return null;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return null;
+    return &bc.getTop().host_overrides;
 }
 
 /// Getter for attribution
@@ -317,7 +331,9 @@ pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for platform
 /// Per HTML Standard: Returns the platform identifier.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
+    // The host's override for the tab (CDP Emulation.setUserAgentOverride
+    // `platform`), else the compile target's.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.platform) |platform| return runtime.DOMString.initDupe(instance.ctx.allocator, platform);
     // Return platform based on compile target
     const builtin = @import("builtin");
     return runtime.DOMString.initInterned(switch (builtin.os.tag) {
@@ -347,6 +363,9 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// `User-Agent` value - its Browser's (fetch.network.NetworkContext), the
 /// one its fetches send, so the two always agree.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // The host's override for the tab (CDP Emulation.setUserAgentOverride)
+    // wins over the Browser's user agent.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.user_agent) |ua| return runtime.DOMString.initDupe(instance.ctx.allocator, ua);
     const network = @import("dom").browser_state.networkOf(instance.ctx) orelse
         return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.default_user_agent);
     return runtime.DOMString.initDupe(instance.ctx.allocator, network.userAgent());
@@ -387,12 +406,25 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for language
 /// Per HTML Standard: Returns the preferred language of the user.
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
+    // The host's override for the tab (the first language of CDP
+    // Emulation.setUserAgentOverride's acceptLanguage), else Crane's.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.language()) |language| return runtime.DOMString.initDupe(instance.ctx.allocator, language);
     return runtime.DOMString.initInterned("en-US");
 }
 
 /// The member a navigator keeps its languages array in (engine.traceValue).
 const languages_slot: engine.TracedSlot = .{ .name = "languages" };
+/// The one it keeps the array of a host's language override in.
+const overridden_languages_slot: engine.TracedSlot = .{ .name = "languages_overridden" };
+
+/// Whether `array`'s first element is the string `language`.
+fn firstLanguageIs(instance: *runtime.Instance, array: runtime.JSValue, language: []const u8) bool {
+    const first = engine.getProperty(instance.ctx, array, "0") catch return false;
+    defer first.release();
+    const text = engine.convertToDOMString(instance.ctx, first.borrow(), instance.ctx.allocator) catch return false;
+    defer instance.ctx.allocator.free(text);
+    return std.mem.eql(u8, text, language);
+}
 
 /// Getter for languages (HTML 8.9.1.4): "a frozen array of valid BCP 47
 /// language tags ... ordered by preference with the most preferred language
@@ -401,6 +433,19 @@ const languages_slot: engine.TracedSlot = .{ .name = "languages" };
 /// values": made on the first read, kept by an edge from the navigator.
 /// (No WebDriver BiDi emulated language: step 2 never applies.)
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    // "Until the user agent needs to return different values": a host's
+    // language override for the tab (CDP setUserAgentOverride acceptLanguage)
+    // is such a change - its array is made for it, and kept while it holds.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.language()) |language| {
+        if (engine.tracedValue(instance, overridden_languages_slot)) |kept| {
+            if (firstLanguageIs(instance, kept.borrow(), language)) return kept.take();
+            kept.release();
+        }
+        const values = [_]runtime.JSValue{.{ .string = .{ .data = language, .owned = false } }};
+        const array = try engine.createFrozenArray(instance.ctx, &values);
+        engine.traceValue(instance, array.value, overridden_languages_slot);
+        return array.take();
+    };
     if (engine.tracedValue(instance, languages_slot)) |kept| return kept.take();
     var language = try get_language(instance);
     defer language.deinit(instance.ctx.allocator);
