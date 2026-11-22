@@ -38,6 +38,7 @@ pub const sandbox_navigation = @import("sandbox_navigation.zig");
 /// HTML "not restored reasons" and a Document's bfcache blocking details.
 pub const not_restored_reasons = @import("not_restored_reasons.zig");
 pub const observer = @import("observer.zig");
+pub const document_start = @import("document_start.zig");
 
 pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 pub const NavigationFetchResult = fetch_integration.NavigationFetchResult;
