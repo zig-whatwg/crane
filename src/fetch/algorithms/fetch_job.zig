@@ -342,6 +342,10 @@ pub const FetchJob = struct {
         // entry this fetch fills for the document.
         self.consumeDocumentResource();
 
+        // The Browser's fetch observer hears the fetch begin (Blink's
+        // probe::WillSendRequest), and names it.
+        self.observeWillSend();
+
         // Step 17: main fetch - for every scheme. Its step 12 decides
         // between scheme fetch (data:, about:, blob:, with the tainting and
         // filtering that come with it) and HTTP fetch, and turns any other
@@ -349,6 +353,102 @@ pub const FetchJob = struct {
         // local scheme used to skip it, so a data: response came back
         // unfiltered - type "default", not "basic".
         return self.mainFetch();
+    }
+
+    /// The request the last `.network` step asked for, while it waits.
+    pub fn pendingNetworkRequest(self: *const FetchJob) ?*const NetworkRequest {
+        return if (self.network_request) |*r| r else null;
+    }
+
+    /// Change the waiting network request as its observer asked
+    /// (Fetch.continueRequest's url, method, headers, postData): what the
+    /// network is sent, not what the page sees. The new strings are the
+    /// request's own (`owned_values`, freed with it).
+    pub fn overrideNetworkRequest(self: *FetchJob, overrides: network.observer.Overrides) Allocator.Error!void {
+        const request = &(self.network_request orelse return);
+        const allocator = self.allocator;
+        var owned: std.ArrayList([]const u8) = .empty;
+        defer owned.deinit(allocator);
+        errdefer for (owned.items) |v| allocator.free(v);
+        if (overrides.url) |url| {
+            const copy = try allocator.dupe(u8, url);
+            try owned.append(allocator, copy);
+            request.url = copy;
+        }
+        if (overrides.method) |method| {
+            const copy = try allocator.dupe(u8, method);
+            try owned.append(allocator, copy);
+            request.method = copy;
+        }
+        if (overrides.body) |body| {
+            const copy = try allocator.dupe(u8, body);
+            try owned.append(allocator, copy);
+            request.body = copy;
+        }
+        var new_headers: ?[]NetworkRequest.Header = null;
+        if (overrides.headers) |headers| {
+            const list = try allocator.alloc(NetworkRequest.Header, headers.len);
+            errdefer allocator.free(list);
+            for (headers, 0..) |h, i| {
+                const name = try allocator.dupe(u8, h.name);
+                try owned.append(allocator, name);
+                const value = try allocator.dupe(u8, h.value);
+                try owned.append(allocator, value);
+                list[i] = .{ .name = name, .value = value };
+            }
+            new_headers = list;
+        }
+        errdefer if (new_headers) |list| allocator.free(list);
+        // Every new string joins the request's owned values.
+        const values = try allocator.alloc([]const u8, request.owned_values.len + owned.items.len);
+        @memcpy(values[0..request.owned_values.len], request.owned_values);
+        @memcpy(values[request.owned_values.len..], owned.items);
+        allocator.free(request.owned_values);
+        request.owned_values = values;
+        owned.clearRetainingCapacity();
+        if (new_headers) |list| {
+            allocator.free(request.headers);
+            request.headers = list;
+        }
+    }
+
+    /// The Browser's fetch observer (network/observer.zig), if any.
+    fn observer(self: *const FetchJob) ?*const network.observer.Observer {
+        return network.observer.of(self.request);
+    }
+
+    fn observeWillSend(self: *FetchJob) void {
+        const o = self.observer() orelse return;
+        if (self.depth == 0) if (o.bypass_cache) |bypass| {
+            if (bypass(o.context, self.request)) self.request.cache_mode = .no_store;
+        };
+        const will_send = o.will_send_request orelse return;
+        const id = will_send(o.context, self.request);
+        if (self.request.request_id == 0) self.request.request_id = id;
+    }
+
+    /// A response handed over: response_received, and loading_finished when
+    /// its body is all there already - else the driver reports the body's
+    /// end (`observeBodyEnd`). A network error: loading_failed.
+    fn observeHandover(self: *FetchJob, response: *const InternalResponse) void {
+        const o = self.observer() orelse return;
+        if (response.response_type == .@"error") {
+            if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_FAILED", response.aborted);
+            return;
+        }
+        if (o.response_received) |received| received(o.context, self.request, response);
+        if (!bodyArriving(response)) {
+            if (o.loading_finished) |finished| finished(o.context, self.request, if (response.body) |b| b.length orelse 0 else 0);
+        }
+    }
+
+    /// The driver's word that the handed-over response's body ended, with
+    /// `encoded_length` bytes as they came over the network, or failed.
+    pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failed: bool) void {
+        const o = self.observer() orelse return;
+        if (failed) {
+            if (o.loading_failed) |f| f(o.context, self.request, "net::ERR_FAILED", false);
+        } else if (o.loading_finished) |finished| finished(o.context, self.request, encoded_length);
     }
 
     /// Carry on from the network's answer to the request the last `.network`
@@ -462,6 +562,9 @@ pub const FetchJob = struct {
         const next = self.next_manual_redirect orelse return FetchError.NetworkError;
         self.next_manual_redirect = null;
         if (next.location) |location| self.allocator.free(location);
+        // The observer sees the redirect a navigation follows by hand, as
+        // one fetch follows itself (redirect_received, then will_send).
+        if (self.observer()) |o| if (o.redirect_received) |on_redirect| on_redirect(o.context, self.request, next.response);
         const redirected = http_fetch.httpRedirectFetchStart(self.allocator, self.params, next.response) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -471,6 +574,7 @@ pub const FetchJob = struct {
             .response => |r| return self.mainFetchFetched(r),
             .recursive_main_fetch => {
                 self.depth += 1;
+                self.observeWillSend();
                 return self.mainFetch();
             },
             .manual_redirect => |r| return self.manualRedirect(r),
@@ -807,7 +911,11 @@ pub const FetchJob = struct {
             return self.httpFetchFailed(err);
         };
         switch (network_start) {
-            .response => |response| return self.httpNetworkOrCacheFetchReturned(response),
+            .response => |response| {
+                // Answered without the network: from the HTTP cache.
+                if (response.response_type != .@"error") if (self.observer()) |o| if (o.served_from_cache) |served| served(o.context, self.request);
+                return self.httpNetworkOrCacheFetchReturned(response);
+            },
             .network => |needed| {
                 self.network_request = needed.request;
                 self.cache_transaction = needed.cache;
@@ -848,6 +956,11 @@ pub const FetchJob = struct {
                 return self.httpNetworkOrCacheFetch();
             },
         };
+        // The observer sees a redirect before HTTP-redirect fetch lets the
+        // response go (Network.requestWillBeSent's redirectResponse).
+        if (isRedirectStatus(response.status) and self.request.redirect_mode == .follow) {
+            if (self.observer()) |o| if (o.redirect_received) |on_redirect| on_redirect(o.context, self.request, response);
+        }
         const next = http_fetch.httpFetchFinish(self.allocator, self.params, .{}, response) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -861,6 +974,8 @@ pub const FetchJob = struct {
                 self.authentication_realm = null;
                 // HTTP-redirect fetch steps 20-22: main fetch again, one deeper.
                 self.depth += 1;
+                // The same fetch goes on to the new URL.
+                self.observeWillSend();
                 return self.mainFetch();
             },
         }
@@ -979,8 +1094,17 @@ pub const FetchJob = struct {
             callback(response);
         }
 
+        self.observeHandover(response);
         self.response = response;
         return .done;
+    }
+
+    /// Fetch's redirect statuses (HTTP fetch step 6: 301, 302, 303, 307, 308).
+    fn isRedirectStatus(status: u16) bool {
+        return switch (status) {
+            301, 302, 303, 307, 308 => true,
+            else => false,
+        };
     }
 
     /// Fetch "fetch response handover" step 4 for `response`, the response

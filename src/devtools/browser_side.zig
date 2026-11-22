@@ -19,6 +19,8 @@ const Allocator = std.mem.Allocator;
 const host_bridge = @import("host_bridge.zig");
 const page_domains = @import("domains/page_domains.zig");
 const PageSession = @import("page_session.zig").PageSession;
+const fetch_observer = @import("fetch_observer.zig");
+const fetch = @import("fetch");
 
 const log = std.log.scoped(.devtools);
 
@@ -60,6 +62,8 @@ pub const BrowserSide = struct {
     /// (Target.setAutoAttach {waitForDebuggerOnStart}); the devtools thread
     /// writes it, the Browser thread reads it when a page opens a tab.
     wait_for_debugger: std.atomic.Value(bool) = .init(false),
+    /// Browser thread only: the fetch observer's state (fetch_observer.zig).
+    fetch_state: fetch_observer.State = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -79,6 +83,9 @@ pub const BrowserSide = struct {
         self.browser = browser;
         try host_bridge.addListener(browser, self.listener());
         self.listening = true;
+        // The Browser's fetch observer: Network events, Fetch interception.
+        const network = try browser.scope.of(fetch.network.NetworkContext);
+        network.observer = fetch_observer.observerFor(self);
         // The tabs that exist already (the console's first tab, a WebDriver
         // session's): the devtools thread hears of them as of new ones.
         const tabs = try host_bridge.listTabs(browser, self.allocator);
@@ -92,9 +99,16 @@ pub const BrowserSide = struct {
             self.sessions.items[self.sessions.items.len - 1].detach();
         }
         if (self.listening) {
-            if (self.browser) |b| host_bridge.removeListener(b, self.listener());
+            if (self.browser) |b| {
+                host_bridge.removeListener(b, self.listener());
+                if (b.scope.of(fetch.network.NetworkContext)) |network| {
+                    network.observer = null;
+                } else |_| {}
+            }
             self.listening = false;
         }
+        self.fetch_state.deinit(self.allocator);
+        self.fetch_state = .{};
     }
 
     fn listener(self: *BrowserSide) host_bridge.Listener {
@@ -125,6 +139,7 @@ pub const BrowserSide = struct {
     /// A commit or a same-document navigation also tells the devtools thread
     /// the navigable's new URL (Target.targetInfoChanged).
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
+        fetch_observer.onMilestone(self, milestone);
         switch (milestone.event) {
             .committed => |c| self.postNavigated(milestone.navigable_id, c.url),
             .same_document => |c| self.postNavigated(milestone.navigable_id, c.url),

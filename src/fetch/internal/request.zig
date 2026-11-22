@@ -621,6 +621,16 @@ pub const InternalRequest = struct {
 
     /// Timing allow failed flag
     timing_allow_failed: bool = false,
+
+    /// Which fetch this request is, for its Browser's fetch observer
+    /// (network/observer.zig): unique in its Browser, set when the fetch
+    /// starts with an observer present; kept across redirects (CDP's
+    /// requestId). 0: none given.
+    request_id: u64 = 0,
+    /// The navigation this request is the fetch of (HTML navigate step 7's
+    /// navigation ID: CDP's loaderId, and its navigation request's
+    /// requestId); 0 for any other request.
+    navigation_id: u64 = 0,
     /// The redirect-taint the hops this request's URL list no longer holds
     /// gave it: set when it is not "same-origin". Fetch computes a request's
     /// redirect-taint from its URL list; a copy that keeps only the
@@ -1022,6 +1032,8 @@ pub const InternalRequest = struct {
             .prevent_no_cache_cache_control_header_modification = self.prevent_no_cache_cache_control_header_modification,
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
+            .request_id = self.request_id,
+            .navigation_id = self.navigation_id,
             .redirect_tainted = self.redirect_tainted,
             .dropped_urls_site = self.dropped_urls_site,
             .main_frame_navigation = self.main_frame_navigation,
