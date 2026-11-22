@@ -182,6 +182,8 @@ const Head = struct {
     headers: std.json.ObjectMap,
     mime_type: []u8,
     charset: []u8,
+    /// The HTTP version it came over; null for a response that did not.
+    http_version: ?fetch.network.HttpVersion = null,
 
     fn of(allocator: Allocator, response: *const InternalResponse) !Head {
         var headers: std.json.ObjectMap = .empty;
@@ -195,7 +197,7 @@ const Head = struct {
         const mime = try allocator.dupe(u8, if (content_type) |v| essence(v) else "");
         errdefer allocator.free(mime);
         const charset = try allocator.dupe(u8, if (content_type) |v| charsetOf(v) else "");
-        return .{ .url = url, .status = response.status, .status_text = status_text, .headers = headers, .mime_type = mime, .charset = charset };
+        return .{ .url = url, .status = response.status, .status_text = status_text, .headers = headers, .mime_type = mime, .charset = charset, .http_version = response.http_version };
     }
 
     fn deinit(self: *Head, allocator: Allocator) void {
@@ -218,22 +220,33 @@ const Head = struct {
             .connectionId = 0,
             .encodedDataLength = encoded_length,
             .securityState = securityStateOf(self.url),
-            .protocol = protocolOf(self.url),
+            .protocol = protocolOf(self.url, self.http_version),
         };
     }
 };
 
-/// Network.Response.protocol. A response that did not come over HTTP names
+/// Network.Response.protocol. A response that came over HTTP names the
+/// version it came over - its ALPN protocol or its connection's version
+/// (net::HttpConnectionInfoToString: "http/1.0", "http/1.1", "h2", "h3";
+/// Chrome 157 says "http/1.0" for an HTTP/1.0 server, lane tpw's probe,
+/// tmp/plans/tpw-evidence/netprobe-chrome157.txt). One that did not names
 /// its URL's scheme: Blink's InspectorNetworkAgent (BuildObjectForResource
 /// Response) takes response.CurrentRequestUrl().Protocol() when there is no
 /// ALPN protocol and the response is not HTTP - Chrome 157 (CDP probe, lane
 /// tpg): "data" for a data: document, script, image, fetch() and XHR,
 /// "file" for a file: document and its subresources, "blob" for a blob:
-/// fetch. An HTTP response says "http/1.1" (the version and ALPN's "h2" are
-/// not told here yet).
-fn protocolOf(url: []const u8) []const u8 {
+/// fetch.
+fn protocolOf(url: []const u8, http_version: ?fetch.network.HttpVersion) []const u8 {
+    if (http_version) |version| return switch (version) {
+        .http_1_0 => "http/1.0",
+        .http_1_1 => "http/1.1",
+        .http_2 => "h2",
+        .http_3 => "h3",
+    };
     const colon = std.mem.indexOfScalar(u8, url, ':') orelse return "http/1.1";
     const scheme = url[0..colon];
+    // An HTTP(S) response with no version told (made here: the HTTP cache's,
+    // a fulfilled one) keeps HTTP/1.1.
     if (std.ascii.eqlIgnoreCase(scheme, "http") or std.ascii.eqlIgnoreCase(scheme, "https")) return "http/1.1";
     return scheme;
 }
@@ -477,7 +490,11 @@ pub fn resourceTypeOf(request: *const InternalRequest) N.ResourceType {
     if (request.mode == .navigate) return .Document;
     if (request.initiator_type) |t| switch (t) {
         .xmlhttprequest => return .XHR,
-        .fetch => return .Fetch,
+        // fetch() of a data: URL is "Other" in Chrome 157, an XHR of one
+        // "XHR" (lane tpw's CDP probe, tmp/plans/tpw-evidence/
+        // netprobe-chrome157.txt: requestWillBeSent and responseReceived
+        // both).
+        .fetch => return if (isDataUrl(request)) .Other else .Fetch,
         .beacon, .ping => return .Ping,
         else => {},
     };
@@ -494,6 +511,11 @@ pub fn resourceTypeOf(request: *const InternalRequest) N.ResourceType {
         .empty => .Fetch,
         else => .Other,
     };
+}
+
+fn isDataUrl(request: *const InternalRequest) bool {
+    const url = request.getUrl();
+    return url.len >= 5 and std.ascii.eqlIgnoreCase(url[0..5], "data:");
 }
 
 fn referrerPolicyOf(request: *const InternalRequest) @FieldType(N.Request, "referrerPolicy") {

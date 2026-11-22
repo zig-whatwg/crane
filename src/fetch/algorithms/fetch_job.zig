@@ -574,7 +574,7 @@ pub const FetchJob = struct {
         const o = self.observer() orelse return;
         if (response.response_type == .@"error") {
             self.observed_end = true;
-            if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_FAILED", response.aborted);
+            if (o.loading_failed) |failed| failed(o.context, self.request, response.net_error.text(), response.aborted);
             return;
         }
         if (o.response_received) |received| received(o.context, self.request, response);
@@ -666,16 +666,17 @@ pub const FetchJob = struct {
     }
 
     /// The driver's word that the handed-over response's body ended, with
-    /// `encoded_length` bytes as they came over the network, or failed.
+    /// `encoded_length` bytes as they came over the network, or failed for
+    /// `failure` (its reason: DevTools' errorText).
     /// Nothing before the handover: a body main fetch waits for whole (step
     /// 23) is reported at its handover (`observeHandover`), after
     /// response_received, as Chrome orders them.
-    pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failed: bool) void {
+    pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failure: ?internal_response.NetError) void {
         if (self.observed_end or !self.observed_handover) return;
         self.observed_end = true;
         const o = self.observer() orelse return;
-        if (failed) {
-            if (o.loading_failed) |f| f(o.context, self.request, "net::ERR_FAILED", false);
+        if (failure) |reason| {
+            if (o.loading_failed) |f| f(o.context, self.request, reason.text(), false);
         } else if (o.loading_finished) |finished| finished(o.context, self.request, encoded_length);
     }
 
@@ -696,7 +697,7 @@ pub const FetchJob = struct {
 
         var network_response = result catch |err| switch (err) {
             NetworkError.OutOfMemory => return FetchError.OutOfMemory,
-            else => return self.transportFailed(),
+            else => return self.transportFailed(err),
         };
         defer network_response.deinit();
         if (self.network_request_is_preflight) return self.corsPreflightAnswered(&network_response);
@@ -1312,6 +1313,7 @@ pub const FetchJob = struct {
             NetworkError.ConnectionRefused,
             NetworkError.ConnectionTimeout,
             NetworkError.ConnectionReset,
+            NetworkError.EmptyResponse,
             NetworkError.NetworkUnreachable,
             NetworkError.HostUnreachable,
             => {},
@@ -1326,9 +1328,10 @@ pub const FetchJob = struct {
         return true;
     }
 
-    fn transportFailed(self: *FetchJob) FetchError!Step {
+    fn transportFailed(self: *FetchJob, err: NetworkError) FetchError!Step {
         const response = try networkError(self.allocator);
         if (!self.network_request_is_preflight) response.network_error_cause = .transport;
+        response.net_error = internal_response.NetError.fromNetwork(err);
         return self.mainFetchFetched(response);
     }
 

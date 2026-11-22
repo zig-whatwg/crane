@@ -3538,8 +3538,14 @@ pub inline fn releaseAddressSpace(range: AddressRange) void {
 // 4 writes). Blocking calls, made from the remote end's own threads, never
 // from a Browser thread: a connection's reader blocks in `devtoolsRead`, its
 // writer in `devtoolsWrite`, and `devtoolsShutdown` from another thread ends
-// a blocked read (the connection's end). Darwin and Linux: kit/posix. iOS has
-// no remote debugging: kit/headless answers `error.NotSupported`.
+// a blocked read of a socket (the connection's end); the acceptor and a pipe's
+// reader wait on their descriptor and a `DevtoolsWake` together, with no
+// timeout, so an idle remote end makes no syscalls and the waker (the
+// server's stop, the connection's end) ends the wait - Chrome's
+// DevToolsHttpHandler waits on its IO thread's message loop, whose socket
+// watcher wakes only for a connection or a quit task. Darwin and Linux:
+// kit/posix. iOS has no remote debugging: kit/headless answers
+// `error.NotSupported`.
 
 /// A listening socket, OWNED until `devtoolsCloseListener`. `port` is the
 /// port it listens on (the one asked for, or the one the OS chose for 0).
@@ -3560,6 +3566,33 @@ pub const DevtoolsPipe = extern struct {
     write: DevtoolsStream,
 };
 
+/// What ends a wait of `devtoolsAccept` or `devtoolsReadOrWake` from another
+/// thread: once `devtoolsWake` was called on it, every wait on it returns at
+/// once (it stays woken). OWNED until `devtoolsWakeClose`. Its descriptors
+/// are the platform's.
+pub const DevtoolsWake = extern struct {
+    read: i64,
+    write: i64,
+};
+
+/// A new wake, not woken.
+pub inline fn devtoolsWakeNew() Error!DevtoolsWake {
+    comptime gate(.devtools_transport, "devtoolsWakeNew");
+    return impl.devtoolsWakeNew();
+}
+
+/// Wake every wait on `wake`, now and later. Any thread.
+pub inline fn devtoolsWake(wake: DevtoolsWake) void {
+    comptime gate(.devtools_transport, "devtoolsWake");
+    return impl.devtoolsWake(wake);
+}
+
+/// Release `wake`. Nothing may be waiting on it.
+pub inline fn devtoolsWakeClose(wake: DevtoolsWake) void {
+    comptime gate(.devtools_transport, "devtoolsWakeClose");
+    return impl.devtoolsWakeClose(wake);
+}
+
 /// Listen on 127.0.0.1:`port` (0: any free port). `error.Busy` when the
 /// port is taken, `error.AccessDenied` when the OS refuses it.
 pub inline fn devtoolsListen(port: u16) Error!DevtoolsListener {
@@ -3567,12 +3600,12 @@ pub inline fn devtoolsListen(port: u16) Error!DevtoolsListener {
     return impl.devtoolsListen(port);
 }
 
-/// Wait up to `timeout_ms` for a connection on `listener`; null when none
-/// arrived in that time (the caller checks whether it is stopping, then
-/// waits again). The connection is OWNED by the caller.
-pub inline fn devtoolsAccept(listener: DevtoolsListener, timeout_ms: u32) Error!?DevtoolsStream {
+/// Wait for a connection on `listener`, with no timeout, until one comes or
+/// `wake` is woken: null then (the caller is stopping). The connection is
+/// OWNED by the caller.
+pub inline fn devtoolsAccept(listener: DevtoolsListener, wake: DevtoolsWake) Error!?DevtoolsStream {
     comptime gate(.devtools_transport, "devtoolsAccept");
-    return impl.devtoolsAccept(listener, timeout_ms);
+    return impl.devtoolsAccept(listener, wake);
 }
 
 /// Read what has arrived, at most `buffer.len` bytes, blocking until
@@ -3581,6 +3614,17 @@ pub inline fn devtoolsAccept(listener: DevtoolsListener, timeout_ms: u32) Error!
 pub inline fn devtoolsRead(stream: DevtoolsStream, buffer: []u8) Error!usize {
     comptime gate(.devtools_transport, "devtoolsRead");
     return impl.devtoolsRead(stream, buffer);
+}
+
+/// `devtoolsRead`, waiting with no timeout until something arrives or
+/// `wake` is woken: null then (the caller's connection was shut). The pipe's
+/// reader needs it: `devtoolsShutdown` cannot end a read blocked on a pipe
+/// (shutdown(2) is for sockets), so the connection's end wakes the reader
+/// instead (Chrome's DevToolsPipeHandler never waits for its pipe reader:
+/// devtools_pipe_handler.cc PipeIOBase::Shutdown).
+pub inline fn devtoolsReadOrWake(stream: DevtoolsStream, buffer: []u8, wake: DevtoolsWake) Error!?usize {
+    comptime gate(.devtools_transport, "devtoolsReadOrWake");
+    return impl.devtoolsReadOrWake(stream, buffer, wake);
 }
 
 /// Write all of `bytes` (BORROWED), blocking until the OS has taken them.

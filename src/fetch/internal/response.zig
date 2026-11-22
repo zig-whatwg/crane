@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const HttpVersion = @import("../network/backend.zig").HttpVersion;
 const header_list = @import("header_list.zig");
 const HeaderList = header_list.HeaderList;
 const body_mod = @import("body.zig");
@@ -62,6 +63,16 @@ pub const InternalResponse = struct {
     /// be futile" input for HTML 9.2.2 step 15.2. Only a known transport
     /// failure permits EventSource to retry; every other path defaults safe.
     network_error_cause: enum { unspecified, transport } = .unspecified,
+
+    /// Fetch has no such concept either: why a network error is one, for
+    /// observers only (DevTools' Network.loadingFailed errorText) - never
+    /// seen by script, which sees a network error as before. Chromium's net
+    /// error names (`NetError.text`).
+    net_error: NetError = .failed,
+
+    /// The HTTP version the response came over, when it came over HTTP
+    /// (DevTools' Network.Response.protocol); null for any other response.
+    http_version: ?HttpVersion = null,
 
     /// Aborted flag
     aborted: bool = false,
@@ -223,6 +234,8 @@ pub const InternalResponse = struct {
         kept.body = self.body;
         self.body = null;
         kept.aborted = self.aborted;
+        kept.net_error = self.net_error;
+        kept.http_version = self.http_version;
         kept.cache_state = self.cache_state;
         kept.range_requested = self.range_requested;
         kept.request_includes_credentials = self.request_includes_credentials;
@@ -330,6 +343,8 @@ pub const InternalResponse = struct {
             .allocator = self.allocator,
             .response_type = self.response_type,
             .aborted = self.aborted,
+            .net_error = self.net_error,
+            .http_version = self.http_version,
             .url_list = .empty,
             .status = self.status,
             .status_message = status_message,
@@ -390,6 +405,90 @@ pub fn networkError(allocator: Allocator) !*InternalResponse {
     response.status = 0;
     return response;
 }
+
+/// A network error whose reason is `net_error` (observer metadata only).
+pub fn networkErrorWith(allocator: Allocator, net_error: NetError) !*InternalResponse {
+    const response = try networkError(allocator);
+    response.net_error = net_error;
+    return response;
+}
+
+/// Why a fetch failed, as Chromium names it (net/base/net_error_list.h) -
+/// what Chrome's DevTools reports as Network.loadingFailed's errorText
+/// (Chrome for Testing 157 CDP probe, lane tpw: tmp/plans/tpw-evidence/
+/// netprobe-chrome157.txt). Engine metadata, not Fetch's: a network error
+/// is a network error to script whatever its reason.
+pub const NetError = enum(u8) {
+    /// ERR_FAILED: no more specific reason (a CORS failure, a blocked
+    /// request, an unknown backend failure).
+    failed,
+    aborted,
+    unsafe_port,
+    name_not_resolved,
+    connection_refused,
+    connection_reset,
+    connection_timed_out,
+    timed_out,
+    empty_response,
+    ssl_protocol_error,
+    cert_authority_invalid,
+    too_many_redirects,
+    invalid_url,
+    file_not_found,
+    address_unreachable,
+    internet_disconnected,
+    invalid_http_response,
+    content_decoding_failed,
+
+    /// The reason of a network failure the backend reports (Chromium's
+    /// MapSystemError: ENETUNREACH is ERR_INTERNET_DISCONNECTED, EHOSTUNREACH
+    /// ERR_ADDRESS_UNREACHABLE; a TLS failure that is not the certificate's
+    /// ERR_SSL_PROTOCOL_ERROR).
+    pub fn fromNetwork(err: @import("../network/backend.zig").NetworkError) NetError {
+        return switch (err) {
+            error.DnsResolutionFailed => .name_not_resolved,
+            error.ConnectionRefused => .connection_refused,
+            error.ConnectionTimeout => .connection_timed_out,
+            error.RequestTimeout => .timed_out,
+            error.SslHandshakeFailed => .ssl_protocol_error,
+            error.SslCertificateError => .cert_authority_invalid,
+            error.TooManyRedirects => .too_many_redirects,
+            error.InvalidUrl => .invalid_url,
+            error.Aborted => .aborted,
+            error.NetworkUnreachable => .internet_disconnected,
+            error.HostUnreachable => .address_unreachable,
+            error.ConnectionReset => .connection_reset,
+            error.EmptyResponse => .empty_response,
+            error.ProtocolError => .invalid_http_response,
+            error.ContentDecodingFailed => .content_decoding_failed,
+            error.OutOfMemory, error.Unknown => .failed,
+        };
+    }
+
+    /// Chromium's ErrorToString: "net::ERR_" and the name.
+    pub fn text(self: NetError) []const u8 {
+        return switch (self) {
+            .failed => "net::ERR_FAILED",
+            .aborted => "net::ERR_ABORTED",
+            .unsafe_port => "net::ERR_UNSAFE_PORT",
+            .name_not_resolved => "net::ERR_NAME_NOT_RESOLVED",
+            .connection_refused => "net::ERR_CONNECTION_REFUSED",
+            .connection_reset => "net::ERR_CONNECTION_RESET",
+            .connection_timed_out => "net::ERR_CONNECTION_TIMED_OUT",
+            .timed_out => "net::ERR_TIMED_OUT",
+            .empty_response => "net::ERR_EMPTY_RESPONSE",
+            .ssl_protocol_error => "net::ERR_SSL_PROTOCOL_ERROR",
+            .cert_authority_invalid => "net::ERR_CERT_AUTHORITY_INVALID",
+            .too_many_redirects => "net::ERR_TOO_MANY_REDIRECTS",
+            .invalid_url => "net::ERR_INVALID_URL",
+            .file_not_found => "net::ERR_FILE_NOT_FOUND",
+            .address_unreachable => "net::ERR_ADDRESS_UNREACHABLE",
+            .internet_disconnected => "net::ERR_INTERNET_DISCONNECTED",
+            .invalid_http_response => "net::ERR_INVALID_HTTP_RESPONSE",
+            .content_decoding_failed => "net::ERR_CONTENT_DECODING_FAILED",
+        };
+    }
+};
 
 /// Create an aborted network error.
 ///

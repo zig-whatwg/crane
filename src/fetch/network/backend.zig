@@ -260,6 +260,10 @@ pub const NetworkError = error{
     HostUnreachable,
     /// Connection reset by peer
     ConnectionReset,
+    /// The connection closed with no response at all (libcurl's
+    /// CURLE_GOT_NOTHING; Chromium's ERR_EMPTY_RESPONSE). Retried, and
+    /// failed over, exactly as ConnectionReset, which it was before.
+    EmptyResponse,
     /// Protocol error
     ProtocolError,
     /// Out of memory

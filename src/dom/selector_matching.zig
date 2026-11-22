@@ -1390,15 +1390,9 @@ const Matcher = struct {
     /// answer read state that can change without a tree mutation.
     fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: ElementData, kind: PseudoClassKind) bool {
         if (self.state_reads) |reads| {
-            if (kind == .FocusVisible) {
-                // Selectors 4 9.4: modality can change without focus or a
-                // tree mutation. Only focused elements read that state:
-                // the universal UA rule must not make every style volatile.
-                const element = instanceOf(node) orelse return false;
-                if (!focus_matching.matchesFocus(element)) return false;
-                reads.@"volatile" = true;
-                return focus_matching.matchesFocusVisible(element);
-            }
+            // :focus-visible is not volatile: what it reads beyond the tree
+            // and the focused element moves a revision the style engine
+            // pulls (StyleEngine.observeFocusVisible).
             if (!reads.@"volatile" and readsVolatileState(kind, data)) reads.@"volatile" = true;
         }
         return self.matchesPseudoClass(node, data, kind);

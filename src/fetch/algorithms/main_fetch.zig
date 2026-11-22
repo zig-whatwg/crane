@@ -204,9 +204,9 @@ pub fn mainFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    // Step 7 (bad port): Check bad port
+    // Step 7 (bad port): Check bad port (Chromium's ERR_UNSAFE_PORT).
     if (shouldBlockDueToBadPort(request)) {
-        return .{ .response = try internal_response.networkError(allocator) };
+        return .{ .response = try internal_response.networkErrorWith(allocator, .unsafe_port) };
     }
 
     // Step 7 (CSP's part): "If ... should request be blocked by Content
@@ -472,7 +472,15 @@ fn schemeFetch(allocator: Allocator, request: *const InternalRequest, scheme: []
     };
     return switch (scheme_result) {
         .response => |resp| .{ .response = resp },
-        .network_error => .{ .response = try internal_response.networkError(allocator) },
+        // Its reason, for observers: a data: URL that does not parse,
+        // a file: URL with nothing to read (Chrome 157: ERR_INVALID_URL,
+        // ERR_FILE_NOT_FOUND).
+        .network_error => .{ .response = try internal_response.networkErrorWith(allocator, if (std.ascii.eqlIgnoreCase(scheme, "data"))
+            .invalid_url
+        else if (std.ascii.eqlIgnoreCase(scheme, "file"))
+            .file_not_found
+        else
+            .failed) },
     };
 }
 

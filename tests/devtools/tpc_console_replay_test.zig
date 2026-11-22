@@ -127,8 +127,9 @@ const Harness = struct {
     /// `seen[from..to]`, one line each: its type, its first argument's string
     /// value, and the context it was logged in as the session's
     /// Runtime.executionContextCreated in the same range describes it - its
-    /// auxData type, and its name for a world ("log tpc default",
-    /// "log tpc isolated tpc-utility frame=tab").
+    /// auxData type, its name for a world, and whether its frame is the tab's
+    /// or a child's ("log tpc default frame=tab", "log tpc isolated
+    /// tpc-utility frame=tab", "log tpc default frame=child").
     fn logged(self: *Harness, which: usize, from: usize, to: usize, out: *std.ArrayList(u8)) !void {
         const frame_id = devtools.ids.frameId(0xC0FFEE, self.tab);
         for (self.seen.items[from..to]) |parsed| {
@@ -152,7 +153,7 @@ const Harness = struct {
             const name = context.get("name").?.string;
             if (name.len > 0) try out.print(self.allocator, " {s}", .{name});
             const frame_matches = std.mem.eql(u8, aux.get("frameId").?.string, frame_id.slice());
-            try out.print(self.allocator, " frame={s}\n", .{if (frame_matches) "tab" else aux.get("frameId").?.string});
+            try out.print(self.allocator, " frame={s}\n", .{if (frame_matches) "tab" else "child"});
         }
     }
 
@@ -248,4 +249,21 @@ test "an isolated world's console call before a session attaches replays in the 
     , lines.items);
     // The world's message is the world's context, the one createIsolatedWorld named.
     try testing.expect(h.contextIn(1, from, enabled, world_context) != null);
+}
+
+test "a frame's initial about:blank that script reached with no session attached replays its console message in the frame's context (Blink makes the context at first access)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // The page's script reaches the iframe's initial about:blank Window and
+    // logs through its console, with nothing attached.
+    try h.load("data:text/html,<iframe></iframe><script>frames[0].console.log('tpc-frame')</script>");
+    try h.attach(0);
+    const from = h.seen.items.len;
+    const enabled = try h.responseIndex(try h.send(0, "Runtime.enable", "{}"));
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.logged(0, from, enabled, &lines);
+    try testing.expectEqualStrings("log tpc-frame default frame=child\n", lines.items);
 }

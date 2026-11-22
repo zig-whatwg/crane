@@ -877,13 +877,30 @@ pub fn devtoolsListen(port: u16) Error!platform.DevtoolsListener {
     return error.NotSupported;
 }
 
-pub fn devtoolsAccept(listener: platform.DevtoolsListener, timeout_ms: u32) Error!?platform.DevtoolsStream {
-    _ = .{ listener, timeout_ms };
+pub fn devtoolsWakeNew() Error!platform.DevtoolsWake {
+    return error.NotSupported;
+}
+
+pub fn devtoolsWake(wake: platform.DevtoolsWake) void {
+    _ = wake;
+}
+
+pub fn devtoolsWakeClose(wake: platform.DevtoolsWake) void {
+    _ = wake;
+}
+
+pub fn devtoolsAccept(listener: platform.DevtoolsListener, wake: platform.DevtoolsWake) Error!?platform.DevtoolsStream {
+    _ = .{ listener, wake };
     return error.NotSupported;
 }
 
 pub fn devtoolsRead(stream: platform.DevtoolsStream, buffer: []u8) Error!usize {
     _ = .{ stream, buffer };
+    return error.NotSupported;
+}
+
+pub fn devtoolsReadOrWake(stream: platform.DevtoolsStream, buffer: []u8, wake: platform.DevtoolsWake) Error!?usize {
+    _ = .{ stream, buffer, wake };
     return error.NotSupported;
 }
 

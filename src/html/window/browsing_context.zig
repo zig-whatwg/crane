@@ -673,6 +673,15 @@ pub const BrowsingContext = struct {
     /// heuristic for that element until the next focus() or user input.
     focus_visible: ?FocusVisible = null,
 
+    /// Moves whenever an input of :focus-visible that is not a tree mutation
+    /// changes for the documents of this top-level traversable - the input
+    /// modality's pointer flag or document, what a focus() call's
+    /// focusVisible decided, a designMode switch (html.focus,
+    /// `focusVisibleInputsChanged`). The style engine pulls it as it pulls
+    /// the top layer's revision, so a focused element's style is cached
+    /// like any other (dom/style/engine.zig `observeFocusVisible`).
+    focus_visible_revision: u64 = 0,
+
     /// The text controls in this top-level traversable whose value the user
     /// changed and has not committed (html.focus, the focus update steps'
     /// step 2.1). A top-level context's; holds no heap memory. It was one

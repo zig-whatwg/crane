@@ -830,8 +830,32 @@ pub fn focusMethod(element: *Instance, focus_visible: ?bool) void {
     // Chrome, Firefox and Safari: html/interaction/focus/processing-model/
     // focusVisible.html). Step 4 (scroll into view): nothing is laid out.
     if (traversableOf(document)) |traversable| {
-        traversable.focus_visible = if (focus_visible) |visible| .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .visible = visible } else null;
+        const decided: @TypeOf(traversable.focus_visible) = if (focus_visible) |visible| .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .visible = visible } else null;
+        if (!sameDecision(traversable.focus_visible, decided)) traversable.focus_visible_revision +%= 1;
+        traversable.focus_visible = decided;
     }
+}
+
+fn sameDecision(a: anytype, b: @TypeOf(a)) bool {
+    const x = a orelse return b == null;
+    const y = b orelse return false;
+    return x.element == y.element and x.generation == y.generation and x.visible == y.visible;
+}
+
+/// The revision of `document`'s top-level traversable's :focus-visible
+/// inputs (`BrowsingContext.focus_visible_revision`), 0 with none: the style
+/// engine's pull (dom.focus_matching.focusVisibleRevision).
+pub fn focusVisibleRevision(document: *Instance) u64 {
+    const traversable = traversableOf(topLevelDocumentOf(document)) orelse return 0;
+    return traversable.focus_visible_revision;
+}
+
+/// An input of :focus-visible that is no tree mutation changed for
+/// `document` (its designMode: an editing host takes text input,
+/// `takesTextInput`): cached styles that read :focus-visible are stale.
+pub fn focusVisibleInputsChanged(document: *Instance) void {
+    const traversable = traversableOf(topLevelDocumentOf(document)) orelse return;
+    traversable.focus_visible_revision +%= 1;
 }
 
 /// HTML "allow focus steps". The focus-without-user-activation feature's
@@ -1020,7 +1044,12 @@ fn traversableOf(document: *Instance) ?*dom.browser_state.BrowsingContext {
 pub fn noteInputModality(document: *Instance, pointer: bool) void {
     const top = topLevelDocumentOf(document);
     const traversable = traversableOf(top) orelse return;
-    traversable.input_modality = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
+    const modality: std.meta.Child(@TypeOf(traversable.input_modality)) = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
+    // Only a change moves the revision: a key press after a key press keeps
+    // every cached style.
+    const same = if (traversable.input_modality) |old| old.document == modality.document and old.generation == modality.generation and old.pointer == modality.pointer else false;
+    if (!same or traversable.focus_visible != null) traversable.focus_visible_revision +%= 1;
+    traversable.input_modality = modality;
     // User input ends what a focus() call's focusVisible decided.
     traversable.focus_visible = null;
 }

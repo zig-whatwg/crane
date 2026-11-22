@@ -123,7 +123,9 @@ test "Network: a page's fetch reports requestWillBeSent, responseReceived and lo
     const sent = try page.client.waitEvent("Network.requestWillBeSent");
     defer sent.deinit();
     try testing.expectEqualStrings("data:text/plain,hello", cdp.stringAt(sent.value, "params.request.url").?);
-    try testing.expectEqualStrings("Fetch", cdp.stringAt(sent.value, "params.type").?);
+    // Chrome 157 types a fetch() of a data: URL "Other" (lane tpw's CDP
+    // probe, tmp/plans/tpw-evidence/netprobe-chrome157.txt).
+    try testing.expectEqualStrings("Other", cdp.stringAt(sent.value, "params.type").?);
     const id = cdp.stringAt(sent.value, "params.requestId").?;
     const received = try page.client.waitEvent("Network.responseReceived");
     defer received.deinit();

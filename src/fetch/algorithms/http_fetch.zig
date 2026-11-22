@@ -497,9 +497,10 @@ pub fn httpRedirectFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    // Step 7: If request's redirect count is 20, return a network error.
+    // Step 7: If request's redirect count is 20, return a network error
+    // (Chromium's ERR_TOO_MANY_REDIRECTS).
     if (request.redirect_count >= 20) {
-        return .{ .response = try internal_response.networkError(allocator) };
+        return .{ .response = try internal_response.networkErrorWith(allocator, .too_many_redirects) };
     }
 
     // Step 8: Increase request's redirect count by 1.
@@ -1613,6 +1614,8 @@ pub fn httpNetworkFetchFinish(
     // Set status code, and the status message: the status line's
     // reason-phrase (HTTP/1.x; none after).
     response.status = network_response.status;
+    // The version it came over (observers: DevTools' Response.protocol).
+    response.http_version = network_response.http_version;
     if (network_response.status_message.len > 0) response.setStatusMessage(network_response.status_message) catch {
         return HttpFetchError.OutOfMemory;
     };

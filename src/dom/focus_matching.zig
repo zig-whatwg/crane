@@ -21,6 +21,11 @@ pub const Implementation = struct {
     matches_focus_within: *const fn (element: *runtime.Instance) bool,
     /// :focus-visible - it has the focus and the user agent would indicate it.
     matches_focus_visible: *const fn (element: *runtime.Instance) bool,
+    /// The revision of what :focus-visible reads beyond the tree and the
+    /// focused element - the input modality, a focus() call's focusVisible,
+    /// designMode - for `document` (0: never moved); the style engine pulls
+    /// it so that no focused element's style is volatile.
+    focus_visible_revision: *const fn (document: *runtime.Instance) u64,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -48,6 +53,12 @@ pub fn matchesFocusWithin(element: *runtime.Instance) bool {
 pub fn matchesFocusVisible(element: *runtime.Instance) bool {
     const impl = implementation.get() orelse return false;
     return impl.matches_focus_visible(element);
+}
+
+/// See `Implementation.focus_visible_revision`; 0 with no implementation.
+pub fn focusVisibleRevision(document: *runtime.Instance) u64 {
+    const impl = implementation.get() orelse return 0;
+    return impl.focus_visible_revision(document);
 }
 
 test "without an installed implementation nothing matches the focus pseudo-classes" {

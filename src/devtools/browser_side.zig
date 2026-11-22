@@ -162,6 +162,9 @@ pub const BrowserSide = struct {
                 self.sink.post(self.sink.context, self, .{ .tab_destroyed = .{ .tab = destroyed.tab } });
             },
             .navigation => |milestone| self.fanOutNavigation(milestone),
+            // Script reached a frame on its initial about:blank: in a tab with
+            // no session, its context is made known now (contexts.onServedTouch).
+            .frame_touched => |touched| @import("contexts.zig").onServedTouch(self, touched.navigable),
             // Lane cdph's dialog events (named, so this compiles before they
             // exist): the devtools thread keeps the open dialog's answer.
             inline else => |payload, tag| {

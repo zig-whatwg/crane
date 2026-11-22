@@ -720,18 +720,36 @@ pub fn formatBlockValue(edit: *Edit) ![]const u8 {
 /// there is no leaf.
 fn sharedFormatBlockName(edit: *Edit) !?[]const u8 {
     const range = (try blockExtendActiveRange(edit)) orelse return null;
-    var leaves: std.ArrayList(*Instance) = .empty;
-    defer leaves.deinit(edit.allocator);
-    try visibleEditableLeaves(edit, range, &leaves);
+    // The same answer as "every visible editable leaf's owner name, if one
+    // and the same" with fewer visibility tests (each reads computed styles
+    // up to the root): a leaf whose owner name equals the name already
+    // shared cannot change the answer, visible or not, so only the leaves
+    // before the first visible one and those that disagree are tested.
+    // Leaves of one block share their owner, so its name is read once per
+    // block (lane tpc: formatblock-value cost 1.76x the instructions with a
+    // visibility test per leaf).
+    var walk = try ContainedWalk.init(range);
     var shared: ?[]const u8 = null;
-    for (leaves.items) |leaf| {
-        const node = try formatBlockOwner(leaf);
-        if (!try isFormatBlockCandidate(node)) return null;
-        const name = try formattableName(node);
-        if (name.len == 0) return null;
+    var last_owner: ?*Instance = null;
+    var last_name: []const u8 = "";
+    while (try walk.next()) |leaf| {
+        if (try common.hasChildren(leaf)) continue;
+        if (!try common.isEditable(leaf)) continue;
+        const owner = try formatBlockOwner(leaf);
+        if (owner != last_owner) {
+            last_owner = owner;
+            last_name = if (try isFormatBlockCandidate(owner)) try formattableName(owner) else "";
+        }
+        const name = last_name;
         if (shared) |s| {
-            if (!std.mem.eql(u8, s, name)) return null;
-        } else shared = name;
+            if (name.len != 0 and std.mem.eql(u8, s, name)) continue;
+            // It disagrees: it decides only if it is visible.
+            if (try common.isVisible(leaf)) return null;
+        } else {
+            if (!try common.isVisible(leaf)) continue;
+            if (name.len == 0) return null;
+            shared = name;
+        }
     }
     return shared;
 }
