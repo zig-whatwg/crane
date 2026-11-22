@@ -6453,9 +6453,11 @@ pub fn build(b: *std.Build) void {
     // `zig build test` depends on it.
     const lint_hasdecl_module = b.createModule(.{
         .root_source_file = b.path("tools/lint_hasdecl.zig"),
-        // Build-time tool: runs on the host, as codegen does.
+        // Build-time tool: runs on the host, as codegen does. Optimized with
+        // its safety checks: it tokenizes every scanned file - 77 MB, the
+        // generated layer included - in every `zig build test`.
         .target = b.graph.host,
-        .optimize = .Debug,
+        .optimize = .ReleaseSafe,
     });
     const lint_hasdecl_exe = b.addExecutable(.{
         .name = "lint_hasdecl",
