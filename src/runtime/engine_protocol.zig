@@ -1201,6 +1201,21 @@ pub const Capabilities = struct {
     /// reaches only through its tree can be lost (no node is wrapped there
     /// today).
     wrapper_tracing: Support,
+    /// The JavaScript domains of the Chrome DevTools Protocol through the
+    /// engine's own inspector (section 4.2b; the user's ruling D3,
+    /// 2026-11-21: V8's inspector, scoped through the engine protocol): an
+    /// engine-neutral contract that speaks CDP JSON at its edge - Runtime,
+    /// Debugger, Profiler and HeapProfiler requests in, their responses and
+    /// events out - with Crane types for sessions and contexts. Native: V8's
+    /// v8_inspector, as Chrome's (Blink hands every method
+    /// V8InspectorSession::canDispatchMethod accepts to V8). Compiled only
+    /// with -Dcdp (build_options.cdp): without it, unsupported on every
+    /// engine. Unsupported: no JavaScript domains - Playwright and Puppeteer
+    /// cannot drive the engine (JavaScriptCore's public C API has no
+    /// inspector; its adapter would bridge to WebKit's Web Inspector protocol
+    /// inside itself once one is public). The console's REPL mode keeps its
+    /// own capability (`repl_mode`) and works without this one.
+    inspector_protocol: Support,
 };
 
 /// The capabilities of the engine this build selected.
@@ -1639,6 +1654,228 @@ pub inline fn destroyWorldRealms(main: Context) void {
 /// `host` BORROWED until removed or the agent ends.
 pub inline fn installWorldObserver(agent: *Agent, observer: ?*const WorldObserver, host: ?*anyopaque) void {
     impl.installWorldObserver(agent, observer, host);
+}
+
+// ============================================================================
+// 4.2b Inspector protocol [inspector_protocol] (CDP part 1, design 3.4)
+// ============================================================================
+//
+// The user's ruling D3 (2026-11-21): the Chrome DevTools Protocol's
+// JavaScript domains - Runtime, Debugger, Profiler, HeapProfiler - are the
+// engine's own inspector, "scoped through our js engine protocol": CDP JSON
+// in and out at this edge, Crane's types for sessions and contexts, no
+// engine type crosses. The method-level obligation of an adapter (V8 meets it
+// with v8_inspector, Chrome's own; a JavaScriptCore adapter would bridge to
+// WebKit's Web Inspector protocol inside itself):
+// - every method `inspectorCanDispatch` accepts is answered on the session's
+//   channel with CDP's response for it, and the domains' events are sent
+//   there while enabled - Runtime.executionContextCreated/Destroyed/Cleared
+//   for the contexts the HOST registers (never on its own at a realm's
+//   making: a realm is made before its document commits, and CDP clients drop
+//   a context reported before executionContextsCleared), consoleAPICalled for
+//   `inspectorConsoleMessage`, exceptionThrown/Revoked for
+//   `inspectorExceptionThrown`/`Revoked`, bindingCalled for Runtime.addBinding's
+//   functions (installed in every registered context of the session's group
+//   whose name matches executionContextName);
+// - remote object ids are the session's own; `inspectorWrap` and
+//   `inspectorUnwrap` make and read them, so DOM.describeNode and
+//   DOM.resolveNode (the host's domain) round-trip a node through them;
+// - Runtime.runIfWaitingForDebugger reaches the host's client
+//   (`InspectorClient.runIfWaitingForDebugger`); a pause reaches its
+//   message-loop hooks (with none installed the engine resumes at once:
+//   holding a pause is CDP part 2);
+// - CSP: the inspector's own evaluations are not the page's string
+//   compilations - the host's code generation hook is not asked for them.
+// The inspector is the agent's - one per agent - and the console's REPL mode
+// (`evaluateReplScript`, its own capability) uses it too; that use survives a
+// build without this capability.
+
+/// A session of the agent's inspector: one CDP client's view of one group's
+/// contexts. OWNED: `inspectorDisconnect`.
+pub const InspectorSession = opaque {};
+
+/// A host's group of contexts: what a session sees and what
+/// `inspectorResetGroup` clears - CDP's tab (Blink: a local root frame's
+/// group). The host's numbering, nonzero.
+pub const InspectorGroup = u32;
+
+/// Where a session's messages go: each a complete CDP message - a response or
+/// an event - as UTF-8 JSON, BORROWED for the call. Called on the agent's
+/// thread from inside the engine (a dispatch, a script that logs, a microtask
+/// checkpoint): the host queues the message and calls no engine operation of
+/// this session from it.
+pub const InspectorChannel = struct {
+    host: ?*anyopaque,
+    send: *const fn (host: ?*anyopaque, message: []const u8) void,
+};
+
+/// A realm the host makes known to the agent's inspector
+/// (`inspectorContextCreated`): Runtime.ExecutionContextDescription.
+pub const InspectorContext = struct {
+    realm: Context,
+    group: InspectorGroup,
+    /// `name`: "" for a main-world realm, the world's name for an isolated
+    /// world (Runtime.addBinding's executionContextName matches it). BORROWED.
+    name: []const u8 = "",
+    /// `origin`. BORROWED.
+    origin: []const u8 = "",
+    /// `auxData`: a JSON object's text - CDP's {"isDefault", "type",
+    /// "frameId"}. BORROWED.
+    aux_data: []const u8 = "",
+    /// The group's default context: Runtime.evaluate with no contextId runs
+    /// there.
+    is_default: bool = false,
+};
+
+/// The host's side of the agent's inspector (`installInspectorClient`).
+pub const InspectorClient = struct {
+    host: ?*anyopaque = null,
+    /// Runtime.runIfWaitingForDebugger reached the inspector for a session of
+    /// `group`: the host releases what it holds (CDP's
+    /// Target.setAutoAttach {waitForDebuggerOnStart}).
+    runIfWaitingForDebugger: ?*const fn (host: ?*anyopaque, group: InspectorGroup) void = null,
+    /// The debugger paused script of `group`: the host runs its message loop
+    /// - dispatching its sessions' messages - until `quitMessageLoopOnPause`.
+    /// Null: the engine resumes at once.
+    runMessageLoopOnPause: ?*const fn (host: ?*anyopaque, group: InspectorGroup) void = null,
+    quitMessageLoopOnPause: ?*const fn (host: ?*anyopaque) void = null,
+};
+
+/// Where an exception the host reports was thrown (`inspectorExceptionThrown`).
+/// BORROWED; lines and columns 1-based, 0 when unknown.
+pub const InspectorExceptionDetails = struct {
+    message: []const u8,
+    url: []const u8 = "",
+    line: u32 = 0,
+    column: u32 = 0,
+};
+
+/// What a remote object id names (`inspectorUnwrap`): the value, OWNED, and
+/// the realm it is of.
+pub const InspectorUnwrapped = struct {
+    value: Owned,
+    realm: Context,
+};
+
+/// Install (or, with null, remove) `agent`'s inspector client. `client`
+/// BORROWED until removed or the agent ends.
+pub inline fn installInspectorClient(agent: *Agent, client: ?*const InspectorClient) void {
+    comptime gate(.inspector_protocol, "installInspectorClient");
+    impl.installInspectorClient(agent, client);
+}
+
+/// A session of `agent`'s inspector in `group`, its messages to `channel`
+/// (BORROWED until disconnected). OWNED: `inspectorDisconnect`.
+pub inline fn inspectorConnect(agent: *Agent, group: InspectorGroup, channel: InspectorChannel) Error!*InspectorSession {
+    comptime gate(.inspector_protocol, "inspectorConnect");
+    return impl.inspectorConnect(agent, group, channel);
+}
+
+/// End a session: nothing more reaches its channel; its remote objects go.
+pub inline fn inspectorDisconnect(session: *InspectorSession) void {
+    comptime gate(.inspector_protocol, "inspectorDisconnect");
+    impl.inspectorDisconnect(session);
+}
+
+/// One CDP request (UTF-8 JSON, BORROWED) for the session - a method
+/// `inspectorCanDispatch` accepts. Its response comes on the channel, now or
+/// later (an awaited promise: at a later microtask checkpoint).
+pub inline fn inspectorDispatch(session: *InspectorSession, message: []const u8) void {
+    comptime gate(.inspector_protocol, "inspectorDispatch");
+    impl.inspectorDispatch(session, message);
+}
+
+/// Whether `method` ("Runtime.evaluate") is one the inspector answers.
+pub inline fn inspectorCanDispatch(method: []const u8) bool {
+    comptime gate(.inspector_protocol, "inspectorCanDispatch");
+    return impl.inspectorCanDispatch(method);
+}
+
+/// Make a realm known to the inspector in its group (a realm known in
+/// another group moves): every session of the group with Runtime enabled gets
+/// Runtime.executionContextCreated. Answers its ExecutionContextId. The realm
+/// is forgotten at its end, or by `inspectorContextDestroyed` /
+/// `inspectorResetGroup`.
+pub inline fn inspectorContextCreated(context: *const InspectorContext) Error!i64 {
+    comptime gate(.inspector_protocol, "inspectorContextCreated");
+    return impl.inspectorContextCreated(context);
+}
+
+/// Forget a registered realm: Runtime.executionContextDestroyed.
+pub inline fn inspectorContextDestroyed(realm: Context) void {
+    comptime gate(.inspector_protocol, "inspectorContextDestroyed");
+    impl.inspectorContextDestroyed(realm);
+}
+
+/// Forget every realm of `group`: Runtime.executionContextsCleared (a
+/// top-level cross-document commit, before its new realms are registered).
+pub inline fn inspectorResetGroup(agent: *Agent, group: InspectorGroup) void {
+    comptime gate(.inspector_protocol, "inspectorResetGroup");
+    impl.inspectorResetGroup(agent, group);
+}
+
+/// A registered realm's ExecutionContextId; null when it is not registered.
+pub inline fn inspectorContextId(realm: Context) ?i64 {
+    comptime gate(.inspector_protocol, "inspectorContextId");
+    return impl.inspectorContextId(realm);
+}
+
+/// The registered realm of ExecutionContextId `id`, if any.
+pub inline fn inspectorRealmOfContextId(agent: *Agent, id: i64) ?Context {
+    comptime gate(.inspector_protocol, "inspectorRealmOfContextId");
+    return impl.inspectorRealmOfContextId(agent, id);
+}
+
+/// `value` (BORROWED; a platform object as its wrapper in `realm`'s world) as
+/// a Runtime.RemoteObject of the session, in `object_group`: its JSON text,
+/// OWNED by `allocator`. `realm` must be registered in the session's group.
+pub inline fn inspectorWrap(session: *InspectorSession, realm: Context, value: JSValue, object_group: []const u8, allocator: std.mem.Allocator) Error![]u8 {
+    comptime gate(.inspector_protocol, "inspectorWrap");
+    return impl.inspectorWrap(session, realm, value, object_group, allocator);
+}
+
+/// The value a remote object id of the session names, and its realm; null
+/// when it names nothing (released, or another session's).
+pub inline fn inspectorUnwrap(session: *InspectorSession, object_id: []const u8) Error!?InspectorUnwrapped {
+    comptime gate(.inspector_protocol, "inspectorUnwrap");
+    return impl.inspectorUnwrap(session, object_id);
+}
+
+/// The Console Standard's Logger step reached the inspector: console
+/// `method` ("log", "warn", "table", ...) called with `args` (BORROWED) in
+/// `realm`. Every session of the realm's group with Runtime enabled gets
+/// Runtime.consoleAPICalled (and later ones, at Runtime.enable, the stored
+/// message), its arguments wrapped and its stack captured by the inspector.
+/// Nothing - one lookup - for an agent with no inspector.
+pub inline fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
+    comptime gate(.inspector_protocol, "inspectorConsoleMessage");
+    impl.inspectorConsoleMessage(realm, method, args);
+}
+
+/// HTML "report an exception" / an unhandled rejection reached the
+/// inspector: Runtime.exceptionThrown to the realm's group, with the stack
+/// of `exception` (BORROWED) or the current one. Answers the exception's id
+/// (for `inspectorExceptionRevoked`), 0 when nothing was reported - no
+/// inspector, or the realm unregistered.
+pub inline fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const InspectorExceptionDetails) u32 {
+    comptime gate(.inspector_protocol, "inspectorExceptionThrown");
+    return impl.inspectorExceptionThrown(realm, exception, details);
+}
+
+/// A rejection reported by `inspectorExceptionThrown` got a handler:
+/// Runtime.exceptionRevoked.
+pub inline fn inspectorExceptionRevoked(realm: Context, exception_id: u32, message: []const u8) void {
+    comptime gate(.inspector_protocol, "inspectorExceptionRevoked");
+    impl.inspectorExceptionRevoked(realm, exception_id, message);
+}
+
+/// The running script's stack as CDP's Runtime.StackTrace JSON (at most
+/// `max_frames`, 0: all), OWNED by `allocator`; null when no script runs or
+/// the agent has no inspector (Network initiators, console messages a host
+/// builds itself).
+pub inline fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std.mem.Allocator) Error!?[]u8 {
+    comptime gate(.inspector_protocol, "inspectorStackTrace");
+    return impl.inspectorStackTrace(agent, max_frames, allocator);
 }
 
 // ============================================================================
