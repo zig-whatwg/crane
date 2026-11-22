@@ -33,7 +33,7 @@ pub const Page = struct {
 
     /// A Browser showing `html`, its document's URL `base_url`.
     pub fn open(html: []const u8, base_url: []const u8) !Page {
-        const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigateWithOptions(base_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;

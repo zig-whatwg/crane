@@ -101,7 +101,7 @@ fn pagePending(page: anytype) !bool {
 /// page must hold at least `own_signals` signals of its own, so a script
 /// that made none cannot pass.
 fn churn(script: []const u8, pages: usize, own_signals: usize) !void {
-    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
 
     try openPage(browser, script);

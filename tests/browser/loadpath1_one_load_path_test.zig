@@ -16,7 +16,7 @@ fn evaluate(browser: *Browser, script: []const u8) ![]u8 {
 }
 
 test "a Browser's page starts on an initial about:blank of an opaque origin, and its first load gives the page a Window of its own" {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false });
+    const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
 
     // HTML "create a new browsing context and document" given a null
@@ -46,7 +46,7 @@ test "a Browser's page starts on an initial about:blank of an opaque origin, and
 }
 
 test "a second load of a page is a navigation of the same traversable: a push, and its Window is new" {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false });
+    const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
     const ctx = browser.current_context.?;
     try ctx.loadHTML("<!doctype html><title>one</title>", .{ .base_url = "http://example.test/one" });
@@ -63,7 +63,7 @@ test "a second load of a page is a navigation of the same traversable: a push, a
 }
 
 test "a Browser's load of a URL that cannot be fetched fails as the navigation fails" {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false });
+    const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
     // A refused connection: the navigation's fetch is a network error. The
     // traversable shows an error document, and the embedder's call says the

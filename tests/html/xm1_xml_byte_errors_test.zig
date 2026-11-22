@@ -8,7 +8,7 @@ const http = @import("module1_http_server.zig");
 fn expectRejected(comptime source: []const u8) !void {
     const OnThread = struct {
         fn run() !void {
-            const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             const encoder = std.base64.standard.Encoder;
             const data = try std.testing.allocator.alloc(u8, encoder.calcSize(source.len));
@@ -55,7 +55,6 @@ fn expectIframeRejected(comptime source: []const u8) !void {
             defer server.stop();
             var proxy_buffer: [64]u8 = undefined;
             const browser = try browser_mod.Browser.init(std.testing.allocator, .{
-                .persist_storage = false,
                 .snapshot_path = "",
                 .proxy = .{ .manual = .{ .http = try server.proxyUrl(&proxy_buffer), .no_proxy = "" } },
             });

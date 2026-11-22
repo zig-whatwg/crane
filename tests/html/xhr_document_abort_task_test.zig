@@ -87,7 +87,7 @@ fn check(scenario: Scenario) !void {
             var unanswered: Unanswered = undefined;
             try unanswered.open();
             defer unanswered.close();
-            var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
@@ -175,7 +175,7 @@ fn checkNavigation(scenario: NavigationScenario) !void {
             var unanswered: Unanswered = undefined;
             try unanswered.open();
             defer unanswered.close();
-            var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
             var browser_ended = false;
             defer if (!browser_ended) browser.deinit();
             try browser.navigate("about:blank", .window);
@@ -290,7 +290,7 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
             var unanswered: Unanswered = undefined;
             try unanswered.open();
             defer unanswered.close();
-            var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
             var browser_ended = false;
             defer if (!browser_ended) browser.deinit();
             try browser.navigate("about:blank", .window);

@@ -88,8 +88,7 @@ pub const CacheHandle = struct {
 /// service-workers/cache-storage/cross-partition.https.tentative.html 4/4
 /// in Chrome 155, Firefox 158 and Safari 27); a service worker's key is its
 /// registration's (lane sw1-b11). Caches persisted under the old origin-only
-/// key are not found under it (persist_storage, off by default: no
-/// migration).
+/// key are not found under it (no migration).
 const Scope = struct {
     realm: runtime.Context,
     storage: *Storage,

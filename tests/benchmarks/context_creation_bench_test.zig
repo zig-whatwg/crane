@@ -95,7 +95,6 @@ test "context creation benchmark: Browser.init() time" {
         const start = clock.monotonicNanos();
 
         var browser = Browser.init(allocator, .{
-            .persist_storage = false, // Use memory-only storage
             .snapshot_path = "", // Disable snapshots for consistent measurement
         }) catch |err| {
             if (err == error.V8InitFailed) {
@@ -143,7 +142,6 @@ test "context creation benchmark: Context.init() time (per-navigation)" {
 
     // First, initialize the browser (one-time cost)
     var browser = Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "", // Disable snapshots for consistent measurement
     }) catch |err| {
         if (err == error.V8InitFailed) {
@@ -216,7 +214,6 @@ test "context creation benchmark: Rapid context switching" {
     std.debug.print("\n\nTesting rapid context switching (WPT simulation)...\n", .{});
 
     var browser = Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "", // Disable snapshots
     }) catch |err| {
         if (err == error.V8InitFailed) {
@@ -293,7 +290,6 @@ test "context creation benchmark: Snapshot performance comparison" {
     // Test WITHOUT snapshot (consistent baseline)
     const no_snapshot_start = clock.monotonicNanos();
     var browser_no_snap = Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "", // Explicitly disable
     }) catch |err| {
         if (err == error.V8InitFailed) {
@@ -309,7 +305,6 @@ test "context creation benchmark: Snapshot performance comparison" {
     // Test WITH snapshot (if available)
     const with_snapshot_start = clock.monotonicNanos();
     var browser_with_snap = Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = null, // Auto-detect snapshot
     }) catch |err| {
         if (err == error.V8InitFailed) {

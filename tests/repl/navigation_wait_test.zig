@@ -17,7 +17,7 @@ test "after location.href = .. the next line reads the new page: scripted input 
     const b = try site.url(testing.allocator, "/b.html");
     defer testing.allocator.free(b);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate(a, .window);
     var output: std.Io.Writer.Allocating = .init(testing.allocator);

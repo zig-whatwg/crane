@@ -99,7 +99,7 @@ fn exercise(comptime producer: Producer) !void {
     defer server.stop();
     var url_buffer: [128]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buffer, "http://127.0.0.1:{d}/page", .{server.listener.port()});
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     const page = browser.current_context.?;

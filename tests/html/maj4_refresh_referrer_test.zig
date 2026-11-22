@@ -56,7 +56,6 @@ fn waitFor(browser: *Browser, script: []const u8) ![]u8 {
 fn openBrowser(server: *http.Server, proxy_buf: *[64]u8) !*Browser {
     const proxy = try server.proxyUrl(proxy_buf);
     return Browser.init(testing.allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
     });

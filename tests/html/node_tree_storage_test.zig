@@ -31,7 +31,7 @@ fn runOnFreshThread(scenario: Scenario) !void {
         }
 
         fn body(self: *@This()) !void {
-            var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;

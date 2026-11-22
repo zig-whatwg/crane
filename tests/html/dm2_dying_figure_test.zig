@@ -385,7 +385,7 @@ test "the engine is told a queued tree's bytes are gone at the next safe point, 
 fn theFigureHoldsNoQueuedTreeInOneTask() !void {
     var churn = @import("root").poisoning.ChurnAllocator.init("dm2_dying_figure_test: 400,000 dropped divs in one task");
     {
-        const browser = try h.browser_mod.Browser.init(churn.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try h.browser_mod.Browser.init(churn.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigate("about:blank", .window);
         const context = browser.current_context orelse return error.NoPage;

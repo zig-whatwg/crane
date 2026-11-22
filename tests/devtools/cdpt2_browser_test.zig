@@ -60,7 +60,7 @@ test "G18: Target.createBrowserContext makes an off-the-record context - it neve
 
     // The console's shape with --user-data-dir: the default Browser holds
     // the profile, and the contexts' config names it too.
-    const config: browser_mod.BrowserConfig = .{ .profile_dir = profile, .persist_storage = true };
+    const config: browser_mod.BrowserConfig = .{ .profile_dir = profile };
     const host = try BrowserHost.start(allocator, config);
     defer host.stop();
     const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host, .context_config = config, .user_data_dir = profile });

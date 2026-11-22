@@ -20,7 +20,7 @@ const Fixture = struct {
     console: Console,
 
     fn init(self: *Fixture) !void {
-        self.browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        self.browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer self.browser.deinit();
         try self.browser.navigate("about:blank", .window);
         self.output = .init(testing.allocator);

@@ -154,7 +154,7 @@ fn runRound(browser: *browser_mod.Browser, comptime script: []const u8) !void {
 
 fn checkpointCycle(comptime cycle: []const u8) !void {
     var counting: Counting = .{ .parent = testing.allocator };
-    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -216,7 +216,7 @@ test "N iframes inserted and removed leave the retired contexts, the live browsi
 
 fn ownerFirst() !void {
     var counting: Counting = .{ .parent = testing.allocator };
-    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -249,7 +249,7 @@ test "a Window whose browsing context's owner released it first still reads clos
 
 fn windowFirst() !void {
     var counting: Counting = .{ .parent = testing.allocator };
-    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

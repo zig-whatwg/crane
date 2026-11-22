@@ -39,7 +39,7 @@ const Page = struct {
     browser: *@import("browser").Browser,
 
     fn open(html: []const u8) !Page {
-        const browser = try @import("browser").Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try @import("browser").Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;

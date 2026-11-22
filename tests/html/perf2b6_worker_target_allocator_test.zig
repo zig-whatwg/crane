@@ -18,7 +18,7 @@ const testing = std.testing;
 const Browser = @import("browser").Browser;
 
 fn round() !void {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("about:blank", .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

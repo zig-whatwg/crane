@@ -98,7 +98,7 @@ test "ancestor removal preserves track membership without another addtrack event
         }
 
         fn body(_: *@This()) !void {
-            var browser = try @import("browser").Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try @import("browser").Browser.init(testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;

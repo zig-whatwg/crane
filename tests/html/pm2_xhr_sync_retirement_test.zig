@@ -3,7 +3,7 @@ const browser_mod = @import("browser");
 const engine = @import("engine");
 
 fn detachesXHRFrame() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "https://pm2.test/index.html";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

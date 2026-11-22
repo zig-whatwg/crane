@@ -144,7 +144,7 @@ const Page = struct {
         errdefer server.stop();
         const base = try std.fmt.allocPrint(testing.allocator, "http://127.0.0.1:{d}/", .{server.listener.port()});
         errdefer testing.allocator.free(base);
-        const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;

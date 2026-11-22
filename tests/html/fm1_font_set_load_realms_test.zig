@@ -50,7 +50,7 @@ fn waitFor(browser: *Browser, predicate: []const u8) !void {
 }
 
 fn openFrame() !*Browser {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions("https://fm1-realm.test/", .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

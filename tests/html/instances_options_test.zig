@@ -73,9 +73,8 @@ const Side = struct {
     }
 
     fn config(self: *const Side) browser_mod.BrowserConfig {
-        if (!self.custom()) return .{ .persist_storage = false, .snapshot_path = "" };
+        if (!self.custom()) return .{ .snapshot_path = "" };
         return .{
-            .persist_storage = false,
             .snapshot_path = "",
             .user_agent = custom_user_agent,
             .proxy = .{ .manual = .{ .http = "http://127.0.0.1:9", .no_proxy = "localhost" } },
@@ -156,12 +155,10 @@ test "two Browsers on two threads have options of their own: user agent, proxy, 
 
 test "a PAC file and proxy auto-detection are not supported" {
     try testing.expectError(error.NotSupported, browser_mod.Browser.init(testing.allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .pac = "http://inst5.test/proxy.pac" },
     }));
     try testing.expectError(error.NotSupported, browser_mod.Browser.init(testing.allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .autodetect,
     }));

@@ -17,7 +17,7 @@ const Browser = @import("browser").Browser;
 const base_url = "http://exitleak1.test/speculation.html";
 
 test "a speculation rules script leaves nothing of its parsed rules behind" {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(base_url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

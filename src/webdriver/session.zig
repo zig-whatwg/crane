@@ -46,7 +46,6 @@ pub const Session = struct {
         errdefer allocator.free(id);
 
         const host = BrowserHost.start(allocator, .{
-            .persist_storage = false, // Don't persist storage for test sessions
             .snapshot_path = "", // Disable snapshot for faster startup in tests
         }) catch |err| {
             std.log.err("Failed to create browser: {}", .{err});

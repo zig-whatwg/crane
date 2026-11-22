@@ -81,7 +81,7 @@ fn blockedBeforeConnecting() !void {
     listener.thread = try std.Thread.spawn(.{}, Listener.serve, .{&listener});
     defer listener.stop();
 
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "http://127.0.0.1/flaky5.html";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

@@ -28,7 +28,7 @@ test "synthetic click on a select's first button does not open its picker" {
 }
 
 fn openPage(allocator: std.mem.Allocator) !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions("http://sel3.test/popovers", .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

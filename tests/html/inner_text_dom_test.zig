@@ -12,7 +12,7 @@ fn expectText(browser: *Browser, source: []const u8, expected: []const u8) !void
 }
 
 fn exercise() !void {
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("https://innertext.test/", .window, .{ .skip_load = true });
     const context = browser.current_context orelse return error.NoContext;
@@ -65,7 +65,7 @@ fn exercise() !void {
 }
 
 fn exerciseOutOfFlow(comptime box_style: []const u8, comptime following: []const u8, expected: []const u8) !void {
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("https://innertext.test/", .window, .{ .skip_load = true });
     const context = browser.current_context orelse return error.NoContext;
@@ -136,7 +136,7 @@ test "innerText preserves a capitalize word boundary beside a float" {
 test "float does not suppress capitalize boundaries on flex and grid items" {
     try onFreshThread(struct {
         fn run() !void {
-            const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigateWithOptions("https://innertext.test/", .window, .{ .skip_load = true });
             const context = browser.current_context orelse return error.NoContext;

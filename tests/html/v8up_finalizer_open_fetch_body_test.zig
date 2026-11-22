@@ -121,7 +121,7 @@ test "a Response dropped with its body transfer open is finalized after a collec
     try server.start();
     defer server.stop();
 
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var url_buf: [64]u8 = undefined;
     const page_url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/page", .{server.port});

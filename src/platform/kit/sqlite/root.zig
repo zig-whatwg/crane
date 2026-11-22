@@ -71,8 +71,13 @@ const c = struct {
     const OPEN_NOMUTEX = 0x00008000;
 
     /// SQLITE_TRANSIENT: SQLite copies the bound bytes before the call
-    /// returns.
-    const TRANSIENT: ?*const fn (?*anyopaque) callconv(.c) void = @ptrFromInt(std.math.maxInt(usize));
+    /// returns. sqlite3.h defines it as `((sqlite3_destructor_type)-1)`, a
+    /// value no function is at: the destructor's type is `align(1)` so the
+    /// all-ones address is a valid value of it on every target (a function
+    /// pointer is 4-aligned on aarch64, where a plain `*const fn` refuses
+    /// it at compile time).
+    const Destructor = ?*align(1) const fn (?*anyopaque) callconv(.c) void;
+    const TRANSIENT: Destructor = @ptrFromInt(std.math.maxInt(usize));
 
     extern fn sqlite3_open_v2(filename: [*:0]const u8, db: *?*sqlite3, flags: c_int, vfs: ?[*:0]const u8) c_int;
     extern fn sqlite3_close_v2(db: ?*sqlite3) c_int;
@@ -81,7 +86,7 @@ const c = struct {
     extern fn sqlite3_prepare_v2(db: *sqlite3, sql: [*]const u8, bytes: c_int, stmt: *?*sqlite3_stmt, tail: ?*?[*]const u8) c_int;
     extern fn sqlite3_step(stmt: *sqlite3_stmt) c_int;
     extern fn sqlite3_finalize(stmt: ?*sqlite3_stmt) c_int;
-    extern fn sqlite3_bind_blob(stmt: *sqlite3_stmt, index: c_int, value: ?*const anyopaque, bytes: c_int, destructor: ?*const fn (?*anyopaque) callconv(.c) void) c_int;
+    extern fn sqlite3_bind_blob(stmt: *sqlite3_stmt, index: c_int, value: ?*const anyopaque, bytes: c_int, destructor: Destructor) c_int;
     extern fn sqlite3_column_blob(stmt: *sqlite3_stmt, column: c_int) ?*const anyopaque;
     extern fn sqlite3_column_bytes(stmt: *sqlite3_stmt, column: c_int) c_int;
     extern fn sqlite3_column_int64(stmt: *sqlite3_stmt, column: c_int) i64;

@@ -60,7 +60,7 @@ const large = 10_000;
 const wrapper_slack: i64 = 8;
 
 fn openPage(markup: []const u8) !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -275,7 +275,7 @@ fn droppedListsPass(browser: *browser_mod.Browser, page: anytype, script: []cons
 /// list is dropped and the page collects twice.
 fn retainedAfterDroppedLists(lists: bool) !Retained {
     var counting: CountingAllocator = .{ .child = testing.allocator };
-    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

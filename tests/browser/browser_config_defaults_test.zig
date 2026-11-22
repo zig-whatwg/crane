@@ -10,7 +10,7 @@ const BrowserConfig = browser_mod.BrowserConfig;
 
 test "BrowserConfig's default is in memory" {
     const defaults: BrowserConfig = .{};
-    try testing.expect(!defaults.persist_storage);
+    try testing.expect(defaults.profile_dir == null);
 }
 
 test "a Browser at the defaults makes nothing under $HOME" {

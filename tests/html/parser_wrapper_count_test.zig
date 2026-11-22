@@ -89,7 +89,7 @@ fn expectParsed(context: *browser_mod.Context, count: usize, comptime query: []c
 /// A navigation parse into a fresh Browser's fresh document (one Browser per
 /// sample, so both start from the same objects).
 fn navigationSample(count: usize) !Sample {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
@@ -128,7 +128,7 @@ test "C1: a navigation parse with scripting on makes no wrapper per parsed node"
 }
 
 fn noWrapperPerWrittenNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
@@ -190,7 +190,7 @@ fn frameParse(browser: *browser_mod.Browser, count: usize) !Sample {
 }
 
 fn noWrapperPerFrameNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;

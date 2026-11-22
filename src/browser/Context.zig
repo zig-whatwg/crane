@@ -2350,7 +2350,7 @@ test "a browser started without a snapshot builds its realm afresh and runs a pa
     // session starts its browser this way too.
     const allocator = std.testing.allocator;
     const Browser = @import("Browser.zig").Browser;
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try std.testing.expect(!browser.isUsingSnapshot());
 

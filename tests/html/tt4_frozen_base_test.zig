@@ -8,7 +8,7 @@ const dom = @import("dom");
 
 fn exercise(source: []const u8) !void {
     const allocator = std.testing.allocator;
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const page_url = "https://tt4.test/original/page.html";
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });

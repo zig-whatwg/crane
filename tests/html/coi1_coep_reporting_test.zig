@@ -9,7 +9,7 @@ const dom = @import("dom");
 
 fn reportsReachTheQueue() !void {
     const a = std.testing.allocator;
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "https://user:password@coep.test/page?query=yes#document-fragment";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
@@ -48,7 +48,7 @@ test "coep CORP reports strip URLs and carry both dispositions" {
 
 fn endedRealmReportsNothing() !void {
     const a = std.testing.allocator;
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("https://first.test/", .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

@@ -154,7 +154,7 @@ const RegistrationFailure = struct {
 
 fn registrationFailureStillSetsWatcher(comptime failure: enum { state, entry }) !void {
     var failing: RegistrationFailure = .{};
-    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

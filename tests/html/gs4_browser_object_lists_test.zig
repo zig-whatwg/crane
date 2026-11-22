@@ -18,7 +18,7 @@ const dom = @import("dom");
 const lists = dom.browser_object_lists;
 
 fn startBrowser(allocator: std.mem.Allocator) !*browser_mod.Browser {
-    return browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
 }
 
 fn truthy(browser: *browser_mod.Browser, source: []const u8) !bool {

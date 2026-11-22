@@ -74,7 +74,7 @@ test "while the console waits for input the page lives: a timer fires and naviga
     const b = try site.url(testing.allocator, "/b.html");
     defer testing.allocator.free(b);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var output: std.Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();
@@ -122,7 +122,7 @@ test "while the console waits for input the page lives: a timer fires and naviga
 }
 
 test "the end of piped input ends the console, after the input before it has run" {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var output: std.Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();

@@ -29,7 +29,7 @@ const Fixture = struct {
     fn init(self: *Fixture) !void {
         self.site = try Site.start(testing.allocator);
         errdefer self.site.stop();
-        self.browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        self.browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer self.browser.deinit();
         self.output = .init(testing.allocator);
         errdefer self.output.deinit();

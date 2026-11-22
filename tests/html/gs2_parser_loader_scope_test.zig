@@ -46,7 +46,7 @@ fn loadMarkup(browser: *browser_mod.Browser, loader: *Loader, source: []const u8
 }
 
 fn parserLoaderServesOnlyItsScript() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     var loader: Loader = .{};
     Loader.current = &loader;

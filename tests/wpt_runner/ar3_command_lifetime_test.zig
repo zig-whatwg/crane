@@ -7,7 +7,7 @@ const testing = std.testing;
 const Finish = enum { resolve, reject, cancel, destroy };
 
 fn exercise(comptime finish: Finish) !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -114,7 +114,7 @@ test "driver teardown releases a pending argument before its timer fires" {
 /// TestDriver.resetPermissions, its counterpart, beside the cookie jar's
 /// clear.
 fn permissionOverrideEndsWithItsTest() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -187,7 +187,7 @@ test "no permission override outlives its test: the per-file reset drops them" {
 /// override landed before the query's task made the status - which then read
 /// "granted" already and heard no change (TIMEOUT; Chrome 157 passes).
 fn commandStartsAfterQueuedTasks() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

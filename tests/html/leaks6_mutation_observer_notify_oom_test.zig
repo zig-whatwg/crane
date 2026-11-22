@@ -56,7 +56,7 @@ fn sweep(rounds: usize) !void {
     defer if (leaked) std.debug.print("the sweep's Browser leaked\n", .{});
     {
         var failing = std.testing.FailingAllocator.init(debug.allocator(), .{});
-        const browser = try Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;
@@ -138,7 +138,7 @@ test "leaks6 MutationObserver: an out-of-memory notify frees each record once an
 fn notFullyActive() !void {
     var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
-        const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(debug.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;

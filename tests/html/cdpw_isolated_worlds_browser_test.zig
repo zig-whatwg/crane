@@ -27,7 +27,7 @@ const runtime = @import("runtime");
 const isolated_worlds = browser_mod.isolated_worlds;
 
 fn makeBrowser(allocator: std.mem.Allocator) !*browser_mod.Browser {
-    return browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
 }
 
 const Reports = struct {

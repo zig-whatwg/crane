@@ -182,7 +182,7 @@ test "ToggleEvent, CommandEvent and SubmitEvent take one counted reference on th
 /// A page with the navigation API: an https document (about:blank's initial
 /// document fires no navigate event).
 fn openNavigablePage() !Page {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions("https://refcount4.test/page.html", .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

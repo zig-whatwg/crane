@@ -29,7 +29,7 @@ fn onThread(comptime body: fn () anyerror!void) !void {
 /// A Browser with the testing platform's options `options` (no snapshot, no
 /// storage), on about:blank.
 fn open(options: platform.PlatformBrowserOptions) !*Browser {
-    return Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = options });
+    return Browser.init(std.testing.allocator, .{ .snapshot_path = "", .platform = options });
 }
 
 /// `script`'s completion value as a string, OWNED by the testing allocator.

@@ -174,7 +174,7 @@ const Navigation = enum {
 
 fn sweep(navigation: Navigation, rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{});
-    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     // Out-of-memory rounds may leave a tree held (an OOM path elsewhere may leak, which is not this test's).
     @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "out-of-memory rounds may leave a tree held");
@@ -666,7 +666,7 @@ fn sweepContentWindow(rounds: usize) !void {
 
 fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(counting.allocator(), .{});
-    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     // Out-of-memory rounds may leave a tree held (an OOM path elsewhere may leak, which is not this test's).
     @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "out-of-memory rounds may leave a tree held");

@@ -383,7 +383,6 @@ pub const TargetDomain = struct {
         // Browser holds: a second Browser on it failed with ProfileInUse
         // (lane cdpr's G18), and would have shared its state.
         config.profile_dir = null;
-        config.persist_storage = false;
         // The context's proxy (TargetHandler::CreateBrowserContext: a
         // net::ProxyConfig whose proxy_rules() parse proxyServer and whose
         // bypass rules parse proxyBypassList - ProxyRules::ParseFromString,

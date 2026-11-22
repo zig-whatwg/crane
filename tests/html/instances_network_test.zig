@@ -53,7 +53,6 @@ const Side = struct {
     fn steps(self: *Side) !void {
         const shared = self.shared;
         const browser = try browser_mod.Browser.init(testing.allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .ca_bundle_path = self.caPath(),
         });

@@ -63,7 +63,6 @@ pub const Fixture = struct {
         errdefer self.server.stop();
         const proxy = try self.server.proxyUrl(&self.proxy_buf);
         self.browser = try Browser.init(allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
         });

@@ -209,7 +209,6 @@ fn startBrowser(allocator: std.mem.Allocator, server: *http.Server) !*browser_mo
     var proxy_buf: [64]u8 = undefined;
     const proxy = try server.proxyUrl(&proxy_buf);
     const browser = try browser_mod.Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
     });

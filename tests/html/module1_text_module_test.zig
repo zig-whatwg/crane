@@ -63,7 +63,6 @@ fn startBrowser(server: *http.Server) !*Browser {
     var proxy_buf: [64]u8 = undefined;
     const proxy = try server.proxyUrl(&proxy_buf);
     const browser = try Browser.init(std.testing.allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
     });

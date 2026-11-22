@@ -48,8 +48,7 @@ const result = try b.evaluateScript("document.title");
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `storage_root` | `?[]const u8` | `~/.whatwg/` | Storage directory |
-| `persist_storage` | `bool` | `true` | Enable persistence |
+| `profile_dir` | `?[]const u8` | `null` | Profile directory the stores persist under; null keeps them in memory |
 | `initial_url` | `?[]const u8` | `null` | Initial navigation URL |
 | `debug` | `bool` | `false` | Enable debug logging |
 
