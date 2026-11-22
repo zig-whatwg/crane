@@ -11,6 +11,9 @@ const test_suites = @import("tools/test_suites.zig");
 /// 2026-11-12: "the valid flags should be in the js engine protocol"). The protocol's build file lists the adapters
 /// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
+/// The build side of the platform protocol: the extra kit parts each
+/// platform's adapter declares, with the system libraries they link.
+const platform_build = @import("src/platform/platform_build_protocol.zig");
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
 const zig_toolchain = @import("tools/zig_toolchain.zig");
@@ -2878,6 +2881,21 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         // A disabled codec does not import its C headers or link its libraries,
         // even when the conformance test compiles every adapter operation.
         impl.addImport(b.fmt("kit_{s}", .{part}), if (i == 7 and !brotli_enabled) kit[1] else kit[i]);
+    }
+    // The platform's own extra kit parts and the system libraries each links:
+    // its adapter's declaration (src/platform/platform_build_protocol.zig) -
+    // this file names none of them.
+    for (platform_build.kitParts(@tagName(options.platform), target.result)) |part| {
+        const module = b.createModule(.{
+            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part.name})),
+            .target = target,
+            .link_libc = true,
+        });
+        module.addImport("platform", facade);
+        module.addImport("platform_options", options_mod);
+        module.addImport("host", options.host);
+        platform_build.link(module, part);
+        impl.addImport(b.fmt("kit_{s}", .{part.name}), module);
     }
     // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
     // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
