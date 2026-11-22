@@ -329,8 +329,8 @@ const SetContent = struct {
         const self: *SetContent = @ptrCast(@alignCast(data.?));
         const Document = interfaces.Document;
         // open()'s two optional arguments, not passed; write()'s one string.
-        const OptString = @typeInfo(@TypeOf(Document.call_open)).@"fn".param_types[1];
-        const WriteText = @typeInfo(@typeInfo(@TypeOf(Document.call_write)).@"fn".param_types[1]).pointer.child;
+        const OptString = @typeInfo(@TypeOf(Document.call_open)).@"fn".param_types[1].?;
+        const WriteText = @typeInfo(@typeInfo(@TypeOf(Document.call_write)).@"fn".param_types[1].?).pointer.child;
         _ = Document.call_open(self.document, OptString.notPassed(), OptString.notPassed()) catch {
             self.failed = true;
             return;
@@ -550,5 +550,12 @@ fn runScript(session: *PageSession, bc: *frames.BrowsingContext, main: runtime.C
 /// console as uncaught).
 fn reportToPage(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const window: *runtime.Instance = @ptrCast(@alignCast(host orelse return));
-    _ = @import("html").report_exception.reportErrorInfo(window, info, .{});
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(window, &extracted, .{});
 }
