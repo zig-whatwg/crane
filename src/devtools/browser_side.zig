@@ -36,6 +36,10 @@ pub const TargetEvent = union(enum) {
     /// A page session's Runtime.runIfWaitingForDebugger: one of the tab's
     /// waiting sessions is done waiting (the hold is released when all are).
     run_if_waiting: struct { tab: host_bridge.TabId, session_id: [32]u8 },
+    /// A simple dialog opened in the tab; the Browser thread waits in it.
+    dialog_opening: struct { tab: host_bridge.TabId, answer: host_bridge.DialogAnswer },
+    /// The tab's dialog closed (whoever answered it).
+    dialog_closed: struct { tab: host_bridge.TabId },
 };
 
 /// The devtools thread's door: `post` may be called from any thread and
@@ -125,7 +129,15 @@ pub const BrowserSide = struct {
             } }),
             .tab_destroyed => |destroyed| self.sink.post(self.sink.context, self, .{ .tab_destroyed = .{ .tab = destroyed.tab } }),
             .navigation => |milestone| self.fanOutNavigation(milestone),
-            else => {},
+            // Lane cdph's dialog events (named, so this compiles before they
+            // exist): the devtools thread keeps the open dialog's answer.
+            inline else => |payload, tag| {
+                if (comptime std.mem.eql(u8, @tagName(tag), "dialog_opening")) {
+                    self.sink.post(self.sink.context, self, .{ .dialog_opening = .{ .tab = payload.tab, .answer = payload.answer } });
+                } else if (comptime std.mem.eql(u8, @tagName(tag), "dialog_closed")) {
+                    self.sink.post(self.sink.context, self, .{ .dialog_closed = .{ .tab = payload.tab } });
+                }
+            },
         }
     }
 
@@ -243,7 +255,9 @@ pub const MessageTask = struct {
         const task = try side.allocator.create(MessageTask);
         errdefer side.allocator.destroy(task);
         task.* = .{ .session = session, .raw = try side.allocator.dupe(u8, raw), .allocator = side.allocator };
-        if (!side.host.post(task, run, drop)) return error.BrowserGone;
+        // Into the Browser thread's nested loop while it is paused (the
+        // debugger, a dialog), else in order with every other command.
+        if (!host_bridge.postSessionMessage(side.host, task, run, drop)) return error.BrowserGone;
     }
 
     fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {

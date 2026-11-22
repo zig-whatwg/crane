@@ -112,7 +112,7 @@ const Head = struct {
         freeHeaders(allocator, &self.headers);
     }
 
-    fn response(self: *const Head, encoded_length: f64) N.Response {
+    fn toResponse(self: *const Head, encoded_length: f64) N.Response {
         return .{
             .url = self.url,
             .status = self.status,
@@ -387,7 +387,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
         .wallTime = wallSeconds(),
         .initiator = .{ .type = if (request.mode == .navigate) .other else if (request.parser_metadata == .parser_inserted) .parser else .script },
         .redirectHasExtraInfo = false,
-        .redirectResponse = if (redirect) |*r| r.value.response(0) else null,
+        .redirectResponse = if (redirect) |*r| r.value.toResponse(0) else null,
         .type = resourceTypeOf(request),
         .frameId = &frame_buffer,
         .hasUserGesture = request.user_activation,
@@ -435,7 +435,7 @@ fn responseReceived(context: *anyopaque, request: *const InternalRequest, respon
         .loaderId = loaderText(side, who.loader, &loader_buffer),
         .timestamp = monotonicSeconds(),
         .type = resourceTypeOf(request),
-        .response = head.response(0),
+        .response = head.toResponse(0),
         .hasExtraInfo = false,
         .frameId = &frame_buffer,
     };
@@ -534,12 +534,17 @@ fn interceptRequest(context: *anyopaque, request: *const InternalRequest, networ
     const resource_type = resourceTypeOf(request);
     const url = request.currentUrl();
     // The first session of the tab whose patterns take it holds it.
-    const holder = for (side.sessions.items) |s| {
+    var found: ?*PageSession = null;
+    search: for (side.sessions.items) |s| {
         if (s.tab != who.tab or !s.states.Fetch.enabled) continue;
         for (s.states.Fetch.patterns.items) |pattern| {
-            if (patternMatches(pattern, url, resource_type)) break s;
+            if (patternMatches(pattern, url, resource_type)) {
+                found = s;
+                break :search;
+            }
         }
-    } else return false;
+    }
+    const holder = found orelse return false;
 
     const interception_id = side.fetch_state.next_interception;
     side.fetch_state.next_interception += 1;

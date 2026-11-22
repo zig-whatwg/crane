@@ -65,6 +65,17 @@ const StubHost = struct {
     }
 };
 
+/// Post a page session's message to `host`'s Browser: inside the nested
+/// loop the Browser thread runs while it is paused (a `debugger;` statement
+/// or breakpoint - V8's runMessageLoopOnPause - or a simple dialog's wait),
+/// else as an ordinary command (lane cdph's BrowserHost.postSessionMessage;
+/// Blink's MainThreadDebugger ClientMessageLoop pumps the session's messages
+/// the same way). Until it lands: `post`.
+pub fn postSessionMessage(host: *BrowserHost, ctx: ?*anyopaque, run: RunFn, drop: DropFn) bool {
+    if (comptime @hasDecl(BrowserHost, "postSessionMessage")) return host.postSessionMessage(ctx, run, drop);
+    return host.post(ctx, run, drop);
+}
+
 pub const CreateTabOptions = struct {
     url: ?[]const u8 = null,
     background: bool = false,
@@ -197,6 +208,17 @@ const StubEvent = union(enum) {
 const StubListener = struct {
     context: *anyopaque,
     on_event: *const fn (*anyopaque, *const StubEvent) void,
+};
+
+/// A simple dialog's answer (lane cdph's host_events.DialogAnswer, agreed
+/// 2026-11-21 7:58 PM ET): callable from any thread, effective once; false
+/// when the dialog has closed already. The devtools thread answers
+/// Page.handleJavaScriptDialog through it while the Browser thread waits in
+/// the dialog, as Chrome's browser process does (content/browser/devtools/
+/// protocol/page_handler.cc PageHandler::HandleJavaScriptDialog).
+pub const DialogAnswer = if (have_host_events and @hasDecl(browser.host_events, "DialogAnswer")) browser.host_events.DialogAnswer else struct {
+    context: *anyopaque,
+    answer: *const fn (context: *anyopaque, accept: bool, prompt_text: []const u8) bool,
 };
 
 /// Browser thread. Start delivering host events to `listener`.
