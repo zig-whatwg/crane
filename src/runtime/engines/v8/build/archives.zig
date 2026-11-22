@@ -2,7 +2,9 @@
 //!
 //! `-Dv8` picks the V8 version. There is one: 15.7 is 15.7.112.43, the V8
 //! Chrome 157 ships (the user, 2026-11-10; tmp/plans/v8-update-plan.md), built
-//! by scripts/build-v8-15.7.sh into jsengines/v8/15.7.112.43/. The adapter
+//! with ICU (the user, 2026-11-22: "Rebuild with ICU") by
+//! scripts/build-v8-15.7.sh into jsengines/v8/15.7.112.43-icu/ - beside
+//! 15.7.112.43/, the first build, which had no ICU. The adapter
 //! (v8_wrapper.cpp) was ported to it from 13.1.203 and no longer compiles
 //! against that one, so 13.1 is not a value any more: its archive table and
 //! the defines kept by hand for it went with it (the build migration, batch
@@ -13,6 +15,11 @@
 //! (`Chromium`): libc++_chromium.a, the headers and the flags a consumer
 //! compiles with, Temporal's Rust as librust_v8.a, and the system libraries
 //! its link needs; its include/ holds the build's v8-gn.h.
+//!
+//! ICU is in the monolith, code and data (icu_use_data_file = false: no
+//! icudtl.dat beside the binary), and the archive keeps what a consumer of
+//! ICU's own headers needs (`Icu`): the adapter sets ICU's default locale
+//! through ICU's C API.
 //!
 //! `-Dv8-build` picks between builds of that V8. The adapter's build file
 //! (../engine_build.zig, `link`) links the archives of one output directory:
@@ -77,6 +84,19 @@ pub const Chromium = struct {
     system_libs: []const u8,
 };
 
+/// What an archive built with ICU keeps for a consumer of ICU's headers,
+/// relative to the build root. ICU's code and data are in the monolith.
+pub const Icu = struct {
+    /// The directory holding ICU's public headers as `unicode/*.h`
+    /// (source/common/unicode and source/i18n/unicode), for -I.
+    include: []const u8,
+    /// The defines GN compiles ICU's consumers with (its icu_config:
+    /// U_USING_ICU_NAMESPACE=0, U_STATIC_IMPLEMENTATION,
+    /// ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC, ...), one -D per line, read
+    /// from the compile command of V8's own src/objects/intl-objects.cc.
+    flags: []const u8,
+};
+
 /// One V8 output directory's archives, relative to the build root.
 pub const Archives = struct {
     /// The GN output directory (jsengines/v8/<version>/out/<name>).
@@ -93,6 +113,8 @@ pub const Archives = struct {
     include: []const u8,
     /// The C++ runtime the archive was built against, and what comes with it.
     chromium: Chromium,
+    /// ICU's headers and consumer defines.
+    icu: Icu,
 };
 
 pub const SelectError = error{
@@ -103,8 +125,9 @@ pub const SelectError = error{
     NoOfficialBuild,
 };
 
-/// The directory scripts/build-v8-15.7.sh installs 15.7.112.43 into.
-const dir_15_7 = "jsengines/v8/15.7.112.43";
+/// The directory scripts/build-v8-15.7.sh installs 15.7.112.43, built with
+/// ICU, into.
+const dir_15_7 = "jsengines/v8/15.7.112.43-icu";
 
 /// The archives `version` and `build` name for a target whose OS is `os`.
 pub fn select(version: Version, build: Build, os: std.Target.Os.Tag) SelectError!Archives {
@@ -124,6 +147,10 @@ pub fn select(version: Version, build: Build, os: std.Target.Os.Tag) SelectError
                     .libcxx_flags = dir_15_7 ++ "/libcxx/flags.txt",
                     .libcxx_include = .{ dir_15_7 ++ "/libcxx/config", dir_15_7 ++ "/libcxx/include", dir_15_7 ++ "/libcxx/abi-include" },
                     .system_libs = dir_15_7 ++ "/system-libs.txt",
+                },
+                .icu = .{
+                    .include = dir_15_7 ++ "/icu/include",
+                    .flags = dir_15_7 ++ "/icu/flags.txt",
                 },
             },
         },
@@ -147,28 +174,39 @@ test "-Dv8 takes 15.7 alone: 13.1, which the adapter no longer compiles against,
     try testing.expect(std.meta.stringToEnum(Version, "13.1") == null);
 }
 
-test "15.7 static on macOS: the 15.7.112.43 directory, its include/ (with v8-gn.h), Chromium's libc++ and Temporal's Rust" {
+test "15.7 static on macOS: the 15.7.112.43-icu directory, its include/ (with v8-gn.h), Chromium's libc++, Temporal's Rust and ICU's headers" {
     const a = try select(.@"15.7", .static, .macos);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static", a.dir);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_monolith.a", a.monolith);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_libplatform_fat.a", a.libplatform);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_libbase_fat.a", a.libbase);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/include", a.include);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static", a.dir);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libv8_monolith.a", a.monolith);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libv8_libplatform_fat.a", a.libplatform);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libv8_libbase_fat.a", a.libbase);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/include", a.include);
     const c = a.chromium;
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libc++_chromium.a", c.libcxx);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/librust_v8.a", c.rust);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/flags.txt", c.libcxx_flags);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/system-libs.txt", c.system_libs);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libc++_chromium.a", c.libcxx);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/librust_v8.a", c.rust);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/libcxx/flags.txt", c.libcxx_flags);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/system-libs.txt", c.system_libs);
     // -I order: __config_site first, then libc++'s headers, then libc++abi's.
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/config", c.libcxx_include[0]);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/include", c.libcxx_include[1]);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/abi-include", c.libcxx_include[2]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/libcxx/config", c.libcxx_include[0]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/libcxx/include", c.libcxx_include[1]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/libcxx/abi-include", c.libcxx_include[2]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/icu/include", a.icu.include);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/icu/flags.txt", a.icu.flags);
+}
+
+test "the archive a build links is the one built with ICU, never the first 15.7 build without it" {
+    // jsengines/v8/15.7.112.43 (v8_enable_i18n_support = false) stays on the
+    // pool's hosts for builds of an older Crane; this tree links only the
+    // ICU build (the user, 2026-11-22: "Rebuild with ICU").
+    const a = try select(.@"15.7", .static, .linux);
+    try testing.expect(std.mem.startsWith(u8, a.dir, "jsengines/v8/15.7.112.43-icu/"));
+    try testing.expect(std.mem.startsWith(u8, a.monolith, "jsengines/v8/15.7.112.43-icu/"));
 }
 
 test "15.7 static on Linux: the same directory (each host installs its own build there)" {
     const a = try select(.@"15.7", .static, .linux);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_monolith.a", a.monolith);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libc++_chromium.a", a.chromium.libcxx);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libv8_monolith.a", a.monolith);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/static/obj/libc++_chromium.a", a.chromium.libcxx);
 }
 
 test "15.7 has no official build on any OS: retired until roadmap item v8-pgo (ruling R3)" {

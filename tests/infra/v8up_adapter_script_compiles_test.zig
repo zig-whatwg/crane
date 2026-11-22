@@ -19,7 +19,8 @@
 //! - It runs in the PAGE's realm with the page's globals. A script that says
 //!   `new Date()` gets whatever the page made of Date - intl_binding.zig's
 //!   getLocalTimezoneOffset did, for Intl's local time, and left the list
-//!   when it took the platform's (tests/v8/v8up_intl_local_time_test.zig).
+//!   when it took the platform's (tests/v8/v8up_intl_local_time_test.zig;
+//!   the binding itself was retired for V8's own Intl by lane icu1).
 //!   A browser reaches an
 //!   intrinsic by name (v8::Intrinsic, include/v8-template.h; Blink's
 //!   SetupIDLIteratorTemplate, Chromium 157.0.8103.50 third_party/blink/

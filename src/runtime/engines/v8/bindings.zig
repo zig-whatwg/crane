@@ -34,9 +34,6 @@ const namespace = @import("namespace.zig");
 const namespaces = @import("namespaces");
 const console_ns = namespaces.console;
 
-// Import Intl binding (pure Zig i18n implementation)
-const intl_binding = @import("intl_binding.zig");
-
 // ============================================================================
 // Namespace Bindings
 // ============================================================================
@@ -67,8 +64,7 @@ pub fn initializeNamespaces(
 ) void {
     Console.registerGlobal(isolate, context, "console");
 
-    // Register Intl namespace (pure Zig i18n - replaces ICU)
-    intl_binding.registerGlobal(isolate, context);
+    // Intl is V8's own, from ICU (lane icu1): nothing to register.
 
     // Future namespaces will be added here as they're implemented:
     // GPU.registerGlobal(isolate, context, "GPU");

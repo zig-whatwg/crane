@@ -19,9 +19,11 @@
 //! - It compiled a script on every call (V8 15.7 runs without its
 //!   compilation cache; tests/infra/v8up_adapter_script_compiles_test.zig).
 //!
-//! The local time is the platform's now (the platform protocol's
-//! localDateTime, the OS's zone and its rules, which document.lastModified
-//! reads too), asked for the instant being formatted.
+//! The binding then took the platform's local time (the platform protocol's
+//! localDateTime), asked for the instant being formatted. Since lane icu1
+//! Intl and toLocaleString are V8's own, from ICU: the local time is ICU's
+//! default zone, the one V8's Date reads (TZ, else /etc/localtime), as in
+//! Chrome. The answers these tests hold did not change.
 
 const std = @import("std");
 const rounds_lib = @import("handle_rounds.zig");
