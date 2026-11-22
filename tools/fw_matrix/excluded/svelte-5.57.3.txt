@@ -1,0 +1,54 @@
+# Svelte 5.57.3 (tag svelte@5.57.3, 23bb146306ff): the tests of its runtime-browser suite
+# (packages/svelte/tests/runtime-browser/test.ts, Vitest calling Playwright, which drives the browser over
+# CDP) the matrix does not count, each with its reason (tools/fw_matrix/exclusions.zig documents the format).
+# Ids are Vitest's: the describe block and the test, joined by " > " (fw_matrix import --reader=vitest-json).
+# Read by hand at the tag from lane fw2's runs on the console of 6be959af4 (svelte-crane-fw2c), which stop
+# where noted; Chrome for Testing 157 passes them by the same runner.
+
+[runtime-browser > binding-width-height-initialize (dom)]
+kind      = rendering
+why       = bind:offsetWidth never reports a width, so `toggle` never becomes true: Svelte binds element dimensions through a ResizeObserver, which delivers the layout box's size (0x0 with no renderer)
+assertion = assert.equal(component.toggle, true) - Expected false to equal true
+source    = packages/svelte/tests/runtime-browser/samples/binding-width-height-initialize/_config.js:7
+
+[runtime-browser > binding-width-height-initialize (hydrate)]
+kind      = rendering
+why       = bind:offsetWidth never reports a width, so `toggle` never becomes true: Svelte binds element dimensions through a ResizeObserver, which delivers the layout box's size (0x0 with no renderer)
+assertion = assert.equal(component.toggle, true) - Expected false to equal true
+source    = packages/svelte/tests/runtime-browser/samples/binding-width-height-initialize/_config.js:7
+
+[runtime-browser > binding-width-height-this-timing (dom)]
+kind      = rendering
+why       = bind:clientWidth / bind:clientHeight of a 100px box report 0: Svelte binds them through a ResizeObserver, which delivers the layout box's size
+assertion = log [[false,0,0],[true,0,0]] - expected [[false,0,0],[true,100,100]]
+source    = packages/svelte/tests/runtime-browser/samples/binding-width-height-this-timing/_config.js:8
+
+[runtime-browser > binding-width-height-this-timing (hydrate)]
+kind      = rendering
+why       = bind:clientWidth / bind:clientHeight of a 100px box report 0: Svelte binds them through a ResizeObserver, which delivers the layout box's size
+assertion = log [[false,0,0],[true,0,0]] - expected [[false,0,0],[true,100,100]]
+source    = packages/svelte/tests/runtime-browser/samples/binding-width-height-this-timing/_config.js:8
+
+[runtime-browser > component-slot-binding-dimensions (dom)]
+kind      = rendering
+why       = bind:clientHeight through a slot stays 0: Svelte binds it through a ResizeObserver, which delivers the layout box's size
+assertion = assert.equal(component.clientHeight > 0, true) - Expected false to equal true
+source    = packages/svelte/tests/runtime-browser/samples/component-slot-binding-dimensions/_config.js:7
+
+[runtime-browser > component-slot-binding-dimensions (hydrate)]
+kind      = rendering
+why       = bind:clientHeight through a slot stays 0: Svelte binds it through a ResizeObserver, which delivers the layout box's size
+assertion = assert.equal(component.clientHeight > 0, true) - Expected false to equal true
+source    = packages/svelte/tests/runtime-browser/samples/component-slot-binding-dimensions/_config.js:7
+
+[runtime-browser > transition-nested-measure (dom)]
+kind      = rendering
+why       = Svelte's slide transition measures the element's used height (getComputedStyle height of a laid-out box) for its keyframes
+assertion = keyframes[last].height - Expected undefined to equal 100px
+source    = packages/svelte/tests/runtime-browser/samples/transition-nested-measure/_config.js:33
+
+[runtime-browser > transition-nested-measure (hydrate)]
+kind      = rendering
+why       = Svelte's slide transition measures the element's used height (getComputedStyle height of a laid-out box) for its keyframes
+assertion = keyframes[last].height - Expected undefined to equal 100px
+source    = packages/svelte/tests/runtime-browser/samples/transition-nested-measure/_config.js:33
