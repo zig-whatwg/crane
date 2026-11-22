@@ -207,9 +207,13 @@ pub const TargetDomain = struct {
                     _ = server.attach(session, t, false) catch continue;
                 }
             },
+            // The page child is reported NOT waiting: the wait is the tab
+            // session's, whose runIfWaitingForDebugger releases the tab
+            // (Chrome, vue-e2e protocol log: the tab attachedToTarget
+            // waitingForDebugger true, its page child false - lane cdpr's G1).
             .tab => if (session.target) |tab| if (tab.partner) |page| {
                 if (session.auto_attach.filter.matches(.page) and !alreadyAttachedBy(server, session, page)) {
-                    _ = try server.attach(session, page, params.waitForDebuggerOnStart and session.waiting);
+                    _ = try server.attach(session, page, false);
                 }
             },
             .page => {},

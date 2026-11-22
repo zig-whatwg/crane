@@ -291,6 +291,28 @@ pub const Client = struct {
         }
     }
 
+    /// The next event named any of `methods`, in arrival order (among those
+    /// queued, then on the wire), OWNED by the caller: what an order test
+    /// reads. Other messages stay queued.
+    pub fn nextEventOf(self: *Client, methods: []const []const u8) !std.json.Parsed(std.json.Value) {
+        var i: usize = 0;
+        while (i < self.queued.items.len) : (i += 1) {
+            for (methods) |m| if (isEvent(self.queued.items[i], m)) {
+                const text = self.queued.orderedRemove(i);
+                defer self.allocator.free(text);
+                return std.json.parseFromSlice(std.json.Value, self.allocator, text, .{});
+            };
+        }
+        while (true) {
+            const text = (try self.receiveFromWire()) orelse return error.ConnectionClosed;
+            for (methods) |m| if (isEvent(text, m)) {
+                defer self.allocator.free(text);
+                return std.json.parseFromSlice(std.json.Value, self.allocator, text, .{});
+            };
+            try self.queued.append(self.allocator, text);
+        }
+    }
+
     fn isEvent(text: []const u8, method: []const u8) bool {
         var needle_buffer: [128]u8 = undefined;
         const needle = std.fmt.bufPrint(&needle_buffer, "\"method\":\"{s}\"", .{method}) catch return false;
