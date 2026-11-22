@@ -19,7 +19,7 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering
 //!
-//! lint-impls: hook for Context, Document, ViewTransition, Window
+//! lint-impls: hook for Context, Document, IntersectionObserver, ViewTransition, Window
 const std = @import("std");
 const refcount = @import("refcount.zig");
 const runtime = @import("runtime");

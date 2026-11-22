@@ -152,6 +152,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     // Lane tpw (the integrator, 2026-11-22): in the worklist under the scope line (tools/wpt_subset.py).
     .{ .name = "page-visibility", .description = "Page Visibility (HTML 6.2)" },
     .{ .name = "screen-orientation", .description = "Screen Orientation API" },
+    .{ .name = "resize-observer", .description = "Resize Observer" },
     .{ .name = "cookiestore", .description = "Cookie Store API" },
     .{ .name = "webidl", .description = "WebIDL bindings" },
     // The three below were in the 0.1 worklist (tools/wpt_subset.py) but not

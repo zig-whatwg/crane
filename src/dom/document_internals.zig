@@ -78,6 +78,30 @@ pub fn setEncoding(instance: *runtime.Instance, name: []const u8) !void {
     internal.encoding = new;
 }
 
+/// Intersection Observer's IntersectionObserverTaskQueued flag of the
+/// document `instance` (false for an instance with no Document state).
+pub fn intersectionObserverTaskQueued(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    const rare = internal.rareData() orelse return false;
+    return rare.intersection_observer_task_queued;
+}
+
+/// Set the document's IntersectionObserverTaskQueued flag ("queue an
+/// intersection observer task" step 2; "notify intersection observers"
+/// step 1), in its rare data (made to set it). Out of memory the flag stays
+/// unset: the caller queues no task (`ensure` failed means nothing was
+/// promised).
+pub fn setIntersectionObserverTaskQueued(instance: *runtime.Instance, queued: bool) error{OutOfMemory}!void {
+    const internal = getInternal(instance) orelse return;
+    if (!queued) {
+        const rare = internal.rareData() orelse return;
+        rare.intersection_observer_task_queued = false;
+        return;
+    }
+    const rare = try internal.ensureRareData(instance);
+    rare.intersection_observer_task_queued = true;
+}
+
 /// Set the document's referrer (HTML "the document's referrer", what
 /// document.referrer returns): the serialization of a navigation request's
 /// referrer as main fetch left it ("create and initialize a Document object"
