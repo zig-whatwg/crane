@@ -331,3 +331,24 @@ test "the first page closes like any tab, and the Browser lives on with the othe
     defer testing.allocator.free(title);
     try testing.expectEqualStrings("kept", title);
 }
+
+test "with the first page closed, a host tab navigates and closes - its realms end with no page entered for its life (lane tpg)" {
+    // No realm is entered for its life once the first page closes: the
+    // navigation's task detaches the tab's old realm, and closeTab ends the
+    // new one, each with no isolate current (protocol_realms enterForEnd).
+    const browser = try Browser.init(testing.allocator, .{});
+    defer browser.deinit();
+    const first = browser.hostTraversableId().?;
+    const tab = try browser.createTab(.{ .url = "data:text/html,<title>one</title>" });
+    try waitForLoad(browser, tab);
+    try browser.closeTab(first, .{});
+
+    try browser.navigateTraversable(tab, "data:text/html,<title>two</title>");
+    try waitForLoad(browser, tab);
+    const title = try evaluateIn(try tabContext(browser, tab), "document.title");
+    defer testing.allocator.free(title);
+    try testing.expectEqualStrings("two", title);
+
+    try browser.closeTab(tab, .{});
+    try testing.expectEqual(@as(usize, 0), browser.traversableCount());
+}
