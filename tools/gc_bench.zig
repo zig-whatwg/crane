@@ -215,6 +215,11 @@ const Sample = struct {
     /// Cumulative bytes handed out by the state arena. Cumulative is the right
     /// figure precisely because the arena never resets: allocated == retained.
     arena_bytes: usize,
+    /// What the state arena has taken from the general allocator: it never
+    /// gives a byte back during the Browser's life - a freed state waits on
+    /// its size class's free list for the next one - so this is the
+    /// Browser's high-water mark of state, live and dead together.
+    arena_reserved: usize = 0,
     arena_allocations: usize,
     /// Allocations satisfied from a free list. Zero while a discard loop runs means
     /// states are not being returned at all.
@@ -238,6 +243,10 @@ const Sample = struct {
     /// a batch's script since the reading before (before the collection and
     /// the loop's turns): dead trees a task left for the loop to free.
     queued_after_script: usize = 0,
+    /// The nodes the queue holds at the reading itself: what the last
+    /// collection found dead and no loop turn has freed yet (0 under
+    /// `--settle`, which turns the loop after it).
+    queued_at_reading: usize = 0,
     /// The engine's heap accounting (used, total, external), where the engine
     /// reports one. Distinguishes objects genuinely retained (`used` climbs) from
     /// the engine simply not handing pages back (`used` flat while RSS climbs).
@@ -318,6 +327,10 @@ fn takeSample(cycle: usize) Sample {
         // HELD. The cumulative figure rises identically whether or not anything is
         // freed, so it reported the arena as leaking even after recycling landed.
         .arena_bytes = if (arena) |a| a.stats().bytes_in_use else 0,
+        // From the state `stats` copies under the arena's mutex: the arena
+        // frees none of its buffers before its Browser's end, so the list
+        // the copy starts from stays readable while a worker prepends to it.
+        .arena_reserved = if (arena) |a| a.stats().arena_state.promote(std.heap.page_allocator).queryCapacity() else 0,
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
         .arena_recycled = if (arena) |a| a.stats().total_recycled else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
@@ -466,6 +479,7 @@ pub fn main(init: std.process.Init) !void {
     // event loop frees between tasks (runtime.gc.DeferredTeardown).
     const teardown_queue = &browser.agent_host.deferred_teardown;
     var queued_after_script: usize = 0;
+    const settle = options.settlesBeforeReading(args);
 
     var done: usize = 0;
     var next_sample: usize = every;
@@ -506,10 +520,25 @@ pub fn main(init: std.process.Init) !void {
             engine.requestGarbageCollection(page.agent);
         }
 
+        // `--settle`: the trees those collections found dead are freed now,
+        // between tasks as the page's loop frees them, and what that let go
+        // of is collected and freed too - so the reading is what is KEPT.
+        if (settle) {
+            var round: usize = 0;
+            while (round < 2) : (round += 1) {
+                try browser.runEventLoop(loop_bound_ms);
+                engine.requestGarbageCollection(page.agent);
+                engine.performMicrotaskCheckpoint(page.agent) catch {};
+                engine.requestGarbageCollection(page.agent);
+            }
+            try browser.runEventLoop(loop_bound_ms);
+        }
+
         done += batch;
         if (done >= next_sample or done >= cycles) {
             var sample = takeSample(done);
             sample.queued_after_script = queued_after_script;
+            sample.queued_at_reading = teardown_queue.pendingNodes();
             queued_after_script = 0;
             try samples.append(allocator, sample);
             while (next_sample <= done) next_sample += every;
@@ -518,6 +547,7 @@ pub fn main(init: std.process.Init) !void {
 
     report(samples.items, force_gc, control, body, drive_loop);
     reportCounters(samples.items);
+    if (options.listsLiveTypes(args)) try reportLiveTypes(allocator, &browser.scope.slab);
     const shape_held = if (bench) |b| reportBench(b, samples.items) else true;
 
     if (profile) {
@@ -550,13 +580,17 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
         if (gc_was_forced) ", engine GC forced" else "",
         if (loop_turned) ", event loop turned after each batch" else "",
     });
-    // The last two columns are the batches' highest since the reading before:
-    // the Zig-side peak (garbage a task piled up included) and the dead nodes
-    // the teardown queue held when a batch's script ended.
-    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>14}\n", .{
-        "cycle",       "resident MB",  "since start",
-        "B/cycle",     "malloc MB",    "zig-side MB",
-        "zig peak MB", "queued nodes",
+    // "zig peak MB" and "queued at end" are the batches' highest since the
+    // reading before: the Zig-side peak (garbage a task piled up included)
+    // and the dead nodes the teardown queue held when a batch's script
+    // ended. "queued now" is the queue at the reading, "live objects" the
+    // Browser's platform objects (its slab's slots in use) at the reading,
+    // "arena MB" what the state arena has reserved (`Sample.arena_reserved`).
+    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>13}  {s:>10}  {s:>12}  {s:>8}\n", .{
+        "cycle",        "resident MB",   "since start",
+        "B/cycle",      "malloc MB",     "zig-side MB",
+        "zig peak MB",  "queued at end", "queued now",
+        "live objects", "arena MB",
     });
 
     const first = samples[0].resident;
@@ -586,7 +620,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                     }
                 }
             }
-            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}  {d:>12.1}  {d:>14}\n", .{
+            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}  {d:>12.1}  {d:>13}  {d:>10}  {d:>12}  {d:>8.1}\n", .{
                 s.cycle,
                 mb,
                 growth,
@@ -602,6 +636,9 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                 @as(f64, @floatFromInt(s.gpa_outstanding)) / (1024.0 * 1024.0),
                 @as(f64, @floatFromInt(s.gpa_peak)) / (1024.0 * 1024.0),
                 s.queued_after_script,
+                s.queued_at_reading,
+                s.live_instances,
+                @as(f64, @floatFromInt(s.arena_reserved)) / (1024.0 * 1024.0),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
@@ -732,6 +769,44 @@ fn reportBench(bench: *const options.Bench, samples: []const Sample) bool {
 /// per element between them. The adapter decides what they are - live handles
 /// by kind, handle creations by source - and names them; this prints them as
 /// they come.
+/// `--live-types`: the Browser's live platform objects at the end of the
+/// run, counted by interface (each instance's vtable name), most first. The
+/// walk only reads (SlabAllocator.forEachLive: no other thread makes or
+/// frees objects here - gc_bench's bodies start no worker that outlives its
+/// batch's loop turns); the counts go in `allocator`, which is not the slab.
+fn reportLiveTypes(allocator: std.mem.Allocator, slab: *runtime.SlabAllocator) !void {
+    const Counts = std.StringHashMapUnmanaged(usize);
+    const Walk = struct {
+        counts: Counts = .empty,
+        allocator: std.mem.Allocator,
+        failed: bool = false,
+        fn visit(self: *@This(), instance: *runtime.Instance) void {
+            const gop = self.counts.getOrPut(self.allocator, instance.vtable.name) catch {
+                self.failed = true;
+                return;
+            };
+            if (!gop.found_existing) gop.value_ptr.* = 0;
+            gop.value_ptr.* += 1;
+        }
+    };
+    var walk: Walk = .{ .allocator = allocator };
+    defer walk.counts.deinit(allocator);
+    slab.forEachLive(&walk, Walk.visit);
+    if (walk.failed) return error.OutOfMemory;
+    const Row = struct { name: []const u8, count: usize };
+    var rows: std.ArrayList(Row) = .empty;
+    defer rows.deinit(allocator);
+    var it = walk.counts.iterator();
+    while (it.next()) |entry| try rows.append(allocator, .{ .name = entry.key_ptr.*, .count = entry.value_ptr.* });
+    std.mem.sort(Row, rows.items, {}, struct {
+        fn more(_: void, a: Row, b: Row) bool {
+            return a.count > b.count or (a.count == b.count and std.mem.lessThan(u8, a.name, b.name));
+        }
+    }.more);
+    std.debug.print("\nLive objects by interface at the end ({d} interfaces):\n", .{rows.items.len});
+    for (rows.items[0..@min(rows.items.len, 25)]) |row| std.debug.print("  {d:>9}  {s}\n", .{ row.count, row.name });
+}
+
 fn reportCounters(samples: []const Sample) void {
     const first = &samples[0];
     const last = &samples[samples.len - 1];

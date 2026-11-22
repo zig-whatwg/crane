@@ -339,6 +339,32 @@ pub fn batchSize(args: []const [:0]const u8) usize {
     return size;
 }
 
+/// Whether a reading waits until what the batch left dead is freed
+/// (`--settle`): after the collections, the event loop turns until idle and
+/// the engine collects again, twice, so the trees those collections found
+/// dead - which the agent's queue frees between tasks - are gone before the
+/// counters are read, and a reading is what the page KEEPS. Without it the
+/// last collection's dead trees still wait in the queue at the reading (the
+/// loop turns before the collection), which is how the published rows have
+/// always read, so it is opt-in (lane mem1).
+pub fn settlesBeforeReading(args: []const [:0]const u8) bool {
+    for (args[@min(1, args.len)..]) |arg| {
+        if (std.mem.eql(u8, arg, "--settle")) return true;
+    }
+    return false;
+}
+
+/// Whether the run ends with the Browser's live platform objects counted by
+/// interface (`--live-types`): the "live objects" column says how many
+/// there are, this says WHAT they are - two builds' lists side by side name
+/// the type one of them keeps (lane mem1).
+pub fn listsLiveTypes(args: []const [:0]const u8) bool {
+    for (args[@min(1, args.len)..]) |arg| {
+        if (std.mem.eql(u8, arg, "--live-types")) return true;
+    }
+    return false;
+}
+
 /// Whether each batch's script is followed by turns of the page's event
 /// loop until it has nothing left to do (`--loop`): without it nothing a
 /// cycle queues - a timer, a port's message, a task - ever runs, since the
@@ -407,6 +433,22 @@ test "--batch= sets the cycles one script runs; anything but a positive count le
     // Inside a body it is the body's text; the program name is never a flag.
     try std.testing.expectEqual(default_batch, batchSize(&.{ "gc_bench", "--body=--batch=7" }));
     try std.testing.expectEqual(default_batch, batchSize(&.{"--batch=7"}));
+}
+
+test "--settle frees what the collection found dead before the reading, wherever it is given; nothing else does" {
+    try std.testing.expect(!settlesBeforeReading(&.{ "gc_bench", "10000", "5000", "--gc", "--loop" }));
+    try std.testing.expect(settlesBeforeReading(&.{ "gc_bench", "10000", "5000", "--settle" }));
+    try std.testing.expect(settlesBeforeReading(&.{ "gc_bench", "--settle", "--body=void 0;" }));
+    try std.testing.expect(!settlesBeforeReading(&.{ "gc_bench", "--body=--settle" }));
+    try std.testing.expect(!settlesBeforeReading(&.{"--settle"}));
+}
+
+test "--live-types lists the live objects by interface at the end, wherever it is given; nothing else does" {
+    try std.testing.expect(!listsLiveTypes(&.{ "gc_bench", "10000", "5000", "--gc", "--settle" }));
+    try std.testing.expect(listsLiveTypes(&.{ "gc_bench", "10000", "5000", "--live-types" }));
+    try std.testing.expect(listsLiveTypes(&.{ "gc_bench", "--live-types", "--body=void 0;" }));
+    try std.testing.expect(!listsLiveTypes(&.{ "gc_bench", "--body=--live-types" }));
+    try std.testing.expect(!listsLiveTypes(&.{"--live-types"}));
 }
 
 test "an empty --body= is ignored" {
