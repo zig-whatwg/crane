@@ -65,11 +65,26 @@
 //! (standard.TraversableStorageSheds).
 //!
 //! THREADS: localStorage is [Exposed=Window]: an area is loaded, changed,
-//! committed and flushed on its Browser's window thread only, and its
-//! commit timer runs on that thread's loop.
+//! and its commits collected on its Browser's window thread only, and its
+//! commit timer runs on that thread's loop. The WRITE runs on the Browser's
+//! storage sequence (sequence.zig; lane prof2), as Chrome's StorageAreaImpl
+//! collects its batch (CollectCommit) and hands it to its database's
+//! sequence (AsyncDomStorageDatabase -> DomStorageDatabase::Commit): the
+//! commit job owns copies of the batch's keys and values, and the window
+//! thread never waits on disk. The commit's result is judged on the
+//! sequence (LocalStorageImpl::OnCommitResult's error count is the
+//! sequence's alone), and a recovery past the error threshold is posted
+//! back to the window thread, which owns the areas. An area's first read
+//! (`load`) waits for the writes posted before it (`barrier`): Chrome's
+//! renderer blocks on the same read - its first localStorage access is a
+//! synchronous GetAll (CachedStorageArea::EnsureLoaded), answered once the
+//! storage service has loaded the area on its database sequence, after the
+//! commits queued there.
 
 const std = @import("std");
 const platform = @import("platform");
+const sequence_mod = @import("sequence.zig");
+const StorageSequence = sequence_mod.StorageSequence;
 
 const log = std.log.scoped(.profile_storage);
 
@@ -247,71 +262,49 @@ pub const Area = struct {
         self.timer_id = 0;
     }
 
-    /// StorageAreaImpl::CommitChanges and CollectCommit, and the database's
-    /// write: the batch's changes, in one write transaction; its result is
-    /// the Profile's to judge (OnCommitComplete -> DidCommit).
+    /// StorageAreaImpl::CommitChanges and CollectCommit: the batch's
+    /// changes, read from the map now and copied into a commit job, which
+    /// the storage sequence writes in one write transaction; its result is
+    /// the Profile's to judge there (OnCommitComplete -> DidCommit).
     pub fn commitChanges(self: *Area) void {
         var batch = self.batch orelse return;
         self.batch = null;
         defer batch.deinit(self.profile.allocator);
         // Its bottle has gone: nothing is left to write.
         const map = self.map orelse return;
-        self.commit_rate.addSamples(1);
-        var data_size: usize = 0;
-        const result = self.write(map, &batch, &data_size);
-        self.data_rate.addSamples(data_size);
-        self.profile.onCommitResult(result);
-    }
-
-    fn write(self: *Area, map: *std.StringHashMap([]u8), batch: *const CommitBatch, data_size: *usize) platform.StoreError!void {
-        const browser = self.profile.browser;
-        const store = try platform.openStore(browser, platform.Str.from(local_storage_store), .{});
-        defer platform.closeStore(store);
-        const transaction = try platform.beginTransaction(store, .write);
-        self.writeBatch(transaction, map, batch, data_size) catch |err| {
-            platform.abortTransaction(transaction);
-            return err;
+        const job = self.collect(map, &batch) catch {
+            // Not even the copies fit: nothing was handed over, and the
+            // next commit writes the area whole, so no change is lost to the
+            // store (Crane's; Chrome's CollectCommit cannot fail).
+            writeAllInstead(self.batchIfNeeded(), self.profile.allocator);
+            return;
         };
-        // Ends the transaction, committed or not.
-        return platform.commitTransaction(transaction);
+        self.commit_rate.addSamples(1);
+        self.data_rate.addSamples(job.data_size);
+        self.profile.sequence.post(&job.job);
     }
 
-    fn writeBatch(self: *Area, transaction: *platform.StoreTransaction, map: *std.StringHashMap([]u8), batch: *const CommitBatch, data_size: *usize) platform.StoreError!void {
+    /// CollectCommit: the batch as the records to write - each changed key's
+    /// value from the map, or its deletion - copied. OWNED by the job.
+    fn collect(self: *Area, map: *std.StringHashMap([]u8), batch: *const CommitBatch) std.mem.Allocator.Error!*CommitJob {
         const allocator = self.profile.allocator;
+        const job = try allocator.create(CommitJob);
+        job.* = .{ .profile = self.profile };
+        errdefer job.destroy();
         if (batch.clear_all_first) {
-            const upper = try self.upperBound();
-            defer allocator.free(upper);
-            try platform.storeDeleteRange(transaction, .{
-                .lower = platform.Bytes.from(self.prefix),
-                .has_lower = true,
-                .upper = platform.Bytes.from(upper),
-                .has_upper = true,
-                .upper_open = true,
-            });
+            job.clear_lower = try allocator.dupe(u8, self.prefix);
+            job.clear_upper = try self.upperBound();
         }
         if (batch.write_all) {
+            try job.changes.ensureTotalCapacity(allocator, map.count());
             var items = map.iterator();
-            while (items.next()) |item| try self.putItem(transaction, item.key_ptr.*, item.value_ptr.*, data_size);
-            return;
+            while (items.next()) |item| try job.add(self.prefix, item.key_ptr.*, item.value_ptr.*);
+            return job;
         }
+        try job.changes.ensureTotalCapacity(allocator, batch.changed_keys.count());
         var keys = batch.changed_keys.keyIterator();
-        while (keys.next()) |key| {
-            if (map.get(key.*)) |value| {
-                try self.putItem(transaction, key.*, value, data_size);
-            } else {
-                const record_key = try std.mem.concat(allocator, u8, &.{ self.prefix, key.* });
-                defer allocator.free(record_key);
-                data_size.* += key.len;
-                try platform.storeDelete(transaction, platform.Bytes.from(record_key));
-            }
-        }
-    }
-
-    fn putItem(self: *Area, transaction: *platform.StoreTransaction, key: []const u8, value: []const u8, data_size: *usize) platform.StoreError!void {
-        const record_key = try std.mem.concat(self.profile.allocator, u8, &.{ self.prefix, key });
-        defer self.profile.allocator.free(record_key);
-        data_size.* += key.len + value.len;
-        try platform.storePut(transaction, platform.Bytes.from(record_key), platform.Bytes.from(value));
+        while (keys.next()) |key| try job.add(self.prefix, key.*, map.get(key.*));
+        return job;
     }
 
     /// Commit at once whatever is pending (ScheduleImmediateCommit).
@@ -340,6 +333,117 @@ pub const Area = struct {
     }
 };
 
+/// One commit of an area, collected on the window thread and written on the
+/// storage sequence (DomStorageDatabase::Commit's batch). OWNED: every key
+/// and value is a copy, so the area goes on changing meanwhile.
+const CommitJob = struct {
+    job: sequence_mod.Job = .{ .run = run, .drop = drop },
+    /// BORROWED: the Profile outlives the sequence's run of every job (the
+    /// Browser's end stops the sequence before its storage ends).
+    profile: *Profile,
+    /// clear_all_first: every record in [clear_lower, clear_upper) deleted
+    /// before the changes. Null when the batch did not clear.
+    clear_lower: ?[]u8 = null,
+    clear_upper: ?[]u8 = null,
+    /// Record keys with their new values, or null: the record deleted.
+    changes: std.ArrayListUnmanaged(Change) = .empty,
+    /// The bytes the commit writes (keys and values), for the data rate.
+    data_size: usize = 0,
+
+    const Change = struct { key: []u8, value: ?[]u8 };
+
+    /// The record of `key` under `prefix`: its value, or its deletion.
+    /// Capacity reserved by the caller.
+    fn add(self: *CommitJob, prefix: []const u8, key: []const u8, value: ?[]const u8) std.mem.Allocator.Error!void {
+        const allocator = self.profile.allocator;
+        const record_key = try std.mem.concat(allocator, u8, &.{ prefix, key });
+        errdefer allocator.free(record_key);
+        const owned_value: ?[]u8 = if (value) |bytes| try allocator.dupe(u8, bytes) else null;
+        self.changes.appendAssumeCapacity(.{ .key = record_key, .value = owned_value });
+        self.data_size += key.len + if (value) |bytes| bytes.len else 0;
+    }
+
+    fn destroy(self: *CommitJob) void {
+        const allocator = self.profile.allocator;
+        for (self.changes.items) |change| {
+            allocator.free(change.key);
+            if (change.value) |value| allocator.free(value);
+        }
+        self.changes.deinit(allocator);
+        if (self.clear_lower) |bytes| allocator.free(bytes);
+        if (self.clear_upper) |bytes| allocator.free(bytes);
+        allocator.destroy(self);
+    }
+
+    /// On the storage sequence: the write, and its result judged.
+    fn run(job: *sequence_mod.Job) void {
+        const self: *CommitJob = @fieldParentPtr("job", job);
+        const profile = self.profile;
+        const result = self.write();
+        self.destroy();
+        profile.onCommitResult(result);
+    }
+
+    /// The sequence had stopped: the Browser is ending and its flush ran
+    /// before, so this commit came too late to be written.
+    fn drop(job: *sequence_mod.Job) void {
+        const self: *CommitJob = @fieldParentPtr("job", job);
+        log.warn("a localStorage commit came after the Browser's storage sequence stopped; it is not written", .{});
+        self.destroy();
+    }
+
+    fn write(self: *CommitJob) platform.StoreError!void {
+        const store = try platform.openStore(self.profile.browser, platform.Str.from(local_storage_store), .{});
+        defer platform.closeStore(store);
+        const transaction = try platform.beginTransaction(store, .write);
+        self.writeAll(transaction) catch |err| {
+            platform.abortTransaction(transaction);
+            return err;
+        };
+        // Ends the transaction, committed or not.
+        return platform.commitTransaction(transaction);
+    }
+
+    fn writeAll(self: *CommitJob, transaction: *platform.StoreTransaction) platform.StoreError!void {
+        if (self.clear_lower) |lower| try platform.storeDeleteRange(transaction, .{
+            .lower = platform.Bytes.from(lower),
+            .has_lower = true,
+            .upper = platform.Bytes.from(self.clear_upper.?),
+            .has_upper = true,
+            .upper_open = true,
+        });
+        for (self.changes.items) |change| {
+            const key = platform.Bytes.from(change.key);
+            if (change.value) |value| {
+                try platform.storePut(transaction, key, platform.Bytes.from(value));
+            } else try platform.storeDelete(transaction, key);
+        }
+    }
+};
+
+/// LocalStorageImpl::DeleteAndRecreateDatabase's deletion, on the storage
+/// sequence: after every commit posted before it, before every commit
+/// posted after.
+const DeleteJob = struct {
+    job: sequence_mod.Job = .{ .run = run, .drop = drop },
+    profile: *Profile,
+
+    fn run(job: *sequence_mod.Job) void {
+        const self: *DeleteJob = @fieldParentPtr("job", job);
+        const profile = self.profile;
+        profile.allocator.destroy(self);
+        platform.deleteStore(profile.browser, platform.Str.from(local_storage_store)) catch |err| switch (err) {
+            error.NotFound => {},
+            else => log.err("deleting the profile's localStorage store failed: {s}", .{@errorName(err)}),
+        };
+    }
+
+    fn drop(job: *sequence_mod.Job) void {
+        const self: *DeleteJob = @fieldParentPtr("job", job);
+        self.profile.allocator.destroy(self);
+    }
+};
+
 /// The Browser's profile, for its local storage: the BrowserPlatform whose
 /// stores are under the directory, the timers commits arm on, and every
 /// area read from it.
@@ -349,15 +453,23 @@ pub const Profile = struct {
     /// (Browser.deinit flushes before it ends it).
     browser: *platform.BrowserPlatform,
     timer: ?CommitTimer,
+    /// BORROWED: the Browser's storage sequence, which writes every commit
+    /// and stops before this ends (profile_stores.flush).
+    sequence: *StorageSequence,
+    /// The window thread's.
     areas: std.ArrayListUnmanaged(*Area) = .empty,
-    /// LocalStorageImpl::commit_error_count_.
+    /// LocalStorageImpl::commit_error_count_: the storage sequence's alone
+    /// (each commit's result is judged where it was written).
     commit_error_count: u32 = 0,
-    /// LocalStorageImpl::tried_to_recover_from_commit_errors_.
+    /// LocalStorageImpl::tried_to_recover_from_commit_errors_: the
+    /// sequence's.
     tried_to_recover: bool = false,
 
-    pub fn create(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, timer: ?CommitTimer) std.mem.Allocator.Error!*Profile {
+    /// `allocator` must be thread-safe: commit jobs are freed on the
+    /// storage sequence.
+    pub fn create(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, timer: ?CommitTimer, sequence: *StorageSequence) std.mem.Allocator.Error!*Profile {
         const self = try allocator.create(Profile);
-        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer };
+        self.* = .{ .allocator = allocator, .browser = browser, .timer = timer, .sequence = sequence };
         return self;
     }
 
@@ -387,6 +499,10 @@ pub const Profile = struct {
             .commit_rate = .init(max_commits_per_hour, hour_ms),
             .data_rate = .init(@intCast(quota), hour_ms),
         };
+        // The writes posted before this read are written first (the area
+        // may have had a bottle before, its last batch still on the
+        // sequence): Chrome's first read of an area waits for them too.
+        self.sequence.barrier();
         self.readInto(area, map) catch |err| {
             clearMap(map);
             if (err == error.OutOfMemory) return error.OutOfMemory;
@@ -438,13 +554,17 @@ pub const Profile = struct {
     }
 
     /// LocalStorageImpl::ShutDown and Flush: every area's pending batch,
-    /// committed now (ScheduleImmediateCommit). Browser.deinit's, before
-    /// its loop and its platform state end.
+    /// handed to the storage sequence now (ScheduleImmediateCommit).
+    /// Browser.deinit's, before the sequence stops (profile_stores.flush:
+    /// the stop writes what was handed over) and before its loop and its
+    /// platform state end.
     pub fn flush(self: *Profile) void {
         for (self.areas.items) |area| area.commitNow();
     }
 
-    /// LocalStorageImpl::OnCommitResult.
+    /// LocalStorageImpl::OnCommitResult, on the storage sequence: the
+    /// count is the sequence's; a recovery is the window thread's, posted
+    /// there.
     fn onCommitResult(self: *Profile, result: platform.StoreError!void) void {
         if (result) |_| {
             self.commit_error_count = 0;
@@ -457,21 +577,35 @@ pub const Profile = struct {
             // are ignored.
             if (self.tried_to_recover) return;
             self.tried_to_recover = true;
-            self.deleteAndRecreate();
+            self.commit_error_count = 0;
+            // With no loop to post to (a Browser whose loop has no timers)
+            // the areas cannot be told: the errors go on being counted.
+            const timer = self.timer orelse return;
+            timer.post(timer.context, 0, recoverPosted, self, ignoreRecovery);
         }
     }
 
+    fn recoverPosted(data: ?*anyopaque) void {
+        const self: *Profile = @ptrCast(@alignCast(data orelse return));
+        self.deleteAndRecreate();
+    }
+
+    /// The loop ended first: the Browser is ending, nothing to recover.
+    fn ignoreRecovery(data: ?*anyopaque) void {
+        _ = data;
+    }
+
     /// LocalStorageImpl::DeleteAndRecreateDatabase (kCommitErrorThreshold
-    /// exceeded): the store goes and is made again on its next open; every
-    /// live area is written to it whole, from its map (see the file's
-    /// comment for how this differs from Chrome's dropped areas).
+    /// exceeded), on the window thread: the store's deletion goes to the
+    /// sequence, after the commits already there, and every live area is
+    /// written to it whole, from its map, by commits posted after it (see
+    /// the file's comment for how this differs from Chrome's dropped areas).
     fn deleteAndRecreate(self: *Profile) void {
         log.err("more than {d} consecutive localStorage commits failed: the profile's store is deleted and made again", .{commit_error_threshold});
-        self.commit_error_count = 0;
-        platform.deleteStore(self.browser, platform.Str.from(local_storage_store)) catch |err| switch (err) {
-            error.NotFound => {},
-            else => log.err("deleting the profile's localStorage store failed: {s}", .{@errorName(err)}),
-        };
+        if (self.allocator.create(DeleteJob)) |job| {
+            job.* = .{ .profile = self };
+            self.sequence.post(&job.job);
+        } else |_| log.err("the profile's localStorage store could not be deleted: out of memory", .{});
         for (self.areas.items) |area| {
             if (area.map == null) continue;
             const batch = area.batchIfNeeded();
@@ -516,8 +650,14 @@ test "localStorage areas read from and flush to a profile directory; a store is 
         defer platform.destroyBrowserPlatform(browser);
         var user_agent_storage = standard.UserAgentStorage.init(testing.allocator);
         defer user_agent_storage.deinit();
+        // Stopped first (the defers run in reverse), as at a Browser's end:
+        // what was handed to it is written before the storage and the
+        // platform state end.
+        var sequence = StorageSequence.init(testing.allocator);
+        defer sequence.deinit();
+        try sequence.start();
         // No timer: every batch waits for the flush.
-        try user_agent_storage.attachProfile(browser, null);
+        try user_agent_storage.attachProfile(browser, null, &sequence);
         const map = (try standard.obtainLocalStorageBottleMap(&user_agent_storage, key, .localStorage)).?;
         try map.set("a", "1");
         try map.set("b", "2");
@@ -540,7 +680,10 @@ test "localStorage areas read from and flush to a profile directory; a store is 
     defer platform.destroyBrowserPlatform(browser);
     var user_agent_storage = standard.UserAgentStorage.init(testing.allocator);
     defer user_agent_storage.deinit();
-    try user_agent_storage.attachProfile(browser, null);
+    var sequence = StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try user_agent_storage.attachProfile(browser, null, &sequence);
     const map = (try standard.obtainLocalStorageBottleMap(&user_agent_storage, key, .localStorage)).?;
     try testing.expectEqual(@as(usize, 1), map.count());
     try testing.expectEqualStrings("3", map.get("b").?);
@@ -555,6 +698,79 @@ test "localStorage areas read from and flush to a profile directory; a store is 
     try memory_map.set("k", "v");
     try testing.expect(memory_map.area == null);
     try testing.expect(in_memory.profile == null);
+}
+
+/// A job that holds the storage sequence until its gate is set: what is
+/// handed over behind it waits.
+const Held = struct {
+    job: sequence_mod.Job = .{ .run = run, .drop = drop },
+    gate: sequence_mod.Done = .{},
+
+    fn run(job: *sequence_mod.Job) void {
+        const self: *Held = @fieldParentPtr("job", job);
+        self.gate.wait();
+    }
+
+    fn drop(job: *sequence_mod.Job) void {
+        _ = job;
+    }
+};
+
+/// The records of the profile's localStorage store, read on this thread.
+fn countRecords(browser: *platform.BrowserPlatform) !usize {
+    const store = try platform.openStore(browser, platform.Str.from(local_storage_store), .{});
+    defer platform.closeStore(store);
+    const transaction = try platform.beginTransaction(store, .read);
+    defer platform.abortTransaction(transaction);
+    const cursor = try platform.openCursor(transaction, .all, .forward);
+    defer platform.closeCursor(cursor);
+    var records: usize = 0;
+    while (try platform.cursorNext(cursor, std.testing.allocator)) |record| {
+        std.testing.allocator.free(record.key.slice());
+        std.testing.allocator.free(record.value.slice());
+        records += 1;
+    }
+    return records;
+}
+
+test "a localStorage commit is written on the storage sequence: the window thread hands it over and goes on" {
+    const testing = std.testing;
+    const standard = @import("standard.zig");
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(base);
+    const directory = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
+    defer testing.allocator.free(directory);
+    const key = standard.StorageKey.initBorrowed("https://example.test", "https://example.test", false);
+    const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    var user_agent_storage = standard.UserAgentStorage.init(testing.allocator);
+    defer user_agent_storage.deinit();
+    var sequence = StorageSequence.init(testing.allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    try user_agent_storage.attachProfile(browser, null, &sequence);
+    const map = (try standard.obtainLocalStorageBottleMap(&user_agent_storage, key, .localStorage)).?;
+    // The sequence is held: what is handed to it waits behind.
+    var held: Held = .{};
+    sequence.post(&held.job);
+    try map.set("a", "1");
+    try map.set("b", "2");
+    user_agent_storage.flushProfile();
+    // Handed over, and the area goes on: its batch is gone, nothing is in
+    // the store yet, and a change made now is a batch of its own.
+    try testing.expect(map.area.?.batch == null);
+    try testing.expectEqual(@as(usize, 0), try countRecords(browser));
+    try map.set("c", "3");
+    try testing.expectEqual(@as(usize, 0), try countRecords(browser));
+    held.gate.set();
+    sequence.barrier();
+    // The first commit, as collected: "c" was not in it.
+    try testing.expectEqual(@as(usize, 2), try countRecords(browser));
+    user_agent_storage.flushProfile();
+    sequence.barrier();
+    try testing.expectEqual(@as(usize, 3), try countRecords(browser));
 }
 
 test "the commit delay: Chrome's 5 s default, longer once the commit rate limit needs it" {

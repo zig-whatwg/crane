@@ -789,17 +789,20 @@ pub const UserAgentStorage = struct {
 
     /// The Browser has a profile directory (D6, the user's ruling
     /// 2026-11-21): its local storage persists through `browser`'s stores,
-    /// committing on `timer`. Browser.init's (src/browser/profile_stores.zig),
-    /// before any realm obtains a shelf; never for a Browser with none.
-    pub fn attachProfile(self: *UserAgentStorage, browser: *platform.BrowserPlatform, timer: ?profile_mod.CommitTimer) std.mem.Allocator.Error!void {
+    /// committing on `timer`, its writes run on `sequence` (the Browser's
+    /// storage sequence, lane prof2). Browser.init's
+    /// (src/browser/profile_stores.zig), before any realm obtains a shelf;
+    /// never for a Browser with none.
+    pub fn attachProfile(self: *UserAgentStorage, browser: *platform.BrowserPlatform, timer: ?profile_mod.CommitTimer, sequence: *@import("sequence.zig").StorageSequence) std.mem.Allocator.Error!void {
         std.debug.assert(self.profile == null and self.shed.count() == 0);
-        self.profile = try profile_mod.Profile.create(self.allocator, browser, timer);
+        self.profile = try profile_mod.Profile.create(self.allocator, browser, timer, sequence);
     }
 
-    /// Commit every pending localStorage change to the profile now
-    /// (Chromium LocalStorageImpl::ShutDown). Browser.deinit's, before its
-    /// event loop and its platform state end; nothing without a profile.
-    /// On the window thread, as every localStorage map is read and written.
+    /// Hand every pending localStorage change to the storage sequence now
+    /// (Chromium LocalStorageImpl::ShutDown). Browser.deinit's, before the
+    /// sequence stops and its event loop and its platform state end;
+    /// nothing without a profile. On the window thread, as every
+    /// localStorage map is read and written.
     pub fn flushProfile(self: *UserAgentStorage) void {
         const profile = self.profile orelse return;
         profile.flush();

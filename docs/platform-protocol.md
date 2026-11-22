@@ -410,6 +410,9 @@ per store under `<profile>/stores/`, a `kv(key BLOB PRIMARY KEY, value BLOB) WIT
 whose BINARY collation is this section's byte order, WAL with synchronous=FULL (durable on return),
 a connection per transaction (WAL snapshot reads), and one writer per store (a second is
 `Conflict`). Its system library is declared by each adapter's `platform_build.zig` (section 10).
+Crane calls the write operations of a persistent store from one thread per Browser, its storage
+sequence (src/storage/sequence.zig, lane prof2): a commit's fsync never runs on an agent's thread.
+Reads stay on the caller's thread, each on its own snapshot.
 
 **Web-visible behaviour is above the protocol.** Keys are byte strings compared lexicographically
 (unsigned bytes) - the one order every implementation must give, so an IndexedDB key range or cursor

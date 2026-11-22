@@ -113,7 +113,14 @@ pub fn of(browser: *host_bridge.Browser) ?*Frames {
 /// Browser - the requestId of the navigation request that made the document
 /// (lane cdpt's Network domain uses this function for it).
 pub fn loaderToken(session: *const PageSession, loader: u64) ids.Token {
-    return ids.Token.of(session.side.?.token, loader_bit | loader);
+    return loaderTokenOf(session.side.?.token, loader);
+}
+
+/// loaderToken for a Browser's devtools token, where no session is at hand
+/// (fetch_observer's Log entries, which run for the tab with or without a
+/// Network session).
+pub fn loaderTokenOf(browser_token: u64, loader: u64) ids.Token {
+    return ids.Token.of(browser_token, loader_bit | loader);
 }
 
 /// The navigable with id `id` in the session's Browser, while it lives.

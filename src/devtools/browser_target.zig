@@ -83,20 +83,26 @@ pub const BrowserDomain = struct {
         return .{};
     }
 
-    pub fn getWindowForTarget(session: *Session, params: B.getWindowForTarget.Params) !B.getWindowForTarget.Result {
+    /// The target's window (BrowserHandler::GetWindowForTarget): its id, and
+    /// its bounds as its tab keeps them (browser.viewport.windowBounds - the
+    /// rect and state the platform, Browser.setWindowBounds or moveTo set),
+    /// read on the tab's Browser thread.
+    pub fn getWindowForTarget(session: *Session, params: B.getWindowForTarget.Params, reply: Reply(B.getWindowForTarget)) !void {
         const target = try targetOrOwn(session, params.targetId);
-        return .{ .windowId = target.window_id, .bounds = bounds(target.window) };
+        try WindowTask.post(target, .{ .get_for_target = reply }, .{});
     }
 
-    pub fn getWindowBounds(session: *Session, params: B.getWindowBounds.Params) !B.getWindowBounds.Result {
+    pub fn getWindowBounds(session: *Session, params: B.getWindowBounds.Params, reply: Reply(B.getWindowBounds)) !void {
         const target = windowTarget(session, params.windowId) orelse return session.fail("Browser window not found");
-        return .{ .bounds = bounds(target.window) };
+        try WindowTask.post(target, .{ .get_bounds = reply }, .{});
     }
 
-    /// The tab's window rect: the platform's window_rect_changed for its
-    /// tab (viewport.zig: a headless window's rect IS its viewport), as a
-    /// window manager's resize reaches a page.
-    pub fn setWindowBounds(session: *Session, params: B.setWindowBounds.Params) !B.setWindowBounds.Result {
+    /// The tab's window rect and state, as Chrome's
+    /// BrowserHandler::SetWindowBounds changes them (browser.viewport
+    /// .setWindowBounds: restore, move/resize, minimize/maximize/
+    /// fullscreen), on the tab's Browser thread; the viewport follows (a
+    /// headless window's rect IS its viewport).
+    pub fn setWindowBounds(session: *Session, params: B.setWindowBounds.Params, reply: Reply(B.setWindowBounds)) !void {
         const target = windowTarget(session, params.windowId) orelse return session.fail("Browser window not found");
         const b = params.bounds;
         // browser_handler.cc SetWindowBounds: a state other than normal
@@ -104,54 +110,99 @@ pub const BrowserDomain = struct {
         if (b.windowState) |state| if (state != .normal and (b.left != null or b.top != null or b.width != null or b.height != null)) {
             return session.failWithCode(.invalid_params, "The 'minimized', 'maximized' and 'fullscreen' states cannot be combined with 'left', 'top', 'width' or 'height'");
         };
-        var w = &target.window;
-        if (b.left) |v| w.left = v;
-        if (b.top) |v| w.top = v;
-        if (b.width) |v| w.width = v;
-        if (b.height) |v| w.height = v;
-        if (b.windowState) |v| w.state = v;
-        if (target.partner) |p| p.window = w.*;
-        WindowRectTask.post(target.context.side, target.tab, w.*);
-        return .{};
+        try WindowTask.post(target, .{ .set = reply }, .{
+            .x = narrow(b.left),
+            .y = narrow(b.top),
+            .width = narrow(b.width),
+            .height = narrow(b.height),
+            .state = if (b.windowState) |state| switch (state) {
+                .normal => .normal,
+                .minimized => .minimized,
+                .maximized => .maximized,
+                .fullscreen => .fullscreen,
+            } else null,
+        });
+    }
+
+    fn narrow(value: ?i64) ?i32 {
+        const v = value orelse return null;
+        return @intCast(std.math.clamp(v, std.math.minInt(i32), std.math.maxInt(i32)));
     }
 
     fn windowTarget(session: *Session, window_id: i64) ?*targets.Target {
         for (serverOf(session).target_list.items) |t| if (t.window_id == window_id and t.type == .page) return t;
         return null;
     }
-
-    fn bounds(w: targets.WindowBounds) B.Bounds {
-        return .{ .left = w.left, .top = w.top, .width = w.width, .height = w.height, .windowState = w.state };
-    }
 };
 
-/// Browser thread: a tab's window rect changed (Browser.setWindowBounds).
-const WindowRectTask = struct {
+/// Browser thread: a Browser.* window command for a tab - its bounds read,
+/// or changed - answered from there.
+const WindowTask = struct {
     side: *browser_side.BrowserSide,
     tab: host_bridge.TabId,
-    rect: targets.WindowBounds,
+    window_id: i64,
+    change: viewport.WindowChange,
+    reply: Answer,
 
-    fn post(side: *browser_side.BrowserSide, tab: host_bridge.TabId, rect: targets.WindowBounds) void {
-        const task = side.allocator.create(WindowRectTask) catch return;
-        task.* = .{ .side = side, .tab = tab, .rect = rect };
-        _ = side.host.post(task, run, drop);
+    const viewport = @import("browser").viewport;
+
+    const Answer = union(enum) {
+        get_for_target: Reply(B.getWindowForTarget),
+        get_bounds: Reply(B.getWindowBounds),
+        set: Reply(B.setWindowBounds),
+    };
+
+    fn post(target: *targets.Target, reply: Answer, change: viewport.WindowChange) !void {
+        const side = target.context.side;
+        const task = try side.allocator.create(WindowTask);
+        errdefer side.allocator.destroy(task);
+        task.* = .{ .side = side, .tab = target.tab, .window_id = target.window_id, .change = change, .reply = reply };
+        if (!side.host.post(task, run, drop)) return error.BrowserGone;
     }
 
     fn run(context: ?*anyopaque, b: *host_bridge.Browser) void {
-        const task: *WindowRectTask = @ptrCast(@alignCast(context.?));
+        const task: *WindowTask = @ptrCast(@alignCast(context.?));
         defer task.side.allocator.destroy(task);
-        const browser = @import("browser");
-        browser.viewport.windowRectChanged(b.scope, task.tab, .{
-            .x = @floatFromInt(task.rect.left),
-            .y = @floatFromInt(task.rect.top),
-            .width = @floatFromInt(task.rect.width),
-            .height = @floatFromInt(task.rect.height),
-        });
+        switch (task.reply) {
+            .get_for_target => |reply| {
+                const window = viewport.windowBounds(b.scope, task.tab) orelse return reply.fail(.server_error, "Browser window not found");
+                reply.ok(.{ .windowId = task.window_id, .bounds = boundsOf(window) });
+            },
+            .get_bounds => |reply| {
+                const window = viewport.windowBounds(b.scope, task.tab) orelse return reply.fail(.server_error, "Browser window not found");
+                reply.ok(.{ .bounds = boundsOf(window) });
+            },
+            .set => |reply| {
+                viewport.setWindowBounds(b.scope, task.tab, task.change) catch |err| return switch (err) {
+                    error.NoSuchTab => reply.fail(.server_error, "Browser window not found"),
+                    error.NotNormal => reply.fail(.server_error, "To resize minimized/maximized/fullscreen window, restore it to normal state first."),
+                };
+                reply.ok(.{});
+            },
+        }
     }
 
     fn drop(context: ?*anyopaque) void {
-        const task: *WindowRectTask = @ptrCast(@alignCast(context.?));
+        const task: *WindowTask = @ptrCast(@alignCast(context.?));
+        switch (task.reply) {
+            inline else => |reply| reply.fail(.server_error, "Browser window not found"),
+        }
         task.side.allocator.destroy(task);
+    }
+
+    fn boundsOf(window: viewport.WindowBounds) B.Bounds {
+        return .{
+            .left = window.rect.x,
+            .top = window.rect.y,
+            .width = window.rect.width,
+            .height = window.rect.height,
+            .windowState = switch (window.state) {
+                .normal => .normal,
+                .minimized => .minimized,
+                .maximized => .maximized,
+                .fullscreen => .fullscreen,
+            },
+        };
     }
 };
 
@@ -333,8 +384,16 @@ pub const TargetDomain = struct {
         // (lane cdpr's G18), and would have shared its state.
         config.profile_dir = null;
         config.persist_storage = false;
+        // The context's proxy (TargetHandler::CreateBrowserContext: a
+        // net::ProxyConfig whose proxy_rules() parse proxyServer and whose
+        // bypass rules parse proxyBypassList - ProxyRules::ParseFromString,
+        // ProxyBypassRules::ParseFromString, which skip what they cannot
+        // read). The Browser's network context keeps its own copy.
+        var rules: ?ProxyRules = null;
+        defer if (rules) |*r| r.deinit();
         if (params.proxyServer) |proxy| {
-            config.proxy = proxyConfig(proxy, params.proxyBypassList) orelse return session.failWithCode(.invalid_params, "Invalid proxy server");
+            rules = try ProxyRules.parse(server.allocator, proxy, params.proxyBypassList orelse "");
+            config.proxy = .{ .rules = &rules.? };
         }
         const host = host_bridge.BrowserHost.start(server.allocator, config) catch |err| {
             log.warn("devtools: a browser context could not start: {t}", .{err});
@@ -370,14 +429,7 @@ pub const TargetDomain = struct {
         return .{};
     }
 
-    fn proxyConfig(proxy: []const u8, bypass: ?[]const u8) ?host_bridge.BrowserConfig.Proxy {
-        _ = bypass;
-        // TODO(cdpt): BrowserConfig.Proxy.manual from a proxyServer string
-        // ("http=foo:80;https=bar:80" or "foo:80") once NetworkContext's
-        // Manual takes a parsed list; until then only "direct://".
-        if (std.mem.eql(u8, proxy, "direct://")) return .direct;
-        return null;
-    }
+    const ProxyRules = @import("fetch").network.NetworkContext.ProxyRules;
 };
 
 // ============================================================================
