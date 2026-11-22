@@ -830,7 +830,11 @@ fn loopOfContext(bc: *BrowsingContext) ?runtime.EventLoop {
 /// "continue" unless a prompt was shown and the user stayed; none is shown
 /// without sticky activation). The documents are taken before any handler
 /// runs - script can take a frame away - and each is skipped if it went.
-fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator) bool {
+/// `unload_prompt_shown` is the check's unloadPromptShown (step 2), given
+/// to each document's steps to fire beforeunload and set when one shows
+/// the prompt (step 7.1-7.2): at most one prompt per check, as
+/// HTMLIFrameElement's definitelyCloseTraversable and navigate do it.
+fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator, unload_prompt_shown: *bool) bool {
     const Held = struct { document: *runtime.Instance, generation: u64 };
     var documents: std.ArrayListUnmanaged(Held) = .empty;
     defer documents.deinit(allocator);
@@ -841,7 +845,9 @@ fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator
     var canceled = false;
     for (documents.items) |held| {
         if (runtime.SlabAllocator.generationOf(held.document) != held.generation) continue;
-        if (@import("dom").document_lifecycle.fireBeforeUnload(held.document).canceled) canceled = true;
+        const result = @import("dom").document_lifecycle.fireBeforeUnloadGiven(held.document, unload_prompt_shown.*);
+        if (result.prompt_shown) unload_prompt_shown.* = true;
+        if (result.canceled) canceled = true;
     }
     return canceled;
 }

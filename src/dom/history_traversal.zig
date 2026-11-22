@@ -87,7 +87,11 @@ pub const Implementation = struct {
     /// "Checking if unloading is canceled" for the active documents of
     /// `contexts`, in order: beforeunload at each - each document held with
     /// its generation, skipped if it went. True when one was canceled.
-    before_unload_canceled: *const fn (contexts: []const *BrowsingContext, allocator: std.mem.Allocator) bool,
+    /// `unload_prompt_shown` is the check's unloadPromptShown, read and
+    /// updated: the steps to fire beforeunload show at most one prompt per
+    /// check, across its step 4 (the traversable's own document) and step 7
+    /// (the rest), which the caller runs as two calls.
+    before_unload_canceled: *const fn (contexts: []const *BrowsingContext, allocator: std.mem.Allocator, unload_prompt_shown: *bool) bool,
     /// HTML "abort a document and its descendants" for `navigable`'s active
     /// document, as a navigation that has passed its beforeunload does it
     /// (navigate step 24.3): its fetches end, its live XHRs are left to the
@@ -185,10 +189,12 @@ pub fn queueTask(navigables: *Navigables, navigable: *BrowsingContext, task: Tas
 }
 
 /// Beforeunload at the active documents of `contexts`: whether one was
-/// canceled. Nothing is canceled with no implementation.
-pub fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: std.mem.Allocator) bool {
+/// canceled; `unload_prompt_shown` is the check's unloadPromptShown
+/// (Implementation.before_unload_canceled). Nothing is canceled with no
+/// implementation.
+pub fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: std.mem.Allocator, unload_prompt_shown: *bool) bool {
     const impl = implementation.get() orelse return false;
-    return impl.before_unload_canceled(contexts, allocator);
+    return impl.before_unload_canceled(contexts, allocator, unload_prompt_shown);
 }
 
 /// See Implementation.abort_for_navigation.

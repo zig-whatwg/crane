@@ -2328,6 +2328,11 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
         // "timeOrigin should be set after beforeunload": Chrome and Safari
         // pass, Firefox fails with fetchStart 3000).
         var handlers_ran = false;
+        // "Checking if unloading is canceled" step 2: one unloadPromptShown
+        // for every document of the check, which each one's steps to fire
+        // beforeunload are given and set (step 7.1-7.2): at most one prompt
+        // to unload per navigation, as definitelyCloseTraversable does.
+        var prompt_shown = false;
         var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
         defer documents.deinit(integration.allocator);
         for (documents.items) |entry| {
@@ -2337,7 +2342,9 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
                     handlers_ran = dom_module.event_listener_types.hasListenersOfType(window, "beforeunload");
                 }
             }
-            if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
+            const result = document_lifecycle.fireBeforeUnloadGiven(entry.document, prompt_shown);
+            if (result.prompt_shown) prompt_shown = true;
+            if (result.canceled) canceled = true;
         }
         // The handlers ran script: a later navigation replaces this one -
         // and ends its record - and a navigable taken away ends it too.
