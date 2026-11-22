@@ -652,6 +652,12 @@ pub fn endAllOfAgent(isolate: *ffi.Isolate) void {
 // Values across worlds
 // ============================================================================
 
+/// JavaScript null, as a value to hand back (V8's null is a root: it is
+/// never absent).
+fn jsNull(isolate: *ffi.Isolate) *ffi.Value {
+    return ffi.v8_Null(isolate) orelse unreachable;
+}
+
 /// `value`, about to reach script of the realm whose context is `context` -
 /// a JSValue an impl hands back (an attribute's, an operation's: a value it
 /// stored, a traced value) or a callback's argument - as a value of that
@@ -689,30 +695,30 @@ pub fn acrossWorlds(isolate: *ffi.Isolate, value: *ffi.Value, context: *ffi.Cont
     // A platform object: its wrapper in the target world.
     if (@import("platform_anchor.zig").instanceOf(@ptrCast(value))) |raw| {
         const instance: *engine.Instance = @ptrCast(@alignCast(raw));
-        const wrapper = @import("conversions.zig").instanceToV8InWorld(isolate, instance, target_world) catch return ffi.v8_Null(isolate);
+        const wrapper = @import("conversions.zig").instanceToV8InWorld(isolate, instance, target_world) catch return jsNull(isolate);
         // An undefined is the conversion's own (no wrapper there): owned.
         if (ffi.v8_Value_IsUndefined(wrapper)) return wrapper;
-        return ffi.v8_Global_Clone(wrapper) orelse ffi.v8_Null(isolate);
+        return ffi.v8_Global_Clone(wrapper) orelse jsNull(isolate);
     }
 
     // A promise: the target world's own promise for it (`mirrorPromise`) -
     // a structured clone cannot carry one.
     if (ffi.v8_Value_IsPromise(value)) {
-        const source_realm = context_manager.get(creation) orelse return ffi.v8_Null(isolate);
+        const source_realm = context_manager.get(creation) orelse return jsNull(isolate);
         return mirrorPromise(isolate, value, source_realm, context);
     }
 
     // Any other object: a structured clone into the target realm, its
     // exceptions swallowed (`Clone`).
     var clone: Clone = .{
-        .source_realm = context_manager.get(creation) orelse return ffi.v8_Null(isolate),
-        .target_realm = context_manager.get(context) orelse return ffi.v8_Null(isolate),
+        .source_realm = context_manager.get(creation) orelse return jsNull(isolate),
+        .target_realm = context_manager.get(context) orelse return jsNull(isolate),
         .value = value,
     };
     var exception: ?*ffi.Value = null;
     _ = ffi.v8_RunCatching(isolate, Clone.run, &clone, &exception);
     if (exception) |thrown| ffi.v8_Global_Dispose(thrown);
-    return clone.result orelse ffi.v8_Null(isolate);
+    return clone.result orelse jsNull(isolate);
 }
 
 /// `acrossWorlds`'s structured clone of `value` from `source_realm` into
@@ -758,7 +764,7 @@ const Clone = struct {
 /// Marked handled: a rejection is reported once, by `source`'s own realm.
 /// OWNED; null when it cannot be made.
 fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Context, context: *ffi.Context) *ffi.Value {
-    const target_realm = context_manager.get(context) orelse return ffi.v8_Null(isolate);
+    const target_realm = context_manager.get(context) orelse return jsNull(isolate);
     const state = stateOf(target_realm);
     var key_buffer: [48]u8 = undefined;
     const key: ?[]const u8 = if (state) |w| mirrorKey(&key_buffer, w) else null;
@@ -768,16 +774,16 @@ fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Contex
         if (madeIn(kept, context)) return kept;
         ffi.v8_Global_Dispose(kept);
     };
-    const resolver = ffi.v8_PromiseResolver_New(context) orelse return ffi.v8_Null(isolate);
+    const resolver = ffi.v8_PromiseResolver_New(context) orelse return jsNull(isolate);
     const promise: *ffi.Value = @ptrCast(ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
         ffi.v8_PromiseResolver_Dispose(resolver);
-        return ffi.v8_Null(isolate);
+        return jsNull(isolate);
     });
     ffi.v8_Promise_MarkAsHandled(promise);
     const mirror = Mirror.allocator.create(Mirror) catch {
         ffi.v8_PromiseResolver_Dispose(resolver);
         ffi.v8_Global_Dispose(promise);
-        return ffi.v8_Null(isolate);
+        return jsNull(isolate);
     };
     mirror.* = .{ .resolver = resolver, .realm = target_realm };
     // A world realm's: on its pending list, to be cut at its end. No room:
@@ -785,7 +791,7 @@ fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Contex
     if (state) |w| w.pending.append(std.heap.c_allocator, mirror) catch {
         mirror.release();
         ffi.v8_Global_Dispose(promise);
-        return ffi.v8_Null(isolate);
+        return jsNull(isolate);
     };
     if (state) |w| mirror.index = w.pending.items.len - 1;
     // The reaction: the source's realm's for a world realm's mirror (its
@@ -796,7 +802,7 @@ fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Contex
     @import("protocol_promises.zig").reactToPromise(reaction_realm, .{ .handle = .{ .ptr = source } }, &Mirror.steps, mirror) catch {
         mirror.release();
         ffi.v8_Global_Dispose(promise);
-        return ffi.v8_Null(isolate);
+        return jsNull(isolate);
     };
     if (state) |w| keepMirror(w, source, key.?, promise);
     return promise;
