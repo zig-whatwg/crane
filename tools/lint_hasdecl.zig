@@ -942,7 +942,7 @@ fn scan(model: *Model, io: std.Io) !void {
 }
 
 fn usage() noreturn {
-    std.debug.print("usage: lint_hasdecl [--update | --list]\n", .{});
+    std.debug.print("usage: lint_hasdecl [--update | --list] [--time]\n", .{});
     std.process.exit(2);
 }
 
@@ -954,16 +954,37 @@ pub fn main(init: std.process.Init) !void {
 
     var update = false;
     var list = false;
+    var time = false;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--update")) update = true else if (std.mem.eql(u8, arg, "--list")) list = true else usage();
+        if (std.mem.eql(u8, arg, "--update")) update = true else if (std.mem.eql(u8, arg, "--list")) list = true else if (std.mem.eql(u8, arg, "--time")) time = true else usage();
     }
 
     var model: Model = .{ .arena = arena };
+    const started = std.Io.Timestamp.now(io, .awake);
     try scan(&model, io);
+    const scanned = std.Io.Timestamp.now(io, .awake);
     const report = try analyze(&model);
+    if (time) {
+        // Where the run's time and memory go (`--time`).
+        var tokens: usize = 0;
+        var bytes: usize = 0;
+        var files = model.files.valueIterator();
+        while (files.next()) |file| {
+            tokens += file.*.tokens.len;
+            bytes += file.*.source.len;
+        }
+        var calls: usize = 0;
+        var names = model.calls.valueIterator();
+        while (names.next()) |sites| calls += sites.items.len;
+        const scan_ns = started.untilNow(io, .awake).toNanoseconds() - scanned.untilNow(io, .awake).toNanoseconds();
+        const analyze_ns = scanned.untilNow(io, .awake).toNanoseconds();
+        std.debug.print("hasdecl --time: {d} files, {d} bytes, {d} tokens, {d} calls under {d} names, {d} probes, {d} memoized resolutions, arena {d} bytes; scan+parse {d} ms, analysis {d} ms\n", .{
+            model.files.count(), bytes, tokens, calls, model.calls.count(), model.probes.items.len, model.memo.count(), arena_state.queryCapacity(), @divTrunc(scan_ns, 1_000_000), @divTrunc(analyze_ns, 1_000_000),
+        });
+    }
 
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = stdout_stream.writer(io, &stdout_buf);
