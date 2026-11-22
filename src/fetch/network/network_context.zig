@@ -387,7 +387,7 @@ pub const NetworkContext = struct {
     pub fn releaseConnectionSlot(self: *NetworkContext, holder: *const anyopaque) void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        self.slots.release(holder);
+        self.slots.release(self.allocator, holder);
     }
 
     /// `destination` answered over HTTP/2: its requests share one
@@ -486,142 +486,229 @@ pub fn destinationOf(buffer: *[max_host_key]u8, url: []const u8) ?[]const u8 {
 /// The connection slots of a Browser's destinations (`max_connections_per_
 /// host` each) and the destinations that multiplex. NOT locked: the
 /// context's mutex guards it.
+///
+/// Chromium's design (net/socket/transport_client_socket_pool.cc, BSD-3;
+/// reproduced, not copied): the pool keeps a Group per GroupId in a map
+/// (group_map_), each with its own queue of the requests waiting for a socket
+/// (Group's unbound requests), and a released socket goes to its own group's
+/// next request (ReleaseSocket -> OnAvailableSocketSlot ->
+/// ProcessPendingRequest). So here: a group per destination, found by its
+/// key, holding its used slots, its waiters in arrival order and whether it
+/// multiplexes, and a map from each holder to its group and its place. No
+/// operation walks another destination's transfers, or the waiters ahead of
+/// one: asking costs two lookups, and a release hands its slot to the front
+/// of its group's queue. Before, every ask scanned the whole waiting list and
+/// NetworkScheduler.pump asks for every waiter, so a pump cost the square of
+/// the waiters (lane tpc, 2026-11-22: a burst of 1600 fetches to one host
+/// took 711 ms, of 400 45 ms).
 pub const ConnectionSlots = struct {
-    taken: std.ArrayListUnmanaged(Slot) = .empty,
-    /// The transfers that asked for a slot and were refused, oldest first:
-    /// each destination's are handed its freed slots in this order.
-    waiting: std.ArrayListUnmanaged(Slot) = .empty,
-    /// Destinations that answered over HTTP/2.
-    multiplexed: std.ArrayListUnmanaged(Key) = .empty,
+    /// Each destination's group, by its key (the group OWNS the key).
+    groups: std.StringHashMapUnmanaged(*Group) = .empty,
+    /// What each holder has: a slot of its group (`ticket` 0), or a place in
+    /// its group's queue (that place's ticket).
+    members: std.AutoHashMapUnmanaged(*const anyopaque, Member) = .empty,
+    /// The next place given in a queue (never 0).
+    next_ticket: u64 = 1,
     /// Unit tests only: how many entries the operations looked at (each
-    /// list entry inspected, each map lookup) - the scaling test's measure.
+    /// map lookup, each queue entry inspected) - the scaling test's measure.
     probes: usize = 0,
+
+    const Group = struct {
+        /// OWNED.
+        key: []u8,
+        /// How many of its slots are held.
+        used: usize = 0,
+        /// Its waiters, oldest first from `head`. A waiter that let go (a
+        /// cancelled transfer) stays in the queue until it reaches the front
+        /// and is passed over: its entry's ticket is no longer its holder's.
+        queue: std.ArrayListUnmanaged(Waiter) = .empty,
+        head: usize = 0,
+        /// How many of the queue's entries still wait.
+        waiting: usize = 0,
+        /// It answered over HTTP/2: its requests take no slots.
+        multiplexed: bool = false,
+    };
+
+    const Waiter = struct {
+        holder: *const anyopaque,
+        ticket: u64,
+    };
+
+    const Member = struct {
+        group: *Group,
+        /// 0: holds a slot of `group`; else: its place in `group`'s queue.
+        ticket: u64,
+    };
 
     inline fn probe(self: *ConnectionSlots) void {
         if (builtin.is_test) self.probes += 1;
     }
-
-    const Key = struct {
-        bytes: [max_host_key]u8,
-        len: usize,
-
-        fn of(destination: []const u8) Key {
-            var key: Key = .{ .bytes = undefined, .len = @min(destination.len, max_host_key) };
-            @memcpy(key.bytes[0..key.len], destination[0..key.len]);
-            return key;
-        }
-
-        fn is(self: *const Key, destination: []const u8) bool {
-            return std.mem.eql(u8, self.bytes[0..self.len], destination);
-        }
-    };
-
-    const Slot = struct {
-        key: Key,
-        holder: *const anyopaque,
-    };
 
     /// A slot of `destination` for `holder` if it holds one - taken before,
     /// or handed to it by a `release` since it last asked - or one is free
     /// for it, or none is needed. A holder that is refused waits, in the
     /// order it first asked, until a `release` hands it a slot or it lets
     /// go (`release`); asking again meanwhile changes nothing. A slot is
-    /// free for `holder` only when the destination has more free slots than
-    /// waiters older than it - with every release handing its slot on,
-    /// that is when it has no waiters at all.
+    /// free for a newcomer only when the destination has more free slots
+    /// than waiters - with every release handing its slot on, that is when
+    /// it has no waiters at all; and a waiter is never owed one before a
+    /// release hands it one, so a waiter that asks again only hears whether
+    /// it holds one.
     pub fn tryTake(self: *ConnectionSlots, allocator: Allocator, destination: []const u8, holder: *const anyopaque) Allocator.Error!bool {
-        for (self.multiplexed.items) |*key| {
-            self.probe();
-            if (key.is(destination)) {
-                self.stopWaiting(holder);
+        self.probe();
+        if (self.members.get(holder)) |member| {
+            if (member.ticket == 0) return true;
+            // Its destination multiplexes since it began to wait (a waiter
+            // `noteMultiplexed` let go is no member): it waits for nothing.
+            if (member.group.multiplexed) {
+                self.leaveQueue(allocator, holder, member);
                 return true;
             }
-        }
-        var used: usize = 0;
-        for (self.taken.items) |*slot| {
-            self.probe();
-            if (!slot.key.is(destination)) continue;
-            if (slot.holder == holder) return true;
-            used += 1;
-        }
-        // The destination's waiters older than `holder`, and whether it
-        // waits already.
-        var older: usize = 0;
-        var waits = false;
-        for (self.waiting.items) |*waiter| {
-            self.probe();
-            if (waiter.holder == holder) {
-                waits = true;
-                break;
-            }
-            if (waiter.key.is(destination)) older += 1;
-        }
-        if (used + older >= max_connections_per_host) {
-            if (!waits) try self.waiting.append(allocator, .{ .key = .of(destination), .holder = holder });
             return false;
         }
-        try self.taken.append(allocator, .{ .key = .of(destination), .holder = holder });
-        self.stopWaiting(holder);
-        return true;
+        self.probe();
+        const group = try self.groupOf(allocator, destination);
+        if (group.multiplexed) return true;
+        if (group.used + group.waiting < max_connections_per_host) {
+            try self.members.put(allocator, holder, .{ .group = group, .ticket = 0 });
+            group.used += 1;
+            return true;
+        }
+        const ticket = self.next_ticket;
+        try group.queue.append(allocator, .{ .holder = holder, .ticket = ticket });
+        errdefer _ = group.queue.pop();
+        try self.members.put(allocator, holder, .{ .group = group, .ticket = ticket });
+        self.next_ticket += 1;
+        group.waiting += 1;
+        return false;
     }
 
     /// Give back `holder`'s slot, if it has one - to its destination's
     /// oldest waiter, if any waits, which holds it from this moment (and
     /// hears so when it next asks) - and `holder`'s place among the
     /// waiters, if it has one (a transfer cancelled while it waited).
-    pub fn release(self: *ConnectionSlots, holder: *const anyopaque) void {
-        self.stopWaiting(holder);
-        for (self.taken.items, 0..) |*slot, i| {
+    pub fn release(self: *ConnectionSlots, allocator: Allocator, holder: *const anyopaque) void {
+        self.probe();
+        const member = self.members.get(holder) orelse return;
+        if (member.ticket != 0) return self.leaveQueue(allocator, holder, member);
+        _ = self.members.remove(holder);
+        const group = member.group;
+        // The oldest waiter of the group takes its place (Chromium's
+        // ProcessPendingRequest: the group's next request gets the socket).
+        while (group.head < group.queue.items.len) {
             self.probe();
-            if (slot.holder != holder) continue;
-            // The oldest waiter of the slot's destination takes its place
-            // (nothing is allocated: the slot is the same one).
-            for (self.waiting.items, 0..) |*waiter, w| {
-                self.probe();
-                if (!waiter.key.is(slot.key.bytes[0..slot.key.len])) continue;
-                slot.holder = waiter.holder;
-                _ = self.waiting.orderedRemove(w);
-                return;
-            }
-            _ = self.taken.orderedRemove(i);
+            const waiter = group.queue.items[group.head];
+            group.head += 1;
+            const next = self.members.getPtr(waiter.holder) orelse continue;
+            // Let go since it queued, or its holder queued again later.
+            if (next.group != group or next.ticket != waiter.ticket) continue;
+            next.ticket = 0;
+            group.waiting -= 1;
+            trimQueue(group);
             return;
         }
+        group.used -= 1;
+        trimQueue(group);
+        self.dropIfIdle(allocator, group);
     }
 
     /// Whether `holder` holds a slot now.
     pub fn holds(self: *const ConnectionSlots, holder: *const anyopaque) bool {
-        for (self.taken.items) |slot| {
-            if (slot.holder == holder) return true;
-        }
-        return false;
+        const member = self.members.get(holder) orelse return false;
+        return member.ticket == 0;
     }
 
-    fn stopWaiting(self: *ConnectionSlots, holder: *const anyopaque) void {
-        for (self.waiting.items, 0..) |waiter, i| {
-            self.probe();
-            if (waiter.holder != holder) continue;
-            _ = self.waiting.orderedRemove(i);
-            return;
-        }
+    /// How many transfers wait for a slot, across every destination.
+    pub fn waitingCount(self: *const ConnectionSlots) usize {
+        var n: usize = 0;
+        var it = self.groups.valueIterator();
+        while (it.next()) |group| n += group.*.waiting;
+        return n;
+    }
+
+    /// How many slots are held, across every destination.
+    pub fn takenCount(self: *const ConnectionSlots) usize {
+        var n: usize = 0;
+        var it = self.groups.valueIterator();
+        while (it.next()) |group| n += group.*.used;
+        return n;
     }
 
     pub fn noteMultiplexed(self: *ConnectionSlots, allocator: Allocator, destination: []const u8) Allocator.Error!void {
-        for (self.multiplexed.items) |*key| if (key.is(destination)) return;
-        try self.multiplexed.append(allocator, .of(destination));
+        const group = try self.groupOf(allocator, destination);
+        if (group.multiplexed) return;
+        group.multiplexed = true;
         // Its waiters wait for nothing now: each starts when it next asks.
-        var i: usize = 0;
-        while (i < self.waiting.items.len) {
-            if (self.waiting.items[i].key.is(destination)) {
-                _ = self.waiting.orderedRemove(i);
-            } else i += 1;
+        for (group.queue.items[group.head..]) |waiter| {
+            self.probe();
+            const member = self.members.get(waiter.holder) orelse continue;
+            if (member.group == group and member.ticket == waiter.ticket) _ = self.members.remove(waiter.holder);
         }
+        group.queue.clearRetainingCapacity();
+        group.head = 0;
+        group.waiting = 0;
     }
 
     pub fn deinit(self: *ConnectionSlots, allocator: Allocator) void {
-        self.taken.deinit(allocator);
-        self.waiting.deinit(allocator);
-        self.multiplexed.deinit(allocator);
+        var it = self.groups.valueIterator();
+        while (it.next()) |group| destroyGroup(allocator, group.*);
+        self.groups.deinit(allocator);
+        self.members.deinit(allocator);
         self.* = .{};
+    }
+
+    /// `holder`, which waits in `member.group`'s queue, waits no more. Its
+    /// entry stays, passed over when it reaches the front.
+    fn leaveQueue(self: *ConnectionSlots, allocator: Allocator, holder: *const anyopaque, member: Member) void {
+        _ = self.members.remove(holder);
+        member.group.waiting -= 1;
+        if (member.group.waiting == 0) {
+            member.group.queue.clearRetainingCapacity();
+            member.group.head = 0;
+        }
+        self.dropIfIdle(allocator, member.group);
+    }
+
+    /// `destination`'s group, made the first time it is asked for.
+    fn groupOf(self: *ConnectionSlots, allocator: Allocator, destination: []const u8) Allocator.Error!*Group {
+        if (self.groups.get(destination)) |group| return group;
+        const group = try allocator.create(Group);
+        errdefer allocator.destroy(group);
+        const key = try allocator.dupe(u8, destination);
+        errdefer allocator.free(key);
+        group.* = .{ .key = key };
+        try self.groups.put(allocator, key, group);
+        return group;
+    }
+
+    /// A group with no slot held, no waiter and no HTTP/2 to remember is
+    /// forgotten: a Browser that reaches many hosts keeps only the busy ones.
+    fn dropIfIdle(self: *ConnectionSlots, allocator: Allocator, group: *Group) void {
+        if (group.used != 0 or group.waiting != 0 or group.multiplexed) return;
+        _ = self.groups.remove(group.key);
+        destroyGroup(allocator, group);
+    }
+
+    fn destroyGroup(allocator: Allocator, group: *Group) void {
+        group.queue.deinit(allocator);
+        allocator.free(group.key);
+        allocator.destroy(group);
+    }
+
+    /// The queue's passed-over front given back: all of it when nothing is
+    /// left, else the front half once it is most of the queue (amortized:
+    /// each entry is moved at most once per halving).
+    fn trimQueue(group: *Group) void {
+        const items = group.queue.items;
+        if (group.head == items.len) {
+            group.queue.clearRetainingCapacity();
+            group.head = 0;
+        } else if (group.head >= 64 and group.head * 2 >= items.len) {
+            const rest = items.len - group.head;
+            std.mem.copyForwards(Waiter, items[0..rest], items[group.head..]);
+            group.queue.shrinkRetainingCapacity(rest);
+            group.head = 0;
+        }
     }
 };
 
@@ -731,19 +818,19 @@ test "a release hands its slot to the oldest waiter at once: the waiter holds it
     context.releaseConnectionSlot(&holders[0]);
     try std.testing.expect(context.slots.holds(&holders[6]));
     try std.testing.expect(!context.slots.holds(&holders[7]));
-    try std.testing.expectEqual(@as(usize, 1), context.slots.waiting.items.len);
-    try std.testing.expectEqual(@as(usize, max_connections_per_host), context.slots.taken.items.len);
+    try std.testing.expectEqual(@as(usize, 1), context.slots.waitingCount());
+    try std.testing.expectEqual(@as(usize, max_connections_per_host), context.slots.takenCount());
     // The next release hands on to the next waiter, though the first has
     // still not asked.
     context.releaseConnectionSlot(&holders[1]);
     try std.testing.expect(context.slots.holds(&holders[7]));
-    try std.testing.expectEqual(@as(usize, 0), context.slots.waiting.items.len);
+    try std.testing.expectEqual(@as(usize, 0), context.slots.waitingCount());
     // Each hears of it when it asks, in whichever order.
     try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[7]));
     try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[6]));
     // With nobody waiting, a release frees the slot.
     context.releaseConnectionSlot(&holders[2]);
-    try std.testing.expectEqual(@as(usize, max_connections_per_host - 1), context.slots.taken.items.len);
+    try std.testing.expectEqual(@as(usize, max_connections_per_host - 1), context.slots.takenCount());
     try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[8]));
 }
 
@@ -771,7 +858,7 @@ test "a cancelled waiter is handed nothing; a waiter cancelled after it was hand
     context.releaseConnectionSlot(&holders[8]);
     try std.testing.expect(!context.slots.holds(&holders[8]));
     try std.testing.expect(context.slots.holds(&holders[9]));
-    try std.testing.expectEqual(@as(usize, 0), context.slots.waiting.items.len);
+    try std.testing.expectEqual(@as(usize, 0), context.slots.waitingCount());
     // Another destination's waiter is not handed this destination's slot.
     const b = "http://b.test:80";
     var others: [7]u8 = undefined;
