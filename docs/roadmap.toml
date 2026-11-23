@@ -868,6 +868,35 @@ progress = []
   status = "todo"
 
 [[infra]]
+id = "cdp-mcp"
+title = "Chrome DevTools MCP drives Crane (0.1 requirement)"
+why = """The user, 2026-11-23 10:09 AM ET: "when the CDP feature is compiled into Crane it should also \
+conform to the Chrome DevTools MCP https://developer.chrome.com/blog/chrome-devtools-mcp so that agents \
+can drive crane. This is a 0.1 blocker". Chrome DevTools MCP (github.com/ChromeDevTools/chrome-devtools-mcp, \
+Apache-2.0) is an MCP server that drives a browser through Puppeteer over CDP: launched as Chrome \
+(--executablePath) or attached (--browserUrl / --wsEndpoint). Its 63 tools (docs/tool-reference.md) need, \
+beyond CDP part 1: the Accessibility domain (take_snapshot's a11y tree with uids: computed roles and \
+accessible names, html-aam / accname), Tracing (performance_*), HeapProfiler snapshots (memory tools, \
+V8's inspector), Network bodies, Emulation, Log / console with stack traces, Page dialogs, and element \
+input (click / hover / drag / fill by uid) that Puppeteer performs at a point from DOM.getContentQuads - \
+geometry Crane does not have until the 0.2 renderer (CDP decision D7: a raw point hits nothing)."""
+done_when = """A pinned chrome-devtools-mcp connects to a CDP-enabled Crane both ways (launched via \
+--executablePath and attached via --browserUrl / --wsEndpoint) and its own test suite runs against Crane \
+by its own runner, as the framework suites do: every tool that needs no pixels or layout passes; each \
+that does (take_screenshot, screencast_*, click_at, LCP / paint insights, ...) is listed needs-renderer \
+with the CDP call it lacks. The element-input path without geometry is decided by the user from the \
+design's options before it is built. What the tools need from cdp-part-2 moves into 0.1 here."""
+progress = []
+
+  [[infra.items]]
+  name = "Design: tool-by-tool CDP needs vs Crane, the geometry-free input question"
+  status = "todo"
+
+  [[infra.items]]
+  name = "chrome-devtools-mcp's own suite runs against Crane; non-pixel tools pass"
+  status = "todo"
+
+[[infra]]
 id = "cdp-part-2"
 title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
 why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
