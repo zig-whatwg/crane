@@ -371,6 +371,23 @@ test "a Headers constructor whose init it rejects frees what it made" {
     );
 }
 
+test "a File constructor whose bits are no sequence frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // File API "process blob parts", run by the constructor steps as for a
+    // Blob: not an Object, and no @@iterator, are each a TypeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new File('abc', 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new File({ length: 1, 0: 'a' }, 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a constructor that succeeds still hands its receiver to the wrapper cache" {
     const page = try Page.open();
     defer page.close();

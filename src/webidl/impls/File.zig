@@ -65,7 +65,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// Spec: https://w3c.github.io/FileAPI/#file-constructor
 pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
     const instance = try File.init(ctx.allocator, ctx);
-    errdefer File.deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step ("process blob parts"' TypeErrors) frees it whole, as
+    // Blob's constructor does. Its own deinit is its destructor, not a free,
+    // and left its slot and State until the Browser ended
+    // (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     // Step 1: bytes, the result of processing blob parts given fileBits and
     // options.
