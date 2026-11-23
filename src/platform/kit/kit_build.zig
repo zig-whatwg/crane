@@ -90,3 +90,48 @@ pub fn expectedSanitizer(library: []const u8) ?std.zig.SanitizeC {
     if (std.mem.eql(u8, library, "curl")) return curl.libcurl_sanitize_c;
     return null;
 }
+
+/// The kit's own `-D` options.
+pub const Options = struct {
+    /// -Dsystem-curl: link the system's libcurl instead of compiling the
+    /// kit's (curl/curl_build.zig).
+    system_library: bool,
+    /// -Dhttp2: HTTP/2 through the vendored nghttp2 (curl_build.zig
+    /// buildNghttp2).
+    http2: bool,
+};
+
+/// Declare the kit's options and answer them, defaults included. The root
+/// build calls it once, where they stand in its option order.
+pub fn declareOptions(b: *std.Build) Options {
+    // Fetch network backend options
+    // Use system libcurl for faster development builds (no static compilation)
+    const use_system_curl = b.option(
+        bool,
+        "system-curl",
+        "Use system libcurl instead of static compilation (faster dev builds)",
+    ) orelse false;
+
+    // HTTP/2 through the vendored nghttp2 (buildNghttp2)
+    const enable_http2 = b.option(
+        bool,
+        "http2",
+        "HTTP/2 via the vendored nghttp2 (default on)",
+    ) orelse true;
+    return .{ .system_library = use_system_curl, .http2 = enable_http2 };
+}
+
+/// A system libcurl may lack WebSockets. Say so when building rather than
+/// leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL: a warning, asked at
+/// make time by `probe` (the root build's tools/build_probe.zig,
+/// curl-websockets) - the root build adds it to every top-level step. Null
+/// when the kit compiles its own libcurl.
+pub fn systemLibraryCheck(b: *std.Build, options: Options, probe: *std.Build.Step.Compile) ?*std.Build.Step.Run {
+    if (!options.system_library) return null;
+    const run = b.addRunArtifact(probe);
+    run.setName("check the system libcurl for WebSockets");
+    run.addArg("curl-websockets");
+    // Its answer is the machine's: asked on every build.
+    run.has_side_effects = true;
+    return run;
+}

@@ -2170,20 +2170,11 @@ pub fn build(b: *std.Build) void {
             "Disable with -Denable-test-utils=false for production builds.",
     ) orelse true;
 
-    // Fetch network backend options
-    // Use system libcurl for faster development builds (no static compilation)
-    const use_system_curl = b.option(
-        bool,
-        "system-curl",
-        "Use system libcurl instead of static compilation (faster dev builds)",
-    ) orelse false;
-
-    // HTTP/2 through the vendored nghttp2 (buildNghttp2)
-    const enable_http2 = b.option(
-        bool,
-        "http2",
-        "HTTP/2 via the vendored nghttp2 (default on)",
-    ) orelse true;
+    // The kit's options: which network library and whether it speaks HTTP/2
+    // (kit_build.declareOptions), declared here, in this place of the order.
+    const kit_options = kit_build.declareOptions(b);
+    const use_system_curl = kit_options.system_library;
+    const enable_http2 = kit_options.http2;
 
     // The Chrome DevTools Protocol remote end (src/devtools; CDP part 1,
     // tmp/plans/cdp-part1-design.md). The user, 2026-11-21: "We also need
@@ -2367,18 +2358,10 @@ pub fn build(b: *std.Build) void {
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
     const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else kit_build.curl.buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null, prepareCFor(target));
-    // A system libcurl may lack WebSockets. Say so when building rather than
-    // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL: a warning, asked at
-    // make time (build_probe curl-websockets) by every top-level step - the
-    // end of build() adds it to each.
-    const system_curl_check: ?*std.Build.Step.Run = if (use_system_curl) check: {
-        const run = b.addRunArtifact(build_probe);
-        run.setName("check the system libcurl for WebSockets");
-        run.addArg("curl-websockets");
-        // Its answer is the machine's: asked on every build.
-        run.has_side_effects = true;
-        break :check run;
-    } else null;
+    // What the kit asks of a system network library at make time
+    // (kit_build.systemLibraryCheck); the end of build() adds it to every
+    // top-level step.
+    const system_curl_check = kit_build.systemLibraryCheck(b, kit_options, build_probe);
 
     // The library, the CLI and the other products use the target's platform,
     // whose graph registers its modules by name for dependent packages; the
