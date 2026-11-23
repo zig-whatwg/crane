@@ -7652,6 +7652,40 @@ void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isola
     runQueuedFinalizersInTask(isolate);
 }
 
+/// THE REPORT INSIDE A CALLBACK (lane mem1; external_memory.zig
+/// `reportInCallback`): ExternalMemoryAccounter::Update with NO drain after
+/// it. A binding returned into the script of the innermost callback
+/// invocation, whose bindings never return at depth zero: V8 is told how
+/// the DOM moved there too, as Blink's cppgc tells it at each allocation
+/// (15.7.112.43 src/heap/cppgc-js/cpp-heap.cc:1065-1107,
+/// CppHeap::ReportBufferedAllocationSizeIfPossible). The collection it may
+/// start or finish (Heap::HandleExternalMemoryInterrupt, src/heap/
+/// heap.cc:1445-1496) runs nothing of Crane's but bookkeeping - the first
+/// pass's queueing, the node wrappers' recording, the walk's reads, the end
+/// of marking's one Decrease - which any allocation inside a callback can
+/// already start. What it must not be followed by is `v8_ExternalMemory
+/// Accounter_Update`'s drain: every queued finalizer and node release, at
+/// depth zero only, would run beneath the native frames below the callback.
+/// What this collection queued runs by the fresh rule at the next binding
+/// return (DeferredTeardown.runFresh). Ask `v8_Isolate_InCallbackReportOpen`
+/// first.
+void v8_ExternalMemoryAccounter_UpdateNoDrain(ExternalMemoryAccounter* accounter, Isolate* isolate, int64_t change_in_bytes) {
+    // V8 may collect here: the collecting isolate is the current one.
+    CollectingScope collecting(isolate);
+    accounter->Update(isolate, change_in_bytes);
+}
+
+/// Whether the report inside a callback may be made at this binding's
+/// return: not beneath a running finalizer (the fresh steps' rule), and not
+/// while the returning binding's exception is pending. Both are where the
+/// queue's other steps wait too (`runQueuedFinalizersInTask`); the report
+/// stays owed for the next return.
+bool v8_Isolate_InCallbackReportOpen(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (record && record->finalizers_running) return false;
+    return !isolate->HasPendingException();
+}
+
 /// ExternalMemoryAccounter::Decrease alone, for the end of a full
 /// collection's marking (external_memory.zig `endOfMarking`: what the
 /// collection made dead of the host's figure leaves V8's count before V8
