@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A task posted from a teardown can run before the teardown's news arrives from another thread](architecture-a-task-posted-from-a-teardown-runs-before-the-teardowns-news-arrives.md) - **A task a teardown posts must re-check its subject when it runs. The cleanup another thread will post has not happened yet, and a starved host makes "yet" the common case. Prove such a fix starved, base against fix, with counts.**
 - [A scratch tree an undo history holds drops only its creator reference](architecture-a-scratch-tree-an-undo-history-holds-drops-only-its-creator-reference.md) - **Free a scratch tree outright only when it is empty or provably unheld; otherwise end the creator's reference and let the counts free it when the last holder goes.**
 - [A DevTools hook in the DOM is one process-wide load, then the Browser's sink](architecture-a-devtools-hook-in-the-dom-is-one-process-wide-load.md) - **The cost of an inspector hook with no inspector must be one load of one global - Blink's s_existingAgents - and everything else, the sink, the agents and their work, lives behind it.**
 - [A Zig function nothing references is never analysed](architecture-an-unreferenced-zig-function-is-never-analysed.md) - **In Zig, "it builds" says nothing about a function nothing calls: an unreferenced body is never analysed, so check for a caller before fixing, testing or citing such code.**

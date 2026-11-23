@@ -221,6 +221,17 @@ pub const PageSession = struct {
                 first.release = null;
                 return;
             }
+            // The tab closed while they were held: its navigation ended
+            // with the close (aborted), and this release was posted before
+            // the session's detach (DetachTask, a session message the
+            // devtools thread posts once it hears the target went). Chrome
+            // answers none of them - its held messages go to an agent that
+            // is going away, and ForceDetachAllSessions drops the rest - so
+            // they wait here for the detach, which drops them unanswered.
+            if (first.tabGone()) {
+                first.release = null;
+                return;
+            }
             // The batch is what is held now: it goes whole, even if one of
             // its commands starts a navigation (Chrome sent them all to the
             // page before it could).
@@ -249,6 +260,14 @@ pub const PageSession = struct {
             task.allocator.destroy(task);
         }
     };
+
+    /// Whether the session's tab is no longer an open traversable (closed).
+    fn tabGone(self: *const PageSession) bool {
+        const side = self.side orelse return true;
+        const b = side.browser orelse return true;
+        const navigables = @import("dom").browser_state.existingNavigablesIn(b.scope) orelse return true;
+        return navigables.byId(self.tab) == null;
+    }
 
     /// Whether the tab has a navigation in flight (not counting held
     /// commands still waiting for their release).
