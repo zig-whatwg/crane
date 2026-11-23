@@ -798,3 +798,10 @@ test "the same source without its thread-locals has no block, in both formats" {
         try testing.expectEqual(@as(usize, 0), block.largest.len);
     }
 }
+
+// Which test executables build.zig holds to the budget: its scope file's
+// tests run with the tool's (a plain build's are; -Dsanitize-thread's are
+// exempt).
+test {
+    _ = @import("thread_local_size_scope.zig");
+}
