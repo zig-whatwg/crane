@@ -827,7 +827,11 @@ getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, ge
 Proven by a trace against Chrome 157 for the same page script (mutation by mutation, ids and \
 order equal) and by Chrome DevTools' own Elements panel connected to Crane staying live; costs \
 nothing when no session has DOM enabled (cost pair within the bar)."""
-progress = []
+progress = [
+  "decided 2026-11-23 (main's D7, D8) - events Crane does not send, as Chrome: shadowRootPopped (Blink's WillPopShadowRoot probe has no call site in Chromium 145 or 157: a shadow root is never detached); and never sent here: scrollableFlagUpdated (layout geometry, the 0.2 renderer), adRelatedStateUpdated (Chrome's ad tagging, which Crane does not have), affectedByStartingStylesFlagUpdated (a style-recalc flag Crane's lazy style does not keep)",
+  "015adbe4f, 360911cae, 9a8c1bdc3 - lane cdpd1 batch 1: the DOM's probes behind one process-wide gate (Blink's s_existingAgents) to each DOM-enabled session: childNodeInserted / Removed / CountUpdated, attributeModified / Removed, characterDataModified, inlineStyleInvalidated (revalidation task), shadowRootPushed, topLayerElementsUpdated, a child frame's commit re-sending its owner",
+  "47d5f941d - lane cdpd1 batches 2-4: every non-geometry DOM command but setFileInputFiles (requestNode, push*, getFlattenedDocument, performSearch family, getAttributes, focus, node stack traces, collectClassNames, getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner), the edits over DOMEditor / InspectorHistory / DOMPatchSupport with undo / redo / marks, and the lazy events at Chrome's points: distributedNodesUpdated, adoptedStyleSheetsModified, pseudoElementAdded / Removed; 57439825c /json/list devtoolsFrontendUrl as Chrome's",
+]
 
   [[infra.items]]
   name = "DOM mutation events to enabled sessions, Chrome's order and shape"
