@@ -106,6 +106,9 @@ pub const documentClose = core.documentClose;
 /// one another.
 pub const autofill = @import("autofill.zig");
 pub const form_associated = @import("form_associated.zig");
+/// The File Upload state's selection for files a host chooses by path
+/// (DOM.setFileInputFiles; Blink's FileInputType::SetFilesFromPaths).
+pub const file_selection = @import("file_selection.zig");
 pub const form_past_names = @import("form_past_names.zig");
 pub const forms = @import("forms/root.zig");
 pub const custom_elements = @import("custom_elements.zig");

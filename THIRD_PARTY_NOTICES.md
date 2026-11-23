@@ -54,6 +54,14 @@ Crane is MIT-licensed (see `LICENSE`). The following files contain code derived 
 - What was derived: DOM.setOuterHTML's digest-based patch (the diff of old and new children, the merges, the moves), translated function by function.
 - License: BSD-3-Clause (Google), text B below. Copyright line: Copyright (C) 2012 Google Inc. All rights reserved.
 
+### `src/html/file_selection.zig`
+
+- Upstream project: Chromium, https://chromium.googlesource.com/chromium/src
+- Revision: tag `157.0.8103.78` (commit `4b3d0dabb8250b6f152d2d85d79e7706e309d087`)
+- Upstream file: `net/base/mime_util.cc`: the tables `kPrimaryMappings` and `kSecondaryMappings` (the MIME type for a file extension that `GetWellKnownMimeTypeFromExtension` reads, and so Blink's `File::CreateForUserProvidedFile`)
+- What was derived: the two tables' entries, in their order, as data.
+- License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright line: Copyright 2012 The Chromium Authors.
+
 ## Vendored and pinned dependencies
 
 These are listed here by reference. Their license texts are kept beside them:

@@ -60,6 +60,22 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface.
+pub fn installHooks() void {
+    // The HTML file upload's Files of a chosen directory carry their path
+    // under it (html/file_selection.zig).
+    dom.blob_bytes.installFile(.{ .set_relative_path = &setRelativePath });
+}
+
+/// webkitRelativePath set natively on a new File (dom.blob_bytes.FileSteps).
+fn setRelativePath(instance: *runtime.Instance, path: []const u8) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    const copy = if (path.len == 0) "" else try internal.allocator.dupe(u8, path);
+    if (internal.webkit_relative_path.len > 0) internal.allocator.free(@constCast(internal.webkit_relative_path));
+    internal.webkit_relative_path = copy;
+}
+
 /// Constructor implementation
 ///
 /// Spec: https://w3c.github.io/FileAPI/#file-constructor
@@ -187,5 +203,8 @@ pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
 /// Usually empty string unless file was selected via directory input.
 pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
-    return internal.webkit_relative_path;
+    // A USVString the getter returns is the binding's to free (as URL's
+    // getters' are): a copy, in the realm's allocator.
+    if (internal.webkit_relative_path.len == 0) return "";
+    return instance.ctx.allocator.dupe(u8, internal.webkit_relative_path);
 }

@@ -739,6 +739,21 @@ pub fn focus(session: *PageSession, params: D.focus.Params) !D.focus.Result {
     return .{};
 }
 
+/// InspectorDOMAgent::setFileInputFiles: the files at the host's paths
+/// become the input's selection - Blink's HTMLInputElement::SetFilesFromPaths
+/// (html.file_selection: the platform's userFile / userDirectory, File's
+/// constructor, the files setter, then input and change, or cancel when
+/// nothing changed), before the answer, as Blink's synchronous call.
+pub fn setFileInputFiles(session: *PageSession, params: D.setFileInputFiles.Params) !D.setFileInputFiles.Result {
+    const node = try nodeNamed(session, params.nodeId, params.backendNodeId, params.objectId);
+    const is_file_input = node.implements(interfaces.HTMLInputElement.State) and
+        std.mem.eql(u8, (interfaces.HTMLInputElement.get_type(node) catch runtime.DOMString.initEmpty()).asSlice(), "file");
+    if (!is_file_input) return session.fail("Node is not a file input element");
+    if (comptime @import("platform").capabilities.file_picker == .unsupported) return .{};
+    try @import("html").file_selection.setFilesFromPaths(node, params.files);
+    return .{};
+}
+
 /// InspectorDOMAgent::getContainerForNode: the element's query container
 /// for the name, axes and types asked (dom.style.engine.findQueryContainer:
 /// Blink's StyleResolver::FindContainerForElement), its path pushed; none
