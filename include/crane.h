@@ -173,8 +173,10 @@ typedef struct {
 
 typedef struct {
     uint32_t struct_size;
-    const char *profile_dir;    /* NULL: in memory (a directory:
-                                   CRANE_ERR_UNSUPPORTED for now) */
+    const char *profile_dir;    /* NULL: in memory; a directory: the
+                                   Browser's stores persist there, and it
+                                   holds it while it lives (a second live
+                                   Browser on it: CRANE_ERR_PROFILE_IN_USE) */
     const char *user_agent;     /* NULL: Crane's */
     const crane_proxy_t *proxy; /* NULL: system */
     bool accept_insecure_certs;

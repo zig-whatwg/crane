@@ -154,7 +154,10 @@ pub const EventFn = *const fn (context: ?*anyopaque, event: *const Event) callco
 
 pub const BrowserOptions = extern struct {
     struct_size: u32,
-    /// A profile directory: not supported yet (in memory only).
+    /// The Browser's profile directory (BrowserConfig.profile_dir): its
+    /// stores persist there, and the Browser holds it for its life - a
+    /// second live Browser on it is CRANE_ERR_PROFILE_IN_USE. NULL: in
+    /// memory, nothing written to disk.
     profile_dir: ?[*:0]const u8 = null,
     user_agent: ?[*:0]const u8 = null,
     proxy: ?*const Proxy = null,
@@ -401,6 +404,9 @@ fn statusOf(err: anyerror) Status {
         error.NetworkError, error.NavigationAborted, error.NavigationTimedOut => .navigation_failed,
         error.ProcessNotStarted => .process_not_started,
         error.UserPromptOpen => .user_prompt_open,
+        // A second live Browser on a profile directory (Browser.init's
+        // profile lock).
+        error.ProfileInUse => .profile_in_use,
         else => .internal,
     };
 }
@@ -434,8 +440,10 @@ pub export fn crane_process_shutdown() callconv(.c) void {}
 // ============================================================================
 
 /// A Browser on a thread of its own (BiDi browser.createUserContext; CDP
-/// Target.createBrowserContext). In memory: a `profile_dir` is
-/// CRANE_ERR_UNSUPPORTED until profile directories exist.
+/// Target.createBrowserContext), in memory or on a profile directory
+/// (`profile_dir`, as the Zig host's BrowserConfig.profile_dir;
+/// docs/instances.md: one live Browser per directory -
+/// CRANE_ERR_PROFILE_IN_USE for a second).
 pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBrowser) callconv(.c) Status {
     const result = out orelse return .invalid_argument;
     result.* = null;
@@ -448,11 +456,12 @@ pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBr
         const from: [*]const u8 = @ptrCast(given);
         @memcpy(std.mem.asBytes(&o)[0..covered], from[0..covered]);
     }
-    if (o.profile_dir != null) return .unsupported;
     const self = allocator.create(CBrowser) catch return .out_of_memory;
     self.* = .{ .host = undefined, .on_event = o.on_event, .event_context = o.event_context, .answers_dialogs = o.answers_dialogs };
     var config: BrowserConfig = .{ .accept_insecure_certs = o.accept_insecure_certs };
     const failed: ?Status = blk: {
+        // Kept for the Browser's life, as every string the options borrow.
+        config.profile_dir = self.keep(o.profile_dir) catch break :blk .out_of_memory;
         config.user_agent = self.keep(o.user_agent) catch break :blk .out_of_memory;
         if (o.proxy) |proxy| config.proxy = switch (std.enums.fromInt(ProxyKind, proxy.kind) orelse break :blk .invalid_argument) {
             .system => .system,
