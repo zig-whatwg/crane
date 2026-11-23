@@ -19,23 +19,23 @@ const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
+const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const USVString = @import("typedefs").USVString;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
-const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
+const BooleanOrUnrestrictedDoubleOrDOMString = @import("typedefs").BooleanOrUnrestrictedDoubleOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
-const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const Range = @import("interfaces").Range;
@@ -58,7 +58,6 @@ const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const EditContext = @import("interfaces").EditContext;
-const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const ElementInternals = @import("interfaces").ElementInternals;
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
@@ -78,6 +77,7 @@ const FullscreenOptions = @import("dictionaries").FullscreenOptions;
 const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
+const BooleanOrScrollIntoViewOptions = @import("typedefs").BooleanOrScrollIntoViewOptions;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -1030,12 +1030,12 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    pub fn get_hidden(instance: *runtime.Instance) anyerror!?BooleanOrUnrestrictedDoubleOrDOMString {
         return try HTMLElementImpl.get_hidden(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
+    pub fn set_hidden(instance: *runtime.Instance, value: ?BooleanOrUnrestrictedDoubleOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

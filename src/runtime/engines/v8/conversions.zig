@@ -1993,7 +1993,14 @@ fn sequenceUnionMember(
     inline for (comptime unionArmsOf(T)) |arm| {
         const Field = @FieldType(T, arm.field);
         if (comptime std.meta.activeTag(arm.kind) == tag) {
-            return @unionInit(T, arm.field, try sequenceFromMethod(Field, null, allocator, isolate, context, value, method));
+            // A sequence of an interface type converts each element to the
+            // interface the arms table names (3.2.15).
+            const element_interface: ?[]const u8 = comptime switch (arm.kind) {
+                .sequence, .frozen_array => |name| name,
+                else => unreachable,
+            };
+            const Element = comptime if (element_interface) |name| interfaceNamed(name) else null;
+            return @unionInit(T, arm.field, try sequenceFromMethod(Field, Element, allocator, isolate, context, value, method));
         }
         if (comptime arm.kind == .@"union" and unionIncludes(Field, tag)) {
             return @unionInit(T, arm.field, try sequenceUnionMember(Field, tag, allocator, isolate, context, value, method));
@@ -3530,6 +3537,61 @@ pub fn unionValueIsOwned(comptime T: type, value: T) bool {
                 return memberValueIsOwned(Member, payload);
             },
         }
+    }
+}
+
+/// Whether the value toV8Value made of a union `T` an operation or a getter
+/// RETURNED is the binding's to release once it is set as the call's result:
+/// its active member, by the rule that member's type follows returned on its
+/// own (lane bind1 batch B, B2 - every union is typed in every position now):
+///
+/// - a runtime.JSValue member: what the impl returns is the binding's
+///   (engine.Owned.take), as a JSValue result is - a handle it hands over, a
+///   string, number or boolean made here - except an instance's wrapper, the
+///   wrapper cache's (binding_plumbing.convertReturnValue's JSValue branch);
+/// - a callback function member: the holder's own handle, BORROWED (an
+///   EventHandler getter's rule, binding_plumbing.isOptionalCallbackType);
+/// - a nested union: its own active member, by this rule;
+/// - anything else as `unionValueIsOwned` answers (a String made for a
+///   string member is released, a wrapper is the cache's).
+///
+/// Before every union was typed, a union's JSValue member was answered
+/// "kept" here, and the one impl returning one (ImageData.data) handed back
+/// its own hold; it now hands over a hold of its own, as a JSValue getter
+/// does.
+pub fn unionReturnIsOwned(comptime T: type, value: T) bool {
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.JSValue) return payload != .instance;
+            if (comptime Member == runtime.BorrowedCallbackFunction or Member == runtime.BorrowedCallbackInterface) return false;
+            if (comptime @typeInfo(Member) == .@"union" and convertsByActiveMember(Member)) return unionReturnIsOwned(Member, payload);
+            return memberValueIsOwned(Member, payload);
+        },
+    }
+}
+
+/// Free what a union `T` an impl RETURNED owns once its value has been made
+/// (`unionReturnIsOwned` released the handle): an owned string member - a
+/// DOMString's `.owned` arm (interned and empty strings are not freed). The
+/// strings a union returns are the impl's to hand over, as a DOMString
+/// result's are (binding_plumbing.finishOperation, finishGetter).
+pub fn freeReturnedUnion(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.DOMString) {
+                var text = payload;
+                text.deinit(allocator);
+            } else if (comptime Member == runtime.JSValue) {
+                if (payload == .string) {
+                    var text = payload.string;
+                    text.deinit(allocator);
+                }
+            } else if (comptime @typeInfo(Member) == .@"union" and convertsByActiveMember(Member)) {
+                freeReturnedUnion(Member, allocator, payload);
+            }
+        },
     }
 }
 

@@ -11,8 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
-const GLint = @import("typedefs").GLint;
+const Int32ArrayOrSequenceOfGLint = @import("typedefs").Int32ArrayOrSequenceOfGLint;
 const GLsizei = @import("typedefs").GLsizei;
+const Int32ArrayOrSequenceOfGLsizei = @import("typedefs").Int32ArrayOrSequenceOfGLsizei;
 
 pub const WEBGL_multi_draw = struct {
     pub const Meta = struct {
@@ -166,19 +167,19 @@ pub const WEBGL_multi_draw = struct {
         }
     }
 
-    pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, @"type": GLenum, offsetsList: Int32ArrayOrSequenceOfGLsizei, offsetsOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_drawImpl.call_multiDrawElementsWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, drawcount);
     }
 
-    pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, @"type": GLenum, offsetsList: Int32ArrayOrSequenceOfGLsizei, offsetsOffset: u64, instanceCountsList: Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_drawImpl.call_multiDrawElementsInstancedWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, drawcount);
     }
 
-    pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: Int32ArrayOrSequenceOfGLint, firstsOffset: u64, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, instanceCountsList: Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_drawImpl.call_multiDrawArraysInstancedWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, drawcount);
     }
 
-    pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: Int32ArrayOrSequenceOfGLint, firstsOffset: u64, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_drawImpl.call_multiDrawArraysWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, drawcount);
     }
 };

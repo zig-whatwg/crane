@@ -22,12 +22,12 @@ const ARIANotifyMixin = @import("mixins").ARIANotifyMixin;
 const Animatable = @import("mixins").Animatable;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
+const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const USVString = @import("typedefs").USVString;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
-const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
@@ -36,7 +36,6 @@ const EventListener = @import("interfaces").EventListener;
 const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
-const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
@@ -55,7 +54,6 @@ const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHT
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
-const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
@@ -73,6 +71,7 @@ const NodeList = @import("interfaces").NodeList;
 const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
+const BooleanOrScrollIntoViewOptions = @import("typedefs").BooleanOrScrollIntoViewOptions;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -2128,7 +2127,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(ViewTransitionUpdateCallbackOrStartViewTransitionOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
 
@@ -2372,7 +2371,7 @@ pub const Element = struct {
 
     pub const call_prepend = mixins.ParentNode.call_prepend;
 
-    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(BooleanOrScrollIntoViewOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollIntoView(instance, arg);
     }
 

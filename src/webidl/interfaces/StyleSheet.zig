@@ -10,10 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
+const ElementOrProcessingInstruction = @import("typedefs").ElementOrProcessingInstruction;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MediaList = @import("interfaces").MediaList;
@@ -200,7 +199,7 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_href(instance);
     }
 
-    pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?ElementOrProcessingInstruction {
         return try StyleSheetImpl.get_ownerNode(instance);
     }
 

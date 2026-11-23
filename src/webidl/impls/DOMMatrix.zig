@@ -90,7 +90,7 @@ fn setElement(instance: *runtime.Instance, i: usize, value: f64) !void {
 
 /// Geometry 6.3, the DOMMatrix(init) constructor: as DOMMatrixReadOnly's,
 /// of type DOMMatrix.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !*runtime.Instance {
     return createFrom(ctx, try interfaces.DOMMatrixReadOnly.call_constructor(ctx, init_data));
 }
 

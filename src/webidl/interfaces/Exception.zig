@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ExceptionOptions = @import("dictionaries").ExceptionOptions;
 const Tag = @import("interfaces").Tag;
-const DOMString = @import("typedefs").DOMString;
+const DOMStringOrUndefined = @import("typedefs").DOMStringOrUndefined;
 
 pub const Exception = struct {
     pub const Meta = struct {
@@ -184,7 +184,7 @@ pub const Exception = struct {
         .{ "", 0, "Tag" },
     };
 
-    pub fn get_stack(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_stack(instance: *runtime.Instance) anyerror!DOMStringOrUndefined {
         return try ExceptionImpl.get_stack(instance);
     }
 

@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(typedefs.Path2DOrDOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Path2D.vtable, ctx);
     errdefer deinit(instance);
@@ -143,7 +143,7 @@ pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: roundRect
-pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
+pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(typedefs.UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit)) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

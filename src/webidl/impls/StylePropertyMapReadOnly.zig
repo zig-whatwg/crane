@@ -52,11 +52,11 @@ pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     return dom.style.typed_om.mapSize(instance);
 }
 
-pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
+pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!typedefs.UndefinedOrCSSStyleValue {
     var values = try dom.style.typed_om.mapGetAll(instance, property);
     defer values.deinit();
     if (values.values.items.len == 0) return .undefined;
-    return .{ .instance = values.values.items[0] };
+    return .{ .cssstyle_value = values.values.items[0] };
 }
 
 pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {

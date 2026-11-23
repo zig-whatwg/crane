@@ -93,7 +93,7 @@ test "callback function and callback interface members" {
 
 test "sequence, record and frozen array members" {
     try expectArms("SequenceOrThing", &.{
-        \\.field = "domstring_sequence", .kind = .sequence
+        \\.field = "domstring_sequence", .kind = .{ .sequence = null }
         ,
         \\.field = "thing", .kind = .{ .interface = "Thing" }
         ,
@@ -105,7 +105,7 @@ test "sequence, record and frozen array members" {
         ,
     });
     try expectArms("FrozenOrThing", &.{
-        \\.field = "domstring_frozen_array", .kind = .frozen_array
+        \\.field = "domstring_frozen_array", .kind = .{ .frozen_array = null }
         ,
         \\.field = "thing", .kind = .{ .interface = "Thing" }
         ,

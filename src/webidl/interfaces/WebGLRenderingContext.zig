@@ -23,12 +23,12 @@ const GLintptr = @import("typedefs").GLintptr;
 const WebGLProgram = @import("interfaces").WebGLProgram;
 const WebGLBuffer = @import("interfaces").WebGLBuffer;
 const PredefinedColorSpace = @import("enums").PredefinedColorSpace;
-const WebGLShaderPrecisionFormat = @import("interfaces").WebGLShaderPrecisionFormat;
+const WebGLTexture = @import("interfaces").WebGLTexture;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const Int32List = @import("typedefs").Int32List;
-const WebGLTexture = @import("interfaces").WebGLTexture;
-const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
+const WebGLShaderPrecisionFormat = @import("interfaces").WebGLShaderPrecisionFormat;
 const GLfloat = @import("typedefs").GLfloat;
+const HTMLCanvasElementOrOffscreenCanvas = @import("typedefs").HTMLCanvasElementOrOffscreenCanvas;
 const WebGLRenderbuffer = @import("interfaces").WebGLRenderbuffer;
 const WebGLContextAttributes = @import("dictionaries").WebGLContextAttributes;
 const GLbitfield = @import("typedefs").GLbitfield;
@@ -40,7 +40,6 @@ const GLclampf = @import("typedefs").GLclampf;
 const GLsizei = @import("typedefs").GLsizei;
 const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
 const DOMString = @import("typedefs").DOMString;
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 
 pub const WebGLRenderingContext = struct {
     pub const Meta = struct {
@@ -2709,7 +2708,7 @@ pub const WebGLRenderingContext = struct {
         }
     }
 
-    pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_canvas(instance: *runtime.Instance) anyerror!HTMLCanvasElementOrOffscreenCanvas {
         return try WebGLRenderingContextImpl.get_canvas(instance);
     }
 

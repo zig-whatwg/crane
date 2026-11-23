@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const enums = @import("enums");
+const typedefs = @import("typedefs");
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUPipelineDescriptorBase = struct {
@@ -12,5 +12,5 @@ pub const GPUPipelineDescriptorBase = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    layout: runtime.JSValue,
+    layout: typedefs.GPUPipelineLayoutOrGPUAutoLayoutMode,
 };

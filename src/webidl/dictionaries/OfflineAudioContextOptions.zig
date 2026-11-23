@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const enums = @import("enums");
+const typedefs = @import("typedefs");
 
 pub const OfflineAudioContextOptions = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
@@ -11,15 +11,11 @@ pub const OfflineAudioContextOptions = struct {
     numberOfChannels: ?u32 = null,
     length: ?u32 = null,
     sampleRate: f32,
-    renderSizeHint: ?runtime.JSValue = null,
+    renderSizeHint: ?typedefs.AudioContextRenderSizeCategoryOrUnsignedLong = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"sampleRate"};
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"renderSizeHint"};
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

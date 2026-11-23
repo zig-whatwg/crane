@@ -2,6 +2,7 @@
 
 **Date**: 2026-10-11
 **Lesson**: Whether the handle a result converts to is the binding's to release depends on the converted value, so for a union it is decided by the active member at run time, never by the union type at comptime.
+**Status** (2026-11-23, lane bind1 batch B, B2): every union is typed in every position now, so a RETURNED union's member is owned by the rule its type follows returned on its own (`conversions.unionReturnIsOwned`), not by `unionValueIsOwned`'s rule for a value put into an object: a runtime.JSValue member is the binding's, as a JSValue result is (engine.Owned: "the binding releases what an impl returns"), an instance's wrapper the cache's, a callback function member borrowed (an EventHandler getter's rule); an owned DOMString member is freed once its String is made (`freeReturnedUnion` - finishGetter and finishOperation freed no union's strings). ImageData.data, the one impl that returned a kept handle in a union, now hands over a hold of its own (tests/v8/union_return_ownership_test.zig).
 
 **Why**: `convertReturnValue` (interface.zig) sets `owned` per type: a string, number, boolean or enum result is a Global made for the call and released once set; a platform object is its wrapper, the wrapper cache's. A union is neither - FormDataEntryValue is (File or USVString) - and the branch for unions left `owned` false for all of them, the conservative answer for the File arm, a leak for the string arm.
 

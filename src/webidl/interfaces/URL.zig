@@ -10,11 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const URLSearchParams = @import("interfaces").URLSearchParams;
-const Blob = @import("interfaces").Blob;
+const BlobOrMediaSource = @import("typedefs").BlobOrMediaSource;
 const USVString = @import("typedefs").USVString;
+const URLSearchParams = @import("interfaces").URLSearchParams;
 const DOMString = @import("typedefs").DOMString;
-const MediaSource = @import("interfaces").MediaSource;
 
 pub const URL = struct {
     pub const Meta = struct {
@@ -351,7 +350,7 @@ pub const URL = struct {
     }
 
     /// Extended attributes: [Exposed=(Window,DedicatedWorker,SharedWorker)]
-    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
+    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: BlobOrMediaSource) anyerror!runtime.DOMString {
         return try URLImpl.call_static_createObjectURL(instance, obj);
     }
 

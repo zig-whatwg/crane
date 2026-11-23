@@ -16,25 +16,25 @@ const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
-const Text = @import("interfaces").Text;
+const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
-const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const BooleanOrUnrestrictedDoubleOrDOMString = @import("typedefs").BooleanOrUnrestrictedDoubleOrDOMString;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
-const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
+const ElementOrText = @import("typedefs").ElementOrText;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const Range = @import("interfaces").Range;
@@ -55,7 +55,6 @@ const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHT
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
-const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const EditContext = @import("interfaces").EditContext;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
@@ -76,6 +75,7 @@ const FullscreenOptions = @import("dictionaries").FullscreenOptions;
 const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
+const BooleanOrScrollIntoViewOptions = @import("typedefs").BooleanOrScrollIntoViewOptions;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -386,7 +386,7 @@ pub const HTMLSlotElement = struct {
         try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
-    pub fn call_assign(instance: *runtime.Instance, nodes: []const runtime.JSValue) anyerror!void {
+    pub fn call_assign(instance: *runtime.Instance, nodes: []const ElementOrText) anyerror!void {
         return try HTMLSlotElementImpl.call_assign(instance, nodes);
     }
 

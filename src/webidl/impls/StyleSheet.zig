@@ -80,10 +80,11 @@ pub fn get_href(instance: *runtime.Instance) anyerror!?runtime.USVString {
 }
 
 /// "The ownerNode attribute must return the owner node."
-pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?typedefs.ElementOrProcessingInstruction {
     const record = recordOf(instance) orelse return null;
     const owner = record.owner_node orelse return null;
-    return runtime.JSValue{ .instance = owner };
+    // An Element or a ProcessingInstruction (CSSOM 6.1.1).
+    return @import("dom").union_values.ofInstance(typedefs.ElementOrProcessingInstruction, owner);
 }
 
 /// "The parentStyleSheet attribute must return the parent CSS style sheet."

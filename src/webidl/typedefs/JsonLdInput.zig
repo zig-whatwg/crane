@@ -16,7 +16,7 @@ pub const JsonLdInput = union(enum) {
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "json_ld_record", .kind = .record },
-        .{ .field = "json_ld_record_sequence", .kind = .sequence },
+        .{ .field = "json_ld_record_sequence", .kind = .{ .sequence = null } },
         .{ .field = "usvstring", .kind = .string },
         .{ .field = "remote_document", .kind = .{ .interface = "RemoteDocument" } },
     };

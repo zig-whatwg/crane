@@ -90,14 +90,14 @@ pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: createObjectURL
-pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
+pub fn call_createObjectURL(instance: *runtime.Instance, obj: typedefs.BlobOrMediaSource) anyerror!runtime.DOMString {
     _ = instance;
     _ = obj;
     return error.NotImplemented;
 }
 
 /// Operation: SharedWorker
-pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(typedefs.DOMStringOrSharedWorkerOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = scriptURL;
     _ = options;

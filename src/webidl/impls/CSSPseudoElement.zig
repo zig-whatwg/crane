@@ -53,7 +53,7 @@ pub fn get_element(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_parent(instance: *runtime.Instance) anyerror!typedefs.ElementOrCSSPseudoElement {
     _ = instance;
     return error.NotImplemented;
 }

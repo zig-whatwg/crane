@@ -164,17 +164,17 @@ pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(di
 
 /// HTML assign(...nodes): set this's manually assigned nodes.
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assign
-pub fn call_assign(instance: *runtime.Instance, nodes: []const runtime.JSValue) anyerror!void {
+pub fn call_assign(instance: *runtime.Instance, nodes: []const typedefs.ElementOrText) anyerror!void {
     const allocator = instance.ctx.allocator;
-    // WebIDL: each argument converts to `(Element or Text)` - a platform
-    // object implementing Element or Text, else a TypeError (3.2.24).
+    // Each argument is `(Element or Text)`, converted by the binding (WebIDL
+    // 3.2.25: a platform object implementing Element or Text, else a
+    // TypeError).
     const converted = try allocator.alloc(*runtime.Instance, nodes.len);
     defer allocator.free(converted);
-    const realm = engine.currentRealm() orelse instance.ctx;
-    for (nodes, converted) |value, *out| {
-        const node = engine.convertToPlatformObject(realm, value) orelse return error.TypeError;
-        if (node.stateAs(interfaces.Element.State) == null and node.stateAs(interfaces.Text.State) == null) return error.TypeError;
-        out.* = node;
+    for (nodes, converted) |node, *out| {
+        out.* = switch (node) {
+            inline else => |object| object,
+        };
     }
     try dom.shadow_dom_algorithms.assign(allocator, instance, converted);
 }

@@ -11,9 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ElementDefinitionOptions = @import("dictionaries").ElementDefinitionOptions;
+const CustomElementConstructor = @import("callbacks").CustomElementConstructor;
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
-const CustomElementConstructor = @import("callbacks").CustomElementConstructor;
+const CustomElementConstructorOrUndefined = @import("typedefs").CustomElementConstructorOrUndefined;
 
 pub const CustomElementRegistry = struct {
     pub const Meta = struct {
@@ -183,7 +184,7 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_whenDefined(instance, name);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!CustomElementConstructorOrUndefined {
         return try CustomElementRegistryImpl.call_get(instance, name);
     }
 

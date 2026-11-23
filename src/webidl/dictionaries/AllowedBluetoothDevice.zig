@@ -10,6 +10,6 @@ pub const AllowedBluetoothDevice = struct {
     pub const webidl_dictionary = true;
     deviceId: runtime.DOMString,
     mayUseGATT: bool,
-    allowedServices: runtime.JSValue,
+    allowedServices: typedefs.DOMStringOrSequenceOfUUID,
     allowedManufacturerData: []const u16,
 };

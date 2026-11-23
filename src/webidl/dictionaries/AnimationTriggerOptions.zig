@@ -4,22 +4,18 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
-const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffset;
 
 pub const AnimationTriggerOptions = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
     timeline: ?*runtime.Instance = null,
     behavior: webidl.Opt(?enums.AnimationTriggerBehavior) = .notPassed(),
-    activationRangeStart: ?runtime.JSValue = null,
-    activationRangeEnd: ?runtime.JSValue = null,
-    activeRangeStart: ?runtime.JSValue = null,
-    activeRangeEnd: ?runtime.JSValue = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{ "activationRangeStart", "activationRangeEnd", "activeRangeStart", "activeRangeEnd" };
+    activationRangeStart: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
+    activationRangeEnd: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
+    activeRangeStart: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
+    activeRangeEnd: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

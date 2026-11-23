@@ -11,9 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
-const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSColorRGBComp = @import("typedefs").CSSColorRGBComp;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSColorValueOrCSSStyleValue = @import("typedefs").CSSColorValueOrCSSStyleValue;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

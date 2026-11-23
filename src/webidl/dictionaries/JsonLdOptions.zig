@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
 const callbacks = @import("callbacks");
 
 pub const JsonLdOptions = struct {
@@ -14,7 +13,7 @@ pub const JsonLdOptions = struct {
     compactArrays: ?bool = null,
     compactToRelative: ?bool = null,
     documentLoader: ?callbacks.LoadDocumentCallback = null,
-    expandContext: ?runtime.JSValue = null,
+    expandContext: ?typedefs.JsonLdRecordOrUSVString = null,
     extractAllScripts: ?bool = null,
     frameExpansion: ?bool = null,
     ordered: ?bool = null,
@@ -23,16 +22,12 @@ pub const JsonLdOptions = struct {
     rdfDirection: ?runtime.USVString = null,
     useNativeTypes: ?bool = null,
     useRdfType: ?bool = null,
-    embed: ?runtime.JSValue = null,
+    embed: ?typedefs.JsonLdEmbedOrBoolean = null,
     explicit: ?bool = null,
     omitDefault: ?bool = null,
     omitGraph: ?bool = null,
     requireAll: ?bool = null,
     frameDefault: ?bool = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"embed"};
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.
