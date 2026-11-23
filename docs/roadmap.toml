@@ -344,7 +344,7 @@ progress = [
 
   [[infra.items]]
   name = "Codegen types callback parameters as the protocol's CallbackFunction and CallbackInterface, retiring the transitional takeCallbackFunction and takeCallbackInterface operations"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "\"v8\" removed from the non-adapter modules' imports in build.zig, once the baseline reaches zero"
@@ -365,6 +365,7 @@ progress = [
   "f12aaaa6686 (merge, lane bindtype) - an interface-typed value converts only from a platform object that implements its interface (arguments, overloads, constructors, setters, dictionary members, sequence elements), from codegen tables naming every position's interface",
   "65ba206e671, b7cdedccdc5, 5bc3b68c535 (lane bindtype) - codegen names the interface of every interface-typed value (interface_arguments, constructor_interface_arguments, interface_members); the binding converts one only from a platform object that implements it, and an uncovered position is a compile error",
   "85eddb05459, c5d1d544870, e7d9f135391, 3dcb23289f2, 4e401ddc74b, a42cac17dd2, 9b831681546 (lane binding4) - a dictionary converted to script is flattened, in WebIDL order, with defaulted and present-null members written; a JSValue union member keeps a present null; member_unions.zig (empty table) and enumeration union arms; setlike members defined by the binding over webidl.setlike.SetEntries (CustomStateSet); a failed argument conversion releases its handle; a FormData File entry iterates as its File; a SharedArrayBuffer for a BufferSource is a TypeError; an `object` that is not an Object is a TypeError",
+  "d31785468, 7a0889eec, c7dc47426, 86085bc56, c26bbb84e, 86d52512e (lane bind1 batch A) - callback values typed by the protocol: a callback function or callback interface reaches an impl as runtime.BorrowedCallbackFunction / BorrowedCallbackInterface (borrowed for the call; keepCallbackFunction / keepCallbackInterface make the owned engine types), retiring takeCallbackFunction / takeCallbackInterface, CallbackWrapper, callback_registry.zig and the untagged Global in a fn pointer; a callback interface value is any Object (WebIDL 3.2.16); dictionaries, record entries and overload argument lists are structs that say so (codegen markers), and record<K, V> converts by WebIDL 3.2.23; the file pickers' argument processing (File System Access 3.3-3.5)",
 ]
 
   [[infra.items]]
@@ -393,7 +394,7 @@ progress = [
 
   [[infra.items]]
   name = "Callback functions carried by CallbackWrapper, not a tagged pointer"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Getter and setter receivers brand-checked"
