@@ -18,9 +18,13 @@ function check(context) {
   }
 }
 
+// The function's frames read `Object.<anonymous>`, as a function from Node's compileFunction called
+// on module.exports does (React's tests compare stack frames: ReactUse's callStack, Flight's debug
+// stacks). V8 names an anonymous function in eval'd code "eval"; a function named
+// "Object.<anonymous>" prints as that, Jest's own wrapper before compileFunction.
 function compileFunction(code, params = [], options = {}) {
   check(options.parsingContext);
-  return (0, native.eval)(withSource('(function (' + params.join(', ') + ') {' + code + '\n})', options.filename));
+  return (0, native.eval)(withSource('({"Object.<anonymous>": function (' + params.join(', ') + ') {' + code + '\n}})["Object.<anonymous>"]', options.filename));
 }
 
 function runInContext(code, context, options) {

@@ -41,6 +41,24 @@
     Promise: globalThis.Promise,
     Date: globalThis.Date,
     AbortController: globalThis.AbortController,
+    webStreams: {
+      ReadableStream: globalThis.ReadableStream,
+      ReadableStreamDefaultReader: globalThis.ReadableStreamDefaultReader,
+      ReadableStreamBYOBReader: globalThis.ReadableStreamBYOBReader,
+      ReadableStreamDefaultController: globalThis.ReadableStreamDefaultController,
+      ReadableByteStreamController: globalThis.ReadableByteStreamController,
+      WritableStream: globalThis.WritableStream,
+      WritableStreamDefaultWriter: globalThis.WritableStreamDefaultWriter,
+      WritableStreamDefaultController: globalThis.WritableStreamDefaultController,
+      TransformStream: globalThis.TransformStream,
+      TransformStreamDefaultController: globalThis.TransformStreamDefaultController,
+      ByteLengthQueuingStrategy: globalThis.ByteLengthQueuingStrategy,
+      CountQueuingStrategy: globalThis.CountQueuingStrategy,
+      TextEncoderStream: globalThis.TextEncoderStream,
+      TextDecoderStream: globalThis.TextDecoderStream,
+      CompressionStream: globalThis.CompressionStream,
+      DecompressionStream: globalThis.DecompressionStream,
+    },
   };
   boot.remove();
 
@@ -152,10 +170,11 @@
   // `const Buffer` as it may in Node. __reactJestPage is the page's own API for the harness's
   // stand-ins (page/core/*.js); no other module names it. The source URL is the file's absolute path,
   // as in Node's stack frames (and Jest's filtering of them).
+  // The module function is named "Object.<anonymous>" so its frames read as Node's do (page/core/vm.js).
   const wrapperHead =
-    '(function (process, Buffer, global, setImmediate, clearImmediate, __reactJestPage) { return function (exports, require, module, __filename, __dirname) {';
+    '(function (process, Buffer, global, setImmediate, clearImmediate, __reactJestPage) { return {"Object.<anonymous>": function (exports, require, module, __filename, __dirname) {';
   function compile(code, filename) {
-    return (0, native.eval)(wrapperHead + code + '\n}; })\n//# sourceURL=' + filename);
+    return (0, native.eval)(wrapperHead + code + '\n}}["Object.<anonymous>"]; })\n//# sourceURL=' + filename);
   }
 
   function load(filename, parent) {

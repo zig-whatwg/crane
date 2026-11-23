@@ -8,6 +8,7 @@
     "buffer": "6.0.3",
     "create-hash": "1.2.0",
     "events": "3.3.0",
+    "node-inspect-extracted": "3.3.5",
     "path-browserify": "1.0.1",
     "playwright-core": "1.56.1",
     "readable-stream": "4.7.0",
