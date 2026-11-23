@@ -8678,6 +8678,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     fetch_mod.addImport("storage", storage_mod);
     dom_mod.addImport("platform", platform_mod);
     storage_mod.addImport("platform", platform_mod);
+    // A scope with no Browser (a unit test's, the standalone one) reserves
+    // its heap at its first object with the platform's address space
+    // (runtime.BrowserScope.heapEngine; allocator-hardening batch A). No new
+    // cycle: runtime already reaches platform through storage.
+    runtime_mod.addImport("platform", platform_mod);
     // The cookie jar's persistence in a profile directory: the platform's
     // stores, and storage's commit timer (cookiestore/storage_integration.zig).
     cookiestore_mod.addImport("platform", platform_mod);

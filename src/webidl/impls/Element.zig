@@ -81,6 +81,12 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
+    /// An element's State block lives in the heap's node partition with
+    /// elements only (runtime.ArenaAllocator.targetOf; allocator-hardening
+    /// design 3.2 step 4): a freed element block is never reissued as a
+    /// Text's, whose leaf word holds page text.
+    pub const heap_kind: runtime.heap.NodeKind = .element;
+
     /// The attribute list, the ID and classes, and the qualified name: the
     /// part the rest of the tree reads, through `dom.element_data.of`
     /// (installed below). By value: one block, one lifetime. Written only
