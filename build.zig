@@ -6532,6 +6532,35 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_css.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_css_module }), "tools-lint_css", null).step);
 
+    // ========================================================================
+    // LINT: std.heap.page_allocator stays out of src/
+    // ========================================================================
+    // Zig's page allocator maps whole pages for every allocation: a small
+    // record on it costs a page and a mapping (lane alloc1's
+    // inventory; lane leak3 moved every run-time use to its owner's
+    // allocator). tools/lint_page_allocator.zig fails on any use in src/
+    // without a `// page-allocator: <why>` line directly above it; the
+    // build-time WebIDL generator (src/webidl/codegen/) is not scanned. Not a
+    // ratchet: any unmarked use fails.
+    const lint_page_allocator_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_page_allocator.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_page_allocator_exe = b.addExecutable(.{
+        .name = "lint_page_allocator",
+        .root_module = lint_page_allocator_module,
+    });
+    const lint_page_allocator_step = b.step("lint-page-allocator", "Fail on a use of std.heap.page_allocator in src/ with no reviewed `// page-allocator: <why>` line above it");
+    const lint_page_allocator = b.addRunArtifact(lint_page_allocator_exe);
+    // It reads src/, which the build graph does not track.
+    lint_page_allocator.has_side_effects = true;
+    lint_page_allocator.setCwd(b.path("."));
+    lint_page_allocator_step.dependOn(&lint_page_allocator.step);
+    test_step.dependOn(&lint_page_allocator.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_page_allocator_module }), "tools-lint_page_allocator", null).step);
+
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);

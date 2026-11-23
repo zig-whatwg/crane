@@ -7,7 +7,6 @@
 //! - Descendant/ancestor relationships
 //! - Sibling relationships
 //! - Tree order traversal
-//! - Preceding/following detection
 //!
 //! These algorithms are fundamental to all DOM tree operations and are used
 //! throughout the mutation, traversal, and query APIs.
@@ -176,93 +175,6 @@ pub fn index(node: *const Node) usize {
     // A walk of the previous links (a node keeps no child list:
     // NodeBase.children).
     return node.index();
-}
-
-/// Check if A is preceding B (in tree order)
-/// Spec: https://dom.spec.whatwg.org/#concept-tree-preceding
-///
-/// An object A is preceding an object B if A and B are in the same tree and
-/// A comes before B in tree order (preorder, depth-first traversal).
-///
-/// Returns: true if node_a precedes node_b in tree order
-pub fn isPreceding(node_a: *const Node, node_b: *const Node) bool {
-    return compareTreeOrder(node_a, node_b) == .before;
-}
-
-/// Check if A is following B (in tree order)
-/// Spec: https://dom.spec.whatwg.org/#concept-tree-following
-///
-/// An object A is following an object B if A and B are in the same tree and
-/// A comes after B in tree order (preorder, depth-first traversal).
-///
-/// Returns: true if node_a follows node_b in tree order
-pub fn isFollowing(node_a: *const Node, node_b: *const Node) bool {
-    return compareTreeOrder(node_a, node_b) == .after;
-}
-
-/// Compare two nodes in tree order (preorder, depth-first)
-/// Returns: .before if node_a comes before node_b, .after if after, .equal if same node
-fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equal, after } {
-    if (node_a == node_b) return .equal;
-
-    // Check if one is ancestor of the other
-    if (isAncestor(node_a, node_b)) {
-        // A is ancestor of B, so A comes before B in preorder
-        return .before;
-    }
-    if (isAncestor(node_b, node_a)) {
-        // B is ancestor of A, so A comes after B in preorder
-        return .after;
-    }
-
-    // Neither is ancestor of the other, find common ancestor
-    // and compare which branch comes first
-    var ancestors_a = infra.List(*const Node).init(std.heap.page_allocator);
-    defer ancestors_a.deinit();
-
-    // Build ancestor chain for A
-    var current_a: ?*const Node = node_a;
-    while (current_a) |node| {
-        ancestors_a.append(node) catch return .equal; // fallback on error
-        current_a = node.parent_node;
-    }
-
-    // Walk up from B until we find common ancestor
-    var current_b: ?*const Node = node_b;
-    while (current_b) |node_b_ancestor| {
-        // Check if this B ancestor is in A's chain
-        for (ancestors_a.items(), 0..) |node_a_ancestor, i| {
-            if (node_a_ancestor == node_b_ancestor) {
-                // Found common ancestor
-                if (i == 0) {
-                    return .before;
-                }
-
-                const child_of_common_a = ancestors_a.items()[i - 1];
-
-                // Find B's child of common ancestor
-                var child_of_common_b: *const Node = node_b;
-                var parent_of_b = node_b.parent_node;
-                while (parent_of_b != null and parent_of_b != node_b_ancestor) {
-                    child_of_common_b = parent_of_b.?;
-                    parent_of_b = child_of_common_b.parent_node;
-                }
-
-                // Compare the positions of these children: A is before B when
-                // B follows A along the sibling links
-                if (child_of_common_a == child_of_common_b) return .equal; // fallback
-                var sibling = child_of_common_a.next_sibling;
-                while (sibling) |s| : (sibling = s.next_sibling) {
-                    if (s == child_of_common_b) return .before;
-                }
-                return .after;
-            }
-        }
-        current_b = node_b_ancestor.parent_node;
-    }
-
-    // No common ancestor (different trees) - treat as equal
-    return .equal;
 }
 
 // ============================================================================
