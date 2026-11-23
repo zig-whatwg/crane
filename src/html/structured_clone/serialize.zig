@@ -214,7 +214,9 @@ pub fn structuredSerializeInternal(
         return existing;
     }
 
-    // Create the serialized value
+    // Create the serialized value. Every error return below lets this
+    // errdefer free it - none frees it itself (that was a double free on each
+    // throwing path: symbol, function, detached and shared buffers).
     const serialized = try allocator.create(SerializedValue);
     errdefer allocator.destroy(serialized);
 
@@ -251,7 +253,6 @@ pub fn structuredSerializeInternal(
 
         // Step 5: Symbol - throw DataCloneError
         .symbol => {
-            allocator.destroy(serialized);
             return CloneError.DataCloneError;
         },
 
@@ -291,7 +292,6 @@ pub fn structuredSerializeInternal(
         // Step 13: ArrayBuffer
         .array_buffer => |ab| {
             if (ab.detached) {
-                allocator.destroy(serialized);
                 return CloneError.DetachedBuffer;
             }
             if (ab.shared) {
@@ -304,7 +304,6 @@ pub fn structuredSerializeInternal(
                 // used to yield a copy with an undefined length cell and
                 // agent cluster 0).
                 // TODO(jsc walker): SharedArrayBuffer through the SharedMemory sidecar (docs/engine-protocol.md, Structured serialization)
-                allocator.destroy(serialized);
                 return CloneError.DataCloneError;
             } else {
                 // Regular ArrayBuffer - deep copy
@@ -489,7 +488,6 @@ pub fn structuredSerializeInternal(
 
         // Step 21: Function - throw DataCloneError
         .function => {
-            allocator.destroy(serialized);
             return CloneError.DataCloneError;
         },
 
