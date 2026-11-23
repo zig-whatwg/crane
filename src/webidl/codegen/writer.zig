@@ -3162,6 +3162,9 @@ pub fn writeOverloadedConstructor(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (ctor.arguments) |arg| {
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
@@ -5159,6 +5162,9 @@ fn writeOverloadedOperation(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (op.arguments) |arg| {
                 // Build type with optional, variadic, nullable, and union handling
                 var buffer: [512]u8 = undefined;

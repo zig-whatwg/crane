@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AuthenticatorSelectionCriteria = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     authenticatorAttachment: ?runtime.DOMString = null,
     residentKey: ?runtime.DOMString = null,
     requireResidentKey: ?bool = null,

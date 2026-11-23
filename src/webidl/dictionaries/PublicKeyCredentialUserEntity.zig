@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const PublicKeyCredentialEntity = @import("PublicKeyCredentialEntity.zig").PublicKeyCredentialEntity;
 
 pub const PublicKeyCredentialUserEntity = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from PublicKeyCredentialEntity
     base: PublicKeyCredentialEntity,
 

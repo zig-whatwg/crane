@@ -8,6 +8,8 @@ const HevcEncoderConfig = @import("HevcEncoderConfig.zig").HevcEncoderConfig;
 const AvcEncoderConfig = @import("AvcEncoderConfig.zig").AvcEncoderConfig;
 
 pub const VideoEncoderConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     codec: runtime.DOMString,
     width: u32,
     height: u32,

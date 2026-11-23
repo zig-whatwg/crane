@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const IdentityProviderClientMetadata = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     privacy_policy_url: ?runtime.USVString = null,
     terms_of_service_url: ?runtime.USVString = null,
     client_is_third_party_to_top_frame_origin: ?bool = null,

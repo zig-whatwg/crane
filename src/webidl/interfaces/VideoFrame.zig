@@ -258,11 +258,13 @@ pub const VideoFrame = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(image, init)
         CanvasImageSource_VideoFrameInit: struct {
+            pub const webidl_arguments = true;
             image: CanvasImageSource,
             init: webidl.Opt(VideoFrameInit),
         },
         /// constructor(data, init)
         AllowSharedBufferSource_VideoFrameBufferInit: struct {
+            pub const webidl_arguments = true;
             data: AllowSharedBufferSource,
             init: VideoFrameBufferInit,
         },

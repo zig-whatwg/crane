@@ -2691,9 +2691,11 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         return;
     }
 
-    // Handle record types: record<K, V> -> []const struct { key: K, value: V }
+    // Handle record types: record<K, V> -> []const struct { key: K, value: V },
+    // the entry marked `webidl_record_entry` (the binding converts a record by
+    // WebIDL 3.2.23 from that marker, never from the struct's shape).
     if (idl_type.record) |rec| {
-        try w.writeAll("[]const struct { key: ");
+        try w.writeAll("[]const struct { pub const webidl_record_entry = true; key: ");
         try writeTypeForTypedefWithRegistry(allocator, w, rec.key.*, typedefs_path, type_registry);
         try w.writeAll(", value: ");
         try writeTypeForTypedefWithRegistry(allocator, w, rec.value.*, typedefs_path, type_registry);
@@ -2707,7 +2709,7 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         if (std.mem.indexOf(u8, generic_str, ",")) |comma_idx| {
             const key_str = std.mem.trim(u8, generic_str[0..comma_idx], " \t");
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
-            try w.writeAll("[]const struct { key: ");
+            try w.writeAll("[]const struct { pub const webidl_record_entry = true; key: ");
             const key_idl = try parseInlineType(allocator, key_str);
             defer freeInlineType(allocator, key_idl);
             try writeTypeForTypedefWithRegistry(allocator, w, key_idl, typedefs_path, type_registry);
@@ -2917,9 +2919,11 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
         return;
     }
 
-    // Handle record types: record<K, V> -> []const struct { key: K, value: V }
+    // Handle record types: record<K, V> -> []const struct { key: K, value: V },
+    // the entry marked `webidl_record_entry` (the binding converts a record by
+    // WebIDL 3.2.23 from that marker, never from the struct's shape).
     if (idl_type.record) |rec| {
-        try w.writeAll("[]const struct { key: ");
+        try w.writeAll("[]const struct { pub const webidl_record_entry = true; key: ");
         try writeDictionaryMemberType(allocator, w, rec.key.*, type_registry);
         try w.writeAll(", value: ");
         try writeDictionaryMemberType(allocator, w, rec.value.*, type_registry);
@@ -2933,7 +2937,7 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
         if (std.mem.indexOf(u8, generic_str, ",")) |comma_idx| {
             const key_str = std.mem.trim(u8, generic_str[0..comma_idx], " \t");
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
-            try w.writeAll("[]const struct { key: ");
+            try w.writeAll("[]const struct { pub const webidl_record_entry = true; key: ");
             const key_idl = try parseInlineType(allocator, key_str);
             defer freeInlineType(allocator, key_idl);
             try writeDictionaryMemberType(allocator, w, key_idl, type_registry);
@@ -3096,6 +3100,12 @@ pub fn writeDictionary(
 
     // Generate struct
     try w.print("pub const {s} = struct {{\n", .{dictionary.name});
+    // The positive marker the binding's dictionary rules test (conversion
+    // member by member, handle ownership, defaults): a struct that does not
+    // carry it is never taken for a dictionary, whatever its fields - a
+    // callback value holding its argument's handle once was (lane bind1).
+    try w.writeAll("    /// A WebIDL dictionary (the binding's dictionary rules read this marker).\n");
+    try w.writeAll("    pub const webidl_dictionary = true;\n");
 
     // If inheriting, embed base dictionary fields
     if (dictionary.inheritance) |base_name| {

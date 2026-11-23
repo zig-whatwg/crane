@@ -9,6 +9,8 @@ const ProfilerFrame = @import("ProfilerFrame.zig").ProfilerFrame;
 const ProfilerSample = @import("ProfilerSample.zig").ProfilerSample;
 
 pub const ProfilerTrace = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     resources: []const typedefs.ProfilerResource,
     frames: []const ProfilerFrame,
     stacks: []const ProfilerStack,

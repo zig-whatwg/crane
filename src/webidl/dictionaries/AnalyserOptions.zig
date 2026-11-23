@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const AudioNodeOptions = @import("AudioNodeOptions.zig").AudioNodeOptions;
 
 pub const AnalyserOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 

@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPUVertexAttribute = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     format: enums.GPUVertexFormat,
     offset: typedefs.GPUSize64,
     shaderLocation: typedefs.GPUIndex32,

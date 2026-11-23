@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const BlobPropertyBag = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?runtime.DOMString = null,
     endings: ?enums.EndingType = null,
 

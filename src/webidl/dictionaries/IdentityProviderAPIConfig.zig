@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const IdentityProviderBranding = @import("IdentityProviderBranding.zig").IdentityProviderBranding;
 
 pub const IdentityProviderAPIConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     accounts_endpoint: runtime.USVString,
     client_metadata_endpoint: ?runtime.USVString = null,
     id_assertion_endpoint: runtime.USVString,

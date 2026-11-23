@@ -6,8 +6,14 @@ const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
 /// A nullable callback function, as codegen types one.
 const Callback = ?@import("runtime").BorrowedCallbackFunction;
-const Strategy = struct { size: Callback = null };
-const Ordinary = struct { mode: enum { valid } = .valid };
+const Strategy = struct {
+    pub const webidl_dictionary = true;
+    size: Callback = null,
+};
+const Ordinary = struct {
+    pub const webidl_dictionary = true;
+    mode: enum { valid } = .valid,
+};
 const Case = enum { argument, callback_member, ordinary_member };
 
 fn eval(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8) !*ffi.Value {

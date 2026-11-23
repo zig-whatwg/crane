@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const TaskControllerInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     priority: ?enums.TaskPriority = null,
 
     /// Optional members' IDL default values: a member the value leaves

@@ -85,13 +85,20 @@ test "every callback-function shape the binding converts is freed with its value
     try testing.expect(cleans(?Callback));
     try testing.expect(cleans(webidl.Opt(Callback)));
     try testing.expect(cleans(webidl.Opt(?Callback)));
-    try testing.expect(cleans(struct { cb: ?Callback = null, n: ?f64 = null }));
+    try testing.expect(cleans(struct {
+        pub const webidl_dictionary = true;
+        cb: ?Callback = null,
+        n: ?f64 = null,
+    }));
     try testing.expect(cleans(union(enum) { domstring: runtime.DOMString, function: Callback }));
     try testing.expect(cleans([]const Callback));
     // The default for a type nobody named stays "nothing to free": freeing
     // what the value does not own is a use-after-free.
     try testing.expect(!cleans(*anyopaque));
-    try testing.expect(!cleans(struct { a: u32 = 0 }));
+    try testing.expect(!cleans(struct {
+        pub const webidl_dictionary = true;
+        a: u32 = 0,
+    }));
 }
 
 test "a callback union's copied arm leaves its handle, its callback arm holds it; a callback sequence never holds the array's" {
@@ -120,7 +127,10 @@ test "an attribute's callback value is borrowed by the setter" {
     // The `any` shapes stay borrowed, and an unknown type stays handed over.
     try testing.expect(borrowed(runtime.JSValue));
     try testing.expect(!borrowed(*anyopaque));
-    try testing.expect(!borrowed(struct { a: ?*anyopaque = null }));
+    try testing.expect(!borrowed(struct {
+        pub const webidl_dictionary = true;
+        a: ?*anyopaque = null,
+    }));
 }
 
 // ============================================================================
@@ -280,7 +290,11 @@ const Call = struct {
 
     const Kind = enum { argument, member, union_arm, union_string, sequence };
 
-    const Member = struct { cb: ?Callback = null, n: ?f64 = null };
+    const Member = struct {
+        pub const webidl_dictionary = true;
+        cb: ?Callback = null,
+        n: ?f64 = null,
+    };
     const Arm = union(enum) { domstring: runtime.DOMString, function: Callback };
 
     fn steps(data: ?*anyopaque) void {
@@ -762,11 +776,13 @@ test "a kept callback interface outlives the call and a collection, and its oper
 /// per overload, a struct of its arguments.
 const Overloads = union(enum) {
     string_callback: struct {
+        pub const webidl_arguments = true;
         text: runtime.DOMString,
         callback: Callback,
     },
     /// The control's: the same resolution, nothing kept.
     string_number: struct {
+        pub const webidl_arguments = true;
         text: runtime.DOMString,
         number: f64,
     },

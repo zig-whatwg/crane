@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const ExtendableEventInit = @import("ExtendableEventInit.zig").ExtendableEventInit;
 
 pub const ExtendableCookieChangeEventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from ExtendableEventInit
     base: ExtendableEventInit,
 

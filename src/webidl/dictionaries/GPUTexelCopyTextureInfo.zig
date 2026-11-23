@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPUTexelCopyTextureInfo = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     texture: *runtime.Instance,
     mipLevel: ?typedefs.GPUIntegerCoordinate = null,
     origin: ?typedefs.GPUOrigin3D = null,

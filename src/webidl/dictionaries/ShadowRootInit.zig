@@ -7,6 +7,8 @@ const webidl = @import("webidl");
 const enums = @import("enums");
 
 pub const ShadowRootInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     mode: enums.ShadowRootMode,
     delegatesFocus: ?bool = null,
     serializable: ?bool = null,

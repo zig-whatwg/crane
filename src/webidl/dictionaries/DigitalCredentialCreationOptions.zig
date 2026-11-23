@@ -6,5 +6,7 @@ const runtime = @import("runtime");
 const DigitalCredentialCreateRequest = @import("DigitalCredentialCreateRequest.zig").DigitalCredentialCreateRequest;
 
 pub const DigitalCredentialCreationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     requests: []const DigitalCredentialCreateRequest,
 };

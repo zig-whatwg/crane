@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const ImageEncodeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?runtime.DOMString = null,
     quality: ?f64 = null,
 

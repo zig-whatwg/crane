@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const MLNamedOperands = []const struct { key: runtime.USVString, value: *runtime.Instance };
+pub const MLNamedOperands = []const struct {
+    pub const webidl_record_entry = true;
+    key: runtime.USVString,
+    value: *runtime.Instance,
+};

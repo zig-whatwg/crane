@@ -60,6 +60,7 @@ fn evalInt(code: []const u8) !i32 {
 /// A dictionary as codegen emits one: optional members, a restricted
 /// `double` listed in `restricted_members`.
 const Plain = struct {
+    pub const webidl_dictionary = true;
     a: ?runtime.DOMString = null,
     b: ?f64 = null,
     pub const restricted_members = [_][]const u8{"b"};
@@ -67,9 +68,11 @@ const Plain = struct {
 
 /// One that inherits: its parent's members come first, as `base`.
 const Parent = struct {
+    pub const webidl_dictionary = true;
     a: ?runtime.DOMString = null,
 };
 const Child = struct {
+    pub const webidl_dictionary = true;
     base: Parent = .{},
     c: ?f64 = null,
     pub const restricted_members = [_][]const u8{"c"};
@@ -107,6 +110,7 @@ test "a dictionary that converts whole is the caller's to free" {
 /// per overload, a struct of its arguments.
 const Overloads = union(enum) {
     string_number: struct {
+        pub const webidl_arguments = true;
         text: runtime.DOMString,
         number: f64,
     },

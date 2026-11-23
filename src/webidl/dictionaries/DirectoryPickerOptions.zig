@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const DirectoryPickerOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     id: ?runtime.DOMString = null,
     startIn: ?typedefs.StartInDirectory = null,
     mode: ?enums.FileSystemPermissionMode = null,

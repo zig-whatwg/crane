@@ -45,6 +45,7 @@ const StringOrObject = union(enum) {
 
 /// A nullable member whose presence matters: webidl.Opt(?DOMString).
 const Namespaced = struct {
+    pub const webidl_dictionary = true;
     name: runtime.DOMString,
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),
 };
@@ -56,12 +57,14 @@ const Element = union(enum) {
 };
 
 const Inner = struct {
+    pub const webidl_dictionary = true;
     either: ?StringOrObject = null,
     elements: ?[]const Element = null,
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),
 };
 
 const Config = struct {
+    pub const webidl_dictionary = true;
     either: ?StringOrObject = null,
     elements: ?[]const Element = null,
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),

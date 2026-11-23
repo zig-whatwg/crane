@@ -8,6 +8,8 @@ const enums = @import("enums");
 const VideoColorSpaceInit = @import("VideoColorSpaceInit.zig").VideoColorSpaceInit;
 
 pub const VideoDecoderConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     codec: runtime.DOMString,
     description: ?typedefs.AllowSharedBufferSource = null,
     codedWidth: ?u32 = null,

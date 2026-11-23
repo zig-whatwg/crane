@@ -56,3 +56,9 @@ test "a dictionary's callback interface member is the protocol's borrowed callba
     try expectHas(output, "runtime.BorrowedCallbackInterface");
     try testing.expect(std.mem.indexOf(u8, output, "CallbackWrapper") == null);
 }
+
+test "a generated dictionary says it is one: the binding's dictionary rules test the marker" {
+    const output = try generated("dictionaries/NotifyInit.zig");
+    defer testing.allocator.free(output);
+    try expectHas(output, "pub const webidl_dictionary = true;");
+}

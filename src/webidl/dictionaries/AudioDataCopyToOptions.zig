@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const AudioDataCopyToOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     planeIndex: u32,
     frameOffset: ?u32 = null,
     frameCount: ?u32 = null,

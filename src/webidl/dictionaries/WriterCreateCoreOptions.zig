@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const WriterCreateCoreOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     tone: ?enums.WriterTone = null,
     format: ?enums.WriterFormat = null,
     length: ?enums.WriterLength = null,

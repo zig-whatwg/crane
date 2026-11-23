@@ -85,7 +85,7 @@ fn getDefaultArgValue(comptime T: type) ?T {
     }
 
     // Check for dictionary types with all-optional fields
-    if (info == .@"struct" and canDefaultInit(T)) {
+    if (comptime isDictionaryType(T) and canDefaultInit(T)) {
         return defaultInit(T);
     }
 
@@ -295,7 +295,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (info == .pointer and info.pointer.size == .slice) {
             break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
         }
-        if (info == .@"struct") {
+        if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
                 if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
@@ -409,7 +409,7 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // member aliases the dictionary's handle. Members are still held to a
         // rule - a JSValue member aliasing ITS OWN handle is fine - so that an
         // unknown pointer keeps the conservative answer.
-        if (info == .@"struct" and !@hasDecl(T, "Meta")) {
+        if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
                 // A member that is a sequence of the dictionary itself
                 // (AuctionAdConfig.componentAuctions,
@@ -488,6 +488,56 @@ fn memberHandleIsSafe(comptime T: type) bool {
 /// own (`keep`, which moves the function out of this Global).
 pub fn isCallbackValueType(comptime T: type) bool {
     return T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface;
+}
+
+/// `T` is a WebIDL dictionary: a struct that SAYS so - codegen writes
+/// `pub const webidl_dictionary = true` into every generated dictionary
+/// (generator.zig writeDictionary), and a test's dictionary-shaped struct
+/// declares it too. POSITIVE, as AGENTS.md has every such gate: an allowlist
+/// whose default is the safe answer. A struct that does not say so - a
+/// callback value holding its argument's handle, an interface, an
+/// optional-argument wrapper, a record - is never converted, freed or
+/// released as a dictionary, whatever its fields. "Any struct without Meta"
+/// misfired twice (lane bind1): argHandleIsCopied called a borrowed callback a
+/// copied dictionary, and the union conversion took one for its dictionary arm.
+pub fn isDictionaryType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every generated dictionary declares `pub const
+    // webidl_dictionary` (generator.zig writeDictionary), and so does every
+    // test struct that stands for one.
+    return @hasDecl(T, "webidl_dictionary");
+}
+
+/// `T` is a record<K, V>'s entry as codegen types one: `struct { key: K,
+/// value: V }`, marked `pub const webidl_record_entry = true` (generator.zig),
+/// a record being `[]const` of it. Positive, as isDictionaryType is: the
+/// binding converts it by WebIDL 3.2.23 (conv.recordFrom) and walks its two
+/// members as a dictionary's - each read through a Get of its own.
+pub fn isRecordEntryType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every record entry codegen emits declares `pub const
+    // webidl_record_entry` (generator.zig, record types), and so does every
+    // test struct that stands for one.
+    return @hasDecl(T, "webidl_record_entry");
+}
+
+/// `T` is an overload's argument list as codegen types one: a variant of an
+/// overloaded operation's or constructor's `Args`/`ConstructorArgs`, marked
+/// `pub const webidl_arguments = true` (writer.zig). Its members are
+/// arguments, each converted from its own argument handle.
+pub fn isArgumentListType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every overload variant codegen emits declares `pub const
+    // webidl_arguments` (writer.zig), and so does every test struct that
+    // stands for one.
+    return @hasDecl(T, "webidl_arguments");
+}
+
+/// A struct whose members the ownership rules walk one by one: a dictionary,
+/// a record's entry (each member read through a Get of its own), or an
+/// overload's argument list (each member an argument of its own).
+fn isMemberwiseStruct(comptime T: type) bool {
+    return isDictionaryType(T) or isRecordEntryType(T) or isArgumentListType(T);
 }
 
 /// A callback value or its nullable form: what conv.fromV8Value converts by
@@ -1810,8 +1860,8 @@ pub fn needsArgCleanup(comptime T: type) bool {
             return needsArgCleanup(vt);
         }
     }
-    // Struct types (dictionaries) - check if any field needs cleanup
-    if (@typeInfo(T) == .@"struct") {
+    // Dictionaries and record entries - check if any field needs cleanup
+    if (comptime isMemberwiseStruct(T)) {
         inline for (comptime std.meta.fieldTypes(T)) |field_type| {
             if (needsArgCleanup(field_type)) return true;
         }
@@ -1889,8 +1939,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
                 freeConvertedArg(vt, allocator, arg.value);
             }
         }
-    } else if (@typeInfo(T) == .@"struct") {
-        // Struct types (dictionaries) - free any fields that need
+    } else if (comptime isMemberwiseStruct(T)) {
+        // Dictionaries and record entries - free any fields that need
         // cleanup, and release each `any`-family member's handle (an
         // `any` or `object` member, a union typed JSValue, an
         // `object` union arm): the Get handle the dictionary loop
@@ -4391,6 +4441,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (type_info.pointer.size != .slice) return false;
             // []const u8 is a string type, not variadic
             if (type_info.pointer.child == u8) return false;
+            // A record<K, V> (codegen's `[]const Entry`, the entry marked
+            // `webidl_record_entry`) is ONE argument, converted by WebIDL
+            // 3.2.23 - MLGraphBuilder.build(MLNamedOperands outputs) took
+            // each JS argument as an entry.
+            if (isRecordEntryType(type_info.pointer.child)) return false;
             return true;
         }
 

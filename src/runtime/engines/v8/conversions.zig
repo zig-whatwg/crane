@@ -1125,6 +1125,88 @@ fn byteStringRecordFrom(allocator: std.mem.Allocator, isolate: *v8.Isolate, cont
     return result.toOwnedSlice(allocator);
 }
 
+/// WebIDL 3.2.23, converting the Object O to record<K, V> - a record as codegen
+/// types one, `[]const Entry` with `Entry = struct { key: K, value: V }`
+/// (marked `webidl_record_entry`): a dictionary member, an argument. Each key
+/// and value is converted as it is reached, as byteStringRecordFrom's are.
+/// OWNED: an exact-length slice of entries freed with the value
+/// (interface.freeConvertedArg walks a record entry as a dictionary). A value
+/// kept as its Get handle (an `any` or `object` V) is that handle, released
+/// with it. `Interface` is the interface a value of interface type converts
+/// to - codegen's table for the record's position names it (MLNamedOperands'
+/// MLOperand), as it names a sequence's elements'.
+fn recordFrom(comptime Entry: type, comptime Interface: ?type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Value) ConversionError![]const Entry {
+    const K = @FieldType(Entry, "key");
+    const V = @FieldType(Entry, "value");
+    // 1. If O is not an Object, throw a TypeError (the caller checked).
+    // 2. Let result be a new empty instance of record<K, V>.
+    var result: std.ArrayListUnmanaged(Entry) = .empty;
+    errdefer {
+        for (result.items) |entry| interface_mod.freeArgument(Entry, allocator, entry);
+        result.deinit(allocator);
+    }
+
+    // 3. Let keys be ? O.[[OwnPropertyKeys]]().
+    var threw = false;
+    const own_keys = v8.v8_Object_OwnPropertyKeysCatching(context, object, &threw);
+    if (threw) return rethrowCaught(isolate, own_keys);
+    const keys: *v8.Array = @ptrCast(own_keys orelse return ConversionError.TypeError);
+    defer v8.v8_Global_Dispose(@ptrCast(keys));
+
+    // 4. For each key of keys:
+    const count = v8.v8_Array_Length(keys);
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const key = v8.v8_Array_Get(context, keys, i) orelse return ConversionError.TypeError;
+        defer v8.v8_Value_Dispose(key);
+        // 1. Let desc be ? O.[[GetOwnProperty]](key).
+        var enumerable = false;
+        const thrown = v8.v8_Object_IsOwnEnumerableCatching(context, object, key, &enumerable, &threw);
+        if (threw) return rethrowCaught(isolate, thrown);
+        // 2. If desc is not undefined and desc.[[Enumerable]] is true:
+        if (!enumerable) continue;
+        //    1. Let typedKey be key converted to an IDL value of type K - a
+        //       Symbol is the string conversion's TypeError.
+        const typed_key = try fromV8Value(K, allocator, isolate, context, key);
+        errdefer interface_mod.freeConvertedArg(K, allocator, typed_key);
+        //    2. Let value be ? Get(O, key).
+        const item = v8.v8_Object_GetByKeyCatching(context, object, key, &threw);
+        if (threw) return rethrowCaught(isolate, item);
+        const item_value = item orelse return ConversionError.TypeError;
+        //    3. Let typedValue be value converted to an IDL value of type V.
+        //       A copying conversion leaves Get's handle to go now; one that
+        //       keeps it (an `any`) holds it until the entry is freed.
+        const typed_value: V = converted: {
+            if (comptime interface_mod.argHandleIsCopied(V)) {
+                defer v8.v8_Value_Dispose(item_value);
+                break :converted try fromV8ValueAs(V, Interface, allocator, isolate, context, item_value);
+            }
+            const converted_value = fromV8ValueAs(V, Interface, allocator, isolate, context, item_value) catch |err| {
+                v8.v8_Value_Dispose(item_value);
+                return err;
+            };
+            if (interface_mod.conversionLeavesHandle(V, converted_value)) v8.v8_Value_Dispose(item_value);
+            break :converted converted_value;
+        };
+        //    4. Set result[typedKey] to typedValue. Two keys give one typedKey
+        //       only through a USVString's lone surrogates (each becomes
+        //       U+FFFD): the later value replaces the earlier, in its place.
+        if (comptime K == []const u8) {
+            if (for (result.items) |*entry| {
+                if (std.mem.eql(u8, entry.key, typed_key)) break entry;
+            } else null) |existing| {
+                interface_mod.freeConvertedArg(K, allocator, typed_key);
+                interface_mod.freeArgument(V, allocator, existing.value);
+                existing.value = typed_value;
+                continue;
+            }
+        }
+        try result.append(allocator, .{ .key = typed_key, .value = typed_value });
+    }
+    // 5. Return result.
+    return result.toOwnedSlice(allocator);
+}
+
 /// Make pending a value a Catching call caught (OWNED, taken); a null one -
 /// a terminating isolate - leaves nothing to throw.
 fn rethrowCaught(isolate: *v8.Isolate, thrown: ?*v8.Value) ConversionError {
@@ -2103,6 +2185,15 @@ fn convertValueAs(
             return buffer;
         }
 
+        // A record<K, V> (codegen's `[]const Entry`, the entry marked
+        // `webidl_record_entry`), WebIDL 3.2.23: "1. If O is not an Object,
+        // throw a TypeError", then its own enumerable keys (`recordFrom`). Never
+        // read as a sequence of {key, value} objects, as it was.
+        if (comptime interface_mod.isRecordEntryType(ElemType)) {
+            if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+            return try recordFrom(ElemType, Interface, allocator, isolate, context, value);
+        }
+
         // WebIDL 3.2.21, converting V to sequence<T>:
         // 1. If V is not an Object, throw a TypeError.
         if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
@@ -2289,23 +2380,33 @@ fn convertValueAs(
                 if (field_info == .pointer and field_info.pointer.size == .slice) {
                     // Skip []const u8 which is handled as string above
                     if (field_info.pointer.child == u8) continue;
+                    // A record (its entry marked `webidl_record_entry`) is
+                    // no sequence: step 11.5, below.
+                    if (interface_mod.isRecordEntryType(field_info.pointer.child)) continue;
                     break :blk i;
                 }
             }
             break :blk null;
         };
 
+        // A record<K, V> arm (codegen's `[]const Entry`, the entry marked
+        // `webidl_record_entry`): WebIDL 3.2.25 step 11.5.
+        const record_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .pointer and field_info.pointer.size == .slice and interface_mod.isRecordEntryType(field_info.pointer.child)) break :blk i;
+            }
+            break :blk null;
+        };
+
         const dict_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                // A callback value (runtime.Borrowed*) is a struct too, but
-                // never a dictionary arm: an Object that is not callable goes
-                // on to the string step (3.2.25 step 15), so
-                // setTimeout({ toString() { ... } }) runs its string.
-                if (interface_mod.isCallbackValueType(field.type)) continue;
-                const field_info = @typeInfo(field.type);
-                if (field_info == .@"struct" and !@hasDecl(field.type, "Meta")) {
-                    break :blk i;
-                }
+                // A dictionary arm is a struct that SAYS it is one
+                // (interface.isDictionaryType): a callback value
+                // (runtime.Borrowed*) is a struct too, and an Object that is
+                // not callable goes on to the string step (3.2.25 step 15),
+                // so setTimeout({ toString() { ... } }) runs its string.
+                if (interface_mod.isDictionaryType(field.type)) break :blk i;
             }
             break :blk null;
         };
@@ -2577,6 +2678,14 @@ fn convertValueAs(
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
                 return @unionInit(T, fields[idx].name, converted);
             }
+            // Step 11.5: "If types includes a record type, then return the
+            // result of converting V to that record type" (3.2.23). A record
+            // and a dictionary are not distinguishable, so a union has at
+            // most one of the two.
+            if (record_idx) |idx| {
+                const Entry = @typeInfo(fields[idx].type).pointer.child;
+                return @unionInit(T, fields[idx].name, try recordFrom(Entry, null, allocator, isolate, context, value));
+            }
         }
 
         // WebIDL 3.2.25 steps 5.2, 6.2, 7.2, 8.2, 9.2, 10.2 and 11.7: an
@@ -2742,15 +2851,11 @@ fn convertValueAs(
         return T.passed(inner_value);
     }
 
-    // Handle structs (dictionaries vs interfaces)
+    // A dictionary (WebIDL 3.2.18): a struct that SAYS it is one
+    // (interface.isDictionaryType). Any other struct reaching here is a type
+    // the binding has no conversion for, and a compile error says which.
     if (type_info == .@"struct") {
-        // Check if this is a WebIDL interface (has Meta subtype)
-        if (@hasDecl(T, "Meta")) {
-            // This is a WebIDL interface, not a dictionary
-            // TODO: Extract *runtime.Instance from V8 object's internal field
-            // For now, interfaces in constructor parameters are not fully supported
-            return error.TypeError;
-        }
+        if (comptime !interface_mod.isDictionaryType(T)) @compileError("not a WebIDL dictionary (no `pub const webidl_dictionary`), and no other conversion takes it: " ++ @typeName(T));
 
         // WebIDL 3.2.18 steps 1-3: "If jsDict is not undefined, null or an
         // Object, throw a TypeError"; undefined and null are a dictionary
@@ -3333,14 +3438,12 @@ pub fn callbackConversionAdoptsInput(comptime T: type) bool {
 /// ArrayBufferView) - its conversion is an object made for the call.
 fn isDictionaryValue(comptime T: type) bool {
     @setEvalBranchQuota(100_000);
-    if (@typeInfo(T) != .@"struct") return false;
-    if (@hasDecl(T, "Meta")) return false;
-    if (interface_mod.isCallbackValueType(T)) return false;
-    if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return false;
-    if (T == typedefs.ArrayBufferView) return false;
-    if (T == JSValue or T == OptionalJSValue or T == runtime.OptionalJSValue) return false;
-    if (@hasDecl(T, "ResultType") and @hasField(T, "handle")) return false;
-    return true;
+    if (interface_mod.isDictionaryType(T)) return true;
+    // A [Default] toJSON result (codegen's `XToJSON`, marked
+    // `default_to_json`) is made into an object the same way.
+    // hasdecl: codegen writes `pub const default_to_json` into every ToJSON
+    // struct (writer.zig, the [Default] toJSON result).
+    return @typeInfo(T) == .@"struct" and @hasDecl(T, "default_to_json");
 }
 
 /// Whether toV8Value(T, ...) of EVERY value of type `T` is a Global made for
@@ -3907,10 +4010,8 @@ pub fn toV8Value(
         // Convert to JavaScript object where key becomes property name
         const elem_type_info = @typeInfo(ElemType);
         if (elem_type_info == .@"struct") {
-            const has_key = @hasField(ElemType, "key");
-            const has_value = @hasField(ElemType, "value");
-            const field_count = std.meta.fieldNames(ElemType).len;
-            if (has_key and has_value and field_count == 2) {
+            // A record's entry SAYS it is one (`webidl_record_entry`).
+            if (comptime interface_mod.isRecordEntryType(ElemType)) {
                 // This is a record-like type - convert to object. WebIDL
                 // 3.2.20: "Let result be OrdinaryObjectCreate(%Object.prototype%)"
                 // (of `context`'s realm) and for each entry "Perform
@@ -3977,8 +4078,10 @@ pub fn toV8Value(
         return enumToV8String(T, isolate, value);
     }
 
-    // Structs: a dictionary (WebIDL 3.2.18), or a [Default] toJSON result.
+    // Structs: a dictionary (WebIDL 3.2.18), or a [Default] toJSON result -
+    // each a struct that says so (`isDictionaryValue`).
     if (type_info == .@"struct") {
+        if (comptime !isDictionaryValue(T)) @compileError("not a WebIDL dictionary or a [Default] toJSON result, and no other conversion takes it: " ++ @typeName(T));
         // "Let O be OrdinaryObjectCreate(%Object.prototype%)" - of `context`'s
         // realm (default-toJSON-cross-realm.html). The object is the caller's
         // (`dictionaryValueIsOwned`); every key and member value made for it

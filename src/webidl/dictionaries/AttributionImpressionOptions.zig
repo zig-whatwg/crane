@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AttributionImpressionOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     histogramIndex: u32,
     matchValue: ?u32 = null,
     conversionSites: ?[]const runtime.USVString = null,

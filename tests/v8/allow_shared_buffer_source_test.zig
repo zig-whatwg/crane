@@ -184,6 +184,7 @@ test "a buffer detached after its conversion reads as empty, not as its freed st
 /// `timestamp` (members convert in lexicographic order: data, then
 /// timestamp).
 const InitWithData = struct {
+    pub const webidl_dictionary = true;
     data: AllowSharedBufferSource,
     timestamp: i64,
 };

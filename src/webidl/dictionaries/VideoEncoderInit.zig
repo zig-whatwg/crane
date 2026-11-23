@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 
 pub const VideoEncoderInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     output: callbacks.EncodedVideoChunkOutputCallback,
     @"error": callbacks.WebCodecsErrorCallback,
 };

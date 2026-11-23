@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const NavigationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     info: ?runtime.JSValue = null,
 
     /// `any` members: one present with the value null converts to `.null`,

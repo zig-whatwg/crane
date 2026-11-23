@@ -45,6 +45,7 @@ const copied = v8.interface_mod.argHandleIsCopied;
 /// dictionaries.QueuingStrategy's shape: callbacks.QueuingStrategySize is a
 /// runtime.BorrowedCallbackFunction (codegen's type for a callback function).
 const StrategyShaped = struct {
+    pub const webidl_dictionary = true;
     highWaterMark: ?f64 = null,
     size: ?runtime.BorrowedCallbackFunction = null,
 };
@@ -68,8 +69,17 @@ test "a callback argument still adopts its handle, and an unknown member keeps t
     try testing.expect(!copied(runtime.BorrowedCallbackFunction));
     try testing.expect(!copied(?runtime.BorrowedCallbackFunction));
     try testing.expect(!copied(runtime.BorrowedCallbackInterface));
-    try testing.expect(!copied(struct { a: ?f64 = null, b: ?*anyopaque = null }));
-    try testing.expect(!copied(struct { a: ?f64 = null, b: ?*const fn () void = null, c: *anyopaque }));
+    try testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        a: ?f64 = null,
+        b: ?*anyopaque = null,
+    }));
+    try testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        a: ?f64 = null,
+        b: ?*const fn () void = null,
+        c: *anyopaque,
+    }));
 }
 
 const leaves = v8.interface_mod.conversionLeavesHandle;

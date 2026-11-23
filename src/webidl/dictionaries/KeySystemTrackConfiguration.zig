@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const KeySystemTrackConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     robustness: ?runtime.DOMString = null,
     encryptionScheme: ?runtime.DOMString = null,
 

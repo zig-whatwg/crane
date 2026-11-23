@@ -200,6 +200,7 @@ pub const KeyframeEffect = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(target, keyframes, options)
         Element_object_union: struct {
+            pub const webidl_arguments = true;
             target: ?*runtime.Instance,
             keyframes: ?runtime.JSValue,
             options: webidl.Opt(runtime.JSValue),

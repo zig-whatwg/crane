@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const KeyAlgorithm = @import("KeyAlgorithm.zig").KeyAlgorithm;
 
 pub const KmacKeyAlgorithm = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from KeyAlgorithm
     base: KeyAlgorithm,
 

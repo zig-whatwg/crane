@@ -7,6 +7,8 @@ const Segment = @import("Segment.zig").Segment;
 const BackgroundBlur = @import("BackgroundBlur.zig").BackgroundBlur;
 
 pub const VideoFrameMetadata = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     segments: ?[]const Segment = null,
     backgroundBlur: ?BackgroundBlur = null,
     backgroundSegmentationMask: ?*runtime.Instance = null,

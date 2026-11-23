@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const NavigatorUABrandVersion = @import("NavigatorUABrandVersion.zig").NavigatorUABrandVersion;
 
 pub const UADataValues = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     architecture: ?runtime.DOMString = null,
     bitness: ?runtime.DOMString = null,
     brands: ?[]const NavigatorUABrandVersion = null,

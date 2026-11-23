@@ -7,6 +7,8 @@ const callbacks = @import("callbacks");
 const TranslatorCreateCoreOptions = @import("TranslatorCreateCoreOptions.zig").TranslatorCreateCoreOptions;
 
 pub const TranslatorCreateOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from TranslatorCreateCoreOptions
     base: TranslatorCreateCoreOptions,
 
