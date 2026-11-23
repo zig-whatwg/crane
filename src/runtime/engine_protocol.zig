@@ -3113,7 +3113,16 @@ pub inline fn abortWebAssemblyResponse(compilation: *WebAssemblyResponseCompilat
 // it - script has run since - so a node wrapped again, put back in a tree, or
 // freed by someone else in between is not the queue's to free.
 
-/// Whether `instance` has a wrapper in its relevant realm.
+/// Whether `instance` has a wrapper in ANY world: its relevant realm's, or
+/// an isolated world's (section 4.2a) - "has script seen it" asks every
+/// world, so a caller that frees an instance it finds unwrapped never frees
+/// one only a world's wrapper reaches (Blink keeps a wrapper per world in
+/// each world's DOMDataStore, and any of them keeps its object). A caller
+/// that needs the relevant realm's own wrapper - to keep it, or to hang an
+/// edge on it - makes it with `retainValue`. JavaScriptCore and QuickJS have
+/// no worlds: their relevant realm's wrapper. (Main's ruling of 2026-11-23
+/// 12:17 PM ET, lane rc8: before it V8 read the relevant realm's cache
+/// alone.)
 pub inline fn hasWrapper(instance: *Instance) bool {
     return impl.hasWrapper(instance);
 }

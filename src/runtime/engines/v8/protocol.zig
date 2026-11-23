@@ -1172,11 +1172,24 @@ pub const abortWebAssemblyResponse = protocol_webassembly.abortWebAssemblyRespon
 // 4.12 Platform objects
 // ============================================================================
 
-/// In `instance`'s relevant realm: the wrapper cache of the realm it was
-/// created in.
+/// engine.hasWrapper: a wrapper in ANY world - the wrapper cache of the
+/// realm it was created in, or a node's own slot, then (once its Browser made
+/// an isolated world: one load until then) each world realm's cache of its
+/// realm group (protocol_worlds.hasWrapperInOtherWorld). "Has script seen
+/// it" asks every world: a caller that frees an instance it finds unwrapped
+/// must not free one only a world's wrapper reaches (main's ruling of
+/// 2026-11-23 12:17 PM ET, lane rc8; Blink keeps a wrapper per world in each
+/// world's DOMDataStore, and any of them keeps its object).
 pub fn hasWrapper(instance: *Instance) bool {
+    if (hasOwnRealmWrapper(instance)) return true;
+    if (!protocol_worlds.realmMayHaveWorlds(instance.ctx)) return false;
+    return protocol_worlds.hasWrapperInOtherWorld(instance);
+}
+
+/// A wrapper in `instance`'s own realm's cache - a node's, in its own slot
+/// (node_wrappers).
+fn hasOwnRealmWrapper(instance: *Instance) bool {
     const cache = instance.ctx.getV8WrapperCacheStorage() orelse return false;
-    // A node's wrapper is its agent's, in its own slot (node_wrappers).
     if (instance.vtable.counted != null) return @import("node_wrappers.zig").hasWrapper(instance);
     return v8_engine.v8GetWrapperForInstance(cache, cache, instance) != null;
 }

@@ -1175,3 +1175,23 @@ pub fn drawTracedValuesOnWrap(cache: *const WrapperCache, instance: *engine.Inst
     if (isCache(own, cache) or own.is_tearing_down) return;
     own.takeWaitingValues(instance, wrapper);
 }
+
+/// engine.hasWrapper beyond `instance`'s own realm: whether another realm of
+/// its group - a world realm's cache, or its main realm's for an instance of
+/// a world realm - has a wrapper of it. The caller made sure a world realm
+/// may exist (`realmMayHaveWorlds`). A Window's other wrappers are its world
+/// realms' globals, which it does not count: those realms end before its own.
+pub fn hasWrapperInOtherWorld(instance: *engine.Instance) bool {
+    const Found = struct {
+        found: bool = false,
+
+        fn visit(self: *@This(), _: *ffi.Object) bool {
+            self.found = true;
+            return false;
+        }
+    };
+    var found: Found = .{};
+    const own: ?*const WrapperCache = cacheOf(instance.ctx);
+    eachOtherWrapper(instance, own, &found, Found.visit);
+    return found.found;
+}
