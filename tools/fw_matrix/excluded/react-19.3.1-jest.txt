@@ -342,12 +342,6 @@ why       = React replays the user's change during hydration by dispatching a fa
 browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness; Chrome's trace: the replayed PointerEvent click turns checked false to true (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
 source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:390
 
-[Shared useSyncExternalStore behavior (shim and built-in) > mutating the store in between render and commit when getSnapshot has changed]
-kind      = jsdom-only
-why       = the shim test runs React 17's UMD build, whose scheduler posts its work through MessageChannel where the global has one and falls back to setTimeout, which Jest's fake timers hold; jsdom has no MessageChannel, every browser has, so a passive effect runs earlier in a browser ("Passive effect: 0" before "A1")
-browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness; MessageChannel works in all three (probe tmp/react1/probes/jsdom-classes.html), jsdom 26's window has none
-source    = packages/use-sync-external-store/src/__tests__/useSyncExternalStoreShared-test.js:324
-
 [FragmentRefs > compareDocumentPosition > returns the relationship between the fragment instance and a given node]
 kind      = follows-spec
 why       = asserts DOCUMENT_POSITION_FOLLOWING for an element in another tree; DOM's compareDocumentPosition makes that side implementation-specific (DISCONNECTED + IMPLEMENTATION_SPECIFIC + either PRECEDING or FOLLOWING, consistently). Crane gives Chrome's side in every probe (an element made earlier reads PRECEDING; consistent across 200 nodes of one tree: tmp/react1/probes/cdp-pos.html, cdp-order.html); Firefox 159 picks FOLLOWING in both tests, Safari 27 in one of the two - no browser majority on the side, so the spec decides, which Crane meets
@@ -359,3 +353,9 @@ kind      = follows-spec
 why       = asserts DOCUMENT_POSITION_FOLLOWING for an element in another tree; DOM's compareDocumentPosition makes that side implementation-specific (DISCONNECTED + IMPLEMENTATION_SPECIFIC + either PRECEDING or FOLLOWING, consistently). Crane gives Chrome's side in every probe (an element made earlier reads PRECEDING; consistent across 200 nodes of one tree: tmp/react1/probes/cdp-pos.html, cdp-order.html); Firefox 159 picks FOLLOWING in both tests, Safari 27 in one of the two - no browser majority on the side, so the spec decides, which Crane meets
 ruling    = integrator ruling 2026-11-22 11:57 PM ET (follows-spec: implementation-specific by DOM, no browser majority; Crane = Chrome)
 source    = packages/react-dom/src/__tests__/ReactDOMFragmentRefs-test.js:2580
+
+[Shared useSyncExternalStore behavior (shim and built-in) > compares to current state before bailing out, even when there's a mutation in between the sync and passive effects]
+kind      = jsdom-only
+why       = runs React 17's UMD build (the shim test) and, by design, renders without act, leaving a passive effect scheduled when it ends; React 17's scheduler posts it through MessageChannel where the global has one, else through setTimeout, which Jest's fake timers hold - jsdom has no MessageChannel, so under jsdom the effect never runs, while in a browser it runs during the NEXT test and logs into it ("Passive effect: 0" before "A1"). Excluded so it never runs (the filter): its successors then pass
+browsers  = MessageChannel works in Chrome 157, Firefox 159 and Safari 27 (probe tmp/react1/probes/jsdom-classes.html), jsdom 26's window has none; with this test running, the test after it fails in all three through the harness, and filtering only the victim moves the failure to the next test (Crane and Chrome runs c8, k-r1, c-r1)
+source    = packages/use-sync-external-store/src/__tests__/useSyncExternalStoreShared-test.js:281
