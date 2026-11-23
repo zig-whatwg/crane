@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A Zig function nothing references is never analysed](architecture-an-unreferenced-zig-function-is-never-analysed.md) - **In Zig, "it builds" says nothing about a function nothing calls: an unreferenced body is never analysed, so check for a caller before fixing, testing or citing such code.**
 - [std.heap.page_allocator maps a page per allocation](architecture-std-heap-page-allocator-maps-a-page-per-allocation.md) - **`page_allocator` is an mmap per allocation: a small record on it costs a page and a mapping each, so it never holds per-object or per-call state.**
 - [A volatile style on a focused element uncaches every style read in an editing host](architecture-a-volatile-style-on-a-focused-element-uncaches-every-style-read-in-an-editing-host.md) - **"Volatile" is for state no revision can track; on a focused element it uncached the whole editing host - pull a revision of the state instead.**
 - [Architecture: A remote end knows its existing targets before it accepts its first connection](architecture-a-remote-end-knows-its-existing-targets-before-its-first-connection.md) - **When a protocol's first answer depends on state another thread delivers, deliver it before accepting connections. A posted, unawaited setup step is a race against the fastest client, and its failures look like unrelated protocol gaps.**
