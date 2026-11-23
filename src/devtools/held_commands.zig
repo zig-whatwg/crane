@@ -42,19 +42,16 @@
 //! lets through: their params are decoded in the browser, so params that do
 //! not parse are answered at once, held or not, as Chrome's crdtp dispatcher
 //! answers them (`PageSession.holds` asks the dispatcher to decode them
-//! before it holds). Two differences remain, stated:
-//! - A check a Chrome browser handler makes on params that do parse
-//!   (Network.setExtraHTTPHeaders' header names, Emulation.
-//!   setDeviceMetricsOverride's ranges, DOM.setFileInputFiles refused) is
-//!   answered at once there; here it is the domain handler's, so its error
-//!   comes after the navigation. Answering it at once needs each such
-//!   handler split into a check and its effect.
-//! - Emulation.setDeviceMetricsOverride and clearDeviceMetricsOverride that
-//!   change nothing - the same parameters again, or no override to clear -
-//!   Chrome answers in the browser (EmulationHandler compares its
-//!   device_emulation_params_); here they are held. Telling needs the
-//!   emulation domain to keep the parameters it applied, not only the
-//!   viewport and screen it set.
+//! before it holds). So are Emulation.setDeviceMetricsOverride and
+//! clearDeviceMetricsOverride that change nothing - the same params again,
+//! or no override to clear: EmulationHandler answers those itself, and so
+//! does the emulation domain here, at once (emulation.changesNothing).
+//! One difference remains, stated: a check a Chrome browser handler makes
+//! on params that do decode (Network.setExtraHTTPHeaders' header names,
+//! Emulation.setDeviceMetricsOverride's ranges, DOM.setFileInputFiles
+//! refused) is answered at once there; here it is the domain handler's, so
+//! its error comes after the navigation. Answering it at once needs each
+//! such handler split into a check and its effect.
 //!
 //! kExecutionOnly is the mode of a session attached to an agent host made
 //! for a navigation already in flight - one whose host is created at the

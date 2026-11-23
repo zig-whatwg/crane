@@ -22,6 +22,7 @@ const outbound = @import("outbound.zig");
 const host_bridge = @import("host_bridge.zig");
 const page_domains = @import("domains/page_domains.zig");
 const held_commands = @import("held_commands.zig");
+const emulation_domain = @import("domains/emulation.zig");
 const BrowserSide = @import("browser_side.zig").BrowserSide;
 
 const log = std.log.scoped(.devtools);
@@ -155,6 +156,9 @@ pub const PageSession = struct {
         const mode = self.holdMode() orelse return false;
         if (!held_commands.holds(mode, method)) return false;
         if (held_commands.decodedInBrowser(method) and !dispatch_mod.paramsDecode(page_domains.Handlers, arena, command)) return false;
+        // A device metrics override that changes nothing Chrome's browser
+        // answers itself (EmulationHandler): at once.
+        if (emulation_domain.changesNothing(self, method, command.params, arena)) return false;
         const copy = self.allocator.dupe(u8, raw) catch return false;
         self.held.append(self.allocator, copy) catch {
             self.allocator.free(copy);

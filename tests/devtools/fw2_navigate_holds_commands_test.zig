@@ -409,6 +409,45 @@ test "params Chrome decodes in the browser and that do not decode are answered a
     try testing.expect(r.responseIndex(page_decoded).? < r.responseIndex(well_formed).?);
 }
 
+test "a device metrics override that changes nothing is answered at once mid-navigation; one that changes something waits" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var setup = try Setup.start(gpa.allocator());
+    defer setup.stop();
+    var target: [64]u8 = undefined;
+    const session = try setup.attachPage(&target);
+    defer gpa.allocator().free(session);
+    const r = setup.rec();
+    try setup.navigate(session, "/page.html");
+    const a = "{\"width\":400,\"height\":300,\"deviceScaleFactor\":1,\"mobile\":false}";
+    const b = "{\"width\":500,\"height\":300,\"deviceScaleFactor\":1,\"mobile\":false}";
+    _ = try r.result(try r.send("Emulation.setDeviceMetricsOverride", a, session));
+
+    // The same params again change nothing: answered at once. Others wait.
+    const navigation = try setup.sendNavigate(session, "/gated.html");
+    try setup.site.awaitArrived(1);
+    const again = try r.send("Emulation.setDeviceMetricsOverride", a, session);
+    _ = try r.result(again);
+    const other = try r.send("Emulation.setDeviceMetricsOverride", b, session);
+    _ = try r.awaitResponse(try r.send("Page.getNavigationHistory", "{}", session));
+    try testing.expectEqual(@as(?usize, null), r.responseIndex(other));
+    setup.site.release();
+    const navigation_at = try r.awaitResponse(navigation);
+    try testing.expect(navigation_at < try r.awaitResponse(other));
+    try testing.expectEqual(@as(i64, 500), cdp.at(try r.result(try setup.sendEvaluate(session, "innerWidth")), "result.value").?.integer);
+
+    // None set: a clear changes nothing, answered at once; a set waits.
+    _ = try r.result(try r.send("Emulation.clearDeviceMetricsOverride", "{}", session));
+    const second = try setup.sendNavigate(session, "/gated.html");
+    try setup.site.awaitArrived(2);
+    _ = try r.result(try r.send("Emulation.clearDeviceMetricsOverride", "{}", session));
+    const set = try r.send("Emulation.setDeviceMetricsOverride", a, session);
+    _ = try r.awaitResponse(try r.send("Page.getNavigationHistory", "{}", session));
+    try testing.expectEqual(@as(?usize, null), r.responseIndex(set));
+    setup.site.release();
+    try testing.expect(try r.awaitResponse(second) < try r.awaitResponse(set));
+}
+
 test "a session that attaches while its tab navigates holds too (kAll)" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
