@@ -94,6 +94,29 @@ thread may call; `BrowserHost.answerUserPrompt`) and a page asking for a window
 (`window_open`). The C ABI is `include/crane.h` (src/browser/capi.zig, emitted by
 src/lib_exports.zig): the same events (`crane_event_t`, grown behind `struct_size`) and
 `crane_tab_answer_dialog`.
+Tab scope (2026-11-23, lane tab1; roadmap item "Tab state"): what a tab holds lives in its scope,
+`runtime.TabScope` (src/runtime/tab_scope.zig), which every Window realm of the tab carries as it carries
+its Browser's scope (`ContextData.tab_scope`; `TabScope.ofRealm` reads an isolated world's through its
+main realm, a ShadowRealm's through its principal; a worker realm has none). The top-level browsing
+context's record - the tab's record, ending after the last Window that showed it - makes it on first use
+(`BrowsingContext.tabScope`) and closes it in its deinit; a frame's context takes its parent's tab at
+initChild, so an orphaned frame still names its tab. The scope is counted (the record, each frame
+context, each Window realm - set where a Window's browsing context becomes final, released at the
+Window's end) and freed by its last holder, so a realm record the engine keeps past its end names no
+freed scope. It holds the tab's id (the TabId the host and the platform use), its system visibility
+(HTML 6.2) and system focus (HTML 6.6.2), and SLOTS for what a lower layer cannot name, ended in order
+when the tab closes: the session history's traversal queue, the session history (the record keeps
+borrowed aliases), the frame clock with its documents' animation frame bookkeeping (one frame timer per
+tab on the Browser's loop, its display's refresh interval), and the session storage shed (Storage 4.3).
+A tab's end touches only its own state: its Context's end no longer empties the loop's frames or the
+agent's pending mutation observers (`mutation_observer_algorithms.resetPage`). Each window's timer ids
+are its own, from 1 (HTML 8.6 step 2, all three browsers). System focus: every tab has it (headless
+Chrome) unless the host narrows it (`BrowserConfig.focus = .active_tab`, crane.h `focus_mode`: then only
+the active tab has it - `activateTab` and a foreground `createTab` move it, the active tab's end gives it
+to the first open tab); a tab without it answers `hasFocus()` false, matches no `:focus`, and moves
+the focus silently (Blink, WebKit and Gecko alike), and its pages hear a change as blur/focus at the
+focused element and its Window; CDP's Emulation.setFocusEmulationEnabled makes a background tab answer as
+focused. The C ABI takes `profile_dir` (CRANE_ERR_PROFILE_IN_USE for a second live Browser on it).
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
@@ -104,9 +127,9 @@ the part every lane needs to know before it adds state.
 |---|---|---|
 | **Process** (`crane.Process`) | everything that is the same for every instance and never changes after start-up | the V8 platform and snapshot, curl's global init, immutable tables, every src/dom hook (installed once by `Process.init`, before any instance) |
 | **Browser** | one Crane instance: one thread for its window agent (isolate) and event loop, plus one thread per worker - a WebDriver BiDi "user context" | the web's shared state a browser profile holds: the storage shed (localStorage, IndexedDB, Cache API, buckets), the cookie jar, the HTTP cache and network, the blob URL store, BroadcastChannel delivery, SharedWorker instances, Web Locks, service worker registrations and clients, permissions, the browsing context groups and the tabs; and its runtime allocators and engine registries |
-| **Tab** | one top-level traversable - its top-level BrowsingContext's record, which ends after the last Window that showed it | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener, ended with the record), the frame clock, visibility and system focus, its frames |
+| **Tab** | one top-level traversable - its top-level BrowsingContext's record, which ends after the last Window that showed it; its state is a `runtime.TabScope` every Window realm of it carries | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener, ended with the record), the frame clock with its documents' animation frame bookkeeping, visibility and system focus, its frames |
 | **Agent** (event loop) | the window agent, or a worker's - each worker agent on its own thread | the custom element reactions stack, mutation observer state, the timer nesting level, the execution context stack, the nesting of its script-queue drains (`AgentHost.script_drain`), the [[HostDefined]] records of its classic scripts (`AgentHost.classic_scripts`) |
-| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers, animation frame callbacks, module map, fetch group |
+| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers and their ids (each global counts its own from 1), module map, fetch group |
 
 A tab the host creates starts a new browsing context group; a popup joins its opener's group,
 unless it was opened with noopener. Two Browsers in one process share nothing mutable. In memory by
@@ -151,9 +174,12 @@ for that commit, then finishes as the write says).
    lessons/architecture-a-threadlocal-is-per-thread-not-per-instance-or-tab.md). A process global
    is shared by every instance.
 2. **Reach state through the realm you run in**: a platform object's relevant realm is `instance.ctx`;
-   a realm will carry its Browser's scope and its Tab's scope. Per-Browser and per-Tab state of a
-   subsystem is a supplement of that scope (Blink's `Supplementable`), made on first use and
-   destroyed with the scope.
+   a realm carries its Browser's scope (`ContextData.browser_scope`) and its Tab's scope
+   (`ContextData.tab_scope`, `runtime.TabScope.ofRealm`). Per-Browser and per-Tab state of a
+   subsystem is a supplement of that scope (Blink's `Supplementable`; a tab's, a `TabScope` slot),
+   made on first use and destroyed with the scope. A page's end takes only its own entries out of
+   what its agent or event loop keeps for every tab (lesson
+   architecture-a-pages-end-must-not-reset-what-its-tabs-share.md).
 3. **A hook is process-wide and written once**, at process start - never installed lazily by the
    first owner, never per instance.
 4. `zig build lint-global-state` (part of `zig build test`; tools/lint_global_state.zig) counts
@@ -209,6 +235,9 @@ impl fills so code that may not name the impl can reach a step. Since B0:
   and header-less `whatwg_browser_*` go.
 - **Every popup is a tab**, `noopener` included, as WebDriver BiDi reports them.
 - **Background tabs are visible by default** (headless Chrome's behaviour); the host can mark a tab hidden.
+- **System focus: the host decides, headless by default** (the user, 2026-11-19): every tab has it, as
+  headless Chrome; a host that renders narrows it to its active tab (`BrowserConfig.focus =
+  .active_tab`), and `activateTab` moves it.
 - **Proxies**: explicit configurations only; PAC files and auto-detection are NotSupported in 0.1
   (the user, 2026-11-23: "put in 0.2" - tmp/plans/queue-0.2.md).
 - **The WPT runner gives each test file a fresh tab** from B5, once a sweep shows no file's status changes.
