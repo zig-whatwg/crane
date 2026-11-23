@@ -703,11 +703,6 @@
       "case": "network: list, filter, details",
       "call": 9,
       "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The later reqids shift by it."
-    },
-    {
-      "case": "network: list, filter, details",
-      "call": 1,
-      "reason": "The page sets document.title after its load (from a fetch); Chrome reports every title the page sets (WebContents TitleWasSet -> Target info), Crane's BrowserSide reports the title only at DOMContentLoaded and load (browser_side.zig fanOutNavigation), so Target.getTargets still has the load-time title. A CDP finding for main (a title-change hook from the DOM, Blink's Document::UpdateTitle)."
     }
   ]
 }
