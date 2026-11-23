@@ -264,6 +264,17 @@ pub const NetworkError = error{
     /// CURLE_GOT_NOTHING; Chromium's ERR_EMPTY_RESPONSE). Retried, and
     /// failed over, exactly as ConnectionReset, which it was before.
     EmptyResponse,
+    /// The connection closed before the body its Content-Length announced
+    /// was in (libcurl's CURLE_PARTIAL_FILE; Chromium's
+    /// ERR_CONTENT_LENGTH_MISMATCH).
+    ContentLengthMismatch,
+    /// A chunked body ended before its last chunk (CURLE_PARTIAL_FILE on a
+    /// chunked response; Chromium's ERR_INCOMPLETE_CHUNKED_ENCODING).
+    IncompleteChunkedEncoding,
+    /// A chunked body whose framing does not parse (libcurl's chunk parser
+    /// fails it with CURLE_RECV_ERROR; Chromium's
+    /// ERR_INVALID_CHUNKED_ENCODING).
+    InvalidChunkedEncoding,
     /// Protocol error
     ProtocolError,
     /// Out of memory

@@ -173,6 +173,9 @@ pub fn getErrorCategoryName(err: NetworkError) []const u8 {
     if (err == NetworkError.HostUnreachable) return "host unreachable";
     if (err == NetworkError.ConnectionReset) return "connection reset";
     if (err == NetworkError.EmptyResponse) return "empty response";
+    if (err == NetworkError.ContentLengthMismatch) return "content length mismatch";
+    if (err == NetworkError.IncompleteChunkedEncoding) return "incomplete chunked encoding";
+    if (err == NetworkError.InvalidChunkedEncoding) return "invalid chunked encoding";
     if (err == NetworkError.ProtocolError) return "protocol error";
     if (err == NetworkError.OutOfMemory) return "out of memory";
     return "unknown error";
