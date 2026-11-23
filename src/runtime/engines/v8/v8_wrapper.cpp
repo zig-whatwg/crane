@@ -4357,7 +4357,10 @@ extern "C" bool v8_Isolate_RunFreshFinalizers(Isolate* isolate, uint32_t innermo
     IsolateData* record = isolateData(isolate);
     if (!record || !stamp_of) return true;
     if (record->finalizers_running) return false;
-    if (isolate->HasPendingException()) return record->unjudged_finalizers.empty();
+    // The node wrappers' fresh releases run after this answers done
+    // (finalizer_safe_point.zig freshStep, lane mem1): with an exception
+    // pending they wait too, as at depth zero (`runQueuedFinalizersInTask`).
+    if (isolate->HasPendingException()) return record->unjudged_finalizers.empty() && !record->node_wrappers_collected;
     if (record->unjudged_finalizers.empty()) {
         if (record->finalizers_owed) *record->finalizers_owed &= static_cast<uint8_t>(~record->fresh_owed_mask);
         return true;
@@ -5450,7 +5453,10 @@ static void drainNodeWrappers(IsolateData* record) {
 /// synchronous, global-handles.cc:881-889).
 static void noteNodeWrappersCollected(IsolateData* record) {
     record->node_wrappers_collected = true;
-    oweFinalizers(record, record->finalizers_owed_mask);
+    // And a look at a callback's binding return: a release whose node was
+    // made inside the innermost callback runs there (lane mem1;
+    // node_wrappers.zig Registry.releaseFresh).
+    oweFinalizers(record, record->finalizers_owed_mask | record->fresh_owed_mask);
 }
 
 /// Node anchors whose free cppgc refused - its lazy sweep was running

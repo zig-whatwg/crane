@@ -143,6 +143,16 @@ pub const Measure = struct {
     nodes: usize,
     /// What those nodes hold of their Browser's DOM memory (`countedBytes`).
     bytes: usize,
+    /// The lowest slab generation among the tree's nodes - when the tree was
+    /// begun, as far as its oldest node says (runtime.SlabAllocator stamps
+    /// every Instance from a monotonic counter) - for the deferred teardown
+    /// queue's fresh rule (runtime.gc.DeferredTeardown: a tree made inside
+    /// the running callback may be freed at a binding's return into its
+    /// script). 0, `SlabAllocator.dead_generation`, when the walk cannot
+    /// vouch for every node: it stopped at its cap, or met a node with no
+    /// registered Instance. Unknown is OLD: "fresh" is proven, never assumed
+    /// (lane mem1).
+    min_generation: u64,
 };
 
 /// `countUpTo` that also sums what each node it counts holds of its Browser's
@@ -153,7 +163,7 @@ pub const Measure = struct {
 /// nodes the rest of the tree is neither counted nor summed: its bytes stay
 /// in the figure until its slices free them, as every tree's did before.
 pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
-    var measure: Measure = .{ .nodes = 1, .bytes = countedBytes(root) };
+    var measure: Measure = .{ .nodes = 1, .bytes = countedBytes(root), .min_generation = generationOf(root) };
     var at: *NodeBase = root;
     while (measure.nodes < cap) {
         if (at.firstChild()) |child| {
@@ -165,8 +175,28 @@ pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
         }
         measure.nodes += 1;
         measure.bytes += countedBytes(at);
+        measure.min_generation = @min(measure.min_generation, generationOf(at));
     }
+    // Stopped at the cap: the rest of the tree is not vouched for.
+    if (at.firstChild() != null or at != root and !isLastInTree(at, root)) measure.min_generation = runtime.SlabAllocator.dead_generation;
     return measure;
+}
+
+/// `node`'s slab generation, or `dead_generation` (0, the lowest: OLD) for a
+/// node with no registered Instance.
+fn generationOf(node: *const NodeBase) u64 {
+    const instance: *const runtime.Instance = node.registeredInstance() orelse return runtime.SlabAllocator.dead_generation;
+    return runtime.SlabAllocator.generationOf(instance);
+}
+
+/// Whether nothing follows `at` in `root`'s tree order: no next sibling on
+/// the way back up to `root`.
+fn isLastInTree(at: *NodeBase, root: *NodeBase) bool {
+    var node = at;
+    while (node != root) : (node = node.parent_node orelse return true) {
+        if (node.next_sibling != null) return false;
+    }
+    return true;
 }
 
 /// What `node` holds of its Browser's DOM memory, as far as its NodeBase and

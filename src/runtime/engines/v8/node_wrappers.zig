@@ -225,6 +225,19 @@ pub const Registry = struct {
     /// Releases a collection could not record (no memory): references kept,
     /// so those trees are freed only at the agent's end. Diagnostics.
     lost_releases: u64 = 0,
+    /// How many of `released`, from its start, a callback's safe point
+    /// judged OLD (`releaseFresh`): made before the outermost callback on
+    /// the stack, they wait for the drain and are not looked at again -
+    /// every later callback began later still. A drain empties the list and
+    /// resets it; anything else that reorders the list resets it to 0 (look
+    /// again).
+    judged_old: usize = 0,
+    /// A fresh release is on the stack (`releaseFresh`): a binding's return
+    /// beneath it releases nothing.
+    releasing_fresh: bool = false,
+    /// Releases run at a callback's safe point, cumulative (diagnostics,
+    /// tests).
+    fresh_released: u64 = 0,
     /// The walk's per-collection set of tree roots already walked
     /// (engine.traceVisitOnce): filled in a collection's atomic pause, emptied
     /// at the end of its marking (`markedCallback`), its capacity kept.
@@ -261,10 +274,73 @@ pub const Registry = struct {
         // One at a time, the next taken afresh: a release can run what wraps
         // and collects, whose weak processing appends here.
         while (self.released.pop()) |released| releaseOne(released);
+        self.judged_old = 0;
         self.shrinkReleased();
         // Every recorded reference is released: what a collection's end of
         // marking predicted dead has been queued by now, or lived.
         @import("external_memory.zig").releasesDone(self.isolate);
+    }
+
+    /// THE SAFE POINT INSIDE A CALLBACK for the recorded releases (lane
+    /// mem1): a binding returned into the script of the innermost callback
+    /// invocation, which began at `innermost` on the agent's callback clock
+    /// (the outermost on the stack at `outermost`). A release whose node
+    /// was made inside that invocation - its slab generation, recorded by
+    /// the collection, at or above the invocation's entry
+    /// (DeferredTeardown.freshSerialOf) - runs here: the frames below the
+    /// invocation were suspended before the node existed, so none holds it,
+    /// the argument by which the invocation's fresh finalizers run here too
+    /// (finalizer_safe_point.zig). A release only counts: the tree it
+    /// leaves with no hold is QUEUED (dom.refcount_teardown.settle) and
+    /// freed by the queue's rules - inside a callback, only a tree made
+    /// inside it (DeferredTeardown.runFreshTrees). One made inside an outer
+    /// invocation waits for script to be back there (its stamp in
+    /// `waiting`); anything older waits for the drain (`judged_old`).
+    ///
+    /// Before this, every recorded release waited for depth zero, and a
+    /// garbage tree whose nodes script had wrapped stayed whole for the
+    /// rest of the callback: 3,000 delete-joins in one timer callback
+    /// peaked at 1.9x the same joins spread over callbacks
+    /// (tests/html/perf1_garbage_weight_test).
+    ///
+    /// Not here, and not done (the queue owes the look again): a
+    /// collection's marking window is open (`marking_from`: its end of
+    /// marking reads the list from that index), a walk holds the agent's
+    /// teardowns (its last resume drains), or a fresh release is already on
+    /// the stack. Nothing at all once the registry has ended. The caller
+    /// has checked the engine's own rules (no finalizer running, no
+    /// exception pending: v8_Isolate_RunFreshFinalizers answered done).
+    pub fn releaseFresh(self: *Registry, queue: *const runtime.gc.DeferredTeardown, innermost: u32, outermost: u32) runtime.gc.DeferredTeardown.FinalizerSteps.Fresh {
+        if (self.ended) return .{ .done = true, .waiting = 0 };
+        if (self.marking_from != null or self.releasing_fresh) return .{ .done = false, .waiting = 0 };
+        if (self.holds) |holds| if (holds.count != 0) return .{ .done = false, .waiting = 0 };
+        self.releasing_fresh = true;
+        defer self.releasing_fresh = false;
+        var waiting: u32 = 0;
+        var at = @min(self.judged_old, self.released.items.len);
+        self.judged_old = at;
+        while (at < self.released.items.len) {
+            const released = self.released.items[at];
+            const stamp = queue.freshSerialOf(runtime.SlabAllocator.ownerOf(released.instance), released.generation);
+            if (stamp != 0 and stamp >= innermost) {
+                // Off the list before it runs: a release can run what wraps
+                // and collects, whose weak processing appends here.
+                _ = self.released.swapRemove(at);
+                self.fresh_released += 1;
+                releaseOne(released);
+                continue;
+            }
+            if (stamp != 0 and stamp >= outermost) {
+                waiting = @max(waiting, stamp);
+            } else {
+                // OLD: into the judged prefix. What it trades places with
+                // was judged waiting in this pass (the entries between are).
+                std.mem.swap(Released, &self.released.items[at], &self.released.items[self.judged_old]);
+                self.judged_old += 1;
+            }
+            at += 1;
+        }
+        return .{ .done = true, .waiting = waiting };
     }
 
     /// The list a drain emptied keeps a small capacity, not its high water.
@@ -279,6 +355,7 @@ pub const Registry = struct {
     /// (design 4.9 steps 2-3). No node is wrapped again (`ended`), so one
     /// pass ends every wrapper.
     fn releaseAll(self: *Registry) void {
+        self.judged_old = 0;
         while (self.released.pop()) |released| releaseOne(released);
         var keeps = self.keeps.valueIterator();
         while (keeps.next()) |entry| {
@@ -588,6 +665,8 @@ pub fn nodeDestroyed(instance: *runtime.Instance) void {
 pub fn releaseRealm(realm: runtime.Context) void {
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
     const registry = registryOf(isolate) orelse return;
+    // Its removals reorder the list: the next callback's look judges afresh.
+    registry.judged_old = 0;
     var at: usize = 0;
     while (at < registry.released.items.len) {
         const released = registry.released.items[at];
