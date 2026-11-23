@@ -58,6 +58,7 @@ pub const enumerations = @import("types/enumerations.zig");
 pub const dictionaries = @import("types/dictionaries.zig");
 pub const record_conversion = @import("types/record_conversion.zig");
 pub const unions = @import("types/unions.zig");
+pub const union_arms = @import("types/union_arms.zig");
 pub const buffer_sources = @import("types/buffer_sources.zig");
 pub const callbacks = @import("types/callbacks.zig");
 pub const frozen_arrays = @import("types/frozen_arrays.zig");
@@ -118,6 +119,8 @@ pub const Record = wrappers.Record;
 pub const Promise = wrappers.Promise;
 pub const Enumeration = enumerations.Enumeration;
 pub const Union = unions.Union;
+/// One entry of a generated union's `arms` table (union_arms.zig).
+pub const UnionArm = union_arms.Arm;
 
 // Re-export buffer source types
 pub const ArrayBuffer = buffer_sources.ArrayBuffer;
