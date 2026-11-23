@@ -58,6 +58,15 @@ pub const ImplError = error{
 pub const NodeOrString = union(enum) {
     node: *runtime.Instance,
     string: []const u8,
+
+    /// What each field's member type is, for the binding's union conversion
+    /// (WebIDL 3.2.25; webidl.union_arms). TODO(lane bind1 B2): codegen names
+    /// (Node or DOMString) as a typedef with its own table, and this
+    /// hand-written union goes.
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "node", .kind = .{ .interface = "Node" } },
+        .{ .field = "string", .kind = .string },
+    };
 };
 
 /// Internal state for ParentNode mixin

@@ -1196,21 +1196,35 @@ fn isOptWrapper(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed");
 }
 
-/// The union arm `name` of `T` is a reference to an object: WebIDL's
-/// `object`, or a typed array type (3.2.26, "a reference to the same
-/// object"). Codegen types both as runtime.JSValue and names the arm for the
-/// type - `object`, `uint8clamped_array` - and `conv.fromV8Value`'s union
-/// path gives each the argument's own handle. A JSValue arm under another
-/// name is not one - CryptoKeyID's and MLNumber's `bigint`.
+/// The union arm `name` of `T` holds a reference to the value converted
+/// from - the argument's own handle (conv.referenceTo): WebIDL's `object`
+/// (3.2.25 steps 5.2-11.7), a typed array type (3.2.26, "a reference to the
+/// same object"), and `bigint` (step 14: V itself). Codegen types each
+/// runtime.JSValue, and its arms table says which member type the arm holds
+/// (conv.unionArmKind) - never the arm's name.
 ///
 /// The typed array arms joined when their conversion was written
 /// (2026-10-04); every impl taking such a union was read for keepers:
 /// ImageData takes its own hold of its data (engine.retainValue), and the
 /// rest - WebGL's Float32List/Int32List/Uint32List, OrientationSensor's
-/// RotationMatrixType - are stubs that keep nothing.
+/// RotationMatrixType - are stubs that keep nothing. The bigint arms joined
+/// with the arms tables (lane bind1 batch B), read for keepers the same way:
+/// MLNumber's (MLPadOptions.value, MLClampOptions.minValue/maxValue, which
+/// MLGraphBuilder's pad and clamp stubs ignore) and CryptoKeyID's
+/// (RTCRtpSFrameEncryptor/Decryptor and SFrameEncryptor/DecryptorStream key
+/// operations, SFrameTransformErrorEventInit.keyID - stubs that keep
+/// nothing).
+///
+/// A union with no arms table - one codegen did not describe, which the
+/// binding never converts (conv.unionArmsOf) - has none: the conservative
+/// answer.
 fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
     if (@FieldType(T, name) != runtime.JSValue) return false;
-    return std.mem.eql(u8, name, "object") or conv.typedArrayArmName(name) != null;
+    const kind = comptime conv.describedUnionArmKind(T, name) orelse return false;
+    return switch (kind) {
+        .object, .typed_array, .bigint => true,
+        else => false,
+    };
 }
 
 /// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of

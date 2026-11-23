@@ -199,21 +199,19 @@ test "a dictionary leaves an absent member out" {
 //
 // WebIDL 3.2.25 step 9: a value with a [[TypedArrayName]] converts to the
 // union's typed array type of that name - "a reference to the same object"
-// (3.2.26). Codegen types such an arm as runtime.JSValue named for the
-// type (ImageDataArray = `(Uint8ClampedArray or Float16Array)` is
-// `uint8clamped_array` / `float16array`), and no step of the union
-// conversion matched it: `new ImageData(new Uint8ClampedArray(16), 2)`
-// failed its data argument. The arm holds the argument's own handle, as an
-// `object` arm does, and the binding releases it after the call - the
-// predicates must say so, or every call leaks the handle.
+// (3.2.26). Codegen types such an arm as runtime.JSValue and says in the
+// union's arms table which typed array type it holds (ImageDataArray =
+// `(Uint8ClampedArray or Float16Array)`: `.{ .typed_array =
+// "Uint8ClampedArray" }`), and no step of the union conversion matched it:
+// `new ImageData(new Uint8ClampedArray(16), 2)` failed its data argument.
+// The arm holds the argument's own handle, as an `object` arm does, and the
+// binding releases it after the call - the predicates must say so, or every
+// call leaks the handle.
 // ===========================================================================
-test "a typed array arm is named for its type" {
+test "a typed array arm says its type in the arms table" {
     defer test_agent.close();
-    try testing.expectEqualStrings("Uint8ClampedArray", conv.typedArrayArmName("uint8clamped_array").?);
-    try testing.expectEqualStrings("Float16Array", conv.typedArrayArmName("float16array").?);
-    try testing.expectEqualStrings("Float32Array", conv.typedArrayArmName("float32array").?);
-    try testing.expect(conv.typedArrayArmName("object") == null);
-    try testing.expect(conv.typedArrayArmName("glfloat_sequence") == null);
+    try testing.expectEqualStrings("Uint8ClampedArray", comptime conv.unionArmKind(ImageDataArray, "uint8clamped_array").typed_array);
+    try testing.expectEqualStrings("Float16Array", comptime conv.unionArmKind(ImageDataArray, "float16array").typed_array);
 }
 
 test "a Uint8ClampedArray converts to ImageDataArray's uint8clamped_array arm, as a reference" {

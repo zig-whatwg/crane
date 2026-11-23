@@ -512,7 +512,16 @@ test "setterValueIsBorrowed - an any, nullable or optional, is borrowed for the 
 }
 
 test "setterValueIsBorrowed - a union whose only non-copied arm is `object` is borrowed" {
-    const ObjectOrString = union(enum) { object: runtime.JSValue, text: runtime.DOMString };
+    // Its arms table says `object` (webidl.union_arms): the predicates read
+    // the table, never the arm's name.
+    const ObjectOrString = union(enum) {
+        object: runtime.JSValue,
+        text: runtime.DOMString,
+        pub const arms = [_]@import("webidl").UnionArm{
+            .{ .field = "object", .kind = .object },
+            .{ .field = "text", .kind = .string },
+        };
+    };
     try std.testing.expect(borrowed(ObjectOrString));
     try std.testing.expect(borrowed(?ObjectOrString));
 }
