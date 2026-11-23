@@ -389,8 +389,9 @@ pub const WindowRect = struct {
 /// A window's state (CDP Browser.WindowState).
 pub const WindowState = enum { normal, minimized, maximized, fullscreen };
 
-/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
-pub const SystemVisibility = enum { visible, hidden };
+/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible" - a
+/// traversable's, which its tab holds (runtime.TabScope.system_visibility).
+pub const SystemVisibility = TabScope.Visibility;
 
 /// A viewport's size in CSS pixels (CSSOM View innerWidth/innerHeight are
 /// `long`).
@@ -515,15 +516,6 @@ pub const BrowsingContext = struct {
     /// iframe navigates, and every document keeps its own active set.
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#popup-sandboxing-flag-set
     popup_sandboxing_flags: SandboxingFlagSet = .empty,
-
-    /// HTML 7.3.1.1: a traversable navigable's system visibility state -
-    /// whether its window is minimized, its tab in the background, the page
-    /// covered by a system element. "Determined by the user agent, including
-    /// its initial value upon creation" (HTML 6.2): the platform's
-    /// (`systemVisibility` when the traversable is made, `visibility_changed`
-    /// after). Kept on the top-level traversable - every traversable is one -
-    /// and read for any navigable through `traversableSystemVisibility`.
-    system_visibility: SystemVisibility = .visible,
 
     /// A top-level traversable's viewport size in CSS pixels, as the
     /// platform's window reports it (`window_rect_changed(tab, rect)`: a
@@ -1139,8 +1131,17 @@ pub const BrowsingContext = struct {
         hook.touched(hook.context, self.id);
     }
 
+    /// HTML 7.3.1.1: the system visibility state of this navigable's
+    /// traversable navigable - whether its window is minimized, its tab in
+    /// the background, the page covered by a system element. "Determined by
+    /// the user agent, including its initial value upon creation" (HTML
+    /// 6.2): the platform's (`systemVisibility` when the traversable is made,
+    /// `visibility_changed` after), which its tab holds
+    /// (runtime.TabScope.system_visibility). Visible for a context of no tab
+    /// (out of memory).
     pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
-        return self.getTop().system_visibility;
+        const tab = self.tabScope() orelse return .visible;
+        return tab.system_visibility;
     }
 
     /// The viewport size of this navigable's top-level traversable - a
