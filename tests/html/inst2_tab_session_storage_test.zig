@@ -17,14 +17,24 @@
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
+const runtime = @import("runtime");
 const fixture_mod = @import("inst2_tabs_fixture.zig");
 
 const Fixture = fixture_mod.Fixture;
+const TabScope = runtime.TabScope;
+const Shed = @import("html").web_storage.TraversableStorageShed;
 
-/// Whether the Browser still holds a session storage shed for tab `id`.
-fn hasShed(fixture: *Fixture, id: u64) bool {
-    const navigables = dom.browser_state.existingNavigablesIn(fixture.browser.scope) orelse return false;
-    return navigables.traversable_storage.contains(id);
+/// Tab `bc`'s scope, held by the test (lane tab1: the shed is the tab's,
+/// runtime.TabScope's session_storage slot): `release` it.
+fn holdTab(bc: *fixture_mod.BrowsingContext) !*TabScope {
+    const realm = fixture_mod.activeRealm(bc) orelse return error.NoRealm;
+    const tab = TabScope.ofRealm(realm) orelse return error.NoTab;
+    return tab.retain();
+}
+
+/// Whether the tab still holds a session storage shed: none once it closed.
+fn hasShed(tab: *TabScope) bool {
+    return tab.get(.session_storage, Shed) != null;
 }
 
 test "a popup tab's session storage ends when the tab is closed" {
@@ -33,17 +43,21 @@ test "a popup tab's session storage ends when the tab is closed" {
     const host = try fixture.hostTab();
     const opened = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
     const id = opened.id;
+    const tab = try holdTab(opened);
+    defer tab.release();
     try fixture.run(opened, "sessionStorage.setItem('s', 'x'.repeat(1000)); true");
-    try testing.expect(hasShed(fixture, id));
+    try testing.expect(hasShed(tab));
 
     // The opener lets its WindowProxy go too: a Window script still reaches
     // holds its browsing context (BrowsingContext.window_holds).
     try fixture.run(host, "p.close(); p = null; true");
     try fixture.waitUntilGone(id);
-    try testing.expect(!hasShed(fixture, id));
+    try testing.expect(tab.closed and !hasShed(tab));
     // The host's tab keeps its own.
     try fixture.run(host, "sessionStorage.setItem('h', '1'); true");
-    try testing.expect(hasShed(fixture, host.id));
+    const host_tab = try holdTab(host);
+    defer host_tab.release();
+    try testing.expect(hasShed(host_tab));
 }
 
 test "a noopener tab the host closes takes its session storage with it" {
@@ -51,13 +65,15 @@ test "a noopener tab the host closes takes its session storage with it" {
     defer fixture.stop();
     const separate = try fixture.openTab("window.open('/other.html', '_blank', 'noopener'); true", "/other.html");
     const id = separate.id;
+    const tab = try holdTab(separate);
+    defer tab.release();
     try fixture.run(separate, "sessionStorage.setItem('s', '1'); true");
-    try testing.expect(hasShed(fixture, id));
+    try testing.expect(hasShed(tab));
 
     // The host's UI closes it (HTML "close a top-level traversable").
     try fixture.browser.closeTraversable(id);
     try fixture.waitUntilGone(id);
-    try testing.expect(!hasShed(fixture, id));
+    try testing.expect(tab.closed and !hasShed(tab));
 }
 
 test "the host page's traversable takes its session storage with it when a fresh one replaces it" {
@@ -65,8 +81,10 @@ test "the host page's traversable takes its session storage with it when a fresh
     defer fixture.stop();
     const first = try fixture.hostTab();
     const first_id = first.id;
+    const first_tab = try holdTab(first);
+    defer first_tab.release();
     try fixture.run(first, "sessionStorage.setItem('s', 'first'); true");
-    try testing.expect(hasShed(fixture, first_id));
+    try testing.expect(hasShed(first_tab));
 
     // Browser.navigate: a FRESH top-level traversable, the one before it
     // closed - what the WPT runner does for each file.
@@ -74,7 +92,7 @@ test "the host page's traversable takes its session storage with it when a fresh
     const second = try fixture.hostTab();
     try testing.expect(second.id != first_id);
     try fixture.waitUntilGone(first_id);
-    try testing.expect(!hasShed(fixture, first_id));
+    try testing.expect(first_tab.closed and !hasShed(first_tab));
     // A new traversable: none of the old one's session storage.
     try fixture.expect(second, "String(sessionStorage.getItem('s'))", "null");
 }
@@ -85,6 +103,8 @@ test "an opener holding a closed popup's sessionStorage reads it safely after th
     const host = try fixture.hostTab();
     const opened = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
     const id = opened.id;
+    const tab = try holdTab(opened);
+    defer tab.release();
     // The opener keeps the popup's Storage object and lets the popup itself
     // go: closed, its WindowProxy dropped.
     try fixture.run(host, "globalThis.kept = p.sessionStorage; kept.setItem('k', 'v'); p.close(); p = null; true");
@@ -109,11 +129,11 @@ test "an opener holding a closed popup's sessionStorage reads it safely after th
     // Storage works on it as before the close (no other tab shares it).
     try fixture.expect(host, "reads.join()", "value:v,value:1,value:k,value:set,value:cleared");
     try testing.expect(dom.browser_state.existingNavigablesIn(fixture.browser.scope).?.byId(id) != null);
-    try testing.expect(hasShed(fixture, id));
+    try testing.expect(hasShed(tab));
 
     // Once the opener lets it go too, the traversable's record ends, and its
     // shed with it.
     try fixture.run(host, "kept = null; true");
     try fixture.waitUntilGone(id);
-    try testing.expect(!hasShed(fixture, id));
+    try testing.expect(tab.closed and !hasShed(tab));
 }

@@ -28,7 +28,6 @@ const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.browsing_context);
 const infra = @import("infra");
 const cookiestore = @import("cookiestore");
-const storage = @import("storage");
 const clock = @import("clock");
 
 // Import Origin type from window module
@@ -173,12 +172,6 @@ pub const Navigables = struct {
     /// simply not found. It was one map per thread (lane gstate4).
     navigations: std.AutoHashMapUnmanaged(u64, *anyopaque) = .empty,
     navigations_guard: infra.tombstones.TombstoneGuard = .{},
-    /// The storage sheds the Browser's traversable navigables hold - session
-    /// storage (Storage 4.3: "A traversable navigable holds a storage shed"),
-    /// by each one's top-level browsing context id; each ends with its
-    /// context's record (`BrowsingContext.deinit`). Window-thread state, as
-    /// this list is: sessionStorage is [Exposed=Window].
-    traversable_storage: storage.TraversableStorageSheds,
     /// The Browser's navigation observer - its one slot, which the Browser
     /// sets to its own dispatcher (src/html/navigation/observer.zig): told
     /// each navigation milestone of these navigables, on the window thread.
@@ -206,7 +199,7 @@ pub const Navigables = struct {
     frame_touched: ?FrameTouched = null,
 
     pub fn init(allocator: Allocator) Navigables {
-        return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
+        return .{ .allocator = allocator };
     }
 
     /// The list's end, with its Browser's scope: the retired contexts are
@@ -224,10 +217,7 @@ pub const Navigables = struct {
         self.integrations.deinit(self.allocator);
         // A navigation ends with its integration, before its Browser does.
         self.navigations.deinit(self.allocator);
-        // The storage sheds of traversables whose records outlived the list
-        // (the contexts above, freed by their own ends, took theirs).
-        self.traversable_storage.deinit();
-        self.* = .{ .allocator = self.allocator, .traversable_storage = .init(self.allocator) };
+        self.* = .{ .allocator = self.allocator };
     }
 
     /// `integration` joins this list (once) - the list of its browsing
@@ -964,17 +954,7 @@ pub const BrowsingContext = struct {
             self.allocator.destroy(history);
             self.joint_history = null;
         }
-        if (self.navigables) |navigables| {
-            // Its traversable's storage shed - session storage - goes with
-            // it, as its session history just did (Storage 4.3: a
-            // traversable navigable holds it; HTML "destroy a top-level
-            // traversable" step 5 removes the traversable). This record is
-            // the last of the traversable: freed once its owner released it
-            // and no Window holds it, so no Storage reads the shed any more
-            // (storage.TraversableStorageSheds). A frame's context has none.
-            navigables.traversable_storage.discard(self.id);
-            navigables.remove(self);
-        }
+        if (self.navigables) |navigables| navigables.remove(self);
 
         self.allocator.destroy(self);
     }
