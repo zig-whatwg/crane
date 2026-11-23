@@ -160,6 +160,14 @@ pub const InternalState = struct {
     /// `RefPtr<Element> m_protectedElement` while an event is pending
     /// (Source/WebCore/loader/ImageLoader.h).
     load_ref: dom.node_holds.CountedRef = .{},
+    /// The element's slab generation when the keep was taken: `releaseLoad`
+    /// releases the keep and the counted reference only while the slot is
+    /// still that element's (as `releaseLoadHold` checks before it calls).
+    /// A walk of the registry - keyed by address - can reach a state whose
+    /// slot went without the element's deinit; releasing through that slot
+    /// read a freed Instance (lane hard1: the heap zeroes a freed slot's
+    /// Instance words, tests/html/image_fetch_detach_test.zig).
+    kept_generation: u64 = 0,
     /// The document whose load event the element's update of the image data
     /// delays, with its slab generation (HTML "update the image data" step
     /// 26: an eager img's fetch "must delay the load event of element's node
@@ -174,6 +182,7 @@ pub const InternalState = struct {
     fn keepLoad(self: *InternalState, instance: *runtime.Instance) void {
         if (self.kept_alive) return;
         self.kept_alive = true;
+        self.kept_generation = runtime.SlabAllocator.generationOf(instance);
         engine.keepPlatformObjectAlive(instance);
         self.load_ref.take(instance, dom.instance_bridge.getNodeBase(instance));
     }
@@ -183,6 +192,12 @@ pub const InternalState = struct {
         self.endLoadDelay();
         if (!self.kept_alive) return;
         self.kept_alive = false;
+        // The slot is no longer the element the keep was taken for: what
+        // the keep held went with the slot, and nothing of it is read.
+        if (runtime.SlabAllocator.generationOf(instance) != self.kept_generation) {
+            self.load_ref = .{};
+            return;
+        }
         engine.releasePlatformObject(instance);
         self.load_ref.release(instance);
     }

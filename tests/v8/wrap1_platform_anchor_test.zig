@@ -1070,7 +1070,8 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
         try testing.expectEqual(@as(c_int, -1), ffi.v8_test_PlatformAnchorWatch_Names(watch));
         while (ffi.v8_Platform_PumpMessageLoop(page.isolate())) {}
         _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
-        try testing.expect(cache.get(instance) == null);
+        // The instance is freed now: ask the cache's map by address - `get` reads the instance's vtable, a read after its free (the heap zeroes a freed slot's Instance words; allocator hardening batch A).
+        try testing.expect(cache.cache.get(instance) == null);
         try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
     }
 }
@@ -1159,7 +1160,8 @@ test "a wrapper held by a weak handle that the cache keeps survives both kinds o
         try testing.expectEqual(handle, cache.get(instance) orelse return error.NotCached);
         try testing.expect(ffi.v8_Global_IsWeak(@ptrCast(handle)));
         page.fullGC();
-        try testing.expect(cache.get(instance) == null);
+        // The instance is freed now: ask the cache's map by address - `get` reads the instance's vtable, a read after its free (the heap zeroes a freed slot's Instance words; allocator hardening batch A).
+        try testing.expect(cache.cache.get(instance) == null);
         try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
     }
 
@@ -1184,7 +1186,8 @@ test "a wrapper held by a weak handle that the cache keeps survives both kinds o
         const full_before = page.fullCollections();
         try page.minorGC(4);
         if (page.fullCollections() != full_before) continue;
-        try testing.expect(cache.get(instance) == null);
+        // The instance is freed now: ask the cache's map by address - `get` reads the instance's vtable, a read after its free (the heap zeroes a freed slot's Instance words; allocator hardening batch A).
+        try testing.expect(cache.cache.get(instance) == null);
         try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
         // Arming, disarming and both deaths left no callback record behind.
         try testing.expect(try page.counter("live_weak_callback_data") <= records_before);
