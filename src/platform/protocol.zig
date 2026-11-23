@@ -1527,8 +1527,9 @@ pub const CssEnvironmentVariable = enum(u8) {
 /// fallback. x/y index viewport segments horizontally/vertically; ignored
 /// for scalars. Hosts supply finite values and bump cssEnvironmentRevision
 /// whenever a value changes. Available without the layout capability.
-/// Until recipes step 7 supplies document -> TabId mapping, built-in
-/// platforms answer per Browser, ignoring tab; DOM callers pass 0.
+/// DOM callers pass the document's tab - its realm's (runtime.TabScope:
+/// recipes step 7's document -> TabId mapping), 0 for a realm of no tab;
+/// built-in platforms answer per Browser, ignoring tab.
 pub inline fn cssEnvironmentVariable(browser: *BrowserPlatform, tab: TabId, variable: CssEnvironmentVariable, x: u32, y: u32) ?f64 {
     return impl.cssEnvironmentVariable(browser, tab, variable, x, y);
 }
