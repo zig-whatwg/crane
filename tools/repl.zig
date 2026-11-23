@@ -349,30 +349,39 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
 
 /// The first window of a remote-debugging browser, before the server starts:
 /// the client finds it as an existing target, as it finds Chrome's first
-/// window. --no-startup-window: none (Chrome starts with no browser window;
-/// the client's Target.createTarget makes the first tab).
+/// window - the Browser's own first page, the one page there is, navigated
+/// (as the browser's UI navigates) to the command line's URL. Headless Chrome
+/// starts with that one window; a tab opened beside it was a second page no
+/// browser has (lane mcp1's differential pass, main 2:44 PM ET 2026-11-23).
+/// --no-startup-window: none (Chrome starts with no browser window; the
+/// client's Target.createTarget makes the first tab).
 pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options) !void {
-    const FirstTab = struct {
+    if (options.no_startup_window) return;
+    if (std.mem.eql(u8, options.url, "about:blank")) return;
+    const FirstWindow = struct {
         url: []const u8,
         failed: bool = false,
         fn run(context: ?*anyopaque, b: *Browser) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
-            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
+            const id = b.hostTraversableId() orelse {
+                self.failed = true;
+                return;
+            };
+            b.navigateTraversable(id, self.url) catch {
                 self.failed = true;
             };
         }
     };
-    if (options.no_startup_window) return;
-    var first_tab: FirstTab = .{ .url = options.url };
-    host.call(&first_tab, FirstTab.run) catch return error.FirstWindow;
-    if (first_tab.failed) return error.FirstWindow;
+    var first: FirstWindow = .{ .url = options.url };
+    host.call(&first, FirstWindow.run) catch return error.FirstWindow;
+    if (first.failed) return error.FirstWindow;
 }
 
 /// `--mcp` (lane mcp1; design tmp/plans/mcp1-design.md 2.2): Crane's own MCP
 /// server on stdin/stdout - what an agent's MCP configuration starts instead
 /// of `npx chrome-devtools-mcp`. The Browser runs on a thread of its own with
-/// one tab (the command line's URL, else about:blank, as Chrome's first
-/// window); the devtools server runs with no listener, the MCP server being
+/// its first page (the command line's URL, else about:blank, as Chrome's first
+/// window: openFirstWindow); the devtools server runs with no listener, the MCP server being
 /// its in-process client; stdout carries MCP messages only (logs go to
 /// stderr). Input's end ends the console.
 fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out: *std.Io.Writer) !u8 {
@@ -388,9 +397,13 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         return 1;
     };
     defer host.stop();
-    // The browser's first page is the one page there is, as Chrome starts
-    // with one blank page: the MCP client opens and navigates pages itself
-    // (new_page, navigate_page).
+    // The browser's first page is the one page there is, as Chrome starts:
+    // the command line's URL loads in it, else it stays blank.
+    openFirstWindow(host, options) catch {
+        try err_out.print("repl: the first page could not open\n", .{});
+        try err_out.flush();
+        return 1;
+    };
     const server = devtools.Server.start(allocator, .{
         .user_agent = options.user_agent orelse "",
         .default_host = host,
