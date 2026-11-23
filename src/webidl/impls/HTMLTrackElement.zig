@@ -103,6 +103,13 @@ pub const InternalState = struct {
             // step 13 jumps to top. A failure step 10 queued with no fetch
             // (an empty URL, no browsing context) is left to run; `failed`
             // then reaches step 12 with the changed URL.
+            // The abort, as the browsers do it, differs in all three (lane
+            // flk4's probe, 2026-11-23): Chrome 157 fires error and loads
+            // the new URL; Firefox 159 fires error and never fetches the new
+            // URL; Safari 27 fires no error and loads it. Golden rule 2,
+            // mechanism by mechanism: error fired - Chrome and Firefox; the
+            // new URL loaded - Chrome and Safari. Together that is Chrome's
+            // shipping behaviour and the spec's steps here.
             self.generation +%= 1;
             self.activity.discardTasks(false);
             self.stopFetch();
