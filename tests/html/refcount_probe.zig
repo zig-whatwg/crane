@@ -1,5 +1,5 @@
 //! Shared by the refcount_*_test.zig files (lane rc12, step 1 of
-//! tmp/plans/refcount-design.md section 7): a page on a thread of its own, a
+//! docs/refcount-design.md section 7): a page on a thread of its own, a
 //! settled collection, and the live-node count read from the slab - the probe
 //! the design calls "a live-node count probe through a test hook".
 //!
@@ -16,7 +16,7 @@ const testing = std.testing;
 const browser_mod = @import("browser");
 const runtime = @import("runtime");
 
-/// Which migration steps have landed (tmp/plans/refcount-design.md section 7).
+/// Which migration steps have landed (docs/refcount-design.md section 7).
 pub const migrated = struct {
     /// Step 7: counts decide; a garbage tree is freed through the deferred
     /// queue, so a never-wrapped detached tree no longer lives to realm end.

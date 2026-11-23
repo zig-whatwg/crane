@@ -1,5 +1,5 @@
-//! Lane refcount9: refcount step 7, the switch (tmp/plans/refcount-design.md
-//! section 1.4 and section 7 step 7; tmp/plans/refcount9-design.md).
+//! Lane refcount9: refcount step 7, the switch (docs/refcount-design.md
+//! section 1.4 and section 7 step 7; docs/refcount9-design.md).
 //!
 //! Counts decide: a tree whose total reaches zero is flagged garbage where
 //! the counts say so - a removal, a holder's or a wrapper's release - and

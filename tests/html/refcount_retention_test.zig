@@ -1,5 +1,5 @@
 //! Step 1 of the reference-counting migration (lane rc12,
-//! tmp/plans/refcount-design.md section 7): the retention the migration must
+//! docs/refcount-design.md section 7): the retention the migration must
 //! fix, and the lifetime it must keep, measured as live instances after the
 //! page settles (tests/html/refcount_probe.zig).
 //!

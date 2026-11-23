@@ -16,10 +16,10 @@
 //! readyState/event sequence is identical either way - which is what the WPT
 //! event-order tests check.
 //!
-//! The remaining deviation is that `progress` fires once rather than per
-//! 50ms window, because the body arrives in one piece. Event ORDER and the
-//! final `loaded`/`total` are spec-correct; the number of intermediate
-//! `progress` events is not, and needs the response body streamed.
+//! An asynchronous request's body is streamed: each piece that arrives is
+//! step 11.9.10's processBodyChunk (`sendAsyncBodyChunk`), which fires
+//! `progress` at most once per ~50 ms window, and its end is
+//! processEndOfBody (`sendAsyncEndOfBody`).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
