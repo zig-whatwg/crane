@@ -1108,6 +1108,19 @@ pub fn cueTextFragment(owner: *runtime.Instance, list: *const CueNode) !*runtime
     return fragment;
 }
 
+/// The fragment Chrome, Firefox and Safari answer for empty cue text: one
+/// empty Text node (VTTCue.getCueAsHTML says why).
+pub fn emptyCueTextFragment(owner: *runtime.Instance) !*runtime.Instance {
+    const fragment = try interfaces.Document.call_createDocumentFragment(owner);
+    errdefer dom.node_creation.destroyUninserted(fragment);
+    const parent = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
+    const text = try interfaces.Document.call_createTextNode(owner, runtime.DOMString.initEmpty());
+    const base = dom.instance_bridge.getNodeBase(text) orelse return error.InvalidStateError;
+    errdefer if (base.parent_node == null) dom.node_creation.destroyUninserted(text);
+    _ = try dom.mutation.append(base, parent);
+    return fragment;
+}
+
 fn appendCueNodes(owner: *runtime.Instance, parent: *runtime.Instance, node: *const CueNode) !void {
     const parent_base = dom.instance_bridge.getNodeBase(parent) orelse return error.InvalidStateError;
     for (node.children.items) |child| {

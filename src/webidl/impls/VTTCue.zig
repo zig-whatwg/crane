@@ -241,6 +241,16 @@ pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = try internalOf(instance);
     const document = entryDocument() orelse relevantDocument(instance) orelse return error.InvalidStateError;
+    // Empty cue text: the parsing rules return an empty list, and the DOM
+    // construction rules an empty fragment. Chrome, Firefox and Safari all
+    // answer a fragment holding one empty Text node instead (Blink's
+    // VTTParser::CreateDocumentFragmentFromCueText appends Text::Create(
+    // document, "") for empty cue text), and
+    // track-element/track-cue-empty.html expects it: wpt.fyi 1/1 in Chrome
+    // 157 (run 4786307730243584), Firefox 160 (4877168468033536) and Safari
+    // 27.2 (6479119966273536). No newer spec is involved: golden rule 2
+    // takes the browsers' Text node.
+    if (internal.text.asSlice().len == 0) return html.webvtt.emptyCueTextFragment(document);
     var tree = try html.webvtt.parseCueText(instance.ctx.allocator, internal.text.asSlice(), null);
     defer tree.deinit();
     return html.webvtt.cueTextFragment(document, tree.root);

@@ -159,6 +159,10 @@ test "vtt1: getCueAsHTML applies the WebVTT cue text DOM construction rules" {
         \\const want = '<span class=a b>"x"</><span title=Foo&Bar>"t"</><?timestamp 01:00:13.500><span lang=en-US>"y"</><ruby>"r"<rt>"s"</></>"<"';
         \\if (!(frag instanceof DocumentFragment) || frag.ownerDocument !== document || frag.firstChild.namespaceURI !== 'http://www.w3.org/1999/xhtml' || got !== want)
         \\  globalThis.failed = got;
+        \\// Empty cue text: one empty Text node, as Chrome, Firefox and Safari answer.
+        \\const empty = new VTTCue(0, 0, '').getCueAsHTML();
+        \\if (empty.childNodes.length !== 1 || !(empty.firstChild instanceof Text) || empty.firstChild.data !== '')
+        \\  globalThis.failed = 'empty cue text: ' + empty.childNodes.length + ' children';
         ,
     });
 }
