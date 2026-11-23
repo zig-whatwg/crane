@@ -133,6 +133,10 @@ pub const Options = struct {
     /// Chrome's `--remote-debugging-pipe`: CDP on the inherited descriptors
     /// 3 (read) and 4 (write), NUL-delimited (decision D8).
     remote_debugging_pipe: bool = false,
+    /// `--mcp`: the console serves the Model Context Protocol on stdin and
+    /// stdout - Crane's built-in chrome-devtools-mcp tools (lane mcp1,
+    /// devtools.mcp; `serveMcp`).
+    mcp: bool = false,
     /// Chrome's `--remote-allow-origins=<a,b>` (or `*`): origins whose
     /// WebSocket connections are served.
     remote_allow_origins: ?[]const u8 = null,
@@ -189,6 +193,8 @@ pub const usage =
     \\  --remote-debugging-pipe       serve it on descriptors 3 (in) and 4 (out)
     \\  --remote-allow-origins=<list> origins allowed to connect (comma-separated, or *)
     \\  --user-data-dir=<dir>         the profile directory; DevToolsActivePort is written there
+    \\  --mcp                         serve the Model Context Protocol on stdin/stdout:
+    \\                                chrome-devtools-mcp's tools, built into Crane
     \\  --headless                    accepted (Crane is headless); other Chrome switches are
     \\                                accepted and ignored with remote debugging
     \\
@@ -243,6 +249,8 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.remote_debugging_port = std.fmt.parseUnsigned(u16, value, 10) catch return error.InvalidPort;
         } else if (std.mem.eql(u8, arg, "--remote-debugging-pipe")) {
             options.remote_debugging_pipe = true;
+        } else if (std.mem.eql(u8, arg, "--mcp")) {
+            options.mcp = true;
         } else if (valueOf(arg, "--remote-allow-origins")) |value| {
             options.remote_allow_origins = value;
         } else if (valueOf(arg, "--user-data-dir")) |value| {
@@ -354,6 +362,67 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
         try err_out.flush();
     }
     server.waitUntilClosed();
+    return 0;
+}
+
+/// `--mcp` (lane mcp1; design tmp/plans/mcp1-design.md 2.2): Crane's own MCP
+/// server on stdin/stdout - what an agent's MCP configuration starts instead
+/// of `npx chrome-devtools-mcp`. The Browser runs on a thread of its own with
+/// one tab (the command line's URL, else about:blank, as Chrome's first
+/// window); the devtools server runs with no listener, the MCP server being
+/// its in-process client; stdout carries MCP messages only (logs go to
+/// stderr). Input's end ends the console.
+fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out: *std.Io.Writer) !u8 {
+    const config: BrowserConfig = .{
+        .ca_bundle_path = options.ca_bundle,
+        .user_agent = options.user_agent,
+        .proxy = options.proxy,
+        .accept_insecure_certs = options.accept_insecure_certs,
+    };
+    const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
+        try err_out.print("repl: the browser could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer host.stop();
+    const FirstTab = struct {
+        url: []const u8,
+        failed: bool = false,
+        fn run(context: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
+                self.failed = true;
+            };
+        }
+    };
+    var first_tab: FirstTab = .{ .url = options.url };
+    host.call(&first_tab, FirstTab.run) catch {
+        first_tab.failed = true;
+    };
+    if (first_tab.failed) {
+        try err_out.print("repl: the first tab could not open\n", .{});
+        try err_out.flush();
+        return 1;
+    }
+    const server = devtools.Server.start(allocator, .{
+        .user_agent = options.user_agent orelse "",
+        .default_host = host,
+        .context_config = config,
+    }) catch |err| {
+        try err_out.print("repl: the MCP server could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer server.stop();
+    var in_buffer: [1 << 20]u8 = undefined;
+    var stdin = std.Io.File.stdin().readerStreaming(io, &in_buffer);
+    var out_buffer: [64 * 1024]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(io, &out_buffer);
+    devtools.mcp.server.serveStdio(allocator, server, &stdin.interface, &stdout.interface) catch |err| {
+        try err_out.print("repl: --mcp: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
     return 0;
 }
 
@@ -2067,6 +2136,11 @@ pub fn main(init: std.process.Init) !u8 {
         try err_out.flush();
         return 2;
     }
+    if (options.mcp and !devtools.enabled) {
+        try err_out.print("repl: --mcp: {s}\n", .{devtools.unavailable_message});
+        try err_out.flush();
+        return 2;
+    }
     if (options.remoteDebugging() and !devtools.enabled) {
         try err_out.print("repl: --remote-debugging-{s}: {s}\n", .{ if (options.remote_debugging_pipe) "pipe" else "port", devtools.unavailable_message });
         try err_out.flush();
@@ -2105,6 +2179,7 @@ pub fn main(init: std.process.Init) !u8 {
     defer process.deinit();
 
     if (comptime devtools.enabled) {
+        if (options.mcp) return serveMcp(allocator, io, options, err_out);
         if (options.remoteDebugging()) return serveDevtools(allocator, options, err_out);
     }
 

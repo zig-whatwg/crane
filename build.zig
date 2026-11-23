@@ -8955,6 +8955,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         devtools_mod.addImport("engine", engine_mod);
         devtools_mod.addImport("fetch", fetch_mod);
         devtools_mod.addImport("infra", infra_mod);
+        devtools_mod.addImport("url", url_mod); // the MCP server's validateUrl (lane mcp1)
         // The page-side domains read documents and nodes through their
         // generated interfaces (DOM.describeNode, Page.getFrameTree), as the
         // console does - never an impl.

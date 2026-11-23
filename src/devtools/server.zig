@@ -817,6 +817,30 @@ pub const Server = struct {
         connection.release();
     }
 
+    /// Any thread: an in-process client's connection (Crane's MCP server,
+    /// lane mcp1, design tmp/plans/mcp1-design.md 2.1): a browser session as
+    /// a pipe's is, with no transport - the client sends through
+    /// `LocalLink.send` and reads the connection's outbound itself. One
+    /// implementation of each behaviour: the MCP tools speak CDP to the same
+    /// handlers every client reaches.
+    pub fn openLocal(self: *Server) !*LocalLink {
+        const connection = try Connection.create(self, .local);
+        const link = self.allocator.create(LocalLink) catch |err| {
+            connection.release();
+            return err;
+        };
+        // The link holds the creation's reference; the devtools thread's
+        // list, the task's.
+        link.* = .{ .connection = connection, .allocator = self.allocator };
+        if (!self.postTask(AddConnection, .{ .connection = connection.retain() })) {
+            // The refused task dropped its reference.
+            connection.release();
+            self.allocator.destroy(link);
+            return error.Stopping;
+        }
+        return link;
+    }
+
     fn acceptorMain(context: ?*anyopaque) callconv(.c) void {
         const self: *Server = @ptrCast(@alignCast(context.?));
         const listener = self.listener.?;
@@ -1198,7 +1222,9 @@ const AddConnection = struct {
             self.drop(server.allocator);
             return;
         };
-        if (self.connection.transport == .pipe) {
+        // A pipe's and an in-process client's connection is a browser
+        // session at once (no HTTP, no upgrade).
+        if (self.connection.transport == .pipe or self.connection.transport == .local) {
             self.connection.mode.store(.pipe, .release);
             server.makeBrowserSession(self.connection) catch {};
         }
@@ -1350,6 +1376,63 @@ const OwnedRequest = struct {
 // Connections: a reader and a writer thread each
 // ============================================================================
 
+/// An in-process CDP client's end of its connection (`Server.openLocal`):
+/// used by one thread. `send` posts a message as a connection's reader posts
+/// one; `receive` takes what the server sent, in order, from the outbound a
+/// writer thread would drain.
+pub const LocalLink = struct {
+    connection: *Connection,
+    allocator: Allocator,
+    /// Taken from the outbound and not yet returned by `receive`.
+    pending: std.ArrayList(outbound.Item) = .empty,
+    closed: bool = false,
+
+    /// Post `text` (copied) to the devtools thread. error.Closed once the
+    /// connection has ended.
+    pub fn send(self: *LocalLink, text: []const u8) !void {
+        if (self.closed or self.connection.outbound.isClosed()) return error.Closed;
+        const copy = try self.allocator.dupe(u8, text);
+        if (!self.connection.server.postTask(MessageTask, .{ .connection = self.connection.retain(), .text = copy })) return error.Closed;
+    }
+
+    /// The next message the server sent, OWNED (`allocator`); waits up to
+    /// `timeout_ns` (null: until one comes). Null on timeout or when the
+    /// connection has ended with nothing left.
+    pub fn receive(self: *LocalLink, timeout_ns: ?u64) ?[]u8 {
+        var waited = false;
+        while (true) {
+            while (self.pending.items.len > 0) {
+                const item = self.pending.orderedRemove(0);
+                if (item.kind == .message) return item.bytes;
+                self.allocator.free(item.bytes);
+            }
+            if (self.closed) return null;
+            const state = self.connection.outbound.takeAll(&self.pending) catch return null;
+            if (self.pending.items.len > 0) continue;
+            if (state.closed) {
+                self.closed = true;
+                return null;
+            }
+            // A timed wait that returned with nothing: the time is up (a
+            // spurious return only shortens it; callers keep a deadline).
+            if (timeout_ns) |ns| if (waited or ns == 0) return null;
+            self.connection.outbound.wait(timeout_ns);
+            waited = true;
+        }
+    }
+
+    /// End the connection (its sessions detach, as a closed socket's) and
+    /// free the link.
+    pub fn close(self: *LocalLink) void {
+        const server = self.connection.server;
+        _ = server.postTask(ClosedTask, .{ .connection = self.connection.retain() });
+        for (self.pending.items) |item| self.allocator.free(item.bytes);
+        self.pending.deinit(self.allocator);
+        self.connection.release();
+        self.allocator.destroy(self);
+    }
+};
+
 pub const Connection = struct {
     server: *Server,
     /// Set by the devtools thread when it lists the connection.
@@ -1374,6 +1457,10 @@ pub const Connection = struct {
     pub const Transport = union(enum) {
         socket: platform.DevtoolsStream,
         pipe: platform.DevtoolsPipe,
+        /// An in-process client (`LocalLink`: Crane's MCP server, lane
+        /// mcp1): no descriptor, no reader or writer thread - the client
+        /// posts its messages and takes its answers from the outbound itself.
+        local,
     };
 
     pub const Mode = enum(u8) { http, websocket, pipe };
@@ -1382,7 +1469,7 @@ pub const Connection = struct {
         const self = try server.allocator.create(Connection);
         errdefer server.allocator.destroy(self);
         const read_wake: ?platform.DevtoolsWake = switch (transport) {
-            .socket => null,
+            .socket, .local => null,
             .pipe => try platform.devtoolsWakeNew(),
         };
         errdefer if (read_wake) |w| platform.devtoolsWakeClose(w);
@@ -1409,6 +1496,7 @@ pub const Connection = struct {
                 platform.devtoolsClose(p.read);
                 platform.devtoolsClose(p.write);
             },
+            .local => {},
         }
         if (self.read_wake) |w| platform.devtoolsWakeClose(w);
         self.outbound.release();
@@ -1426,6 +1514,8 @@ pub const Connection = struct {
                 platform.devtoolsShutdown(p.read);
                 platform.devtoolsShutdown(p.write);
             },
+            // The client sees the outbound closed (`LocalLink.receive`).
+            .local => {},
         }
     }
 
@@ -1463,6 +1553,7 @@ pub const Connection = struct {
         return switch (self.transport) {
             .socket => |s| s,
             .pipe => |p| p.read,
+            .local => unreachable, // no reader thread
         };
     }
 
@@ -1470,6 +1561,7 @@ pub const Connection = struct {
         return switch (self.transport) {
             .socket => |s| s,
             .pipe => |p| p.write,
+            .local => unreachable, // no writer thread
         };
     }
 
@@ -1491,6 +1583,7 @@ pub const Connection = struct {
         switch (self.transport) {
             .socket => self.readSocket(),
             .pipe => self.readPipe(),
+            .local => unreachable, // no reader thread
         }
     }
 
