@@ -94,6 +94,24 @@ const TimerMap = struct {
         return &self.realm.active_timers;
     }
 
+    /// The timer initialization steps' step 2: "an implementation-defined
+    /// integer that is greater than zero and does not already exist in
+    /// global's map of active timers" - the window's own count from 1
+    /// (`runtime.ContextData.next_timer_id`), wrapping past the greatest
+    /// `long` and skipping an id still in the map. Each global counts its
+    /// own, as Blink's DOMTimerCoordinator, Gecko's TimeoutManager and
+    /// WebKit's ScriptExecutionContext do, and a worker's global here does
+    /// (html.worker_host takeTimerId): two windows' first timers are both 1.
+    /// The timer's native wait has an id of the loop's timer manager's
+    /// (`WindowTimerData.current_timer_id`), never seen by script.
+    fn takeId(self: TimerMap) TimerId {
+        while (true) {
+            const id = self.realm.next_timer_id;
+            self.realm.next_timer_id = if (id >= std.math.maxInt(i32)) 1 else id + 1;
+            if (id > 0 and self.get(@intCast(id)) == null) return @intCast(id);
+        }
+    }
+
     fn put(self: TimerMap, id: TimerId, wrapper: *WindowTimerCallback) !void {
         try self.ids().put(self.realm.allocator, id, wrapper);
     }
@@ -794,17 +812,20 @@ fn resumeWindowTimers(realm: runtime.Context) void {
 /// nothing and the interval ran until the page went away.
 fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms: u64) ?TimerId {
     const map = TimerMap.of(wrapper.getData().realm);
-    const id = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
-    if (id == 0) {
+    const native = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+    if (native == 0) {
         destroyTimer(wrapper);
         return null;
     }
+    // Step 2: the window's own id (`TimerMap.takeId`), the key script holds;
+    // the manager's id names the pending run.
+    const id = map.takeId();
     wrapper.getData().id = id;
-    wrapper.getData().current_timer_id = id;
+    wrapper.getData().current_timer_id = native;
     map.put(id, wrapper) catch {
         // Untracked, it could never be cleared or cleaned up. Cancel before
         // freeing: a scheduled timer holds the wrapper.
-        _ = timer.clearTimeout(id);
+        _ = timer.clearTimeout(native);
         destroyTimer(wrapper);
         return null;
     };
@@ -1213,18 +1234,17 @@ fn queueTimerTask(wrapper: *WindowTimerCallback) bool {
 /// (`timerFired`). Step 4.2's order holds: every zero-timeout timer set
 /// before this one was queued at its own call.
 ///
-/// The id is reserved from the agent's timer manager (TimerInterface
-/// .reserveId), the counter armed timers take theirs from, so the window's
-/// map never has one id twice. The id, entered in the map; 0 when the map
-/// could not take it (the wrapper is freed); null when this realm cannot
-/// queue it now (no Window, no event loop, no id to reserve) - the caller
-/// arms it.
-fn queueAtCall(timer: TimerInterface, wrapper: *WindowTimerCallback) ?TimerId {
+/// The id is the window's own (`TimerMap.takeId`), as an armed timer's is.
+/// The id, entered in the map; 0 when the map could not take it (the wrapper
+/// is freed); null when this realm cannot queue it now (no Window, no event
+/// loop) - the caller arms it.
+fn queueAtCall(wrapper: *WindowTimerCallback) ?TimerId {
     const data = wrapper.getData();
     if (realmWindow(data.realm) == null or data.realm.getOptionalEventLoop() == null) return null;
-    const id = timer.reserveId() orelse return null;
+    const map = TimerMap.of(data.realm);
+    const id = map.takeId();
     data.id = id;
-    TimerMap.of(data.realm).put(id, wrapper) catch {
+    map.put(id, wrapper) catch {
         destroyTimer(wrapper);
         return 0;
     };
@@ -1454,10 +1474,11 @@ fn initializeTimer(realm: runtime.Context, converted: runtime.WindowTimerHandler
     // return the id - a zero timeout's task queued now (`queueAtCall`).
     const delay: u64 = @intCast(clampTimeout(timeout_ms, nesting));
     if (delay == 0) {
-        if (queueAtCall(timer, wrapper)) |queued| return @intCast(@as(u32, @truncate(queued)));
+        if (queueAtCall(wrapper)) |queued| return @intCast(queued);
     }
     const id = scheduleTimer(timer, wrapper, delay) orelse return 0;
-    return @intCast(@as(u32, @truncate(id)));
+    // takeId's ids are `long`s greater than zero.
+    return @intCast(id);
 }
 
 /// clearTimeout(id) and clearInterval(id): one algorithm, "clear the timer
