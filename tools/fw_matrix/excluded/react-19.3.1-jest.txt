@@ -1,0 +1,5 @@
+# React 19.3.1 (tag v19.3.1, 61aa00df822d): React's own Jest suite (CI's `yarn test -r=experimental
+# --env=development --ci`, scripts/jest/config.source.js), its jsdom-environment files run in a browser page by
+# tests/frameworks/react-jest - the tests the matrix does not count, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format). Ids are Jest's: describe blocks and the test, joined by
+# " > " (fw_matrix import --reader=jest-json). Lane react1.

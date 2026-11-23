@@ -383,6 +383,17 @@ async function handle(req, res) {
             if (r && !r.result) {
               r.result = body.result;
               r.resolve();
+            } else if (!r && command === 'serve') {
+              // A probe browser's run (`serve`): its outcome on stdout, its result beside the others.
+              const res = body.result;
+              const failed = (res.testResults || []).filter(t => t.status === 'failed').map(t => t.fullName);
+              const ua = req.headers['user-agent'] || '?';
+              console.log(`PROBE ${ua} :: ${path.relative(reactRoot, res.testFilePath || '?')} :: ${res.numPassingTests} passed, ${res.numFailingTests} failed${res.testExecError ? ' (did not run: ' + res.testExecError.message + ')' : ''}`);
+              for (const f of failed) console.log(`  FAILED ${f}`);
+              if (args.out) {
+                fs.mkdirSync(args.out, {recursive: true});
+                fs.appendFileSync(path.join(args.out, 'probe-results.jsonl'), JSON.stringify({ua, result: res}) + '\n');
+              }
             }
             out = {};
             break;
@@ -575,8 +586,13 @@ async function run() {
 }
 
 if (command === 'serve') {
+  // Every file whose environment the page runs, so a probe browser can run any of them.
+  for (const f of listTests()) {
+    const env = environmentOf(f);
+    if (jsdomEnvironments.has(env)) pageEnvironments.set(f, env);
+  }
   await listen();
-  console.log('serving http://localhost/');
+  console.log(`serving http://localhost/ (${pageEnvironments.size} files; open http://localhost/?file=<absolute path>)`);
 } else {
   await run();
 }

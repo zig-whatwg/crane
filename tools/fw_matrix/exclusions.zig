@@ -4,10 +4,11 @@
 //!
 //!     [<id>]
 //!     kind      = rendering | needs-server | needs-node-build | node-runner-only
-//!                 | follows-majority | follows-spec
+//!                 | follows-majority | follows-spec | jsdom-only
 //!     why       = <why it is not run>
 //!     assertion = <the assertion that needs layout>   (rendering: required)
 //!     ruling    = <the ruling or issue that decides it>  (follows-*: required)
+//!     browsers  = <what Chrome, Firefox and Safari do>  (jsdom-only: required)
 //!     source    = <file:line of the test's definition>
 //!
 //! `follows-majority` and `follows-spec` name a test that fails although
@@ -15,6 +16,12 @@
 //! majority's, by a recorded ruling, or the newer spec a shipping browser
 //! follows - the WPT gate's follows-majority exemption, for a framework's
 //! test. Like rendering, such a test counts in neither column.
+//!
+//! `jsdom-only` names a test of a suite that runs on jsdom (React's Jest
+//! suite) that asserts behaviour jsdom has and all three browsers do not -
+//! the integrator's criterion, 2026-11-22: where the browsers split it is not
+//! jsdom-only, it gets golden rule 2 like any other. Its `browsers` says what
+//! Chrome, Firefox and Safari do, with the probe or run that showed it.
 //!
 //! `<id>` is the name the framework's own filter matches: QUnit
 //! "<module>: <test name>" (QUnit's `fullName` in Test.valid), Mocha the
@@ -41,6 +48,7 @@ pub const Kind = enum {
     node_runner_only,
     follows_majority,
     follows_spec,
+    jsdom_only,
 
     pub fn notRun(k: Kind) journal.NotRun {
         return switch (k) {
@@ -50,6 +58,7 @@ pub const Kind = enum {
             .node_runner_only => .node_runner_only,
             .follows_majority => .follows_majority,
             .follows_spec => .follows_spec,
+            .jsdom_only => .jsdom_only,
         };
     }
 
@@ -66,6 +75,7 @@ pub const Kind = enum {
             .{ "node-runner-only", .node_runner_only },
             .{ "follows-majority", .follows_majority },
             .{ "follows-spec", .follows_spec },
+            .{ "jsdom-only", .jsdom_only },
         };
         for (names) |n| if (std.mem.eql(u8, s, n[0])) return n[1];
         return null;
@@ -82,11 +92,13 @@ pub const Entry = struct {
     source: ?[]const u8 = null,
     /// A ruling kind's evidence: the ruling, or the issue that decides it.
     ruling: ?[]const u8 = null,
+    /// A jsdom-only entry's evidence: what Chrome, Firefox and Safari do.
+    browsers: ?[]const u8 = null,
     /// 1-based line of the `[...]` header, for messages.
     line: usize,
 };
 
-pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, MissingRuling, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
+pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, MissingRuling, MissingBrowsers, BrowsersOutsideJsdomOnly, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
 
 pub const ParseFailure = struct {
     line: usize = 0,
@@ -129,6 +141,8 @@ pub fn parse(arena: Allocator, text: []const u8, failure: *ParseFailure) ParseEr
             c.source = value;
         } else if (std.mem.eql(u8, key, "ruling")) {
             c.ruling = value;
+        } else if (std.mem.eql(u8, key, "browsers")) {
+            c.browsers = value;
         } else return error.UnknownKey;
     }
     if (current) |c| try finish(arena, &entries, c, kind_seen, failure);
@@ -141,6 +155,8 @@ fn finish(arena: Allocator, entries: *std.ArrayList(Entry), e: Entry, kind_seen:
     if (e.why.len == 0) return error.MissingWhy;
     if (e.kind == .rendering and (e.assertion == null or e.assertion.?.len == 0)) return error.MissingAssertion;
     if (e.kind.isRuling() and (e.ruling == null or e.ruling.?.len == 0)) return error.MissingRuling;
+    if (e.kind == .jsdom_only and (e.browsers == null or e.browsers.?.len == 0)) return error.MissingBrowsers;
+    if (e.kind != .jsdom_only and e.browsers != null) return error.BrowsersOutsideJsdomOnly;
     if (e.file != (e.kind == .node_runner_only)) return error.FileEntryNotNodeRunnerOnly;
     for (entries.items) |o| if (o.file == e.file and std.mem.eql(u8, o.id, e.id)) return error.DuplicateEntry;
     try entries.append(arena, e);
@@ -317,6 +333,29 @@ test "parse: a test Crane's result follows a ruling for - the browser majority o
     // A ruling kind with no evidence is refused.
     try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-spec\nwhy = w\n", &f));
     try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\n", &f));
+}
+
+test "parse: a test that asserts jsdom's behaviour, which all three browsers differ from, names what each browser does" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[ReactDOMActivity > hides new portals added to an already hidden tree]
+        \\kind     = jsdom-only
+        \\why      = expects style="display: none;" where React set display none !important: jsdom's CSSOM drops the priority
+        \\browsers = Chrome 157, Firefox 159 and Safari 27 serialize "display: none !important;" (probe style-priority)
+        \\source   = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:173
+        \\
+    , &f);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqual(Kind.jsdom_only, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.jsdom_only, entries[0].kind.notRun());
+    try testing.expectEqualStrings("Chrome 157, Firefox 159 and Safari 27 serialize \"display: none !important;\" (probe style-priority)", entries[0].browsers.?);
+    // Without what the three browsers do, it is refused: the kind's whole claim is that evidence.
+    try testing.expectError(error.MissingBrowsers, parse(a, "[m: t]\nkind = jsdom-only\nwhy = w\n", &f));
+    // `browsers` belongs to jsdom-only alone.
+    try testing.expectError(error.BrowsersOutsideJsdomOnly, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\nruling = r\nbrowsers = b\n", &f));
 }
 
 test "parse refuses what would exclude without a reason" {

@@ -482,6 +482,33 @@
             },
             .excluded = "react-19.3.1-devtools.txt",
         },
+        // React's own Jest suite - its main tests, across packages/ - with a browser page in jsdom's place
+        // (the user, 2026-11-22: "Crane replaces jsdom"): CI's `yarn test -r=experimental --env=development
+        // --ci` (scripts/jest/config.source.js, also `yarn test`'s default), the files Jest itself selects whose
+        // environment is React's jsdom one, run by tests/frameworks/react-jest with React's own Jest 30.4.2
+        // (jest-circus, jest-runtime, expect) in the page; Chrome for Testing through the same harness, and
+        // jsdom by React's own `yarn test`, same commit and Node 20.19.0 (.nvmrc).
+        .{
+            .id = "react-jest",
+            .framework = "react",
+            .title = "React",
+            .version = "19.3.1",
+            .kind = .project,
+            .repository = "https://github.com/facebook/react",
+            .tag = "v19.3.1",
+            .commit = "61aa00df822d0eb76d0362eb8b6fdd3527693efe",
+            .licence = "MIT",
+            .runner = "Jest 30.4.2 (jest-circus), in the page by tests/frameworks/react-jest",
+            .reader = .runner_report,
+            .source = .{
+                .url = "https://codeload.github.com/facebook/react/tar.gz/refs/tags/v19.3.1",
+                .sha256 = "350d7bd46030667a3421422f7bae6e30dd1e0955c21e777bf467961fa56de650",
+            },
+            .pages = .{
+                .{ .id = "jest", .path = "packages" },
+            },
+            .excluded = "react-19.3.1-jest.txt",
+        },
         // The React compiler playground's e2e tests (its CI's compiler_playground.yml: `CI=true yarn test`), run with --retries=0.
         .{
             .id = "react-playground",

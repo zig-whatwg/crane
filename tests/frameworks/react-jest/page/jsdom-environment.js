@@ -37,7 +37,10 @@ class JSDOM {
     }
     const unsupported = Object.keys(options).filter(k => !['pretendToBeVisual', 'resources', 'runScripts', 'url', 'virtualConsole', 'globalsCleanup', 'customExportConditions'].includes(k));
     if (unsupported.length > 0) throw new Error(`jsdom options the browser page cannot take: ${unsupported.join(', ')}`);
-    if (options.url !== window.location.href) {
+    // A probe browser's page (`server.mjs serve`: http://localhost[:port]/?file=...) is jsdom's page
+    // but for the URL it had to name the file in; every other page is exactly jsdom's.
+    const probe = new URLSearchParams(window.location.search).has('file');
+    if (options.url !== window.location.href && !probe) {
       throw new Error(`The browser page is at ${window.location.href}, not ${options.url}`);
     }
     if (options.runScripts !== 'dangerously' || options.pretendToBeVisual !== true) {

@@ -41,6 +41,13 @@
     Promise: globalThis.Promise,
     Date: globalThis.Date,
     AbortController: globalThis.AbortController,
+    // The DOM operations the harness's own compiling uses (compileClassic), never a test's patches.
+    createElement: Document.prototype.createElement,
+    attachShadow: Element.prototype.attachShadow,
+    appendChild: Node.prototype.appendChild,
+    removeChild: Node.prototype.removeChild,
+    textContentSet: Object.getOwnPropertyDescriptor(Node.prototype, 'textContent').set,
+    documentElementGet: Object.getOwnPropertyDescriptor(Document.prototype, 'documentElement').get,
     webStreams: {
       ReadableStream: globalThis.ReadableStream,
       ReadableStreamDefaultReader: globalThis.ReadableStreamDefaultReader,
@@ -170,11 +177,44 @@
   // `const Buffer` as it may in Node. __reactJestPage is the page's own API for the harness's
   // stand-ins (page/core/*.js); no other module names it. The source URL is the file's absolute path,
   // as in Node's stack frames (and Jest's filtering of them).
-  // The module function is named "Object.<anonymous>" so its frames read as Node's do (page/core/vm.js).
+  // Code is compiled as a classic script, not by eval: V8 names every anonymous function in eval'd
+  // code "eval" in its stack frames, where Node's frames (and React's tests, which compare component
+  // and owner stacks) read `Object.<anonymous>` or no name at all, as a classic script's do. The script
+  // runs in a closed shadow root of an element connected only while the script runs (a script runs
+  // only when connected; nothing a test can query sees it: no test observes the document's mutations,
+  // and a shadow tree's script has no document.currentScript). The script only defines the function,
+  // so an exception in the module still throws from require(); a syntax error, which a script would
+  // report rather than throw, is thrown by eval'ing the source again.
+  const compiledSlot = Symbol.for('react-jest.compiled');
+  let compileHost = null;
+  let compileRoot = null;
+  function compileClassic(expression, filename) {
+    if (!compileHost) {
+      compileHost = native.createElement.call(document, 'div');
+      compileRoot = native.attachShadow.call(compileHost, {mode: 'closed'});
+    }
+    const script = native.createElement.call(document, 'script');
+    native.textContentSet.call(script, 'globalThis[Symbol.for("react-jest.compiled")] = ' + expression + ';\n//# sourceURL=' + filename);
+    const parent = native.documentElementGet.call(document) || document;
+    native.appendChild.call(parent, compileHost);
+    try {
+      native.appendChild.call(compileRoot, script);
+    } finally {
+      native.removeChild.call(compileRoot, script);
+      native.removeChild.call(parent, compileHost);
+    }
+    const fn = globalThis[compiledSlot];
+    delete globalThis[compiledSlot];
+    if (typeof fn !== 'function') return (0, native.eval)('(' + expression + ')\n//# sourceURL=' + filename);
+    return fn;
+  }
+
+  // The module function is named "Object.<anonymous>", as Jest's own wrapper before compileFunction
+  // named it, so its frame reads as Node's does.
   const wrapperHead =
     '(function (process, Buffer, global, setImmediate, clearImmediate, __reactJestPage) { return {"Object.<anonymous>": function (exports, require, module, __filename, __dirname) {';
   function compile(code, filename) {
-    return (0, native.eval)(wrapperHead + code + '\n}}["Object.<anonymous>"]; })\n//# sourceURL=' + filename);
+    return compileClassic(wrapperHead + code + '\n}}["Object.<anonymous>"]; })', filename);
   }
 
   function load(filename, parent) {
@@ -249,6 +289,7 @@
     log,
     nodeGlobals,
     makeRequire: filename => makeRequire(filename, null),
+    compileClassic,
     runNodeModule(module, content, filename) {
       module.filename = filename;
       module.id = module.id || filename;
@@ -372,4 +413,14 @@
   }
 
   globalThis.__reactJest = {run};
+
+  // A browser with no driver (`server.mjs serve`, Firefox and Safari for the classification probes)
+  // names the file in the URL - http://localhost/?file=<path> - and the page starts it at load. The
+  // query changes location.search; a test that reads the page's URL reads it differently there.
+  const query = new native.URLSearchParams(location.search);
+  if (query.has('file')) {
+    globalThis.addEventListener('load', () => {
+      run(query.get('file'), 'probe-' + query.get('file') + '-' + native.performance.now()).catch(() => {});
+    });
+  }
 })();

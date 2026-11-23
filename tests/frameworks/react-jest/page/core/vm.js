@@ -19,12 +19,14 @@ function check(context) {
 }
 
 // The function's frames read `Object.<anonymous>`, as a function from Node's compileFunction called
-// on module.exports does (React's tests compare stack frames: ReactUse's callStack, Flight's debug
-// stacks). V8 names an anonymous function in eval'd code "eval"; a function named
-// "Object.<anonymous>" prints as that, Jest's own wrapper before compileFunction.
+// on module.exports does, and the anonymous functions inside it have no name, as in Node (React's
+// tests compare stack frames: ReactUse's callStack, Flight's debug stacks, forwardRef's component
+// stack). So it is compiled as a classic script (page/boot.js compileClassic: V8 names anonymous
+// functions in eval'd code "eval"), and named "Object.<anonymous>", Jest's own wrapper before
+// compileFunction.
 function compileFunction(code, params = [], options = {}) {
   check(options.parsingContext);
-  return (0, native.eval)(withSource('({"Object.<anonymous>": function (' + params.join(', ') + ') {' + code + '\n}})["Object.<anonymous>"]', options.filename));
+  return __reactJestPage.compileClassic('({"Object.<anonymous>": function (' + params.join(', ') + ') {' + code + '\n}})["Object.<anonymous>"]', options.filename || 'evalmachine.<anonymous>');
 }
 
 function runInContext(code, context, options) {
