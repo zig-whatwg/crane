@@ -183,6 +183,7 @@ var engine_start_done = false;
 fn startEngineOnce(environ: std.process.Environ) void {
     if (engine_start_done) return;
     engine_start_done = true;
+    loadModuleListOnce();
     const engine = suite.engine orelse return;
     if (!engineEarly(environ)) return;
     // "Before any thread exists" is checked, not assumed: the process has
@@ -198,6 +199,41 @@ fn startEngineOnce(environ: std.process.Environ) void {
         }
     }
     engine.initializeBeforeThreadCreation();
+}
+
+/// The process's module list, as std.debug keeps it for unwinding and
+/// symbolizing (`std.debug.SelfInfo`), loaded once while the process still
+/// has only the threads it had when main began - before the engine's process
+/// start, V8's workers and any test's thread.
+///
+/// Zig loads that list the first time a stack is captured (on x86-64 Linux
+/// every capture unwinds through DWARF: `SelfInfo.unwindFrame` ->
+/// `findModule`), through `dl_iterate_phdr`, and its callback is
+/// instrumented Zig under -Dsanitize-thread: it appends to a list, and the
+/// append's memcpy enters the sanitizer, which wants a mutex of its own.
+/// glibc runs that callback holding its loader lock. A V8 worker thread that
+/// "races" as the workers start (V8's absl::Mutex is invisible to the
+/// sanitizer) builds a report - suppressed, but symbolized first - holding
+/// the sanitizer's locks, and its symbolizer refreshes the module list
+/// through `dl_iterate_phdr` too: two threads, the two locks in opposite
+/// orders, and the test process sleeps until the launcher's timeout. About
+/// 1 engine test process in 900 hung that way under the sanitizer (lane
+/// build3, 2026-11-13: docs/lessons/testing-a-suppressed-sanitizer-report-
+/// still-symbolizes-and-can-deadlock-on-the-loader-lock.md; lane flk4,
+/// 2026-11-22: tests-v8's "a navigation that leaves much behind ..." timed
+/// out at 1,200 s once and passed alone twice).
+///
+/// Loaded here, the list is never loaded by a test's capture beside a
+/// worker's report: `findModule` rebuilds it only for an address outside
+/// every module it knows (code a library loaded later), which a test thread's
+/// frames - Zig's and libc's - are not. The list is std.debug's own (its
+/// debug-info allocator, an arena of the page allocator), not a test
+/// allocator's, so no state check sees it. Done in every build: it costs one
+/// walk of the loaded modules per test process, and keeps one process start.
+fn loadModuleListOnce() void {
+    if (std.debug.SelfInfo == void) return;
+    const self_info = std.debug.getSelfDebugInfo() catch return;
+    _ = self_info.getModuleName(std.Options.debug_io, @returnAddress()) catch {};
 }
 
 /// How many threads this process has when `main` begins (`threadCount`).

@@ -1732,6 +1732,80 @@ test "protocol: a removed frame's realm does not take the popup it opened with i
     protocol.destroyWindowRealm(popup, .global_detached);
 }
 
+test "protocol: detachWindowRealm - a frame's realm whose navigable is destroyed twice over keeps its Window while script holds its WindowProxy, and is collected once script lets it go" {
+    // engine.detachWindowRealm (lane flk4, 2026-11-22): HTML "destroy a
+    // child navigable" for a realm whose navigable can be destroyed twice
+    // over - its parent's document destroyed by a navigation, and then its
+    // own <iframe> element, which stays in that destroyed document, freed by
+    // the collector (HTMLIFrameElement iframeContextCleanup). That second
+    // end called destroyWindowRealm, which on a detached realm is its
+    // owner's END: it freed the Window while script still held the frame's
+    // WindowProxy, and the next member call threw "Illegal invocation"
+    // (html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+    // event-listeners.window.js, 1 run in 11). detachWindowRealm detaches an
+    // attached realm and leaves a detached or ended one alone.
+    defer test_agent.close();
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var parent_ended = false;
+    defer if (!parent_ended) protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    const with_parent = agentRealmCount();
+    var middle_realm: FrameRealm = .{ .parent = parent };
+    const middle = try middle_realm.make();
+    var inner_realm: FrameRealm = .{ .parent = middle };
+    const inner = try inner_realm.make();
+    const window = Watched.of(try platformObjectIn(inner, "globalThis"));
+    {
+        const inner_global = try evalOwned(inner, "globalThis.kept = new Headers([['a', '1']]); globalThis");
+        defer inner_global.release();
+        try setGlobal(parent, "innerWindow", inner_global.value);
+    }
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+    try protocol.runTaskInRealm(inner, NoSteps.steps, null);
+
+    // The middle frame's navigable is destroyed: its realm detaches - its
+    // tasks are not run any more - and so does the inner one, which its
+    // detach takes with it. Neither ends: the agent still has both.
+    protocol.detachWindowRealm(middle);
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(middle, NoSteps.steps, null));
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(inner, NoSteps.steps, null));
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+
+    // And then destroyed again - the inner frame's element freed, the
+    // middle one's navigation task run late: nothing changes.
+    protocol.detachWindowRealm(inner);
+    protocol.detachWindowRealm(inner);
+    protocol.detachWindowRealm(middle);
+    collectTwice();
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+    try std.testing.expect(inner.engine_ctx != null);
+    try std.testing.expect(window.alive());
+    // The Window is the one it was, with what its realm's script kept on it.
+    try expectEval(parent, "innerWindow.self === innerWindow && innerWindow.kept.get('a')", "1");
+
+    // Crane holds nothing of either context: once script lets the WindowProxy
+    // go, the collector takes both.
+    try expectEval(parent, "delete globalThis.innerWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frames, {d} after both were detached and the WindowProxy dropped\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+    try std.testing.expect(inner.engine_ctx == null);
+    try std.testing.expect(middle.engine_ctx == null);
+
+    // This test's realms have no event loop to end a collected realm from a
+    // task: its page's end ends both, and the agent's count is back where it
+    // was before the parent. An ended realm is left alone too.
+    parent_ended = true;
+    protocol.destroyWindowRealm(parent, .global_detached);
+    try std.testing.expectEqual(with_parent - 1, agentRealmCount());
+    protocol.detachWindowRealm(inner);
+    try std.testing.expectEqual(with_parent - 1, agentRealmCount());
+}
+
 test "protocol: a page's navigation, a frame's navigation and a browsing context group switch leave a popup they did not open alone - and the ones they opened too" {
     defer test_agent.close();
     var host_page: WindowHost = .{};
