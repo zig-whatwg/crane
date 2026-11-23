@@ -869,31 +869,38 @@ progress = []
 
 [[infra]]
 id = "cdp-mcp"
-title = "Chrome DevTools MCP drives Crane (0.1 requirement)"
+title = "Chrome DevTools MCP, built into Crane (0.1 requirement)"
 why = """The user, 2026-11-23 10:09 AM ET: "when the CDP feature is compiled into Crane it should also \
 conform to the Chrome DevTools MCP https://developer.chrome.com/blog/chrome-devtools-mcp so that agents \
-can drive crane. This is a 0.1 blocker". Chrome DevTools MCP (github.com/ChromeDevTools/chrome-devtools-mcp, \
-Apache-2.0) is an MCP server that drives a browser through Puppeteer over CDP: launched as Chrome \
-(--executablePath) or attached (--browserUrl / --wsEndpoint). Its 63 tools (docs/tool-reference.md) need, \
-beyond CDP part 1: the Accessibility domain (take_snapshot's a11y tree with uids: computed roles and \
-accessible names, html-aam / accname), Tracing (performance_*), HeapProfiler snapshots (memory tools, \
-V8's inspector), Network bodies, Emulation, Log / console with stack traces, Page dialogs, and element \
-input (click / hover / drag / fill by uid) that Puppeteer performs at a point from DOM.getContentQuads - \
-geometry Crane does not have until the 0.2 renderer (CDP decision D7: a raw point hits nothing)."""
-done_when = """A pinned chrome-devtools-mcp connects to a CDP-enabled Crane both ways (launched via \
---executablePath and attached via --browserUrl / --wsEndpoint) and its own test suite runs against Crane \
-by its own runner, as the framework suites do: every tool that needs no pixels or layout passes; each \
-that does (take_screenshot, screencast_*, click_at, LCP / paint insights, ...) is listed needs-renderer \
-with the CDP call it lacks. The element-input path without geometry is decided by the user from the \
-design's options before it is built. What the tools need from cdp-part-2 moves into 0.1 here."""
-progress = []
+can drive crane. This is a 0.1 blocker"; 10:24 AM ET: "we will be installing crane to use on devices such \
+as the iphone and it won't make sense to also package node into this so I think our mcp server needs to be \
+slim and compiable into Crane and not a separate app server". Google's chrome-devtools-mcp \
+(github.com/ChromeDevTools/chrome-devtools-mcp, Apache-2.0) is a Node app driving Chrome through Puppeteer \
+over CDP; Crane's is an MCP server compiled into Crane with the CDP feature, exposing the same tools (names, \
+input schemas, result shapes, copied with citation) and serving each through Crane's own CDP domain handlers \
+in-process - one implementation of every behaviour, the browser's paths only (no invented paths). Its tools \
+need, beyond CDP part 1: the Accessibility domain (take_snapshot's a11y tree with uids: computed roles and \
+accessible names, html-aam / accname), Tracing, HeapProfiler snapshots, Network bodies, Emulation, Log / \
+console with stack traces, Page dialogs, and element input by uid (click / hover / drag / fill), which \
+Chrome's server does at a point from DOM.getContentQuads - geometry Crane does not have until the 0.2 \
+renderer (CDP decision D7: a raw point hits nothing)."""
+done_when = """A Crane built with CDP serves MCP over stdio and over the network transport the design \
+chooses (an agent on another machine reaching Crane on an iPhone), no Node, no separate process; its tool \
+list equals the pinned chrome-devtools-mcp's default categories by name and schema; each tool's result for \
+the same page and calls matches Chrome-via-chrome-devtools-mcp's (a differential suite), except tools that \
+need pixels or layout (take_screenshot, screencast_*, click_at, LCP / paint insights, ...), listed \
+needs-renderer with the CDP call each lacks; the element-input path without geometry is decided by the user \
+from the design's options before it is built; what the tools need from cdp-part-2 moves into 0.1 here."""
+progress = [
+  "decided 2026-11-23 10:24 AM ET (the user) - built into Crane, not Google's Node server: slim, compiled in with CDP, for devices such as the iPhone",
+]
 
   [[infra.items]]
-  name = "Design: tool-by-tool CDP needs vs Crane, the geometry-free input question"
+  name = "Design: tool-by-tool needs vs Crane's CDP, transports, the geometry-free input question"
   status = "todo"
 
   [[infra.items]]
-  name = "chrome-devtools-mcp's own suite runs against Crane; non-pixel tools pass"
+  name = "Built-in MCP server: every non-pixel tool matches Chrome's server (differential suite)"
   status = "todo"
 
 [[infra]]
