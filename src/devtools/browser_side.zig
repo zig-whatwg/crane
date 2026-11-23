@@ -24,6 +24,7 @@ const log_domain = @import("domains/log.zig");
 const page_domain = @import("domains/page.zig");
 const fetch_interception = @import("fetch_interception.zig");
 const held_commands = @import("held_commands.zig");
+const dom_events = @import("dom_events.zig");
 const fetch = @import("fetch");
 
 const log = std.log.scoped(.devtools);
@@ -90,6 +91,9 @@ pub const BrowserSide = struct {
     /// end (held_commands.zig; Chrome's RenderFrameDevToolsAgentHost::
     /// navigation_requests_). domains/page.zig onBrowserMilestone keeps it.
     navigations: held_commands.InFlight = .{},
+    /// Browser thread only: the sessions whose DOM domain is enabled, which
+    /// the DOM's probes reach through the Browser's sink (dom_events.zig).
+    dom_agents: dom_events.Agents = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -101,6 +105,7 @@ pub const BrowserSide = struct {
     pub fn destroy(self: *BrowserSide) void {
         std.debug.assert(self.sessions.items.len == 0);
         self.sessions.deinit(self.allocator);
+        self.dom_agents.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -112,6 +117,8 @@ pub const BrowserSide = struct {
         // The Browser's fetch observer: Network events, Fetch interception.
         const network = try browser.scope.of(fetch.network.NetworkContext);
         network.observer = fetch_observer.observerFor(self);
+        // The DOM's probes reach this Browser's DOM-enabled sessions.
+        try dom_events.install(self, browser.scope);
         // The tabs that exist already (the console's first tab, a WebDriver
         // session's): the devtools thread hears of them as of new ones.
         const tabs = try host_bridge.listTabs(browser, self.allocator);
@@ -137,6 +144,7 @@ pub const BrowserSide = struct {
                 if (b.scope.of(fetch.network.NetworkContext)) |network| {
                     network.observer = null;
                 } else |_| {}
+                dom_events.uninstall(b.scope);
             }
             self.listening = false;
         }

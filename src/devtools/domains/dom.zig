@@ -18,8 +18,21 @@
 //! children, getOuterHTML serializes a node, and every node-taking command
 //! takes a nodeId. A new top-level document, or its DOMContentLoaded,
 //! discards the bindings (DOM.documentUpdated while enabled), as Blink's
-//! SetDocument and DomContentLoadedEventFired do. Mutation events
-//! (childNodeInserted ...) and editing are CDP part 2 (0.2).
+//! SetDocument and DomContentLoadedEventFired do.
+//!
+//! The live DOM (lane cdpd1, roadmap cdp-live-dom; design
+//! tmp/plans/cdpd1-design.md): an enabled agent hears the DOM's probes
+//! (dom.inspector_probes, through dom_events.zig) and sends what Blink's
+//! InspectorDOMAgent sends for each (inspector_dom_agent.cc at Chrome
+//! 157.0.8103.78: DidInsertDOMNode, WillRemoveDOMNode / DOMNodeRemoved,
+//! DidModifyDOMAttr, DidRemoveDOMAttr, CharacterDataModified,
+//! DidInvalidateStyleAttr with its InspectorRevalidateDOMTask,
+//! DidPushShadowRoot, TopLayerElementsChanged, and DidCommitLoad's
+//! InvalidateFrameOwnerElement for a child frame). shadowRootPopped is never
+//! sent: Blink declares WillPopShadowRoot (core_probes.pidl) and its agent
+//! handles it, but nothing calls the probe (no call site in Chromium 145 or
+//! 157: a shadow root is never detached since Shadow DOM v0 went), so Chrome
+//! never sends the event either.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -34,6 +47,8 @@ const frames = @import("../frames.zig");
 const contexts = @import("../contexts.zig");
 const NodeIds = @import("../node_ids.zig").NodeIds;
 const NodeMap = @import("../dom_node_map.zig").NodeMap;
+const dom_events = @import("../dom_events.zig");
+const dom = @import("dom");
 const D = protocol.DOM;
 
 /// Per-session state of the domain.
@@ -44,11 +59,39 @@ pub const State = struct {
     include_whitespace: bool = false,
     /// The client's node ids, made on first push. OWNED.
     map: ?*NodeMap = null,
+    /// InspectorRevalidateDOMTask's style_attr_invalidated_elements_: the
+    /// bound elements whose inline style was invalidated since the last
+    /// DOM.inlineStyleInvalidated, in order, as names (never a hold).
+    pending_style: std.ArrayListUnmanaged(WeakNode) = .empty,
+    /// The task that sends them, while one is queued (its timer).
+    revalidate: ?*RevalidateTask = null,
 };
 
-/// The session ends: its node ids go.
+/// A node named without a hold: its address and slab generation.
+const WeakNode = struct {
+    node: *runtime.Instance,
+    generation: u64,
+
+    fn of(node: *runtime.Instance) WeakNode {
+        return .{ .node = node, .generation = runtime.SlabAllocator.generationOf(node) };
+    }
+
+    fn get(self: WeakNode) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.node) != self.generation) return null;
+        return self.node;
+    }
+};
+
+/// The session ends: its agent stops hearing the probes, and its node ids go.
 pub fn sessionEnded(session: *PageSession) void {
     const s = &session.states.DOM;
+    if (s.enabled) {
+        if (session.side) |side| dom_events.unregister(side, session);
+        s.enabled = false;
+    }
+    resetRevalidation(session);
+    s.pending_style.deinit(session.allocator);
+    s.pending_style = .empty;
     if (s.map) |map| {
         map.deinit();
         session.allocator.destroy(map);
@@ -56,21 +99,38 @@ pub fn sessionEnded(session: *PageSession) void {
     s.map = null;
 }
 
+/// InspectorDOMAgent::enable -> EnableAndReset: the agent hears the DOM's
+/// probes from now on; the whitespace choice is made when it is first
+/// enabled.
 pub fn enable(session: *PageSession, params: D.enable.Params) !D.enable.Result {
     const s = &session.states.DOM;
-    // InspectorDOMAgent::enable: the whitespace choice is made when the
-    // agent is first enabled.
-    if (!s.enabled) s.include_whitespace = if (params.includeWhitespace) |w| w == .all else false;
+    if (s.enabled) return .{};
+    if (session.side) |side| try dom_events.register(side, session);
+    s.include_whitespace = if (params.includeWhitespace) |w| w == .all else false;
     s.enabled = true;
     return .{};
 }
 
+/// InspectorDOMAgent::disable: "DOM agent hasn't been enabled" when it is
+/// not; else it stops hearing the probes and SetDocument(nullptr) discards
+/// every binding.
 pub fn disable(session: *PageSession, params: D.disable.Params) !D.disable.Result {
     _ = params;
-    session.states.DOM.enabled = false;
-    // SetDocument(nullptr): the client forgets every node.
-    if (session.states.DOM.map) |map| map.clear();
+    const s = &session.states.DOM;
+    if (!s.enabled) return session.fail("DOM agent hasn't been enabled");
+    if (session.side) |side| dom_events.unregister(side, session);
+    s.enabled = false;
+    s.include_whitespace = false;
+    discardBindings(session);
     return .{};
+}
+
+/// DiscardFrontendBindings: the client forgets every node, and the pending
+/// style revalidation is stopped (revalidate_task_->Reset()).
+fn discardBindings(session: *PageSession) void {
+    const s = &session.states.DOM;
+    if (s.map) |map| map.clear();
+    resetRevalidation(session);
 }
 
 /// A new document in the session's tab's top frame, or its DOMContentLoaded:
@@ -79,19 +139,27 @@ pub fn disable(session: *PageSession, params: D.disable.Params) !D.disable.Resul
 /// only for a document that is not parsing - an initial about:blank, or one
 /// the back/forward cache shows again (DidRestoreFromBackForwardCache) - and
 /// DomContentLoadedEventFired discards them again and sends it for the
-/// loaded document. A child frame's new document (Blink's
-/// InvalidateFrameOwnerElement: childNodeRemoved/Inserted) is a mutation
-/// event: CDP part 2.
+/// loaded document. A child frame's new document re-sends its owner
+/// (DidCommitLoad -> InvalidateFrameOwnerElement: childNodeRemoved, then
+/// childNodeInserted).
 pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) void {
-    if (milestone.navigable_id != session.tab) return;
     const s = &session.states.DOM;
+    if (milestone.navigable_id != session.tab) {
+        // DidCommitLoad for a frame other than the inspected root:
+        // InvalidateFrameOwnerElement(its owner).
+        switch (milestone.event) {
+            .committed => if (s.enabled) invalidateFrameOwnerElement(session, milestone.navigable_id),
+            else => {},
+        }
+        return;
+    }
     switch (milestone.event) {
         .committed => |committed| {
-            if (s.map) |map| map.clear();
+            discardBindings(session);
             if (s.enabled and (committed.kind == .initialization or committed.restored)) session.emit(D.documentUpdated, .{});
         },
         .dom_content_loaded => {
-            if (s.map) |map| map.clear();
+            discardBindings(session);
             if (s.enabled) session.emit(D.documentUpdated, .{});
         },
         else => {},
@@ -271,6 +339,242 @@ fn containerNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
 }
 
 // ============================================================================
+// The live DOM: the probes' handlers (dom_events.zig calls them for each
+// enabled agent; InspectorDOMAgent's probe methods)
+// ============================================================================
+
+/// DidInsertDOMNode: `node` was just linked into its parent. A whitespace-
+/// only text node is not the client's (ShouldSkipNode); its old bindings go
+/// ("We could be attaching existing subtree. Forget the bindings."); then,
+/// under a bound parent, childNodeInserted - or, when the client has not
+/// been sent the parent's children, childNodeCountUpdated from the count it
+/// has ("No children are mapped yet -> only notify on changes of child
+/// count").
+pub fn didInsertDOMNode(session: *PageSession, node: *runtime.Instance) void {
+    if (skipped(session, node)) return;
+    const map = session.states.DOM.map orelse return;
+    unbind(session, map, node);
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return;
+    const parent_id = map.boundId(parent);
+    if (parent_id == 0) return;
+    if (!map.childrenRequested(parent_id)) {
+        const count = map.childCount(parent_id) + 1;
+        map.setChildCount(parent_id, count) catch return;
+        session.emit(D.childNodeCountUpdated, .{ .nodeId = parent_id, .childNodeCount = count });
+        return;
+    }
+    const previous = innerPreviousSibling(session, node);
+    const previous_id = if (previous) |p| map.boundId(p) else 0;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const value = buildNode(session, arena_state.allocator(), node, 0, false, map) catch return;
+    session.emit(D.childNodeInserted, .{ .parentNodeId = parent_id, .previousNodeId = previous_id, .node = value });
+}
+
+/// WillRemoveDOMNode: `node` is about to leave its parent.
+pub fn willRemoveDOMNode(session: *PageSession, node: *runtime.Instance) void {
+    if (skipped(session, node)) return;
+    domNodeRemoved(session, node);
+}
+
+/// DOMNodeRemoved: under a bound parent, childNodeRemoved - or
+/// childNodeCountUpdated when the client has not been sent the parent's
+/// children - and the node's bindings go.
+fn domNodeRemoved(session: *PageSession, node: *runtime.Instance) void {
+    const map = session.states.DOM.map orelse return;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return;
+    // "If parent is not mapped yet -> ignore the event."
+    const parent_id = map.boundId(parent);
+    if (parent_id == 0) return;
+    if (!map.childrenRequested(parent_id)) {
+        const count = map.childCount(parent_id) - 1;
+        map.setChildCount(parent_id, count) catch return;
+        session.emit(D.childNodeCountUpdated, .{ .nodeId = parent_id, .childNodeCount = count });
+    } else {
+        session.emit(D.childNodeRemoved, .{ .parentNodeId = parent_id, .nodeId = map.boundId(node) });
+    }
+    unbind(session, map, node);
+}
+
+/// DidModifyDOMAttr / DidRemoveDOMAttr: a bound element's attribute was set
+/// to `value` (null: removed). The probe left out a set to the same value.
+pub fn didModifyDOMAttr(session: *PageSession, element: *runtime.Instance, name: dom.inspector_probes.AttributeName, value: ?[]const u8) void {
+    const map = session.states.DOM.map orelse return;
+    // "If node is not mapped yet -> ignore the event."
+    const id = map.boundId(element);
+    if (id == 0) return;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const qualified = qualifiedName(arena_state.allocator(), name.prefix, name.local_name) catch return;
+    if (value) |v| {
+        session.emit(D.attributeModified, .{ .nodeId = id, .name = qualified, .value = v });
+    } else {
+        session.emit(D.attributeRemoved, .{ .nodeId = id, .name = qualified });
+    }
+}
+
+/// CharacterDataModified: a bound node turned whitespace-only leaves the
+/// client (DOMNodeRemoved); an unbound one is pushed as an insertion ("Push
+/// text node if it is being created"); else characterDataModified with the
+/// whole data (Blink sends data(), uncut).
+pub fn characterDataModified(session: *PageSession, node: *runtime.Instance) void {
+    const map = session.states.DOM.map orelse return;
+    const id = map.boundId(node);
+    if (id != 0 and skipped(session, node)) {
+        domNodeRemoved(session, node);
+        return;
+    }
+    if (id == 0) {
+        didInsertDOMNode(session, node);
+        return;
+    }
+    const data = dom.character_data.dataOf(node) orelse return;
+    session.emit(D.characterDataModified, .{ .nodeId = id, .characterData = data });
+}
+
+/// DidInvalidateStyleAttr: a bound element's inline style changed; it joins
+/// the pending set, and the revalidation task is queued if it is not
+/// (InspectorRevalidateDOMTask::ScheduleStyleAttrRevalidationFor: a one-shot
+/// zero-delay timer on the document's DOM manipulation task runner).
+pub fn didInvalidateStyleAttr(session: *PageSession, element: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    const map = s.map orelse return;
+    if (map.boundId(element) == 0) return;
+    const pending_already = for (s.pending_style.items) |pending| {
+        if (pending.get() == element) break true;
+    } else false;
+    if (!pending_already) s.pending_style.append(session.allocator, WeakNode.of(element)) catch return;
+    if (s.revalidate != null) return;
+    const loop = element.ctx.getOptionalEventLoop() orelse return;
+    const task = session.allocator.create(RevalidateTask) catch return;
+    task.* = .{ .session = session, .allocator = session.allocator };
+    s.revalidate = task;
+    loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop });
+}
+
+/// The queued revalidation (InspectorRevalidateDOMTask's timer). It names
+/// its session until the session's agent resets it (a discard, a disable,
+/// the session's end), and frees itself when it runs or is dropped.
+pub const RevalidateTask = struct {
+    session: ?*PageSession,
+    allocator: Allocator,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *RevalidateTask = @ptrCast(@alignCast(context.?));
+        defer self.allocator.destroy(self);
+        const session = self.session orelse return;
+        session.states.DOM.revalidate = null;
+        styleAttributeInvalidated(session);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *RevalidateTask = @ptrCast(@alignCast(context.?));
+        if (self.session) |session| session.states.DOM.revalidate = null;
+        self.allocator.destroy(self);
+    }
+};
+
+/// InspectorRevalidateDOMTask::Reset: the queued task sends nothing. Blink
+/// stops the timer and keeps the set; the set's stale names are dropped
+/// here, which sends the same (StyleAttributeInvalidated skips the unbound).
+fn resetRevalidation(session: *PageSession) void {
+    const s = &session.states.DOM;
+    if (s.revalidate) |task| task.session = null;
+    s.revalidate = null;
+    s.pending_style.clearRetainingCapacity();
+}
+
+/// StyleAttributeInvalidated: one inlineStyleInvalidated with the pending
+/// elements the client still has. Blink iterates a HeapHashSet, so its ids
+/// come in pointer-hash order; these come in the order they were invalidated.
+fn styleAttributeInvalidated(session: *PageSession) void {
+    const s = &session.states.DOM;
+    defer s.pending_style.clearRetainingCapacity();
+    const map = s.map orelse return;
+    if (s.pending_style.items.len == 0) return;
+    const ids = session.allocator.alloc(i64, s.pending_style.items.len) catch return;
+    defer session.allocator.free(ids);
+    var n: usize = 0;
+    for (s.pending_style.items) |pending| {
+        const element = pending.get() orelse continue;
+        const id = map.boundId(element);
+        if (id == 0) continue;
+        ids[n] = id;
+        n += 1;
+    }
+    session.emit(D.inlineStyleInvalidated, .{ .nodeIds = ids[0..n] });
+}
+
+/// DidPushShadowRoot: a bound host's children are pushed (one level), then
+/// shadowRootPushed with the root built at depth 0.
+pub fn didPushShadowRoot(session: *PageSession, host: *runtime.Instance, root: *runtime.Instance) void {
+    const map = session.states.DOM.map orelse return;
+    if ((interfaces.Node.get_ownerDocument(host) catch null) == null) return;
+    const host_id = map.boundId(host);
+    if (host_id == 0) return;
+    pushChildNodes(session, host_id, 1, false) catch return;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const value = buildNode(session, arena_state.allocator(), root, 0, false, map) catch return;
+    session.emit(D.shadowRootPushed, .{ .hostId = host_id, .root = value });
+}
+
+/// TopLayerElementsChanged: the top layer of a document in the session's
+/// tab changed - sent with no binding check, as Blink's agent sends it to
+/// every enabled agent of the frame's local root.
+pub fn topLayerElementsChanged(session: *PageSession, document: *runtime.Instance) void {
+    if (frameOfDocument(session, document) == null) return;
+    session.emit(D.topLayerElementsUpdated, .{});
+}
+
+/// InvalidateFrameOwnerElement: a child frame committed a new document, so
+/// its owner is sent again with it: childNodeRemoved, the owner's bindings
+/// dropped, childNodeInserted ("Re-add frame owner element together with its
+/// new children").
+fn invalidateFrameOwnerElement(session: *PageSession, navigable_id: u64) void {
+    if (!frames.inTab(session, navigable_id)) return;
+    const bc = frames.navigable(session, navigable_id) orelse return;
+    const container = bc.container orelse return;
+    const owner: *runtime.Instance = @ptrCast(@alignCast(container));
+    const map = session.states.DOM.map orelse return;
+    const owner_id = map.boundId(owner);
+    if (owner_id == 0) return;
+    const parent_id = if (innerParent(session, owner)) |parent| map.boundId(parent) else 0;
+    session.emit(D.childNodeRemoved, .{ .parentNodeId = parent_id, .nodeId = owner_id });
+    unbind(session, map, owner);
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const value = buildNode(session, arena_state.allocator(), owner, 0, false, map) catch return;
+    const previous = innerPreviousSibling(session, owner);
+    const previous_id = if (previous) |p| map.boundId(p) else 0;
+    session.emit(D.childNodeInserted, .{ .parentNodeId = parent_id, .previousNodeId = previous_id, .node = value });
+}
+
+/// Unbind: `node`'s binding goes, with its content document's and its
+/// shadow root's, and - for a node whose children the client had - each
+/// inner child's, down the tree. A work list, not recursion: a client can
+/// hold a whole document of any depth.
+fn unbind(session: *PageSession, map: *NodeMap, node: *runtime.Instance) void {
+    var stack: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer stack.deinit(session.allocator);
+    var next: ?*runtime.Instance = node;
+    while (next) |current| : (next = stack.pop()) {
+        const forgotten = map.forget(current);
+        if (forgotten.id == 0) continue;
+        if ((interfaces.Node.get_nodeType(current) catch 0) == 1) {
+            if (contentNavigableOf(session, current)) |bc| {
+                if (frames.documentOf(bc)) |document| stack.append(session.allocator, document) catch {};
+            }
+            if (dom.shadow_hosts.rootForHost(current)) |root| stack.append(session.allocator, root) catch {};
+        }
+        if (forgotten.children_requested) {
+            var child = innerFirstChild(session, current);
+            while (child) |c| : (child = innerNextSibling(session, c)) stack.append(session.allocator, c) catch {};
+        }
+    }
+}
+
+// ============================================================================
 // Pushing nodes to the client (InspectorDOMAgent)
 // ============================================================================
 
@@ -280,9 +584,26 @@ fn skipped(session: *const PageSession, node: ?*runtime.Instance) bool {
     const n = node orelse return false;
     if (session.states.DOM.include_whitespace) return false;
     if ((interfaces.Node.get_nodeType(n) catch 0) != 3) return false;
-    var value = (interfaces.Node.get_nodeValue(n) catch null) orelse return true;
-    defer value.deinit(n.ctx.allocator);
-    for (value.asSlice()) |c| if (!std.ascii.isWhitespace(c)) return false;
+    // The data in place (dom.character_data), no copy: every probe asks.
+    const value = dom.character_data.dataOf(n) orelse return true;
+    return isBlinkWhitespace(value);
+}
+
+/// Blink's String::LengthWithStrippedWhiteSpace() == 0: every character is
+/// IsSpaceOrNewline - an ASCII space (U+0009-U+000D, U+0020), or above
+/// U+007F a character whose bidi class is WS (U+1680, U+2000-U+200A, U+2028,
+/// U+205F, U+3000; wtf/text/ascii_ctype.h, character_names via
+/// u_charDirection).
+fn isBlinkWhitespace(value: []const u8) bool {
+    const view = std.unicode.Wtf8View.init(value) catch return false;
+    var it = view.iterator();
+    while (it.nextCodepoint()) |c| {
+        const space = switch (c) {
+            0x09...0x0D, 0x20, 0x1680, 0x2000...0x200A, 0x2028, 0x205F, 0x3000 => true,
+            else => false,
+        };
+        if (!space) return false;
+    }
     return true;
 }
 
@@ -297,6 +618,13 @@ fn innerNextSibling(session: *const PageSession, node: *runtime.Instance) ?*runt
     var next = interfaces.Node.get_nextSibling(node) catch null;
     while (skipped(session, next)) next = interfaces.Node.get_nextSibling(next.?) catch null;
     return next;
+}
+
+/// InnerPreviousSibling.
+fn innerPreviousSibling(session: *const PageSession, node: *runtime.Instance) ?*runtime.Instance {
+    var previous = interfaces.Node.get_previousSibling(node) catch null;
+    while (skipped(session, previous)) previous = interfaces.Node.get_previousSibling(previous.?) catch null;
+    return previous;
 }
 
 /// InnerParentNode: a document's frame owner element, a shadow root's host,
@@ -475,6 +803,9 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
         var child = innerFirstChild(session, node);
         while (child) |c| : (child = innerNextSibling(session, c)) count += 1;
         described.childNodeCount = count;
+        // The count the client now has: childNodeCountUpdated's base
+        // (cached_child_count_, for the document's map).
+        if (map) |m| try m.setChildCount(node_id, count);
         if (map != null and force_push_children and depth == 0) depth = 1;
         const children = try buildChildren(session, arena, node, depth, pierce, map);
         if (children.len != 0 or depth != 0) described.children = children;
@@ -556,23 +887,29 @@ fn isHtmlElementNamed(element: *runtime.Instance, comptime name: []const u8) boo
     return std.mem.eql(u8, local.asSlice(), name);
 }
 
-/// An element's attributes, flattened [name, value, ...] in order.
+/// An element's attributes, flattened [name, value, ...] in order (Blink's
+/// BuildArrayForElementAttributes: QualifiedName::ToString and the value),
+/// read from the attribute list itself - not through Element.attributes,
+/// whose NamedNodeMap would make an Attr node for each.
 fn attributesOf(arena: Allocator, element: *runtime.Instance) Allocator.Error!?[]const []const u8 {
-    const attributes = interfaces.Element.get_attributes(element) catch return null;
-    const length = interfaces.NamedNodeMap.get_length(attributes) catch 0;
-    if (length == 0) return &.{};
-    var out: std.ArrayListUnmanaged([]const u8) = .empty;
-    var i: u32 = 0;
-    while (i < length) : (i += 1) {
-        const attr = (interfaces.NamedNodeMap.call_item(attributes, i) catch null) orelse continue;
-        var name = interfaces.Attr.get_name(attr) catch continue;
-        defer name.deinit(attr.ctx.allocator);
-        var value = interfaces.Attr.get_value(attr) catch continue;
-        defer value.deinit(attr.ctx.allocator);
-        try out.append(arena, try arena.dupe(u8, name.asSlice()));
-        try out.append(arena, try arena.dupe(u8, value.asSlice()));
+    const count = dom.element_attributes.count(element);
+    if (count == 0) return &.{};
+    const out = try arena.alloc([]const u8, count * 2);
+    var n: usize = 0;
+    for (0..count) |i| {
+        const attribute = dom.element_attributes.at(element, i) orelse continue;
+        out[n] = try qualifiedName(arena, attribute.prefix, attribute.local_name);
+        out[n + 1] = try arena.dupe(u8, attribute.value);
+        n += 2;
     }
-    return out.items;
+    return out[0..n];
+}
+
+/// Blink's QualifiedName::ToString: "prefix:localName", or the local name.
+fn qualifiedName(arena: Allocator, prefix: ?[]const u8, local_name: []const u8) Allocator.Error![]const u8 {
+    const p = prefix orelse return arena.dupe(u8, local_name);
+    if (p.len == 0) return arena.dupe(u8, local_name);
+    return std.mem.concat(arena, u8, &.{ p, ":", local_name });
 }
 
 /// The content navigable of a frame owner element (an iframe's), in the

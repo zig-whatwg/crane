@@ -34,14 +34,15 @@ const std = @import("std");
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 
-// process-wide: Blink's CoreProbeSink::s_existingAgents - how many CDP DOM
-// agents are enabled in this process, in any Browser. A fast-return gate and
-// nothing else: every probe reads it first and reads nothing through it.
-// Safe across Browsers and threads: each Browser's thread changes it only
-// with atomic read-modify-writes (an agent's enable and its disable or
-// session end, one each), probes read it with an acquire load, and a probe
-// that sees it open in a Browser whose own sink has no agent - another
-// Browser's agent opened it - finds no agent there and returns.
+// Blink's CoreProbeSink::s_existingAgents: how many CDP DOM agents are
+// enabled in this process, in any Browser. A fast-return gate and nothing
+// else: every probe reads it first and reads nothing through it. Each
+// Browser's thread changes it only with atomic read-modify-writes (an
+// agent's enable, and its disable or its session's end), probes read it with
+// an acquire load, and a probe that finds it open in a Browser whose own sink
+// has no agent (another Browser's agent opened it) finds none there and
+// returns.
+// process-wide: a gate counting the DOM agents enabled in any Browser (Blink's s_existingAgents); atomic increments and decrements from each Browser's thread, acquire reads, never a pointer: a stale open read only costs a sink lookup that finds no agent
 var enabled_agents: std.atomic.Value(u32) = .init(0);
 
 /// Whether any DOM agent is enabled in the process: the one check at every
