@@ -874,10 +874,12 @@ title = "Ladybird in the browser comparison matrix (0.1 requirement)"
 why = """The user, 2026-11-23 12:07 PM ET: "I want to add Ladybird as a browser to compare against in our \
 browser comparison matrix. Queue this for 0.1". The performance comparison (docs/performance.md, \
 tools/perf_bench engines.zig, the /performance/ report and its card) measures Crane beside Chrome, \
-Firefox, Safari and Lightpanda on chat.local in closed timed windows; Ladybird joins them. Ladybird ships \
-no releases: it is built from a pinned commit (its BSD-2 source) and driven headless the way the report \
-drives the others (its WebDriver server or headless-browser), measured the same way."""
-done_when = """A pinned Ladybird (commit recorded) built on chat.local runs the same workloads as the other \
+Firefox, Safari and Lightpanda on chat.local in closed timed windows; Ladybird joins them. The user, \
+12:09 PM ET: "make sure to use the released today alpha version of ladybird: https://ladybird.org/posts/alpha/" - \
+the official Ladybird Alpha build (2026-11-23; macOS disk image from ladybird.org/download, a rolling \
+channel), not a source build; driven through the WebDriver support the alpha ships, measured the same way."""
+done_when = """The Ladybird Alpha installed on chat.local (its build identifier recorded from the app; the \
+rolling channel's auto-update held so the measured build stays fixed, and re-measured when it is moved on) runs the same workloads as the other \
 engines inside the same windows; perf_bench's engine list, the report, the card and docs/performance.md \
 carry it with its version and how its memory is read; workloads it cannot run are listed with the reason. \
 Ladybird does not count toward golden rule 2's majority (Chrome, Firefox, Safari)."""
