@@ -431,6 +431,14 @@ pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
 pub fn takeCallbackInterface(_: *const engine.CallbackWrapper) engine.CallbackInterface {
     return .{ .object = .{ .value = JSValue.jsUndefined }, .context = null };
 }
+// No engine to hold a function in: the kept value is undefined, with no
+// callback context, as the take entries above answer.
+pub fn keepCallbackFunction(_: engine.BorrowedCallbackFunction) engine.CallbackFunction {
+    return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
+}
+pub fn keepCallbackInterface(_: engine.BorrowedCallbackInterface) engine.CallbackInterface {
+    return .{ .object = .{ .value = JSValue.jsUndefined }, .context = null };
+}
 
 // 4.5 ECMAScript values
 pub fn getProperty(_: Context, _: JSValue, _: []const u8) Error!Owned {

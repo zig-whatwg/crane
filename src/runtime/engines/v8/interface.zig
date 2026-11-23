@@ -274,10 +274,11 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 
         // A callback interface converts to a CallbackWrapper, which keeps a
         // context handle of its own (callback_wrapper.initFunction/initObject);
-        // a callback function converts to its own argument handle, tagged, and
-        // never reads the context. Neither keeps the caller's.
+        // a callback function or interface value (runtime.Borrowed*) is its
+        // own argument handle, and never reads the context. None keeps the
+        // caller's.
         if (T == *runtime.CallbackWrapper) break :blk false;
-        if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
+        if (isCallbackValueType(T)) break :blk false;
 
         // Buffer sources are made without the context: a BufferSource, an
         // AllowSharedBufferSource or an ArrayBufferView is a reference to its
@@ -397,8 +398,16 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // functions, each of which holds its OWN element handle, freed with
         // the sequence (`freeConvertedArg`), never the sequence's.
         if (info == .pointer and info.pointer.size == .slice) {
-            break :blk argHandleIsCopied(info.pointer.child) or isCallbackFunctionShape(info.pointer.child);
+            break :blk argHandleIsCopied(info.pointer.child) or isCallbackValueShape(info.pointer.child);
         }
+
+        // A callback value (runtime.BorrowedCallbackFunction,
+        // BorrowedCallbackInterface) IS the handle it was converted from,
+        // freed with the value (`freeConvertedArg`). A struct, so it is named
+        // before the dictionary rule, which would read its JSValue field as a
+        // member that aliases only its own handle and call it copied: the
+        // argument's Global released at conversion, under the impl.
+        if (isCallbackValueType(T)) break :blk false;
 
         // A dictionary reads each member through its own handle (Get), so no
         // member aliases the dictionary's handle. Members are still held to a
@@ -461,7 +470,7 @@ fn memberHandleIsSafe(comptime T: type) bool {
     // CallbackFunctionBase holding a reference of its own made from its
     // member's Local (platform/bindings/callback_function_base.h,
     // `TraceWrapperV8Reference<v8::Object> callback_function_`).
-    if (isCallbackFunctionType(T)) return true;
+    if (isCallbackValueType(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
     // A sequence<any> / sequence<object> member reads each element through
@@ -475,22 +484,29 @@ fn memberHandleIsSafe(comptime T: type) bool {
     return false;
 }
 
-/// `T` is a callback function as codegen types one: a pointer to a Zig
-/// function (`callbacks.X = *const fn (...) R`), the type conv.fromV8Value's
-/// function-pointer branch converts by holding the handle it was given - a
-/// value BORROWED for the call, freed with it (`freeConvertedArg`).
+/// `T` is a callback value as the binding converts one: a callback function
+/// or callback interface type's value (runtime.BorrowedCallbackFunction,
+/// runtime.BorrowedCallbackInterface), which conv.fromV8Value converts by
+/// holding the handle it was given - its argument's Global, or a member's,
+/// arm's or element's own Get handle - a value BORROWED for the call, freed
+/// with it (`freeConvertedArg`). An impl that keeps it keeps a hold of its
+/// own (`keep`, which moves the function out of this Global).
+/// TRANSITIONAL: also a pointer to a Zig function, the shape codegen gave a
+/// callback function before (`callbacks.X = *const fn (...) R`), which the
+/// function-pointer branch converts the same way.
 /// Not `*anyopaque` (a union's Function arm), which stays unknown here.
-fn isCallbackFunctionType(comptime T: type) bool {
+pub fn isCallbackValueType(comptime T: type) bool {
+    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) return true;
     const info = @typeInfo(T);
     return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
 }
 
-/// A callback function or its nullable form: what conv.fromV8Value converts
-/// by holding the handle it was given (or, for null, holding nothing).
-fn isCallbackFunctionShape(comptime T: type) bool {
+/// A callback value or its nullable form: what conv.fromV8Value converts by
+/// holding the handle it was given (or, for null, holding nothing).
+fn isCallbackValueShape(comptime T: type) bool {
     const info = @typeInfo(T);
-    if (info == .optional) return isCallbackFunctionType(info.optional.child);
-    return isCallbackFunctionType(T);
+    if (info == .optional) return isCallbackValueType(info.optional.child);
+    return isCallbackValueType(T);
 }
 
 /// A tagged union whose arms are copied (`argHandleIsCopied`) or callback
@@ -502,7 +518,7 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
         if (T == runtime.JSValue or T == runtime.DOMString) break :blk false;
         var callbacks = 0;
         for (info.@"union".field_types) |field_type| {
-            if (isCallbackFunctionShape(field_type)) {
+            if (isCallbackValueShape(field_type)) {
                 callbacks += 1;
             } else if (!argHandleIsCopied(field_type)) {
                 break :blk false;
@@ -512,11 +528,21 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
     };
 }
 
-/// The Global a callback-function value holds: its address, untagged
-/// (conversions.zig stores it as the function pointer's value).
-fn callbackFunctionGlobal(comptime T: type, value: T) *v8.Value {
-    comptime std.debug.assert(isCallbackFunctionType(T));
-    return @ptrFromInt(@intFromPtr(value));
+/// The Global a callback value holds: a borrowed value's handle, or a
+/// function pointer's address, untagged (conversions.zig stores it as the
+/// function pointer's value).
+fn callbackValueGlobal(comptime T: type, value: T) ?*v8.Value {
+    comptime std.debug.assert(isCallbackValueType(T));
+    const held: runtime.JSValue = if (T == runtime.BorrowedCallbackFunction)
+        value.function
+    else if (T == runtime.BorrowedCallbackInterface)
+        value.object
+    else
+        return @ptrFromInt(@intFromPtr(value));
+    return switch (held) {
+        .handle => |h| @ptrCast(@alignCast(h.ptr)),
+        else => null,
+    };
 }
 
 /// Does `conv.toV8Value(T, ...)` make a fresh Global for every value of `T` -
@@ -622,7 +648,7 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
     // string TimerHandler kept its argument's Global.
     if (comptime callbackArmsOnlyKeepHandle(T)) {
         switch (value) {
-            inline else => |payload| return !comptime isCallbackFunctionShape(@TypeOf(payload)),
+            inline else => |payload| return !comptime isCallbackValueShape(@TypeOf(payload)),
         }
     }
     const info = @typeInfo(T);
@@ -697,7 +723,7 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
 /// never correctness. A copied type (`argHandleIsCopied`) answers false too:
 /// the binding releases it whatever the value.
 pub fn setterValueIsBorrowed(comptime T: type) bool {
-    return comptime anyHandleIsKeptOnlyAsHandle(T) or isCallbackFunctionShape(T);
+    return comptime anyHandleIsKeptOnlyAsHandle(T) or isCallbackValueShape(T);
 }
 
 /// Whether an attribute getter's result of type `T` is a number or a boolean
@@ -1781,7 +1807,7 @@ pub fn needsArgCleanup(comptime T: type) bool {
     // every impl that never took its callback kept it for the agent's life:
     // `new ResizeObserver(fn)`, `canvas.toBlob(fn)`, `new Observable(fn)`
     // (lane leaks7).
-    if (isCallbackFunctionType(T)) return true;
+    if (isCallbackValueType(T)) return true;
     // Generic slice types (sequences) - allocated by fromV8Sequence
     // This handles []const JSValue, []const DOMString, etc.
     if (@typeInfo(T) == .pointer) {
@@ -1871,14 +1897,14 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // callback (addEventListener) took a CallbackInterface of its
         // own. Its wrapper goes now.
         conv.releaseCallbackWrapper(arg);
-    } else if (comptime isCallbackFunctionType(T)) {
+    } else if (comptime isCallbackValueType(T)) {
         // A callback function is the call's too: the value IS the Global
         // its conversion made (conv.fromV8Value's function-pointer branch,
         // untagged). An impl that keeps the callback took a hold of its own,
         // which moved the function out and left this Global empty
         // (engine.takeCallbackFunction); either way it goes now - an emptied
         // one without the general dispose's registry lookups.
-        v8.v8_Global_DisposeCallbackValue(callbackFunctionGlobal(T, arg));
+        v8.v8_Global_DisposeCallbackValue(callbackValueGlobal(T, arg));
     } else if (@typeInfo(T) == .optional) {
         // Handle all optional types by recursively freeing the inner value
         if (arg) |val| {
@@ -8559,7 +8585,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // for the setter (v8_Global_DisposeCallbackValue).
                     .value_is_callback = blk: {
                         if (setter_params.len < 2) break :blk false;
-                        break :blk isCallbackFunctionShape(setter_params[1].type orelse break :blk false);
+                        break :blk isCallbackValueShape(setter_params[1].type orelse break :blk false);
                     },
                     .lenient_this = isLenientThisProperty(prop_name),
                     .global_interface = is_global_interface,
@@ -8641,7 +8667,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     var zig_value = converted_value catch |err| {
                         // A strict callback rejects before taking its Global.
                         // The setter's defer still owns that failed argument.
-                        if (comptime isCallbackFunctionType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over.* = false;
+                        if (comptime isCallbackValueType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over.* = false;
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {
                             return;

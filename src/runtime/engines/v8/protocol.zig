@@ -662,6 +662,8 @@ pub fn isConstructor(realm: Context, value: JSValue) bool {
 
 pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
 pub const takeCallbackInterface = protocol_callbacks.takeCallbackInterface;
+pub const keepCallbackFunction = protocol_callbacks.keepCallbackFunction;
+pub const keepCallbackInterface = protocol_callbacks.keepCallbackInterface;
 
 // ============================================================================
 // 4.5 ECMAScript values

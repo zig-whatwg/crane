@@ -604,6 +604,43 @@ pub fn takeCallbackFunction(argument: *const anyopaque) engine.CallbackFunction 
     return .{ .function = .{ .value = function }, .context = incumbentRealm(isolate) };
 }
 
+/// A borrowed callback function value (the binding's Global, BORROWED for the
+/// call: an argument's, or a dictionary member's, union arm's or sequence
+/// element's own Get handle), kept as a CallbackFunction of the caller's own:
+/// the function MOVES out of the binding's Global into one of the caller's
+/// (`keptHandle`), tagged with the realm whose API keeps it, with its callback
+/// context - the incumbent realm now, which is the conversion's (WebIDL 3.2.19
+/// step 2): a borrowed value lives only for its call. Blink records the same
+/// realm when it converts (CallbackFunctionBase's constructor,
+/// `isolate->GetIncumbentContext()`). A value kept already gives undefined.
+pub fn keepCallbackFunction(callback: engine.BorrowedCallbackFunction) engine.CallbackFunction {
+    const function = keptHandle(callback.function);
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .function = .{ .value = function }, .context = null };
+    tagWithCurrentRealm(isolate, function);
+    return .{ .function = .{ .value = function }, .context = incumbentRealm(isolate) };
+}
+
+/// A borrowed callback interface value, kept as keepCallbackFunction keeps a
+/// function (WebIDL 3.2.16 step 2).
+pub fn keepCallbackInterface(callback: engine.BorrowedCallbackInterface) engine.CallbackInterface {
+    const object = keptHandle(callback.object);
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .object = .{ .value = object }, .context = null };
+    tagWithCurrentRealm(isolate, object);
+    return .{ .object = .{ .value = object }, .context = incumbentRealm(isolate) };
+}
+
+/// The value the binding's Global holds, MOVED into a Global of the caller's
+/// own (v8_Global_TakeOver: no V8 handle made, one 16 B box; a weak Global is
+/// copied instead, its arm left on the box). The binding's Global is left
+/// empty, still the binding's to free when the call returns
+/// (v8_Global_DisposeCallbackValue deletes an emptied one without the general
+/// dispose's lookups). An empty one - kept already - gives undefined.
+fn keptHandle(value: JSValue) JSValue {
+    const handle = support.handleOf(value) orelse return JSValue.jsUndefined;
+    const own = ffi.v8_Global_TakeOver(handle) orelse return JSValue.jsUndefined;
+    return realm_entry.owned(@ptrCast(own));
+}
+
 /// Tag a callback's handle with the realm whose API is storing it - the
 /// current realm: V8 runs an API function in its own context, so a frame
 /// target's `onmessage` setter or `addEventListener` is the frame's,

@@ -1945,7 +1945,17 @@ pub fn fromV8Value(
 pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
     const Child = @typeInfo(T).optional.child;
     if (!v8.v8_Value_IsObject(value)) return null;
+    if (Child == runtime.BorrowedCallbackFunction) return borrowedCallbackFunction(value);
     return callbackFunctionValue(Child, value);
+}
+
+/// A callback function type's value (WebIDL 3.2.19 step 2): the function the
+/// binding's Global `value` holds, with that Global as its handle - BORROWED
+/// for the call and freed with the value (interface.freeConvertedArg), which
+/// is why the conversion adopts its input. Its callback context is recorded
+/// when an impl keeps it (engine.keepCallbackFunction).
+fn borrowedCallbackFunction(value: *v8.Value) runtime.BorrowedCallbackFunction {
+    return .{ .function = .{ .handle = .{ .ptr = @ptrCast(value) } } };
 }
 
 /// The transitional callback representation is the untagged Global address,
@@ -2227,6 +2237,35 @@ fn convertValueAs(
         return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
     }
 
+    // WebIDL 3.2.19, converting V to a callback function type:
+    if (T == runtime.BorrowedCallbackFunction) {
+        // 1. "If the result of calling IsCallable(V) is false" - and V is not
+        //    being assigned to a nullable [LegacyTreatNonObjectAsNull]
+        //    callback attribute, which converts through
+        //    fromV8LegacyCallbackAttribute instead - "throw a TypeError."
+        if (!v8.v8_Value_IsFunction(value)) return ConversionError.TypeError;
+        // 2. "Return the IDL callback function type value that represents a
+        //    reference to the same object that V represents, with the
+        //    incumbent settings object as the callback context."
+        return borrowedCallbackFunction(value);
+    }
+
+    // WebIDL 3.2.16, converting V to a callback interface type:
+    if (T == runtime.BorrowedCallbackInterface) {
+        // 1. "If V is not an Object, then throw a TypeError." A function is an
+        //    object; the operation is looked up only when the callback is
+        //    called ("call a user object's operation" step 10), so nothing is
+        //    read here. Chrome, Firefox and Safari throw too for
+        //    addEventListener(type, 5).
+        if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+        // 2. "Return the IDL callback interface type value that represents a
+        //    reference to V, with the incumbent settings object as the
+        //    callback context": the binding's Global, BORROWED for the call
+        //    (freed with the value; engine.keepCallbackInterface records the
+        //    context when an impl keeps it).
+        return .{ .object = .{ .handle = .{ .ptr = @ptrCast(value) } } };
+    }
+
     // Handle unions (for constructor overloading and type unions)
     if (type_info == .@"union") {
         // Union types require runtime type discrimination per WebIDL specification.
@@ -2343,6 +2382,8 @@ fn convertValueAs(
         // These match JavaScript functions that need to be stored for later invocation.
         const function_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
+                // A callback function arm (runtime.BorrowedCallbackFunction)
+                if (field.type == runtime.BorrowedCallbackFunction) break :blk i;
                 // Check for *anyopaque (used for callback.Function)
                 if (field.type == *anyopaque) {
                     break :blk i;
@@ -2466,7 +2507,11 @@ fn convertValueAs(
                 // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
                 // Handle the different callback pointer types
                 const FieldType = fields[idx].type;
-                if (FieldType == *anyopaque) {
+                if (FieldType == runtime.BorrowedCallbackFunction) {
+                    // 3.2.19: the callable's own Global, BORROWED for the
+                    // call (freed with the union, interface.freeConvertedArg).
+                    return @unionInit(T, fields[idx].name, borrowedCallbackFunction(value));
+                } else if (FieldType == *anyopaque) {
                     // For *anyopaque (callbacks.Function), tag so we can identify it later as GlobalHandle
                     const tagged = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
                     return @unionInit(T, fields[idx].name, @constCast(tagged));
@@ -3407,6 +3452,7 @@ pub fn toV8Record(
 /// nothing when it fails. Unknown pointer and aggregate types remain false;
 /// nullable callbacks have the same rule.
 pub fn callbackConversionAdoptsInput(comptime T: type) bool {
+    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) return true;
     const info = @typeInfo(T);
     if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
     return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
@@ -3868,6 +3914,16 @@ pub fn toV8Value(
     if (T == typedefs.ArrayBufferView) {
         const js = value.jsHandle() orelse return toV8Undefined(isolate);
         return @ptrCast(@alignCast(js));
+    }
+
+    // A callback function or interface value converts to "a reference to the
+    // same object" (WebIDL 3.2.19, 3.2.16): BORROWED, its holder's handle.
+    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) {
+        const held = if (T == runtime.BorrowedCallbackFunction) value.function else value.object;
+        return switch (held) {
+            .handle => |h| @ptrCast(@alignCast(h.ptr)),
+            else => toV8Undefined(isolate),
+        };
     }
 
     // Handle engine-agnostic JSValue (from runtime/js_value.zig)

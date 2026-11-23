@@ -201,6 +201,8 @@ pub const RealmSteps = @import("engine_types.zig").RealmSteps;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
 pub const CallbackThis = @import("engine_types.zig").CallbackThis;
+pub const BorrowedCallbackFunction = @import("engine_types.zig").BorrowedCallbackFunction;
+pub const BorrowedCallbackInterface = @import("engine_types.zig").BorrowedCallbackInterface;
 pub const WindowTimerHandler = @import("engine_types.zig").WindowTimerHandler;
 pub const WindowOperations = @import("engine_types.zig").WindowOperations;
 // ---- end lane: page-realm ----

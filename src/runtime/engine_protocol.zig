@@ -253,6 +253,16 @@ pub const CallbackFunction = struct {
     }
 };
 
+/// A callback function type's value as the binding hands it to an impl:
+/// BORROWED for the call; `keep` (keepCallbackFunction) gives a
+/// CallbackFunction of the caller's own (runtime/engine_types.zig).
+pub const BorrowedCallbackFunction = runtime.BorrowedCallbackFunction;
+
+/// A callback interface type's value as the binding hands it to an impl:
+/// BORROWED for the call; `keep` (keepCallbackInterface) gives a
+/// CallbackInterface of the caller's own.
+pub const BorrowedCallbackInterface = runtime.BorrowedCallbackInterface;
+
 /// A callback interface value as the binding converts it today - what
 /// takeCallbackInterface takes. TRANSITIONAL.
 pub const CallbackWrapper = runtime.CallbackWrapper;
@@ -2323,6 +2333,25 @@ pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction 
 /// TRANSITIONAL, as takeCallbackFunction.
 pub inline fn takeCallbackInterface(argument: *const CallbackWrapper) CallbackInterface {
     return impl.takeCallbackInterface(argument);
+}
+
+/// Keep a callback function value past the call it was converted for: a
+/// CallbackFunction of the caller's own (OWNED: released exactly once) whose
+/// callback context is the incumbent realm now - the conversion's, since a
+/// borrowed value lives only for its call (WebIDL 3.2.19 step 2). Keep at most
+/// once, and only during the call: an adapter may MOVE the binding's hold into
+/// the result (V8 does: no new handle is made), after which `callback` refers
+/// to nothing and a second keep gives an undefined function. The binding
+/// still releases its own (then empty) hold when the call returns.
+pub inline fn keepCallbackFunction(callback: BorrowedCallbackFunction) CallbackFunction {
+    return impl.keepCallbackFunction(callback);
+}
+
+/// Keep a callback interface value past its call: a CallbackInterface of the
+/// caller's own (OWNED), its callback context the incumbent realm now (WebIDL
+/// 3.2.16 step 2). At most once, during the call, as keepCallbackFunction.
+pub inline fn keepCallbackInterface(callback: BorrowedCallbackInterface) CallbackInterface {
+    return impl.keepCallbackInterface(callback);
 }
 
 // ============================================================================

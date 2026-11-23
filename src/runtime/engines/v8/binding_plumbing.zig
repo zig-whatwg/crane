@@ -1469,12 +1469,20 @@ pub fn finishGetter(
             break :comptime_convert jsValueGetterResult(frozen_array, isolate_inner, value, gate_realm);
         } else if (comptime isOptionalCallbackType(PayloadType)) {
             // An optional callback function type (EventHandler is
-            // ?EventHandlerNonNull, a function pointer): the value
-            // is the function's Global<Value>* (conversions.zig,
-            // UNTAGGED - a tag in a function pointer's low bits is
-            // illegal behaviour an optimized build acts on), which
-            // is what setReturnValue reads. Null is JavaScript null.
+            // ?EventHandlerNonNull): the value is BORROWED - the
+            // holder's own Global (an event handler map's), which is
+            // what setReturnValue reads. Null is JavaScript null.
+            // TRANSITIONAL: a function pointer's value is the
+            // Global's address (conversions.zig, UNTAGGED - a tag in
+            // a function pointer's low bits is illegal behaviour an
+            // optimized build acts on).
             if (result) |function_value| {
+                if (comptime @typeInfo(PayloadType).optional.child == runtime.BorrowedCallbackFunction) {
+                    break :comptime_convert switch (function_value.function) {
+                        .handle => |h| @ptrCast(@alignCast(h.ptr)),
+                        else => v8.v8_Null(isolate_inner) orelse unreachable,
+                    };
+                }
                 const address: usize = @intFromPtr(function_value);
                 break :comptime_convert @ptrFromInt(address);
             } else {
@@ -1741,6 +1749,7 @@ pub fn isUnionResult(comptime T: type) bool {
 pub fn isOptionalCallbackType(comptime T: type) bool {
     const type_info = @typeInfo(T);
     if (type_info != .optional) return false;
+    if (type_info.optional.child == runtime.BorrowedCallbackFunction) return true;
 
     const child_info = @typeInfo(type_info.optional.child);
     if (child_info != .pointer) return false;
