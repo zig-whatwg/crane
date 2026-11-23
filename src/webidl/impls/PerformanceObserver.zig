@@ -84,7 +84,7 @@ fn observerOf(instance: *runtime.Instance) !*performance_timeline.Observer {
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
     const observer = observerOf(instance) catch unreachable;
-    observer.callback = engine.takeCallbackFunction(@ptrCast(callback));
+    observer.callback = callback.keep();
     return instance;
 }
 

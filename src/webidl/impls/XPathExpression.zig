@@ -36,11 +36,13 @@ pub fn initOwn(instance: *Node, allocator: Allocator, comptime StateType: type, 
     errdefer internal.arena.deinit();
     if (comptime @hasField(@TypeOf(args), "expression")) {
         const source = try internal.arena.allocator().dupe(u8, args.expression.asSlice());
-        const wrapper: ?*runtime.CallbackWrapper = if (comptime @hasField(@TypeOf(args), "resolver"))
-            (args.resolver.getOrDefault(null) orelse null)
+        // The resolver is BORROWED from the binding for the call: kept for
+        // the parse, which calls it, and released after.
+        const resolver: ?runtime.BorrowedCallbackInterface = if (comptime @hasField(@TypeOf(args), "resolver"))
+            args.resolver.getOrDefault(null)
         else
             null;
-        const callback: ?engine.CallbackInterface = if (wrapper) |value| engine.takeCallbackInterface(value) else null;
+        const callback: ?engine.CallbackInterface = if (resolver) |value| value.keep() else null;
         defer if (callback) |value| value.release();
         var parser = Parser{ .allocator = internal.arena.allocator(), .source = source, .realm = instance.ctx, .resolver = callback };
         try parser.advance();

@@ -1,0 +1,17 @@
+callback Notify = undefined (DOMString message, long count);
+callback interface Listener {
+  undefined handle(DOMString message);
+};
+dictionary NotifyInit {
+  Notify notify;
+  Listener listener;
+  required Listener required_listener;
+};
+[Exposed=*]
+interface CallbackTypes {
+  constructor(Notify notify);
+  undefined listen(Listener listener);
+  undefined listenNullable(Listener? listener);
+  undefined listenOptional(optional Listener? listener = null);
+  undefined configure(optional NotifyInit init = {});
+};

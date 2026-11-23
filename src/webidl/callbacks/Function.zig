@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const Function = *const fn (arguments: []const runtime.JSValue) runtime.JSValue;
+/// callback Function = any (any... arguments)
+pub const Function = runtime.BorrowedCallbackFunction;

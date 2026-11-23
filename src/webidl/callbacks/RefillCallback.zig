@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const RefillCallback = *const fn () runtime.JSValue;
+/// callback RefillCallback = Promise<undefined> ()
+pub const RefillCallback = runtime.BorrowedCallbackFunction;

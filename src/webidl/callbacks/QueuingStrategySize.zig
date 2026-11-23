@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const QueuingStrategySize = *const fn (chunk: runtime.JSValue) f64;
+/// callback QueuingStrategySize = unrestricted double (any chunk)
+pub const QueuingStrategySize = runtime.BorrowedCallbackFunction;

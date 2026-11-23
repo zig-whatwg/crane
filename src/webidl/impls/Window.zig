@@ -2959,8 +2959,8 @@ pub fn call_focus(instance: *runtime.Instance) anyerror!void {
 /// Operation: requestIdleCallback
 /// Spec: https://w3c.github.io/requestidlecallback/#the-requestidlecallback-method
 pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: webidl.Opt(dictionaries.IdleRequestOptions)) anyerror!u32 {
-    // The binding hands the callback over: take it before anything can fail.
-    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const function = callback.keep();
     // 1. "Let window be this Window object."
     const internal = getInternal(instance) orelse {
         function.release();

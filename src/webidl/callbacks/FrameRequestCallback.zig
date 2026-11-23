@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const FrameRequestCallback = *const fn (time: *runtime.Instance) void;
+/// callback FrameRequestCallback = undefined (DOMHighResTimeStamp time)
+pub const FrameRequestCallback = runtime.BorrowedCallbackFunction;

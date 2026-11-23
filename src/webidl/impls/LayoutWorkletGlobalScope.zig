@@ -60,7 +60,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// registerLayout(name, layoutCtor) - CSS Layout API, "Registering a
 /// Layout".
 pub fn call_registerLayout(instance: *runtime.Instance, name: runtime.DOMString, layoutCtor: callbacks.VoidFunction) anyerror!void {
-    const constructor = engine.takeCallbackFunction(@ptrCast(layoutCtor));
+    const constructor = layoutCtor.keep();
     defer constructor.release();
     const realm = instance.ctx;
     const ctor = constructor.function.value;

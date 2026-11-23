@@ -61,7 +61,7 @@ pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
 
 /// registerPaint(name, paintCtor) - CSS Painting API 4.
 pub fn call_registerPaint(instance: *runtime.Instance, name: runtime.DOMString, paintCtor: callbacks.VoidFunction) anyerror!void {
-    const constructor = engine.takeCallbackFunction(@ptrCast(paintCtor));
+    const constructor = paintCtor.keep();
     defer constructor.release();
     const realm = instance.ctx;
     const ctor = constructor.function.value;

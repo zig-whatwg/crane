@@ -456,8 +456,8 @@ pub fn installHooks() void {
         .dispatch_trusted_in_world = dispatchTrustedInWorld,
     });
     dom_module.event_handlers.install(.{
-        .get = getHandlerAddress,
-        .set = setHandlerAddress,
+        .get = getHandlerValue,
+        .set = setHandlerValue,
         .set_raw = setRawEventHandler,
         .deactivate_content_attribute = deactivateContentAttributeHandler,
         .erase = eraseAllEventListenersAndHandlers,
@@ -856,9 +856,9 @@ fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) boo
 /// DOM "event listener whose callback is callback": two callback interface
 /// values are the same listener's when they are the same object (SameValue).
 /// `kept` is a listener's (`Listener.object`), `given` the argument's.
-fn callbackEquals(realm: runtime.Context, kept: ?*anyopaque, given: ?engine.CallbackInterface) bool {
+fn callbackEquals(realm: runtime.Context, kept: ?*anyopaque, given: ?runtime.JSValue) bool {
     const y = given orelse return false;
-    return engine.sameValue(realm, ownedObject(kept).value, y.object.value);
+    return engine.sameValue(realm, ownedObject(kept).value, y);
 }
 
 /// The next listener's id: a listener is found by id only in its own
@@ -952,7 +952,7 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
         // algorithm as its callback, which script never holds.
         if (existing.bits.kind != .listener) continue;
         if (existing.bits.capture == options.capture and existing.type.matches(key) and
-            callbackEquals(instance.ctx, existing.object, callback_value))
+            callbackEquals(instance.ctx, existing.object, callback_value.object.value))
         {
             // Already there: its abort steps (step 6) would remove a listener
             // that was never appended, which does nothing, so none are added.
@@ -1004,7 +1004,7 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
 /// ("If this's event listener list contains an event listener whose type is
 /// type, callback is callback, and capture is capture, then remove an event
 /// listener"). `callback` is BORROWED.
-fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, capture: bool) void {
+fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?runtime.BorrowedCallbackInterface, capture: bool) void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
     const key = EventTypeKey.of(@"type");
     // One read of the list for the scan, the removal and the owner's flag:
@@ -1015,7 +1015,7 @@ fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"ty
         // handler, never by removeEventListener (its callback is internal).
         if (existing.bits.kind != .listener) continue;
         if (existing.bits.capture == capture and existing.type.matches(key) and
-            callbackEquals(instance.ctx, existing.object, callback)) break i;
+            callbackEquals(instance.ctx, existing.object, if (callback) |given| given.object else null)) break i;
     } else return;
 
     // Step 2: Set listener's removed to true and remove listener from
@@ -1198,16 +1198,8 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 /// compile a raw content-attribute handler on first use, in the target's
 /// current document, or return the already compiled value.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null).address;
-    // The address is the function's Global (conversions.zig stores it
-    // untagged, aligned as a function pointer must be). No pointer cast turns
-    // it into the callback type, so it is copied byte for byte, as
-    // conversions.zig does.
-    const Callable = @typeInfo(Handler).optional.child;
-    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
-    var handler: Callable = undefined;
-    @memcpy(std.mem.asBytes(&handler), std.mem.asBytes(&address));
-    return handler;
+    comptime std.debug.assert(Handler == dom_module.event_handlers.HandlerValue);
+    return getHandlerValue(target, event_type);
 }
 
 /// The event handler IDL attribute setter's steps 3 and 4 (HTML §8.1.8.1) on
@@ -1230,19 +1222,19 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
         return;
     };
     // Step 4: set eventHandler's value to the given value, then activate it.
-    // The binding's value is borrowed for the setter: the list takes a hold
-    // of its own, and the getter hands out that hold's Global - the binding's
-    // goes when the setter returns (lane leaks7).
-    var address: usize = undefined;
-    @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
-    const callback = engine.takeCallbackFunction(@ptrFromInt(address));
+    // The binding's value is borrowed for the setter: the list keeps a hold
+    // of its own, and the getter hands out that hold - the binding's goes
+    // when the setter returns (lane leaks7).
+    const callback = handler.keep();
     const new_value: NewHandlerValue = .{ .compiled = callback };
     errdefer new_value.release(runtime.allocatorOf(target));
     try storeEventHandler(target, listeners, event_type, new_value, world);
 }
 
-fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
-    return (currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null).address;
+/// The getter's value: the list's own hold, BORROWED.
+fn getHandlerValue(target: *runtime.Instance, event_type: []const u8) dom_module.event_handlers.HandlerValue {
+    const current = currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null;
+    return .{ .function = current.callback.function.value };
 }
 
 /// Content attribute change steps 5.2-5.6: store an owned raw body and
@@ -1326,35 +1318,21 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8, world:
     }
 }
 
-fn setHandlerAddress(target: *runtime.Instance, event_type: []const u8, address: ?usize) anyerror!void {
-    const Handler = typedefs.EventHandler;
-    const Callable = @typeInfo(Handler).optional.child;
-    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
-    var handler: Handler = null;
-    if (address) |value| {
-        var function: Callable = undefined;
-        @memcpy(std.mem.asBytes(&function), std.mem.asBytes(&value));
-        handler = function;
-    }
-    try setEventHandler(Handler, target, event_type, handler);
+fn setHandlerValue(target: *runtime.Instance, event_type: []const u8, value: dom_module.event_handlers.HandlerValue) anyerror!void {
+    try setEventHandler(dom_module.event_handlers.HandlerValue, target, event_type, value);
 }
 
 /// An event handler's compiled value, BORROWED from its listener: the
-/// callback function (the list's hold) and the address of that hold's
-/// Global, which the getter returns in the binding's representation. A
-/// running handler holds a value of its own (invokeIdlEventHandler), so
+/// callback function (the list's hold), which the getter returns. A running
+/// handler holds a value of its own (invokeIdlEventHandler), so
 /// `this.onclick = null` inside one is safe.
 const HandlerValue = struct {
     callback: engine.CallbackFunction,
-    /// The binding's representation of the same function, valid while the
-    /// listener holds it.
-    address: usize,
 };
 
 fn handlerValueOf(listener: Listener) HandlerValue {
     return .{
         .callback = .{ .function = ownedObject(listener.object), .context = listener.context },
-        .address = @intFromPtr(listener.object.?),
     };
 }
 
@@ -1451,7 +1429,7 @@ fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue), co
     return .{ .capture = toBoolean(options.value) };
 }
 
-pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     // https://dom.spec.whatwg.org/#concept-flatten-more
     const flat = try flattenOptions(instance.ctx, options, true);
 
@@ -1460,13 +1438,10 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     // and nothing below can run any before the listener is in the list.
     const listeners = ensureListeners(instance) catch return error.OutOfMemory;
 
-    // The callback interface value, with the incumbent realm now - the
-    // conversion's - as its callback context. The binding's wrapper is the
-    // call's; the listener keeps a value of its own.
-    const callback_value: ?engine.CallbackInterface = if (callback) |cb_opt| blk: {
-        const wrapper = cb_opt orelse break :blk null;
-        break :blk engine.takeCallbackInterface(wrapper);
-    } else null;
+    // The callback interface value, kept with the incumbent realm now - the
+    // conversion's - as its callback context. The binding's value is
+    // BORROWED for the call; the listener keeps a value of its own.
+    const callback_value: ?engine.CallbackInterface = if (callback) |given| given.keep() else null;
 
     // "Add an event listener with this and an event listener whose type is
     // type, callback is callback, capture is capture, passive is passive,
@@ -1479,10 +1454,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
-pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // The binding's wrapper, borrowed for the call.
-    const raw_callback_wrapper: ?*runtime.CallbackWrapper = if (callback) |cb_opt| cb_opt else null;
-
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     const listeners = listenersOf(instance) orelse return;
 
     // https://dom.spec.whatwg.org/#concept-flatten
@@ -1492,11 +1464,9 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     // listener that `addEventListener(t, fn, true)` added.
     const capture = (try flattenOptions(instance.ctx, options, false)).capture;
 
-    // The callback interface value, for the comparison only.
-    const callback_value: ?engine.CallbackInterface = if (raw_callback_wrapper) |wrapper| engine.takeCallbackInterface(wrapper) else null;
-    defer if (callback_value) |value| value.release();
-
-    removeAnEventListener(listeners, instance, @"type".asSlice(), callback_value, capture);
+    // The callback interface value, BORROWED for the call: only compared,
+    // so nothing is kept.
+    removeAnEventListener(listeners, instance, @"type".asSlice(), callback, capture);
 }
 
 /// Operation: dispatchEvent

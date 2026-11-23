@@ -2,10 +2,10 @@
 //!
 //! DOM 6.1: NodeIterator.filter and TreeWalker.filter return the NodeFilter
 //! passed to createNodeIterator() / createTreeWalker() - the same object, not
-//! a wrapper around it. A callback interface ARGUMENT reaches an impl as the
-//! binding's `*runtime.CallbackWrapper`, borrowed for the call (the impl takes
-//! its own value with engine.takeCallbackInterface); the attribute that gives
-//! the object back is a value, `runtime.JSValue`.
+//! a wrapper around it. A callback interface ARGUMENT reaches an impl as a
+//! `runtime.BorrowedCallbackInterface`, borrowed for the call (the impl keeps
+//! its own value with `keep()`); the attribute that gives the object back is
+//! a value, `runtime.JSValue`.
 
 const std = @import("std");
 const codegen = @import("codegen");

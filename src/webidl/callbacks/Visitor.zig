@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const Visitor = *const fn (value: runtime.JSValue, index: u64) void;
+/// callback Visitor = undefined (any value, unsigned long long index)
+pub const Visitor = runtime.BorrowedCallbackFunction;

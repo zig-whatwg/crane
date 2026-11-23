@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const Mapper = *const fn (value: runtime.JSValue, index: u64) runtime.JSValue;
+/// callback Mapper = any (any value, unsigned long long index)
+pub const Mapper = runtime.BorrowedCallbackFunction;

@@ -2227,7 +2227,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+    pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
@@ -2418,7 +2418,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+    pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
@@ -2506,7 +2506,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
@@ -2532,7 +2532,7 @@ pub const Document = struct {
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createExpression(instance, expression, resolver);

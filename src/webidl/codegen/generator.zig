@@ -1064,8 +1064,9 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
                         try w.writeAll("*runtime.Instance");
                     },
                     .callback_interface => {
-                        // Callback interfaces use engine-agnostic CallbackWrapper
-                        try w.writeAll("?*runtime.CallbackWrapper");
+                        // A callback interface type's value (WebIDL 3.2.16):
+                        // the engine protocol's borrowed callback interface.
+                        try w.writeAll("runtime.BorrowedCallbackInterface");
                     },
                     .typedef => {
                         // Qualify with module
@@ -3295,165 +3296,61 @@ pub fn generateCallback(
     try w.writeAll("const runtime = @import(\"runtime\");\n");
     try w.writeAll("\n");
 
-    // Generate callback function type with callback-specific type resolution
-    try w.print("pub const {s} = *const fn (", .{callback.name});
-
-    for (callback.arguments, 0..) |arg, i| {
-        if (i > 0) try w.writeAll(", ");
-
-        // Escape Zig keywords by wrapping in @"..." syntax
-        if (isZigKeyword(arg.name)) {
-            try w.print("@\"{s}\": ", .{arg.name});
-        } else {
-            try w.print("{s}: ", .{arg.name});
-        }
-
-        // Use callback-specific type resolution (no module imports)
-        try writeCallbackParamType(w, arg, type_registry);
-    }
-
-    try w.writeAll(") ");
-
-    // Write return type with proper resolution
-    // Promise<T> becomes runtime.JSValue since JavaScript Promises are represented as JSValue
-    try writeCallbackReturnType(w, callback.idlType, type_registry);
-    try w.writeAll(";\n");
+    // The type every position of this callback function type converts to
+    // (WebIDL 3.2.19): the engine protocol's borrowed callback function -
+    // BORROWED for the call, kept with `keep()` (engine.keepCallbackFunction).
+    // Its IDL signature is for the reader; the invoke operations take the
+    // arguments as values.
+    try w.writeAll("/// ");
+    try writeIdlCallbackSignature(w, callback);
+    try w.writeAll("\n");
+    try w.print("pub const {s} = runtime.BorrowedCallbackFunction;\n", .{callback.name});
+    _ = type_registry;
 
     try w.flush();
 }
 
-/// Write a callback parameter type without importing other generated modules
-/// This avoids circular dependencies (typedefs → callbacks → typedefs)
-fn writeCallbackParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod.TypeRegistry) !void {
-    // Handle optional parameters: optional T becomes runtime.JSValue (nullable at JS level)
-    // We can't use webidl.Opt since we only import runtime
-    if (arg.optional) {
-        // Optional params are handled at the JS binding level, not in callback signature
-        // The callback receives the resolved value or undefined
+/// `callback Name = Return (Type name, ...)`, as the IDL declares it.
+fn writeIdlCallbackSignature(w: anytype, callback: types.Callback) !void {
+    try w.print("callback {s} = ", .{callback.name});
+    try writeIdlTypeText(w, callback.idlType);
+    try w.writeAll(" (");
+    for (callback.arguments, 0..) |arg, i| {
+        if (i > 0) try w.writeAll(", ");
+        if (arg.optional) try w.writeAll("optional ");
+        try writeIdlTypeText(w, arg.idlType);
+        if (arg.variadic) try w.writeAll("...");
+        try w.print(" {s}", .{arg.name});
     }
-
-    // Handle variadic parameters: T... becomes []const T
-    if (arg.variadic) {
-        try w.writeAll("[]const ");
-    }
-
-    // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
-    if (arg.idlType.nullable and !arg.variadic) {
-        try w.writeAll("?");
-    }
-
-    try writeCallbackTypeSimple(w, arg.idlType, type_registry);
+    try w.writeAll(")");
 }
 
-/// Write a WebIDL type for callbacks without module imports
-/// Uses runtime types only to avoid circular dependencies
-fn writeCallbackTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
-    // Handle union types - use JSValue since we can't import typedefs
-    if (webidl_type.unionTypes != null) {
-        try w.writeAll("runtime.JSValue");
-        return;
-    }
-
-    var type_str = webidl_type.type;
-
-    // Strip namespace prefix if present (e.g., "dom::DOMString" -> "DOMString")
-    if (std.mem.indexOf(u8, type_str, "::")) |colon_pos| {
-        type_str = type_str[colon_pos + 2 ..];
-    }
-
-    // Map common primitive types
-    if (std.mem.eql(u8, type_str, "boolean")) {
-        try w.writeAll("bool");
-    } else if (std.mem.eql(u8, type_str, "byte")) {
-        try w.writeAll("i8");
-    } else if (std.mem.eql(u8, type_str, "octet")) {
-        try w.writeAll("u8");
-    } else if (std.mem.eql(u8, type_str, "short")) {
-        try w.writeAll("i16");
-    } else if (std.mem.eql(u8, type_str, "unsigned short")) {
-        try w.writeAll("u16");
-    } else if (std.mem.eql(u8, type_str, "long")) {
-        try w.writeAll("i32");
-    } else if (std.mem.eql(u8, type_str, "unsigned long")) {
-        try w.writeAll("u32");
-    } else if (std.mem.eql(u8, type_str, "long long")) {
-        try w.writeAll("i64");
-    } else if (std.mem.eql(u8, type_str, "unsigned long long")) {
-        try w.writeAll("u64");
-    } else if (std.mem.eql(u8, type_str, "float") or std.mem.eql(u8, type_str, "unrestricted float")) {
-        try w.writeAll("f32");
-    } else if (std.mem.eql(u8, type_str, "double") or std.mem.eql(u8, type_str, "unrestricted double")) {
-        try w.writeAll("f64");
-    } else if (std.mem.eql(u8, type_str, "DOMString")) {
-        try w.writeAll("runtime.DOMString");
-    } else if (std.mem.eql(u8, type_str, "USVString")) {
-        try w.writeAll("runtime.USVString");
-    } else if (std.mem.eql(u8, type_str, "ByteString")) {
-        try w.writeAll("runtime.ByteString");
-    } else if (std.mem.eql(u8, type_str, "undefined") or std.mem.eql(u8, type_str, "void")) {
-        try w.writeAll("void");
-    } else if (std.mem.eql(u8, type_str, "any") or std.mem.eql(u8, type_str, "object")) {
-        try w.writeAll("runtime.JSValue");
-    } else {
-        // Check type registry for known types
-        if (type_registry) |reg| {
-            if (reg.lookup(type_str)) |kind| {
-                switch (kind) {
-                    .interface, .callback_interface => {
-                        // Interface types become *runtime.Instance
-                        try w.writeAll("*runtime.Instance");
-                    },
-                    .typedef => {
-                        // Typedefs are often interface unions - use *runtime.Instance
-                        // since we can't import typedefs module
-                        try w.writeAll("*runtime.Instance");
-                    },
-                    .enum_type => {
-                        // Enums are strings at runtime in WebIDL
-                        try w.writeAll("[]const u8");
-                    },
-                    .dictionary => {
-                        // Dictionaries are complex objects
-                        try w.writeAll("runtime.JSValue");
-                    },
-                    .callback => {
-                        // Nested callbacks - use JSValue for safety
-                        try w.writeAll("runtime.JSValue");
-                    },
-                    .namespace, .mixin, .primitive => {
-                        // These shouldn't appear as callback parameter types
-                        try w.writeAll("runtime.JSValue");
-                    },
-                }
-                return;
-            }
+/// An IDL type as its IDL text: `sequence<T>`, `record<K, V>`, `Promise<T>`,
+/// `(A or B)`, and `?` for a nullable one.
+fn writeIdlTypeText(w: anytype, idl_type: types.IDLType) !void {
+    if (idl_type.unionTypes) |members| {
+        try w.writeAll("(");
+        for (members, 0..) |member, i| {
+            if (i > 0) try w.writeAll(" or ");
+            try writeIdlTypeText(w, member);
         }
-
-        // Unknown types - use runtime.JSValue for safety
-        try w.writeAll("runtime.JSValue");
+        try w.writeAll(")");
+    } else if (idl_type.sequence) |element| {
+        try w.writeAll("sequence<");
+        try writeIdlTypeText(w, element.*);
+        try w.writeAll(">");
+    } else if (idl_type.record) |record| {
+        try w.writeAll("record<");
+        try writeIdlTypeText(w, record.key.*);
+        try w.writeAll(", ");
+        try writeIdlTypeText(w, record.value.*);
+        try w.writeAll(">");
+    } else if (idl_type.generic) |generic| {
+        try w.print("{s}<{s}>", .{ idl_type.type, generic });
+    } else {
+        try w.writeAll(idl_type.type);
     }
-}
-
-/// Write callback return type with special handling for Promise types
-/// Promise<undefined> and Promise<T> are represented as runtime.JSValue in our model
-/// Uses callback-specific type resolution to avoid module imports
-fn writeCallbackReturnType(w: anytype, idl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
-    const type_str = idl_type.type;
-
-    // Handle Promise types - they're JavaScript values, so use JSValue
-    if (std.mem.eql(u8, type_str, "Promise")) {
-        try w.writeAll("runtime.JSValue");
-        return;
-    }
-
-    // Handle 'any' type - represented as JSValue
-    if (std.mem.eql(u8, type_str, "any")) {
-        try w.writeAll("runtime.JSValue");
-        return;
-    }
-
-    // For other types, use callback-specific type resolution (no module imports)
-    try writeCallbackTypeSimple(w, idl_type, type_registry);
+    if (idl_type.nullable) try w.writeAll("?");
 }
 
 /// Generate a namespace Zig file

@@ -20,13 +20,13 @@ const Filter = struct {
     allocator: std.mem.Allocator,
 };
 
-/// Keep the filter argument the binding converted (`wrapper`, borrowed for
-/// the call) as a traverser's filter: null for none. The result is the
-/// traverser's, freed by `release`.
-pub fn store(allocator: std.mem.Allocator, wrapper: ?*runtime.CallbackWrapper) error{OutOfMemory}!?*anyopaque {
-    const converted = wrapper orelse return null;
+/// Keep the filter argument the binding converted (BORROWED for the call) as
+/// a traverser's filter: null for none. The result is the traverser's, freed
+/// by `release`.
+pub fn store(allocator: std.mem.Allocator, given: ?runtime.BorrowedCallbackInterface) error{OutOfMemory}!?*anyopaque {
+    const converted = given orelse return null;
     const filter = try allocator.create(Filter);
-    filter.* = .{ .callback = engine.takeCallbackInterface(converted), .allocator = allocator };
+    filter.* = .{ .callback = converted.keep(), .allocator = allocator };
     return filter;
 }
 

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const CreateParserOptionsCallback = *const fn (options: runtime.JSValue, arguments: []const runtime.JSValue) runtime.JSValue;
+/// callback CreateParserOptionsCallback = SetHTMLUnsafeOptions? (SetHTMLUnsafeOptions options, any... arguments)
+pub const CreateParserOptionsCallback = runtime.BorrowedCallbackFunction;

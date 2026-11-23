@@ -2533,12 +2533,11 @@ fn ownerOf(event: *runtime.Instance) ?EventOwner {
 
 /// dom.navigation_api: intercept(options) steps 4.2-9.
 fn interceptHook(event: *runtime.Instance, options: dom.navigation_api.InterceptOptions) anyerror!void {
-    // The handlers are the binding's hand-over (OWNED by this call, whatever
-    // happens): taken now, so that every throw below releases them - a
-    // throw before they were taken kept both Globals (lane leaks6).
-    var precommit: ?engine.CallbackFunction = if (options.precommit_handler) |h| engine.takeCallbackFunction(h) else null;
+    // The handlers are BORROWED for the intercept() call: kept now, so that
+    // every throw below releases the navigation's own holds.
+    var precommit: ?engine.CallbackFunction = if (options.precommit_handler) |h| h.keep() else null;
     errdefer if (precommit) |p| p.release();
-    var handler: ?engine.CallbackFunction = if (options.handler) |h| engine.takeCallbackFunction(h) else null;
+    var handler: ?engine.CallbackFunction = if (options.handler) |h| h.keep() else null;
     errdefer if (handler) |h| h.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     const record = owner.record;
@@ -2623,10 +2622,10 @@ fn redirectHook(event: *runtime.Instance, args: *const dom.navigation_api.Redire
 
 /// dom.navigation_api: NavigationPrecommitController's addHandler() steps
 /// 2-4.
-fn addHandlerHook(event: *runtime.Instance, handler: *const anyopaque) anyerror!void {
-    // The binding's hand-over, OWNED by this call: taken first, so that a
-    // throw releases it (each one kept the argument's Global - lane leaks6).
-    const callback = engine.takeCallbackFunction(handler);
+fn addHandlerHook(event: *runtime.Instance, handler: runtime.BorrowedCallbackFunction) anyerror!void {
+    // BORROWED for the addHandler() call: kept first, so that a throw
+    // releases the navigation's own hold.
+    const callback = handler.keep();
     errdefer callback.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     try sharedChecksOf(owner);

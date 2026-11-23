@@ -78,7 +78,7 @@ pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// registerProcessor(name, processorCtor) - Web Audio API 1.32.3.2.
 pub fn call_registerProcessor(instance: *runtime.Instance, name: runtime.DOMString, processorCtor: callbacks.AudioWorkletProcessorConstructor) anyerror!void {
-    const constructor = engine.takeCallbackFunction(@ptrCast(processorCtor));
+    const constructor = processorCtor.keep();
     defer constructor.release();
     const realm = instance.ctx;
     const ctor = constructor.function.value;
