@@ -970,14 +970,23 @@ pub const Engine = struct {
         if (expected != 0) @memset(block, 0);
     }
 
+    /// Whether every byte of `block` is `byte`: one OR of the differences
+    /// over the whole block, then one comparison - no branch per word (lane
+    /// hard1's P1: the branch per word was most of verify's 5 ns a pair).
     fn allBytes(block: []const u8, byte: u8) bool {
-        const word = @as(usize, byte) * (std.math.maxInt(usize) / 0xff);
+        const V = @Vector(16, u8);
+        const pattern: V = @splat(byte);
+        var differ: V = @splat(0);
         var i: usize = 0;
-        while (i + @sizeOf(usize) <= block.len) : (i += @sizeOf(usize)) {
-            if (std.mem.readInt(usize, block[i..][0..@sizeOf(usize)], .little) != word) return false;
+        while (i + 16 <= block.len) : (i += 16) differ |= @as(V, block[i..][0..16].*) ^ pattern;
+        const word = @as(u64, byte) * 0x0101_0101_0101_0101;
+        var rest: u64 = 0;
+        if (i + 8 <= block.len) {
+            rest |= std.mem.readInt(u64, block[i..][0..8], .little) ^ word;
+            i += 8;
         }
-        while (i < block.len) : (i += 1) if (block[i] != byte) return false;
-        return true;
+        while (i < block.len) : (i += 1) rest |= block[i] ^ byte;
+        return (@as(u64, @reduce(.Or, differ)) | rest) == 0;
     }
 
     // ------------------------------------------------------------------
