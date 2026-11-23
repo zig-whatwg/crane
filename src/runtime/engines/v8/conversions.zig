@@ -2559,6 +2559,16 @@ fn convertValueAs(
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {
+                            // OWNED (v8_wrapper.cpp: a `new Global<String>`),
+                            // and the string arm's conversion copies its
+                            // characters (fromV8String: WriteUtf8 into its
+                            // own buffer), keeping nothing of it. Left
+                            // undisposed, every setTimeout({ toString() }) -
+                            // TimerHandler's string arm - leaked 16 bytes and
+                            // a global handle for the agent's life (`leaks
+                            // --atExit`, lane mem1; lane flk4, 2026-11-22:
+                            // tests/v8/flk4_union_tostring_handle_test.zig).
+                            defer v8.v8_String_Dispose(str_value);
                             const StringFieldType = fields[str_idx].type;
                             if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
                                 return @unionInit(T, fields[str_idx].name, str_converted);
@@ -2992,6 +3002,8 @@ fn convertValueAs(
             return ConversionError.TypeError;
         }
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // OWNED; fromV8String copies its characters and keeps nothing of it.
+        defer v8.v8_String_Dispose(string);
         return try fromV8String(allocator, isolate, context, string);
     }
     if (T == runtime.Any) return fromV8Any(value);
@@ -4728,6 +4740,8 @@ pub fn toConsoleValue(
     // String
     if (v8.v8_Value_IsString(value)) {
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // OWNED; its characters are copied below and nothing keeps it.
+        defer v8.v8_String_Dispose(string);
 
         // Get string length
         const length = v8.v8_String_Utf8Length(string);
