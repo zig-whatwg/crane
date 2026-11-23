@@ -4,6 +4,9 @@
 const std = @import("std");
 const kit_build = @import("../kit_build.zig");
 
+/// The words that name this part's libraries (kit_build.lint_words).
+pub const words = [_][]const u8{"brotli"};
+
 /// Google's pinned RFC 7932 implementation, following upstream CMake's three
 /// library source sets. Only the C codec is built, for the requested target.
 pub const BrotliLibraries = struct { common: *std.Build.Step.Compile, decoder: *std.Build.Step.Compile, encoder: *std.Build.Step.Compile };

@@ -5,6 +5,9 @@
 const std = @import("std");
 const kit_build = @import("../kit_build.zig");
 
+/// The words that name this part's libraries (kit_build.lint_words).
+pub const words = [_][]const u8{ "jpeg", "expat", "nanosvg" };
+
 /// The testing image decoders. Unmodified pinned sources; no tools, test
 /// corpus, system JPEG/XML dependency, or build-time interpreter. Scalar JPEG
 /// builds on every target, including iOS, without assembler or CPU globals.

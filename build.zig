@@ -5323,17 +5323,16 @@ pub fn build(b: *std.Build) void {
     // an increase; `-- --list` prints every site. `zig build test` depends on
     // it.
     //
-    // The words it looks for, a list per class. An engine's words are its
-    // adapter's own, from the engine protocol's list of adapters, and a
-    // platform's from the platform protocol's; what a branch on the target's
-    // system looks like is the platform protocol's too. Until the kit's
-    // build file supplies the libraries' the same way, they are spelled
-    // here - and counted like every other line of this file.
+    // The words it looks for, a list per class, none spelled here: an
+    // engine's are its adapter's own, from the engine protocol's list of
+    // adapters; a platform's from the platform protocol's, which also says
+    // what a branch on the target's system looks like; a library's from the
+    // kit's parts (kit_build.lint_words).
     const lint_build_words = [_][]const u8{
         "--engine=" ++ engine_build.lint_words,
         "--platform=" ++ platform_build.lint_words,
         "--target=" ++ platform_build.lint_target_words,
-        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,jpeg,expat,nanosvg",
+        "--library=" ++ kit_build.lint_words,
     };
     const lint_build_module = b.createModule(.{
         .root_source_file = b.path("tools/lint_build_neutral.zig"),

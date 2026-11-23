@@ -6,6 +6,10 @@ const std = @import("std");
 const kit_build = @import("../kit_build.zig");
 const brotli_build = @import("../brotli/brotli_build.zig");
 
+/// The words that name this part's libraries: what `zig build lint-build`
+/// looks for in the root build.zig (kit_build.lint_words).
+pub const words = [_][]const u8{ "curl", "mbedtls", "nghttp2", "zlib" };
+
 /// Find a library artifact by name from a dependency
 /// This is needed because some packages (like curl) expose both .exe and .lib
 /// with the same name, causing ambiguity with the standard artifact() method

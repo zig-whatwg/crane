@@ -166,3 +166,19 @@ pub const versions_test = struct {
         return deps_test_mod;
     }
 };
+
+/// The kit parts with no build file of their own: the words that name their
+/// libraries. kit/sqlite's link is each platform adapter's declaration
+/// (platform_build_protocol.zig KitPart).
+const unbuilt_part_words = [_][]const u8{"sqlite"};
+
+/// Every part's words, comma-separated: the library keys of `zig build
+/// lint-build`, from the parts themselves - so the root build.zig spells no
+/// library to look for one.
+pub const lint_words: []const u8 = words: {
+    var text: []const u8 = "";
+    for ([_][]const []const u8{ &curl.words, &brotli.words, &image_codecs.words, &unbuilt_part_words }) |part| {
+        for (part) |word| text = text ++ (if (text.len == 0) "" else ",") ++ word;
+    }
+    break :words text;
+};
