@@ -2297,6 +2297,11 @@ fn convertValueAs(
 
         const dict_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
+                // A callback value (runtime.Borrowed*) is a struct too, but
+                // never a dictionary arm: an Object that is not callable goes
+                // on to the string step (3.2.25 step 15), so
+                // setTimeout({ toString() { ... } }) runs its string.
+                if (interface_mod.isCallbackValueType(field.type)) continue;
                 const field_info = @typeInfo(field.type);
                 if (field_info == .@"struct" and !@hasDecl(field.type, "Meta")) {
                     break :blk i;
@@ -3330,6 +3335,7 @@ fn isDictionaryValue(comptime T: type) bool {
     @setEvalBranchQuota(100_000);
     if (@typeInfo(T) != .@"struct") return false;
     if (@hasDecl(T, "Meta")) return false;
+    if (interface_mod.isCallbackValueType(T)) return false;
     if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return false;
     if (T == typedefs.ArrayBufferView) return false;
     if (T == JSValue or T == OptionalJSValue or T == runtime.OptionalJSValue) return false;
