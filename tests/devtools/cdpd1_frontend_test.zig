@@ -62,6 +62,12 @@ fn evaluate(allocator: Allocator, client: *cdp.Client, session: []const u8, expr
     };
 }
 
+/// CRANE_DEVTOOLS_VERBOSE set: progress on stderr.
+fn progress(comptime format: []const u8, args: anytype) void {
+    if (std.c.getenv("CRANE_DEVTOOLS_VERBOSE") == null) return;
+    std.debug.print("cdpd1 frontend: " ++ format ++ "\n", args);
+}
+
 /// Wait (30 s) until the front end's text holds `needle`.
 fn waitForText(allocator: Allocator, client: *cdp.Client, session: []const u8, needle: []const u8) !void {
     var tries: usize = 0;
@@ -104,7 +110,11 @@ test "Chrome DevTools' Elements panel on a Crane page shows the tree, stays live
     const host = try browser_mod.BrowserHost.start(allocator, .{});
     defer host.stop();
     _ = try host.createTab(.{});
-    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    // The front end's WebSocket carries Origin: devtools://devtools, which a
+    // remote end serves only when --remote-allow-origins lists it - Chrome's
+    // own rule (devtools_http_handler.cc OnWebSocketRequest), so inspecting
+    // a Chrome from another Chrome's DevTools needs the same flag.
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host, .allowed_origins = &.{"devtools://devtools"} });
     defer server.stop();
     var list = try cdp.httpGet(allocator, server.port, "/json/list", &.{"Host: 127.0.0.1"});
     defer list.deinit();
@@ -113,6 +123,7 @@ test "Chrome DevTools' Elements panel on a Crane page shows the tree, stays live
     const page_id = targets.value.array.items[0].object.get("id").?.string;
     const crane_path = try std.fmt.allocPrint(allocator, "/devtools/page/{s}", .{page_id});
     defer allocator.free(crane_path);
+    progress("Crane page target {s} on port {d}", .{ crane_path, server.port });
     const crane = try cdp.Client.openWebSocket(allocator, server.port, crane_path, null);
     defer crane.close();
     var nav_params: std.ArrayList(u8) = .empty;
@@ -126,6 +137,7 @@ test "Chrome DevTools' Elements panel on a Crane page shows the tree, stays live
     nav.deinit();
     var loaded = try crane.waitEvent("Page.loadEventFired");
     loaded.deinit();
+    progress("Crane loaded the page", .{});
 
     // Chrome: its browser target, a tab with the bundled front end on Crane.
     var version = try cdp.httpGet(allocator, chrome_port, "/json/version", &.{"Host: 127.0.0.1"});
@@ -136,6 +148,8 @@ test "Chrome DevTools' Elements panel on a Crane page shows the tree, stays live
     const browser_path = browser_ws[std.mem.indexOf(u8, browser_ws, "/devtools/").?..];
     const chrome = try cdp.Client.openWebSocket(allocator, chrome_port, browser_path, null);
     defer chrome.close();
+    if (chrome.upgrade_status != 101) return error.UpgradeRefused;
+    progress("Chrome browser target {s}", .{browser_path});
     const frontend = try std.fmt.allocPrint(allocator, "devtools://devtools/bundled/inspector.html?ws=127.0.0.1:{d}/devtools/page/{s}", .{ server.port, page_id });
     defer allocator.free(frontend);
     const create = try std.fmt.allocPrint(allocator, "{{\"url\":\"{s}\"}}", .{frontend});
@@ -152,7 +166,9 @@ test "Chrome DevTools' Elements panel on a Crane page shows the tree, stays live
     shown.deinit();
 
     // 1. The Elements panel shows Crane's tree.
+    progress("front end attached ({s}); waiting for the tree", .{session});
     try waitForText(allocator, chrome, session, "crane-marker");
+    progress("tree shown", .{});
     try screenshot(allocator, chrome, session, shots, "1-elements");
 
     // 2. Page script changes the tree; the panel follows (childNodeInserted,

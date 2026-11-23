@@ -117,6 +117,13 @@ const Target = struct {
     search_id: ?[]u8 = null,
 };
 
+/// CRANE_CDP_TRACE_VERBOSE set: each step's progress on stderr (recording
+/// against a Chrome, where a hang otherwise says nothing).
+fn progress(comptime format: []const u8, args: anytype) void {
+    if (std.c.getenv("CRANE_CDP_TRACE_VERBOSE") == null) return;
+    std.debug.print("cdpd1 trace: " ++ format ++ "\n", args);
+}
+
 fn evaluate(allocator: Allocator, client: *cdp.Client, expression: []const u8) !void {
     var params: std.ArrayList(u8) = .empty;
     defer params.deinit(allocator);
@@ -147,19 +154,23 @@ fn querySelector(allocator: Allocator, target: *Target, selector: []const u8, ou
 fn runSteps(allocator: Allocator, target: *Target, out: *std.ArrayList(u8)) !void {
     var names: Names = .{};
     defer names.deinit(allocator);
+    progress("Page.enable", .{});
     var page = try target.client.call("Page.enable", "{}", "");
     page.deinit();
     const navigate = try std.fmt.allocPrint(allocator, "{{\"url\":\"{s}\"}}", .{page_url});
     defer allocator.free(navigate);
     var nav = try target.client.call("Page.navigate", navigate, "");
     nav.deinit();
+    progress("navigated; waiting for the load event", .{});
     var loaded = try target.client.waitEvent("Page.loadEventFired");
     loaded.deinit();
+    progress("loaded; settling", .{});
     try settle(allocator, target.client);
     var enable = try target.client.call("DOM.enable", "{}", "");
     enable.deinit();
     _ = target.client.dropQueued("DOM.documentUpdated");
     for (steps) |step| {
+        progress("step {s}", .{step.label});
         try out.print(allocator, "step {s}\n", .{step.label});
         var params: []const u8 = step.params;
         var owned: ?[]u8 = null;
@@ -427,8 +438,10 @@ test "the DOM domain's events and answers for one page script and one list of co
         const port = try std.fmt.parseInt(u16, std.mem.span(port_text), 10);
         const path = try pagePath(allocator, port);
         defer allocator.free(path);
+        progress("Chrome page target {s}", .{path});
         const client = try cdp.Client.openWebSocket(allocator, port, path, null);
         defer client.close();
+        if (client.upgrade_status != 101) return error.UpgradeRefused;
         var target: Target = .{ .client = client };
         try runSteps(allocator, &target, &trace);
         const out_path = std.mem.span(std.c.getenv("CRANE_CDP_TRACE_OUT") orelse return error.NoOutPath);
@@ -450,6 +463,13 @@ test "the DOM domain's events and answers for one page script and one list of co
     defer client.close();
     var target: Target = .{ .client = client };
     try runSteps(allocator, &target, &trace);
+    // CRANE_CDP_TRACE_OUT set: Crane's trace written there too, to diff whole.
+    if (std.c.getenv("CRANE_CDP_TRACE_OUT")) |out_text| {
+        const io = testing.io;
+        const file = try std.Io.Dir.cwd().createFile(io, std.mem.span(out_text), .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, trace.items);
+    }
 
     const expected = std.Io.Dir.cwd().readFileAlloc(testing.io, fixture_path, allocator, .limited(4 * 1024 * 1024)) catch |err| {
         // Until the fixture is recorded (the lane's batch 5), this run
