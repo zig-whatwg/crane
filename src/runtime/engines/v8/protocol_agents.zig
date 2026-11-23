@@ -173,7 +173,7 @@ pub fn deinitializeEngine() void {
 // ============================================================================
 
 /// What the adapter keeps for an agent it made: the host's hooks.
-const AgentRecord = struct {
+pub const AgentRecord = struct {
     isolate: *ffi.Isolate,
     /// `createAgent` entered the isolate for the agent's life - the agent is
     /// its thread's (no other isolate was current there) - and
@@ -327,7 +327,7 @@ pub fn teardownHoldsOf(isolate: *ffi.Isolate) ?*@import("wrapper_cache.zig").Tea
 /// createAgent did not make (a test's own), which then matches in a context
 /// made for the call. Called on the agent's own thread only.
 pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
-    const record = recordOf(isolate) orelse return null;
+    const record = callbackRecordOf(isolate) orelse return null;
     if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
     return record.pattern_matcher;
 }
@@ -363,7 +363,7 @@ pub fn replSessionOf(isolate: *ffi.Isolate) ?*protocol_repl.Session {
 /// agent's allocator; null for an isolate createAgent did not make, or when
 /// there is no memory for it. Called on the agent's own thread only.
 pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
-    const record = recordOf(isolate) orelse return null;
+    const record = callbackRecordOf(isolate) orelse return null;
     if (record.observable_arrays == null) record.observable_arrays = observable_array.Registry.create(record.allocator) catch null;
     return record.observable_arrays;
 }
@@ -408,11 +408,43 @@ pub fn enteredForLife(isolate: *ffi.Isolate) bool {
     return record.entered_for_life;
 }
 
+/// The record of the agent whose isolate this is, from the agent registry
+/// under its process-wide lock (about 127 ns: dom.mutation_observer_
+/// algorithms.walk_before_asking): null for an isolate createAgent did not
+/// make, and once its end has begun (`AgentRecord.ending`). Pure Zig - no
+/// V8 call - so code an executable without V8 reaches (the src/dom module's
+/// tests, through engine.hostStateOf) still links. Code that V8 itself
+/// reaches - a callback, a binding - asks `callbackRecordOf`.
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return if (record.ending) null else record;
+}
+
+/// `recordOf` for code only V8 reaches - a V8 callback, a binding, a
+/// function that calls V8 already - which links V8 anyway: one load from
+/// the isolate on the thread that has it entered (`fastRecordOf`), the
+/// registry under its lock anywhere else (lane tpc; the integrator's
+/// design (B), 5:17 PM ET: the realm's own answer for html and the DOM is
+/// runtime.ContextData.host_state, a field read).
+pub fn callbackRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
+    return fastRecordOf(isolate) orelse recordOf(isolate);
+}
+
+/// The record with no lock, for the thread that has `isolate` entered: the
+/// one createAgent put on the isolate's own storage
+/// (isolate_templates.IsolateTemplates.agent_record). A thread with the
+/// isolate entered has the isolate to itself - one thread uses an isolate
+/// at a time - and the storage's record is set and cleared only with the
+/// isolate entered (createAgent, forgetAgent), so no clear or free can run
+/// while this reads it. Null on any other thread, before createAgent set it
+/// and after forgetAgent cleared it: the caller asks the registry then.
+pub fn fastRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
+    if (ffi.v8_Isolate_GetCurrent() != isolate) return null;
+    const storage = isolate_templates.getTemplateStorage(isolate) orelse return null;
+    const record = storage.agent_record orelse return null;
+    return @ptrCast(@alignCast(record));
 }
 
 /// The stack of the agent's Window realms whose end is under way
@@ -508,14 +540,14 @@ pub fn worldsOf(isolate: *ffi.Isolate) ?*@import("protocol_worlds.zig").AgentWor
 /// the realm's agent cluster key, or 0 - no cluster known, nothing checked -
 /// for an agent without the hook, or an isolate createAgent did not make.
 pub fn agentClusterOf(isolate: *ffi.Isolate, realm: Context) u64 {
-    const record = recordOf(isolate) orelse return 0;
+    const record = callbackRecordOf(isolate) orelse return 0;
     const call = record.hooks.agentClusterOf orelse return 0;
     return call(record.host, realm);
 }
 
 /// HTML's cross-origin isolated capability; absent hooks deny shared memory.
 pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool {
-    const record = recordOf(isolate) orelse return false;
+    const record = callbackRecordOf(isolate) orelse return false;
     const call = record.hooks.crossOriginIsolatedCapability orelse return false;
     return call(record.host, realm);
 }
@@ -530,7 +562,7 @@ pub const HTMLConstructorHook = struct {
 };
 
 pub fn htmlConstructorHookOf(isolate: *ffi.Isolate) ?HTMLConstructorHook {
-    const record = recordOf(isolate) orelse return null;
+    const record = callbackRecordOf(isolate) orelse return null;
     const hooks = record.hooks.htmlConstructor orelse return null;
     return .{ .hooks = hooks, .host = record.host };
 }
@@ -760,6 +792,13 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     {
         const entered = EnteredIsolate.of(@ptrCast(isolate));
         defer entered.leave();
+        // The record on the isolate's own storage, for the thread that has
+        // it entered (`fastRecordOf`): set with the isolate entered here.
+        // Until now every lookup asked the registry, which has it.
+        if (isolate_templates.storageFor(isolate)) |storage| {
+            std.debug.assert(ffi.v8_Isolate_GetCurrent() == isolate);
+            storage.agent_record = record;
+        }
         isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
             // One restored from a snapshot may have it already.
             if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
@@ -914,6 +953,8 @@ pub fn endAgent(agent: *Agent) void {
 /// `agent` - its isolate - entered for the scope of a call, if it was not the
 /// current one: V8 runs microtasks and collections only in the entered
 /// isolate.
+const isolate_templates = @import("isolate_templates.zig");
+
 const EnteredIsolate = struct {
     isolate: *ffi.Isolate,
     entered: bool,
@@ -1096,6 +1137,16 @@ pub fn forgetAgent(agent: *Agent) void {
         record.ending = true;
         break :blk record;
     };
+    // Off the isolate's storage too (`fastRecordOf`), with the isolate
+    // entered - the thread ending the agent is the one using its isolate -
+    // and so before the storage (isolate_lifecycle.cleanupAll) and the
+    // record (removeAgent) are freed.
+    {
+        const entered = EnteredIsolate.of(agent);
+        defer entered.leave();
+        std.debug.assert(ffi.v8_Isolate_GetCurrent() == isolate);
+        if (isolate_templates.getTemplateStorage(isolate)) |storage| storage.agent_record = null;
+    }
     // This isolate's tracker alone: the dispatcher is every agent's.
     if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
     if (record.hooks.afterMicrotaskCheckpoint != null) {
@@ -1165,7 +1216,8 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
     // muted errors suppresses both reject and handle. Nothing is adopted.
     if (ffi.v8_Isolate_CurrentScriptHasMutedErrors(isolate)) return;
 
-    const record = recordOf(isolate) orelse return;
+    // A V8 callback, on the isolate's thread: the record with no lock.
+    const record = callbackRecordOf(isolate) orelse return;
     const tracker = record.hooks.promiseRejectionTracker orelse return;
     const operation: engine.RejectionOperation = switch (event) {
         kPromiseRejectWithNoHandler => .reject,

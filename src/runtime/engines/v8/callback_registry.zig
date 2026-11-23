@@ -69,9 +69,14 @@ pub const Live = struct {
 /// as they did before tracking - and as an allocation failure here leaves
 /// any wrapper.
 pub fn register(wrapper: *CallbackWrapper) void {
-    const live = protocol_agents.callbacksOf(wrapper.isolate) orelse return;
+    // The wrapper's constructors call V8: on the agent's thread its record is
+    // one load (protocol_agents.callbackRecordOf), with its live set; the
+    // registry under its lock anywhere else, which also answers an agent
+    // whose end has begun (`callbacksOf`).
+    const fast = protocol_agents.fastRecordOf(wrapper.isolate);
+    const live = if (fast) |record| &record.callbacks else protocol_agents.callbacksOf(wrapper.isolate) orelse return;
     const allocator = live.allocator orelse allocator: {
-        const record = protocol_agents.recordOf(wrapper.isolate) orelse return;
+        const record = fast orelse protocol_agents.recordOf(wrapper.isolate) orelse return;
         live.allocator = record.allocator;
         break :allocator record.allocator;
     };

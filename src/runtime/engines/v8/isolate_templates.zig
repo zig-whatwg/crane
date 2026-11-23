@@ -67,6 +67,14 @@ pub const IsolateTemplates = struct {
     /// invocation counts (dom_algorithm.zig): one load from the isolate, on
     /// the hottest path. Null for an isolate createAgent did not make.
     deferred_teardown: ?*@import("runtime").gc.DeferredTeardown = null,
+    /// The agent's record (protocol_agents.AgentRecord), for the thread that
+    /// has the isolate entered to find it with no lock
+    /// (protocol_agents.fastRecordOf): set by createAgent once the record is
+    /// in the agent registry, cleared by forgetAgent when the agent's end
+    /// begins - both with the isolate entered on the calling thread - and so
+    /// cleared before the record or this storage is freed. Null for an
+    /// isolate createAgent did not make.
+    agent_record: ?*anyopaque = null,
     /// The host's native memory the agent's objects keep alive
     /// (engine.AgentOptions.external_memory), BORROWED from createAgent to
     /// the agent's end, and what V8 was last told of it
