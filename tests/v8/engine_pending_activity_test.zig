@@ -477,7 +477,7 @@ test "edges traced from owners script has not seen keep half the side map's unus
             const owner = try unwrapped();
             try owners.append(std.heap.page_allocator, owner);
             const child = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-            try cache.deferEdge(owner.instance, "child", @ptrCast(child));
+            try cache.deferEdge(owner.instance, "child", @ptrCast(child), false);
             if (i == 0 and page > 0) worst.note(&cache.edges_before_wrap);
         }
         for (owners.items) |owner| try wrap(owner);

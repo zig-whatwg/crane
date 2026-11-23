@@ -9681,16 +9681,70 @@ bool v8_Object_SetPrivateValues(Global<Object>* holder, const char* key, int key
 }
 
 /// The value engine.traceValues keeps for `values` (`count` BORROWED
-/// handles) as one Global of the caller's own - for an owner script has not
-/// seen yet, whose edge waits in its realm's wrapper cache for its wrapper
-/// (WrapperCache.deferEdge takes it over). Null when it cannot be made.
-Global<Value>* v8_Values_GatherTraced(Global<Value>* const* values, size_t count) {
+/// handles) under the private `key` as one Global of the caller's own - for
+/// an owner script has not seen yet, whose edge waits in its realm's wrapper
+/// cache for its wrapper (WrapperCache.deferEdge takes it over). The key is
+/// registered as a traced values key (`tracedValuesKey`) though no wrapper
+/// holds it yet, so a wrapper another world makes for the owner meanwhile
+/// copies it (v8_Object_CopyTracedValues). Null when it cannot be made.
+Global<Value>* v8_Values_GatherTraced(const char* key, int key_len, Global<Value>* const* values, size_t count) {
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return nullptr;
     HandleScope handle_scope(isolate);
     Local<Value> kept = gatherTracedValues(isolate, values, count);
     if (kept.IsEmpty()) return nullptr;
+    (void)tracedValuesKey(isolate, key, key_len);
     return trackHandle(new Global<Value>(isolate, kept));
+}
+
+/// engine.traceValues across isolated worlds (refcount step 8, option (c);
+/// protocol_worlds.drawTracedValuesOnWrap): every set `from` - a wrapper of
+/// an owner in one world - keeps under a traced values key, kept by `to` as
+/// well - the owner's wrapper just made in another world - the same value,
+/// so the set lives while ANY wrapper of the owner does, as Blink's
+/// listeners live while their C++ EventTarget does (EventTarget::Trace ->
+/// EventListenerMap -> TraceWrapperV8Reference), whichever world's wrapper
+/// keeps it. Both handles BORROWED. Every value is read before anything
+/// here allocates (`gatherTracedValues`' rule): `from` holds them until then.
+/// The value is shared, never changed in place: a later traceValues sets a
+/// new one on each wrapper. Needs a current context, which every wrap has.
+void v8_Object_CopyTracedValues(Global<Object>* from, Global<Object>* to) {
+    if (!from || !to || from->IsEmpty() || to->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    IsolateData* record = isolateData(isolate);
+    if (!record || record->traced_values_keys.empty()) return;
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return;
+    Local<Object> source = from->Get(isolate);
+    Local<Object> target = to->Get(isolate);
+    if (source.IsEmpty() || target.IsEmpty()) return;
+    constexpr size_t kInline = 8;
+    const size_t key_count = record->traced_values_keys.size();
+    if (key_count > kInline) return;  // a handful per isolate (TracedValuesKey)
+    Local<Private> keys[kInline];
+    Local<Value> kept[kInline];
+    size_t found = 0;
+    // Read first: GetPrivate allocates nothing, SetPrivate may.
+    for (size_t i = 0; i < key_count; i++) {
+        Local<Private> priv = record->traced_values_keys[i].key.Get(isolate);
+        if (!source->HasPrivate(context, priv).FromMaybe(false)) continue;
+        Local<Value> value;
+        if (!source->GetPrivate(context, priv).ToLocal(&value) || value->IsUndefined()) continue;
+        keys[found] = priv;
+        kept[found] = value;
+        found++;
+    }
+    bool changed = false;
+    for (size_t i = 0; i < found; i++) {
+        if (target->SetPrivate(context, keys[i], kept[i]).FromMaybe(false)) changed = true;
+    }
+    // A private property moves the wrapper off its initial map: a cache
+    // record holding it by a traced reference holds it by a weak handle from
+    // here, as for v8_Object_SetPrivateValues.
+    if (changed) notePlatformWrapperChanged(isolate, target);
 }
 
 /// engine.holdWeakly on V8: the hold - a Global box the protocol handed out

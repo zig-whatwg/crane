@@ -1065,3 +1065,113 @@ pub fn nodeDestroyed(instance: *engine.Instance) void {
         cache.worldNodeDestroyed(instance);
     }
 }
+
+// ============================================================================
+// Traced values across worlds (refcount step 8, option (c))
+// ============================================================================
+//
+// engine.traceValues keeps an owner's set - its listeners' callbacks, an
+// observer's callback, the observers a node lists - on the owner's wrapper,
+// and an owner has a wrapper per world. Blink traces those values from the
+// C++ object (EventTarget::Trace -> EventListenerMap ->
+// TraceWrapperV8Reference; MutationObserverRegistration traced from its
+// node), which ANY of its wrappers keeps alive, in any world. So here the set
+// reaches every wrapper the owner has (`traceValuesInWorlds`), and a wrapper
+// made later gets it drawn onto it (`drawTracedValuesOnWrap`): a page's
+// EventTarget only a world still holds keeps the page's listener, and a
+// world's closure over a node only the world wrapped is collected with it -
+// the set no longer waits, strongly, for a main-world wrapper script may
+// never make. (A NODE's wrappers already keep each other - each world's is a
+// holder whose walk reaches every wrapper of its tree, `traceWorldWrappers` -
+// but a node only one world wrapped has no other wrapper to hang the set on.)
+// Main's ruling of 2026-11-23 11:53 AM ET (lane rc8).
+
+/// `realm`'s wrapper cache, or null.
+fn cacheOf(realm: Context) ?*WrapperCache {
+    const storage = realm.getV8WrapperCacheStorage() orelse return null;
+    return @ptrCast(@alignCast(storage));
+}
+
+/// Whether `cache` is `other`.
+fn isCache(cache: *const WrapperCache, other: ?*const WrapperCache) bool {
+    const that = other orelse return false;
+    return cache == that;
+}
+
+/// Each wrapper `owner` has in its realm group - its main realm's and each
+/// of its world realms' - but the one `except` keeps, handed to `visit`
+/// BORROWED from its cache, until `visit` answers false. None for a Window:
+/// its sets hang on its main realm's retained store
+/// (protocol_realms.tracedEdgeHolderOfWindow), which outlives every world
+/// realm of it. None while its agent has made no world realm.
+fn eachOtherWrapper(owner: *engine.Instance, except: ?*const WrapperCache, context: anytype, comptime visit: fn (@TypeOf(context), *ffi.Object) bool) void {
+    if (std.mem.eql(u8, owner.vtable.name, "Window")) return;
+    const worlds = worldsOfRealm(owner.ctx) orelse return;
+    if (!worlds.active) return;
+    const main = mainRealmOf(owner.ctx);
+    if (cacheOf(main)) |cache| {
+        if (!isCache(cache, except) and !cache.is_tearing_down) {
+            if (cache.get(owner)) |wrapper| {
+                if (!visit(context, wrapper)) return;
+            }
+        }
+    }
+    const list = worlds.by_main.get(main) orelse return;
+    for (list.items) |w| {
+        const cache = cacheOf(w.realm) orelse continue;
+        if (isCache(cache, except) or cache.is_tearing_down) continue;
+        const wrapper = cache.get(owner) orelse continue;
+        if (!visit(context, wrapper)) return;
+    }
+}
+
+/// engine.traceValues across worlds: every wrapper `owner` has besides the
+/// one in `own` (its own realm's cache, where protocol_tracing hangs the set)
+/// keeps exactly `handles` (BORROWED) under `key` as well. Whether any did.
+/// Each wrapper is held strongly while its set is made: making it allocates,
+/// and a collection then must not take the wrapper the values hang on.
+pub fn traceValuesInWorlds(owner: *engine.Instance, own: ?*const WrapperCache, key: []const u8, handles: []const ?*ffi.Value) bool {
+    const Fan = struct {
+        key: []const u8,
+        handles: []const ?*ffi.Value,
+        drawn: bool = false,
+
+        fn visit(self: *@This(), wrapper: *ffi.Object) bool {
+            const held = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return true;
+            defer ffi.v8_Global_Dispose(held);
+            if (ffi.v8_Object_SetPrivateValues(@ptrCast(held), self.key.ptr, @intCast(self.key.len), self.handles.ptr, self.handles.len)) self.drawn = true;
+            return true;
+        }
+    };
+    var fan: Fan = .{ .key = key, .handles = handles };
+    eachOtherWrapper(owner, own, &fan, Fan.visit);
+    return fan.drawn;
+}
+
+/// `instance`'s wrapper `wrapper` (BORROWED, held by the caller) was just
+/// made in `cache`: it keeps the sets `instance`'s other wrappers keep -
+/// copied from the first one found, since every wrapper keeps the same sets
+/// (`traceValuesInWorlds`) - or, with no other wrapper, takes the sets
+/// waiting in its own realm's cache for a wrapper there
+/// (WrapperCache.takeWaitingValues; when that cache is `cache`, its wrap drew
+/// them already). The caller made sure a world realm may exist
+/// (`realmMayHaveWorlds`).
+pub fn drawTracedValuesOnWrap(cache: *const WrapperCache, instance: *engine.Instance, wrapper: *ffi.Object) void {
+    const Copy = struct {
+        to: *ffi.Object,
+        copied: bool = false,
+
+        fn visit(self: *@This(), from: *ffi.Object) bool {
+            ffi.v8_Object_CopyTracedValues(from, self.to);
+            self.copied = true;
+            return false;
+        }
+    };
+    var copy: Copy = .{ .to = wrapper };
+    eachOtherWrapper(instance, cache, &copy, Copy.visit);
+    if (copy.copied) return;
+    if (std.mem.eql(u8, instance.vtable.name, "Window")) return;
+    const own = cacheOf(instance.ctx) orelse return;
+    if (isCache(own, cache) or own.is_tearing_down) return;
+    own.takeWaitingValues(instance, wrapper);
+}

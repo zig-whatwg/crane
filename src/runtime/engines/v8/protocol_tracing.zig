@@ -35,6 +35,7 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
 const Instance = engine.Instance;
@@ -113,7 +114,7 @@ pub fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
             ffi.v8_Object_SetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len), child_wrapper);
         },
         // The cache takes the child's Global over, on failure too.
-        .unwrapped => |cache| cache.deferEdge(owner, key, child_wrapper) catch {},
+        .unwrapped => |cache| cache.deferEdge(owner, key, child_wrapper, false) catch {},
         .none => ffi.v8_Global_Dispose(child_wrapper),
     }
 }
@@ -138,7 +139,7 @@ pub fn traceValue(owner: *Instance, value: engine.JSValue, slot: TracedSlot) voi
             ffi.v8_Object_SetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len), held);
         },
         // The cache takes the Global over, on failure too.
-        .unwrapped => |cache| cache.deferEdge(owner, key, held) catch {},
+        .unwrapped => |cache| cache.deferEdge(owner, key, held, false) catch {},
         .none => ffi.v8_Global_Dispose(held),
     }
 }
@@ -242,6 +243,15 @@ const HandleList = struct {
 /// same property then), as `traceValue` does; an empty set ends that waiting
 /// edge. False where nothing can hang an edge: the owner's realm ended, its
 /// cache is tearing down, a Window whose global is gone.
+///
+/// Isolated worlds (refcount step 8, option (c); protocol_worlds.zig, "Traced
+/// values across worlds"): the owner's wrapper in every other world keeps
+/// the same set, so the set lives while ANY of its wrappers does - Blink
+/// traces it from the C++ object, which any world's wrapper keeps. An owner
+/// its own realm has not wrapped but another world has keeps the set there,
+/// and nothing waits for it strongly: a wrapper its realm makes later copies
+/// it (protocol_worlds.drawTracedValuesOnWrap). An edge already waiting is
+/// kept current.
 pub fn traceValues(owner: *Instance, values: []const engine.JSValue, slot: TracedSlot) bool {
     var buffer: [128]u8 = undefined;
     const key = keyOf(&buffer, slot) orelse return false;
@@ -252,23 +262,41 @@ pub fn traceValues(owner: *Instance, values: []const engine.JSValue, slot: Trace
     defer list.release();
     list.of(entered, values) catch return false;
     const handles = list.handles();
-    switch (holderOf(owner)) {
-        .object => |holder| {
-            defer ffi.v8_Global_Dispose(holder);
-            return ffi.v8_Object_SetPrivateValues(@ptrCast(holder), key.ptr, @intCast(key.len), handles.ptr, handles.len);
+    // The holder first: held from here, its wrapper keeps every value it
+    // keeps while the other worlds' sets are made (they allocate).
+    const holder = holderOf(owner);
+    defer switch (holder) {
+        .object => |object| ffi.v8_Global_Dispose(object),
+        .unwrapped, .none => {},
+    };
+    // One load while the Browser made no world.
+    const in_worlds = protocol_worlds.realmMayHaveWorlds(owner.ctx) and
+        protocol_worlds.traceValuesInWorlds(owner, ownCacheOf(owner), key, handles);
+    switch (holder) {
+        .object => |object| {
+            const drawn = ffi.v8_Object_SetPrivateValues(@ptrCast(object), key.ptr, @intCast(key.len), handles.ptr, handles.len);
+            return drawn or in_worlds;
         },
         .unwrapped => |cache| {
             if (handles.len == 0) {
                 cache.forgetDeferredEdge(owner, key);
                 return true;
             }
-            const kept = ffi.v8_Values_GatherTraced(handles.ptr, handles.len) orelse return false;
+            if (in_worlds and cache.deferredEdge(owner, key) == null) return true;
+            const kept = ffi.v8_Values_GatherTraced(key.ptr, @intCast(key.len), handles.ptr, handles.len) orelse return in_worlds;
             // The cache takes the Global over, on failure too.
-            cache.deferEdge(owner, key, kept) catch return false;
+            cache.deferEdge(owner, key, kept, true) catch return in_worlds;
             return true;
         },
-        .none => return false,
+        .none => return in_worlds,
     }
+}
+
+/// The wrapper cache of `owner`'s own realm - where `holderOf` hangs its
+/// edges, a Window's aside - or null.
+fn ownCacheOf(owner: *Instance) ?*const WrapperCache {
+    const storage = owner.ctx.getV8WrapperCacheStorage() orelse return null;
+    return @ptrCast(@alignCast(storage));
 }
 
 /// engine.holdWeakly: the hold's Global becomes a phantom handle V8 resets
