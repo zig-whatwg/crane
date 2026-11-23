@@ -47,6 +47,8 @@ pub const dom_events = @import("dom_events.zig");
 /// The remote end's server: the devtools thread, its listener, pipe and
 /// connections (server.zig).
 pub const Server = @import("server.zig").Server;
+/// The DevTools front end /json/list names (server.zig frontend_revision).
+pub const server_frontend_revision = @import("server.zig").frontend_revision;
 pub const ServerOptions = @import("server.zig").Options;
 
 test {
