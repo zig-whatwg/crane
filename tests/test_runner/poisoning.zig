@@ -245,6 +245,34 @@ pub const ChurnAllocator = struct {
     }
 };
 
+/// std.testing.checkAllAllocationFailures on a churn test's allocator: the
+/// same sweep - `test_fn` run once whole, then once per allocation with that
+/// allocation failing, each failure required to come back as OutOfMemory
+/// with every byte it allocated freed (the sweep's own FailingAllocator
+/// counts them: error.MemoryLeakDetected otherwise, and
+/// error.SwallowedOutOfMemoryError for a failure the function hid) - over
+/// `churn` instead of std.testing.allocator. The caller owns `churn` and
+/// deinits it, which is the whole run's leak check (a block the whole run
+/// kept).
+///
+/// Why (lane flk4 item 8, 2026-11-23): a sweep repeats its function once per
+/// allocation, so it makes the allocations of a churn test, and on
+/// std.testing.allocator each one pays SafeAllocator's 7-frame stack capture,
+/// which aarch64 macOS runs through the DWARF self-unwinder: bx1's transform
+/// composition sweep took 6.2-8.5 s on server1 and over 300 s on chat2 (a
+/// launcher timeout), cp1's rule recovery 6.8 s against 235 s.
+pub fn checkAllAllocationFailuresOn(churn: *ChurnAllocator, comptime test_fn: anytype, extra_args: anytype) !void {
+    try std.testing.checkAllAllocationFailures(churn.allocator(), test_fn, extra_args);
+}
+
+/// `checkAllAllocationFailuresOn` with a churn allocator of its own, named
+/// after `name` (the test), deinit'd - its leak check - once the sweep passed.
+pub fn checkAllAllocationFailures(name: []const u8, comptime test_fn: anytype, extra_args: anytype) !void {
+    var churn = ChurnAllocator.init(name);
+    try checkAllAllocationFailuresOn(&churn, test_fn, extra_args);
+    try churn.deinit();
+}
+
 /// Whether this process poisons: under the Crane test runner, its
 /// `poison_frees` - decided once in its `main` from `CRANE_POISON_FREES`,
 /// before the first test and the first thread, and only read after, so a
@@ -409,6 +437,66 @@ test "a churn allocator records no stack traces, checks for leaks and names its 
         const block = try a.alloc(u8, 1 + i % 64);
         a.free(block);
     }
+    try churn.deinit();
+}
+
+/// What the allocation-failure sweep's self-tests run: two allocations, the
+/// first released or not when the second fails, and a failure swallowed or
+/// not. Whatever a leaking run keeps goes on `kept`, so the test can free it
+/// before the churn allocator's own leak check.
+const SweepSubject = struct {
+    const Kept = struct {
+        blocks: [64][]u8 = undefined,
+        len: usize = 0,
+    };
+
+    fn correct(allocator: Allocator) !void {
+        const first = try allocator.alloc(u8, 16);
+        defer allocator.free(first);
+        const second = try allocator.alloc(u8, 32);
+        defer allocator.free(second);
+    }
+
+    fn leaksOnTheSecondFailure(allocator: Allocator, kept: *Kept) !void {
+        const first = try allocator.alloc(u8, 16);
+        const second = allocator.alloc(u8, 32) catch |err| {
+            // The defect: the first block is not released on this path.
+            kept.blocks[kept.len] = first;
+            kept.len += 1;
+            return err;
+        };
+        allocator.free(second);
+        allocator.free(first);
+    }
+
+    fn swallowsTheFailure(allocator: Allocator) !void {
+        const first = allocator.alloc(u8, 16) catch return;
+        allocator.free(first);
+    }
+};
+
+test "the churn allocation-failure sweep passes a function that releases every failure" {
+    try checkAllAllocationFailures("poisoning: sweep of a correct function", SweepSubject.correct, .{});
+}
+
+test "the churn allocation-failure sweep fails a function that keeps a block when a later allocation fails" {
+    var churn = ChurnAllocator.init("poisoning: sweep of a leaking function");
+    var kept: SweepSubject.Kept = .{};
+    try testing.expectError(error.MemoryLeakDetected, checkAllAllocationFailuresOn(&churn, SweepSubject.leaksOnTheSecondFailure, .{&kept}));
+    // Exactly the run that failed the second allocation kept its first.
+    try testing.expectEqual(@as(usize, 1), kept.len);
+    for (kept.blocks[0..kept.len]) |block| churn.allocator().free(block);
+    try churn.deinit();
+    // And exactly as the same sweep over std.testing.allocator answers.
+    var kept_std: SweepSubject.Kept = .{};
+    try testing.expectError(error.MemoryLeakDetected, std.testing.checkAllAllocationFailures(testing.allocator, SweepSubject.leaksOnTheSecondFailure, .{&kept_std}));
+    try testing.expectEqual(kept.len, kept_std.len);
+    for (kept_std.blocks[0..kept_std.len]) |block| testing.allocator.free(block);
+}
+
+test "the churn allocation-failure sweep fails a function that swallows the injected failure" {
+    var churn = ChurnAllocator.init("poisoning: sweep of a swallowing function");
+    try testing.expectError(error.SwallowedOutOfMemoryError, checkAllAllocationFailuresOn(&churn, SweepSubject.swallowsTheFailure, .{}));
     try churn.deinit();
 }
 
