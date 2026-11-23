@@ -135,6 +135,45 @@ pub fn dispatch(comptime Handlers: type, session: anytype, arena: Allocator, com
     sendNotFound(session.link, command);
 }
 
+/// Whether `command`'s params decode as its handler's - what `dispatch`
+/// would parse before calling it, without calling it. True for a command no
+/// handler among `Handlers` takes: there is nothing to decode it against
+/// (its dispatch answers "wasn't found"). A page session asks this before it
+/// holds a command whose params Chrome decodes in the browser
+/// (held_commands.decodedInBrowser): params that do not decode are answered
+/// at once.
+pub fn paramsDecode(comptime Handlers: type, arena: Allocator, command: *const json_rpc.Command) bool {
+    const dot = std.mem.indexOfScalar(u8, command.method, '.') orelse return true;
+    const domain_name = command.method[0..dot];
+    const command_name = command.method[dot + 1 ..];
+    inline for (@typeInfo(Handlers).@"struct".decl_names) |name| {
+        if (std.mem.eql(u8, domain_name, name)) {
+            const H = @field(Handlers, name);
+            // hasdecl: protocol/root.zig declares each domain pub, and each
+            // generated domain its CommandName pub (as dispatchIn probes).
+            if (comptime @hasDecl(protocol, name) and @hasDecl(@field(protocol, name), "CommandName")) {
+                const P = @field(protocol, name);
+                const which = std.meta.stringToEnum(P.CommandName, command_name) orelse return true;
+                switch (which) {
+                    inline else => |tag| {
+                        // hasdecl: `H` is a handler module of `Handlers`
+                        // (page_domains.Handlers' domains); a command's handler
+                        // is a pub fn named as the command - what dispatchIn's
+                        // same probe finds.
+                        if (comptime @hasDecl(H, @tagName(tag))) {
+                            const C = @field(P, @tagName(tag));
+                            _ = std.json.parseFromValueLeaky(C.Params, arena, command.params, .{ .ignore_unknown_fields = true }) catch return false;
+                        }
+                        return true;
+                    },
+                }
+            }
+            return true;
+        }
+    }
+    return true;
+}
+
 fn dispatchIn(comptime H: type, comptime domain_name: []const u8, session: anytype, arena: Allocator, command: *const json_rpc.Command, command_name: []const u8) void {
     if (comptime @hasDecl(protocol, domain_name) and @hasDecl(@field(protocol, domain_name), "CommandName")) {
         const P = @field(protocol, domain_name);

@@ -21,6 +21,8 @@ const ids = @import("ids.zig");
 const outbound = @import("outbound.zig");
 const host_bridge = @import("host_bridge.zig");
 const page_domains = @import("domains/page_domains.zig");
+const held_commands = @import("held_commands.zig");
+const emulation_domain = @import("domains/emulation.zig");
 const BrowserSide = @import("browser_side.zig").BrowserSide;
 
 const log = std.log.scoped(.devtools);
@@ -52,6 +54,13 @@ pub const PageSession = struct {
     /// devtools thread, which answers the Fetch commands that decide a
     /// held request: fetch_interception.zig).
     fetch_enabled: std.atomic.Value(bool) = .init(false),
+    /// The client's messages held while the tab navigates, in arrival
+    /// order, each OWNED (held_commands.zig: Chrome's suspended
+    /// DevToolsSession keeps them in pending_messages_).
+    held: std.ArrayListUnmanaged([]u8) = .empty,
+    /// The posted session message that sends them on, if one is posted; a
+    /// detach cancels it.
+    release: ?*ReleaseTask = null,
 
     /// Devtools thread: a session for `tab`, not yet attached. `link` is
     /// retained.
@@ -100,14 +109,26 @@ pub const PageSession = struct {
             }
             self.attached = false;
         }
+        // What it held is dropped, unanswered, as Chrome drops a closed
+        // session's pending messages; its release, if posted, finds no
+        // session.
+        if (self.release) |task| task.session = null;
+        self.release = null;
+        for (self.held.items) |raw| self.allocator.free(raw);
+        self.held.deinit(self.allocator);
         self.link.end();
         self.link.release();
         self.allocator.destroy(self);
     }
 
     /// Browser thread: one message from the client. Parsed into an arena
-    /// that lives for the call.
+    /// that lives for the call. While the tab navigates, a command the page
+    /// would answer waits until the navigation ends (`holds`).
     pub fn handleMessage(self: *PageSession, raw: []const u8) void {
+        self.handle(raw, true);
+    }
+
+    fn handle(self: *PageSession, raw: []const u8, may_hold: bool) void {
         var arena_state = std.heap.ArenaAllocator.init(self.allocator);
         defer arena_state.deinit();
         const parsed = json_rpc.parse(arena_state.allocator(), raw) catch {
@@ -116,8 +137,124 @@ pub const PageSession = struct {
         };
         switch (parsed) {
             .failure => |f| dispatch_mod.sendError(self.link, f.id, @backingInt(f.code), f.message, null),
-            .command => |command| dispatch_mod.dispatch(page_domains.Handlers, self, arena_state.allocator(), &command),
+            .command => |command| {
+                if (may_hold and self.holds(&command, arena_state.allocator(), raw)) return;
+                dispatch_mod.dispatch(page_domains.Handlers, self, arena_state.allocator(), &command);
+            },
         }
+    }
+
+    /// Hold `raw`, `command`'s text, if the tab navigates and the command is
+    /// one its page answers (held_commands.holds) - or if earlier ones still
+    /// wait for their release, so that they go first. One whose params
+    /// Chrome decodes in the browser and that do not decode is not held: the
+    /// dispatcher answers it at once, as Chrome's does (`arena` holds the
+    /// decode). Chrome: DevToolsSession::DispatchProtocolMessageInternal,
+    /// then the browser handlers, then FallThrough (devtools_session.cc).
+    fn holds(self: *PageSession, command: *const json_rpc.Command, arena: Allocator, raw: []const u8) bool {
+        const method = command.method;
+        const mode = self.holdMode() orelse return false;
+        if (!held_commands.holds(mode, method)) return false;
+        if (held_commands.decodedInBrowser(method) and !dispatch_mod.paramsDecode(page_domains.Handlers, arena, command)) return false;
+        // A device metrics override that changes nothing Chrome's browser
+        // answers itself (EmulationHandler): at once.
+        if (emulation_domain.changesNothing(self, method, command.params, arena)) return false;
+        const copy = self.allocator.dupe(u8, raw) catch return false;
+        self.held.append(self.allocator, copy) catch {
+            self.allocator.free(copy);
+            return false;
+        };
+        // A held Runtime.runIfWaitingForDebugger resumes its waiting target
+        // now all the same (DispatchProtocolMessageInternal runs
+        // `runtime_resume_` for kResumeMethod before it dispatches
+        // anything): the navigation the tab waits with is the one its
+        // commands wait for. Its answer comes after, as any held command's;
+        // the handler's own resume then finds nothing waiting.
+        if (std.mem.eql(u8, method, "Runtime.runIfWaitingForDebugger")) self.runIfWaitingForDebugger();
+        return true;
+    }
+
+    /// The mode the session holds in: its tab's navigations' while one is
+    /// in flight; `all` while held commands still wait for their release
+    /// (Chrome sends them the moment the navigation finishes, before any
+    /// command that comes after - here their release is a session message
+    /// of its own); null when nothing holds.
+    fn holdMode(self: *const PageSession) ?held_commands.Mode {
+        if (self.side) |side| if (side.navigations.modeOf(self.tab)) |mode| return mode;
+        if (self.held.items.len > 0) return .all;
+        return null;
+    }
+
+    /// Browser thread: the tab's navigations ended - send what this session
+    /// holds, from a session message of its own (posted now: from inside a
+    /// navigation's commit, the commands run after it, in the new document).
+    pub fn scheduleRelease(self: *PageSession) void {
+        if (!self.attached or self.held.items.len == 0 or self.release != null) return;
+        const side = self.side orelse return;
+        const task = self.allocator.create(ReleaseTask) catch {
+            log.warn("out of memory releasing held commands", .{});
+            return;
+        };
+        task.* = .{ .session = self, .allocator = self.allocator };
+        self.release = task;
+        // On failure `drop` ran: no release is posted (the Browser ends, and
+        // its uninstall detaches this session).
+        _ = host_bridge.postSessionMessage(side.host, task, ReleaseTask.run, ReleaseTask.drop);
+    }
+
+    /// The release of a session's held commands: they go to their handlers
+    /// in the order they came (Chrome's ResumeSendingMessagesToAgent sends
+    /// every pending message at once) - unless the tab is navigating again
+    /// by then, when they wait for that navigation too. Commands that came
+    /// while they went follow them.
+    pub const ReleaseTask = struct {
+        /// Null once the session detached.
+        session: ?*PageSession,
+        allocator: Allocator,
+
+        fn run(context: ?*anyopaque, browser: *host_bridge.Browser) void {
+            _ = browser;
+            const task: *ReleaseTask = @ptrCast(@alignCast(context.?));
+            defer task.allocator.destroy(task);
+            const first = task.session orelse return;
+            if (first.holdNavigating()) {
+                first.release = null;
+                return;
+            }
+            // The batch is what is held now: it goes whole, even if one of
+            // its commands starts a navigation (Chrome sent them all to the
+            // page before it could).
+            var batch = first.held.items.len;
+            while (true) {
+                const session = task.session orelse return;
+                if (session.held.items.len == 0) break;
+                if (batch == 0) {
+                    if (session.holdNavigating()) break;
+                    batch = session.held.items.len;
+                }
+                const raw = session.held.orderedRemove(0);
+                batch -= 1;
+                const allocator = session.allocator;
+                defer allocator.free(raw);
+                // A handler may detach the session (inside a debugger pause's
+                // nested loop): the detach clears `task.session`.
+                session.handle(raw, false);
+            }
+            if (task.session) |session| session.release = null;
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const task: *ReleaseTask = @ptrCast(@alignCast(context.?));
+            if (task.session) |session| session.release = null;
+            task.allocator.destroy(task);
+        }
+    };
+
+    /// Whether the tab has a navigation in flight (not counting held
+    /// commands still waiting for their release).
+    fn holdNavigating(self: *const PageSession) bool {
+        const side = self.side orelse return false;
+        return side.navigations.modeOf(self.tab) != null;
     }
 
     // ------------------------------------------------------------------

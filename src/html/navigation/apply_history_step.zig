@@ -488,8 +488,15 @@ pub const ApplyItem = struct {
         // step leaves a navigation started after it alone (whatwg/html#12861,
         // whose open PR #12942 limits these writes to traversals and
         // reloads), and a reload's target document is its active one.
+        //
+        // Nor for a finalize's own cross-document push/replace (lane fw2): it
+        // would end a navigation started after the finalize was queued -
+        // beginTraversal ends the ongoing navigation - which Chrome lets go on
+        // and commit after it (golden rule 2; HTMLIFrameElement.zig
+        // commitAfterFinalize has the evidence). whatwg/html#12942 deletes
+        // this push/replace write; revisit when it merges or closes.
         for (self.changes.items) |c| {
-            if (self.kind == .reload or (c.same_document and self.kind != .traverse)) continue;
+            if (self.kind == .reload or self.kind == .push_replace or (c.same_document and self.kind != .traverse)) continue;
             const bc = navigables.byId(c.navigable) orelse continue;
             const integration = dom.navigables.integrationOf(@ptrCast(bc)) orelse continue;
             integration.beginTraversal();

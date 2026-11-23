@@ -119,6 +119,19 @@ pub const Event = union(enum) {
     /// frameRequestedNavigation for one a document started). A traversal's
     /// or reload's population is one too.
     started: struct { url: []const u8, initiator: Initiator },
+    /// A started navigation's request starts: past its beforeunload (a
+    /// traversal's or reload's population had its own before it started),
+    /// before its fetch and before a held target's wait for the debugger.
+    /// Chrome's DidStartNavigation point: Navigator::Navigate runs the
+    /// beforeunload handler first and calls NavigationRequest::
+    /// BeginNavigation from its answer, then StartNavigation tells the
+    /// delegate (content/browser/renderer_host/navigator.cc,
+    /// navigation_request.cc; chromium/src 65b1b80ff52b), and the DevTools
+    /// throttle that waits for the debugger acts later, at WillStartRequest.
+    /// From here until the navigation commits or ends, CDP holds the
+    /// commands a page answers (devtools/held_commands.zig). Every
+    /// navigation that reports it reports `committed` or `aborted` after.
+    request_started,
     /// Its response is in and decided, before anything unloads (CDP
     /// Page.navigate's reply: loaderId, errorText, isDownload).
     ready_to_commit: struct { url: []const u8, outcome: ReadyOutcome, status: u16 = 0, mime_type: []const u8 = "", error_text: []const u8 = "" },
