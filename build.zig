@@ -8766,7 +8766,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_mod.addImport("platform", platform_mod);
     // WebIDL types needed by custom_elements.zig and upgrade.zig
     html_mod.addImport("webidl", webidl_mod);
-    // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
+    // Dependencies for script_execution.zig and script_runner.zig
     html_mod.addImport("infra", infra_mod);
     html_mod.addImport("fetch", fetch_mod);
     html_mod.addImport("csp", csp_mod);

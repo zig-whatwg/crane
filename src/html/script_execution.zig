@@ -4612,9 +4612,6 @@ fn registerSpeculationRules(
 // Event Firing for Script Elements
 // =============================================================================
 
-// Event utilities for proper event creation and dispatch
-const event_utils = @import("event_utils.zig");
-
 /// Fire a load event on a script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element (step 8)
 ///
@@ -4625,22 +4622,14 @@ pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Inst
     fireAtScriptElement(allocator, script_element, "load");
 }
 
-/// Fire an event at a script element through the REAL dispatch algorithm.
-///
-/// `event_utils.fireSimpleEvent` cannot be used here. Its `dispatchEvent` is a
-/// stub that sets the dispatch flags and returns without invoking a single
-/// listener - deliberately, because it is handed a context synthesised on the
-/// CALLER'S STACK and only the absence of listeners keeps the event from
-/// escaping into V8 (see the comment on `event_utils.fireEvent`). The
-/// consequence for scripts is total: neither `script.onload = fn` nor
-/// `script.addEventListener("load", fn)` ever ran, which is why so many files
-/// under html/semantics/scripting-1/ waited out the full harness timeout
-/// instead of failing.
-///
-/// A script element is never in that position - it has a real context, whose
-/// entry outlives every Instance created in it - so it can go through
+/// Fire an event at a script element through the REAL dispatch algorithm:
 /// `EventTarget.dispatchEvent`, which walks the event path, invokes listeners
-/// and calls the IDL event handler attribute.
+/// and calls the IDL event handler attribute. A script element has a real
+/// context, whose entry outlives every Instance created in it. (Events once
+/// went through html/event_utils.zig, whose dispatch was a stub that invoked
+/// no listener, so neither `script.onload = fn` nor
+/// `script.addEventListener("load", fn)` ever ran; that module had no caller
+/// left and was deleted, lane flk4.)
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
 fn fireAtScriptElement(
@@ -4705,52 +4694,11 @@ fn fireAtScriptElementSteps(data: ?*anyopaque) void {
 /// - URL parsing fails
 /// - CSP blocks the script
 ///
-/// Note: This is different from reportScriptError which handles runtime errors.
-/// This function handles load-time errors.
+/// Load-time errors only: an exception a script throws is reported at its
+/// global (html/report_exception.zig, "report an exception").
 pub fn fireErrorEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
     // Fire a simple "error" event - not cancelable by default for load errors
     fireAtScriptElement(allocator, script_element, "error");
-}
-
-/// Report a script execution error
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
-///
-/// This is called when a script throws an exception during execution.
-/// The error event is fired at the global object, not the script element.
-///
-/// Parameters:
-/// - allocator: Memory allocator
-/// - global: The global object (Window or WorkerGlobalScope)
-/// - message: The error message
-/// - filename: URL of the script where the error occurred
-/// - lineno: Line number where the error occurred
-/// - colno: Column number where the error occurred
-/// - error_value: The JavaScript error object (may be null for muted errors)
-/// - muted_errors: Whether this script has muted errors (cross-origin without CORS)
-pub fn reportScriptError(
-    allocator: std.mem.Allocator,
-    global: *runtime.Instance,
-    message: ?[]const u8,
-    filename: ?[]const u8,
-    lineno: ?u32,
-    colno: ?u32,
-    error_value: ?*const anyopaque,
-    muted_errors: bool,
-) void {
-    _ = event_utils.reportException(
-        allocator,
-        null,
-        global,
-        error_value,
-        message,
-        filename,
-        lineno,
-        colno,
-        muted_errors,
-        false, // omit_error = false
-    ) catch |err| {
-        log.debug("Failed to report script error: {any}\n", .{err});
-    };
 }
 
 // =============================================================================
