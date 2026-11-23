@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const CatchCallback = *const fn (value: runtime.JSValue) runtime.JSValue;
+/// callback CatchCallback = any (any value)
+pub const CatchCallback = runtime.BorrowedCallbackFunction;

@@ -66,10 +66,6 @@ pub const Origin = environment_settings.Origin;
 pub const PolicyContainer = environment_settings.PolicyContainer;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
-// Engine-agnostic callback wrapper for callback interfaces
-// (EventListener, NodeFilter, XPathNSResolver)
-pub const CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
-
 // Engine-agnostic JavaScript value type
 // Use this in impl files instead of v8.JSValue
 pub const js_value = @import("js_value.zig");
@@ -205,6 +201,8 @@ pub const RealmSteps = @import("engine_types.zig").RealmSteps;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
 pub const CallbackThis = @import("engine_types.zig").CallbackThis;
+pub const BorrowedCallbackFunction = @import("engine_types.zig").BorrowedCallbackFunction;
+pub const BorrowedCallbackInterface = @import("engine_types.zig").BorrowedCallbackInterface;
 pub const WindowTimerHandler = @import("engine_types.zig").WindowTimerHandler;
 pub const WindowOperations = @import("engine_types.zig").WindowOperations;
 // ---- end lane: page-realm ----

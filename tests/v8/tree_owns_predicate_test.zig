@@ -1,4 +1,8 @@
 //! `wrapper_cache.treeOwns` - is this instance a node its tree still holds?
+//! (Since the wrapper redesign a node's main-world wrapper never enters a wrapper cache
+//! - node_wrappers.zig - so the cache's sweep below no longer meets nodes;
+//! the predicate and its default, which these tests pin, are unchanged: lane
+//! mem1's audit, 2026-11-22.)
 //!
 //! It gates a free: `WrapperCache.deinit` frees every instance its realm
 //! wrapped EXCEPT the ones this answers true for, which only their tree's

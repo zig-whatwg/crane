@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const FunctionStringCallback = *const fn (data: runtime.DOMString) void;
+/// callback FunctionStringCallback = undefined (DOMString data)
+pub const FunctionStringCallback = runtime.BorrowedCallbackFunction;

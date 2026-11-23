@@ -196,12 +196,14 @@ pub const URLPattern = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(input, baseURL, options)
         URLPatternInput_USVString_URLPatternOptions: struct {
+            pub const webidl_arguments = true;
             input: URLPatternInput,
             baseURL: runtime.USVString,
             options: webidl.Opt(URLPatternOptions),
         },
         /// constructor(input, options)
         URLPatternInput_URLPatternOptions: struct {
+            pub const webidl_arguments = true;
             input: webidl.Opt(URLPatternInput),
             options: webidl.Opt(URLPatternOptions),
         },

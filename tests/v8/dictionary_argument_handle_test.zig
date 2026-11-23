@@ -30,13 +30,20 @@ const ffi = v8.ffi;
 const copied = v8.interface_mod.argHandleIsCopied;
 
 /// StructuredSerializeOptions' shape (dictionaries.StructuredSerializeOptions).
-const OptionsShaped = struct { transfer: ?[]const runtime.JSValue = null };
+const OptionsShaped = struct {
+    pub const webidl_dictionary = true;
+    transfer: ?[]const runtime.JSValue = null,
+};
 
 test "a dictionary whose member is a sequence of member-safe elements is copied" {
     defer test_agent.close();
     try std.testing.expect(copied(OptionsShaped));
     try std.testing.expect(copied(webidl.Opt(OptionsShaped)));
-    try std.testing.expect(copied(struct { names: ?[]const runtime.DOMString = null, objects: []const runtime.JSValue = &.{} }));
+    try std.testing.expect(copied(struct {
+        pub const webidl_dictionary = true;
+        names: ?[]const runtime.DOMString = null,
+        objects: []const runtime.JSValue = &.{},
+    }));
 }
 
 test "a dictionary with a sequence of itself is walked once: the rest of its members decide" {
@@ -45,12 +52,14 @@ test "a dictionary with a sequence of itself is walked once: the rest of its mem
     // sequence<any> member let the walk go on past the members before it, the
     // self-reference recursed forever (the bindings stopped compiling).
     const Tree = struct {
+        pub const webidl_dictionary = true;
         name: ?runtime.DOMString = null,
         data: ?[]const runtime.JSValue = null,
         children: ?[]const @This() = null,
     };
     try std.testing.expect(copied(Tree));
     const UnsafeTree = struct {
+        pub const webidl_dictionary = true;
         children: ?[]const @This() = null,
         raw: ?*anyopaque = null,
     };
@@ -60,8 +69,14 @@ test "a dictionary with a sequence of itself is walked once: the rest of its mem
 test "a sequence of unknown pointers still keeps the dictionary's handle" {
     defer test_agent.close();
     // The default stays the safe one: an element type nothing names.
-    try std.testing.expect(!copied(struct { items: ?[]const *anyopaque = null }));
-    try std.testing.expect(!copied(struct { nested: ?[]const []const *anyopaque = null }));
+    try std.testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        items: ?[]const *anyopaque = null,
+    }));
+    try std.testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        nested: ?[]const []const *anyopaque = null,
+    }));
     // A top-level sequence<any> argument is unchanged: its elements are kept.
     try std.testing.expect(!copied([]const runtime.JSValue));
 }
@@ -164,22 +179,23 @@ const Probe = struct {
 
     /// NavigateEvent.intercept(optional NavigationInterceptOptions)'s
     /// conversion path: an operation whose dictionary has callback members.
-    /// A callback it is given is taken over and given back, as
-    /// Navigation's interceptHook takes each into its handler lists.
+    /// A callback it is given is kept and released, as Navigation's
+    /// interceptHook keeps each in its handler lists.
     pub fn call_static_intercept(instance: *runtime.Instance, options: webidl.Opt(InterceptShaped)) anyerror!void {
         _ = instance;
         if (!options.was_passed) return;
-        if (options.value.precommitHandler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
-        if (options.value.handler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
+        if (options.value.precommitHandler) |handler| handler.keep().release();
+        if (options.value.handler) |handler| handler.keep().release();
     }
 };
 
 /// dictionaries.NavigationInterceptOptions' callback members (callbacks.
-/// NavigationPrecommitHandler, NavigationInterceptHandler): function
-/// pointers, codegen's type for a callback function.
+/// NavigationPrecommitHandler, NavigationInterceptHandler):
+/// runtime.BorrowedCallbackFunction, codegen's type for a callback function.
 const InterceptShaped = struct {
-    precommitHandler: ?*const fn (controller: *runtime.Instance) runtime.JSValue = null,
-    handler: ?*const fn () runtime.JSValue = null,
+    pub const webidl_dictionary = true;
+    precommitHandler: ?runtime.BorrowedCallbackFunction = null,
+    handler: ?runtime.BorrowedCallbackFunction = null,
 };
 
 test "a dictionary whose members are callback functions is copied" {

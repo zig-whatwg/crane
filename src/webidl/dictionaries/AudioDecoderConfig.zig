@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const AudioDecoderConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     codec: runtime.DOMString,
     sampleRate: u32,
     numberOfChannels: u32,

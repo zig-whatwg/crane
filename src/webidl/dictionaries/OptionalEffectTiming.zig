@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const OptionalEffectTiming = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     delay: ?f64 = null,
     endDelay: ?f64 = null,
     fill: ?enums.FillMode = null,

@@ -8,6 +8,8 @@ const enums = @import("enums");
 const GPUBlendState = @import("GPUBlendState.zig").GPUBlendState;
 
 pub const GPUColorTargetState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     format: enums.GPUTextureFormat,
     blend: ?GPUBlendState = null,
     writeMask: ?typedefs.GPUColorWriteFlags = null,

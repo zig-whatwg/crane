@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const EventModifierInit = @import("EventModifierInit.zig").EventModifierInit;
 
 pub const MouseEventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from EventModifierInit
     base: EventModifierInit,
 

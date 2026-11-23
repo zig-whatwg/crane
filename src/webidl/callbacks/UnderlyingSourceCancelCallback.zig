@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSourceCancelCallback = *const fn (reason: runtime.JSValue) runtime.JSValue;
+/// callback UnderlyingSourceCancelCallback = Promise<undefined> (optional any reason)
+pub const UnderlyingSourceCancelCallback = runtime.BorrowedCallbackFunction;

@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const FilePickerAcceptType = @import("FilePickerAcceptType.zig").FilePickerAcceptType;
 
 pub const FilePickerOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     types: ?[]const FilePickerAcceptType = null,
     excludeAcceptAllOption: ?bool = null,
     id: ?runtime.DOMString = null,

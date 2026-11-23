@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const DeviceMotionEventRotationRateInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     alpha: ?f64 = null,
     beta: ?f64 = null,
     gamma: ?f64 = null,

@@ -4156,17 +4156,15 @@ test "constructing a DOMException leaves no handle behind, as constructing an Ev
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
 
-test "protocol: listeners added and removed in a loop leave no callback wrapper behind" {
+test "protocol: listeners added and removed in a loop: each removal finds its listener" {
     defer test_agent.close();
-    // WebIDL: a callback interface argument (EventListener) is the call's; a
-    // listener the target keeps is its own callback interface value. Every
-    // wrapper the binding makes for the argument must be gone once the call
-    // returns - std.testing.allocator fails the test on any that outlives it.
+    // WebIDL: a callback interface argument (EventListener) is the call's,
+    // BORROWED; a listener the target keeps is its own callback interface
+    // value, and removeEventListener compares the borrowed object with it.
+    // (The handles each call leaves are callback_argument_borrowed_test's.)
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const override = v8.conversions.callback_allocator.overrideForTest(std.testing.allocator);
-    defer override.restore();
     try expectEval(w,
         \\const f = () => {};
         \\const o = { handleEvent() {} };

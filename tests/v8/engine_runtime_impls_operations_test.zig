@@ -289,89 +289,87 @@ fn catching(steps: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque)
     return exception;
 }
 
-const Call = struct {
-    callback: *runtime.CallbackWrapper,
-    result: anyerror!runtime.JSValue = error.NotCalled,
-
-    fn run(data: ?*anyopaque) callconv(.c) void {
-        const self: *Call = @ptrCast(@alignCast(data.?));
-        self.result = v8.callback_interfaces.callUserObjectOperation(test_data.?, self.callback, "acceptNode", &.{runtime.JSValue.fromNumber(5)});
-    }
-};
-
-/// A callback interface value made of script's `expression`, as the binding
-/// converts one. The wrapper takes the value's handle: releasing the wrapper
-/// (`conversions.releaseCallbackWrapper`) releases it.
-fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
+/// A callback interface value made of script's `expression`, kept as an
+/// impl keeps the one the binding converts (engine.keepCallbackInterface over
+/// the binding's Global, which the keep empties and the binding frees).
+fn callbackOf(expression: []const u8) !protocol.CallbackInterface {
     const value = try evalHandle(expression);
-    const made = (v8.createCallbackFromV8Value(std.testing.allocator, test_isolate.?, test_context.?, value, "acceptNode") catch return error.OutOfMemory) orelse {
-        ffi.v8_Value_Dispose(value);
-        return error.NotCallable;
-    };
-    return @ptrCast(made);
+    defer ffi.v8_Global_DisposeCallbackValue(value);
+    return protocol.keepCallbackInterface(.{ .object = .{ .handle = .{ .ptr = value } } });
 }
 
-test "a callback interface value is called as a function, or through its operation, and what it throws stays in flight" {
+/// "Call a user object's operation" acceptNode(5) on `callback`, rethrowing.
+fn acceptNode(ctx: runtime.Context, callback: *const protocol.CallbackInterface) !protocol.Completion {
+    return protocol.callUserObjectOperation(ctx, callback, "acceptNode", .undefined, &.{runtime.JSValue.fromNumber(5)}, .rethrow);
+}
+
+/// What `completion` threw, exposed to script as `name`; an error if it
+/// returned normally.
+fn exposeThrown(name: []const u8, completion: protocol.Completion) !void {
+    switch (completion) {
+        .normal => |value| {
+            value.release();
+            return error.NothingThrown;
+        },
+        .throw => |thrown| {
+            defer thrown.release();
+            try expose(name, thrown.value);
+        },
+    }
+}
+
+/// What `completion` returned, as a number; an error if it threw.
+fn returnedNumber(ctx: runtime.Context, completion: protocol.Completion) !f64 {
+    switch (completion) {
+        .normal => |value| {
+            defer value.release();
+            return v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, value.value);
+        },
+        .throw => |thrown| {
+            thrown.release();
+            return error.CallbackThrew;
+        },
+    }
+}
+
+test "a callback interface value is called as a function, or through its operation, and what it throws comes back" {
     defer test_agent.close();
     const ctx = try realm();
 
-    // A function: called with undefined as this and the arguments given.
+    // A function: called with the callback this value (undefined) and the
+    // arguments given.
     const function = try callbackOf("(function (n) { 'use strict'; return this === undefined ? n + 1 : -1; })");
-    defer v8.conversions.releaseCallbackWrapper(function);
-    var call: Call = .{ .callback = function };
-    try std.testing.expect(try catching(Call.run, &call) == null);
-    const result = try call.result;
-    defer v8.engine.v8ReleaseValue(result);
-    try std.testing.expectEqual(@as(f64, 6), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, result));
+    defer function.release();
+    try std.testing.expectEqual(@as(f64, 6), try returnedNumber(ctx, try acceptNode(ctx, &function)));
 
     // An object: its operation looked up at the call, with it as this.
     const object = try callbackOf("({ base: 10, acceptNode(n) { return this.base + n; } })");
-    defer v8.conversions.releaseCallbackWrapper(object);
-    call = .{ .callback = object };
-    try std.testing.expect(try catching(Call.run, &call) == null);
-    const from_object = try call.result;
-    defer v8.engine.v8ReleaseValue(from_object);
-    try std.testing.expectEqual(@as(f64, 15), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, from_object));
+    defer object.release();
+    try std.testing.expectEqual(@as(f64, 15), try returnedNumber(ctx, try acceptNode(ctx, &object)));
 
-    // "rethrow": the call's exception is the caller's, in flight.
+    // "rethrow": the call's exception is the caller's.
     const throwing = try callbackOf("(function () { throw new RangeError('filtered'); })");
-    defer v8.conversions.releaseCallbackWrapper(throwing);
-    call = .{ .callback = throwing };
-    const thrown = (try catching(Call.run, &call)) orelse return error.NothingThrown;
-    defer ffi.v8_Global_Dispose(thrown);
-    try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("rethrown", .{ .handle = .{ .ptr = thrown } });
+    defer throwing.release();
+    try exposeThrown("rethrown", try acceptNode(ctx, &throwing));
     try std.testing.expectEqual(@as(i32, 1), try eval("rethrown instanceof RangeError && rethrown.message === 'filtered' ? 1 : 0"));
 
     // WebIDL § 3.12 step 10.2: Get(O, opName) is rethrown - a getter that
     // throws is the call's exception.
     const throwing_getter = try callbackOf("({ get acceptNode() { throw new SyntaxError('getter'); } })");
-    defer v8.conversions.releaseCallbackWrapper(throwing_getter);
-    call = .{ .callback = throwing_getter };
-    const from_getter = (try catching(Call.run, &call)) orelse return error.NothingThrown;
-    defer ffi.v8_Global_Dispose(from_getter);
-    try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("fromGetter", .{ .handle = .{ .ptr = from_getter } });
+    defer throwing_getter.release();
+    try exposeThrown("fromGetter", try acceptNode(ctx, &throwing_getter));
     try std.testing.expectEqual(@as(i32, 1), try eval("fromGetter instanceof SyntaxError && fromGetter.message === 'getter' ? 1 : 0"));
 
     // Step 10.3: no such property - undefined is not callable - is a TypeError.
     const no_operation = try callbackOf("({})");
-    defer v8.conversions.releaseCallbackWrapper(no_operation);
-    call = .{ .callback = no_operation };
-    const missing = (try catching(Call.run, &call)) orelse return error.NothingThrown;
-    defer ffi.v8_Global_Dispose(missing);
-    try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("missing", .{ .handle = .{ .ptr = missing } });
+    defer no_operation.release();
+    try exposeThrown("missing", try acceptNode(ctx, &no_operation));
     try std.testing.expectEqual(@as(i32, 1), try eval("missing instanceof TypeError ? 1 : 0"));
 
     // Step 10.3 again: a property that is not callable is a TypeError too.
     const not_callable = try callbackOf("({ acceptNode: 3 })");
-    defer v8.conversions.releaseCallbackWrapper(not_callable);
-    call = .{ .callback = not_callable };
-    const type_error = (try catching(Call.run, &call)) orelse return error.NothingThrown;
-    defer ffi.v8_Global_Dispose(type_error);
-    try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("notCallable", .{ .handle = .{ .ptr = type_error } });
+    defer not_callable.release();
+    try exposeThrown("notCallable", try acceptNode(ctx, &not_callable));
     try std.testing.expectEqual(@as(i32, 1), try eval("notCallable instanceof TypeError ? 1 : 0"));
 }
 
@@ -407,69 +405,6 @@ test "convert to unrestricted double is ToNumber, and what it throws stays in fl
     try std.testing.expectError(error.ExceptionPending, to_number.result);
     try expose("symbolError", .{ .handle = .{ .ptr = thrown } });
     try std.testing.expectEqual(@as(i32, 1), try eval("symbolError instanceof TypeError ? 1 : 0"));
-}
-
-test "a taken callback-function argument is an owned hold of its own on the same function" {
-    defer test_agent.close();
-    _ = try realm();
-    // What the conversion hands an impl for a callback-function argument: a
-    // Global it made (a `.global_handle` tag is ignored), BORROWED for the
-    // call - the binding frees it when the call returns.
-    const function = try evalHandle("globalThis.theCallback = function () { return 7; }; theCallback");
-    const tagged = v8.pointer_tag.tagPointer(@ptrCast(function), .global_handle);
-
-    const taken = v8.callback_interfaces.takeCallbackFunction(tagged);
-    try std.testing.expect(taken == .handle);
-    // A hold of the taker's own: the function moved out of the binding's
-    // Global, which is left empty for the binding to free.
-    try std.testing.expect(@intFromPtr(function) != @intFromPtr(taken.handle.ptr));
-    try std.testing.expect(ffi.v8_Global_IsEmpty(function));
-    ffi.v8_Value_Dispose(function);
-    try expose("taken", taken);
-    try std.testing.expectEqual(@as(i32, 1), try eval("taken === theCallback ? 1 : 0"));
-    // The impl's to release; after that the function is script's alone.
-    v8.engine.v8ReleaseValue(taken);
-    try std.testing.expectEqual(@as(i32, 7), try eval("theCallback()"));
-    // Taken again, the binding's value holds nothing: undefined.
-    const again = try evalHandle("theCallback");
-    const first = v8.callback_interfaces.takeCallbackFunction(@ptrCast(again));
-    defer v8.engine.v8ReleaseValue(first);
-    const second = v8.callback_interfaces.takeCallbackFunction(@ptrCast(again));
-    try std.testing.expect(second == .undefined);
-    ffi.v8_Value_Dispose(again);
-}
-
-test "a callback-function argument converts to a value its function-pointer type may hold" {
-    defer test_agent.close();
-    _ = try realm();
-    // Codegen types a callback function as a Zig function pointer
-    // (callbacks.EventHandlerNonNull is this shape), and the conversion
-    // stores the function's Global<Value>* in it. A pointer-typed value must
-    // be aligned for its type - 4 for a function on aarch64 - so a tag in its
-    // low bits is illegal behaviour: an optimized build may assume them clear
-    // and drop the untag, which made a ReleaseSafe runner hand
-    // v8_Global_Clone a Global* + 1 (its alignment trap, under
-    // EventTarget.innerInvoke) for every event handler it ran.
-    const Callback = *const fn (event: *runtime.Instance) runtime.JSValue;
-    const function = try evalHandle("globalThis.theHandler = function () { return 9; }; theHandler");
-    const converted = try v8.conversions.fromV8Value(Callback, std.testing.allocator, test_isolate.?, test_context.?, function);
-    try std.testing.expect(std.mem.isAligned(@intFromPtr(converted), @alignOf(@typeInfo(Callback).pointer.child)));
-    // The argument's own Global, as before, now with nothing in its low bits.
-    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(converted));
-
-    // EventHandler is the nullable form: the same value.
-    const nullable = (try v8.conversions.fromV8Value(?Callback, std.testing.allocator, test_isolate.?, test_context.?, function)) orelse return error.NullHandler;
-    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(nullable));
-
-    // takeCallbackFunction takes a hold of its own on the same function, the
-    // impl's to release; the converted value - the argument's Global - stays
-    // the binding's, which frees it (interface.freeConvertedArg).
-    const taken = v8.callback_interfaces.takeCallbackFunction(@ptrCast(converted));
-    try std.testing.expect(@intFromPtr(function) != @intFromPtr(taken.handle.ptr));
-    try expose("takenHandler", taken);
-    try std.testing.expectEqual(@as(i32, 1), try eval("takenHandler === theHandler ? 1 : 0"));
-    v8.engine.v8ReleaseValue(taken);
-    v8.interface_mod.freeConvertedArg(Callback, std.testing.allocator, converted);
 }
 
 // ============================================================================

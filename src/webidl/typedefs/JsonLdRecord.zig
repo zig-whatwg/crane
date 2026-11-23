@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const JsonLdRecord = []const struct { key: runtime.USVString, value: runtime.JSValue };
+pub const JsonLdRecord = []const struct {
+    pub const webidl_record_entry = true;
+    key: runtime.USVString,
+    value: runtime.JSValue,
+};

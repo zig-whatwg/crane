@@ -205,11 +205,11 @@ pub const MediaQueryList = struct {
         try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
-    pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
+    pub fn call_addListener(instance: *runtime.Instance, callback: ?runtime.BorrowedCallbackInterface) anyerror!void {
         return try MediaQueryListImpl.call_addListener(instance, callback);
     }
 
-    pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
+    pub fn call_removeListener(instance: *runtime.Instance, callback: ?runtime.BorrowedCallbackInterface) anyerror!void {
         return try MediaQueryListImpl.call_removeListener(instance, callback);
     }
 

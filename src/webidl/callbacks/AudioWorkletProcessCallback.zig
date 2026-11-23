@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const AudioWorkletProcessCallback = *const fn (inputs: runtime.JSValue, outputs: runtime.JSValue, parameters: runtime.JSValue) bool;
+/// callback AudioWorkletProcessCallback = boolean (FrozenArray<FrozenArray<Float32Array>> inputs, FrozenArray<FrozenArray<Float32Array>> outputs, object parameters)
+pub const AudioWorkletProcessCallback = runtime.BorrowedCallbackFunction;

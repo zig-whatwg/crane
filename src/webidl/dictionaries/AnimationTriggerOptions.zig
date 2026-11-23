@@ -8,6 +8,8 @@ const enums = @import("enums");
 const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffset;
 
 pub const AnimationTriggerOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     timeline: ?*runtime.Instance = null,
     behavior: webidl.Opt(?enums.AnimationTriggerBehavior) = .notPassed(),
     activationRangeStart: ?runtime.JSValue = null,

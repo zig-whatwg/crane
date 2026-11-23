@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const MLNamedTensors = []const struct { key: runtime.USVString, value: *runtime.Instance };
+pub const MLNamedTensors = []const struct {
+    pub const webidl_record_entry = true;
+    key: runtime.USVString,
+    value: *runtime.Instance,
+};

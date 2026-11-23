@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const TextDecoderOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     fatal: ?bool = null,
     ignoreBOM: ?bool = null,
 

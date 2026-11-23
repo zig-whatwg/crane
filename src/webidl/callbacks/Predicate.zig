@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const Predicate = *const fn (value: runtime.JSValue, index: u64) bool;
+/// callback Predicate = boolean (any value, unsigned long long index)
+pub const Predicate = runtime.BorrowedCallbackFunction;

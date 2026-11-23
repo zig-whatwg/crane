@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSinkAbortCallback = *const fn (reason: runtime.JSValue) runtime.JSValue;
+/// callback UnderlyingSinkAbortCallback = Promise<undefined> (optional any reason)
+pub const UnderlyingSinkAbortCallback = runtime.BorrowedCallbackFunction;

@@ -67,10 +67,11 @@ pub const PushReplaceReload = struct {
 
 /// What intercept() was given.
 pub const InterceptOptions = struct {
-    /// The binding's converted callback functions, as it hands them over
-    /// (engine.takeCallbackFunction takes them), or null when absent.
-    precommit_handler: ?*const anyopaque = null,
-    handler: ?*const anyopaque = null,
+    /// The binding's converted callback functions, BORROWED for the
+    /// intercept() call (the navigation keeps them with `keep()`), or null
+    /// when absent.
+    precommit_handler: ?runtime.BorrowedCallbackFunction = null,
+    handler: ?runtime.BorrowedCallbackFunction = null,
     focus_reset: ?FocusReset = null,
     scroll: ?ScrollBehavior = null,
 };
@@ -123,7 +124,7 @@ pub const Implementation = struct {
     intercept: *const fn (event: *runtime.Instance, options: InterceptOptions) anyerror!void,
     scroll: *const fn (event: *runtime.Instance) anyerror!void,
     redirect: *const fn (event: *runtime.Instance, redirect: *const Redirect) anyerror!void,
-    add_handler: *const fn (event: *runtime.Instance, handler: *const anyopaque) anyerror!void,
+    add_handler: *const fn (event: *runtime.Instance, handler: runtime.BorrowedCallbackFunction) anyerror!void,
     /// `window`'s navigation API's "suppress normal scroll restoration during
     /// ongoing navigation" (set while an intercepted traversal commits).
     suppresses_normal_scroll_restoration: ?*const fn (window: *runtime.Instance) bool = null,
@@ -269,7 +270,7 @@ pub fn redirect(event: *runtime.Instance, args: Redirect) !void {
 }
 
 /// NavigationPrecommitController's addHandler() for `event`, steps 3-4.
-pub fn addHandler(event: *runtime.Instance, handler: *const anyopaque) !void {
+pub fn addHandler(event: *runtime.Instance, handler: runtime.BorrowedCallbackFunction) !void {
     const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.add_handler(event, handler);
 }

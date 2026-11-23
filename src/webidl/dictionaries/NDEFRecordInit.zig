@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const NDEFRecordInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     recordType: runtime.USVString,
     mediaType: ?runtime.USVString = null,
     id: ?runtime.USVString = null,

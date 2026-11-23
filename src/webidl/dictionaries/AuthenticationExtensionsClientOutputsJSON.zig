@@ -8,6 +8,8 @@ const CredentialPropertiesOutput = @import("CredentialPropertiesOutput.zig").Cre
 const AuthenticationExtensionsLargeBlobOutputsJSON = @import("AuthenticationExtensionsLargeBlobOutputsJSON.zig").AuthenticationExtensionsLargeBlobOutputsJSON;
 
 pub const AuthenticationExtensionsClientOutputsJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     appid: ?bool = null,
     appidExclude: ?bool = null,
     credProps: ?CredentialPropertiesOutput = null,

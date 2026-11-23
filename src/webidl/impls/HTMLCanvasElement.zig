@@ -296,8 +296,8 @@ pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.D
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-toblob
 pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // The binding hands the callback over: take it before anything can fail.
-    const callback = engine.takeCallbackFunction(@ptrCast(_callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const callback = _callback.keep();
     var callback_owned = true;
     defer if (callback_owned) callback.release();
     const allocator = instance.ctx.allocator;

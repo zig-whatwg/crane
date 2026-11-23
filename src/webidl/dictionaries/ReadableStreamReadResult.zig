@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const ReadableStreamReadResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     value: ?runtime.JSValue = null,
     done: ?bool = null,
 

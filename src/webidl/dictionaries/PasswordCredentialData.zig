@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const CredentialData = @import("CredentialData.zig").CredentialData;
 
 pub const PasswordCredentialData = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from CredentialData
     base: CredentialData,
 

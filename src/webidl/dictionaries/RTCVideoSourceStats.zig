@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const RTCMediaSourceStats = @import("RTCMediaSourceStats.zig").RTCMediaSourceStats;
 
 pub const RTCVideoSourceStats = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from RTCMediaSourceStats
     base: RTCMediaSourceStats,
 

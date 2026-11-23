@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const BaseKeyframe = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     offset: ?f64 = null,
     easing: ?runtime.DOMString = null,
     composite: ?enums.CompositeOperationOrAuto = null,

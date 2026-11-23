@@ -213,12 +213,14 @@ pub const ImageData = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(sw, sh, settings)
         unsigned_long_unsigned_long_ImageDataSettings: struct {
+            pub const webidl_arguments = true;
             sw: u32,
             sh: u32,
             settings: webidl.Opt(ImageDataSettings),
         },
         /// constructor(data, sw, sh, settings)
         ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings: struct {
+            pub const webidl_arguments = true;
             data: ImageDataArray,
             sw: u32,
             sh: webidl.Opt(u32),

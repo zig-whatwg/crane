@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const CacheQueryOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     ignoreSearch: ?bool = null,
     ignoreMethod: ?bool = null,
     ignoreVary: ?bool = null,

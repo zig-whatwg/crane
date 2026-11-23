@@ -8,6 +8,8 @@ const PlaneLayout = @import("PlaneLayout.zig").PlaneLayout;
 const DOMRectInit = @import("DOMRectInit.zig").DOMRectInit;
 
 pub const VideoFrameCopyToOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     rect: ?DOMRectInit = null,
     layout: ?[]const PlaneLayout = null,
     format: ?enums.VideoPixelFormat = null,

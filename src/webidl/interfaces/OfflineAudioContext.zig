@@ -240,6 +240,7 @@ pub const OfflineAudioContext = struct {
         OfflineAudioContextOptions: OfflineAudioContextOptions,
         /// constructor(numberOfChannels, length, sampleRate)
         unsigned_long_unsigned_long_float: struct {
+            pub const webidl_arguments = true;
             numberOfChannels: u32,
             length: u32,
             sampleRate: f32,

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSinkStartCallback = *const fn (controller: *runtime.Instance) runtime.JSValue;
+/// callback UnderlyingSinkStartCallback = any (WritableStreamDefaultController controller)
+pub const UnderlyingSinkStartCallback = runtime.BorrowedCallbackFunction;

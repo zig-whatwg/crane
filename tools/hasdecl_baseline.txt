@@ -12,7 +12,7 @@ src/runtime/binding_generator.zig 7
 src/runtime/engine_build_protocol.zig 1
 src/runtime/engine_protocol.zig 2
 src/runtime/engines/v8/binding_plumbing.zig 1
-src/runtime/engines/v8/conversions.zig 5
+src/runtime/engines/v8/conversions.zig 4
 src/runtime/engines/v8/external_references.zig 3
 src/runtime/engines/v8/interface.zig 10
 src/runtime/engines/v8/interface_bindings.zig 36

@@ -15,16 +15,16 @@ test "XPath compiled grammar releases native allocations on success and syntax e
     const evaluator = try interfaces.XPathEvaluator.init(a, &ctx);
     defer interfaces.XPathEvaluator.deinit(evaluator);
     for ([_][]const u8{ "1 + 2 * 3", "//div[@id='x'][1]", "preceding-sibling::*[last()]", "substring('12345', 1.5, 2.6)", "(//x | //y)[1]", "processing-instruction('target')", "$v", "concat($p : v, 'b')" }) |text| {
-        const expression = try interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed());
+        const expression = try interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed());
         runtime.Instance.deinit(expression);
     }
     for ([_][]const u8{ "(", "///x", "a[", "1e2", "unknown()", "last(1)", "$ v", "$p:*", "$1", "p :", "p : : item", "child : : item" }) |text| {
-        try std.testing.expectError(error.SyntaxError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed()));
+        try std.testing.expectError(error.SyntaxError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed()));
     }
     // Browser lexers admit XML whitespace around the QName colon. A missing
     // resolver must therefore be a namespace error, not malformed syntax.
     for ([_][]const u8{ "p : item", "p: item", "p :item", "@p : *", "child :: p : item", "p\t:\ritem" }) |text| {
-        try std.testing.expectError(error.NamespaceError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed()));
+        try std.testing.expectError(error.NamespaceError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed()));
     }
 }
 
@@ -36,7 +36,7 @@ test "XPath scalar evaluation through interfaces releases all native allocations
     defer ctx.deinit();
     const document = try interfaces.Document.init(a, &ctx);
     defer interfaces.Document.deinit(document);
-    const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned("1 + 2 * 3"), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
+    const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned("1 + 2 * 3"), document, webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed(), webidl.Opt(u16).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
     defer runtime.Instance.deinit(result);
     try std.testing.expectEqual(@as(u16, 1), try interfaces.XPathResult.get_resultType(result));
     try std.testing.expectEqual(@as(f64, 7), try interfaces.XPathResult.get_numberValue(result));
@@ -86,7 +86,7 @@ test "XPath string operations preserve browser UTF-16 units and surrogate seams"
         .{ "concat($unbound, 'b')", "b" },
     };
     for (cases) |case| {
-        const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(case[0]), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(2), webidl.Opt(?*runtime.Instance).notPassed());
+        const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(case[0]), document, webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed(), webidl.Opt(u16).passed(2), webidl.Opt(?*runtime.Instance).notPassed());
         defer runtime.Instance.deinit(result);
         var text = try interfaces.XPathResult.get_stringValue(result);
         defer text.deinit(a);
@@ -138,7 +138,7 @@ test "XPath evaluates a 200,000-operator chain without native recursion" {
     defer a.free(text);
     text[0] = '1';
     for (0..terms) |i| @memcpy(text[1 + 2 * i ..][0..2], "+1");
-    const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(text), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
+    const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(text), document, webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed(), webidl.Opt(u16).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
     defer runtime.Instance.deinit(result);
     try std.testing.expectEqual(@as(f64, terms + 1), try interfaces.XPathResult.get_numberValue(result));
     // Folding reads the left value while building the next one: a comparison
@@ -149,7 +149,7 @@ test "XPath evaluates a 200,000-operator chain without native recursion" {
     chain[0] = '1';
     for (0..comparisons) |i| @memcpy(chain[1 + 4 * i ..][0..4], " = 1");
     for ([_][]const u8{ chain, "'ab' = concat('a', 'b')", "3 > 2 = true()" }) |expression| {
-        const truth = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(expression), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(3), webidl.Opt(?*runtime.Instance).notPassed());
+        const truth = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(expression), document, webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed(), webidl.Opt(u16).passed(3), webidl.Opt(?*runtime.Instance).notPassed());
         defer runtime.Instance.deinit(truth);
         try std.testing.expect(try interfaces.XPathResult.get_booleanValue(truth));
     }
@@ -190,7 +190,7 @@ const IteratorFixture = struct {
 
     /// `.//span` from the section, as an ORDERED_NODE_ITERATOR_TYPE result.
     fn iterator(self: *IteratorFixture) !*runtime.Instance {
-        return interfaces.Document.call_evaluate(self.document, runtime.DOMString.initInterned(".//span"), self.section, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(5), webidl.Opt(?*runtime.Instance).notPassed());
+        return interfaces.Document.call_evaluate(self.document, runtime.DOMString.initInterned(".//span"), self.section, webidl.Opt(?runtime.BorrowedCallbackInterface).notPassed(), webidl.Opt(u16).passed(5), webidl.Opt(?*runtime.Instance).notPassed());
     }
 };
 

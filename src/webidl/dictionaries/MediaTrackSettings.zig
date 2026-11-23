@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const Point2D = @import("Point2D.zig").Point2D;
 
 pub const MediaTrackSettings = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     width: ?u32 = null,
     height: ?u32 = null,
     aspectRatio: ?f64 = null,

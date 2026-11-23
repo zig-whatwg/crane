@@ -6,13 +6,19 @@ const runtime = @import("runtime");
 const AudioNodeOptions = @import("AudioNodeOptions.zig").AudioNodeOptions;
 
 pub const AudioWorkletNodeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
     numberOfInputs: ?u32 = null,
     numberOfOutputs: ?u32 = null,
     outputChannelCount: ?[]const u32 = null,
-    parameterData: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
+    parameterData: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: f64,
+    } = null,
     processorOptions: ?runtime.JSValue = null,
 
     /// WebIDL `object` members (or sequences of `object`): a value that is

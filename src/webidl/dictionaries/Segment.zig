@@ -8,6 +8,8 @@ const DOMRectInit = @import("DOMRectInit.zig").DOMRectInit;
 const Point2D = @import("Point2D.zig").Point2D;
 
 pub const Segment = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: enums.SegmentType,
     id: i32,
     partOf: ?i32 = null,

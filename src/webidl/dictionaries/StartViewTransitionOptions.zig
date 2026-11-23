@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 
 pub const StartViewTransitionOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     update: ?callbacks.ViewTransitionUpdateCallback = null,
     types: ?[]const runtime.DOMString = null,
 

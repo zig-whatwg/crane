@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const AudioTimestamp = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     contextTime: ?f64 = null,
     performanceTime: ?typedefs.DOMHighResTimeStamp = null,
 

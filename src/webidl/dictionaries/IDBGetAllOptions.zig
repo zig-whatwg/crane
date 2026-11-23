@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const IDBGetAllOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     query: ?runtime.JSValue = null,
     count: ?u32 = null,
     direction: ?enums.IDBCursorDirection = null,
