@@ -24,10 +24,6 @@ const SheetRecord = sheet_mod.SheetRecord;
 pub const AdoptedSheets = struct {
     allocator: std.mem.Allocator,
     records: std.ArrayList(*SheetRecord) = .empty,
-    /// The same sheets as the objects script sees, by name (address and
-    /// slab generation; never a hold): CDP's DOM agents report them by
-    /// their styleSheetIds (`sheetsOf`).
-    sheets: std.ArrayList(Sheet) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) AdoptedSheets {
         return .{ .allocator = allocator };
@@ -37,47 +33,31 @@ pub const AdoptedSheets = struct {
         for (self.records.items) |r| r.unref();
         self.records.deinit(self.allocator);
         self.records = .empty;
-        self.sheets.deinit(self.allocator);
-        self.sheets = .empty;
     }
 
     /// The backing list is now `values` (CSSStyleSheet objects).
     fn replace(self: *AdoptedSheets, values: []const *runtime.Instance) void {
         var next: std.ArrayList(*SheetRecord) = .empty;
         next.ensureTotalCapacity(self.allocator, values.len) catch return;
-        var next_sheets: std.ArrayList(Sheet) = .empty;
-        next_sheets.ensureTotalCapacity(self.allocator, values.len) catch {
-            next.deinit(self.allocator);
-            return;
-        };
         for (values) |value| {
             const record = hooks.sheetRecordOf(value) orelse continue;
             record.ref();
             next.appendAssumeCapacity(record);
-            next_sheets.appendAssumeCapacity(.{ .object = value, .generation = runtime.SlabAllocator.generationOf(value) });
         }
         self.deinit();
         self.records = next;
-        self.sheets = next_sheets;
     }
 };
 
-/// An adopted sheet's CSSStyleSheet object, by name.
-pub const Sheet = struct {
-    object: *runtime.Instance,
-    generation: u64,
-
-    /// The object, while it is the one named.
-    pub fn get(self: Sheet) ?*runtime.Instance {
-        if (runtime.SlabAllocator.generationOf(self.object) != self.generation) return null;
-        return self.object;
-    }
-};
-
-/// `owner`'s adopted sheets in array order (empty: none, or no array).
-pub fn sheetsOf(owner: *runtime.Instance) []const Sheet {
-    const adopted = hooks.adoptedSheetsOf(owner) orelse return &.{};
-    return adopted.sheets.items;
+/// `owner`'s adopted sheets - the CSSStyleSheet objects of its
+/// adoptedStyleSheets array, in order - appended to `out` (nothing when the
+/// array was never made). Read from the array itself, so a document's state
+/// keeps no second list for CDP's DOM agents. BORROWED until script next
+/// runs (engine.observableArrayItems).
+pub fn sheetsOf(owner: *runtime.Instance, allocator: std.mem.Allocator, out: *std.ArrayList(*runtime.Instance)) !void {
+    const held = engine.tracedValue(owner, slot) orelse return;
+    defer held.release();
+    try engine.observableArrayItems(held.value, allocator, out);
 }
 
 /// Whether `owner`'s adoptedStyleSheets array was made (its getter or

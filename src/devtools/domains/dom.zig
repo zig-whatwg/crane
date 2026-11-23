@@ -1296,15 +1296,18 @@ fn adoptedStyleSheetsInvalidated(session: *PageSession) void {
 }
 
 /// The styleSheetIds of `owner`'s adopted sheets, in order.
-fn adoptedSheetIds(session: *PageSession, arena: Allocator, owner: *runtime.Instance) ![]const []const u8 {
+fn adoptedSheetIds(session: *PageSession, arena: Allocator, owner: *runtime.Instance) error{OutOfMemory}![]const []const u8 {
     const browser = session.browser orelse return &.{};
     const registry = try browser.scope.of(StyleSheetIds);
     const token: u64 = if (session.side) |side| side.token else 0;
+    var sheets: std.ArrayList(*runtime.Instance) = .empty;
+    // The array unreadable (its realm going): no sheets to name.
+    dom.style.adopted.sheetsOf(owner, arena, &sheets) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return &.{},
+    };
     var out: std.ArrayListUnmanaged([]const u8) = .empty;
-    for (dom.style.adopted.sheetsOf(owner)) |sheet| {
-        const object = sheet.get() orelse continue;
-        try out.append(arena, try registry.idOf(arena, token, object));
-    }
+    for (sheets.items) |object| try out.append(arena, try registry.idOf(arena, token, object));
     return out.items;
 }
 
