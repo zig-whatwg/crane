@@ -240,3 +240,21 @@ test "one tab's end leaves another tab's pending mutation observers to be notifi
     // ...and is notified at the next checkpoint.
     try fixture.waitFor(host, "seen.join() === '1'");
 }
+
+test "a realm's platform requests and environment reads name its tab (the platform protocol's recipes step 7)" {
+    // The platform names tabs by TabId - the top-level traversable's
+    // navigable id; tab 0 is "every tab". A realm's tab gives the mapping
+    // the protocol waited for: requests and CSS environment reads made in a
+    // tab's realms name it, a frame's its tab's.
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const realm = fixture_mod.activeRealm(host) orelse return error.NoRealm;
+    try testing.expectEqual(host.id, html.platform_state.tabOf(realm));
+    var parts = (try html.platform_state.requester(realm, false)) orelse return error.NoRequester;
+    defer parts.deinit();
+    try testing.expectEqual(host.id, parts.requester().tab);
+    const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
+    const popup_realm = fixture_mod.activeRealm(popup) orelse return error.NoRealm;
+    try testing.expectEqual(popup.id, html.platform_state.tabOf(popup_realm));
+}

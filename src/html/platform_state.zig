@@ -90,14 +90,16 @@ pub const RequesterParts = struct {
     top_level_origin: []const u8,
     secure_context: bool,
     transient_activation: bool,
+    /// The tab the request's realm is of (runtime.TabScope: recipes step 7's
+    /// document-to-TabId mapping, which the realm now carries); 0 for a realm
+    /// of no tab - a worker's.
+    tab: platform.TabId = 0,
 
-    /// The Requester, BORROWING these parts. Tab and frame are 0: reserved
-    /// until recipes step 7 supplies the document-to-TabId mapping (as
-    /// environmentValue below passes tab 0).
+    /// The Requester, BORROWING these parts. Frame is 0: reserved.
     pub fn requester(self: *const RequesterParts) platform.Requester {
         return .{
             .request_id = self.request_id,
-            .tab = 0,
+            .tab = self.tab,
             .frame = 0,
             .origin = platform.Str.from(self.origin),
             .top_level_origin = platform.Str.from(self.top_level_origin),
@@ -140,7 +142,16 @@ pub fn requester(realm: runtime.Context, transient_activation: bool) error{OutOf
         .top_level_origin = top_level_origin,
         .secure_context = settings.is_secure_context(global),
         .transient_activation = transient_activation,
+        .tab = tabOf(realm),
     };
+}
+
+/// The TabId of the tab `realm` is of (runtime.TabScope.ofRealm: its
+/// top-level traversable's navigable id, as the host and the platform name
+/// tabs), 0 for a realm of no tab - the protocol's "every tab".
+pub fn tabOf(realm: runtime.Context) platform.TabId {
+    const tab = runtime.TabScope.ofRealm(realm) orelse return 0;
+    return tab.id;
 }
 
 /// The clock `realm`'s HR-Time reads measure time with: its Browser's
@@ -185,12 +196,12 @@ fn environmentValue(document: *runtime.Instance, variable: @import("dom").style.
     const platform_variable = switch (variable) {
         inline else => |tag| @field(platform.CssEnvironmentVariable, @tagName(tag)),
     };
-    // Platform protocol §6.9: values are currently per Browser. Tab 0 is
-    // reserved until recipes step 7 supplies document-to-TabId mapping.
-    return platform.cssEnvironmentVariable(browser, 0, platform_variable, x, y);
+    // Platform protocol §6.9: the document's tab (its realm's: recipes step
+    // 7's document-to-TabId mapping), 0 for none.
+    return platform.cssEnvironmentVariable(browser, tabOf(document.ctx), platform_variable, x, y);
 }
 
 fn environmentRevision(document: *runtime.Instance) u64 {
     const browser = of(document.ctx) orelse return 0;
-    return platform.cssEnvironmentRevision(browser, 0);
+    return platform.cssEnvironmentRevision(browser, tabOf(document.ctx));
 }
