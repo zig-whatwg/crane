@@ -212,6 +212,8 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "css", .description = "CSS syntax, selectors, values and CSSOM" },
     .{ .name = "editing", .description = "Editing commands and DOM mutations" },
     .{ .name = "quirks", .description = "Quirks parsing and DOM behavior" },
+    // The integrator, 2026-11-23 (lane vtt1): WebVTT's API and parsing joins the worklist.
+    .{ .name = "webvtt", .description = "WebVTT: VTTCue, VTTRegion, file and cue text parsing" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
@@ -220,7 +222,8 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // HTML rendering tests
     "html/rendering/",
     "html/canvas/",
-    "html/semantics/embedded-content/media-elements/",
+    // media-elements/ joined the worklist (the integrator, 2026-11-23, lane
+    // vtt1); the video and audio element directories are not surveyed yet.
     "html/semantics/embedded-content/the-video-element/",
     "html/semantics/embedded-content/the-audio-element/",
     "html/webappapis/animation-frames/",
@@ -416,6 +419,17 @@ test "isExcluded" {
     try testing.expect(isExcluded("html/canvas/test.html"));
     try testing.expect(!isExcluded("url/url-constructor.any.js"));
     try testing.expect(!isExcluded("dom/events/Event.html"));
+}
+
+test "media elements and WebVTT are in scope; the video and audio element directories are not yet" {
+    const testing = std.testing;
+    // The worklist and a directory run agree (lane vtt1, 2026-11-23).
+    try testing.expect(isInScope("html/semantics/embedded-content/media-elements/track/track-element/track-change-event.html"));
+    try testing.expect(isInScope("html/semantics/embedded-content/media-elements/networkState_initial.html"));
+    try testing.expect(isInScope("webvtt/api/VTTCue/constructor.html"));
+    try testing.expect(isInScope("webvtt/parsing/file-parsing/tests/arrows.html"));
+    try testing.expect(isExcluded("html/semantics/embedded-content/the-video-element/video_initially_paused.html"));
+    try testing.expect(isExcluded("html/semantics/embedded-content/the-audio-element/audio_constructor.html"));
 }
 
 test "isNonTestFile: the legacy scan's guesses at what is not a test" {
