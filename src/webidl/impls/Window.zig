@@ -1000,6 +1000,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
+        // Its realm lets its tab go (`carryTab`).
+        dropTab(instance);
+
         // The browsing context it shows and does not own: held until now
         // (BrowsingContext.window_holds), released below, once nothing of
         // the Window reads it any more.
@@ -1150,6 +1153,8 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
     existing_bc.holdForWindow();
+    // Its realm is of the tab this browsing context is of, from now on.
+    carryTab(instance, existing_bc);
 
     // Mark that we DON'T own this browsing context - iframe cleanup will free it
     // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
@@ -1175,7 +1180,35 @@ fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
     // Still read by this Window until its end: held, as any Window holds the
     // context it shows and does not own (BrowsingContext.window_holds).
     internal.browsing_context.holdForWindow();
+    // Its realm is of the tab this top-level context is the record of.
+    carryTab(instance, internal.browsing_context);
     return @ptrCast(internal.browsing_context);
+}
+
+/// The Window's realm carries the tab of `bc`, the browsing context the
+/// Window shows from now on (runtime.ContextData.tab_scope; docs/instances.md
+/// rule 2: "a realm will carry its Browser's scope and its Tab's scope") - a
+/// counted reference, given back at the Window's end (`dropTab`). Called
+/// where a Window's browsing context becomes final: a frame's and a popup's
+/// as they replace the one Window.init made, a page's as its host takes it.
+fn carryTab(instance: *runtime.Instance, bc: *BrowsingContext) void {
+    const realm = instance.ctx;
+    const tab = bc.tabScope() orelse return;
+    if (realm.tab_scope) |held| {
+        if (held == tab) return;
+        held.release();
+    }
+    realm.tab_scope = tab.retain();
+}
+
+/// The Window ends: its realm is of no tab from here on - the engine keeps a
+/// realm's record past its end (an inert one), which must name no tab that
+/// may be freed.
+fn dropTab(instance: *runtime.Instance) void {
+    const realm = instance.ctx;
+    const held = realm.tab_scope orelse return;
+    realm.tab_scope = null;
+    held.release();
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the
