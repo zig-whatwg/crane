@@ -209,6 +209,7 @@ impl fills so code that may not name the impl can reach a step. Since B0:
   and header-less `whatwg_browser_*` go.
 - **Every popup is a tab**, `noopener` included, as WebDriver BiDi reports them.
 - **Background tabs are visible by default** (headless Chrome's behaviour); the host can mark a tab hidden.
-- **Proxies**: explicit configurations only; PAC files and auto-detection are NotSupported in 0.1.
+- **Proxies**: explicit configurations only; PAC files and auto-detection are NotSupported in 0.1
+  (the user, 2026-11-23: "put in 0.2" - tmp/plans/queue-0.2.md).
 - **The WPT runner gives each test file a fresh tab** from B5, once a sweep shows no file's status changes.
 - **One live Browser per profile directory**: a second is refused (ProfileInUse), as Chrome's profile lock does.

@@ -159,8 +159,8 @@ typedef enum {
     CRANE_PROXY_SYSTEM = 0,     /* http_proxy/https_proxy/no_proxy */
     CRANE_PROXY_DIRECT = 1,
     CRANE_PROXY_MANUAL = 2,
-    CRANE_PROXY_PAC = 3,        /* CRANE_ERR_UNSUPPORTED */
-    CRANE_PROXY_AUTODETECT = 4  /* CRANE_ERR_UNSUPPORTED */
+    CRANE_PROXY_PAC = 3,        /* CRANE_ERR_UNSUPPORTED until 0.2 */
+    CRANE_PROXY_AUTODETECT = 4  /* CRANE_ERR_UNSUPPORTED until 0.2 */
 } crane_proxy_kind;
 
 typedef struct {

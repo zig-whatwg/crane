@@ -471,6 +471,9 @@ pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBr
                 .https = self.keep(proxy.ssl) catch break :blk .out_of_memory,
                 .no_proxy = self.keep(proxy.no_proxy) catch break :blk .out_of_memory,
             } },
+            // A PAC file and auto-detection (WPAD) are 0.2's (the user's
+            // ruling, 2026-11-23: "put in 0.2"; tmp/plans/queue-0.2.md):
+            // explicit proxies only until then (docs/instances.md).
             .pac, .autodetect => break :blk .unsupported,
         };
         break :blk null;
