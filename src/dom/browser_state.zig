@@ -25,6 +25,9 @@ pub const BlobURLStore = file.BlobURLStore;
 pub const Navigables = html_core.Navigables;
 pub const BrowsingContext = html_core.BrowsingContext;
 pub const NetworkContext = fetch.network.NetworkContext;
+/// A tab's scope (docs/instances.md rule 2), for the layers that import no
+/// runtime (html_core's browsing contexts).
+pub const TabScope = runtime.TabScope;
 
 const log = std.log.scoped(.browser_state);
 

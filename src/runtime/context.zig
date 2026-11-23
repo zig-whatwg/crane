@@ -49,6 +49,7 @@ const infra = @import("infra");
 const timer_mod = @import("timer.zig");
 const native_timer = @import("native_timer.zig");
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const TabScope = @import("tab_scope.zig").TabScope;
 const TaskSink = @import("task_sink.zig").TaskSink;
 
 // Realm infrastructure for context type and exposure checking
@@ -204,6 +205,18 @@ pub const ContextData = struct {
     /// Browser's window realm (browser/Context.zig), a frame its parent's, a
     /// worker realm its owner's. BORROWED: the Browser outlives its realms.
     browser_scope: ?*BrowserScope = null,
+
+    /// The tab this realm belongs to: its scope, where the tab's state lives
+    /// (docs/instances.md, rule 2: "a realm will carry its Browser's scope
+    /// and its Tab's scope") - session storage, session history, the frame
+    /// clock, system visibility and focus. A Window realm's is its Window's
+    /// browsing context's tab: set by the Window as its browsing context
+    /// becomes final, and released and cleared at the Window's end, so a
+    /// realm the engine keeps after its end names no tab. A COUNTED
+    /// reference (runtime.TabScope.retain). Null for any other realm - a
+    /// worker's has no tab; an isolated world's and a ShadowRealm's are read
+    /// through their main or principal realm (`TabScope.ofRealm`).
+    tab_scope: ?*TabScope = null,
 
     /// The cross-thread inbox of this realm's event loop (runtime.TaskSink):
     /// what another thread posts a task of this realm to - a message for a

@@ -303,6 +303,10 @@ pub const BrowserPause = browser_pause.BrowserPause;
 /// A Browser's scope: its per-Browser state, as supplements reached through
 /// the realm (ContextData.browser_scope; docs/instances.md rule 2).
 pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
+/// A tab's state, reached through the realm (ContextData.tab_scope;
+/// docs/instances.md rule 2): made and closed by its top-level browsing
+/// context's record.
+pub const TabScope = @import("tab_scope.zig").TabScope;
 /// An impl's internal state per instance, in the instance's Browser's side
 /// table (instances B1) - for the types enumerated while their Browser runs.
 pub const InstanceRegistry = @import("instance_registry.zig").InstanceRegistry;
