@@ -15,6 +15,7 @@ const sheet_mod = @import("sheet.zig");
 const hooks = @import("hooks.zig");
 const NodeBase = @import("../node_base.zig").NodeBase;
 const instance_bridge = @import("../instance_bridge.zig");
+const inspector_probes = @import("../inspector_probes.zig");
 
 const SheetRecord = sheet_mod.SheetRecord;
 
@@ -23,6 +24,10 @@ const SheetRecord = sheet_mod.SheetRecord;
 pub const AdoptedSheets = struct {
     allocator: std.mem.Allocator,
     records: std.ArrayList(*SheetRecord) = .empty,
+    /// The same sheets as the objects script sees, by name (address and
+    /// slab generation; never a hold): CDP's DOM agents report them by
+    /// their styleSheetIds (`sheetsOf`).
+    sheets: std.ArrayList(Sheet) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) AdoptedSheets {
         return .{ .allocator = allocator };
@@ -32,21 +37,57 @@ pub const AdoptedSheets = struct {
         for (self.records.items) |r| r.unref();
         self.records.deinit(self.allocator);
         self.records = .empty;
+        self.sheets.deinit(self.allocator);
+        self.sheets = .empty;
     }
 
     /// The backing list is now `values` (CSSStyleSheet objects).
     fn replace(self: *AdoptedSheets, values: []const *runtime.Instance) void {
         var next: std.ArrayList(*SheetRecord) = .empty;
         next.ensureTotalCapacity(self.allocator, values.len) catch return;
+        var next_sheets: std.ArrayList(Sheet) = .empty;
+        next_sheets.ensureTotalCapacity(self.allocator, values.len) catch {
+            next.deinit(self.allocator);
+            return;
+        };
         for (values) |value| {
             const record = hooks.sheetRecordOf(value) orelse continue;
             record.ref();
             next.appendAssumeCapacity(record);
+            next_sheets.appendAssumeCapacity(.{ .object = value, .generation = runtime.SlabAllocator.generationOf(value) });
         }
         self.deinit();
         self.records = next;
+        self.sheets = next_sheets;
     }
 };
+
+/// An adopted sheet's CSSStyleSheet object, by name.
+pub const Sheet = struct {
+    object: *runtime.Instance,
+    generation: u64,
+
+    /// The object, while it is the one named.
+    pub fn get(self: Sheet) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.object) != self.generation) return null;
+        return self.object;
+    }
+};
+
+/// `owner`'s adopted sheets in array order (empty: none, or no array).
+pub fn sheetsOf(owner: *runtime.Instance) []const Sheet {
+    const adopted = hooks.adoptedSheetsOf(owner) orelse return &.{};
+    return adopted.sheets.items;
+}
+
+/// Whether `owner`'s adoptedStyleSheets array was made (its getter or
+/// setter ran): Blink's TreeScope::AdoptedStyleSheets() is non-null, and
+/// CDP's DOM.Node lists the sheets, none included.
+pub fn arrayExists(owner: *runtime.Instance) bool {
+    const held = engine.tracedValue(owner, slot) orelse return false;
+    held.release();
+    return true;
+}
 
 /// The array's element type: a CSSStyleSheet (every StyleSheet object is
 /// one).
@@ -78,6 +119,10 @@ fn changed(owner: *runtime.Instance, values: []const *runtime.Instance) void {
     const adopted = hooks.adoptedSheetsOf(owner) orelse return;
     @import("font_loading.zig").adoptedSheetsChanged(owner, adopted.records.items, values);
     adopted.replace(values);
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's TreeScope::StyleSheetWasAdded / Removed ->
+    // probe::DidModifyAdoptedStyleSheets.
+    if (inspector_probes.active()) inspector_probes.didModifyAdoptedStyleSheets(owner);
     const document = nodeDocumentOf(owner) orelse return;
     const e = hooks.engineOf(document) orelse return;
     if (owner != document) e.addAdoptingRoot(owner) catch {};

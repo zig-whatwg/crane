@@ -72,6 +72,10 @@ const vtable: inspector_probes.VTable = .{
     .did_invalidate_style_attr = didInvalidateStyleAttr,
     .did_push_shadow_root = didPushShadowRoot,
     .top_layer_elements_changed = topLayerElementsChanged,
+    .node_created = nodeCreated,
+    .slot_assignment_changed = slotAssignmentChanged,
+    .rendering_updated = renderingUpdated,
+    .did_modify_adopted_style_sheets = didModifyAdoptedStyleSheets,
 };
 
 /// The agents a probe goes to: a copy, so that an agent's handler may
@@ -113,10 +117,35 @@ fn didInvalidateStyleAttr(context: *anyopaque, element: *runtime.Instance) void 
 
 fn didPushShadowRoot(context: *anyopaque, host: *runtime.Instance, root: *runtime.Instance) void {
     var buffer: [max_agents]*PageSession = undefined;
-    for (agentsOf(context, &buffer)) |session| dom_domain.didPushShadowRoot(session, host, root);
+    for (agentsOf(context, &buffer)) |session| {
+        // Inside "attach a shadow root": what it pushes resolves no style.
+        session.states.DOM.in_probe = true;
+        defer session.states.DOM.in_probe = false;
+        dom_domain.didPushShadowRoot(session, host, root);
+    }
 }
 
 fn topLayerElementsChanged(context: *anyopaque, document: *runtime.Instance) void {
     var buffer: [max_agents]*PageSession = undefined;
     for (agentsOf(context, &buffer)) |session| dom_domain.topLayerElementsChanged(session, document);
+}
+
+fn nodeCreated(context: *anyopaque, node: *runtime.Instance) void {
+    var buffer: [max_agents]*PageSession = undefined;
+    for (agentsOf(context, &buffer)) |session| dom_domain.nodeCreated(session, node);
+}
+
+fn slotAssignmentChanged(context: *anyopaque, slot: *runtime.Instance) void {
+    var buffer: [max_agents]*PageSession = undefined;
+    for (agentsOf(context, &buffer)) |session| dom_domain.slotAssignmentChanged(session, slot);
+}
+
+fn renderingUpdated(context: *anyopaque, document: *runtime.Instance) void {
+    var buffer: [max_agents]*PageSession = undefined;
+    for (agentsOf(context, &buffer)) |session| dom_domain.renderingUpdated(session, document);
+}
+
+fn didModifyAdoptedStyleSheets(context: *anyopaque, owner: *runtime.Instance) void {
+    var buffer: [max_agents]*PageSession = undefined;
+    for (agentsOf(context, &buffer)) |session| dom_domain.didModifyAdoptedStyleSheets(session, owner);
 }

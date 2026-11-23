@@ -88,6 +88,15 @@ pub const VTable = struct {
     did_invalidate_style_attr: *const fn (context: *anyopaque, element: *runtime.Instance) void,
     did_push_shadow_root: *const fn (context: *anyopaque, host: *runtime.Instance, root: *runtime.Instance) void,
     top_layer_elements_changed: *const fn (context: *anyopaque, document: *runtime.Instance) void,
+    /// A node was made (its registration); the agents that capture node
+    /// stack traces take the running script's stack.
+    node_created: *const fn (context: *anyopaque, node: *runtime.Instance) void,
+    /// A slot's assigned nodes changed (DOM "assign slottables").
+    slot_assignment_changed: *const fn (context: *anyopaque, slot: *runtime.Instance) void,
+    /// A document's rendering update reached its style step.
+    rendering_updated: *const fn (context: *anyopaque, document: *runtime.Instance) void,
+    /// A Document's or ShadowRoot's adoptedStyleSheets changed.
+    did_modify_adopted_style_sheets: *const fn (context: *anyopaque, owner: *runtime.Instance) void,
 };
 
 /// A Browser's probe sink: its scope's `.inspector_probes` table.
@@ -198,6 +207,41 @@ pub noinline fn didPushShadowRoot(host: *runtime.Instance, root: *runtime.Instan
 pub noinline fn topLayerElementsChanged(document: *runtime.Instance) void {
     const sink = sinkOf(document) orelse return;
     sink.vtable.top_layer_elements_changed(sink.context, document);
+}
+
+/// A node was made: its registration (dom.instance_bridge.register, Blink's
+/// Node constructor -> probe::NodeCreated).
+pub noinline fn nodeCreated(node: *runtime.Instance) void {
+    const sink = sinkOf(node) orelse return;
+    sink.vtable.node_created(sink.context, node);
+}
+
+/// DOM "assign slottables" changed `slot`'s assigned nodes. Blink assigns
+/// lazily and reports the change when it recalculates the assignment
+/// (HTMLSlotElement::NotifySlottedNodesOfFlatTreeChange ->
+/// probe::DidPerformSlotDistribution, from the next style recalc or slot
+/// read); Crane assigns as the DOM standard says, at once, so the agents
+/// keep it until the document's next rendering update (`renderingUpdated`).
+pub noinline fn slotAssignmentChanged(slot: *NodeBase) void {
+    const instance = slot.registeredInstance() orelse return;
+    const sink = sinkOf(instance) orelse return;
+    sink.vtable.slot_assignment_changed(sink.context, instance);
+}
+
+/// HTML "update the rendering" step 16 for `document`: where Blink's
+/// lifecycle update recalculates style - and with it slot assignment and
+/// pseudo-elements.
+pub noinline fn renderingUpdated(document: *runtime.Instance) void {
+    const sink = sinkOf(document) orelse return;
+    sink.vtable.rendering_updated(sink.context, document);
+}
+
+/// `owner`'s (a Document's or a ShadowRoot's) adoptedStyleSheets changed
+/// (Blink's TreeScope::StyleSheetWasAdded / Removed ->
+/// probe::DidModifyAdoptedStyleSheets).
+pub noinline fn didModifyAdoptedStyleSheets(owner: *runtime.Instance) void {
+    const sink = sinkOf(owner) orelse return;
+    sink.vtable.did_modify_adopted_style_sheets(sink.context, owner);
 }
 
 test "the gate is closed while no agent is enabled, and counts agents" {

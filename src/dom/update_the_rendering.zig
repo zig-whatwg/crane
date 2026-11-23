@@ -278,6 +278,11 @@ pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
         // Its next mutation asks for the next frame again.
         refcount.watchRendering(document, true);
     }
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's lifecycle update recalculates slot assignment and
+    // pseudo-elements here, and its agents report what changed.
+    const inspector_probes = @import("inspector_probes.zig");
+    if (inspector_probes.active()) inspector_probes.renderingUpdated(document);
     // 2.
     @import("style/resource_loading.zig").updateRendering(document);
     // 3.

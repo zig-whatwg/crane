@@ -225,12 +225,18 @@ test "a modal dialog entering and leaving the top layer is topLayerElementsUpdat
     try setUp(&h, "data:text/html,<body><div id=a><span>x</span></div><p id=b></p><dialog id=d></dialog></body>", null);
     const from = h.seen.items.len;
     try h.run("document.getElementById('d').showModal();");
+    try h.settle();
     try h.run("document.getElementById('d').close();");
+    try h.settle();
+    // In the top layer it has a ::backdrop (the UA's dialog::backdrop),
+    // made and destroyed by the next style recalc each time.
     try expectEvents(&h, from,
         \\attributeModified 9 open=
         \\topLayerElementsUpdated
+        \\pseudoElementAdded 9 ::backdrop#10/0 backdrop
         \\attributeRemoved 9 open
         \\topLayerElementsUpdated
+        \\pseudoElementRemoved 9 10
         \\
     );
 }
@@ -306,4 +312,85 @@ test "the probes' gate opens with an enabled DOM agent and closes with its disab
     try h.attach(1);
     _ = try h.callOn(1, "Page.getFrameTree", "{}");
     try testing.expectEqual(before, devtools.dom_events.enabledAgentCount());
+}
+
+test "a slot's distribution is sent at the next rendering update, as Blink's lazy slot assignment reports it (DidPerformSlotDistribution)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try setUp(&h, page, null);
+    var from = h.seen.items.len;
+    try h.run("document.getElementById('a').attachShadow({ mode: 'open' }).innerHTML = '<slot></slot>';");
+    // The slot was not bound when SPAN was assigned to it: nothing to send.
+    try h.settle();
+    _ = try h.call("DOM.requestChildNodes", "{\"nodeId\":9}");
+    try expectEvents(&h, from,
+        \\shadowRootPushed 5 #document-fragment#9/0 open
+        \\childNodeCountUpdated 9 1
+        \\setChildNodes 9 [SLOT#10/0[]]
+        \\
+    );
+    from = h.seen.items.len;
+    try h.run("document.getElementById('a').appendChild(document.createElement('i'));");
+    _ = try h.waitEvent("DOM.distributedNodesUpdated", from);
+    try expectEvents(&h, from,
+        \\childNodeInserted 5 6 I#11/0
+        \\distributedNodesUpdated 10 [SPAN,I]
+        \\
+    );
+}
+
+test "adoptedStyleSheets: a change is adoptedStyleSheetsModified in the revalidation task, with Blink's styleSheetIds, and the document lists them (DidModifyAdoptedStyleSheets; IdentifiersFactory::IdForCSSStyleSheet)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try setUp(&h, page, null);
+    const from = h.seen.items.len;
+    try h.run("window.s1 = new CSSStyleSheet(); window.s2 = new CSSStyleSheet(); document.adoptedStyleSheets = [s1, s2];");
+    _ = try h.waitEvent("DOM.adoptedStyleSheetsModified", from);
+    // The process part is the Browser's devtools token (0xC0FFEE) % 100000.
+    try expectEvents(&h, from,
+        \\adoptedStyleSheetsModified 1 [style-sheet-48430-1,style-sheet-48430-2]
+        \\
+    );
+    const got = try h.call("DOM.getDocument", "{\"depth\":0}");
+    const sheets = got.object.get("root").?.object.get("adoptedStyleSheets").?.array.items;
+    try testing.expectEqual(@as(usize, 2), sheets.len);
+    try testing.expectEqualStrings("style-sheet-48430-1", sheets[0].string);
+}
+
+test "pseudo-elements: one that starts or stops generating a box is pseudoElementAdded / pseudoElementRemoved at the next rendering update; a document's elements list theirs (PseudoElementCreated, PseudoElementDestroyed, BuildArrayForPseudoElements)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    // #document 1, HTML 2, HEAD 3, STYLE 4, its text 5, BODY 6, DIV#a 7,
+    // its ::before 8 (bound with the div, before its children), SPAN 9,
+    // "x" 10, P#b 11.
+    try setUp(&h, "data:text/html,<style>.x::before{content:'b'}</style><body><div id=a class=x><span>x</span></div><p id=b></p></body>", null);
+    var from = h.seen.items.len;
+    try h.run("document.getElementById('a').className = '';");
+    try h.settle();
+    try h.run("document.getElementById('b').className = 'x';");
+    try h.settle();
+    try expectEvents(&h, from,
+        \\attributeModified 7 class=
+        \\pseudoElementRemoved 7 8
+        \\attributeModified 11 class=x
+        \\pseudoElementAdded 11 ::before#12/0 before
+        \\
+    );
+    // A node inserted is sent with no pseudo-element; the recalc adds them -
+    // a q has both, by the UA sheet's quotes - each after its parent's
+    // children are pushed, the first time with an empty setChildNodes
+    // (PseudoElementCreated's PushChildNodesToFrontend(parent_id, 1)).
+    from = h.seen.items.len;
+    try h.run("const q = document.createElement('q'); q.className = 'x'; document.body.append(q);");
+    try h.settle();
+    try expectEvents(&h, from,
+        \\childNodeInserted 6 11 Q#13/0{class=x}
+        \\setChildNodes 13 []
+        \\pseudoElementAdded 13 ::before#14/0 before
+        \\pseudoElementAdded 13 ::after#15/0 after
+        \\
+    );
 }

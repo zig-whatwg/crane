@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const testing = std.testing;
+const log = std.log.scoped(.cdpd1_harness);
 const devtools = @import("devtools");
 const browser_mod = @import("browser");
 const BrowserHost = browser_mod.BrowserHost;
@@ -25,11 +26,13 @@ pub const Harness = struct {
     next_id: i64 = 1,
     /// Messages read so far, parsed, OWNED.
     seen: std.ArrayList(std.json.Parsed(std.json.Value)) = .empty,
+    /// What a test formats (params), freed with the harness.
+    scratch: std.heap.ArenaAllocator = undefined,
 
     const session_names = [2][]const u8{ "SESSION1", "SESSION2" };
 
     pub fn init(self: *Harness, allocator: std.mem.Allocator) !void {
-        self.* = .{ .allocator = allocator, .host = undefined, .queue = undefined, .side = undefined, .tab = 0 };
+        self.* = .{ .allocator = allocator, .host = undefined, .queue = undefined, .side = undefined, .tab = 0, .scratch = .init(allocator) };
         self.host = try BrowserHost.start(allocator, .{});
         self.queue = try outbound.Outbound.create(allocator);
         var context_id: [32]u8 = undefined;
@@ -76,6 +79,12 @@ pub const Harness = struct {
         self.queue.release();
         for (self.seen.items) |*parsed| parsed.deinit();
         self.seen.deinit(self.allocator);
+        self.scratch.deinit();
+    }
+
+    /// An allocator whose allocations live as long as the harness.
+    pub fn arena(self: *Harness) std.mem.Allocator {
+        return self.scratch.allocator();
     }
 
     pub fn sendOn(self: *Harness, index: usize, method: []const u8, params_json: []const u8) !i64 {
@@ -107,7 +116,12 @@ pub const Harness = struct {
                 const object = parsed.value.object;
                 const got = object.get("id") orelse continue;
                 if (got != .integer or got.integer != id) continue;
-                if (object.get("error")) |_| return error.CommandFailed;
+                if (object.get("error")) |failure| {
+                    // Named, so a failing test says which error the command answered.
+                    const message = if (failure == .object) failure.object.get("message") else null;
+                    log.warn("command {d} failed: {s}", .{ id, if (message) |m| (if (m == .string) m.string else "?") else "?" });
+                    return error.CommandFailed;
+                }
                 return object.get("result") orelse error.NoResult;
             }
             self.queue.wait(10 * std.time.ns_per_ms);
@@ -170,6 +184,12 @@ pub const Harness = struct {
         done.deinit(self.allocator);
     }
 
+    /// Wait for the page's next rendering update and the task after it.
+    pub fn settle(self: *Harness) !void {
+        const done = try self.host.evaluate(self.allocator, self.tab, "new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))", .{ .await_promise = true }, 5_000);
+        done.deinit(self.allocator);
+    }
+
     /// Session `index`'s DOM.* events from index `from` of `seen`, one line
     /// each (`line`).
     pub fn domEvents(self: *Harness, index: usize, from: usize, out: *std.ArrayList(u8)) !void {
@@ -217,6 +237,25 @@ pub fn line(allocator: std.mem.Allocator, name: []const u8, params_value: ?std.j
     } else if (std.mem.eql(u8, name, "shadowRootPushed")) {
         try out.print(allocator, " {d} ", .{params.get("hostId").?.integer});
         try describe(allocator, params.get("root").?, out);
+    } else if (std.mem.eql(u8, name, "pseudoElementAdded")) {
+        try out.print(allocator, " {d} ", .{params.get("parentId").?.integer});
+        try describe(allocator, params.get("pseudoElement").?, out);
+    } else if (std.mem.eql(u8, name, "pseudoElementRemoved")) {
+        try out.print(allocator, " {d} {d}", .{ params.get("parentId").?.integer, params.get("pseudoElementId").?.integer });
+    } else if (std.mem.eql(u8, name, "adoptedStyleSheetsModified")) {
+        try out.print(allocator, " {d} [", .{params.get("nodeId").?.integer});
+        for (params.get("adoptedStyleSheets").?.array.items, 0..) |id, i| {
+            if (i != 0) try out.append(allocator, ',');
+            try out.appendSlice(allocator, id.string);
+        }
+        try out.append(allocator, ']');
+    } else if (std.mem.eql(u8, name, "distributedNodesUpdated")) {
+        try out.print(allocator, " {d} [", .{params.get("insertionPointId").?.integer});
+        for (params.get("distributedNodes").?.array.items, 0..) |node, i| {
+            if (i != 0) try out.append(allocator, ',');
+            try out.appendSlice(allocator, node.object.get("nodeName").?.string);
+        }
+        try out.append(allocator, ']');
     } else if (std.mem.eql(u8, name, "setChildNodes")) {
         try out.print(allocator, " {d} [", .{params.get("parentId").?.integer});
         for (params.get("nodes").?.array.items, 0..) |node, i| {
@@ -246,6 +285,7 @@ pub fn describe(allocator: std.mem.Allocator, value: std.json.Value, out: *std.A
         try out.append(allocator, '}');
     };
     if (node.get("shadowRootType")) |t| try out.print(allocator, " {s}", .{t.string});
+    if (node.get("pseudoType")) |t| try out.print(allocator, " {s}", .{t.string});
     if (node.get("contentDocument")) |document| {
         try out.append(allocator, '(');
         try describe(allocator, document, out);
@@ -258,6 +298,14 @@ pub fn describe(allocator: std.mem.Allocator, value: std.json.Value, out: *std.A
             try describe(allocator, child, out);
         }
         try out.append(allocator, ']');
+    }
+    if (node.get("pseudoElements")) |pseudos| {
+        try out.append(allocator, '<');
+        for (pseudos.array.items, 0..) |pseudo, i| {
+            if (i != 0) try out.append(allocator, ',');
+            try describe(allocator, pseudo, out);
+        }
+        try out.append(allocator, '>');
     }
 }
 

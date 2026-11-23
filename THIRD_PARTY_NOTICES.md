@@ -36,6 +36,24 @@ Crane is MIT-licensed (see `LICENSE`). The following files contain code derived 
 - What was derived: the text of a cross-origin SecurityError's message - the access's context ("Failed to read a named property '<name>' from '<interface>': ") and the detail ("Blocked a frame with origin "<origin>" from accessing a cross-origin frame."), as message strings only.
 - License: BSD-3-Clause. `exception_messages.cc`: text B below, with its own copyright line, Copyright (C) 2013 Google Inc. All rights reserved. `dom_window.cc`: Chromium's `LICENSE`, text C below (Copyright 2014 The Chromium Authors).
 
+### `src/devtools/dom_editor.zig`
+
+- Upstream project: Chromium (Blink), https://chromium.googlesource.com/chromium/src
+- Revision: tag `157.0.8103.78` (commit `4b3d0dabb8250b6f152d2d85d79e7706e309d087`)
+- Upstream files:
+  - `third_party/blink/renderer/core/inspector/dom_editor.cc`: `DOMEditor` and its actions (`RemoveChildAction`, `InsertBeforeAction`, `RemoveAttributeAction`, `SetAttributeAction`, `SetOuterHTMLAction`, `ReplaceChildNodeAction`, `SetNodeValueAction`)
+  - `third_party/blink/renderer/core/inspector/inspector_history.cc`: `InspectorHistory` (`Perform`, `AppendPerformedAction`, `MarkUndoableState`, `Undo`, `Redo`, `Reset`) and `UndoableStateMark`
+- What was derived: the DOM agent's undoable edits and their history, translated action by action.
+- License: BSD-3-Clause (Google), text B below. Copyright line (both files): Copyright (C) 2012 Google Inc. All rights reserved.
+
+### `src/devtools/dom_patch.zig`
+
+- Upstream project: Chromium (Blink), https://chromium.googlesource.com/chromium/src
+- Revision: tag `157.0.8103.78` (commit `4b3d0dabb8250b6f152d2d85d79e7706e309d087`; Chrome for Testing 157, the CDP pin's Chrome)
+- Upstream file: `third_party/blink/renderer/core/inspector/dom_patch_support.cc`: `DOMPatchSupport::PatchDocument`, `PatchNode`, `InnerPatchNode`, `Diff`, `InnerPatchChildren`, `CreateDigest`, `InsertBeforeAndMarkAsUsed`, `RemoveChildAndMoveToNew`, `MarkNodeAsUsed`
+- What was derived: DOM.setOuterHTML's digest-based patch (the diff of old and new children, the merges, the moves), translated function by function.
+- License: BSD-3-Clause (Google), text B below. Copyright line: Copyright (C) 2012 Google Inc. All rights reserved.
+
 ## Vendored and pinned dependencies
 
 These are listed here by reference. Their license texts are kept beside them:

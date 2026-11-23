@@ -47,8 +47,14 @@ const frames = @import("../frames.zig");
 const contexts = @import("../contexts.zig");
 const NodeIds = @import("../node_ids.zig").NodeIds;
 const NodeMap = @import("../dom_node_map.zig").NodeMap;
+const StyleSheetIds = @import("../style_sheet_ids.zig").StyleSheetIds;
+const Bindings = @import("../dom_node_map.zig").Bindings;
 const dom_events = @import("../dom_events.zig");
+const dom_search = @import("../dom_search.zig");
+const dom_editor = @import("../dom_editor.zig");
+const dom_patch = @import("../dom_patch.zig");
 const dom = @import("dom");
+const infra = @import("infra");
 const D = protocol.DOM;
 
 /// Per-session state of the domain.
@@ -65,7 +71,55 @@ pub const State = struct {
     pending_style: std.ArrayListUnmanaged(WeakNode) = .empty,
     /// The task that sends them, while one is queued (its timer).
     revalidate: ?*RevalidateTask = null,
+    /// DOM.performSearch's results by search id (Blink's search_results_),
+    /// each node HELD until the search is discarded (dom.node_holds.RefHold:
+    /// Blink keeps them as Member<Node>). Keys and lists OWNED.
+    searches: std.StringArrayHashMapUnmanaged([]RefHold) = .empty,
+    /// The last search id's number (IdentifiersFactory::CreateIdentifier).
+    last_search: u64 = 0,
+    /// DOM.setNodeStackTracesEnabled (capture_node_stack_traces_).
+    capture_node_stack_traces: bool = false,
+    /// Each node's creation stack, Runtime.StackTrace JSON OWNED, by node
+    /// address (node_to_creation_source_location_map_, a weak map: an
+    /// entry whose node is gone is swept as the map grows).
+    creation_stacks: std.AutoHashMapUnmanaged(usize, CreationStack) = .empty,
+    creation_stacks_guard: infra.tombstones.TombstoneGuard = .{},
+    /// The size at which the next sweep runs.
+    creation_sweep_at: usize = 1024,
+    /// The edits' history (InspectorHistory), made when the agent is
+    /// enabled (EnableAndReset) and dropped when it is disabled. OWNED.
+    history: ?*dom_editor.History = null,
+    /// The bound slots whose assigned nodes changed since the last
+    /// rendering update, as names (Blink reports a distribution when its
+    /// lazy recalculation runs: dom.inspector_probes.slotAssignmentChanged).
+    pending_slots: std.ArrayListUnmanaged(WeakNode) = .empty,
+    /// InspectorRevalidateDOMTask's adopted_style_sheet_invalidated_elements_:
+    /// the documents and shadow roots whose adoptedStyleSheets changed, as
+    /// names, sent with the revalidation task.
+    pending_adopted: std.ArrayListUnmanaged(WeakNode) = .empty,
+    /// The pseudo-elements the client was told of, per bound element, by
+    /// address (with the element's generation): what the next rendering
+    /// update compares with (PseudoElementCreated / Destroyed).
+    pseudo_state: std.AutoHashMapUnmanaged(usize, PseudoRecord) = .empty,
+    pseudo_state_guard: infra.tombstones.TombstoneGuard = .{},
+    /// Inside a DOM algorithm's probe (dom_events.zig sets it): nodes built
+    /// now take their pseudo-elements from the record only - no style is
+    /// resolved in the middle of a tree mutation; the next rendering update
+    /// sends any the record lacks.
+    in_probe: bool = false,
 };
+
+const PseudoRecord = struct {
+    generation: u64,
+    bits: dom.style.engine.GeneratedPseudos,
+};
+
+const CreationStack = struct {
+    generation: u64,
+    json: []u8,
+};
+
+const RefHold = dom.node_holds.RefHold;
 
 /// A node named without a hold: its address and slab generation.
 const WeakNode = struct {
@@ -92,6 +146,20 @@ pub fn sessionEnded(session: *PageSession) void {
     resetRevalidation(session);
     s.pending_style.deinit(session.allocator);
     s.pending_style = .empty;
+    discardSearches(session);
+    s.searches.deinit(session.allocator);
+    s.searches = .empty;
+    dropHistory(session);
+    s.pending_slots.deinit(session.allocator);
+    s.pending_slots = .empty;
+    s.pending_adopted.deinit(session.allocator);
+    s.pending_adopted = .empty;
+    s.pseudo_state.deinit(session.allocator);
+    s.pseudo_state = .empty;
+    var stacks = s.creation_stacks.valueIterator();
+    while (stacks.next()) |stack| session.allocator.free(stack.json);
+    s.creation_stacks.deinit(session.allocator);
+    s.creation_stacks = .empty;
     if (s.map) |map| {
         map.deinit();
         session.allocator.destroy(map);
@@ -105,7 +173,15 @@ pub fn sessionEnded(session: *PageSession) void {
 pub fn enable(session: *PageSession, params: D.enable.Params) !D.enable.Result {
     const s = &session.states.DOM;
     if (s.enabled) return .{};
-    if (session.side) |side| try dom_events.register(side, session);
+    // EnableAndReset: a new history (and DOMEditor).
+    dropHistory(session);
+    const history = try session.allocator.create(dom_editor.History);
+    history.* = .{ .allocator = session.allocator };
+    s.history = history;
+    if (session.side) |side| dom_events.register(side, session) catch |err| {
+        dropHistory(session);
+        return err;
+    };
     s.include_whitespace = if (params.includeWhitespace) |w| w == .all else false;
     s.enabled = true;
     return .{};
@@ -122,6 +198,8 @@ pub fn disable(session: *PageSession, params: D.disable.Params) !D.disable.Resul
     s.enabled = false;
     s.include_whitespace = false;
     discardBindings(session);
+    // history_.Clear(): every node an edit held is let go.
+    dropHistory(session);
     return .{};
 }
 
@@ -129,8 +207,36 @@ pub fn disable(session: *PageSession, params: D.disable.Params) !D.disable.Resul
 /// style revalidation is stopped (revalidate_task_->Reset()).
 fn discardBindings(session: *PageSession) void {
     const s = &session.states.DOM;
+    if (s.history) |history| history.reset();
+    s.pending_slots.clearRetainingCapacity();
+    s.pseudo_state.clearRetainingCapacity();
+    s.pseudo_state_guard.reset();
+    discardSearches(session);
     if (s.map) |map| map.clear();
     resetRevalidation(session);
+}
+
+fn dropHistory(session: *PageSession) void {
+    const s = &session.states.DOM;
+    const history = s.history orelse return;
+    history.deinit();
+    session.allocator.destroy(history);
+    s.history = null;
+}
+
+/// search_results_.clear(): every search's holds let go.
+fn discardSearches(session: *PageSession) void {
+    const s = &session.states.DOM;
+    for (s.searches.keys(), s.searches.values()) |key, holds| {
+        releaseHolds(session, holds);
+        session.allocator.free(key);
+    }
+    s.searches.clearRetainingCapacity();
+}
+
+fn releaseHolds(session: *PageSession, holds: []RefHold) void {
+    for (holds) |*hold| hold.release();
+    session.allocator.free(holds);
 }
 
 /// A new document in the session's tab's top frame, or its DOMContentLoaded:
@@ -234,7 +340,7 @@ pub fn describeNode(session: *PageSession, params: D.describeNode.Params, reply:
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
     const depth = params.depth orelse 0;
-    const described = try buildNode(session, arena_state.allocator(), node, depth, params.pierce orelse false, null);
+    const described = try buildNode(session, arena_state.allocator(), node, depth, params.pierce orelse false, .{});
     reply.ok(.{ .node = described });
 }
 
@@ -247,12 +353,12 @@ pub fn getDocument(session: *PageSession, params: D.getDocument.Params, reply: R
     if (!session.states.DOM.enabled) _ = try enable(session, .{});
     const document = topDocument(session) orelse return session.fail("Document is not available");
     const map = try mapOf(session);
-    map.clear();
+    discardBindings(session);
     var depth = params.depth orelse 2;
     if (depth == -1) depth = std.math.maxInt(i64);
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const root = try buildNode(session, arena_state.allocator(), document, depth, params.pierce orelse false, map);
+    const root = try buildNode(session, arena_state.allocator(), document, depth, params.pierce orelse false, .{ .bindings = &map.document });
     reply.ok(.{ .root = root });
 }
 
@@ -339,6 +445,674 @@ fn containerNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
 }
 
 // ============================================================================
+// Reading and pushing nodes (lane cdpd1, batch 2)
+// ============================================================================
+
+/// The bound element `node_id` (AssertElement: "Node is not an Element").
+fn elementNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
+    const node = try nodeNamed(session, node_id, null, null);
+    if ((interfaces.Node.get_nodeType(node) catch 0) != 1) return session.fail("Node is not an Element");
+    return node;
+}
+
+/// InspectorDOMAgent::getAttributes.
+pub fn getAttributes(session: *PageSession, params: D.getAttributes.Params) !D.getAttributes.Result {
+    const element = try elementNamed(session, params.nodeId);
+    return .{ .attributes = (try attributesOf(session.arena.?, element)) orelse &.{} };
+}
+
+/// InspectorDOMAgent::requestNode: the node a remote object names, its path
+/// pushed (a detached one with its tree's root).
+pub fn requestNode(session: *PageSession, params: D.requestNode.Params) !D.requestNode.Result {
+    if (comptime !have_remote_objects) return session.fail("Could not find node with given id");
+    const node = try nodeOfObject(session, params.objectId);
+    return .{ .nodeId = try pushNodePath(session, node) };
+}
+
+/// InspectorDOMAgent::pushNodeByPathToFrontend (NodeForPath).
+pub fn pushNodeByPathToFrontend(session: *PageSession, params: D.pushNodeByPathToFrontend.Params) !D.pushNodeByPathToFrontend.Result {
+    if (!session.states.DOM.enabled) return session.fail("DOM agent is not enabled");
+    const node = nodeForPath(session, params.path) orelse return session.fail("No node with given path found");
+    return .{ .nodeId = try pushNodePath(session, node) };
+}
+
+/// NodeForPath: "1,HTML,2,BODY,1,DIV" - an inner child's index and its
+/// nodeName, interleaved; the index "a" is an author shadow root ("u" a
+/// user-agent one, which no page node has here), "d" a frame owner's
+/// content document. From the agent's document.
+fn nodeForPath(session: *PageSession, path: []const u8) ?*runtime.Instance {
+    var node = topDocument(session) orelse return null;
+    // SplitSkippingEmpty(',').
+    var tokens: [512][]const u8 = undefined;
+    var count: usize = 0;
+    var it = std.mem.tokenizeScalar(u8, path, ',');
+    while (it.next()) |token| {
+        if (count == tokens.len) return null;
+        tokens[count] = token;
+        count += 1;
+    }
+    if (count == 0) return null;
+    var i: usize = 0;
+    while (i + 1 < count) : (i += 2) {
+        const index_value = tokens[i];
+        const child_name = tokens[i + 1];
+        // StringToUintLoose: surrounding whitespace allowed.
+        const parsed = std.fmt.parseInt(u32, std.mem.trim(u8, index_value, " \t\n\r\x0c"), 10) catch null;
+        const child_number: u32 = parsed orelse 0;
+        var child: ?*runtime.Instance = undefined;
+        if (parsed == null) {
+            if (std.mem.eql(u8, index_value, "d")) {
+                child = if (contentNavigableOf(session, node)) |bc| frames.documentOf(bc) else null;
+            } else if (std.mem.eql(u8, index_value, "a")) {
+                child = if ((interfaces.Node.get_nodeType(node) catch 0) == 1) dom.shadow_hosts.rootForHost(node) else null;
+            } else {
+                child = null;
+            }
+        } else {
+            var inner_count: u32 = 0;
+            var c = innerFirstChild(session, node);
+            while (c) |n| : (c = innerNextSibling(session, n)) inner_count += 1;
+            if (child_number >= inner_count) return null;
+            child = innerFirstChild(session, node);
+        }
+        var j: u32 = 0;
+        while (child != null and j < child_number) : (j += 1) child = innerNextSibling(session, child.?);
+        const found = child orelse return null;
+        var name = interfaces.Node.get_nodeName(found) catch return null;
+        defer name.deinit(found.ctx.allocator);
+        if (!std.mem.eql(u8, name.asSlice(), child_name)) return null;
+        node = found;
+    }
+    return node;
+}
+
+/// InspectorDOMAgent::pushNodesByBackendIdsToFrontend: each node of the
+/// inspected frames pushed (a detached one too), 0 for any other.
+pub fn pushNodesByBackendIdsToFrontend(session: *PageSession, params: D.pushNodesByBackendIdsToFrontend.Params) !D.pushNodesByBackendIdsToFrontend.Result {
+    const document = topDocument(session);
+    const bound = if (session.states.DOM.map) |map| (if (document) |d| map.boundId(d) != 0 else false) else false;
+    if (!session.states.DOM.enabled or !bound) return session.fail("Document needs to be requested first");
+    const ids = nodeIds(session) orelse return error.OutOfMemory;
+    const out = try session.arena.?.alloc(i64, params.backendNodeIds.len);
+    for (params.backendNodeIds, out) |backend_id, *node_id| {
+        node_id.* = 0;
+        const node = ids.nodeOf(backend_id) orelse continue;
+        const owner = nodeDocumentOf(node) orelse continue;
+        if (frameOfDocument(session, owner) == null) continue;
+        node_id.* = try pushNodePath(session, node);
+    }
+    return .{ .nodeIds = out };
+}
+
+/// A node's node document (a document's own).
+fn nodeDocumentOf(node: *runtime.Instance) ?*runtime.Instance {
+    if ((interfaces.Node.get_nodeType(node) catch 0) == 9) return node;
+    return interfaces.Node.get_ownerDocument(node) catch null;
+}
+
+/// InspectorDOMAgent::getFlattenedDocument: the bindings discarded, the
+/// document built to `depth` (-1: all) into a flat list - each node after
+/// what was built under it, with its parentId - and the document last.
+pub fn getFlattenedDocument(session: *PageSession, params: D.getFlattenedDocument.Params, reply: Reply(D.getFlattenedDocument)) !void {
+    if (!session.states.DOM.enabled) return session.fail("DOM agent hasn't been enabled");
+    const document = topDocument(session) orelse return session.fail("Document is not available");
+    discardBindings(session);
+    const map = try mapOf(session);
+    var depth = params.depth orelse -1;
+    if (depth == -1) depth = std.math.maxInt(i64);
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var nodes: std.ArrayListUnmanaged(D.Node) = .empty;
+    const root = try buildNode(session, arena, document, depth, params.pierce orelse false, .{ .bindings = &map.document, .flatten = &nodes });
+    try nodes.append(arena, root);
+    reply.ok(.{ .nodes = nodes.items });
+}
+
+/// InspectorDOMAgent::collectClassNamesFromSubtree: every class of the
+/// elements in the node's flat tree (FlatTreeTraversal), once each.
+pub fn collectClassNamesFromSubtree(session: *PageSession, params: D.collectClassNamesFromSubtree.Params) !D.collectClassNamesFromSubtree.Result {
+    const map = session.states.DOM.map orelse return session.fail("No suitable node with given id found");
+    const root = map.nodeOf(params.nodeId) orelse return session.fail("No suitable node with given id found");
+    const root_type = interfaces.Node.get_nodeType(root) catch 0;
+    if (root_type != 1 and root_type != 9 and root_type != 11) return session.fail("No suitable node with given id found");
+    const arena = session.arena.?;
+    var names: std.StringArrayHashMapUnmanaged(void) = .empty;
+    var stack: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    try stack.append(arena, root);
+    while (stack.pop()) |node| {
+        if ((interfaces.Node.get_nodeType(node) catch 0) == 1) try addClassNames(arena, node, &names);
+        try appendFlatChildren(arena, node, &stack);
+    }
+    return .{ .classNames = names.keys() };
+}
+
+/// `element`'s classes (its class attribute split on ASCII whitespace;
+/// folded to lowercase in a quirks-mode document, Blink's ShouldFoldCase).
+fn addClassNames(arena: Allocator, element: *runtime.Instance, names: *std.StringArrayHashMapUnmanaged(void)) !void {
+    const count = dom.element_attributes.count(element);
+    for (0..count) |i| {
+        const attribute = dom.element_attributes.at(element, i) orelse continue;
+        if (attribute.namespace != null or !std.mem.eql(u8, attribute.local_name, "class")) continue;
+        const quirks = if (nodeDocumentOf(element)) |document| (compatibilityModeOf(document) orelse .NoQuirksMode) == .QuirksMode else false;
+        var it = std.mem.tokenizeAny(u8, attribute.value, " \t\n\r\x0c");
+        while (it.next()) |token| {
+            const name = if (quirks) try std.ascii.allocLowerString(arena, token) else try arena.dupe(u8, token);
+            try names.put(arena, name, {});
+        }
+        return;
+    }
+}
+
+/// The node's children in the flat tree, onto `stack`: a shadow host's
+/// shadow root's children, a slot's assigned nodes (its own children when it
+/// has none), any other node's children (CSS Scoping 2.1; Blink's
+/// FlatTreeTraversal).
+fn appendFlatChildren(arena: Allocator, node: *runtime.Instance, stack: *std.ArrayListUnmanaged(*runtime.Instance)) !void {
+    var parent = node;
+    if ((interfaces.Node.get_nodeType(node) catch 0) == 1) {
+        if (dom.shadow_hosts.rootForHost(node)) |root| parent = root;
+        if (parent == node) {
+            if (dom.instance_bridge.getNodeBase(node)) |base| if (dom.slot_helpers.slotState(base)) |slot| {
+                if (slot.hasAssignedNodes()) {
+                    for (slot.assigned_nodes.items) |ref| {
+                        const assigned = ref.get() orelse continue;
+                        const instance = assigned.registeredInstance() orelse continue;
+                        try stack.append(arena, instance);
+                    }
+                    return;
+                }
+            };
+        }
+    }
+    var child = interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) try stack.append(arena, c);
+}
+
+/// The documents of the session's tab's frames, the top one first
+/// (Blink's InspectorDOMAgent::Documents over InspectedFrames).
+fn inspectedDocuments(session: *PageSession, arena: Allocator) ![]*runtime.Instance {
+    var out: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    const top = frames.navigable(session, session.tab) orelse return out.items;
+    try appendDocuments(arena, top, &out);
+    return out.items;
+}
+
+fn appendDocuments(arena: Allocator, bc: *frames.BrowsingContext, out: *std.ArrayListUnmanaged(*runtime.Instance)) !void {
+    if (frames.documentOf(bc)) |document| try out.append(arena, document);
+    for (bc.children.items) |child| {
+        if (child.is_closed) continue;
+        try appendDocuments(arena, child, out);
+    }
+}
+
+/// InspectorDOMAgent::getTopLayerElements: each inspected document's top
+/// layer, in order, each element's path pushed (0s left out).
+pub fn getTopLayerElements(session: *PageSession, params: D.getTopLayerElements.Params) !D.getTopLayerElements.Result {
+    _ = params;
+    if (!session.states.DOM.enabled) return session.fail("DOM agent hasn't been enabled");
+    const arena = session.arena.?;
+    var out: std.ArrayListUnmanaged(i64) = .empty;
+    for (try inspectedDocuments(session, arena)) |document| {
+        const layer = (dom.top_layer.ofDocument(document, false) catch null) orelse continue;
+        var members: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        for (layer.entries.items) |entry| {
+            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            const element = entry.node() orelse continue;
+            // An element is in the top layer once, where it was last added.
+            for (members.items, 0..) |m, i| if (m == element) {
+                _ = members.orderedRemove(i);
+                break;
+            };
+            try members.append(arena, element);
+        }
+        for (members.items) |element| {
+            const id = try pushNodePath(session, element);
+            if (id != 0) try out.append(arena, id);
+        }
+    }
+    return .{ .nodeIds = out.items };
+}
+
+/// InspectorDOMAgent::performSearch: the documents searched now (dom_search
+/// .zig), the results held under a new search id.
+pub fn performSearch(session: *PageSession, params: D.performSearch.Params) !D.performSearch.Result {
+    const s = &session.states.DOM;
+    if (!s.enabled) return session.fail("DOM agent is not enabled");
+    const arena = session.arena.?;
+    var results: dom_search.Results = .{};
+    defer results.deinit(session.allocator);
+    try dom_search.search(session.allocator, try inspectedDocuments(session, arena), params.query, params.includeUserAgentShadowDOM orelse false, &results);
+    const holds = try session.allocator.alloc(RefHold, results.nodes.items.len);
+    for (results.nodes.items, holds) |node, *hold| {
+        hold.* = .{};
+        hold.set(node);
+    }
+    errdefer releaseHolds(session, holds);
+    s.last_search += 1;
+    const token: u64 = if (session.side) |side| side.token % 100000 else 0;
+    const id = try std.fmt.allocPrint(session.allocator, "{d}.{d}", .{ token, s.last_search });
+    errdefer session.allocator.free(id);
+    try s.searches.put(session.allocator, id, holds);
+    return .{ .searchId = try arena.dupe(u8, id), .resultCount = @intCast(holds.len) };
+}
+
+/// InspectorDOMAgent::getSearchResults: results [fromIndex, toIndex), each
+/// path pushed.
+pub fn getSearchResults(session: *PageSession, params: D.getSearchResults.Params) !D.getSearchResults.Result {
+    const holds = session.states.DOM.searches.get(params.searchId) orelse return session.fail("No search session with given id found");
+    const size: i64 = @intCast(holds.len);
+    if (params.fromIndex < 0 or params.toIndex > size or params.fromIndex >= params.toIndex) return session.fail("Invalid search result range");
+    const from: usize = @intCast(params.fromIndex);
+    const to: usize = @intCast(params.toIndex);
+    const out = try session.arena.?.alloc(i64, to - from);
+    for (holds[from..to], out) |*hold, *node_id| {
+        const node = hold.hold.get() orelse {
+            node_id.* = 0;
+            continue;
+        };
+        node_id.* = try pushNodePath(session, node);
+    }
+    return .{ .nodeIds = out };
+}
+
+/// InspectorDOMAgent::discardSearchResults: the search's holds let go.
+pub fn discardSearchResults(session: *PageSession, params: D.discardSearchResults.Params) !D.discardSearchResults.Result {
+    const s = &session.states.DOM;
+    if (s.searches.fetchOrderedRemove(params.searchId)) |entry| {
+        releaseHolds(session, entry.value);
+        session.allocator.free(entry.key);
+    }
+    return .{};
+}
+
+/// InspectorDOMAgent::focus: a focusable element is focused by the focus()
+/// method steps as for a user's gesture (Element::Focus with
+/// FocusTrigger::kUserGesture: the focus-without-user-activation check does
+/// not apply; html.focus.focusForUserGesture).
+pub fn focus(session: *PageSession, params: D.focus.Params) !D.focus.Result {
+    const node = try nodeNamed(session, params.nodeId, params.backendNodeId, params.objectId);
+    if ((interfaces.Node.get_nodeType(node) catch 0) != 1) return session.fail("Node is not an Element");
+    const html = @import("html");
+    if (!html.focus.isFocusableArea(node)) return session.fail("Element is not focusable");
+    html.focus.focusForUserGesture(node);
+    return .{};
+}
+
+/// InspectorDOMAgent::getContainerForNode: the element's query container
+/// for the name, axes and types asked (dom.style.engine.findQueryContainer:
+/// Blink's StyleResolver::FindContainerForElement), its path pushed; none
+/// when no ancestor qualifies.
+pub fn getContainerForNode(session: *PageSession, params: D.getContainerForNode.Params) !D.getContainerForNode.Result {
+    const element = try elementNamed(session, params.nodeId);
+    var request: dom.style.engine.ContainerRequest = .{
+        .name = params.containerName orelse "",
+        .scroll_state = params.queriesScrollState orelse false,
+        .anchored = params.queriesAnchored orelse false,
+    };
+    if (params.physicalAxes) |axes| switch (axes) {
+        .Horizontal => request.physical_horizontal = true,
+        .Vertical => request.physical_vertical = true,
+        .Both => {
+            request.physical_horizontal = true;
+            request.physical_vertical = true;
+        },
+    };
+    if (params.logicalAxes) |axes| switch (axes) {
+        .Inline => request.logical_inline = true,
+        .Block => request.logical_block = true,
+        .Both => {
+            request.logical_inline = true;
+            request.logical_block = true;
+        },
+    };
+    const container = dom.style.engine.findQueryContainer(element, request) orelse return .{};
+    return .{ .nodeId = try pushNodePath(session, container) };
+}
+
+/// InspectorDOMAgent::getQueryingDescendantsForContainer: the element's
+/// descendants (ElementTraversal, tree order) whose matched @container rules
+/// query it (dom.style.engine.queriesContainer: ContainerQueriedByElement),
+/// each path pushed.
+pub fn getQueryingDescendantsForContainer(session: *PageSession, params: D.getQueryingDescendantsForContainer.Params) !D.getQueryingDescendantsForContainer.Result {
+    const container = try elementNamed(session, params.nodeId);
+    const map = try mapOf(session);
+    const arena = session.arena.?;
+    var out: std.ArrayListUnmanaged(i64) = .empty;
+    var stack: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    var child = interfaces.Node.get_lastChild(container) catch null;
+    while (child) |c| : (child = interfaces.Node.get_previousSibling(c) catch null) try stack.append(arena, c);
+    while (stack.pop()) |node| {
+        if ((interfaces.Node.get_nodeType(node) catch 0) != 1) continue;
+        if (dom.style.engine.queriesContainer(node, container)) try out.append(arena, try pushNodePathIn(session, node, &map.document));
+        var c = interfaces.Node.get_lastChild(node) catch null;
+        while (c) |n| : (c = interfaces.Node.get_previousSibling(n) catch null) try stack.append(arena, n);
+    }
+    return .{ .nodeIds = out.items };
+}
+
+/// InspectorDOMAgent::setNodeStackTracesEnabled.
+pub fn setNodeStackTracesEnabled(session: *PageSession, params: D.setNodeStackTracesEnabled.Params) !D.setNodeStackTracesEnabled.Result {
+    session.states.DOM.capture_node_stack_traces = params.enable;
+    return .{};
+}
+
+/// InspectorDOMAgent::getNodeStackTraces: the bound node's creation stack,
+/// if one was captured (none for a node made with no script running).
+pub fn getNodeStackTraces(session: *PageSession, params: D.getNodeStackTraces.Params, reply: Reply(D.getNodeStackTraces)) !void {
+    const node = try nodeNamed(session, params.nodeId, null, null);
+    const s = &session.states.DOM;
+    const stack = s.creation_stacks.get(@intFromPtr(node)) orelse return reply.okRaw("{}");
+    if (stack.generation != runtime.SlabAllocator.generationOf(node)) return reply.okRaw("{}");
+    var out: std.Io.Writer.Allocating = .init(session.allocator);
+    defer out.deinit();
+    try out.writer.print("{{\"creation\":{s}}}", .{stack.json});
+    reply.okRaw(out.written());
+}
+
+/// NodeCreated: with stack traces on, the running script's full stack
+/// (SourceLocation::CaptureWithFullStackTrace: V8's 200 frames), kept for
+/// the node.
+pub fn nodeCreated(session: *PageSession, node: *runtime.Instance) void {
+    if (comptime !contexts.have_inspector) return;
+    const s = &session.states.DOM;
+    if (!s.capture_node_stack_traces) return;
+    const browser = session.browser orelse return;
+    const agent = browser.agent orelse return;
+    const json = (engine.inspectorStackTrace(agent, 200, session.allocator) catch return) orelse return;
+    if (s.creation_stacks.count() >= s.creation_sweep_at) sweepCreationStacks(session);
+    s.creation_stacks_guard.beforeInsert(&s.creation_stacks);
+    const entry = s.creation_stacks.getOrPut(session.allocator, @intFromPtr(node)) catch {
+        session.allocator.free(json);
+        return;
+    };
+    if (entry.found_existing) session.allocator.free(entry.value_ptr.json);
+    entry.value_ptr.* = .{ .generation = runtime.SlabAllocator.generationOf(node), .json = json };
+}
+
+/// Drop the stacks of nodes that are gone (the weak map's sweep), and let
+/// the map grow to twice what is left before the next.
+fn sweepCreationStacks(session: *PageSession) void {
+    const s = &session.states.DOM;
+    var dead: std.ArrayListUnmanaged(usize) = .empty;
+    defer dead.deinit(session.allocator);
+    var it = s.creation_stacks.iterator();
+    while (it.next()) |entry| {
+        const node: *runtime.Instance = @ptrFromInt(entry.key_ptr.*);
+        if (runtime.SlabAllocator.generationOf(node) != entry.value_ptr.generation) dead.append(session.allocator, entry.key_ptr.*) catch break;
+    }
+    for (dead.items) |key| {
+        if (s.creation_stacks.fetchRemove(key)) |removed| {
+            session.allocator.free(removed.value.json);
+            s.creation_stacks_guard.noteRemoval(&s.creation_stacks);
+        }
+    }
+    s.creation_sweep_at = @max(1024, s.creation_stacks.count() * 2);
+}
+
+// ============================================================================
+// Editing (lane cdpd1, batch 3): DOMEditor's actions through the history
+// ============================================================================
+
+/// The agent's editor over its history (made with the agent; an agent not
+/// enabled has no bound nodes to edit).
+fn editorOf(session: *PageSession) !dom_editor.Editor {
+    const history = session.states.DOM.history orelse return session.fail("DOM agent hasn't been enabled");
+    return .{ .allocator = session.allocator, .history = history };
+}
+
+/// An edit's DOM exception, as InspectorDOMAgent::ToResponse words it.
+fn editFailed(session: *PageSession, editor: *const dom_editor.Editor, err: dom_editor.Error) anyerror {
+    if (err == error.OutOfMemory) return err;
+    const failure = editor.failure;
+    if (failure.message.len == 0) return session.fail(failure.name);
+    const text = std.mem.concat(session.arena.?, u8, &.{ failure.name, " ", failure.message }) catch return error.OutOfMemory;
+    return session.fail(text);
+}
+
+/// AssertEditableNode: a bound node that is not a shadow root (nor in a
+/// user-agent shadow tree, nor a pseudo-element: neither exists here).
+fn editableNode(session: *PageSession, node_id: i64) !*runtime.Instance {
+    const node = try nodeNamed(session, node_id, null, null);
+    if (node.implements(interfaces.ShadowRoot.State)) return session.fail("Cannot edit shadow roots");
+    return node;
+}
+
+/// AssertEditableElement.
+fn editableElement(session: *PageSession, node_id: i64) !*runtime.Instance {
+    return elementNamed(session, node_id);
+}
+
+/// AssertEditableChildNode: an editable node that is `parent`'s child.
+fn editableChild(session: *PageSession, parent: *runtime.Instance, node_id: i64) !*runtime.Instance {
+    const node = try editableNode(session, node_id);
+    if ((interfaces.Node.get_parentNode(node) catch null) != parent) return session.fail("Anchor node must be child of the target element");
+    return node;
+}
+
+/// InspectorDOMAgent::setAttributeValue.
+pub fn setAttributeValue(session: *PageSession, params: D.setAttributeValue.Params) !D.setAttributeValue.Result {
+    const element = try editableElement(session, params.nodeId);
+    var editor = try editorOf(session);
+    editor.setAttribute(element, params.name, params.value) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::removeAttribute.
+pub fn removeAttribute(session: *PageSession, params: D.removeAttribute.Params) !D.removeAttribute.Result {
+    const element = try editableElement(session, params.nodeId);
+    var editor = try editorOf(session);
+    editor.removeAttribute(element, params.name) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::setAttributesAsText: `text` parsed as the attributes
+/// of an element like this one (`<span TEXT>`, `<svg TEXT>` for an SVG
+/// element, `<math TEXT>` for MathML), in the context of its owner svg or
+/// the body; each attribute set; `name`, when it was not among them,
+/// removed.
+pub fn setAttributesAsText(session: *PageSession, params: D.setAttributesAsText.Params) !D.setAttributesAsText.Result {
+    const element = try editableElement(session, params.nodeId);
+    const arena = session.arena.?;
+    const document = nodeDocumentOf(element) orelse return session.fail("Could not parse value as attributes");
+    const is_html_document = dom.document_internals.getDocumentType(document) != .xml;
+    const namespace = namespaceOf(arena, element);
+    const is_svg = std.mem.eql(u8, namespace, "http://www.w3.org/2000/svg");
+    const is_mathml = std.mem.eql(u8, namespace, "http://www.w3.org/1998/Math/MathML");
+    // "Not all elements can represent the context (e.g. <iframe>). Use the
+    // owner <svg> element if there is any, falling back to <body>."
+    var context: ?*runtime.Instance = null;
+    if (is_svg) context = interfaces.SVGElement.get_ownerSVGElement(element) catch null;
+    if (context == null and is_html_document) context = interfaces.Document.get_body(document) catch null;
+    if (context == null and !is_html_document) context = interfaces.Document.get_documentElement(document) catch null;
+    const markup = try std.mem.concat(arena, u8, if (is_svg) &.{ "<svg ", params.text, "></svg>" } else if (is_mathml) &.{ "<math ", params.text, "></math>" } else &.{ "<span ", params.text, "></span>" });
+    const html = @import("html");
+    const fragment = html.dom_parser.parseFragmentIn(document.ctx.allocator, document.ctx, markup, context, .inert) catch return session.fail("Could not parse value as attributes");
+    const fragment_generation = runtime.SlabAllocator.generationOf(fragment);
+    defer dom.node_creation.releaseIfUnwrapped(fragment, fragment_generation);
+    const parsed = (interfaces.Node.get_firstChild(fragment) catch null) orelse return session.fail("Could not parse value as attributes");
+    if ((interfaces.Node.get_nodeType(parsed) catch 0) != 1) return session.fail("Could not parse value as attributes");
+
+    const ignore_case = is_html_document and std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml");
+    const name: ?[]const u8 = if (params.name) |n| (if (ignore_case) try std.ascii.allocLowerString(arena, n) else n) else null;
+    var editor = try editorOf(session);
+    const count = dom.element_attributes.count(parsed);
+    if (count == 0 and name != null) {
+        editor.removeAttribute(element, name.?) catch |err| return editFailed(session, &editor, err);
+        return .{};
+    }
+    var found_original = false;
+    for (0..count) |i| {
+        const attribute = dom.element_attributes.at(parsed, i) orelse continue;
+        var attribute_name = try qualifiedName(arena, attribute.prefix, attribute.local_name);
+        if (ignore_case) attribute_name = try std.ascii.allocLowerString(arena, attribute_name);
+        if (name) |n| found_original = found_original or std.mem.eql(u8, attribute_name, n);
+        const value = try arena.dupe(u8, attribute.value);
+        editor.setAttribute(element, attribute_name, value) catch |err| return editFailed(session, &editor, err);
+    }
+    if (!found_original and params.name != null and std.mem.trim(u8, params.name.?, " \t\n\r\x0c").len > 0) {
+        editor.removeAttribute(element, name.?) catch |err| return editFailed(session, &editor, err);
+    }
+    return .{};
+}
+
+fn namespaceOf(arena: Allocator, element: *runtime.Instance) []const u8 {
+    var ns = (interfaces.Element.get_namespaceURI(element) catch null) orelse return "";
+    defer ns.deinit(element.ctx.allocator);
+    return arena.dupe(u8, ns.asSlice()) catch "";
+}
+
+/// InspectorDOMAgent::setNodeValue (157: text and processing instruction
+/// nodes).
+pub fn setNodeValue(session: *PageSession, params: D.setNodeValue.Params) !D.setNodeValue.Result {
+    const node = try editableNode(session, params.nodeId);
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
+    if (node_type != 3 and node_type != 7) return session.fail("Can only set value of text nodes or processing instructions");
+    var editor = try editorOf(session);
+    editor.setNodeValue(node, params.value) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::removeNode.
+pub fn removeNode(session: *PageSession, params: D.removeNode.Params) !D.removeNode.Result {
+    const node = try editableNode(session, params.nodeId);
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return session.fail("Cannot remove detached node");
+    var editor = try editorOf(session);
+    editor.removeChild(parent, node) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::setNodeName (157): an element becomes a new element
+/// of that name with its attributes and children; a processing instruction
+/// a new one with that target and its data. The new node takes its place,
+/// is pushed, and is sent its children when the client had the old one's.
+pub fn setNodeName(session: *PageSession, params: D.setNodeName.Params) !D.setNodeName.Result {
+    const old_node = try nodeNamed(session, params.nodeId, null, null);
+    const document = nodeDocumentOf(old_node) orelse return session.fail("Not an element");
+    var editor = try editorOf(session);
+    var name = try runtime.DOMString.initDupe(session.allocator, params.name);
+    defer name.deinit(session.allocator);
+    const new_node = switch (interfaces.Node.get_nodeType(old_node) catch 0) {
+        1 => blk: {
+            const new_element = interfaces.Document.call_createElement(document, name, .notPassed()) catch |err| {
+                if (err == error.InvalidCharacterError) return session.fail(try std.mem.concat(session.arena.?, u8, &.{ "InvalidCharacterError The tag name provided ('", params.name, "') is not a valid name." }));
+                return session.fail(@errorName(err));
+            };
+            dom.element_attributes.cloneFrom(new_element, old_node) catch return error.OutOfMemory;
+            while (interfaces.Node.get_firstChild(old_node) catch null) |child| {
+                editor.insertBefore(new_element, child, null) catch |err| return editFailed(session, &editor, err);
+            }
+            break :blk new_element;
+        },
+        7 => blk: {
+            var data = (interfaces.Node.get_nodeValue(old_node) catch null) orelse runtime.DOMString.initEmpty();
+            defer data.deinit(old_node.ctx.allocator);
+            break :blk interfaces.Document.call_createProcessingInstruction(document, name, data) catch |err| return session.fail(@errorName(err));
+        },
+        else => return session.fail("Not an element"),
+    };
+    const parent = (interfaces.Node.get_parentNode(old_node) catch null) orelse return session.fail("Cannot remove detached node");
+    const next = interfaces.Node.get_nextSibling(old_node) catch null;
+    editor.insertBefore(parent, new_node, next) catch |err| return editFailed(session, &editor, err);
+    editor.removeChild(parent, old_node) catch |err| return editFailed(session, &editor, err);
+    const new_id = try pushNodePath(session, new_node);
+    if (session.states.DOM.map) |map| if (map.childrenRequested(params.nodeId)) try pushChildNodes(session, new_id, 1, false);
+    return .{ .nodeId = new_id };
+}
+
+/// InspectorDOMAgent::setOuterHTML: node 0 patches the document itself
+/// (with the agent's own editor); any other editable node is patched by a
+/// SetOuterHTML action (dom_patch.zig, DOMPatchSupport), the node that took
+/// its place pushed, and sent its children when the client had the old
+/// node's.
+pub fn setOuterHTML(session: *PageSession, params: D.setOuterHTML.Params) !D.setOuterHTML.Result {
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    var editor = try editorOf(session);
+    if (params.nodeId == 0) {
+        const document = topDocument(session) orelse return session.fail("Document is not available");
+        var patch: dom_patch.Patch = .{ .arena = arena_state.allocator(), .editor = &editor, .document = document };
+        patch.patchDocument(params.outerHTML) catch |err| return editFailed(session, &editor, err);
+        return .{};
+    }
+    const node = try editableNode(session, params.nodeId);
+    const document = nodeDocumentOf(node) orelse return session.fail("Not an HTML/XML document");
+    const Context = struct { arena: Allocator, document: *runtime.Instance, markup: []const u8 };
+    const context: Context = .{ .arena = arena_state.allocator(), .document = document, .markup = params.outerHTML };
+    const new_node = editor.setOuterHTML(node, context, struct {
+        fn patch(ctx: Context, nested: *dom_editor.Editor, target: *runtime.Instance) dom_editor.Error!?*runtime.Instance {
+            // SetOuterHTMLAction::Perform: "if (!document->documentElement())
+            // return false" - no change, and no error.
+            if ((interfaces.Document.get_documentElement(ctx.document) catch null) == null) return null;
+            var p: dom_patch.Patch = .{ .arena = ctx.arena, .editor = nested, .document = ctx.document };
+            return p.patchNode(target, ctx.markup);
+        }
+    }.patch) catch |err| return editFailed(session, &editor, err);
+    // "The only child node has been deleted."
+    const placed = new_node orelse return .{};
+    const new_id = try pushNodePath(session, placed);
+    if (session.states.DOM.map) |map| if (map.childrenRequested(params.nodeId)) try pushChildNodes(session, new_id, 1, false);
+    return .{};
+}
+
+/// The target element and anchor of moveTo / copyTo.
+fn insertionPoint(session: *PageSession, target_id: i64, anchor_id: ?i64) !struct { target: *runtime.Instance, anchor: ?*runtime.Instance } {
+    const target = try editableElement(session, target_id);
+    const anchor: ?*runtime.Instance = if (anchor_id) |id| (if (id != 0) try editableChild(session, target, id) else null) else null;
+    return .{ .target = target, .anchor = anchor };
+}
+
+/// InspectorDOMAgent::moveTo.
+pub fn moveTo(session: *PageSession, params: D.moveTo.Params) !D.moveTo.Result {
+    const node = try editableNode(session, params.nodeId);
+    const target = try editableElement(session, params.targetNodeId);
+    var current: ?*runtime.Instance = target;
+    while (current) |c| : (current = interfaces.Node.get_parentNode(c) catch null) {
+        if (c == node) return session.fail("Unable to move node into self or descendant");
+    }
+    const point = try insertionPoint(session, params.targetNodeId, params.insertBeforeNodeId);
+    var editor = try editorOf(session);
+    editor.insertBefore(point.target, node, point.anchor) catch |err| return editFailed(session, &editor, err);
+    return .{ .nodeId = try pushNodePath(session, node) };
+}
+
+/// InspectorDOMAgent::copyTo: a deep clone inserted.
+pub fn copyTo(session: *PageSession, params: D.copyTo.Params) !D.copyTo.Result {
+    const node = try editableNode(session, params.nodeId);
+    const point = try insertionPoint(session, params.targetNodeId, params.insertBeforeNodeId);
+    const clone = interfaces.Node.call_cloneNode(node, .passed(true)) catch return session.fail("Failed to clone node");
+    var editor = try editorOf(session);
+    editor.insertBefore(point.target, clone, point.anchor) catch |err| return editFailed(session, &editor, err);
+    return .{ .nodeId = try pushNodePath(session, clone) };
+}
+
+/// InspectorDOMAgent::undo.
+pub fn undo(session: *PageSession, params: D.undo.Params) !D.undo.Result {
+    _ = params;
+    if (!session.states.DOM.enabled) return session.fail("DOM agent is not enabled");
+    var editor = try editorOf(session);
+    editor.history.undo(&editor) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::redo.
+pub fn redo(session: *PageSession, params: D.redo.Params) !D.redo.Result {
+    _ = params;
+    if (!session.states.DOM.enabled) return session.fail("DOM agent is not enabled");
+    var editor = try editorOf(session);
+    editor.history.redo(&editor) catch |err| return editFailed(session, &editor, err);
+    return .{};
+}
+
+/// InspectorDOMAgent::markUndoableState.
+pub fn markUndoableState(session: *PageSession, params: D.markUndoableState.Params) !D.markUndoableState.Result {
+    _ = params;
+    if (!session.states.DOM.enabled) return session.fail("DOM agent is not enabled");
+    try session.states.DOM.history.?.markUndoableState();
+    return .{};
+}
+
+// ============================================================================
 // The live DOM: the probes' handlers (dom_events.zig calls them for each
 // enabled agent; InspectorDOMAgent's probe methods)
 // ============================================================================
@@ -367,8 +1141,11 @@ pub fn didInsertDOMNode(session: *PageSession, node: *runtime.Instance) void {
     const previous_id = if (previous) |p| map.boundId(p) else 0;
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const value = buildNode(session, arena_state.allocator(), node, 0, false, map) catch return;
+    const value = buildNode(session, arena_state.allocator(), node, 0, false, .{ .bindings = &map.document, .no_pseudos = true }) catch return;
     session.emit(D.childNodeInserted, .{ .parentNodeId = parent_id, .previousNodeId = previous_id, .node = value });
+    // Its style, and with it its pseudo-elements, at the next rendering
+    // update (Blink's insertion schedules a style recalc).
+    if (nodeDocumentOf(node)) |document| dom.update_the_rendering.requestFrame(document);
 }
 
 /// WillRemoveDOMNode: `node` is about to leave its parent.
@@ -411,6 +1188,9 @@ pub fn didModifyDOMAttr(session: *PageSession, element: *runtime.Instance, name:
     } else {
         session.emit(D.attributeRemoved, .{ .nodeId = id, .name = qualified });
     }
+    // Its style may change, and its pseudo-elements with it, at the next
+    // rendering update (Blink's attribute change schedules a style recalc).
+    if (nodeDocumentOf(element)) |document| dom.update_the_rendering.requestFrame(document);
 }
 
 /// CharacterDataModified: a bound node turned whitespace-only leaves the
@@ -444,12 +1224,59 @@ pub fn didInvalidateStyleAttr(session: *PageSession, element: *runtime.Instance)
         if (pending.get() == element) break true;
     } else false;
     if (!pending_already) s.pending_style.append(session.allocator, WeakNode.of(element)) catch return;
+    scheduleRevalidation(session, element);
+}
+
+/// The revalidation task's timer: started, if it is not, on `node`'s event
+/// loop (StartOneShot(0) on the DOM manipulation task runner).
+fn scheduleRevalidation(session: *PageSession, node: *runtime.Instance) void {
+    const s = &session.states.DOM;
     if (s.revalidate != null) return;
-    const loop = element.ctx.getOptionalEventLoop() orelse return;
+    const loop = node.ctx.getOptionalEventLoop() orelse return;
     const task = session.allocator.create(RevalidateTask) catch return;
     task.* = .{ .session = session, .allocator = session.allocator };
     s.revalidate = task;
     loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop });
+}
+
+/// DidModifyAdoptedStyleSheets: the tree scope joins the pending set (bound
+/// or not: AdoptedStyleSheetsInvalidated checks when the task runs).
+pub fn didModifyAdoptedStyleSheets(session: *PageSession, owner: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    if (s.map == null) return;
+    for (s.pending_adopted.items) |pending| if (pending.get() == owner) return scheduleRevalidation(session, owner);
+    s.pending_adopted.append(session.allocator, WeakNode.of(owner)) catch return;
+    scheduleRevalidation(session, owner);
+}
+
+/// AdoptedStyleSheetsInvalidated, for each pending tree scope the client
+/// has: adoptedStyleSheetsModified with its sheets' ids.
+fn adoptedStyleSheetsInvalidated(session: *PageSession) void {
+    const s = &session.states.DOM;
+    defer s.pending_adopted.clearRetainingCapacity();
+    const map = s.map orelse return;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    for (s.pending_adopted.items) |pending| {
+        const owner = pending.get() orelse continue;
+        const id = map.boundId(owner);
+        if (id == 0) continue;
+        const sheets = adoptedSheetIds(session, arena_state.allocator(), owner) catch continue;
+        session.emit(D.adoptedStyleSheetsModified, .{ .nodeId = id, .adoptedStyleSheets = sheets });
+    }
+}
+
+/// The styleSheetIds of `owner`'s adopted sheets, in order.
+fn adoptedSheetIds(session: *PageSession, arena: Allocator, owner: *runtime.Instance) ![]const []const u8 {
+    const browser = session.browser orelse return &.{};
+    const registry = try browser.scope.of(StyleSheetIds);
+    const token: u64 = if (session.side) |side| side.token else 0;
+    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    for (dom.style.adopted.sheetsOf(owner)) |sheet| {
+        const object = sheet.get() orelse continue;
+        try out.append(arena, try registry.idOf(arena, token, object));
+    }
+    return out.items;
 }
 
 /// The queued revalidation (InspectorRevalidateDOMTask's timer). It names
@@ -464,7 +1291,10 @@ pub const RevalidateTask = struct {
         defer self.allocator.destroy(self);
         const session = self.session orelse return;
         session.states.DOM.revalidate = null;
+        // InspectorRevalidateDOMTask::OnTimer: the style attributes, then
+        // each adopted sheets change.
         styleAttributeInvalidated(session);
+        adoptedStyleSheetsInvalidated(session);
     }
 
     fn drop(context: ?*anyopaque) void {
@@ -482,6 +1312,7 @@ fn resetRevalidation(session: *PageSession) void {
     if (s.revalidate) |task| task.session = null;
     s.revalidate = null;
     s.pending_style.clearRetainingCapacity();
+    s.pending_adopted.clearRetainingCapacity();
 }
 
 /// StyleAttributeInvalidated: one inlineStyleInvalidated with the pending
@@ -515,8 +1346,157 @@ pub fn didPushShadowRoot(session: *PageSession, host: *runtime.Instance, root: *
     pushChildNodes(session, host_id, 1, false) catch return;
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const value = buildNode(session, arena_state.allocator(), root, 0, false, map) catch return;
+    const value = buildNode(session, arena_state.allocator(), root, 0, false, .{ .bindings = &map.document }) catch return;
     session.emit(D.shadowRootPushed, .{ .hostId = host_id, .root = value });
+}
+
+/// A bound slot's assigned nodes changed: kept for the next rendering
+/// update, which is asked for.
+pub fn slotAssignmentChanged(session: *PageSession, slot: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    const map = s.map orelse return;
+    if (map.boundId(slot) == 0) return;
+    for (s.pending_slots.items) |pending| if (pending.get() == slot) return;
+    s.pending_slots.append(session.allocator, WeakNode.of(slot)) catch return;
+    if (nodeDocumentOf(slot)) |document| dom.update_the_rendering.requestFrame(document);
+}
+
+/// The document's rendering update (Blink's lifecycle update): each pending
+/// slot of it the client still has gets DidPerformSlotDistribution -
+/// distributedNodesUpdated with its assigned nodes.
+pub fn renderingUpdated(session: *PageSession, document: *runtime.Instance) void {
+    updatePseudoElements(session, document);
+    sendDistributions(session, document);
+}
+
+/// The style recalc's pseudo-element updates, for the elements the client
+/// has: in tree order, each element's ::marker, ::backdrop and ::before
+/// before its children and its ::after after them (Element::RecalcOwnStyle
+/// and RecalcPseudoStyles' order), a new one PseudoElementCreated - its
+/// parent's children pushed, then pseudoElementAdded - and a gone one
+/// PseudoElementDestroyed - unbound, then pseudoElementRemoved.
+fn updatePseudoElements(session: *PageSession, document: *runtime.Instance) void {
+    const map = session.states.DOM.map orelse return;
+    if (map.boundId(document) == 0) return;
+    const Frame = struct { node: *runtime.Instance, after: bool };
+    var stack: std.ArrayListUnmanaged(Frame) = .empty;
+    defer stack.deinit(session.allocator);
+    stack.append(session.allocator, .{ .node = document, .after = false }) catch return;
+    var children: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer children.deinit(session.allocator);
+    while (stack.pop()) |frame| {
+        const node = frame.node;
+        const is_element = (interfaces.Node.get_nodeType(node) catch 0) == 1;
+        if (frame.after) {
+            updatePseudo(session, node, 2);
+            continue;
+        }
+        const id = map.boundId(node);
+        if (id == 0) continue;
+        if (is_element) {
+            recordPseudos(session, node);
+            updatePseudo(session, node, 3);
+            updatePseudo(session, node, 4);
+            updatePseudo(session, node, 1);
+            stack.append(session.allocator, .{ .node = node, .after = true }) catch return;
+        }
+        if (!map.childrenRequested(id)) continue;
+        // The children, pushed so the first pops first.
+        children.clearRetainingCapacity();
+        if (is_element) if (dom.shadow_hosts.rootForHost(node)) |root| children.append(session.allocator, root) catch return;
+        var child = innerFirstChild(session, node);
+        while (child) |c| : (child = innerNextSibling(session, c)) {
+            if ((interfaces.Node.get_nodeType(c) catch 0) == 1 or c.implements(interfaces.ShadowRoot.State)) children.append(session.allocator, c) catch return;
+        }
+        var i = children.items.len;
+        while (i > 0) {
+            i -= 1;
+            stack.append(session.allocator, .{ .node = children.items[i], .after = false }) catch return;
+        }
+    }
+}
+
+/// The element's pseudo-elements as its style says now: the recalc's
+/// record, which its pseudo-element updates read.
+fn recordPseudos(session: *PageSession, element: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    const record: PseudoRecord = .{ .generation = runtime.SlabAllocator.generationOf(element), .bits = dom.style.engine.generatedPseudos(element) };
+    s.pseudo_state_guard.beforeInsert(&s.pseudo_state);
+    s.pseudo_state.put(session.allocator, @intFromPtr(element), record) catch {};
+}
+
+/// One pseudo-element of a bound element at the style recalc: made or
+/// destroyed as its record (recordPseudos) says.
+fn updatePseudo(session: *PageSession, element: *runtime.Instance, kind: u3) void {
+    const s = &session.states.DOM;
+    const map = s.map orelse return;
+    const parent_id = map.boundId(element);
+    if (parent_id == 0) return;
+    const record = s.pseudo_state.get(@intFromPtr(element)) orelse return;
+    if (record.generation != runtime.SlabAllocator.generationOf(element)) return;
+    const exists = hasPseudo(record.bits, kind);
+    const bound = map.pseudoId(element, kind);
+    const pseudo = pseudo_kinds[kind - 1];
+    if (exists and bound == 0) {
+        pushChildNodes(session, parent_id, 1, false) catch return;
+        const value = buildPseudoNode(session, element, pseudo, true) catch return;
+        session.emit(D.pseudoElementAdded, .{ .parentId = parent_id, .pseudoElement = value });
+    } else if (!exists and bound != 0) {
+        _ = map.forgetPseudo(element, kind);
+        session.emit(D.pseudoElementRemoved, .{ .parentId = parent_id, .pseudoElementId = bound });
+    }
+}
+
+/// DidPerformSlotDistribution for the pending slots of `document`.
+fn sendDistributions(session: *PageSession, document: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    if (s.pending_slots.items.len == 0) return;
+    const map = s.map orelse return;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    var i: usize = 0;
+    while (i < s.pending_slots.items.len) {
+        const slot = s.pending_slots.items[i].get() orelse {
+            _ = s.pending_slots.orderedRemove(i);
+            continue;
+        };
+        if (nodeDocumentOf(slot) != document) {
+            i += 1;
+            continue;
+        }
+        _ = s.pending_slots.orderedRemove(i);
+        const slot_id = map.boundId(slot);
+        if (slot_id == 0) continue;
+        const nodes = distributedNodesOf(session, arena_state.allocator(), slot) catch continue;
+        session.emit(D.distributedNodesUpdated, .{ .insertionPointId = slot_id, .distributedNodes = nodes });
+    }
+}
+
+/// BuildDistributedNodesForSlot: the slot's assigned nodes as BackendNodes,
+/// whitespace-only text left out.
+fn distributedNodesOf(session: *PageSession, arena: Allocator, slot: *runtime.Instance) ![]const D.BackendNode {
+    var out: std.ArrayListUnmanaged(D.BackendNode) = .empty;
+    const base = dom.instance_bridge.getNodeBase(slot) orelse return out.items;
+    const state = dom.slot_helpers.slotState(base) orelse return out.items;
+    for (state.assigned_nodes.items) |ref| {
+        const assigned = ref.get() orelse continue;
+        const node = assigned.registeredInstance() orelse continue;
+        if (skipped(session, node)) continue;
+        try out.append(arena, try backendNodeOf(session, arena, node));
+    }
+    return out.items;
+}
+
+/// BuildBackendNode.
+fn backendNodeOf(session: *PageSession, arena: Allocator, node: *runtime.Instance) !D.BackendNode {
+    const ids = nodeIds(session) orelse return error.OutOfMemory;
+    var name = interfaces.Node.get_nodeName(node) catch runtime.DOMString.initEmpty();
+    defer name.deinit(node.ctx.allocator);
+    return .{
+        .nodeType = interfaces.Node.get_nodeType(node) catch 0,
+        .nodeName = try arena.dupe(u8, name.asSlice()),
+        .backendNodeId = try ids.idOf(node),
+    };
 }
 
 /// TopLayerElementsChanged: the top layer of a document in the session's
@@ -544,7 +1524,7 @@ fn invalidateFrameOwnerElement(session: *PageSession, navigable_id: u64) void {
     unbind(session, map, owner);
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const value = buildNode(session, arena_state.allocator(), owner, 0, false, map) catch return;
+    const value = buildNode(session, arena_state.allocator(), owner, 0, false, .{ .bindings = &map.document }) catch return;
     const previous = innerPreviousSibling(session, owner);
     const previous_id = if (previous) |p| map.boundId(p) else 0;
     session.emit(D.childNodeInserted, .{ .parentNodeId = parent_id, .previousNodeId = previous_id, .node = value });
@@ -562,6 +1542,10 @@ fn unbind(session: *PageSession, map: *NodeMap, node: *runtime.Instance) void {
         const forgotten = map.forget(current);
         if (forgotten.id == 0) continue;
         if ((interfaces.Node.get_nodeType(current) catch 0) == 1) {
+            // "ForEachSupportedPseudo(element, unbind_pseudo)".
+            for (pseudo_kinds) |pseudo| _ = map.forgetPseudo(current, pseudo.kind);
+            const s = &session.states.DOM;
+            if (s.pseudo_state.remove(@intFromPtr(current))) s.pseudo_state_guard.noteRemoval(&s.pseudo_state);
             if (contentNavigableOf(session, current)) |bc| {
                 if (frames.documentOf(bc)) |document| stack.append(session.allocator, document) catch {};
             }
@@ -643,36 +1627,39 @@ fn innerParent(session: *PageSession, node: *runtime.Instance) ?*runtime.Instanc
 
 /// PushChildNodesToFrontend: the bound node `node_id`'s children, to
 /// `depth`, sent as DOM.setChildNodes - or, for children the client has,
-/// their children further down.
+/// their children further down - in the map the node is bound in (the
+/// document's, or a detached tree's: id_to_nodes_map_).
 fn pushChildNodes(session: *PageSession, node_id: i64, depth: i64, pierce: bool) !void {
     const map = session.states.DOM.map orelse return;
     const node = map.nodeOf(node_id) orelse return;
     const node_type = interfaces.Node.get_nodeType(node) catch 0;
     if (node_type != 1 and node_type != 9 and node_type != 11) return;
+    const bindings = map.bindingsOf(node_id) orelse return;
     if (map.childrenRequested(node_id)) {
         if (depth <= 1) return;
         var child = innerFirstChild(session, node);
         while (child) |c| : (child = innerNextSibling(session, c)) {
-            const child_id = map.boundId(c);
+            const child_id = bindings.idOf(c);
             if (child_id != 0) try pushChildNodes(session, child_id, depth - 1, pierce);
         }
         return;
     }
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const children = try buildChildren(session, arena_state.allocator(), node, depth, pierce, map);
+    const children = try buildChildren(session, arena_state.allocator(), node, depth, pierce, .{ .bindings = bindings });
     session.emit(D.setChildNodes, .{ .parentId = node_id, .nodes = children });
 }
 
-/// PushNodePathToFrontend: `node`'s id, after the client has been sent every
-/// ancestor's children down from the nearest bound ancestor; 0 when the
-/// client has no document, or the node is outside it (Blink's detached-
-/// subtree push is not part of this command set).
-fn pushNodePath(session: *PageSession, node: *runtime.Instance) !i64 {
+/// PushNodePathToFrontend(node, nodes_map): `node`'s id in `bindings`,
+/// after the client has been sent every ancestor's children down from the
+/// nearest ancestor in that map; 0 when the client has no document, or the
+/// node's tree does not reach the map.
+fn pushNodePathIn(session: *PageSession, node: *runtime.Instance, bindings: *Bindings) !i64 {
     const map = session.states.DOM.map orelse return 0;
+    // "InspectorDOMAgent might have been resetted already."
     const document = topDocument(session) orelse return 0;
     if (map.boundId(document) == 0) return 0;
-    const known = map.boundId(node);
+    const known = bindings.idOf(node);
     if (known != 0) return known;
     var path: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer path.deinit(session.allocator);
@@ -680,25 +1667,128 @@ fn pushNodePath(session: *PageSession, node: *runtime.Instance) !i64 {
     while (true) {
         const parent = innerParent(session, current) orelse return 0;
         try path.append(session.allocator, parent);
-        if (map.boundId(parent) != 0) break;
+        if (bindings.contains(parent)) break;
         current = parent;
     }
     var i = path.items.len;
     while (i > 0) {
         i -= 1;
-        const id = map.boundId(path.items[i]);
+        const id = bindings.idOf(path.items[i]);
         if (id != 0) try pushChildNodes(session, id, 1, false);
     }
-    return map.boundId(node);
+    return bindings.idOf(node);
 }
 
-/// Blink's BuildObjectForNode. With `map` the node and what is built under it
-/// are bound (pushed to the client); without one a node's id is the one the
-/// client has, if any.
-fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, depth_in: i64, pierce: bool, map: ?*NodeMap) Allocator.Error!D.Node {
+/// PushNodePathToFrontend(node): its path in the document's map, or - for a
+/// node outside the document ("Node being pushed is detached -> push subtree
+/// root") - its tree's root, built at depth 0 into a map of its own that
+/// holds the root, sent as setChildNodes with parent 0, then its path in
+/// that map. 0 with no agent document (an agent not enabled).
+fn pushNodePath(session: *PageSession, node: *runtime.Instance) !i64 {
+    if (!session.states.DOM.enabled) return 0;
+    const map = try mapOf(session);
+    const id = try pushNodePathIn(session, node, &map.document);
+    if (id != 0) return id;
+    var root = node;
+    while (innerParent(session, root)) |parent| root = parent;
+    const dangling = try map.newDangling(root);
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const nodes = try arena_state.allocator().alloc(D.Node, 1);
+    nodes[0] = try buildNode(session, arena_state.allocator(), root, 0, false, .{ .bindings = dangling });
+    session.emit(D.setChildNodes, .{ .parentId = 0, .nodes = nodes });
+    return pushNodePathIn(session, node, dangling);
+}
+
+/// Where BuildObjectForNode puts what it builds: the map it binds into
+/// (none: the node's id is the one the client has, if any, and nothing is
+/// bound) and, for getFlattenedDocument, the flat list that takes every
+/// node built under the root (flatten_result).
+const Build = struct {
+    bindings: ?*Bindings = null,
+    flatten: ?*std.ArrayListUnmanaged(D.Node) = null,
+    /// The node was just inserted: Blink's style recalc has not made its
+    /// pseudo-elements yet, so it is built with none (the next rendering
+    /// update adds them: pseudoElementAdded). Not passed to what is built
+    /// under it.
+    no_pseudos: bool = false,
+};
+
+/// The pseudo-elements CDP's DOM.Node lists, in ForEachSupportedPseudo's
+/// order (inspector_dom_agent.cc): each with its key kind (NodeIds.
+/// pseudoKey), its node name (PseudoElementTagName: "::before") and type.
+const PseudoKind = struct {
+    kind: u3,
+    name: []const u8,
+    pseudo_type: D.PseudoType,
+};
+const pseudo_kinds = [_]PseudoKind{
+    .{ .kind = 1, .name = "::before", .pseudo_type = .before },
+    .{ .kind = 2, .name = "::after", .pseudo_type = .after },
+    .{ .kind = 3, .name = "::marker", .pseudo_type = .marker },
+    .{ .kind = 4, .name = "::backdrop", .pseudo_type = .backdrop },
+};
+
+fn hasPseudo(bits: dom.style.engine.GeneratedPseudos, kind: u3) bool {
+    return switch (kind) {
+        1 => bits.before,
+        2 => bits.after,
+        3 => bits.marker,
+        4 => bits.backdrop,
+        else => false,
+    };
+}
+
+/// The pseudo-elements `element` has as far as the agent knows - as of the
+/// style recalc that last looked at it (the rendering update's walk), or,
+/// for an element no recalc has looked at, as its style says now - and
+/// remembered so the next rendering update reports changes from it.
+fn pseudosOf(session: *PageSession, element: *runtime.Instance, fresh: bool) dom.style.engine.GeneratedPseudos {
+    const s = &session.states.DOM;
+    const generation = runtime.SlabAllocator.generationOf(element);
+    if (s.pseudo_state.get(@intFromPtr(element))) |record| {
+        if (record.generation == generation) return record.bits;
+    }
+    // A session whose agent is not enabled (describeNode from a runner)
+    // is told of none: Crane has no PseudoElement nodes to read, and a
+    // style resolution per described node is a cost no runner asked for.
+    // Blink reads the ones its last style recalc made.
+    if (!s.enabled) return .{};
+    if (s.in_probe and !fresh) return .{};
+    const bits: dom.style.engine.GeneratedPseudos = if (fresh) .{} else dom.style.engine.generatedPseudos(element);
+    s.pseudo_state.put(session.allocator, @intFromPtr(element), .{ .generation = generation, .bits = bits }) catch {};
+    return bits;
+}
+
+/// BuildObjectForNode for a pseudo-element (a PseudoElement node in Blink):
+/// an element named "::before" and the like, with no attributes and no
+/// children, bound in the document's map when building there.
+fn buildPseudoNode(session: *PageSession, element: *runtime.Instance, pseudo: PseudoKind, bind: bool) Allocator.Error!D.Node {
+    const ids = nodeIds(session) orelse return error.OutOfMemory;
+    const map = session.states.DOM.map;
+    const id: i64 = if (map) |m| (if (bind) try m.bindPseudo(element, pseudo.kind) else m.pseudoId(element, pseudo.kind)) else 0;
+    if (bind) try map.?.setChildCount(id, 0);
+    return .{
+        .nodeId = id,
+        .backendNodeId = try ids.idOfPseudo(element, pseudo.kind),
+        .nodeType = 1,
+        .nodeName = pseudo.name,
+        .localName = pseudo.name,
+        .nodeValue = "",
+        .attributes = &.{},
+        .pseudoType = pseudo.pseudo_type,
+        .childNodeCount = 0,
+    };
+}
+
+/// Blink's BuildObjectForNode. With `build.bindings` the node and what is
+/// built under it are bound (pushed to the client); without one a node's id
+/// is the one the client has, if any.
+fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, depth_in: i64, pierce: bool, build: Build) Allocator.Error!D.Node {
     var depth = depth_in;
     const ids = nodeIds(session) orelse return error.OutOfMemory;
-    const node_id: i64 = if (map) |m| try m.bind(node) else if (session.states.DOM.map) |m| m.boundId(node) else 0;
+    const map = session.states.DOM.map;
+    const node_id: i64 = if (build.bindings) |b| try map.?.bindIn(b, node) else if (map) |m| m.boundId(node) else 0;
     const node_type = interfaces.Node.get_nodeType(node) catch 0;
     var name = interfaces.Node.get_nodeName(node) catch runtime.DOMString.initEmpty();
     defer name.deinit(node.ctx.allocator);
@@ -725,7 +1815,7 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
                 described.frameId = try arena.dupe(u8, session.frameId(bc.id).slice());
                 if (frames.documentOf(bc)) |document| {
                     const content = try arena.create(D.Node);
-                    content.* = try buildNode(session, arena, document, if (pierce) depth else 0, pierce, map);
+                    content.* = try buildNode(session, arena, document, if (pierce) depth else 0, pierce, build);
                     described.contentDocument = content;
                 }
             }
@@ -739,7 +1829,7 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
             // piercing; the host's children go with it.
             if (@import("dom").shadow_hosts.rootForHost(node)) |root| {
                 const roots = try arena.alloc(D.Node, 1);
-                roots[0] = try buildNode(session, arena, root, if (pierce) depth else 0, pierce, map);
+                roots[0] = try buildNode(session, arena, root, if (pierce) depth else 0, pierce, build);
                 described.shadowRoots = roots;
                 force_push_children = true;
             }
@@ -749,10 +1839,33 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
             if (isHtmlElementNamed(node, "template")) {
                 if (interfaces.HTMLTemplateElement.get_content(node) catch null) |content| {
                     const template_content = try arena.create(D.Node);
-                    template_content.* = try buildNode(session, arena, content, 0, pierce, map);
+                    template_content.* = try buildNode(session, arena, content, 0, pierce, build);
                     described.templateContent = template_content;
                     force_push_children = true;
                 }
+            }
+            // A slotted element names its slot (AssignedSlotWithoutRecalc).
+            if (assignedSlotOf(node)) |slot| described.assignedSlot = try backendNodeOf(session, arena, slot);
+            // Its pseudo-elements (BuildArrayForPseudoElements), which go
+            // with it.
+            {
+                const bits = pseudosOf(session, node, build.no_pseudos);
+                var pseudos: std.ArrayListUnmanaged(D.Node) = .empty;
+                const bind = if (build.bindings) |b| b == &map.?.document else false;
+                for (pseudo_kinds) |pseudo| {
+                    if (!hasPseudo(bits, pseudo.kind)) continue;
+                    try pseudos.append(arena, try buildPseudoNode(session, node, pseudo, bind));
+                }
+                if (pseudos.items.len != 0) {
+                    described.pseudoElements = pseudos.items;
+                    force_push_children = true;
+                }
+            }
+            // A slot in a shadow tree: its distributed nodes, and its
+            // children go with it.
+            if (isHtmlElementNamed(node, "slot") and inShadowTree(node)) {
+                described.distributedNodes = try distributedNodesOf(session, arena, node);
+                force_push_children = true;
             }
         },
         // TEXT, CDATA_SECTION, PROCESSING_INSTRUCTION, COMMENT: the value,
@@ -766,6 +1879,7 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
         },
         // DOCUMENT_NODE
         9 => {
+            if (dom.style.adopted.arrayExists(node)) described.adoptedStyleSheets = try adoptedSheetIds(session, arena, node);
             const url = interfaces.Document.get_URL(node) catch "";
             defer if (url.len > 0) node.ctx.allocator.free(url);
             described.documentURL = try arena.dupe(u8, url);
@@ -785,9 +1899,10 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
             described.publicId = try arena.dupe(u8, public_id.asSlice());
             described.systemId = try arena.dupe(u8, system_id.asSlice());
         },
-        // DOCUMENT_FRAGMENT_NODE: a shadow root's type.
+        // DOCUMENT_FRAGMENT_NODE: a shadow root's type and adopted sheets.
         11 => {
             if (node.implements(interfaces.ShadowRoot.State)) {
+                if (dom.style.adopted.arrayExists(node)) described.adoptedStyleSheets = try adoptedSheetIds(session, arena, node);
                 described.shadowRootType = switch (interfaces.ShadowRoot.get_mode(node) catch ._open_) {
                     ._open_ => .open,
                     ._closed_ => .closed,
@@ -805,40 +1920,46 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
         described.childNodeCount = count;
         // The count the client now has: childNodeCountUpdated's base
         // (cached_child_count_, for the document's map).
-        if (map) |m| try m.setChildCount(node_id, count);
-        if (map != null and force_push_children and depth == 0) depth = 1;
-        const children = try buildChildren(session, arena, node, depth, pierce, map);
+        if (build.bindings) |b| if (b == &map.?.document) try map.?.setChildCount(node_id, count);
+        if (build.bindings != null and force_push_children and depth == 0) depth = 1;
+        var under = build;
+        under.no_pseudos = false;
+        const children = try buildChildren(session, arena, node, depth, pierce, under);
+        // "Push children along with shadow in any case."
         if (children.len != 0 or depth != 0) described.children = children;
     }
     return described;
 }
 
 /// BuildArrayForContainerChildren: `container`'s children to `depth`, each
-/// with its parentId. At depth 0 with a node map, an only text child is
-/// pushed anyway, as if the container's children had been asked for.
-fn buildChildren(session: *PageSession, arena: Allocator, container: *runtime.Instance, depth: i64, pierce: bool, map: ?*NodeMap) Allocator.Error![]const D.Node {
+/// with its parentId - into the flat list instead, for getFlattenedDocument.
+/// At depth 0 with a map, an only text child is pushed anyway, as if the
+/// container's children had been asked for.
+fn buildChildren(session: *PageSession, arena: Allocator, container: *runtime.Instance, depth: i64, pierce: bool, build: Build) Allocator.Error![]const D.Node {
     var children: std.ArrayListUnmanaged(D.Node) = .empty;
+    const map = session.states.DOM.map;
     if (depth == 0) {
-        const m = map orelse return children.items;
+        const bindings = build.bindings orelse return children.items;
         const first = interfaces.Node.get_firstChild(container) catch null;
         if (first) |only| {
             if ((interfaces.Node.get_nodeType(only) catch 0) == 3 and (interfaces.Node.get_nextSibling(only) catch null) == null) {
-                var child_node = try buildNode(session, arena, only, 0, pierce, map);
-                const parent_id = try m.bind(container);
+                var child_node = try buildNode(session, arena, only, 0, pierce, build);
+                const parent_id = try map.?.bindIn(bindings, container);
                 child_node.parentId = parent_id;
-                try children.append(arena, child_node);
-                try m.markChildrenRequested(parent_id);
+                if (build.flatten) |flat| try flat.append(arena, child_node) else try children.append(arena, child_node);
+                try map.?.markChildrenRequested(parent_id);
             }
         }
         return children.items;
     }
-    const parent_id: i64 = if (map) |m| try m.bind(container) else 0;
-    if (map) |m| try m.markChildrenRequested(parent_id);
+    // Bind(container, nodes_map): 0 with no map.
+    const parent_id: i64 = if (build.bindings) |b| try map.?.bindIn(b, container) else 0;
+    if (build.bindings != null) try map.?.markChildrenRequested(parent_id);
     var child = innerFirstChild(session, container);
     while (child) |c| : (child = innerNextSibling(session, c)) {
-        var child_node = try buildNode(session, arena, c, depth - 1, pierce, map);
-        if (map != null) child_node.parentId = parent_id;
-        try children.append(arena, child_node);
+        var child_node = try buildNode(session, arena, c, depth - 1, pierce, build);
+        child_node.parentId = parent_id;
+        if (build.flatten) |flat| try flat.append(arena, child_node) else try children.append(arena, child_node);
     }
     return children.items;
 }
@@ -868,6 +1989,21 @@ fn compatibilityModeOf(document: *runtime.Instance) ?D.CompatibilityMode {
         .limited_quirks => .LimitedQuirksMode,
         .no_quirks => .NoQuirksMode,
     };
+}
+
+/// The slot `node` is assigned to, if any.
+fn assignedSlotOf(node: *runtime.Instance) ?*runtime.Instance {
+    const base = dom.instance_bridge.getNodeBase(node) orelse return null;
+    const slottable = dom.slot_helpers.slottable(base) orelse return null;
+    const slot = slottable.state.assignedSlot() orelse return null;
+    return slot.registeredInstance();
+}
+
+/// Whether `node`'s root is a shadow root (Node::IsInShadowTree).
+fn inShadowTree(node: *runtime.Instance) bool {
+    var current = node;
+    while (interfaces.Node.get_parentNode(current) catch null) |parent| current = parent;
+    return current.implements(interfaces.ShadowRoot.State);
 }
 
 /// An element in the SVG namespace (Blink's IsSVGElement).
