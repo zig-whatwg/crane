@@ -530,9 +530,12 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
     // Its entries, and its descendants', leave the traversable's history.
     if (integration.browsing_context) |bc| {
         if (bc.getTop().joint_history) |history| {
+            // The Browser's allocator, read once: the walk below can end
+            // navigables, and the list outlives none of them.
+            const allocator = bc.allocator;
             var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-            defer tree.deinit(std.heap.page_allocator);
-            bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+            defer tree.deinit(allocator);
+            bc.collectDescendants(allocator, &tree) catch {};
             for (tree.items) |gone| history.removeNavigable(gone.id);
             // A traversal waiting on one of them no longer does (lane nav2
             // C1: the queue's liveness when a navigable goes).
@@ -578,10 +581,13 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
 fn reportDestroyedTree(bc: *BrowsingContext) void {
     const navigables = bc.navigables orelse return;
     if (navigables.observer == null) return;
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
+    defer tree.deinit(allocator);
     // collectDescendants lists `bc` itself first: each navigable once.
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    bc.collectDescendants(allocator, &tree) catch {};
     var i = tree.items.len;
     while (i > 0) {
         i -= 1;
@@ -602,10 +608,13 @@ fn reportDestroyedTree(bc: *BrowsingContext) void {
 /// teardown waits for the global's end (dom.unloading_cleanup). The windows
 /// of the navigables inside it are always discarded with their documents.
 pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.WindowFate) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    defer tree.deinit(allocator);
+    tree.append(allocator, bc) catch return;
+    bc.collectDescendants(allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
         // A document its unload kept for the back/forward cache is not
@@ -656,10 +665,13 @@ pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.Windo
 /// first too - the browsers agree, so their order (golden rule 2). No event
 /// fires and no script runs in either order: the abort is "firing nothing".
 pub fn destroyDocumentsAtBrowserEnd(bc: *BrowsingContext) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    defer tree.deinit(allocator);
+    tree.append(allocator, bc) catch return;
+    bc.collectDescendants(allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
         // A document the back/forward cache keeps: as destroyWindowDocuments.

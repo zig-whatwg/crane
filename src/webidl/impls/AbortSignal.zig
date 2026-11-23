@@ -143,11 +143,30 @@ fn removeAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) void {
     }
 }
 
+/// DOM § 3.3 "remove an algorithm from an AbortSignal", for an owner that
+/// frees the algorithm's context once it is off the signal
+/// (dom.abort_algorithms.removeListed): whether `ctx`'s algorithm was still
+/// in signal's abort algorithms. Not while the abort steps walk them: they
+/// took the list first (`runAbortSteps`), and the walk runs what it took.
+/// From the end: an owner removes its most recent algorithms most often (a
+/// listener added and removed again), and each `ctx` is listed once.
+fn removeListedAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) bool {
+    const internal = getInternal(instance) orelse return false;
+    var i = internal.abort_algorithms.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (internal.abort_algorithms.items[i].ctx != ctx) continue;
+        _ = internal.abort_algorithms.orderedRemove(i);
+        return true;
+    }
+    return false;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Nobody can hold a signal to add an algorithm to before one exists.
-    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal, .signal_abort = signalAbortHook });
+    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .remove_listed = removeListedAlgorithm, .create_dependent = createDependentAbortSignal, .signal_abort = signalAbortHook });
 }
 
 /// AbortSignal's own construction steps: the generated chain runs

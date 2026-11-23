@@ -527,10 +527,13 @@ pub fn availableQuota(document: *runtime.Instance, request_origin: ?[]const u8, 
     //    descendant navigables whose active document's control document is
     //    controlDocument:
     if (navigable) |top| {
+        // The Browser's allocator, read once: the walk below can end
+        // navigables, and the list outlives none of them.
+        const allocator = top.allocator;
         var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-        defer tree.deinit(std.heap.page_allocator);
+        defer tree.deinit(allocator);
         // Inclusive: collectDescendants puts `top` first.
-        top.collectDescendants(std.heap.page_allocator, &tree) catch {};
+        top.collectDescendants(allocator, &tree) catch {};
         for (tree.items) |bc| {
             const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse continue));
             if (bc != top and controlDocumentOf(active) != control) continue;
@@ -609,9 +612,12 @@ pub fn reserveQuota(navigable: *BrowsingContext, container: *runtime.Instance, o
 /// reservation is minimal quota - `navigable`'s own, set to 0 by step 1,
 /// is not among them.
 fn minimalReservations(top: *BrowsingContext, navigable: *BrowsingContext) usize {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = top.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    top.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    defer tree.deinit(allocator);
+    top.collectDescendants(allocator, &tree) catch {};
     var count: usize = 0;
     // Descendants only: collectDescendants puts `top` first.
     for (tree.items[@min(1, tree.items.len)..]) |bc| {

@@ -34,6 +34,7 @@ pub const Algorithm = struct {
 pub const Implementation = struct {
     add: *const fn (signal: *runtime.Instance, algorithm: Algorithm) anyerror!void,
     remove: *const fn (signal: *runtime.Instance, ctx: *anyopaque) void,
+    remove_listed: *const fn (signal: *runtime.Instance, ctx: *anyopaque) bool,
     create_dependent: *const fn (ctx: runtime.Context, signals: []const *runtime.Instance) anyerror!*runtime.Instance,
     /// DOM "signal abort" on `signal` with `reason` (borrowed; undefined for
     /// none, which makes a new "AbortError" DOMException).
@@ -77,6 +78,18 @@ pub fn remove(signal: *runtime.Instance, ctx: *anyopaque) void {
     impl.remove(signal, ctx);
 }
 
+/// "Remove an algorithm from an AbortSignal" for an owner that frees `ctx`
+/// once it is off the signal: removes the algorithm whose `ctx` is `ctx`,
+/// and says whether the signal still listed it. False once its abort steps
+/// began - they take the whole list before they walk it ("run the abort
+/// steps" steps 1-2), so an algorithm not yet reached is the walk's, which
+/// will run it - and for one it never held or already dropped. The owner
+/// frees `ctx` only on true; on false the walk's `run` (or no one) holds it.
+pub fn removeListed(signal: *runtime.Instance, ctx: *anyopaque) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.remove_listed(signal, ctx);
+}
+
 test "add without an installed implementation reports NotSupported, remove is a no-op" {
     const std = @import("std");
     const override = implementation.overrideForTest(null);
@@ -89,4 +102,5 @@ test "add without an installed implementation reports NotSupported, remove is a 
     }.run;
     try std.testing.expectError(error.NotSupported, add(&signal, .{ .ctx = &ctx, .run = noop }));
     remove(&signal, &ctx);
+    try std.testing.expect(!removeListed(&signal, &ctx));
 }

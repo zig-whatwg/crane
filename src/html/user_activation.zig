@@ -67,9 +67,12 @@ pub fn notifyActivation(document: *Instance) void {
         // document's descendant navigables, filtered to include only those
         // navigables whose active document's origin is same origin with
         // document's origin."
+        // The Browser's allocator, read once: the walk below can end
+        // navigables, and the list outlives none of them.
+        const allocator = context.allocator;
         var descendants: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-        defer descendants.deinit(std.heap.page_allocator);
-        context.collectDescendants(std.heap.page_allocator, &descendants) catch {};
+        defer descendants.deinit(allocator);
+        context.collectDescendants(allocator, &descendants) catch {};
         for (descendants.items) |descendant| {
             if (descendant == context or descendant.orphaned) continue;
             if (!activeDocumentSameOrigin(descendant, document)) continue;
@@ -276,7 +279,7 @@ fn framebustingAllowed(context: *BrowsingContext, top: *BrowsingContext) bool {
 /// Whether the active windows of `a` and `b` have the same origin (an opaque
 /// origin is the same as none other).
 fn sameOriginWith(a: *BrowsingContext, b: *BrowsingContext) bool {
-    const allocator = std.heap.page_allocator;
+    const allocator = a.allocator;
     const origin_a = windowOriginOf(a, allocator) orelse return false;
     defer allocator.free(origin_a);
     const origin_b = windowOriginOf(b, allocator) orelse return false;
@@ -296,7 +299,7 @@ fn windowOriginOf(context: *BrowsingContext, allocator: std.mem.Allocator) ?[]u8
 /// WebKit's last step: `url` has the scheme of `top`'s origin, and the same
 /// host or registrable domain.
 fn sameSiteWithTop(top: *BrowsingContext, url: []const u8) bool {
-    const allocator = std.heap.page_allocator;
+    const allocator = top.allocator;
     const url_mod = @import("url");
     const parse = url_mod.parser.basic_url_parser.parse;
     const origin = windowOriginOf(top, allocator) orelse return false;
@@ -344,9 +347,12 @@ fn windowsOfTop(window: *Instance, out: []*Instance) usize {
     const top = context.getTop();
     // Step 3: "Let navigables be the inclusive descendant navigables of
     // top's active document." Step 4: their active windows.
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = top.allocator;
     var navigables: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer navigables.deinit(std.heap.page_allocator);
-    top.collectDescendants(std.heap.page_allocator, &navigables) catch {};
+    defer navigables.deinit(allocator);
+    top.collectDescendants(allocator, &navigables) catch {};
     var count: usize = 0;
     for (navigables.items) |navigable| {
         if (navigable.orphaned or count == out.len) continue;
