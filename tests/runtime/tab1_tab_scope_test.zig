@@ -10,7 +10,7 @@ const testing = std.testing;
 const Probe = struct {
     ended: *std.ArrayListUnmanaged(u8),
     tag: u8,
-    fn deinit(self: *Probe) void {
+    pub fn deinit(self: *Probe) void {
         self.ended.append(testing.allocator, self.tag) catch {};
     }
 };
