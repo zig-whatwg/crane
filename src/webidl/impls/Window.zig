@@ -2744,8 +2744,17 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
 
 /// Operation: showDirectoryPicker
 pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    // File System Access 3.5, steps 1-4: everything before the prompt (a
+    // throw rejects the promise). The prompt has no UI here: NotImplemented.
+    // 1. Let environment be this's relevant settings object.
+    const given: dictionaries.DirectoryPickerOptions = if (options.was_passed) options.value else .{};
+    // 2. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment - its argument checks (validateStartingDirectoryId).
+    if (given.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 3. Let global be environment's global object.
+    // 4. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
     return error.NotImplemented;
 }
 
@@ -2847,11 +2856,156 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
     moveOrResize(instance, internal, rect);
 }
 
-/// Operation: showSaveFilePicker
+/// Operation: showSaveFilePicker(options) - File System Access 3.4 (specs/w3c/
+/// file-system-access.md), steps 1-5: everything before the prompt. A throw
+/// rejects the promise (a promise-returning operation). The prompt itself
+/// (step 7) needs a UI the headless engine does not have: NotImplemented.
 pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.SaveFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
+}
+
+/// showOpenFilePicker() and showSaveFilePicker() steps 1-5 (File System
+/// Access 3.3 and 3.4, the same steps): what Chromium's global_file_system_
+/// access.cc checks before it asks the browser for a picker - ConvertAccepts
+/// with VerifyIsValidExtension (2), VerifyIsValidId (3),
+/// VerifyIsAllowedToShowFilePicker (5). Only Chrome ships these pickers.
+fn filePickerArgumentSteps(instance: *runtime.Instance, options: dictionaries.FilePickerOptions) anyerror!void {
+    // 1. Let environment be this's relevant settings object.
+    // 2. Let accepts options be the result of processing accept types given
+    //    options.
+    try processAcceptTypes(instance.ctx, options);
+    // 3. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment. Its first two steps are the argument checks; the
+    //    rest chooses a path for the prompt, which there is none of.
+    if (options.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 4. Let global be environment's global object.
+    // 5. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
+}
+
+/// File System Access 3.2.1 "process accept types" given options - the
+/// validation it performs (the accepts options list itself is only the
+/// prompt's): every type string a MIME type without parameters, every suffix
+/// valid. Chromium: ConvertAccepts.
+fn processAcceptTypes(realm: runtime.Context, options: dictionaries.FilePickerOptions) anyerror!void {
+    const allocator = realm.allocator;
+    // 1. Let accepts options be an empty list of tuples.
+    var accepts_options: usize = 0;
+    // 2. For each type of options["types"]:
+    for (options.types orelse &.{}) |picker_type| {
+        //  1. For each typeString -> suffixes of type["accept"]:
+        for (picker_type.accept orelse &.{}) |entry| {
+            //  1. Let parsedType be the result of parse a MIME type with
+            //     typeString.
+            //  2. If parsedType is failure, then throw a TypeError.
+            //  3. If parsedType's parameters are not empty, then throw a
+            //     TypeError.
+            try requireMimeTypeWithoutParameters(allocator, entry.key);
+            //  4. If suffixes is a string: validate a suffix given suffixes.
+            //  5. Otherwise, for each suffix of suffixes: validate a suffix
+            //     given suffix. (suffixes is `(USVString or
+            //     sequence<USVString>)`: an Object with @@iterator is the
+            //     sequence, anything else its string, WebIDL 3.2.25.)
+            if (engine.typeOf(realm, entry.value) == .object) {
+                if (try engine.convertToSequenceOfDOMStrings(realm, entry.value, allocator)) |suffixes| {
+                    defer {
+                        for (suffixes) |suffix| allocator.free(suffix);
+                        allocator.free(suffixes);
+                    }
+                    for (suffixes) |suffix| try validateSuffix(suffix);
+                    continue;
+                }
+            }
+            const suffix = try engine.convertToUSVString(realm, entry.value, allocator);
+            defer allocator.free(suffix);
+            try validateSuffix(suffix);
+        }
+        //  2-5. The filter, the description, and append (description,
+        //       filter) to accepts options.
+        accepts_options += 1;
+    }
+    // 3. If either accepts options is empty, or
+    //    options["excludeAcceptAllOption"] is false: append the "all files"
+    //    option.
+    // 4. If accepts options is empty, then throw a TypeError.
+    // Deviation, stated (golden rule 2): as written, step 3 appends "all
+    // files" to an empty list whatever excludeAcceptAllOption says, so step
+    // 4 can never throw. Chrome - the only browser that ships the pickers -
+    // throws a TypeError when the list is empty and excludeAcceptAllOption
+    // is true ("Need at least one accepted type": global_file_system_access.cc,
+    // showOpenFilePicker / showSaveFilePicker after ConvertAccepts), and so
+    // does WPT file-system-access/showPicker-errors.https.window.js ("File
+    // picker requires at least one accepted type"). So "all files" is
+    // appended only when excludeAcceptAllOption is false.
+    const exclude_accept_all = options.excludeAcceptAllOption orelse false;
+    if (accepts_options == 0 and exclude_accept_all) return error.TypeError;
+    if (!exclude_accept_all) accepts_options += 1;
+}
+
+/// "Parse a MIME type" (MIME Sniffing 4.4) of `type_string` - failure, or
+/// parameters, is a TypeError (process accept types 2.1.1-2.1.3).
+fn requireMimeTypeWithoutParameters(allocator: std.mem.Allocator, type_string: []const u8) anyerror!void {
+    const mime_type = @import("mimesniff").mime_type;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const code_units = std.unicode.utf8ToUtf16LeAlloc(arena.allocator(), type_string) catch return error.TypeError;
+    var parsed = (try mime_type.parseMimeTypeFromString(allocator, arena.allocator(), code_units)) orelse return error.TypeError;
+    defer parsed.deinit();
+    if (!parsed.parameters.isEmpty()) return error.TypeError;
+}
+
+/// File System Access "validate a suffix" (3.2.1). Chromium:
+/// VerifyIsValidExtension, IsValidSuffixCodePoint.
+fn validateSuffix(suffix: []const u8) anyerror!void {
+    // 1. If suffix does not start with ".", then throw a TypeError.
+    if (!std.mem.startsWith(u8, suffix, ".")) return error.TypeError;
+    // 2. If suffix contains any code points that are not valid suffix code
+    //    points - ASCII alphanumeric, U+002B (+), U+002E (.) - then throw a
+    //    TypeError. (A non-ASCII code point's UTF-8 bytes are none of them.)
+    for (suffix) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '+' or byte == '.')) return error.TypeError;
+    }
+    // 3. If suffix ends with ".", then throw a TypeError.
+    if (std.mem.endsWith(u8, suffix, ".")) return error.TypeError;
+    // 4. If suffix's length is more than 16, then throw a TypeError. (All
+    //    ASCII by step 2: a byte is a code point.)
+    if (suffix.len > 16) return error.TypeError;
+}
+
+/// "Determine the directory the picker will start in" steps 1-2 (File
+/// System Access 3.2.2, wicg.github.io/file-system-access - the algorithm the
+/// fetched markdown lost): an id that is not a valid path id (ASCII
+/// alphanumeric, "_", "-"), or longer than 32, is a TypeError. Chromium:
+/// VerifyIsValidId, IsValidIdCodePoint.
+fn validateStartingDirectoryId(id: []const u8) anyerror!void {
+    // 1. If id given, and is not a valid path id, then throw a TypeError.
+    for (id) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '-')) return error.TypeError;
+    }
+    // 2. If id's length is more than 32, then throw a TypeError.
+    if (id.len > 32) return error.TypeError;
+}
+
+/// File System Access 3.2 "is allowed to show a file picker". Chromium:
+/// VerifyIsAllowedToShowFilePicker.
+fn verifyAllowedToShowFilePicker(instance: *runtime.Instance) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const origin = effectiveOrigin(instance, internal);
+    // 1. If environment's origin is an opaque origin, return a promise
+    //    rejected with a "SecurityError" DOMException.
+    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return error.SecurityError;
+    // 2. If environment's origin is not same origin with environment's
+    //    top-level origin, return a promise rejected with a "SecurityError".
+    const top_level = (try settingsTopLevelOrigin(instance)) orelse return error.SecurityError;
+    defer instance.ctx.allocator.free(top_level);
+    if (!std.mem.eql(u8, top_level, origin)) return error.SecurityError;
+    // 3. Let global be environment's global object.
+    // 4. If global does not have transient activation, then throw a
+    //    "SecurityError" DOMException.
+    if (!@import("html").user_activation.hasTransientActivation(instance)) return error.SecurityError;
 }
 
 /// Operation: blur
@@ -2868,10 +3022,12 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     // This would notify the platform to remove focus from the window
 }
 
-/// Operation: showOpenFilePicker
+/// Operation: showOpenFilePicker(options) - File System Access 3.3, steps
+/// 1-5 (filePickerArgumentSteps); the prompt (step 7) has no UI here:
+/// NotImplemented.
 pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.OpenFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
 }
 
