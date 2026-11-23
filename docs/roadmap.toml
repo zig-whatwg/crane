@@ -600,7 +600,7 @@ progress = [
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
@@ -789,19 +789,19 @@ progress = []
 
   [[infra.items]]
   name = "Design: transport, sessions, the exact command set the punted suites' runners send, mapping onto Crane's browser algorithms"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Isolated worlds in the engine (several JS worlds over one DOM, each with its own globals and wrappers; Blink's DOMWrapperWorld)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Transport + Target/Browser/Page/Runtime, then Input, Network/Fetch, DOM/Emulation/Log basics"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "The punted suites run against Crane by their own runners; frameworks page updated"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "cdp-live-dom"
