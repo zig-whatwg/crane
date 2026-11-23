@@ -1556,9 +1556,12 @@ pub fn preRemove(
     child: anytype,
     parent: anytype,
 ) (DOMException || error{OutOfMemory})!@TypeOf(child) {
-    // Step 1: If child's parent is not parent, throw NotFoundError
+    // Step 1: If child's parent is not parent, throw NotFoundError. Its text
+    // is Chrome's and Firefox's ("The node to be removed is not a child of
+    // this node."; Safari: "The object can not be found here."):
+    // runtime.exception_text, lane react1.
     if (child.parent_node != parent) {
-        return error.NotFoundError;
+        return runtime.exception_text.fail(error.NotFoundError, "The node to be removed is not a child of this node.");
     }
 
     // Step 2: Remove child
