@@ -73,6 +73,7 @@ pub const Process = struct {
     snapshot: ?[]u8,
 
     /// The process's own allocations (the snapshot): not any Browser's.
+    // page-allocator: the process's one startup buffer, the V8 snapshot (megabytes, whole pages), read once before any Browser and freed at the process's end.
     const allocator = std.heap.page_allocator;
 
     /// Start the process: the engine, then every hook. Once per process,

@@ -6454,8 +6454,9 @@ fn endLoadDelay(integration: *IFrameIntegration) void {
 /// document is not ready for post-load tasks, its navigable is delaying
 /// load events, or anything delays its active document's load event.
 fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
-    var children = dom_module.navigables.childNavigablesOf(document, std.heap.page_allocator);
-    defer children.deinit(std.heap.page_allocator);
+    const allocator = runtime.allocatorOf(document);
+    var children = dom_module.navigables.childNavigablesOf(document, allocator);
+    defer children.deinit(allocator);
     for (children.items) |child| {
         const integration = integrationOfBrowsingContext(child.browsing_context) orelse continue;
         // HTML 4.8.5: "An iframe element whose current navigation was lazy
@@ -6698,8 +6699,9 @@ fn findNavigableByName(document: *runtime.Instance, name: []const u8) Chosen {
     const top = topDocumentOf(document);
     for ([_]*runtime.Instance{ document, top }, 0..) |root, index| {
         if (index == 1 and root == document) break;
-        var documents = dom_module.navigables.inclusiveDescendantDocuments(root, std.heap.page_allocator);
-        defer documents.deinit(std.heap.page_allocator);
+        const allocator = runtime.allocatorOf(root);
+        var documents = dom_module.navigables.inclusiveDescendantDocuments(root, allocator);
+        defer documents.deinit(allocator);
         for (documents.items) |entry| {
             // The inclusive root has no container integration. It still
             // participates in step 4 through its active Window's navigable.
@@ -8832,7 +8834,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance, prompt: dom_module.auxi
         if (integration != null) bc.close();
         return .closed;
     }));
-    const allocator = std.heap.page_allocator;
+    const allocator = runtime.allocatorOf(document);
 
     // Steps 1-2: beforeunload at each document, parents first. The answer is
     // "continue" unless a prompt was shown and the user stayed; none is

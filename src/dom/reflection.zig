@@ -597,8 +597,12 @@ pub fn parseFloatingPoint(input: []const u8) ?f64 {
     // Steps 15-18. The exponent is clamped where it no longer changes the
     // result for any digit string shorter than the clamp.
     const clamped = std.math.clamp(exponent, -1_000_000, 1_000_000);
+    // A number's text is on the stack; a longer one's on libc's heap - no
+    // allocator is in reach of this leaf (an attribute value's parse), and
+    // std.heap.page_allocator mapped a page per call (docs/lessons/
+    // architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
     var fallback_buffer: [256]u8 = undefined;
-    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.page_allocator);
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
     const allocator = fallback.allocator();
     const text = std.fmt.allocPrint(allocator, "{s}{s}.{s}e{d}", .{
         if (negative) "-" else "",

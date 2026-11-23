@@ -844,6 +844,14 @@ fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 /// `threadlocal`, every agent's caches on the thread in one list.
 pub const Caches = std.ArrayListUnmanaged(*WrapperCache);
 
+/// What an agent's `Caches` list is allocated from: libc's heap. The list is
+/// the agent's (its record's), shared by its realms' caches, and no agent
+/// allocator is in reach where a cache joins or leaves it; it was
+/// std.heap.page_allocator, a page (and on Linux a mapping) for a few
+/// pointers (docs/lessons/architecture-std-heap-page-allocator-maps-a-page-
+/// per-allocation.md).
+const caches_allocator = std.heap.c_allocator;
+
 /// The current agent's live caches; null with no isolate current, or for an
 /// isolate createAgent did not make.
 fn currentCaches() ?*Caches {
@@ -912,7 +920,7 @@ pub fn endAgent(isolate: *v8.Isolate, caches: *Caches) void {
         cache.peers = null;
         cache.registered = false;
     }
-    caches.deinit(std.heap.page_allocator);
+    caches.deinit(caches_allocator);
     caches.* = .empty;
 }
 
@@ -2495,7 +2503,7 @@ pub const WrapperCache = struct {
         if (self.registered) return;
         self.isolate = isolate;
         const caches = @import("protocol_agents.zig").cachesOf(isolate) orelse return;
-        caches.append(std.heap.page_allocator, self) catch return;
+        caches.append(caches_allocator, self) catch return;
         self.peers = caches;
         self.registered = true;
         // The anchors' registry, whose weak processing calls the caches',
@@ -2516,7 +2524,7 @@ pub const WrapperCache = struct {
         }
         // The list's memory goes with its last cache (and with its agent,
         // `endAgent`).
-        if (caches.items.len == 0) caches.clearAndFree(std.heap.page_allocator);
+        if (caches.items.len == 0) caches.clearAndFree(caches_allocator);
         self.registered = false;
         self.peers = null;
     }

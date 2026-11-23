@@ -486,8 +486,9 @@ const PrintReply = struct {
 /// Fire `event_type` at `document`'s relevant global and at each child
 /// navigable's active window, parents first.
 fn fireAtTree(document: *runtime.Instance, comptime event_type: []const u8) void {
-    var documents = dom.navigables.inclusiveDescendantDocuments(document, std.heap.page_allocator);
-    defer documents.deinit(std.heap.page_allocator);
+    const allocator = runtime.allocatorOf(document);
+    var documents = dom.navigables.inclusiveDescendantDocuments(document, allocator);
+    defer documents.deinit(allocator);
     for (documents.items) |entry| {
         if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
         const window = (interfaces.Document.get_defaultView(entry.document) catch null) orelse continue;
