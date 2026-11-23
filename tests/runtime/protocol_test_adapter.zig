@@ -693,6 +693,13 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
+/// No engine, no collector: no traced values, and the caller keeps its holds
+/// strong (refcount step 8; JavaScriptCore and QuickJS answer the same).
+pub fn traceValues(_: *Instance, _: []const JSValue, _: engine.TracedSlot) bool {
+    return false;
+}
+/// Never reached (`traceValues` answers false): holds stay strong.
+pub fn holdWeakly(_: Owned) void {}
 /// No engine, no wrappers: no opaque root to keep.
 pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
 pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
