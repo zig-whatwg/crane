@@ -212,7 +212,7 @@ fn processLabelToUnicode(
             };
 
             // Validate contextual rules (joiners)
-            context.validateContext(decoded) catch {
+            context.validateContext(allocator, decoded) catch {
                 return IDNAError.ContextError;
             };
 
@@ -239,7 +239,7 @@ fn processLabelToUnicode(
             return IDNAError.BidiError;
         };
 
-        context.validateContext(result) catch {
+        context.validateContext(allocator, result) catch {
             return IDNAError.ContextError;
         };
     }

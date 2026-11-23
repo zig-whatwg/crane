@@ -2226,7 +2226,7 @@ pub fn convertReturnValue(
     // Handle error union - unwrap it
     if (type_info == .error_union) {
         const PayloadType = type_info.error_union.payload;
-        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned, gate_realm);
+        return convertReturnValue(PayloadType, byte_string, result, allocator, isolate, frame, owned, gate_realm);
     }
 
     // Handle void return
@@ -2243,7 +2243,7 @@ pub fn convertReturnValue(
     if (type_info == .optional) {
         if (result) |value| {
             const ChildType = type_info.optional.child;
-            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned, gate_realm);
+            return convertReturnValue(ChildType, false, value, allocator, isolate, frame, owned, gate_realm);
         } else {
             owned.* = true;
             return @ptrCast(v8.v8_Null(isolate));

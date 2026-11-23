@@ -845,22 +845,25 @@ fn releaseRealmEntries(environment: runtime.Context) void {
     // The realm's Browser's entries: its objects are that Browser's.
     const scope = environment.browserScope() orelse return;
     const registry = scope.existingTable(.event_targets, Registry) orelse return;
+    // The lists live for this call: the Browser's allocator, as the table's
+    // own (allocator mapped pages for them at every realm end).
+    const allocator = registry.allocator;
     const Doomed = struct { address: usize, internal: *InternalState };
     var doomed: std.ArrayListUnmanaged(Doomed) = .empty;
-    defer doomed.deinit(std.heap.page_allocator);
+    defer doomed.deinit(allocator);
     {
         registry.lock();
         defer registry.unlock();
         const map = &(registry.map orelse return);
         var keys: std.ArrayListUnmanaged(usize) = .empty;
-        defer keys.deinit(std.heap.page_allocator);
+        defer keys.deinit(allocator);
         var it = map.iterator();
         while (it.next()) |entry| {
-            if (LazyEntry.of(entry.value_ptr.*).realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+            if (LazyEntry.of(entry.value_ptr.*).realm == environment) keys.append(allocator, entry.key_ptr.*) catch continue;
         }
         // Room first: an entry taken out must reach `releaseEntry`. Out of
         // memory, the entries stay in the map for the Browser's end.
-        doomed.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
+        doomed.ensureTotalCapacity(allocator, keys.items.len) catch return;
         for (keys.items) |key| {
             const taken = registry.take(key) orelse continue;
             doomed.appendAssumeCapacity(.{ .address = key, .internal = taken });

@@ -872,10 +872,11 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
 /// canParse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
 pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
-    // Static method - instance is not used
-    _ = instance;
-
-    const allocator = std.heap.page_allocator; // TODO: Get from context
+    // The realm's allocator, as URL.parse's: the records live for this call
+    // only (std.heap.page_allocator mapped a page for each of their
+    // allocations: docs/lessons/architecture-std-heap-page-allocator-maps-a-
+    // page-per-allocation.md).
+    const allocator = instance.ctx.allocator;
 
     // Parse base URL if provided
     var base_record: ?URLRecord = null;
