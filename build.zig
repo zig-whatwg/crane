@@ -6536,7 +6536,7 @@ pub fn build(b: *std.Build) void {
     // LINT: std.heap.page_allocator stays out of src/
     // ========================================================================
     // Zig's page allocator maps whole pages for every allocation: a small
-    // record on it costs a page, and on Linux a mapping (lane alloc1's
+    // record on it costs a page and a mapping (lane alloc1's
     // inventory; lane leak3 moved every run-time use to its owner's
     // allocator). tools/lint_page_allocator.zig fails on any use in src/
     // without a `// page-allocator: <why>` line directly above it; the
