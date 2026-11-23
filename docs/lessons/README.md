@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A lazy per-scope resource takes its own lock, not the scope's](architecture-a-lazy-per-scope-resource-takes-its-own-lock-not-the-scopes.md) - A lazily started part of an owner gets its own lock: the owner's lock may already be held by the caller that triggers the start.
 - [A bug-finding heap must not retire the span it allocates from next](architecture-a-bug-finding-heap-must-not-retire-the-span-it-allocates-from-next.md) - A detection that changes a page's protection belongs on memory the allocator will not hand out next; measure a one-block churn, not only a bulk free, before turning it on.
 - [A Zig function nothing references is never analysed](architecture-an-unreferenced-zig-function-is-never-analysed.md) - **In Zig, "it builds" says nothing about a function nothing calls: an unreferenced body is never analysed, so check for a caller before fixing, testing or citing such code.**
 - [std.heap.page_allocator maps a page per allocation](architecture-std-heap-page-allocator-maps-a-page-per-allocation.md) - **`page_allocator` is an mmap per allocation: a small record on it costs a page and a mapping each, so it never holds per-object or per-call state.**
