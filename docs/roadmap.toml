@@ -573,6 +573,7 @@ progress = [
   "da81e0faae7..4c15e890977 - the HTTP cache is the Browser's: one in-memory RFC 9111 cache on its network context (BrowserConfig.http_cache, 50 MiB, an eighth per response, LRU), shared by its tabs, frames and workers and by no other Browser, partitioned by network partition key; HTTP-network-or-cache fetch reads, revalidates and stores through it; frames, popups and service worker scripts carry their key; Clear-Site-Data cache clears it (httpcache1 lane)",
   "3e77e681cb6..48dc80fa2a6 - tabs share their Browser's state and keep their own: a tab's session storage shed is the Browser's navigables' and ends with its top-level browsing context's record (Storage 4.3; Firefox's SessionStorageManager on Top()), not with the Browser - one shed per closed tab, and per WPT file, no longer kept; tests: the tabs of one Browser share localStorage and its events, cookies and cookieStore events, BroadcastChannel, one shared worker, Web Locks, blob URLs, a service worker registration and permission changes and keep their own sessionStorage, and two Browsers on two threads share none of the registries (inst2 lane)",
   "2aeeab6fa..ae4c1bd23 (lane cdph, CDP phase: implemented and compile-checked on Linux; tests written, run in the CDP test pass) - the host API: Browser.createTab (a host-opened tab in a new browsing context group, its realms entered per call - engine WindowRealmOptions.entered_for_life), closeTab (HTML close, beforeunload only when prompting), releaseTab/holdTabsOpenedByPages (life1's hold point), activateTab, listTabs, navigableTree, evaluateInTab (BiDi RemoteValue JSON), navigateNavigable; host_events from the navigation observer, the document-start hook and the user prompt hook (tabs, frames, milestones, dialogs); BrowserHost (a Browser on its own thread: post, call, postSessionMessage, answerUserPrompt); the C ABI include/crane.h; WebDriver sessions on BrowserHost threads with Back/Forward/Refresh, window handles and the user prompt commands; Browser.navigate unloads the page it replaces; simple dialogs and printing through HTML 8.9.1-8.9.2 with one pause primitive (runtime.BrowserPause)",
+  "521a81612..6c8cba891 (lane tab1) - the tab scope: runtime.TabScope, made and closed by the tab's top-level browsing context record and carried by every Window realm of the tab (ContextData.tab_scope, counted, released at the Window's end); under it the session history and traversal queue, the session storage shed (Storage 4.3; Navigables' map by tab id gone), system visibility and system focus, and the frame clock (each tab's own rendering opportunities on its display's interval, animation frame callbacks and animations; the loop lists the clocks); each window's timer ids from 1 (HTML 8.6, all three browsers); system focus per tab - headless every tab (the user's ruling 2026-11-19), a host's BrowserConfig.focus = .active_tab / crane.h focus_mode narrowing it to the tab activateTab names; an unfocused tab answers hasFocus() false, matches no :focus and moves focus silently, its pages hearing each change (Blink, WebKit and Gecko alike); CDP focus emulation; platform requests name the realm's tab (recipes step 7); one tab's end no longer drops another tab's rAF callbacks or pending mutation observers; the C ABI takes profile_dir (CRANE_ERR_PROFILE_IN_USE); PAC / auto-detection moved to 0.2 by the user's ruling (2026-11-23)",
 ]
 
   [[infra.items]]
@@ -589,11 +590,11 @@ progress = [
 
   [[infra.items]]
   name = "Tab state (session history, sessionStorage per top-level traversable, timers, animation frames, visibility and focus) belongs to the tab"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Host API (Zig and C ABI): instance create/destroy with profile options; tab create, list, activate, navigate, evaluate, close; events for tabs script opens and closes"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"

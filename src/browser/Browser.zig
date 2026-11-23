@@ -122,6 +122,12 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// Which tabs have system focus (HTML 6.6.2; the user's ruling
+    /// 2026-11-19, "Host decides, headless default"): every one, as headless
+    /// Chrome's (the default), or only the tab the host activates - a host
+    /// that renders narrows focus to the tab it shows, through
+    /// `activateTab`.
+    focus: FocusModel = .every_tab,
     /// Whether a platform object's freed state - its State block, and a
     /// node's NodeBase released at its teardown - is overwritten with the
     /// poison byte (runtime.ArenaAllocator.poison_freed), so a read after the
@@ -153,6 +159,9 @@ pub const BrowserConfig = struct {
     platform: platform.PlatformBrowserOptions = .{},
 
     pub const HttpCacheConfig = @import("fetch").network.NetworkContext.HttpCacheConfig;
+
+    /// `focus`: every tab has system focus, or only the active one.
+    pub const FocusModel = enum { every_tab, active_tab };
 
     pub const Proxy = union(enum) {
         /// The process's proxy settings (curl reads http_proxy, https_proxy
@@ -219,8 +228,9 @@ pub const Browser = struct {
     /// any order. The first page stays `current_context`.
     tabs: std.ArrayListUnmanaged(*Context) = .empty,
     /// The tab the host last activated (`activateTab`), or the first page's.
-    /// Headless, every tab is focused and visible (the tab-focus ruling,
-    /// 2026-11-19): activation decides only what `activeTab` answers.
+    /// Every tab is focused and visible unless the host narrowed focus to its
+    /// active tab (the tab-focus ruling, 2026-11-19; BrowserConfig.focus):
+    /// then this tab alone has system focus.
     active_tab: ?TabId = null,
     /// The host's listeners: what the Browser tells its host as it happens
     /// (host_events).
@@ -712,8 +722,13 @@ pub const Browser = struct {
         defer if (serialized) |s| self.allocator.free(s);
 
         // Create new context
-        // Pass used_snapshot flag so Context knows whether to skip initializeBindings
-        const ctx = try Context.init(
+        // Pass used_snapshot flag so Context knows whether to skip
+        // initializeBindings. Under narrowed focus the fresh page has system
+        // focus when it becomes the active tab - the Browser's first page, or
+        // the one replacing it (`newTabsFocused`).
+        const becomes_active = self.active_tab == null or self.active_tab == replaced_tab;
+        self.newTabsFocused(becomes_active);
+        const made = Context.init(
             self.allocator,
             agent,
             self.cookie_jar,
@@ -723,6 +738,9 @@ pub const Browser = struct {
             self.used_snapshot,
             self.scope,
         );
+        // Only the page made now: a popup its load opens starts without.
+        self.newTabsFocused(false);
+        const ctx = try made;
         // The new traversable is the Browser's page from here, whatever its
         // first navigation does: one that fails leaves it on that
         // navigation's error page, as a browser's tab does, and the error
@@ -1317,7 +1335,12 @@ pub const Browser = struct {
         const serialized = serializedUrl(self.allocator, requested) orelse return error.InvalidUrl;
         defer self.allocator.free(serialized);
         try self.tabs.ensureUnusedCapacity(self.allocator, 1);
-        const ctx = try Context.initWithOptions(
+        // Under narrowed focus a tab opened in the foreground starts with the
+        // system focus, which the active tab loses (below); one in the
+        // background starts without it.
+        const foreground = !options.background or self.active_tab == null;
+        self.newTabsFocused(foreground);
+        const made = Context.initWithOptions(
             self.allocator,
             agent,
             self.cookie_jar,
@@ -1328,6 +1351,8 @@ pub const Browser = struct {
             self.scope,
             .{ .entered_for_life = false },
         );
+        self.newTabsFocused(false);
+        const ctx = try made;
         const bc = ctx.browsing_context orelse {
             ctx.deinit();
             self.allocator.destroy(ctx);
@@ -1335,7 +1360,12 @@ pub const Browser = struct {
         };
         const id = bc.id;
         self.tabs.appendAssumeCapacity(ctx);
-        if (!options.background or self.active_tab == null) self.active_tab = id;
+        // The tab that was active loses the system focus to it (as a
+        // browser window's tab strip moves it), its pages hearing so.
+        if (foreground and self.narrowsFocus()) if (self.activeTab()) |previous| if (previous != id) {
+            if (self.openTraversable(previous)) |previous_bc| html_mod.focus.setSystemFocus(previous_bc, false);
+        };
+        if (foreground) self.active_tab = id;
         // The host heard `tab_created` as the traversable was made (the
         // navigation observer's navigable_created). A held tab's navigation
         // parks at the observer's hold point, after beforeunload and before
@@ -1404,12 +1434,48 @@ pub const Browser = struct {
     }
 
     /// Make tab `tab` the active one (BiDi browsingContext.activate, CDP
-    /// Target.activateTarget). Headless, every tab is focused and visible
-    /// already (the tab-focus ruling, 2026-11-19): this changes what
-    /// `activeTab` answers, and nothing a page can observe.
+    /// Target.activateTarget, WebDriver Switch To Window, crane_tab_activate).
+    /// The tab-focus ruling (the user, 2026-11-19: "Host decides, headless
+    /// default"): with every tab focused - headless Chrome's, the default -
+    /// this changes what `activeTab` answers, and nothing a page can observe;
+    /// a host that narrows focus to its active tab (BrowserConfig.focus =
+    /// .active_tab) moves the system focus with it (HTML 6.6.2): the tab
+    /// that had it loses it, then `tab` gains it, each heard by its pages
+    /// (html.focus.setSystemFocus).
     pub fn activateTab(self: *Browser, tab: TabId) !void {
-        _ = self.openTraversable(tab) orelse return error.NoSuchTab;
+        const bc = self.openTraversable(tab) orelse return error.NoSuchTab;
+        if (self.narrowsFocus()) {
+            if (self.activeTab()) |previous| if (previous != tab) if (self.openTraversable(previous)) |previous_bc| {
+                html_mod.focus.setSystemFocus(previous_bc, false);
+            };
+            html_mod.focus.setSystemFocus(bc, true);
+        }
         self.active_tab = tab;
+    }
+
+    /// Whether the host narrowed system focus to its active tab
+    /// (BrowserConfig.focus).
+    fn narrowsFocus(self: *const Browser) bool {
+        return self.config.focus == .active_tab;
+    }
+
+    /// Whether a tab made from now on starts with system focus
+    /// (html.Navigables.tab_system_focus): always, unless the host narrowed
+    /// focus - then only the tab about to become the active one (`focused`).
+    fn newTabsFocused(self: *Browser, focused: bool) void {
+        const navigables = self.scope.table(.navigables, @import("dom").browser_state.Navigables) catch return;
+        navigables.tab_system_focus = focused or !self.narrowsFocus();
+    }
+
+    /// Under narrowed focus, after the active tab went: the tab `activeTab`
+    /// answers now - the first open one - is the active tab and has the
+    /// system focus, as a browser activates a neighbour of a closed tab.
+    fn focusNextActiveTab(self: *Browser) void {
+        if (!self.narrowsFocus()) return;
+        const id = self.activeTab() orelse return;
+        const bc = self.openTraversable(id) orelse return;
+        self.active_tab = id;
+        html_mod.focus.setSystemFocus(bc, true);
     }
 
     /// The tab the host last activated, while it is open; else the first
@@ -1744,8 +1810,10 @@ pub const Browser = struct {
     /// navigation observer told it already.
     fn tabGone(self: *Browser, tab: TabId) void {
         if (self.pausedIndex(tab)) |index| _ = self.paused_tabs.orderedRemove(index);
-        if (self.active_tab == tab) self.active_tab = null;
+        const was_active = self.active_tab == tab;
+        if (was_active) self.active_tab = null;
         if (self.forgetKnownTab(tab)) self.listeners.emit(.{ .tab_destroyed = .{ .tab = tab } });
+        if (was_active) self.focusNextActiveTab();
     }
 
     fn pausedIndex(self: *Browser, tab: TabId) ?usize {
@@ -1791,6 +1859,12 @@ pub const Browser = struct {
             .navigable_destroyed => if (self.forgetKnownTab(id)) {
                 if (self.pausedIndex(id)) |index| _ = self.paused_tabs.orderedRemove(index);
                 self.listeners.emit(.{ .tab_destroyed = .{ .tab = id } });
+                // A tab its page closed (window.close()) that was the active
+                // one: the next has the focus.
+                if (self.active_tab == id) {
+                    self.active_tab = null;
+                    self.focusNextActiveTab();
+                }
             } else {
                 self.listeners.emit(.{ .frame_destroyed = .{ .navigable = id } });
             },

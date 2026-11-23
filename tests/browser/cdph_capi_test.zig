@@ -108,10 +108,10 @@ test "two Browsers on two threads through the C ABI: tabs, navigation, evaluatio
     try testing.expectEqualStrings("", outcomes[1].text());
 }
 
-test "the C ABI refuses what it cannot do: a profile directory, a PAC proxy, null arguments" {
+test "the C ABI refuses what it cannot do: a PAC proxy, null arguments" {
     try testing.expectEqual(capi.Status.ok, capi.crane_process_init(null));
     var handle: ?*capi.Handle = null;
-    try testing.expectEqual(capi.Status.unsupported, capi.crane_browser_create(&.{ .struct_size = @sizeOf(capi.BrowserOptions), .profile_dir = "/tmp/crane-profile" }, &handle));
+    // A profile directory is supported (tests/browser/tab1_capi_profile_test.zig).
     const pac: capi.Proxy = .{ .kind = @backingInt(capi.ProxyKind.pac), .pac_url = "http://example.test/proxy.pac" };
     try testing.expectEqual(capi.Status.unsupported, capi.crane_browser_create(&.{ .struct_size = @sizeOf(capi.BrowserOptions), .proxy = &pac }, &handle));
     try testing.expectEqual(capi.Status.invalid_argument, capi.crane_browser_create(null, null));
