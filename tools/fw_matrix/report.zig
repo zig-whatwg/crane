@@ -79,7 +79,18 @@ pub const SuiteRuns = struct {
     /// `fw_matrix import --reader=cypress`): the check of the port, stated
     /// in the method, never a column.
     check: ?Run = null,
+    /// The project's own run on its stand-in browser, the reference beside
+    /// Crane and Chrome: React's `yarn test` on jsdom, for React's Jest suite
+    /// (lane react1, the integrator 2026-11-23). A run whose browser is
+    /// jsdom (`isReference`); never the Chrome column.
+    reference: ?Run = null,
 };
+
+/// A run in jsdom, the stand-in browser a project's own Node test runner
+/// uses (React's Jest suite): the reference column, not a browser's.
+fn isReference(browser: []const u8) bool {
+    return std.mem.startsWith(u8, browser, "jsdom");
+}
 
 /// How Crane's TodoMVC numbers are made (the method section).
 pub const todomvc_port_note =
@@ -124,6 +135,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
         var runs: std.ArrayList(Run) = .empty;
         var chrome: ?Run = null;
         var check: ?Run = null;
+        var reference: ?Run = null;
         for (journals) |j| {
             var labels: std.ArrayList([]const u8) = .empty;
             for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.version, s.version)) {
@@ -151,7 +163,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 if (run.browser != null) {
                     // The latest by label (labels name their time). A TodoMVC
                     // app's run by its own runner is the port's check.
-                    const slot = if (s.kind == .todomvc_port and first.imported != null) &check else &chrome;
+                    const slot = if (s.kind == .todomvc_port and first.imported != null) &check else if (isReference(run.browser.?)) &reference else &chrome;
                     if (slot.* == null or std.mem.order(u8, slot.*.?.label, label) == .lt) slot.* = run;
                 } else try runs.append(arena, run);
             }
@@ -164,7 +176,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 return std.mem.order(u8, a.label, b.label) == .lt;
             }
         }.lt);
-        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{}, .chrome = chrome, .check = check });
+        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{}, .chrome = chrome, .check = check, .reference = reference });
     }
     return out.items;
 }
@@ -196,6 +208,9 @@ pub const Row = struct {
     crane: ?journal.Counts = null,
     /// Chrome's, null with no Chrome run.
     chrome: ?journal.Counts = null,
+    /// The project's own run on its stand-in browser (SuiteRuns.reference:
+    /// jsdom for React's Jest suite), null with none.
+    reference: ?journal.Counts = null,
     /// It cannot run yet: the protocol its test runner drives the browser
     /// with, which Crane does not speak.
     waits: ?manifest.Protocol = null,
@@ -282,6 +297,11 @@ pub fn chartRows(arena: Allocator, m: manifest.Manifest, suites: []const SuiteRu
                 var c = row.chrome orelse journal.Counts{};
                 c.merge(r.counts);
                 row.chrome = c;
+            }
+            if (s.reference) |r| {
+                var c = row.reference orelse journal.Counts{};
+                c.merge(r.counts);
+                row.reference = c;
             }
         }
         if (has_suite) {
@@ -482,6 +502,9 @@ const style =
     \\.fw .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     \\.fw .m-fail { background: var(--fail); }
     \\.fw .key-fail { background: var(--fail); }
+    \\.fw .meter.ref .m-clean, .fw .key-ref { background: var(--note-ink); }
+    \\.fw .fr-bar.r .meter { height: 0.35rem; }
+    \\.fw .fr-bar.r .fr-rate b { font-weight: 500; color: var(--ink-2); }
     \\.fw .ratio-good { color: var(--pass); }
     \\.fw .ratio-bad { color: var(--fail); }
     \\.fw .fig-ref { margin: 0.55rem 0 0; font: 400 0.9rem/1.4 var(--sans); color: var(--ink-2); }
@@ -587,7 +610,12 @@ fn writeRates(arena: Allocator, w: W, rows: []const Row) !void {
     try w.writeAll("<section class=\"fw-sec\" id=\"rates\" aria-labelledby=\"rates-h\">\n<h2 id=\"rates-h\"><span class=\"secno\">1</span>Pass rate per framework<a class=\"self\" href=\"#rates\" aria-label=\"Link to section 1\">&para;</a></h2>\n");
     try w.writeAll("<p class=\"lede\">Each framework&#39;s own browser tests in Crane, and the same tests in Chrome by the project&#39;s own runner; TodoMVC&#39;s apps are one row. Every bar is drawn on the same scale, from 0% to 100% of the tests run.</p>\n");
     try w.writeAll("<div class=\"box\">\n<div class=\"box-head\"><h3 class=\"box-title\">Pass rate</h3><span class=\"box-sub\">tests passed of tests run</span></div>\n");
-    try w.writeAll("<div class=\"box-key\"><ul class=\"fw-key\"><li><span class=\"key key-pass\"></span>Passed</li><li><span class=\"key key-fail\"></span>Failed</li><li><span class=\"gate g-block\">CAN&#39;T RUN YET</span>Not run</li><li><span class=\"ratio-good\">+</span>/<span class=\"ratio-bad\">&minus;</span> Crane ahead of / behind Chrome, in points</li></ul></div>\n");
+    var any_reference = false;
+    for (rows) |r| any_reference = any_reference or r.reference != null;
+    try w.writeAll("<div class=\"box-key\"><ul class=\"fw-key\"><li><span class=\"key key-pass\"></span>Passed</li><li><span class=\"key key-fail\"></span>Failed</li>");
+    // jsdom's own meter: a hue of its own, never the grey of "can't run".
+    if (any_reference) try w.writeAll("<li><span class=\"key key-ref\"></span>jsdom, React&#39;s CI</li>");
+    try w.writeAll("<li><span class=\"gate g-block\">CAN&#39;T RUN YET</span>Not run</li><li><span class=\"ratio-good\">+</span>/<span class=\"ratio-bad\">&minus;</span> Crane ahead of / behind Chrome, in points</li></ul></div>\n");
     try w.writeAll("<div class=\"fr fr-head\" aria-hidden=\"true\"><span>Framework</span><span></span><span>Crane &minus; Chrome</span></div>\n");
     var buf: [16]u8 = undefined;
     for (rows) |r| {
@@ -605,12 +633,22 @@ fn writeRates(arena: Allocator, w: W, rows: []const Row) !void {
             continue;
         }
         try w.writeAll("<div class=\"fr-bars\">");
-        for ([_]?journal.Counts{ r.crane, r.chrome }, 0..) |maybe, i| {
-            const name = if (i == 0) "Crane" else "Chrome";
-            try w.print("<div class=\"fr-bar{s}\"><span class=\"fr-who\">{s}</span>", .{ if (i == 0) "" else " g", name });
+        // Crane, Chrome, and the project's own stand-in browser where it has one (jsdom: a thin meter).
+        const columns = [_]?journal.Counts{ r.crane, r.chrome, r.reference };
+        for (columns[0..if (r.reference != null) 3 else 2], 0..) |maybe, i| {
+            const name = switch (i) {
+                0 => "Crane",
+                1 => "Chrome",
+                else => "jsdom",
+            };
+            try w.print("<div class=\"fr-bar{s}\"><span class=\"fr-who\">{s}</span>", .{ switch (i) {
+                0 => "",
+                1 => " g",
+                else => " r",
+            }, name });
             if (maybe) |c| if (c.ran() > 0) {
                 const title = try std.fmt.allocPrint(arena, "{s}: {s} passed ({s})", .{ name, try countsText(arena, c), rateText(&buf, c.pass, c.ran()) });
-                try meter(w, "meter", c, title);
+                try meter(w, if (i == 2) "meter ref" else "meter", c, title);
                 try w.writeAll("<span class=\"fr-rate\"><b>");
                 try rate(w, c.pass, c.ran());
                 try w.writeAll("</b><span class=\"fr-n\">");
@@ -1089,6 +1127,15 @@ fn suiteMethod(w: W, s: SuiteRuns) !void {
         try html.text(w, c.label);
         try w.writeAll("</code>. ");
     } else try w.writeAll("No Chrome run yet. ");
+    if (s.reference) |c| {
+        try w.writeAll("jsdom: ");
+        try html.text(w, c.browser.?);
+        try w.writeAll(", pinned by sha256 <code>");
+        try html.text(w, c.console_sha256[0..@min(16, c.console_sha256.len)]);
+        try w.writeAll("&hellip;</code>; run <code>");
+        try html.text(w, c.label);
+        try w.writeAll("</code>. ");
+    }
     if (s.suite.note) |note| try html.text(w, note);
 }
 
@@ -1471,6 +1518,61 @@ test "what is not run: tests golden rule 2 decides, by kind and framework, apart
     try testing.expect(std.mem.indexOf(u8, h, "The newer spec, which a shipping browser follows: 1 test (Angular 1).") != null);
     // Not rendering: that bullet counts none of them.
     try testing.expect(std.mem.indexOf(u8, h, "Not run for this reason") == null);
+}
+
+test "React's Jest suite: jsdom's run is the reference, never the Chrome column; React's row draws three meters, every other row two; the method names jsdom's run" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var jest = suiteOf("react-jest", "react", "React", "19.3.1", .project, &.{.{ .id = "jest", .path = "packages" }});
+    jest.reader = .runner_report;
+    jest.note = "React's own Jest suite runs on jsdom in React's CI.";
+    const jq = suiteOf("jquery-qunit", "jquery", "jQuery", "4.0.0", .project, &.{.{ .id = "core", .path = "test/?module=core" }});
+    const m: manifest.Manifest = .{ .frameworks = &.{ .{ .id = "jquery", .title = "jQuery" }, .{ .id = "react", .title = "React" } }, .suites = try a.dupe(manifest.Suite, &.{ jq, jest }) };
+    const jsdom = "jsdom 26.1.0 (React's yarn test: Jest 30.4.2, Node 20.19.0)";
+    var f: Fixture = .{};
+    // Crane 2 of 3, Chrome 1 of 3, jsdom 3 of 3.
+    for ([_][]const u8{ "a > one", "a > two" }) |id| try f.testRec(a, "k-1", null, jest, "jest", id, .PASS, .{});
+    try f.testRec(a, "k-1", null, jest, "jest", "a > three", .FAIL, .{});
+    try f.pageRec(a, "k-1", null, jest, "jest", .{});
+    try f.testRec(a, "c-1", chrome_157, jest, "jest", "a > one", .PASS, .{});
+    for ([_][]const u8{ "a > two", "a > three" }) |id| try f.testRec(a, "c-1", chrome_157, jest, "jest", id, .FAIL, .{});
+    try f.pageRec(a, "c-1", chrome_157, jest, "jest", .{});
+    for ([_][]const u8{ "a > one", "a > two", "a > three" }) |id| try f.testRec(a, "j-1", jsdom, jest, "jest", id, .PASS, .{});
+    try f.pageRec(a, "j-1", jsdom, jest, "jest", .{});
+    try f.testRec(a, "k-1", null, jq, "core", "core: x", .PASS, .{});
+    try f.pageRec(a, "k-1", null, jq, "core", .{});
+    try f.testRec(a, "c-1", chrome_157, jq, "core", "core: x", .PASS, .{});
+    try f.pageRec(a, "c-1", chrome_157, jq, "core", .{});
+    const j: journal.Journal = .{ .tests = f.tests.items, .pages = f.pages.items };
+    const suites = try collect(a, m, &.{j}, &.{ &.{}, &.{} });
+    // The jsdom run fills the reference slot, never Chrome's, whatever its label's order.
+    try testing.expectEqualStrings(chrome_157, suites[1].chrome.?.browser.?);
+    try testing.expectEqualStrings(jsdom, suites[1].reference.?.browser.?);
+    try testing.expect(suites[0].reference == null);
+    const rows = try chartRows(a, m, suites);
+    try testing.expectEqual(@as(u32, 3), rows[1].reference.?.pass);
+    try testing.expectEqual(@as(u32, 1), rows[1].chrome.?.pass);
+    try testing.expect(rows[0].reference == null);
+    var out: Io.Writer.Allocating = .init(a);
+    try writeRates(a, &out.writer, rows);
+    const h = out.written();
+    // One reference meter, in React's row, with its own key; the Crane - Chrome cell stays Crane's and Chrome's.
+    try testing.expectEqual(@as(usize, 1), occurrences(h, "<div class=\"fr-bar r\"><span class=\"fr-who\">jsdom</span>"));
+    try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"meter ref\""));
+    try testing.expectEqual(@as(usize, 2), occurrences(h, "<span class=\"fr-who\">Chrome</span>"));
+    try testing.expect(std.mem.indexOf(u8, h, "<li><span class=\"key key-ref\"></span>jsdom, React&#39;s CI</li>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "data-v=\"33.33\">+33.3") != null);
+    // A page with no reference run has no reference key.
+    var plain: Io.Writer.Allocating = .init(a);
+    try writeRates(a, &plain.writer, rows[0..1]);
+    try testing.expect(std.mem.indexOf(u8, plain.written(), "key-ref") == null);
+    // The method names jsdom's run beside Chrome's, then the suite's note.
+    var method: Io.Writer.Allocating = .init(a);
+    try writeMethod(a, &method.writer, m, suites);
+    const mh = method.written();
+    try testing.expect(std.mem.indexOf(u8, mh, "jsdom: jsdom 26.1.0 (React&#39;s yarn test: Jest 30.4.2, Node 20.19.0), pinned by sha256 <code>") != null);
+    try testing.expect(std.mem.indexOf(u8, mh, "run <code>j-1</code>. React&#39;s own Jest suite runs on jsdom in React&#39;s CI.") != null);
 }
 
 test "the chart's rows: the frameworks Crane runs A to Z, TodoMVC's apps as one row, then those that wait A to Z; every number from the journals" {

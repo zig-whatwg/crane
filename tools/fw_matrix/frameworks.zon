@@ -508,6 +508,7 @@
                 .{ .id = "jest", .path = "packages" },
             },
             .excluded = "react-19.3.1-jest.txt",
+            .note = "React's CI runs this suite on jsdom, a stand-in browser in Node; here its files run in a browser page in jsdom's place (tests/frameworks/react-jest): Jest's own runtime, runner and matchers and React's own environment class run unmodified in the page, which loads them as Node loads CommonJS, while Node only resolves modules, runs React's Babel transform and reads files; each file gets a fresh console (Chrome: a fresh browser context). The exclusion list is Jest's own testNamePattern in every column, so an excluded test runs in none. Not run: the 72 files whose environment is Node's (no DOM), the 39 in React's server-integration environment (Node's global with jsdom's window and document assigned on it; 11 of them swap in a new window and document, which no browser's global allows), and ReactClassEquivalence (it spawns yarn). Two ReactUse tests fail in Crane on V8's CallSite.getFileName under source-map-support: Crane names a script the page inserted by the page's URL, as Firefox and Safari do in error.stack, where Chrome names it nothing. Seven BeforeInputEventPlugin tests fail only in Chrome; Crane, Firefox and Safari pass them.",
         },
         // The React compiler playground's e2e tests (its CI's compiler_playground.yml: `CI=true yarn test`), run with --retries=0.
         .{
