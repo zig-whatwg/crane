@@ -7,6 +7,14 @@ const std = @import("std");
 const css = @import("css");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
+
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
 const Style = css.computed_style.ComputedStyle;
 const Block = css.declarations.DeclarationBlock;
 const Value = css.style_values.Value;
@@ -94,5 +102,5 @@ test "r3: combined computed values round-trip through the cascade" {
 }
 
 test "r3: combining under every allocation failure" {
-    try testing.checkAllAllocationFailures(testing.allocator, allCases, .{});
+    try sweep("r3_interpolation_test", allCases, .{});
 }
