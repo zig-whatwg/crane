@@ -961,6 +961,40 @@ progress = []
   name = "Domains beyond part 1"
   status = "todo"
 
+[[infra]]
+id = "text-tracks"
+title = "Text tracks and WebVTT cues (0.1 requirement)"
+why = """The user, 2026-11-22 11:40 PM ET: "complete all of the work you found in the audit partial or not \
+started"; queued from lane flk4's item 9 (2026-11-23). A <track>'s WebVTT file was fetched and parsed, but its \
+cues never reached the text track's list of cues (TODO(webvtt cues)); VTTCue, VTTRegion, TextTrackCue and \
+TextTrackCueList were NotImplemented stubs; an addTextTrack() track's mode change fired no change event; \
+nothing ran "time marches on"."""
+done_when = """WebVTT 6.4-6.5 and 9 (cue text parsing, getCueAsHTML, VTTCue, VTTRegion) and HTML 4.8.11.11 \
+(the text track list of cues in cue order, addCue/removeCue, cues/activeCues, the pending text track change \
+notification for every track) and 4.8.11.8's time marches on (enter/exit/cuechange, pause-on-exit, active \
+flags, newly introduced cues) on Crane's media timeline; webvtt/api, webvtt/parsing and media-elements/track \
+in the worklist with only decoder-bound files left (needs-decoder); cues owned natively until script reads \
+them (no wrapper per parsed cue)."""
+progress = [
+  "26bcf611d, aee76d23f, d427557bc, d27f9f4ad, c350fca7e - cue text parsing and DOM construction, VTTRegion, cues in the track's list with lazy wrappers, the change event for any track, time marches on; a9cb1728b media-elements/ and webvtt/ join the worklist (vtt1)",
+]
+
+  [[infra.items]]
+  name = "WebVTT cue text parsing and getCueAsHTML"
+  status = "done"
+
+  [[infra.items]]
+  name = "VTTCue, VTTRegion, TextTrackCue, TextTrackCueList; parsed cues reach the track"
+  status = "done"
+
+  [[infra.items]]
+  name = "The pending text track change notification for every track"
+  status = "done"
+
+  [[infra.items]]
+  name = "Time marches on on the media timeline"
+  status = "done"
+
 [[parallel]]
 name = "Heavy builds and WPT runs on chat.local, one mirror per lane"
 status = "done"
