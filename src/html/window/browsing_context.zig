@@ -192,6 +192,12 @@ pub const Navigables = struct {
     /// Page.windowOpen). One slot, which the Browser sets to its own
     /// dispatcher.
     window_open: ?@import("../navigation/window_open.zig").Hook = null,
+    /// Whether a tab made from now on starts with system focus (HTML 6.6.2;
+    /// runtime.TabScope.system_focus): every tab does, unless the Browser's
+    /// host narrowed focus to its active tab (BrowserConfig.focus =
+    /// .active_tab), whose Browser grants it to the tab it is about to make
+    /// active and moves it with activateTab.
+    tab_system_focus: bool = true,
     /// The Browser's hook for a child navigable whose initial about:blank
     /// script reached for the first time (`BrowsingContext.touchedByScript`):
     /// a host announces its main world context then, as Blink makes it
@@ -996,6 +1002,10 @@ pub const BrowsingContext = struct {
         const tab = TabScope.create(self.allocator, self.id) catch return null;
         self.tab = tab;
         self.owns_tab = true;
+        // Its system focus from the start - its pages hear only a change.
+        const focused = if (self.navigables) |list| list.tab_system_focus else true;
+        tab.system_focus = focused;
+        tab.focus_reported = focused;
         // What the record made before its tab is the tab's now: it ends with
         // the tab, in the tab's order.
         if (self.traversal_queue) |queue| _ = tab.put(.traversal_queue, TraversalQueue, queue);
