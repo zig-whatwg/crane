@@ -1,0 +1,19 @@
+{
+  "name": "crane-react-jest",
+  "private": true,
+  "description": "React's own Jest suite with a browser page in jsdom's place (tests/frameworks/react-jest/README.md). Jest itself comes from React's own node_modules; these are the page's stand-ins for Node's core modules and the Chrome column's driver. is-generator-function stays at 1.0.10: its 1.1 line requires generator-function 2, whose `module-sync` export Node 20.19 resolves to an ES module, which the page's CommonJS loader does not load.",
+  "license": "MIT",
+  "dependencies": {
+    "assert": "2.1.0",
+    "buffer": "6.0.3",
+    "events": "3.3.0",
+    "path-browserify": "1.0.1",
+    "playwright-core": "1.56.1",
+    "readable-stream": "4.7.0",
+    "string_decoder": "1.3.0",
+    "util": "0.12.5"
+  },
+  "overrides": {
+    "is-generator-function": "1.0.10"
+  }
+}
