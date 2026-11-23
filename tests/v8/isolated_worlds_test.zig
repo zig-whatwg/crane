@@ -471,6 +471,19 @@ test "a callback of one world is handed another world's held value as its own" {
     try expect(world, "argSeen", "true:5");
 }
 
+// The world ends the way a browser ends one: with its main realm, here by
+// the realm's detach (a navigation or its navigable's removal,
+// engine.detachWindowRealm). Blink disposes every world's context of a frame
+// together (WindowProxyManager::ClearForNavigation, ClearForClose) and has no
+// operation that ends one world while its page lives on, so this test
+// asserts nothing on such a path - it used engine.destroyWorldRealms on a
+// live page, a host-only path ("No invented paths"; main's ruling of
+// 2026-11-23 12:37 PM ET, lane rc8). The world's listener is a once
+// listener: under refcount step 8 a listener on a page node is traced from
+// the node, as Blink traces it from its EventTarget, and would keep its
+// world's context while the page's node lives - which the page's promise,
+// held here, keeps. What this test is for is the mirror: the world's promise
+// for the page's promise, and its reaction on it, keep nothing of the world.
 test "a world's promise for a page promise keeps nothing of the world after it ends: the page's promise lives on, the world's context is collected" {
     var page = try Page.make();
     defer page.end();
@@ -483,31 +496,26 @@ test "a world's promise for a page promise keeps nothing of the world after it e
     // The page keeps a pending promise; the world reads it twice - one
     // promise of the world's for it, kept on it, and a reaction waiting on it.
     try expect(page.realm, "globalThis.pending = new Promise((resolve) => { globalThis.settle = resolve; }); 'ok'", "ok");
-    try expect(world, "globalThis.mirrors = []; document.body.addEventListener('p', (e) => { mirrors.push(e.detail, e.detail); }); 'ok'", "ok");
+    try expect(world, "globalThis.mirrors = []; document.body.addEventListener('p', (e) => { mirrors.push(e.detail, e.detail); }, { once: true }); 'ok'", "ok");
     try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('p', { detail: pending })); 'ok'", "ok");
     try expect(world, "String(mirrors.length === 2 && mirrors[0] === mirrors[1] && mirrors[0] instanceof Promise)", "true");
 
-    // The world ends while the page's promise is pending: its kept promise
-    // is taken off the page's, and its reaction holds nothing of it.
-    engine.destroyWorldRealms(page.realm);
+    // The page's promise is held - as anything a browser keeps of a page
+    // after it goes might hold it - while the page's realm is detached: its
+    // world realms end with it, the world's kept promise is taken off the
+    // page's, and its reaction holds nothing of the world.
+    var reports: Reports = .{};
+    const pending = try engine.evaluateClassicScript(page.realm, .{ .utf8 = "pending" }, "", null, .{ .report = Reports.report, .host = &reports });
+    defer pending.release();
+    try testing.expectEqual(@as(usize, 0), reports.count);
+    engine.detachWindowRealm(page.realm);
+    var worlds: [2]runtime.Context = undefined;
+    try testing.expectEqual(@as(usize, 0), engine.worldRealmsOf(page.realm, &worlds));
     for (0..4) |_| engine.requestGarbageCollection(page.agent);
+    // The page's context lives on with its promise; the world's is collected.
     var contexts_after: usize = 0;
     ffi.v8_Isolate_GetContextCounts(isolate, &contexts_after, null);
     try testing.expectEqual(contexts_before, contexts_after);
-
-    // The page's promise lives on and settles, with no world left to tell.
-    try expect(page.realm, "settle(document.body); pending.then(() => { globalThis.settled = true; }); 'ok'", "ok");
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try expect(page.realm, "String(globalThis.settled === true)", "true");
-
-    // A new world realm reads it afresh: a promise of its own, settled.
-    const again = try page.world(1);
-    try expect(again, "globalThis.got = ''; document.body.addEventListener('q', (e) => { e.detail.then((v) => { got = String(v === document.body); }); }); 'ok'", "ok");
-    try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('q', { detail: pending })); 'ok'", "ok");
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try expect(again, "got", "true");
 }
 
 // ---------------------------------------------------------------------------
