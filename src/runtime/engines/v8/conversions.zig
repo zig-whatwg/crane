@@ -3421,6 +3421,8 @@ fn convertsByActiveMember(comptime T: type) bool {
 /// - an optional: null is the Null toV8Null makes; otherwise its child's
 ///   answer - a ?(DOMString or object) member by its active member.
 /// - a union toV8Value converts by its active member (`unionValueIsOwned`).
+/// - `void`, a union's `undefined` member (`(Event or undefined)`): the
+///   Undefined toV8Undefined makes.
 ///
 /// Anything else - a platform object's wrapper, an `*anyopaque`, a member type
 /// not named - answers false: the handle is kept, the safe default
@@ -3430,6 +3432,9 @@ fn convertsByActiveMember(comptime T: type) bool {
 pub fn memberValueIsOwned(comptime T: type, value: T) bool {
     @setEvalBranchQuota(100_000);
     if (comptime T == JSValue or T == OptionalJSValue) return false;
+    // A union's `undefined` member (codegen's `void` field): toV8Value's
+    // void branch makes an Undefined for it (toV8Undefined: a Global).
+    if (comptime T == void) return true;
     if (comptime T == runtime.JSValue) return jsValueConversionIsFresh(value);
     if (comptime T == runtime.OptionalJSValue) return switch (value) {
         .not_passed => true,

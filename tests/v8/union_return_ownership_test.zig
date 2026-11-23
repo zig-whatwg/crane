@@ -9,7 +9,9 @@
 //! - a callback function member is BORROWED, as an EventHandler getter's;
 //! - an owned DOMString member is the binding's to free; an interned one is
 //!   not freed;
-//! - a nested union answers by its own active member.
+//! - a nested union answers by its own active member;
+//! - an `undefined` member (`(Event or undefined)`, Window.event) is the
+//!   Undefined made for the call: the binding's.
 //!
 //! Before, a union's JSValue member was answered "kept", and ImageData.data
 //! handed back a handle it kept; a string member's bytes were never freed.
@@ -70,4 +72,33 @@ test "an owned string member is freed; an interned one is left" {
     conv.freeReturnedUnion(Result, testing.allocator, .{ .nested = .{ .domstring = runtime.DOMString.initOwned(bytes) } });
     conv.freeReturnedUnion(Result, testing.allocator, .{ .nested = .{ .domstring = runtime.DOMString.initInterned("kept") } });
     conv.freeReturnedUnion(Result, testing.allocator, .{ .nested = .{ .long = 1 } });
+}
+
+/// `(Element or undefined)`, as codegen emits a union with an `undefined`
+/// member (typedefs.EventOrUndefined, CustomElementConstructorOrUndefined).
+const MaybeElement = union(enum) {
+    element: *runtime.Instance,
+    undefined: void,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "element", .kind = .{ .interface = "Element" } },
+        .{ .field = "undefined", .kind = .undefined },
+    };
+};
+
+test "an undefined member's value is made for the call: the binding releases it" {
+    // toV8Value's `void` branch answers toV8Undefined - v8_Undefined, a
+    // Global of the conversion's own. Answered "kept", every read of
+    // window.event outside a dispatch and every customElements.get() of an
+    // undefined name left one (leaks --atExit, lane bind1 B2: 19 leaks, 304
+    // bytes over 163 files, all `malloc in v8_Undefined` under
+    // Window.get_event and CustomElementRegistry.call_get).
+    try testing.expect(conv.unionReturnIsOwned(MaybeElement, .undefined));
+    // The same value put into an object - a dictionary member, a sequence
+    // element (memberValueIsOwned's rule).
+    try testing.expect(conv.unionValueIsOwned(MaybeElement, .undefined));
+    try testing.expect(conv.memberValueIsOwned(?MaybeElement, @as(?MaybeElement, .undefined)));
+    // The interface member stays the wrapper cache's.
+    var instance: runtime.Instance = undefined;
+    try testing.expect(!conv.unionReturnIsOwned(MaybeElement, .{ .element = &instance }));
+    try testing.expect(!conv.unionValueIsOwned(MaybeElement, .{ .element = &instance }));
 }
