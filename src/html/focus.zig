@@ -974,6 +974,21 @@ pub fn focusMethod(element: *Instance, focus_visible: ?bool) void {
     // false, then return."
     const document = nodeDocument(element) orelse return;
     if (!allowFocusSteps(document)) return;
+    focusMethodSteps(element, document, focus_visible);
+}
+
+/// The focus() method steps for a user's gesture - CDP's DOM.focus: Blink's
+/// InspectorDOMAgent::focus calls Element::Focus with
+/// FocusTrigger::kUserGesture, which only exempts it from the
+/// focus-without-user-activation check (Document::IsFocusAllowed) - so every
+/// step but "allow focus steps", with no focusVisible option.
+pub fn focusForUserGesture(element: *Instance) void {
+    const document = nodeDocument(element) orelse return;
+    focusMethodSteps(element, document, null);
+}
+
+/// The focus() method steps after step 1.
+fn focusMethodSteps(element: *Instance, document: *Instance, focus_visible: ?bool) void {
     // The browsers' selection side of focus(), BEFORE the focus events: a
     // root editable element about to take the focus gets the caret at its
     // start unless the selection is already in it, so its focus listeners

@@ -95,11 +95,13 @@ const Extra = struct {
     pub const persistent_store = @import("kit_sqlite");
 
     clipboard: memory_clipboard.Clipboard,
+    /// The files a host named by path, by token (kit/posix/user_files).
+    user_files: posix.user_files.Table,
     memory_pressure: memory_pressure.Observer = .{},
 
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
         _ = options;
-        return .{ .clipboard = .init(allocator) };
+        return .{ .clipboard = .init(allocator), .user_files = .init(allocator) };
     }
 
     /// kit/browser_state calls this once the state is at its final address.
@@ -111,10 +113,29 @@ const Extra = struct {
         // First: no event is posted once the observer has stopped.
         self.memory_pressure.stop();
         self.clipboard.deinit();
+        self.user_files.deinit();
     }
 };
 
 const State = browser_state.BrowserState(Extra);
+
+/// 6.10.3 for files a host names by path: the Browser's kit/posix token
+/// table (user_files.zig). A picker's tokens would share it; there is none.
+fn openUserFile(browser: *platform.BrowserPlatform, path: platform.Str, reply: platform.Reply(platform.PickedFile)) void {
+    State.of(browser).extra.user_files.open(path, reply);
+}
+
+fn openUserDirectory(browser: *platform.BrowserPlatform, path: platform.Str, reply: platform.Reply(platform.PickedFiles)) void {
+    State.of(browser).extra.user_files.openDirectory(path, reply);
+}
+
+fn readUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.Bytes)) void {
+    State.of(browser).extra.user_files.read(file, offset, length, reply);
+}
+
+fn releaseUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken) void {
+    State.of(browser).extra.user_files.release(file);
+}
 
 /// openMediaDecoder: kit/media_decoding's, with the Browser's allocator.
 fn openMedia(browser: *platform.BrowserPlatform, mime: platform.Str) platform.Error!*platform.MediaDecoder {
@@ -168,6 +189,12 @@ pub const protocol = struct {
         // headless Chrome's. Deviation: nothing leaves the Browser and nothing
         // another application copies arrives.
         c.clipboard = .emulated;
+        // kit/posix/user_files per Browser: the files a host names by path
+        // (userFile, userDirectory - a remote end's DOM.setFileInputFiles),
+        // read through their tokens. Deviation: no picker - showFilePicker
+        // answers none chosen (kit/headless), so an input's picker is
+        // dismissed with `cancel`, and only host-chosen files are selected.
+        c.file_picker = .emulated;
         // kit/image_decoding, built in (D1, the user 2026-11-09): PNG, BMP,
         // GIF, JPEG and SVG, the testing platform's decoders.
         if (image_decoding_built_in) c.image_decoding = .native;
@@ -314,8 +341,10 @@ pub const protocol = struct {
     pub const requestWindowRect = headless.requestWindowRect;
     pub const printConsoleMessage = headless.printConsoleMessage;
     pub const showFilePicker = headless.showFilePicker;
-    pub const readPickedFile = headless.readPickedFile;
-    pub const releasePickedFile = headless.releasePickedFile;
+    pub const readPickedFile = readUserFile;
+    pub const releasePickedFile = releaseUserFile;
+    pub const userFile = openUserFile;
+    pub const userDirectory = openUserDirectory;
     pub const screenInfo = headless.screenInfo;
     pub const isOnline = headless.isOnline;
     pub const userPreferences = headless.userPreferences;

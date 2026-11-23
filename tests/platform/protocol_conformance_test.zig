@@ -89,8 +89,9 @@ test "conformance: the bound platform matches every operation" {
     // its connection's shutdown without the client's EOF); 249 since lane tpc
     // made the waits block with no timeout on a wake (devtoolsWakeNew,
     // devtoolsWake, devtoolsWakeClose; devtoolsReadOrWake replaced
-    // devtoolsReadTimeout).
-    try testing.expectEqual(@as(usize, 249), count);
+    // devtoolsReadTimeout); 251 since lane cdpd1 added the files a host
+    // names by path (6.10.3: userFile, userDirectory).
+    try testing.expectEqual(@as(usize, 251), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
