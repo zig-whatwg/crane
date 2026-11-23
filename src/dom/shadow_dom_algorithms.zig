@@ -38,6 +38,7 @@ const enums = @import("enums");
 
 const NodeBase = @import("node_base.zig").NodeBase;
 const slot_helpers = @import("slot_helpers.zig");
+const inspector_probes = @import("inspector_probes.zig");
 const NodeRef = slot_helpers.NodeRef;
 const tree_helpers = @import("tree_helpers.zig");
 const instance_bridge = @import("instance_bridge.zig");
@@ -317,6 +318,11 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
         const slottable = (try slot_helpers.ensureSlottable(node)) orelse continue;
         slottable.assigned_slot = slot_ref;
     }
+
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): the slot's distribution changed (Blink's
+    // DidPerformSlotDistribution, sent at the next rendering update).
+    if (inspector_probes.active()) inspector_probes.slotAssignmentChanged(slot);
 }
 
 /// DOM "assign slottables for a tree", given `root`: "run assign slottables

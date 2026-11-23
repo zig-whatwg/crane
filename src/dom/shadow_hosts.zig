@@ -26,6 +26,7 @@ const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
+const inspector_probes = @import("inspector_probes.zig");
 
 const runtime = @import("runtime");
 
@@ -80,6 +81,10 @@ pub fn attached(host: *runtime.Instance, shadow: *runtime.Instance) void {
     const host_base = instance_bridge.getNodeBase(host) orelse return;
     refcount.hostAttached(root, host_base);
     root.is_connected = host_base.is_connected;
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::DidPushShadowRoot, once the root is the
+    // host's (Element::AttachShadowRootInternal, after InsertedInto).
+    if (inspector_probes.active()) inspector_probes.didPushShadowRoot(host, shadow);
 }
 
 /// An element's shadow root, including a closed root. The IDL shadowRoot

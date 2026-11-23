@@ -112,6 +112,9 @@ pub const form_controls = @import("form_controls.zig");
 pub const saved_form_state = @import("saved_form_state.zig");
 pub const selected_content = @import("selected_content.zig");
 pub const top_layer = @import("top_layer.zig");
+/// The CDP DOM agents' probes: one process-wide gate, then the node's
+/// Browser's sink (lane cdpd1; Blink's core probes).
+pub const inspector_probes = @import("inspector_probes.zig");
 /// HTML 2.5.7: a Document's lazy load intersection observer.
 pub const lazy_load_observer = @import("lazy_load_observer.zig");
 pub const dialog = @import("dialog.zig");

@@ -295,6 +295,11 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: Data, offset: u32,
             dom.mutation.runChildrenChangedSteps(parent_base, .replaced_data);
         }
     }
+
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::CharacterDataModified, last in
+    // CharacterData::DidModifyData, after the parent's ChildrenChanged.
+    if (dom.inspector_probes.active()) dom.inspector_probes.characterDataModified(instance);
 }
 
 // =============================================================================
