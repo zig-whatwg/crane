@@ -5131,6 +5131,16 @@ pub fn build(b: *std.Build) void {
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, platform_build_tests, "platform-build-protocol", null).step);
 
+    // The kit's build side: its own file's tests - the lint's library keys,
+    // the sanitizer a kit library keeps, the linked-versions test's naming -
+    // std-only.
+    const kit_build_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/kit/kit_build.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, kit_build_tests, "platform-kit-build", null).step);
+
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
     // ========================================================================

@@ -182,3 +182,27 @@ pub const lint_words: []const u8 = words: {
     }
     break :words text;
 };
+
+const testing = std.testing;
+
+test "the lint's library keys are the kit parts' words, in the parts' order" {
+    try testing.expectEqualStrings("curl,mbedtls,nghttp2,zlib,brotli,jpeg,expat,nanosvg,sqlite", lint_words);
+}
+
+test "libcurl keeps its own C sanitizer, off in every mode; every other kit library takes its build's" {
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .off), expectedSanitizer("curl"));
+    for ([_][]const u8{ "mbedtls", "z", "nghttp2", "brotlicommon", "brotlidec", "brotlienc", "jpeg", "expat", "crane_image_codecs" }) |name| {
+        try testing.expectEqual(@as(?std.zig.SanitizeC, null), expectedSanitizer(name));
+    }
+}
+
+test "the linked-versions test is its directory's suite, named as the launcher names every tests/ directory's" {
+    try testing.expect(std.mem.startsWith(u8, versions_test.dir, "tests/"));
+    try testing.expectEqualStrings("tests-" ++ versions_test.dir["tests/".len..], versions_test.suite);
+}
+
+test "every translation of mbedTLS's headers sees the threading configuration curl_build compiles it with" {
+    try testing.expectEqual(@as(usize, 2), mbedtls_threading_macros.len);
+    try testing.expectEqualStrings("MBEDTLS_THREADING_C", mbedtls_threading_macros[0][0]);
+    try testing.expectEqualStrings("MBEDTLS_THREADING_PTHREAD", mbedtls_threading_macros[1][0]);
+}
