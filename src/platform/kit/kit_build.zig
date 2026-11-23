@@ -6,6 +6,7 @@
 //! build.zig):
 //!
 //!   brotli/brotli_build.zig              Brotli, the RFC 7932 codec
+//!   image_codecs/image_codecs_build.zig  the testing image codecs (libjpeg-turbo, Expat, NanoSVG)
 //!
 //! The root build reaches this file through the platform protocol's build
 //! side (src/platform/platform_build_protocol.zig `kit`) and names no
@@ -17,6 +18,7 @@ const std = @import("std");
 
 /// The parts' build files.
 pub const brotli = @import("brotli/brotli_build.zig");
+pub const image_codecs = @import("image_codecs/image_codecs_build.zig");
 
 /// What a C compile or a C-header translation for the target needs beyond
 /// what Zig finds by itself - a system root's headers, libraries and
