@@ -29,7 +29,9 @@ pub fn agentOptions(host: *AgentHost, options: engine.AgentOptions) engine.Agent
 
 /// The AgentHost of `agent` - the `host_state` it was made with
 /// (`agentOptions`) - or null for an agent made without one: a test's own
-/// agent, whatever its `host`. No check reads `engine.agentHost` against it:
+/// agent, whatever its `host`. The agent registry's locked lookup: for a
+/// caller with an agent and no realm (html.rejected_promises.releaseAgent);
+/// one with a realm reads its cache (`ofOwnAgent`). No check reads `engine.agentHost` against it:
 /// `agentOptions` sets both from one pointer, and nothing in src/ outside
 /// the engine protocol calls agentHost (lint-engine's `agentHost()` key).
 pub fn ofAgent(agent: *engine.Agent) ?*AgentHost {
@@ -43,8 +45,22 @@ pub fn ofAgent(agent: *engine.Agent) ?*AgentHost {
 pub fn of(realm: runtime.Context) ?*AgentHost {
     var current: ?runtime.Context = realm;
     while (current) |r| : (current = r.principal_realm) {
-        const agent = r.agent orelse continue;
-        return ofAgent(agent);
+        if (r.agent == null) continue;
+        return ofOwnAgent(r);
     }
     return null;
+}
+
+/// The host of `realm`'s own agent (`realm.agent`, no principal realm
+/// followed): the host state the adapter cached on the realm when it made
+/// it (runtime.ContextData.host_state) - one load, no lookup, as Blink's
+/// ExecutionContext reaches its agent. The realm lives within its agent, so
+/// the cached pointer outlives it. A realm with an agent and nothing cached
+/// - one a host made by hand and gave an agent after (an engine-less test's
+/// ContextData), or one of an agent made with no host state - asks the
+/// registry (`ofAgent`), which answers what it would have cached. Null for a
+/// realm with no agent, or an agent made with no host state.
+pub fn ofOwnAgent(realm: runtime.Context) ?*AgentHost {
+    if (realm.host_state) |state| return @ptrCast(@alignCast(state));
+    return ofAgent(realm.agent orelse return null);
 }

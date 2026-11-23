@@ -17,8 +17,7 @@ const Registry = dom.form_past_names.Registry;
 /// The past-names registry of `realm`'s agent; null for a realm whose agent
 /// has no host (engine-free), where no past names are recorded.
 pub fn registryOf(realm: runtime.Context) ?*Registry {
-    const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.form_past_names;
 }
 

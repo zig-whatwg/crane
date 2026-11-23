@@ -12,8 +12,7 @@ pub const Reaction = ce.Reaction;
 pub const CallbackType = ce.CallbackType;
 
 pub fn stateForRealm(realm: runtime.Context) ?*AgentState {
-    const agent = realm.agent orelse return null;
-    const host: *core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *core.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.custom_elements;
 }
 

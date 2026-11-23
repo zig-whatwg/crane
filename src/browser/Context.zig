@@ -414,8 +414,7 @@ fn resetNestingMicrotask(data: ?*anyopaque) void {
 /// Null for a realm with no agent or an agent with no host (a unit test's
 /// realm), whose level is always 0.
 fn timerNestingLevel(realm: runtime.Context) ?*u32 {
-    const agent = realm.agent orelse return null;
-    const host: *html_mod.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *html_mod.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.timer_nesting_level;
 }
 
