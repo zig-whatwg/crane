@@ -259,12 +259,12 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (T == runtime.JSValue) break :blk false;
 
         // Optionals and error unions are inert exactly when their payload is.
-        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth + 1);
-        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth + 1);
+        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth);
+        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth);
 
         // `webidl.Opt(T)` wraps a payload in `.value`.
         if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
-            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth + 1);
+            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth);
         }
 
         // A wrapped platform object: conversion checks the wrapper, reads its
@@ -283,8 +283,13 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
         if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
-        // A self-referential dictionary would recurse without end; past this
-        // depth, give the safe answer.
+        // A self-referential dictionary would recurse without end; past
+        // eight dictionaries entered, give the safe answer. Only a dictionary
+        // (or another member-wise struct) counts: an optional, a webidl.Opt,
+        // a sequence or a union adds no depth - counting them made
+        // webidl.Opt(SaveFilePickerOptions), every member inert, "retain",
+        // and its context leaked per call (lane bind1, 2026-11-23;
+        // tests/v8/retention_predicate_test.zig).
         if (depth >= 8) break :blk true;
 
         // A sequence converts element by element (fromV8Sequence), a dictionary
@@ -293,7 +298,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // exactly when every part is: one callback member, function pointer or
         // unknown pointer anywhere makes the whole type retain.
         if (info == .pointer and info.pointer.size == .slice) {
-            break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
+            break :blk typeRetainsContextDepth(info.pointer.child, depth);
         }
         if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
@@ -303,7 +308,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         }
         if (info == .@"union") {
             for (info.@"union".field_types) |field_type| {
-                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
+                if (typeRetainsContextDepth(field_type, depth)) break :blk true;
             }
             break :blk false;
         }
