@@ -214,6 +214,27 @@ test "a world's MutationObserver of a page node delivers after collections, with
     try probe.onFreshThread(worldObserverOfPageNode);
 }
 
+fn worldObserverOfWorldNode() !void {
+    const p = try WorldPage.open();
+    defer p.close();
+    // A node only the world ever wrapped (the page never saw it), which the
+    // world holds; the world's observer of it has no script reference: the
+    // node's registered observer list keeps it (DOM 4.3; Blink traces the
+    // registration from the node, whichever world's wrapper keeps the node).
+    try p.inWorld(
+        \\globalThis.worldFired = 0;
+        \\globalThis.held = document.createElement('div');
+        \\new MutationObserver(() => { globalThis.worldFired++; }).observe(held, { attributes: true });
+    );
+    try p.page.settle();
+    try p.inWorld("held.setAttribute('data-x', '1');");
+    _ = try p.page.browser.runEventLoopBlocking(20);
+    try p.expectInWorld("String(globalThis.worldFired)", "1");
+}
+test "a world's MutationObserver of a node only the world wrapped delivers after collections, with no script reference to it" {
+    try probe.onFreshThread(worldObserverOfWorldNode);
+}
+
 // ---- red side: a cycle through a world wrapper is collected ------------------
 
 /// 500 rounds of `body` run in the WORLD; nothing it makes is reachable from
