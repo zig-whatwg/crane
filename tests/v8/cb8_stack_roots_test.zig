@@ -29,7 +29,11 @@ const WindowHost = struct {
 };
 
 /// A root whose trace records that it ran, and whether the helper thread
-/// held the agents' lock at that moment. Atomics only: it runs in the pause.
+/// held the agents' lock when it did - once, at any of its runs: a full
+/// collection the engine starts by itself before the helper holds the lock
+/// (allocation, its own schedule) runs the trace too, and must not hide the
+/// one the test asks for (a flake on a loaded host: the earlier run's
+/// "not held" was the last word). Atomics only: it runs in the pause.
 const Probe = struct {
     root: runtime.gc.StackRoot = .{ .trace = trace },
     holding: *const std.atomic.Value(bool),
@@ -39,19 +43,20 @@ const Probe = struct {
     fn trace(root: *runtime.gc.StackRoot, tracer: *protocol.Tracer) void {
         _ = tracer;
         const self: *Probe = @fieldParentPtr("root", root);
-        self.ran_while_held.store(self.holding.load(.acquire), .release);
+        if (self.holding.load(.acquire)) self.ran_while_held.store(true, .release);
         self.ran.store(true, .release);
     }
 };
 
 /// Holds the agents' lock, from when the test says `go` until the probe's
-/// trace ran or `bound_ms` passed - a pause that waited for the lock then
-/// gets it, and the test fails rather than hangs.
+/// trace ran while it held it or `bound_ms` passed - a pause that waited for
+/// the lock then gets it, and the test fails rather than hangs. The bound is
+/// a loaded host's, not a quiet one's: a thread may wait seconds for a core.
 const Holder = struct {
     go: std.atomic.Value(bool) = .init(false),
     holding: std.atomic.Value(bool) = .init(false),
     probe: *const Probe,
-    const bound_ms = 2000;
+    const bound_ms = 10_000;
 
     fn run(self: *Holder) void {
         var waited: u64 = 0;
@@ -59,7 +64,7 @@ const Holder = struct {
         v8.protocol_agents.lockAgentsForTest();
         self.holding.store(true, .release);
         waited = 0;
-        while (!self.probe.ran.load(.acquire) and waited < bound_ms) : (waited += 1) pause();
+        while (!self.probe.ran_while_held.load(.acquire) and waited < bound_ms) : (waited += 1) pause();
         self.holding.store(false, .release);
         v8.protocol_agents.unlockAgentsForTest();
     }
@@ -82,7 +87,9 @@ const Collect = struct {
         const self: *Collect = @ptrCast(@alignCast(data.?));
         self.holder.go.store(true, .release);
         var spins: u32 = 0;
-        while (!self.holder.holding.load(.acquire) and spins < 2000) : (spins += 1) Holder.pause();
+        // Until the helper holds the lock, within its own bound: a
+        // collection asked for before that proves nothing.
+        while (!self.holder.holding.load(.acquire) and spins < Holder.bound_ms) : (spins += 1) Holder.pause();
         v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
     }
 };
