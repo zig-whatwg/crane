@@ -354,6 +354,23 @@ test "a WebSocket constructor whose url or protocols it rejects frees what it ma
     );
 }
 
+test "a Headers constructor whose init it rejects frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Fetch "fill": a sequence item that is not a pair, and a header name
+    // that is not a header name, are each a TypeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new Headers([['a']]); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new Headers({ 'a b': 'c' }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a constructor that succeeds still hands its receiver to the wrapper cache" {
     const page = try Page.open();
     defer page.close();
