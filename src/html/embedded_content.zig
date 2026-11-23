@@ -880,8 +880,7 @@ fn unregister(content: *Content) void {
 }
 
 fn liveContents(realm: runtime.Context) ?*LiveContents {
-    const agent = realm.agent orelse return null;
-    const host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.embedded_contents;
 }
 

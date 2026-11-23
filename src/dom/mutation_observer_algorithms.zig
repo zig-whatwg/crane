@@ -116,8 +116,7 @@ pub const SignalSlot = struct {
 /// still reach their observers' record queues there (takeRecords), and no
 /// notify is queued.
 pub fn agentOf(realm: runtime.Context) ?*MutationObserverAgent {
-    const agent = realm.agent orelse return null;
-    const host: *AgentHost = @import("agent_hosts.zig").ofAgent(agent) orelse return null;
+    const host: *AgentHost = @import("agent_hosts.zig").ofOwnAgent(realm) orelse return null;
     return &host.mutation_observers;
 }
 

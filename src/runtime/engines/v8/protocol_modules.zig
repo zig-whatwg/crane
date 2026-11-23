@@ -361,7 +361,7 @@ pub fn onDynamicImport(
             ffi.v8_DynamicImport_Reject(ctx, res, message.ptr, @intCast(message.len));
         }
     };
-    const agent = protocol_agents.recordOf(isolate) orelse return fail.with(context, resolver, "import() is not supported here");
+    const agent = protocol_agents.callbackRecordOf(isolate) orelse return fail.with(context, resolver, "import() is not supported here");
     const load = agent.hooks.loadImportedModule orelse return fail.with(context, resolver, "import() is not supported here");
     const realm = context_manager.get(context) orelse return fail.with(context, resolver, "import() from a realm that has ended");
 
@@ -418,7 +418,7 @@ pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.Dynam
 /// the host's module script's base URL. (Steps 4-6, import.meta.resolve, are
 /// `onImportMetaResolve`.)
 pub fn onImportMetaUrl(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8 {
-    const agent = protocol_agents.recordOf(isolate) orelse return null;
+    const agent = protocol_agents.callbackRecordOf(isolate) orelse return null;
     const url_of = agent.hooks.importMetaUrl orelse return null;
     const record = find(isolate, module, identity_hash) orelse return null;
     const host_defined = record.host_defined orelse return null;
@@ -444,7 +444,7 @@ pub fn onImportMetaResolve(
     specifier_len: usize,
     len: *usize,
 ) callconv(.c) ?[*]u8 {
-    const agent = protocol_agents.recordOf(isolate) orelse return null;
+    const agent = protocol_agents.callbackRecordOf(isolate) orelse return null;
     const resolve = agent.hooks.importMetaResolve orelse return null;
     const realm = context_manager.get(context) orelse return null;
     const url = resolve(agent.host, realm, base_url[0..base_url_len], specifier[0..specifier_len], std.heap.c_allocator) orelse return null;

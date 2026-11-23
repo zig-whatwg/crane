@@ -122,11 +122,11 @@ progress = [
 
   [[infra.items]]
   name = "JSValue arguments borrowed by default; an impl that keeps one clones it (as Blink's ScriptValue)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Decide tracing (TracedReference / cppgc) versus manual disposal"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Event listeners and handlers are traced from their target, not held as strong roots - today a target whose listener closure captures the target can never be collected (Blink traces listeners from the target)"
@@ -178,11 +178,11 @@ progress = [
 
   [[infra.items]]
   name = "Navigation runs as tasks, not synchronously inside the caller"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Session history entries and traversal"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Unload, pagehide and beforeunload in the right order"
@@ -218,7 +218,7 @@ progress = [
 
   [[infra.items]]
   name = "XHR and navigation fetch through the same path"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "HTTP/2 over ALPN, with nghttp2 built by build.zig (never a system library: it would break the static aarch64-ios link)"
@@ -257,7 +257,7 @@ progress = [
 
   [[infra.items]]
   name = "document.domain"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Agent clusters and Origin-Agent-Cluster"
@@ -265,11 +265,11 @@ progress = [
 
   [[infra.items]]
   name = "messageerror for values that cannot cross a cluster"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Cross-origin isolation: COOP browsing context group switches, COEP and CORP enforcement, crossOriginIsolated (COOP reports, per-hop COOP and the SharedArrayBuffer constructor gate remain)"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "engine-adapter"
@@ -389,11 +389,11 @@ progress = [
 
   [[infra.items]]
   name = "WebIDL union types generated"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Callback functions carried by CallbackWrapper, not a tagged pointer"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Getter and setter receivers brand-checked"
@@ -441,11 +441,11 @@ progress = [
 
   [[infra.items]]
   name = "An interface-level way to fire a trusted event"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Window.prototype sound after a snapshot restore (window instanceof EventTarget)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "serialization"
@@ -470,7 +470,7 @@ progress = [
 
   [[infra.items]]
   name = "SharedArrayBuffer where the agent cluster allows it"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Serializable platform objects (Blob, File, DOMException, geometry, ImageData, CryptoKey) through structured serialization"
@@ -478,7 +478,7 @@ progress = [
 
   [[infra.items]]
   name = "Transferable platform objects inside a message (MessagePort in the value), resizable and length-tracking ArrayBuffer transfer"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Transferable streams (ReadableStream, WritableStream, TransformStream) through every postMessage carrier and structuredClone"
@@ -533,7 +533,7 @@ progress = [
 
   [[infra.items]]
   name = "SharedWorker: a shared worker agent whose port is entangled with the creator's (workers/constructors/SharedWorker/ and data-url-shared wait on a reply that an unentangled port now drops, per spec)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "instances"
@@ -600,11 +600,11 @@ progress = [
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "zig-017"
@@ -681,7 +681,7 @@ progress = [
 
 [[infra]]
 id = "v8-pgo"
-title = "V8 built with Crane's own PGO profile (0.1 requirement)"
+title = "V8 built with Crane's own PGO profile (0.2 - moved from 0.1 by the user, 2026-11-22)"
 why = """The user, 2026-11-04: training our own profile-guided optimization for V8 "should \
 be part of the requirements for 0.1 release". Lane v8opt1 built V8 13.1.203 the way \
 Chrome's official build does, with ThinLTO and Chrome 131's own mac-arm profile plus V8's \
@@ -734,11 +734,11 @@ progress = [
 
   [[infra.items]]
   name = "Engine half (batches 0, E1-E5): the list of adapters, flags, sources and link inputs, the adapter module, snapshot and tests"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Platform half (batches P1-P4): the adapter list, the kit's C libraries, per-OS links, checks and tests"
-  status = "todo"
+  status = "doing"
 
 [[infra]]
 id = "api-subset-build"
@@ -789,18 +789,56 @@ progress = []
 
   [[infra.items]]
   name = "Design: transport, sessions, the exact command set the punted suites' runners send, mapping onto Crane's browser algorithms"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Isolated worlds in the engine (several JS worlds over one DOM, each with its own globals and wrappers; Blink's DOMWrapperWorld)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Transport + Target/Browser/Page/Runtime, then Input, Network/Fetch, DOM/Emulation/Log basics"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "The punted suites run against Crane by their own runners; frameworks page updated"
+  status = "done"
+
+[[infra]]
+id = "cdp-live-dom"
+title = "Chrome DevTools Protocol: the live DOM, in full (0.1 requirement)"
+why = """The user, 2026-11-22 10:42 PM ET: "we need the live dom over cdp fully in scope for 0.1". \
+Part 1 sends a snapshot (DOM.getDocument, requestChildNodes -> setChildNodes, describeNode, \
+getOuterHTML, querySelector/All, resolveNode, documentUpdated at a commit); a connected client \
+(Chrome DevTools' Elements panel, Puppeteer/Playwright handles) sees no change the page makes \
+after that. Chromium's InspectorDOMAgent (third_party/blink/renderer/core/inspector/\
+inspector_dom_agent.cc) is the reference; no geometry (the renderer is 0.2)."""
+done_when = """Every DOM-domain event Chrome sends for a mutation is sent, in Chrome's order and \
+shape, to every enabled session: childNodeInserted / childNodeRemoved / childNodeCountUpdated \
+(for parents the client has or has not requested), attributeModified / attributeRemoved, \
+characterDataModified, inlineStyleInvalidated, shadowRootPushed / shadowRootPopped, \
+pseudoElementAdded / pseudoElementRemoved, distributedNodesUpdated, topLayerElementsUpdated, \
+documentUpdated, setChildNodes for pushed paths; and every DOM-domain command that needs no \
+geometry works: getAttributes, setAttributeValue / setAttributesAsText / removeAttribute, \
+setNodeValue, setNodeName, removeNode, setOuterHTML, moveTo / copyTo, undo / redo / \
+markUndoableState, performSearch / getSearchResults / discardSearchResults, requestNode, \
+pushNodeByPathToFrontend, pushNodesByBackendIdsToFrontend, getFlattenedDocument, focus, \
+setFileInputFiles, getNodeStackTraces / setNodeStackTracesEnabled, collectClassNamesFromSubtree, \
+getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner. \
+Proven by a trace against Chrome 157 for the same page script (mutation by mutation, ids and \
+order equal) and by Chrome DevTools' own Elements panel connected to Crane staying live; costs \
+nothing when no session has DOM enabled (cost pair within the bar)."""
+progress = []
+
+  [[infra.items]]
+  name = "DOM mutation events to enabled sessions, Chrome's order and shape"
+  status = "todo"
+
+  [[infra.items]]
+  name = "DOM editing, search and node-push commands (no geometry)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Chrome DevTools frontend connected: Elements panel live (test)"
   status = "todo"
 
 [[infra]]
@@ -808,7 +846,7 @@ id = "cdp-part-2"
 title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
 why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
 punted framework suites need."""
-done_when = """DOMSnapshot, full DOM/CSS, Storage, Emulation beyond the basics, Debugger, \
+done_when = """DOMSnapshot, the CSS domain, Storage, Emulation beyond the basics, Debugger, \
 Profiler, Tracing and the remaining domains Puppeteer/Playwright/chromedp users rely on."""
 progress = []
 

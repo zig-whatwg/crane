@@ -4522,8 +4522,7 @@ pub fn serviceScopeOf(ctx: runtime.Context) ?ServiceScope {
 }
 
 fn serviceHostOf(ctx: runtime.Context) ?*WorkerHost {
-    const agent = ctx.agent orelse return null;
-    const agent_host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const agent_host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(ctx) orelse return null;
     const host: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     if (host.service == null) return null;
     return host;

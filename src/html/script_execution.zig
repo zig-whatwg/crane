@@ -1275,8 +1275,7 @@ const max_drain_depth = 16;
 /// The drain state of the agent `document`'s realm belongs to (a document's
 /// realm is a window realm: its agent is its Browser's window agent).
 fn drainStateOf(document: *runtime.Instance) ?*ScriptDrain {
-    const agent = document.ctx.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(document.ctx) orelse return null;
     return &host.script_drain;
 }
 
@@ -1612,8 +1611,7 @@ const ClassicScripts = @import("html_core").agent_host.ClassicScripts;
 /// The classic script records of `realm`'s agent; null for an agent with no
 /// host - an engine-less test's, or an adapter's that keeps none.
 fn classicScriptsOf(realm: runtime.Context) ?*ClassicScripts {
-    const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent) orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.classic_scripts;
 }
 

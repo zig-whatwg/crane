@@ -220,6 +220,17 @@ pub const ContextData = struct {
     /// agent, which for a worker realm is never the page's.
     agent: ?*@import("engine_types.zig").Agent = null,
 
+    /// The embedder's state for `agent` (engine.hostStateOf: html's
+    /// AgentHost for every agent a Browser or worker host makes), cached by
+    /// the adapter when it sets `agent`, so the DOM and html read their
+    /// agent's state from the realm in one load (dom.agent_hosts.of /
+    /// ofOwnAgent) - the agent registry's locked lookup was paid around every
+    /// [CEReactions] call before (lane tpc). Opaque here: `engine.HostState`,
+    /// which the runtime tier cannot name. BORROWED: the agent - and its
+    /// host state, which lives as long as the agent - outlives its realms.
+    /// Null for a realm with no agent, or an agent made without host state.
+    host_state: ?*anyopaque = null,
+
     /// Whether this realm's environment settings object is a secure context
     /// (HTML 8.1.3.5), as the host decided it when it asked for the realm
     /// (WindowRealmOptions/WorkerRealmOptions.secure_context). The engine
