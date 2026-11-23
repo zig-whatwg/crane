@@ -223,6 +223,7 @@ pub const Choice = struct {
 /// no adapter answers for with no -Dplatform-module, or -Dplatform=external
 /// without one stops the configure with the reason.
 pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Choice {
+    checkListIsComplete(b);
     const without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &capability_names);
     const module_path = b.option([]const u8, "platform-module", "A third-party platform: the root file of an implementation of src/platform/protocol.zig");
     const asked = b.option(Platform, "platform", platform_help);
@@ -236,6 +237,43 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Choice {
     }
     const static = optionList(b, "platform-static", b.option([]const u8, "platform-static", "Link-plan items to compile statically instead of linking the system library (comma-separated, or all)"), &static_items);
     return .{ .platform = platform, .module_path = module_path, .without = without, .static = static };
+}
+
+/// Whether `name` is a listed adapter's name.
+fn isListed(name: []const u8) bool {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |listed| {
+        if (std.mem.eql(u8, listed, name)) return true;
+    }
+    return false;
+}
+
+/// Fail the configure when a directory under src/platform/adapters/ is not a
+/// listed adapter. The list is what -Dplatform offers, what the conformance
+/// check holds to the interface, what the conformance test binds and what
+/// the build-neutrality lint takes its platform words from: an adapter's
+/// directory it lacks would be none of these, silently. (A listed adapter
+/// without its directory or its build file cannot happen: the list imports
+/// the file.) The engine protocol's check, for the platform.
+///
+/// What it reads - the directory's entries, by name and kind - is a tracked
+/// input of Zig's configure cache (`dependOnDirectoryContents` records
+/// exactly those), so a new directory there configures again and fails here,
+/// and an unchanged one leaves the cached configuration in use.
+fn checkListIsComplete(b: *std.Build) void {
+    const io = b.graph.io;
+    const adapters_path = "src/platform/adapters";
+    b.dependOnDirectoryContents(b.path(adapters_path));
+    var dir = b.root.root_dir.handle.openDir(io, adapters_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("the platform build protocol cannot open {s} to check its list of adapters: {t}", .{ adapters_path, err });
+    defer dir.close(io);
+    var entries = dir.iterate();
+    while (entries.next(io) catch |err| std.debug.panic("the platform build protocol cannot read {s}: {t}", .{ adapters_path, err })) |entry| {
+        if (entry.kind != .directory or isListed(entry.name)) continue;
+        std.debug.panic(
+            "{s}/{s}/ is a platform adapter the build protocol does not list: give it a platform_build.zig (the interface: src/platform/platform_build_protocol.zig) and a line in that file's `adapters`",
+            .{ adapters_path, entry.name },
+        );
+    }
 }
 
 /// A comma-separated option as a list of names, each checked against `valid`.
@@ -405,6 +443,11 @@ test "the conformance bindings: each listed platform but the tests' own, then th
             } else return error.NotACapability;
         }
     }
+}
+
+test "a listed adapter's name is listed; a third party's and an unknown name are not" {
+    for ([_][]const u8{ "darwin", "linux", "testing" }) |name| try testing.expect(isListed(name));
+    for ([_][]const u8{ "external", "windows", "", "Darwin" }) |name| try testing.expect(!isListed(name));
 }
 
 test "the lint's platform keys are the listed adapters' words; its target keys a branch on the OS" {
