@@ -135,3 +135,34 @@ pub fn systemLibraryCheck(b: *std.Build, options: Options, probe: *std.Build.Ste
     run.has_side_effects = true;
     return run;
 }
+
+/// The kit's linked-versions test: the mbedTLS and zlib versions the binary
+/// links, asked of the linked code (tests/linked_libraries/versions_test.zig).
+/// Built against the same mbedTLS artifact, headers and threading macros as
+/// libcurl and WebCrypto. The root build runs it as one of its suites, where
+/// the kit builds the library (never under -Dsystem-curl: there is no mbedTLS
+/// artifact, and the versions are the system's).
+pub const versions_test = struct {
+    /// The test directory, recorded as a suite's.
+    pub const dir = "tests/linked_libraries";
+    /// Its suite's name.
+    pub const suite = "tests-linked_libraries";
+    /// The step that runs it alone.
+    pub const step_name = "test-deps";
+    pub const step_description = "Check the mbedTLS and zlib versions libcurl and WebCrypto link";
+
+    /// The test's root module: built against `mbedtls_library` (the mbedTLS
+    /// the kit's libcurl links, curl_build.zig StaticLibcurl.mbedtls), with
+    /// its version header translated, and importing `fetch`, whose zlib it
+    /// asks.
+    pub fn module(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?PrepareC, mbedtls_library: *std.Build.Step.Compile, fetch: *std.Build.Module) *std.Build.Module {
+        const deps_test_mod = b.createModule(.{
+            .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
+            .target = target,
+            .imports = &.{.{ .name = "fetch", .module = fetch }},
+        });
+        deps_test_mod.linkLibrary(mbedtls_library);
+        deps_test_mod.addImport("mbedtls_version_c", cImport(b, "mbedtls_version_c", target, prepare, .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &mbedtls_threading_macros }));
+        return deps_test_mod;
+    }
+};

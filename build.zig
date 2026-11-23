@@ -2826,21 +2826,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_webcrypto_tests.step);
     }
 
-    // The mbedTLS and zlib versions the binary links, asked of the linked code
-    // (tests/linked_libraries/versions_test.zig). Built against the same mbedTLS
-    // artifact, headers and threading macros as libcurl and WebCrypto. Not under
-    // -Dsystem-curl: there is no mbedTLS artifact, and the versions are the system's.
-    recordSuiteDir(b, test_selection, "tests/linked_libraries");
-    if (linked_mbedtls) |mbedtls_library| {
-        const deps_test_mod = b.createModule(.{
-            .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
-            .target = target,
-            .imports = &.{.{ .name = "fetch", .module = testing_graph.fetch }},
-        });
-        deps_test_mod.linkLibrary(mbedtls_library);
-        deps_test_mod.addImport("mbedtls_version_c", kit_build.cImport(b, "mbedtls_version_c", target, prepareCFor(target), .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &kit_build.mbedtls_threading_macros }));
-        const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), "tests-linked_libraries", null);
-        b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
+    // The kit's linked-versions test (kit_build.versions_test): what the
+    // binary links, asked of the linked code. Not under the kit's system
+    // library option: there is no library artifact of the kit's to ask.
+    const versions_test = kit_build.versions_test;
+    recordSuiteDir(b, test_selection, versions_test.dir);
+    if (linked_mbedtls) |library| {
+        const deps_test_mod = versions_test.module(b, target, prepareCFor(target), library, testing_graph.fetch);
+        const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), versions_test.suite, null);
+        b.step(versions_test.step_name, versions_test.step_description).dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
             test_step.dependOn(&run_deps_tests.step);
         }
