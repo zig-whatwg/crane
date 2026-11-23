@@ -171,7 +171,7 @@ return (try engine.createResolvedPromise(ctx, value)).take();
 | `createArrayBuffer(engine_ctx, bytes)` | `createArrayBuffer(realm, bytes) Error!Owned` | R25 |
 | `createUint8Array(engine_ctx, bytes)` | `createArrayBuffer` + `createArrayBufferView(realm, .uint8, buffer, 0, len)` | R25 |
 | `createEventLoop` / `destroyEventLoop` | none - the host's event loop | DROPPED |
-| `createCallbackWrapper` / `invokeCallback` / `destroyCallbackWrapper` | `takeCallbackInterface` / `callUserObjectOperation` / `.release()` | R3, R5 |
+| `createCallbackWrapper` / `invokeCallback` / `destroyCallbackWrapper` | `callback.keep()` (keepCallbackInterface) / `callUserObjectOperation` / `.release()` | R3, R5 |
 | `invokeStreamCallback(engine_ctx, cb, controller, arg)` | `invokeCallbackFunction(realm, &cb, this, args, .rethrow)` | R4 |
 | `requestGarbageCollection(engine_ctx)` | `requestGarbageCollection(agent: *Agent) void` | `realm.agent orelse ...` (TestUtils) |
 | `scheduleOnMainThread` | none - the host task queue | DROPPED |
@@ -191,7 +191,7 @@ return (try engine.createResolvedPromise(ctx, value)).take();
 | `throwValue(realm, v)` | same | R20 |
 | `invokeCallbackFunction(realm, cb: JSValue, this, args, report, host)` | `invokeCallbackFunction(realm, *const CallbackFunction, CallbackThis, args, ExceptionBehavior) Error!Completion` | R4 |
 | `callUserObjectOperation(realm, *CallbackWrapper, op, args) JSValue` | `callUserObjectOperation(realm, *const CallbackInterface, op, CallbackThis, args, ExceptionBehavior) Error!Completion` | R5 |
-| `takeCallbackFunction(argument) JSValue` | `takeCallbackFunction(argument) CallbackFunction` | records the callback context (R2) |
+| `takeCallbackFunction(argument) JSValue` | `callback.keep()` - `keepCallbackFunction(BorrowedCallbackFunction) CallbackFunction` (the take operations are gone, lane bind1) | records the callback context (R2) |
 | `installWindowOperations` / `createObservableArray` / `queueMicrotask` / `createDictionaryObject` / `currentRealm` / `defineBuiltinFunction` | same names | |
 | `describeArrayBufferView(v)` / `writeIntoArrayBufferView(view, bytes, off)` | same, realm first | R25 |
 | `convertToUnrestrictedDouble` / `convertToDOMString` / `convertToUSVString` / `convertToPlatformObject` / `convertToSequenceOf{PlatformObjects,DOMStrings}` / `convertToRecordOfStrings` / `getCopyOfBufferSourceBytes` / `createSequenceOfValues` | same names | |
@@ -263,7 +263,7 @@ fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
 }
 ```
 
-### R2. Take a callback-function argument or dictionary member
+### R2. Keep a callback-function argument or dictionary member
 
 Seen in: IntersectionObserver, MutationObserver, streams_writable,
 WindowOrWorkerGlobalScope, EventTarget.
@@ -274,15 +274,20 @@ WindowOrWorkerGlobalScope, EventTarget.
   `v8.pointer_tag.untagPointer(ptr)` and `GlobalHandle{ .ptr = untagged.ptr }`,
   plus `v8_Isolate_GetCurrent()` kept in an `isolate` field; disposed with
   `disposeOptionalGlobalHandle`.
-- **Protocol**: `engine.takeCallbackFunction(@ptrCast(callback)) CallbackFunction`
-  (TRANSITIONAL until codegen types callback parameters).
-- **Ownership**: the binding hands the tagged Global over; the result is
-  OWNED - store it, `release()` in deinit. Its `.context` is the incumbent
-  realm at the call (the callback context).
-- **Pitfalls**: take it exactly once - a second take double-owns the Global.
-  Delete the `isolate` field: the realm is `instance.ctx`, and the invoke
-  enters the right agent. Do it in the constructor, before anything that can
-  fail, and let the `errdefer deinit` release it.
+- **Protocol**: the parameter (or member, or union arm) is a
+  `runtime.BorrowedCallbackFunction` (codegen's `callbacks.X`);
+  `callback.keep()` (engine.keepCallbackFunction) gives a `CallbackFunction`.
+- **Ownership**: the borrowed value is the binding's for the call - it frees
+  it when the call returns - so never store it (its type is not the owned
+  one, so it does not compile); compare or read its `function` during the
+  call. The kept value is OWNED - store it, `release()` in deinit. Its
+  `.context` is the incumbent realm at the call (the callback context).
+- **Pitfalls**: keep it at most once - V8 moves the binding's Global into the
+  kept value, so a second keep gives an undefined function. Delete the
+  `isolate` field: the realm is `instance.ctx`, and the invoke enters the
+  right agent. Keep it in the constructor, before anything that can fail, and
+  let the `errdefer deinit` release it. A callback never kept costs nothing:
+  the binding frees it.
 
 ```zig
 // before
@@ -293,28 +298,30 @@ internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.
 
 // after
 callback: ?engine.CallbackFunction = null,
-internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+internal.callback = callback.keep();
 // deinit
 if (self.callback) |callback| callback.release();
 ```
 
-### R3. Take a callback-interface argument (a listener, a NodeFilter)
+### R3. Keep a callback-interface argument (a listener, a NodeFilter)
 
 Seen in: EventTarget, node_filter.zig.
 
 - **Intent**: WebIDL callback interface value (object + callback context).
 - **V8 pattern**: `runtime.CallbackWrapper` / `v8.CallbackWrapper`,
-  `getGlobalValuePtr`, `destroyCallbackWrapper`.
-- **Protocol**: `engine.takeCallbackInterface(wrapper) CallbackInterface`.
-- **Ownership**: the wrapper (`*runtime.CallbackWrapper`, opaque) is BORROWED
-  for the call, like every argument: the binding releases it when the call
-  returns, so never free or keep it. The CallbackInterface is the impl's own,
-  OWNED handle to the object - release it when done. An attribute that gives
-  the callback back (NodeIterator.filter) returns its object (codegen types a
-  callback interface attribute as `runtime.JSValue`).
+  `getGlobalValuePtr`, `destroyCallbackWrapper` (all gone, lane bind1).
+- **Protocol**: the parameter is a `runtime.BorrowedCallbackInterface` (`?`
+  when the IDL type is nullable); `callback.keep()`
+  (engine.keepCallbackInterface) gives a `CallbackInterface`.
+- **Ownership**: the borrowed value is the binding's for the call, like
+  every argument: never free or store it. The CallbackInterface is the
+  impl's own, OWNED handle to the object - release it when done. An
+  attribute that gives the callback back (NodeIterator.filter) returns its
+  object (codegen types a callback interface attribute as
+  `runtime.JSValue`).
 - **Pitfalls**: listener identity (DOM "event listener whose callback is
-  callback") is `engine.sameValue(realm, a.object.value, b.object.value)`, not
-  pointer equality of wrappers.
+  callback") is `engine.sameValue(realm, kept.object.value, borrowed.object)`,
+  and a comparison needs no keep (removeEventListener keeps nothing).
 
 ### R4. Invoke a callback function
 

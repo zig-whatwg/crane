@@ -61,8 +61,8 @@
 //! (browser/components/sessionstore, SessionStore's per-tab storage
 //! collection); Safari keeps it per page (WebKit's SessionStorageManager,
 //! a namespace per WebPageProxy) and restores it only with the page's
-//! session state. A traversable's shed ends with it
-//! (standard.TraversableStorageSheds).
+//! session state. A traversable's shed ends with its tab
+//! (standard.initTraversableStorageShed).
 //!
 //! THREADS: localStorage is [Exposed=Window]: an area is loaded, changed,
 //! and its commits collected on its Browser's window thread only, and its

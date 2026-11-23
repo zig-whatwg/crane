@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const USBDeviceFilter = @import("USBDeviceFilter.zig").USBDeviceFilter;
 
 pub const USBDeviceRequestOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     filters: []const USBDeviceFilter,
     exclusionFilters: ?[]const USBDeviceFilter = null,
 

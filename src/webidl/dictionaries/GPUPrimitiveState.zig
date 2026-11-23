@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const GPUPrimitiveState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     topology: ?enums.GPUPrimitiveTopology = null,
     stripIndexFormat: ?enums.GPUIndexFormat = null,
     frontFace: ?enums.GPUFrontFace = null,

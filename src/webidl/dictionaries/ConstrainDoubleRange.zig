@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const DoubleRange = @import("DoubleRange.zig").DoubleRange;
 
 pub const ConstrainDoubleRange = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from DoubleRange
     base: DoubleRange,
 

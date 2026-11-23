@@ -7,6 +7,8 @@ const enums = @import("enums");
 const ImageResource = @import("ImageResource.zig").ImageResource;
 
 pub const ContentDescription = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     id: runtime.DOMString,
     title: runtime.DOMString,
     description: runtime.DOMString,

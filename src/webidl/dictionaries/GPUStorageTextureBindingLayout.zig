@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const GPUStorageTextureBindingLayout = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     access: ?enums.GPUStorageTextureAccess = null,
     format: enums.GPUTextureFormat,
     viewDimension: ?enums.GPUTextureViewDimension = null,

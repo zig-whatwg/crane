@@ -1,10 +1,12 @@
-//! A window event loop's animations: the global animation list, each
+//! A tab's animations, run by its window event loop: the global animation list, each
 //! document's default document timeline, animation time and pending
 //! animation event queue, and "update animations and send events" (Web
 //! Animations 1 4.4), HTML "update the rendering" step 11.
 //!
-//! OWNED by the Browser's event loop (src/browser/rendering.zig,
-//! `Frames.animations`), reached through update_the_rendering's Loop. It
+//! OWNED by a tab's frame clock (src/browser/rendering.zig,
+//! `Frames.animations`, the tab scope's `frames` slot: one per tab, as a
+//! tab's documents are its own), reached through update_the_rendering's
+//! Loop. It
 //! holds every animation, timeline and document as a BORROWED,
 //! generation-checked Link: an object script dropped is collected and leaves
 //! at the next retire pass. What it owns are the queued events (each an
@@ -77,7 +79,7 @@ pub const Registry = struct {
     allocator: Allocator,
     next_sequence: u64 = 1,
     next_order: u64 = 0,
-    /// The global animation list (4.5): every animation made in this loop's
+    /// The global animation list (4.5): every animation made in this tab's
     /// realms, in creation order.
     animations: std.ArrayListUnmanaged(Link) = .empty,
     /// Retire dead links once the list doubles since the last pass.
@@ -97,8 +99,8 @@ pub const Registry = struct {
     commit: ?*@import("effect_stack.zig").Commit = null,
     /// CSS Transitions 2 3.2 "the current transition generation", moved by
     /// each style change event that starts a transition
-    /// (css_transitions.Run.start). Kept per event loop: the browsing
-    /// contexts of one loop share it.
+    /// (css_transitions.Run.start). Kept per tab (its frame clock's): the
+    /// browsing contexts of one tab share it.
     transition_generation: u64 = 0,
 
     pub fn init(allocator: Allocator) Registry {

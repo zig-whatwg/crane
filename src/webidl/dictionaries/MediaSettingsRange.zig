@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const MediaSettingsRange = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     max: ?f64 = null,
     min: ?f64 = null,
     step: ?f64 = null,

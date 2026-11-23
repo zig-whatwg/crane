@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const RemotePlaybackAvailabilityCallback = *const fn (available: bool) void;
+/// callback RemotePlaybackAvailabilityCallback = undefined (boolean available)
+pub const RemotePlaybackAvailabilityCallback = runtime.BorrowedCallbackFunction;

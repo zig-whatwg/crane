@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const PositionOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     enableHighAccuracy: ?bool = null,
     timeout: ?u32 = null,
     maximumAge: ?u32 = null,

@@ -1,5 +1,5 @@
 //! runtime.lifetime: the wrapper's counted reference (refcount design 2.1,
-//! step 4 of tmp/plans/refcount-design.md).
+//! step 4 of docs/refcount-design.md).
 //!
 //! A wrapper owns one reference to a counted instance - WebKit's JSDOMWrapper
 //! holds a `Ref<T>`, and pre-Oilpan Blink's second weak callback dropped the

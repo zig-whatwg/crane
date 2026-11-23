@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const MLTensorLimits = @import("MLTensorLimits.zig").MLTensorLimits;
 
 pub const MLBatchNormalizationSupportLimits = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     input: ?MLTensorLimits = null,
     mean: ?MLTensorLimits = null,
     variance: ?MLTensorLimits = null,

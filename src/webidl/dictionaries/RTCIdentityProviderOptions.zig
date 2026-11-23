@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const RTCIdentityProviderOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     protocol: ?runtime.DOMString = null,
     usernameHint: ?runtime.DOMString = null,
     peerIdentity: ?runtime.DOMString = null,

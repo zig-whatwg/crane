@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ValidateAssertionCallback = *const fn (assertion: runtime.DOMString, origin: runtime.DOMString) runtime.JSValue;
+/// callback ValidateAssertionCallback = Promise<RTCIdentityValidationResult> (DOMString assertion, DOMString origin)
+pub const ValidateAssertionCallback = runtime.BorrowedCallbackFunction;

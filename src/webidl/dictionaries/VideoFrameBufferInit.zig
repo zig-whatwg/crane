@@ -10,6 +10,8 @@ const VideoColorSpaceInit = @import("VideoColorSpaceInit.zig").VideoColorSpaceIn
 const DOMRectInit = @import("DOMRectInit.zig").DOMRectInit;
 
 pub const VideoFrameBufferInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     format: enums.VideoPixelFormat,
     codedWidth: u32,
     codedHeight: u32,

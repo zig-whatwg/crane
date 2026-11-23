@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const VoidFunction = *const fn () void;
+/// callback VoidFunction = undefined ()
+pub const VoidFunction = runtime.BorrowedCallbackFunction;

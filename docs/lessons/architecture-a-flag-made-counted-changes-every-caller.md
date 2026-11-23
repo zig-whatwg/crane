@@ -3,7 +3,7 @@
 **Date**: 2026-10-10
 **Lesson**: When an idempotent keep/release flag becomes a count, every caller written against the flag is wrong in one of two ways: it keeps on every toggle (and now leaks) or releases more than it kept (and now ends another owner's keep). So the change needs a complete caller audit - a grep with no head cut - and each caller balanced with one bool of its own.
 
-**Why**: Refcount step 4 (tmp/plans/refcount-design.md 2.3) made `engine.keepPlatformObjectAlive` counted, WebKit's `m_pendingActivityInstanceCount`. A flag could not carry two owners: a script element's queued task and its fetch both kept it, and the first release ended both (fix-list D15). But 23 files called the pair, and most were written for a flag:
+**Why**: Refcount step 4 (docs/refcount-design.md 2.3) made `engine.keepPlatformObjectAlive` counted, WebKit's `m_pendingActivityInstanceCount`. A flag could not carry two owners: a script element's queued task and its fetch both kept it, and the first release ended both (fix-list D15). But 23 files called the pair, and most were written for a flag:
 - keep on every toggle: IntersectionObserver (each observe()), MutationObserver (each observe()), media Activity.sync, MessagePort and EventSource syncs, each img update;
 - release more than kept: WebSocket (close task and deinit), BroadcastChannel (each close() and deinit), Worker, PerformanceObserver (each disconnect() and deinit), SharedWorker.deinit;
 - a subtle one: slot signaling skipped its release when a listener signaled the slot again. Under the flag, both signals were the same keep; under the count, the first membership's keep leaked.

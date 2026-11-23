@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const VideoFrameOutputCallback = *const fn (output: *runtime.Instance) void;
+/// callback VideoFrameOutputCallback = undefined (VideoFrame output)
+pub const VideoFrameOutputCallback = runtime.BorrowedCallbackFunction;

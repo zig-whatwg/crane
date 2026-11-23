@@ -49,6 +49,7 @@ const infra = @import("infra");
 const timer_mod = @import("timer.zig");
 const native_timer = @import("native_timer.zig");
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const TabScope = @import("tab_scope.zig").TabScope;
 const TaskSink = @import("task_sink.zig").TaskSink;
 
 // Realm infrastructure for context type and exposure checking
@@ -205,6 +206,18 @@ pub const ContextData = struct {
     /// worker realm its owner's. BORROWED: the Browser outlives its realms.
     browser_scope: ?*BrowserScope = null,
 
+    /// The tab this realm belongs to: its scope, where the tab's state lives
+    /// (docs/instances.md, rule 2: "a realm will carry its Browser's scope
+    /// and its Tab's scope") - session storage, session history, the frame
+    /// clock, system visibility and focus. A Window realm's is its Window's
+    /// browsing context's tab: set by the Window as its browsing context
+    /// becomes final, and released and cleared at the Window's end, so a
+    /// realm the engine keeps after its end names no tab. A COUNTED
+    /// reference (runtime.TabScope.retain). Null for any other realm - a
+    /// worker's has no tab; an isolated world's and a ShadowRealm's are read
+    /// through their main or principal realm (`TabScope.ofRealm`).
+    tab_scope: ?*TabScope = null,
+
     /// The cross-thread inbox of this realm's event loop (runtime.TaskSink):
     /// what another thread posts a task of this realm to - a message for a
     /// port of the realm, a worker's end for a Worker of it. Set with
@@ -333,6 +346,15 @@ pub const ContextData = struct {
     /// (or sooner, when the host gives it back). It was one map per thread,
     /// every Window's timers in it.
     active_timers: native_timer.TimerIdMap(*anyopaque) = .empty,
+
+    /// The next id this global's timer initialization steps give out (HTML
+    /// 8.6 step 2: "an implementation-defined integer that is greater than
+    /// zero and does not already exist in global's map of active timers"):
+    /// each global counts its own from 1, wrapping past the greatest `long`
+    /// - as Blink's DOMTimerCoordinator, Gecko's TimeoutManager and WebKit's
+    /// ScriptExecutionContext count per global, and a worker's global here
+    /// does (html.worker_host takeTimerId).
+    next_timer_id: i32 = 1,
 
     /// The realm's own platform objects of each kind that something must
     /// reach as a whole - HTML "destroy a document" step 5's MessagePorts,

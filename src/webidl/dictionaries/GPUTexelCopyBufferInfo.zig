@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const GPUTexelCopyBufferLayout = @import("GPUTexelCopyBufferLayout.zig").GPUTexelCopyBufferLayout;
 
 pub const GPUTexelCopyBufferInfo = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from GPUTexelCopyBufferLayout
     base: GPUTexelCopyBufferLayout,
 

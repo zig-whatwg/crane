@@ -907,12 +907,11 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     // frames) - the window's own, through which a realm with a parent (a
     // frame, or a top-level predecessor, whose parent is the realm that
     // replaced it) or a popup's gives up its timers before they are
-    // forgotten; a page's own realm ended them with its page - and the
-    // callbacks this realm's script registered - each a strong handle into
-    // the context.
+    // forgotten; a page's own realm ended them with its page. (The callbacks
+    // its script registered are kept values, each realm-tagged when it was
+    // kept: step 2's detach weakens them.)
     if (state.parent != null or state.auxiliary) page_realm.frameWindowDestroyed(realm);
     page_realm.endWindowOperations(realm);
-    @import("callback_registry.zig").cleanupForContext(@ptrFromInt(key));
 
     // 2. No strong handle into the context is left: what the wrapper cache
     // held strongly is kept from the retained store now, and the intrinsics

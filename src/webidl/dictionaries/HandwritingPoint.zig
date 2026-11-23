@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const HandwritingPoint = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     x: f64,
     y: f64,
     t: ?typedefs.DOMHighResTimeStamp = null,

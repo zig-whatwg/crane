@@ -33,6 +33,9 @@ pub const State = struct {
     /// (`changesNothing`).
     device_emulation_enabled: bool = false,
     device_emulation_params: ?E.setDeviceMetricsOverride.Params = null,
+    /// This session emulates focus for its tab (setFocusEmulationEnabled):
+    /// counted once on the tab, and given back when it stops or detaches.
+    focus_emulated: bool = false,
 };
 
 /// The params that make a device metrics override, as EmulationHandler
@@ -83,6 +86,12 @@ pub fn sessionEnded(session: *PageSession) void {
     session.states.Emulation.device_emulation_enabled = false;
     session.states.Emulation.device_emulation_params = null;
     const bc = tabOf(session) orelse return;
+    // Its focus emulation ends with it, as Chrome's EmulationHandler::Disable
+    // turns SetFocusEmulationEnabled off.
+    if (session.states.Emulation.focus_emulated) {
+        session.states.Emulation.focus_emulated = false;
+        @import("html").focus.setFocusEmulation(bc, false);
+    }
     const had_media = bc.host_overrides.media_owner == owner(session);
     const had_screen = bc.host_overrides.screen_owner == owner(session);
     bc.host_overrides.clearOwnedBy(bc.allocator, owner(session));
@@ -212,11 +221,21 @@ fn mediaChanged(bc: *frames.BrowsingContext) void {
     dom.update_the_rendering.requestFrame(document);
 }
 
-/// Every headless tab is focused already (the tab-focus ruling,
-/// 2026-11-19): nothing to emulate (design 1.4 "A").
+/// The tab answers as focused while the client emulates focus, whatever its
+/// system focus (Blink's FocusController::SetFocusEmulationEnabled:
+/// IsFocused() is `is_focused_ || is_emulating_focus_`; Playwright enables it
+/// on every page). Every tab has system focus until its host narrows focus to
+/// its active tab (the tab-focus ruling, 2026-11-19), so it changes nothing
+/// then; in a narrowed Browser a tab in the background answers as focused
+/// (html.focus.setFocusEmulation, counted once per session).
 pub fn setFocusEmulationEnabled(session: *PageSession, params: E.setFocusEmulationEnabled.Params) !E.setFocusEmulationEnabled.Result {
-    _ = session;
-    _ = params;
+    // A session whose tab is not there (yet) has nothing to emulate for: it
+    // succeeds, as the command always did - Playwright awaits it on every
+    // page it attaches to.
+    const bc = tabOf(session) orelse return .{};
+    if (params.enabled == session.states.Emulation.focus_emulated) return .{};
+    session.states.Emulation.focus_emulated = params.enabled;
+    @import("html").focus.setFocusEmulation(bc, params.enabled);
     return .{};
 }
 

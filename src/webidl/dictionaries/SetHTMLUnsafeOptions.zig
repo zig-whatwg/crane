@@ -7,6 +7,8 @@ const enums = @import("enums");
 const SanitizerConfig = @import("SanitizerConfig.zig").SanitizerConfig;
 
 pub const SetHTMLUnsafeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     runScripts: ?bool = null,
     sanitizer: ?runtime.JSValue = null,
 

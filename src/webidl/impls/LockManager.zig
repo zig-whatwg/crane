@@ -245,18 +245,18 @@ fn endEnvironment(realm: runtime.Context) void {
 
 /// request(name, callback)
 pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callback: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
-    return request(instance, name.asSlice(), .{}, @ptrCast(callback));
+    return request(instance, name.asSlice(), .{}, callback);
 }
 
 /// request(name, options, callback)
 pub fn call_request__1(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.LockOptions, callback: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
-    return request(instance, name.asSlice(), options, @ptrCast(callback));
+    return request(instance, name.asSlice(), options, callback);
 }
 
 /// Section 3.2.1, the request() method steps.
-fn request(instance: *runtime.Instance, name: []const u8, options: dictionaries.LockOptions, callback_argument: *const anyopaque) anyerror!runtime.JSValue {
-    // The callback, converted: this function's until a request keeps it.
-    var callback: ?engine.CallbackFunction = engine.takeCallbackFunction(callback_argument);
+fn request(instance: *runtime.Instance, name: []const u8, options: dictionaries.LockOptions, callback_argument: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
+    // The callback, kept: this function's until a request keeps it.
+    var callback: ?engine.CallbackFunction = callback_argument.keep();
     defer if (callback) |c| c.release();
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 

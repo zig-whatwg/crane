@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const SubscribeCallback = *const fn (subscriber: *runtime.Instance) void;
+/// callback SubscribeCallback = undefined (Subscriber subscriber)
+pub const SubscribeCallback = runtime.BorrowedCallbackFunction;

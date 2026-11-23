@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const ReportBody = @import("ReportBody.zig").ReportBody;
 
 pub const Report = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?runtime.DOMString = null,
     url: ?runtime.DOMString = null,
     body: ?ReportBody = null,

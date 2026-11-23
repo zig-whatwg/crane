@@ -8,6 +8,8 @@ const AuthenticationExtensionsClientInputs = @import("AuthenticationExtensionsCl
 const PublicKeyCredentialDescriptor = @import("PublicKeyCredentialDescriptor.zig").PublicKeyCredentialDescriptor;
 
 pub const PublicKeyCredentialRequestOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     challenge: typedefs.BufferSource,
     timeout: ?u32 = null,
     rpId: ?runtime.DOMString = null,

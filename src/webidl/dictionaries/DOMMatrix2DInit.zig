@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const DOMMatrix2DInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     a: ?f64 = null,
     b: ?f64 = null,
     c: ?f64 = null,

@@ -8,6 +8,8 @@ const NDEFMessageInit = @import("NDEFMessageInit.zig").NDEFMessageInit;
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const NDEFReadingEventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from EventInit
     base: EventInit,
 

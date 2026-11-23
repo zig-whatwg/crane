@@ -7,6 +7,8 @@ const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffs
 const KeyframeEffectOptions = @import("KeyframeEffectOptions.zig").KeyframeEffectOptions;
 
 pub const KeyframeAnimationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from KeyframeEffectOptions
     base: KeyframeEffectOptions,
 

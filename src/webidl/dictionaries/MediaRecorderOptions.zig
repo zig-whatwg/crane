@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const MediaRecorderOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     mimeType: ?runtime.DOMString = null,
     audioBitsPerSecond: ?u32 = null,
     videoBitsPerSecond: ?u32 = null,

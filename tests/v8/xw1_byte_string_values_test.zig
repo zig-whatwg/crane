@@ -118,6 +118,7 @@ fn checkDictionary() !void {
     const object = ffi.v8_Script_Run(context, script) orelse return error.NoObject;
     defer ffi.v8_Value_Dispose(object);
     const Dict = struct {
+        pub const webidl_dictionary = true;
         bytes: ?[]const u8 = null,
         text: ?[]const u8 = null,
         pub const byte_string_members = .{"bytes"};

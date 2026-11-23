@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ResizeObserverCallback = *const fn (entries: runtime.JSValue, observer: *runtime.Instance) void;
+/// callback ResizeObserverCallback = undefined (sequence<ResizeObserverEntry> entries, ResizeObserver observer)
+pub const ResizeObserverCallback = runtime.BorrowedCallbackFunction;

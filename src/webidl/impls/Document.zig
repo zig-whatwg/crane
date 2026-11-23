@@ -2399,7 +2399,7 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.J
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     // DOM XPath: compile once; namespace callbacks run during construction.
     return interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
         .expression = expression,
@@ -3320,7 +3320,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     // DOM Level 3 XPath §1.4: compile, evaluate and convert to the requested type.
     const compiled = try interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
         .expression = expression,
@@ -3562,10 +3562,10 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 4. Set walker's whatToShow to whatToShow
 /// 5. Set walker's filter to filter
 /// 6. Return walker
-pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The filter argument, borrowed for the call: the walker takes its own.
-    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
+    // The filter argument, BORROWED for the call: the walker keeps its own.
+    const filter_value: ?runtime.BorrowedCallbackInterface = if (filter.was_passed) filter.value else null;
 
     // Step 1: Create TreeWalker
     // Use interface instead of impl (per Golden Rule #13)
@@ -3574,7 +3574,7 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
 
     // Steps 2-5: the walker's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpTreeWalker(walker, root, what_to_show, filter_wrapper);
+    try traversal.setUpTreeWalker(walker, root, what_to_show, filter_value);
 
     // Step 6: Return walker
     return walker;
@@ -5725,7 +5725,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 5. Set iterator's whatToShow to whatToShow
 /// 6. Set iterator's filter to filter
 /// 7. Return iterator
-pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Removal runs pre-removing steps for iterators whose root's node
     // document is the removed node's document, even across factory documents.
@@ -5733,8 +5733,8 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
         root
     else
         (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
-    // The filter argument, borrowed for the call: the iterator takes its own.
-    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
+    // The filter argument, BORROWED for the call: the iterator keeps its own.
+    const filter_value: ?runtime.BorrowedCallbackInterface = if (filter.was_passed) filter.value else null;
 
     // Step 1: Create NodeIterator
     // Use interface instead of impl (per Golden Rule #13)
@@ -5743,7 +5743,7 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
 
     // Steps 2-6: the iterator's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_value, root_document);
 
     // Register in the same document recorded for generation-safe teardown.
     try @import("dom").document_internals.registerNodeIterator(root_document, iterator);

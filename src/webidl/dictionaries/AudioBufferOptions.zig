@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AudioBufferOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     numberOfChannels: ?u32 = null,
     length: u32,
     sampleRate: f32,

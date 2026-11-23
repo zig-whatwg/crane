@@ -180,7 +180,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
@@ -188,7 +188,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
     }
 

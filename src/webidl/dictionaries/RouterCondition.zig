@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const RouterCondition = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     urlPattern: ?typedefs.URLPatternCompatible = null,
     requestMethod: ?runtime.ByteString = null,
     requestMode: ?enums.RequestMode = null,

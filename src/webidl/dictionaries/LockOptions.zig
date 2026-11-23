@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const LockOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     mode: ?enums.LockMode = null,
     ifAvailable: ?bool = null,
     steal: ?bool = null,

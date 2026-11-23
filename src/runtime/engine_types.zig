@@ -147,6 +147,54 @@ pub const CallbackThis = union(enum) {
     value: JSValue,
 };
 
+/// WebIDL: a callback function type's value (3.2.19) as the binding hands it
+/// to an impl - an argument, a dictionary member, a union arm, a sequence
+/// element, an attribute's value. BORROWED for the call, like every value the
+/// binding converts: the binding releases it when the call returns. So it is
+/// never stored; an impl that keeps the callback past its call keeps a
+/// CallbackFunction of its own, during the call (`keep`). Its type is not
+/// CallbackFunction's, so storing it where a kept one belongs does not
+/// compile.
+///
+/// WebIDL's value is "a reference to the same object that V represents, with
+/// the incumbent settings object as the callback context" (3.2.19 step 2). The
+/// callback context is not a field: the value lives only for its call, and
+/// the incumbent realm while the call runs is the conversion's, so `keep`
+/// records it then. A value never kept (a removeEventListener comparison)
+/// asks for no realm at all.
+pub const BorrowedCallbackFunction = struct {
+    /// The function - any object, for an attribute whose type is a nullable
+    /// [LegacyTreatNonObjectAsNull] callback (WebIDL 3.2.19 step 1).
+    /// BORROWED: compare it or read it during the call; never keep it.
+    function: JSValue,
+
+    /// A CallbackFunction of the caller's own (OWNED: released exactly once)
+    /// - engine.keepCallbackFunction. Keep at most once, during the call: an
+    /// adapter may move the binding's hold into it, after which this value
+    /// refers to nothing.
+    pub fn keep(self: BorrowedCallbackFunction) @import("engine").CallbackFunction {
+        return @import("engine").keepCallbackFunction(self);
+    }
+};
+
+/// WebIDL: a callback interface type's value (3.2.16) - an object, a function
+/// included - as the binding hands it to an impl. BORROWED for the call, as
+/// BorrowedCallbackFunction is; an impl that keeps it keeps a
+/// CallbackInterface of its own (`keep`), and one that only compares it
+/// (removeEventListener) reads `object`. Its callback context, as
+/// BorrowedCallbackFunction's, is recorded when it is kept.
+pub const BorrowedCallbackInterface = struct {
+    /// The object. BORROWED.
+    object: JSValue,
+
+    /// A CallbackInterface of the caller's own (OWNED) -
+    /// engine.keepCallbackInterface. Keep at most once, during the call, as
+    /// BorrowedCallbackFunction.keep.
+    pub fn keep(self: BorrowedCallbackInterface) @import("engine").CallbackInterface {
+        return @import("engine").keepCallbackInterface(self);
+    }
+};
+
 /// setTimeout's and setInterval's `TimerHandler` - `(TrustedScript or
 /// DOMString or Function)` - after WebIDL conversion (3.2.24, the union
 /// algorithm's order: a platform object implementing a member interface,

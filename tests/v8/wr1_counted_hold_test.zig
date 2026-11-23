@@ -1,6 +1,6 @@
 //! A node a native holder counts outlives its wrapper: the counts decide
 //! every free of a node during its realm's life (refcount step 7, lane
-//! refcount9's 7a: tmp/plans/refcount9-design.md B2), so the collection that
+//! refcount9's 7a: docs/refcount9-design.md B2), so the collection that
 //! takes the node's last wrapper releases the wrapper's reference and frees
 //! nothing while a holder's reference remains - WebKit's JSDOMWrapper drops
 //! only its own `Ref` (m_wrapped), and the node lives on its holder's

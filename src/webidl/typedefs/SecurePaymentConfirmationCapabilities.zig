@@ -4,4 +4,8 @@
 
 const runtime = @import("runtime");
 
-pub const SecurePaymentConfirmationCapabilities = []const struct { key: runtime.DOMString, value: bool };
+pub const SecurePaymentConfirmationCapabilities = []const struct {
+    pub const webidl_record_entry = true;
+    key: runtime.DOMString,
+    value: bool,
+};
