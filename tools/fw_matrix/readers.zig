@@ -1572,6 +1572,19 @@ fn joinTitles(arena: Allocator, titles: []const []const u8, last: []const u8) ![
 /// project's directory: a path outside it is refused, so no run host's path
 /// reaches a journal).
 pub fn parseVitestJson(arena: Allocator, text: []const u8, root: []const u8) RunnerReportError![]const WtrTest {
+    return parseTestResultsJson(arena, text, root, .vitest);
+}
+
+/// Jest's own `--json` report (the section below the Vitest reader's test).
+pub fn parseJestJson(arena: Allocator, text: []const u8, root: []const u8) RunnerReportError![]const WtrTest {
+    return parseTestResultsJson(arena, text, root, .jest);
+}
+
+/// Vitest's JSON report is modelled on Jest's; the two differ in Jest's
+/// `disabled` status and in the heading Jest puts on a suite that failed to run.
+const TestResultsDialect = enum { vitest, jest };
+
+fn parseTestResultsJson(arena: Allocator, text: []const u8, root: []const u8, dialect: TestResultsDialect) RunnerReportError![]const WtrTest {
     const doc = std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{}) catch return error.BadReport;
     if (doc != .object) return error.BadReport;
     var out: std.ArrayList(WtrTest) = .empty;
@@ -1584,7 +1597,14 @@ pub fn parseVitestJson(arena: Allocator, text: []const u8, root: []const u8) Run
             // by the file; a file with nothing in it is nothing.
             const status = jsonStr(f.object, "status") orelse return error.BadReport;
             if (!std.mem.eql(u8, status, "failed")) continue;
-            const msg = try firstLine(arena, jsonStr(f.object, "message") orelse "");
+            var message_text = jsonStr(f.object, "message") orelse "";
+            if (dialect == .jest) {
+                // Jest heads the message "● Test suite failed to run"; the cause is under it.
+                const heading = "Test suite failed to run";
+                const plain = try stripAnsi(arena, message_text);
+                if (std.mem.indexOf(u8, plain, heading)) |at| message_text = plain[at + heading.len ..];
+            }
+            const msg = try firstLine(arena, message_text);
             try out.append(arena, .{ .file = file, .module = file, .name = file, .id = file, .state = .failed, .message = msg orelse "the file failed before its tests ran" });
             continue;
         }
@@ -1602,6 +1622,8 @@ pub fn parseVitestJson(arena: Allocator, text: []const u8, root: []const u8) Run
             else if (std.mem.eql(u8, status, "failed"))
                 .failed
             else if (std.mem.eql(u8, status, "skipped") or std.mem.eql(u8, status, "pending") or std.mem.eql(u8, status, "todo"))
+                .skipped
+            else if (dialect == .jest and std.mem.eql(u8, status, "disabled"))
                 .skipped
             else
                 return error.BadReport;
@@ -1668,6 +1690,63 @@ test "Vitest's JSON report: each test under its file below the root, its describ
     try testing.expectError(error.BadReport, parseVitestJson(a, try std.mem.replaceOwned(u8, a, vitest_json, "\"status\":\"todo\"", "\"status\":\"maybe\""), "/work/vue"));
     try testing.expectError(error.BadReport, parseVitestJson(a, "{\"testResults\":[]}", "/work/vue"));
     try testing.expectError(error.BadReport, parseVitestJson(a, "[]", "/work/vue"));
+}
+
+// ============================================================================
+// Jest's JSON report (`jest --json`, @jest/test-result's formatTestResults):
+// React's own Jest suite, both under React's `yarn test` (jsdom) and in a
+// browser page through tests/frameworks/react-jest, which writes the same
+// shape. Vitest's is modelled on it: `testResults[]` per file (`name` the
+// absolute path), `assertionResults[]` per test with its describes
+// (`ancestorTitles`), `title`, `status` and `failureMessages`. Jest's statuses
+// beyond Vitest's: `pending` (test.skip, and a test a gate or an `.only`
+// elsewhere leaves out), `disabled`; a file whose suite failed to run has no
+// tests and Jest's "● Test suite failed to run" heading before its message.
+// ============================================================================
+
+const jest_json =
+    \\{"numFailedTestSuites":2,"numTotalTests":6,"success":false,"testResults":[
+    \\ {"assertionResults":[
+    \\   {"ancestorTitles":["ReactDOMInput","controlled"],"duration":12,"failureMessages":[],"fullName":"ReactDOMInput controlled keeps the value","status":"passed","title":"keeps the value"},
+    \\   {"ancestorTitles":["ReactDOMInput"],"duration":3,"failureMessages":["Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: \u001b[32m\"a\"\u001b[39m\n    at Object.<anonymous> (/work/react/packages/react-dom/src/__tests__/ReactDOMInput-test.js:10:3)"],"fullName":"ReactDOMInput sets the value","status":"failed","title":"sets the value"},
+    \\   {"ancestorTitles":["ReactDOMInput"],"duration":null,"failureMessages":[],"fullName":"ReactDOMInput skipped one","status":"pending","title":"skipped one"},
+    \\   {"ancestorTitles":[],"duration":null,"failureMessages":[],"fullName":"later","status":"todo","title":"later"},
+    \\   {"ancestorTitles":[],"duration":null,"failureMessages":[],"fullName":"off","status":"disabled","title":"off"}
+    \\  ],"endTime":2,"message":"","name":"/work/react/packages/react-dom/src/__tests__/ReactDOMInput-test.js","startTime":1,"status":"failed","summary":""},
+    \\ {"assertionResults":[
+    \\   {"ancestorTitles":["ReactDOMFloat"],"failureMessages":[],"fullName":"ReactDOMFloat renders","status":"passed","title":"renders"}
+    \\  ],"message":"","name":"/work/react/packages/react-dom/src/__tests__/ReactDOMFloat-test.js","status":"focused","summary":""},
+    \\ {"assertionResults":[],"message":"\u001b[1m\u001b[31m  \u001b[1m● \u001b[22m\u001b[1mTest suite failed to run\u001b[39m\u001b[22m\n\n    Cannot find module 'x' from 'packages/shared/a.js'\n\n      at Resolver._throwModNotFoundError","name":"/work/react/packages/shared/__tests__/a-test.js","status":"failed","summary":""}
+    \\]}
+;
+
+test "Jest's JSON report: each test below the root with its describes, Jest's skips as skips, a file whose suite failed to run as one failure with its message" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const t = try parseJestJson(a, jest_json, "/work/react");
+    try testing.expectEqual(@as(usize, 7), t.len);
+    try testing.expectEqualStrings("packages/react-dom/src/__tests__/ReactDOMInput-test.js", t[0].file);
+    try testing.expectEqualStrings("ReactDOMInput > controlled", t[0].module);
+    try testing.expectEqualStrings("ReactDOMInput > controlled > keeps the value", t[0].id);
+    try testing.expectEqual(WtrState.passed, t[0].state);
+    try testing.expectEqual(WtrState.failed, t[1].state);
+    try testing.expectEqualStrings("Error: expect(received).toBe(expected)", t[1].message.?);
+    // pending, todo and disabled are Jest's skips.
+    try testing.expectEqual(WtrState.skipped, t[2].state);
+    try testing.expectEqual(WtrState.skipped, t[3].state);
+    try testing.expectEqualStrings("later", t[3].id);
+    try testing.expectEqual(WtrState.skipped, t[4].state);
+    // A file's own status (focused here) does not change its tests'.
+    try testing.expectEqual(WtrState.passed, t[5].state);
+    // The suite that failed to run: one failure named by its file, its message the line under Jest's heading.
+    try testing.expectEqualStrings("packages/shared/__tests__/a-test.js", t[6].id);
+    try testing.expectEqual(WtrState.failed, t[6].state);
+    try testing.expectEqualStrings("Cannot find module 'x' from 'packages/shared/a.js'", t[6].message.?);
+    // Refused: a file outside the root, a status Jest does not write, no tests at all.
+    try testing.expectError(error.BadReport, parseJestJson(a, jest_json, "/elsewhere"));
+    try testing.expectError(error.BadReport, parseJestJson(a, try std.mem.replaceOwned(u8, a, jest_json, "\"status\":\"todo\"", "\"status\":\"maybe\""), "/work/react"));
+    try testing.expectError(error.BadReport, parseJestJson(a, "{\"testResults\":[]}", "/work/react"));
 }
 
 // ============================================================================

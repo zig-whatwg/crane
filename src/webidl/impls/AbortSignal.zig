@@ -234,6 +234,16 @@ pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) an
     return createDependentAbortSignal(instance.ctx, list);
 }
 
+// The default reasons' messages: DOM leaves them to the implementation. Probed
+// 2026-11-22 (lane react1): abort() - Chrome "signal is aborted without reason",
+// Firefox "The operation was aborted. ", Safari "The operation was aborted.";
+// golden rule 2 with all three differing, mechanism by mechanism (the wording
+// Firefox's and Safari's, no trailing space Chrome's and Safari's): Safari's
+// string. timeout() - Chrome "signal timed out", Firefox and Safari "The
+// operation timed out.": theirs. tests/wpt/crane/react1-abort-reason-messages.html.
+const default_abort_message = "The operation was aborted.";
+const default_timeout_message = "The operation timed out.";
+
 /// End the pending-activity hold `call_static_timeout` took on `signal`.
 fn releasePendingActivity(signal: *runtime.Instance) void {
     engine.releasePlatformObject(signal);
@@ -247,7 +257,7 @@ fn releasePendingActivity(signal: *runtime.Instance) void {
 pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const signal = try newSignal(instance.ctx);
     const internal = getInternal(signal).?;
-    const kept = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", "signal is aborted without reason");
+    const kept = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", default_abort_message);
     defer kept.release();
     keepReason(signal, internal, kept.value);
     internal.aborted = true;
@@ -323,7 +333,7 @@ const TimeoutTask = struct {
     /// DOMException.
     fn abortTimedOut(data: ?*anyopaque) void {
         const signal: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
-        const reason = engine.createDOMException(signal.ctx, "TimeoutError", "signal timed out") catch return;
+        const reason = engine.createDOMException(signal.ctx, "TimeoutError", default_timeout_message) catch return;
         defer reason.release();
         signalAbortWith(signal, reason.value);
     }
@@ -389,7 +399,7 @@ pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplErr
     if (internal.aborted) return;
     // Step 2: Set signal's abort reason to reason if it is given; otherwise
     // to a new "AbortError" DOMException.
-    const owned = reasonOrDefault(instance, reason, "AbortError", "signal is aborted without reason") catch return error.OutOfMemory;
+    const owned = reasonOrDefault(instance, reason, "AbortError", default_abort_message) catch return error.OutOfMemory;
     defer owned.release();
     signalAbortWith(instance, owned.value);
 }

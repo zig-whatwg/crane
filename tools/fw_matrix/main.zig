@@ -37,14 +37,16 @@
 //!       naming the browser and the log: jquery-test-runner's console log
 //!       (one page, --page names it), or Bazel's web-test-runner lines (a
 //!       page per target, matched to the suite's pages by their targets)
-//!   fw_matrix import --reader=wtr-tree|vitest-json|playwright-json --suite=<id>
+//!   fw_matrix import --reader=wtr-tree|vitest-json|jest-json|playwright-json --suite=<id>
 //!                 --log=<file> --page=<id> [--root=<dir>] --label=<l>
 //!                 (--browser=<name> --browser-sha256=<hex> |
 //!                  --crane-commit=<sha> --console-sha256=<hex>)
 //!                 --runner=<text> --date=<YYYY-MM-DD> --out=<dir>
 //!       a project's own runner's per-test report - web-test-runner's tree
 //!       (htmx's), Vitest's JSON (Svelte's, Vue's; --root: the project's
-//!       directory, which every file must be below), Playwright's JSON
+//!       directory, which every file must be below), Jest's JSON (React's
+//!       own Jest suite, --root likewise: React's `yarn test` under jsdom,
+//!       and tests/frameworks/react-jest in a browser), Playwright's JSON
 //!       (React's) - with the suite's exclusion list applied; a browser's
 //!       run, or Crane's own run by that runner over CDP (--crane-commit;
 //!       jtr and wtr-summary take the same pair)
@@ -137,7 +139,7 @@ const Args = struct {
 
 /// The readers of a project runner's per-test report (main.importRunnerReport).
 fn perTestReader(reader: []const u8) bool {
-    for ([_][]const u8{ "wtr-tree", "vitest-json", "playwright-json" }) |r| if (std.mem.eql(u8, r, reader)) return true;
+    for ([_][]const u8{ "wtr-tree", "vitest-json", "jest-json", "playwright-json" }) |r| if (std.mem.eql(u8, r, reader)) return true;
     return false;
 }
 
@@ -268,6 +270,8 @@ pub fn main(init: std.process.Init) !void {
             readers.parseWtrTree(arena, log) catch fail("{s}: no web-test-runner report this reader knows", .{log_path})
         else if (std.mem.eql(u8, reader, "vitest-json"))
             readers.parseVitestJson(arena, log, args.need("root")) catch fail("{s}: not a Vitest JSON report this reader knows, or a file outside --root={s}", .{ log_path, args.need("root") })
+        else if (std.mem.eql(u8, reader, "jest-json"))
+            readers.parseJestJson(arena, log, args.need("root")) catch fail("{s}: not a Jest JSON report this reader knows, or a file outside --root={s}", .{ log_path, args.need("root") })
         else
             readers.parsePlaywrightJson(arena, log) catch fail("{s}: not a Playwright JSON report this reader knows", .{log_path});
         const who = importWho(&args);
@@ -304,7 +308,7 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, reader, "wtr-summary"))
             readers.parseWtrSummary(arena, log) catch fail("{s}: no Bazel web-test-runner lines this reader knows", .{log_path})
         else
-            fail("--reader={s}: jtr, wtr-summary, wtr-tree, vitest-json, playwright-json or cypress", .{reader});
+            fail("--reader={s}: jtr, wtr-summary, wtr-tree, vitest-json, jest-json, playwright-json or cypress", .{reader});
         const log_sha = fetch.sha256Hex(log);
         const who = importWho(&args);
         const list_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.get("excluded-dir") orelse default_excluded, s.excluded });
