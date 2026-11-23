@@ -3896,8 +3896,8 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
         const browser_state = @import("dom").browser_state;
         if (internal.browsing_context.tabScope()) |opener_tab| if (opener_tab.get(.session_storage, web_storage.TraversableStorageShed)) |source| {
             if (created_bc.tabScope()) |new_tab| if (new_tab != opener_tab) {
-                if (browser_state.sessionStorageShedIn(new_tab)) |target| {
-                    web_storage.web_storage.cloneSessionStorage(source, target) catch {};
+                if (browser_state.sessionStorageShedIn(new_tab)) |copy| {
+                    web_storage.web_storage.cloneSessionStorage(source, copy) catch {};
                 }
             };
         };

@@ -214,6 +214,7 @@ src/runtime/engines/v8/v8_wrapper.cpp weakDataLock.lock 1 C++G P-res decl:e4340c
 src/runtime/exception_text.zig pending 1 TL C decl:7928cdcaf39788f3
 src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
 src/runtime/lifetime.zig hooks 1 G H decl:25197d739fa0326e
+src/runtime/tab_scope.zig live_tabs 1 G P-res decl:224489c067b5c8fe
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
 src/webidl/impls/EventTarget.zig next_listener_id 1 G I/engine decl:c14518b5d31b8ea0
 src/webidl/impls/HTMLFormElement.zig next_navigation_token 1 G I/engine decl:c14518b5d31b8ea0
