@@ -93,6 +93,8 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     const who = "platform adapter '" ++ name ++ "' (src/platform/adapters/" ++ name ++ "/platform_build.zig)";
     conforms(who, A, "ownsTarget", fn (std.Target) bool);
     conforms(who, A, "kitParts", fn (std.Target) []const KitPart);
+    // hasdecl: A is each listed adapter's build file (`adapters`), whose
+    // `facts` is pub - this check exists to fail the configure when it is not.
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: platform_build.Facts`");
 }
 
