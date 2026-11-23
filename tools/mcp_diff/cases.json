@@ -625,7 +625,9 @@
           "args": {
             "pageId": 1,
             "uid": "1_1",
-            "filePath": "x.txt"
+            "filePaths": [
+              "x.txt"
+            ]
           }
         },
         {
