@@ -207,13 +207,9 @@ const Page = struct {
     /// Live slab slots of the Browser whose interface is `name`.
     fn liveOf(self: *Page, name: []const u8) usize {
         var count: usize = 0;
-        var slab = self.browser.scope.slab.slabs;
-        while (slab) |each| : (slab = each.next) {
-            for (&each.slots) |*slot| {
-                const instance: *runtime.Instance = @ptrCast(slot);
-                if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-                if (std.mem.eql(u8, instance.vtable.name, name)) count += 1;
-            }
+        var live_slots = self.browser.scope.slab.iterateLive();
+        while (live_slots.next()) |instance| {
+            if (std.mem.eql(u8, instance.vtable.name, name)) count += 1;
         }
         return count;
     }

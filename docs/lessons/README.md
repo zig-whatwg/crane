@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A bug-finding heap must not retire the span it allocates from next](architecture-a-bug-finding-heap-must-not-retire-the-span-it-allocates-from-next.md) - A detection that changes a page's protection belongs on memory the allocator will not hand out next; measure a one-block churn, not only a bulk free, before turning it on.
 - [A Zig function nothing references is never analysed](architecture-an-unreferenced-zig-function-is-never-analysed.md) - **In Zig, "it builds" says nothing about a function nothing calls: an unreferenced body is never analysed, so check for a caller before fixing, testing or citing such code.**
 - [std.heap.page_allocator maps a page per allocation](architecture-std-heap-page-allocator-maps-a-page-per-allocation.md) - **`page_allocator` is an mmap per allocation: a small record on it costs a page and a mapping each, so it never holds per-object or per-call state.**
 - [A volatile style on a focused element uncaches every style read in an editing host](architecture-a-volatile-style-on-a-focused-element-uncaches-every-style-read-in-an-editing-host.md) - **"Volatile" is for state no revision can track; on a focused element it uncached the whole editing host - pull a revision of the state instead.**
@@ -967,6 +968,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Find dead generated fields with a compile proof - drop them all, compile everything, read the errors](codegen-find-dead-generated-fields-with-a-compile-proof.md) - The compiler is the exact reader index: drop every generated field in a scratch build of everything, and the error list is the set of fields that are read.
 
 ### Testing
+- [Red-test a replacement allocator by committing its engine unwired](testing-red-test-a-replacement-allocator-by-committing-its-engine-unwired.md) - Red means "compiles and fails at the property", so stage the new engine beside the old one and point the tests at the shared call sites.
 - [A page-per-object bug shows as minor page faults](testing-count-first-touch-faults-for-a-page-per-object-bug.md) - **A page per object is a first-touch fault per object: assert on `ru_minflt` against a control batch, which holds in every build, never on mappings, which merge.**
 - [A test whose subject moved out from under it in a redesign keeps passing vacuously](testing-a-test-whose-subject-moved-away-in-a-redesign-passes-vacuously.md) - pair each "the bound holds" assertion with "the scenario reached the subject" (tombstones > 0, the queue non-empty); measure the subject on the old tree before loosening a precondition
 - [Count allocations per operation by differencing two sample counts](testing-count-allocations-per-operation-by-differencing-two-sample-counts.md) - Two launches differing only in sample count, under a counting allocator keyed by frame-pointer stacks, give allocations per operation; one run mixes load, setup and samples.

@@ -383,9 +383,14 @@ pub const LogFindings = struct {
     /// `refcount:` invariant reports (CRANE_REFCOUNT_CHECK) and failed
     /// isolate cleanup validations.
     refcount: usize = 0,
+    /// The heap's leak report at a Browser's end (runtime.BrowserScope.
+    /// reportHeapLeaks, allocator-hardening batch A): Browsers that ended
+    /// with State blocks or Instance slots still alive in their heap - which
+    /// the heap's release frees, so no allocator reports them as leaked.
+    heap_leaks: usize = 0,
 
     pub fn total(self: LogFindings) usize {
-        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount;
+        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks;
     }
 
     pub fn scan(self: *LogFindings, text: []const u8) void {
@@ -401,6 +406,9 @@ pub const LogFindings = struct {
         if (contains(line, "panic: ")) self.panics += 1;
         if (poisonFault(line)) self.poison_reads += 1;
         if (std.mem.startsWith(u8, std.mem.trimStart(u8, line, " "), "refcount: ") or contains(line, "Cleanup validation failed")) self.refcount += 1;
+        // The summary line, one per Browser; the per-type lines before it
+        // name what it counts.
+        if (contains(line, "heap leak: ") and contains(line, " alive at the Browser's end") and contains(line, " Instance slot(s)")) self.heap_leaks += 1;
     }
 };
 
@@ -455,7 +463,7 @@ pub const Report = struct {
         if (self.wrong_build > 0) try w.print("  WRONG BUILD: {d} journal record(s) are not the side they were given as (a production journal as --production, a bug-finding one as --bug-finding)\n", .{self.wrong_build});
         try w.print("bug-finding gate: {s} - crashes {d}, ownership violations {d}", .{ if (self.gatePassed()) "PASS" else "FAIL", self.crashes.len, self.ownership_violations });
         if (self.log) |l| {
-            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount });
+            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks });
         } else try w.writeAll(" (no log given: leaks, bad frees, panics and poison reads not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
@@ -840,6 +848,8 @@ test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount r
         \\refcount: node 0x1 has 2 parents
         \\warning: Cleanup validation failed for: templates
         \\a test that mentions leaked: memory in its message
+        \\warning(heap): heap leak: 3 block(s) of 112 B alive at the Browser's end: webidl.Event.State
+        \\warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end
     );
     try testing.expectEqual(@as(usize, 2), f.leaks);
     try testing.expectEqual(@as(usize, 2), f.bad_frees);
@@ -847,7 +857,9 @@ test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount r
     // A null-ish fault is a crash, not a poison read.
     try testing.expectEqual(@as(usize, 2), f.poison_reads);
     try testing.expectEqual(@as(usize, 2), f.refcount);
-    try testing.expectEqual(@as(usize, 9), f.total());
+    // One Browser ended with blocks alive in its heap: counted once.
+    try testing.expectEqual(@as(usize, 1), f.heap_leaks);
+    try testing.expectEqual(@as(usize, 10), f.total());
 }
 
 test "the report passes only with the gate clean and the differences all known" {

@@ -82,12 +82,9 @@ test "released, then freed: the owner word is 0 while the block is the node's ow
     var nodes: real_nodes.Nodes = undefined;
     try nodes.open(testing.allocator);
     defer nodes.close();
-    // A Debug build's scope poisons freed state by default; said here, so
-    // the test reads the same in any mode. And the quarantine, as the
-    // bug-finding WPT runner's Browser has it: the freed block stays out of
-    // reuse, so the reads of it below are of the poison, not of a new node.
-    nodes.scope.arena.poison_freed = true;
-    nodes.scope.arena.quarantine_freed = true;
+    // A Debug build's heap poisons freed state by default (runtime.heap.
+    // Config.debug_default), and this test runs in Debug only
+    // (`instrumented`).
     const doc = try nodes.document();
     const div = try nodes.element(doc, "div");
     const base = baseOf(div);
@@ -115,8 +112,13 @@ test "released, then freed: the owner word is 0 while the block is the node's ow
         try testing.expectEqual(poison, base.document_word);
     }
 
-    // Then the storage: the State block goes back to the arena, the slot to
-    // the slab.
+    // Then the storage: the State block goes back to the heap, the slot to
+    // the slab - inside a task, as the collector's frees are, so the
+    // heap's quarantine holds the block out of reuse until the task ends
+    // and the reads of it below are of the poison, not of a new node.
+    const engine = try nodes.scope.heapEngine();
+    engine.beginTask();
+    defer engine.endTask();
     runtime.gc.releaseStorage(div);
 
     // FREED. The correct liveness test says so without touching the block:
@@ -131,9 +133,9 @@ test "released, then freed: the owner word is 0 while the block is the node's ow
     try testing.expect(NodeBase.freedBlockReadPanics(.debug, base.owner));
     try testing.expectEqual(builtin.mode == .debug, NodeBase.freedBlockReadPanics(builtin.mode, base.owner));
 
-    // It stays so while other nodes of its size are made: the arena does
-    // not hand a poisoned block to the next request (its quarantine), so
-    // the stale read finds the poison, not the next div.
+    // It stays so while other nodes of its size are made in the task: the
+    // heap does not hand a held block to the next request (its
+    // quarantine), so the stale read finds the poison, not the next div.
     var i: usize = 0;
     while (i < 64) : (i += 1) {
         const other = try nodes.element(doc, "div");

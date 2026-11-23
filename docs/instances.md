@@ -26,6 +26,14 @@ EventTargets) keep their state in their own generated State instead (`runtime.Ow
 batch 2): a field of the object, no table, no lock; their Browser-end sweep walks the Browser's slab
 (`SlabAllocator.forEachLive`), and dom.instance_bridge reads a node's NodeBase through Node's hook. Two whole Browsers run at once on two threads. `runtime.initializeRuntime` makes the
 standalone scope for tests and runtime-only hosts.
+Allocator hardening batch A (2026-11-23, lane hard1; tmp/plans/allocator-hardening-design.md): the slab
+and the arena are VIEWS of the Browser's heap (`runtime.heap`, src/runtime/heap/), the span engine in its
+per-Browser reservation (lane h1). Node State blocks are in its node partition (the cage), by size class and
+node kind, made and freed on the window agent's thread only; every other State block, side block and
+Instance slot is in its objects partition, under its lock. An object's Browser is read from its address
+(`browser_heap.heapOf`). A Browser reserves its heap at its start; any other scope (a unit test's, the
+standalone one) at its first object. The window agent's event loop runs the heap's task-scoped quarantine
+and decommits its empty spans when idle; the heap's state is the Browser's, in its metadata window.
 B3's rest (2026-10-12, lane inst5): each Browser's browsing contexts are its own
 (`html.window.Navigables`, a BrowserScope side table; every context carries its list, lookups go
 through the realm - `dom.browser_state.navigablesOf` / `browsingContextOf` - and a Browser's end

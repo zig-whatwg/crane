@@ -102,13 +102,8 @@ test "a navigated frame's old Window's slot goes back by itself and its proxy ho
 
 fn liveSlots(page: helpers.Page) usize {
     var live: usize = 0;
-    var slab = page.browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) != runtime.SlabAllocator.dead_generation) live += 1;
-        }
-    }
+    var live_slots = page.browser.scope.slab.iterateLive();
+    while (live_slots.next()) |_| live += 1;
     return live;
 }
 

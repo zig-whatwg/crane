@@ -312,19 +312,28 @@ const Bucket = struct {
     issued: usize = 0,
 };
 
-/// Buckets: node = 3 kinds x classes, then the large runs; objects =
+/// The random buckets per (size class, node kind) (design 3.2 step 5,
+/// WebKit's TZone, f3f8a5374a00): each node interface goes to one of K, by a
+/// per-Browser random assignment, so a stale pointer to one interface meets
+/// another interface of its class and kind only if the two drew the same
+/// bucket. K = 1 ships (the integrator's call 4, 2026-11-23) unless batch
+/// A's measurement of 2 and 4 is within the bar; a variant is this constant.
+pub const random_buckets: usize = 1;
+
+/// Buckets: node = 3 kinds x K x classes, then the large runs; objects =
 /// classes, the Instance slots, then the large runs.
-const node_bucket_count = node_kinds * Classes.count + max_run_spans;
+const node_groups = node_kinds * random_buckets;
+const node_bucket_count = node_groups * Classes.count + max_run_spans;
 const objects_bucket_count = Classes.count + 1 + max_run_spans;
 const instance_bucket: u16 = Classes.count;
 
-fn nodeBucket(kind: NodeKind, class: usize) u16 {
-    return @intCast(@as(usize, @backingInt(kind)) * Classes.count + class);
+fn nodeBucket(kind: NodeKind, k: usize, class: usize) u16 {
+    return @intCast((@as(usize, @backingInt(kind)) * random_buckets + k) * Classes.count + class);
 }
 
 fn largeBucket(pid: PartitionId, run: usize) u16 {
     const base: usize = switch (pid) {
-        .node => node_kinds * Classes.count,
+        .node => node_groups * Classes.count,
         .objects => Classes.count + 1,
     };
     return @intCast(base + run - 1);
@@ -359,6 +368,7 @@ pub const PartitionStats = struct {
     /// Blocks issued over the heap's life, and of those, reissues of a slot
     /// freed before.
     total_allocations: usize = 0,
+    total_requested_bytes: usize = 0,
     total_reissued: usize = 0,
     /// Bytes of committed spans (runs counted whole): what the partition
     /// keeps resident at most.
@@ -465,6 +475,8 @@ pub const Engine = struct {
     objects_buckets: [objects_bucket_count]Bucket,
     quarantine: Quarantine = .{},
     prng: std.Random.DefaultPrng,
+    /// The Browser's seed for `randomBucket`.
+    bucket_seed: u64 = 0,
     /// The engine's clock, ms: what the window agent's loop last read
     /// (`setNow`), so a free never reads a clock.
     now_ms: std.atomic.Value(u32) = .init(0),
@@ -473,8 +485,19 @@ pub const Engine = struct {
     /// Called once a partition passes 90% of its address space, after the
     /// quarantine is purged and every empty span decommitted (design 5.4).
     pressure_hook: ?PressureHook = null,
+    /// A test build's failure injector (design 7 batch A item 1): asked
+    /// before a span opens, as the state arena's chunk growth asked its
+    /// backing allocator, so a scope made over std.testing's FailingAllocator
+    /// still fails its State allocations in checkAllAllocationFailures
+    /// sweeps. False fails the allocation with OutOfMemory.
+    grow_hook: ?GrowHook = null,
 
     pub const magic_value: u64 = 0x4352_414e_4553_4e31; // "CRANESN1"
+
+    pub const GrowHook = struct {
+        context: *anyopaque,
+        call: *const fn (context: *anyopaque) bool,
+    };
 
     pub const PressureHook = struct {
         context: *anyopaque,
@@ -538,6 +561,7 @@ pub const Engine = struct {
             .objects_buckets = undefined,
             .prng = .init(seed),
         };
+        engine.bucket_seed = engine.prng.random().int(u64);
         for (&engine.node_buckets, 0..) |*b, i| b.* = bucketShape(.node, i);
         for (&engine.objects_buckets, 0..) |*b, i| b.* = bucketShape(.objects, i);
         return engine;
@@ -564,7 +588,7 @@ pub const Engine = struct {
 
     fn bucketShape(pid: PartitionId, index: usize) Bucket {
         const class_end: usize = switch (pid) {
-            .node => node_kinds * Classes.count,
+            .node => node_groups * Classes.count,
             .objects => Classes.count,
         };
         if (index < class_end) {
@@ -664,8 +688,7 @@ pub const Engine = struct {
     /// The node partition's owner check: the window agent's thread, the
     /// first that made a node block (design 3.7). False, and recorded, off
     /// it.
-    inline fn onNodeThread(self: *Engine, address: usize) bool {
-        const now = std.Thread.getCurrentId();
+    inline fn onNodeThread(self: *Engine, address: usize, now: std.Thread.Id) bool {
         const owner = self.node.owner orelse {
             self.node.owner = now;
             return true;
@@ -707,6 +730,7 @@ pub const Engine = struct {
         if (at % super_page + run * span_bytes > super_page) at = std.mem.alignForward(usize, at, super_page) + span_bytes;
         const end = at + run * span_bytes;
         if (end > p.limit) return error.OutOfMemory;
+        if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
         // Data: whole super pages past their guard (Linux: one mprotect per
         // super page, design 5.3).
         while (p.data_hi < end) {
@@ -853,8 +877,9 @@ pub const Engine = struct {
         if (bytes > max_block_bytes) return error.OutOfMemory;
         switch (target) {
             .node => |kind| {
-                const bi: u16 = if (classes.classOf(size, alignment)) |class| nodeBucket(kind, class) else largeBucket(.node, runOf(bytes));
-                if (!self.onNodeThread(0)) return error.OutOfMemory;
+                const k: usize = if (random_buckets == 1) 0 else self.randomBucket(site);
+                const bi: u16 = if (classes.classOf(size, alignment)) |class| nodeBucket(kind, k, class) else largeBucket(.node, runOf(bytes));
+                if (!self.onNodeThread(0, std.Thread.getCurrentId())) return error.OutOfMemory;
                 return self.allocIn(&self.node, bi, size, site, return_address);
             },
             .objects => {
@@ -864,6 +889,17 @@ pub const Engine = struct {
                 return self.allocIn(&self.objects, bi, size, site, return_address);
             },
         }
+    }
+
+    /// The random bucket of a node interface (its State type's site): a
+    /// hash of the type's identity and the Browser's seed.
+    fn randomBucket(self: *Engine, site: ?*const Site) usize {
+        const key = @as(u64, @intFromPtr(site orelse return 0)) ^ self.bucket_seed;
+        // splitmix64's finaliser.
+        var z = key +% 0x9e37_79b9_7f4a_7c15;
+        z = (z ^ (z >> 30)) *% 0xbf58_476d_1ce4_e5b9;
+        z = (z ^ (z >> 27)) *% 0x94d0_49bb_1331_11eb;
+        return @intCast((z ^ (z >> 31)) % random_buckets);
     }
 
     /// An Instance slot (32 bytes), its Instance bytes zero; its stamp is
@@ -908,6 +944,7 @@ pub const Engine = struct {
         p.stats.live_bytes += b.block_bytes;
         p.stats.requested_bytes += size;
         p.stats.total_allocations += 1;
+        p.stats.total_requested_bytes += size;
         if (!fresh) p.stats.total_reissued += 1;
 
         const address = self.spanAddress(index) + slot * b.block_bytes;
@@ -961,13 +998,14 @@ pub const Engine = struct {
         };
         switch (pid) {
             .node => {
-                if (!self.onNodeThread(address)) return;
-                self.freeIn(&self.node, offset, want, false);
+                const thread = std.Thread.getCurrentId();
+                if (!self.onNodeThread(address, thread)) return;
+                self.freeIn(&self.node, offset, want, false, size, thread);
             },
             .objects => {
                 std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
                 defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-                self.freeIn(&self.objects, offset, want, false);
+                self.freeIn(&self.objects, offset, want, false, size, null);
             },
         }
     }
@@ -979,7 +1017,7 @@ pub const Engine = struct {
         if (self.partitionOfOffset(offset) != .objects) return self.violation(.invalid_free, address);
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-        self.freeIn(&self.objects, offset, instance_bucket, true);
+        self.freeIn(&self.objects, offset, instance_bucket, true, instance_fill_bytes, null);
     }
 
     fn offsetOf(self: *Engine, address: usize) ?usize {
@@ -990,20 +1028,23 @@ pub const Engine = struct {
 
     /// `want`: the bucket a node free's class names in kind 0, or the exact
     /// bucket.
-    fn freeIn(self: *Engine, p: *Partition, offset: usize, want: u16, instance: bool) void {
+    /// `thread`: the freeing thread's id where the caller read it already.
+    fn freeIn(self: *Engine, p: *Partition, offset: usize, want: u16, instance: bool, size: usize, thread: ?std.Thread.Id) void {
         const address = self.heap.window_base + offset;
         const index = offset / span_bytes;
         const e = self.entry(index);
         if (offset >= p.frontier or e.state == .unopened or e.state == .run_tail) return self.violation(.invalid_free, address);
         if (e.state != .active) return self.violation(.double_free, address);
         const b = &self.buckets(p.id)[e.bucket];
+        // Not the start of one of the span's blocks: an interior pointer.
+        const within = offset - index * span_bytes;
+        if (within % b.block_bytes != 0) return self.violation(.invalid_free, address);
+        // A block's start, freed as another class.
         const matches = if (p.id == .node and !instance and b.kind == .class)
             e.bucket % Classes.count == want
         else
             e.bucket == want;
         if (!matches) return self.violation(if (instance or b.kind == .instance) .invalid_free else .wrong_size, address);
-        const within = offset - index * span_bytes;
-        if (within % b.block_bytes != 0) return self.violation(.invalid_free, address);
         const slot = within / b.block_bytes;
         const map = self.slotMap(index);
         if (slotGet(map, slot) != .allocated) return self.violation(.double_free, address);
@@ -1013,8 +1054,9 @@ pub const Engine = struct {
         b.live -= 1;
         p.stats.live_blocks -= 1;
         p.stats.live_bytes -= b.block_bytes;
+        p.stats.requested_bytes -|= size;
 
-        if (self.holds()) {
+        if (self.holds(thread)) {
             slotSet(map, slot, .quarantined);
             e.quarantined += 1;
             p.stats.quarantined_blocks += 1;
@@ -1027,10 +1069,10 @@ pub const Engine = struct {
 
     /// Whether a free on this thread now is held: the window agent's loop
     /// runs a task, on this thread.
-    inline fn holds(self: *Engine) bool {
+    inline fn holds(self: *Engine, thread: ?std.Thread.Id) bool {
         if (!self.quarantine.active.load(.monotonic)) return false;
         if (self.config.quarantine_cap == 0) return false;
-        return self.quarantine.thread.load(.monotonic) == std.Thread.getCurrentId();
+        return self.quarantine.thread.load(.monotonic) == (thread orelse std.Thread.getCurrentId());
     }
 
     /// The slot is free again: its span may have room, or be empty.
@@ -1048,7 +1090,13 @@ pub const Engine = struct {
             e.empty_since = self.now_ms.load(.monotonic);
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
-            if (self.config.retire_freed_spans and b.kind != .instance and self.retired.load(.monotonic) < Config.retired_spans_max) self.releaseSpan(p, b, @intCast(index), true);
+            // The bug-finding run makes it inaccessible at once - unless it
+            // is the span the bucket allocates from next (no lower span has
+            // room): a block made and freed alone would otherwise retire and
+            // recommit its span on every cycle.
+            if (self.config.retire_freed_spans and b.kind != .instance and
+                b.current != no_span and b.current < index and
+                self.retired.load(.monotonic) < Config.retired_spans_max) self.releaseSpan(p, b, @intCast(index), true);
         }
     }
 
@@ -1282,7 +1330,11 @@ pub const Engine = struct {
     pub fn bucketSpans(self: *Engine, target: Target, size: usize, alignment: usize) usize {
         const class = classes.classOf(size, alignment) orelse return 0;
         return switch (target) {
-            .node => |kind| self.node_buckets[nodeBucket(kind, class)].spans,
+            .node => |kind| total: {
+                var spans: usize = 0;
+                for (0..random_buckets) |k| spans += self.node_buckets[nodeBucket(kind, k, class)].spans;
+                break :total spans;
+            },
             .objects => self.objects_buckets[class].spans,
         };
     }
@@ -1299,28 +1351,48 @@ pub const Engine = struct {
         if (self.partitionOfOffset(offset) != .node) return null;
         const e = self.entry(offset / span_bytes);
         if (self.node_buckets[e.bucket].kind != .class) return null;
-        return @fromBackingInt(@intCast(e.bucket / Classes.count));
+        return @fromBackingInt(@intCast(e.bucket / Classes.count / random_buckets));
     }
 
-    /// Visit every Instance slot allocated now, span by span. Only where no
-    /// other thread makes or frees objects meanwhile (SlabAllocator.
-    /// forEachLive): no lock is held, so `visit` may free.
-    pub fn forEachInstanceSlot(self: *Engine, context: anytype, comptime visit: fn (@TypeOf(context), *[instance_slot_bytes]u8) void) void {
-        const p = &self.objects;
-        const b = &self.objects_buckets[instance_bucket];
-        var id = b.first;
-        while (id != no_chunk) : (id = self.chunk(p, id).next) {
-            const c = self.chunk(p, id);
-            for (c.spans[0..c.count]) |index| {
-                const e = self.entry(index);
-                if (e.state != .active or e.used == 0) continue;
-                const map = self.slotMap(index);
-                for (0..e.slots) |slot| {
-                    if (slotGet(map, slot) != .allocated) continue;
-                    visit(context, @ptrFromInt(self.spanAddress(index) + slot * instance_slot_bytes));
+    /// Every Instance slot allocated now, span by span, lowest first. Only
+    /// where no other thread makes or frees objects meanwhile (SlabAllocator.
+    /// forEachLive): no lock is held, so the caller may free the slot it was
+    /// given, but must make none - a slot issued during the walk may or may
+    /// not be visited.
+    pub const InstanceSlots = struct {
+        engine: *Engine,
+        chunk_id: u32,
+        at: u32 = 0,
+        slot: usize = 0,
+
+        pub fn next(it: *InstanceSlots) ?*[instance_slot_bytes]u8 {
+            const e = it.engine;
+            const p = &e.objects;
+            while (it.chunk_id != no_chunk) {
+                const c = e.chunk(p, it.chunk_id);
+                while (it.at < c.count) {
+                    const index = c.spans[it.at];
+                    const span = e.entry(index);
+                    if (span.state == .active and span.used != 0) {
+                        const map = e.slotMap(index);
+                        while (it.slot < span.slots) {
+                            const slot = it.slot;
+                            it.slot += 1;
+                            if (slotGet(map, slot) == .allocated) return @ptrFromInt(e.spanAddress(index) + slot * instance_slot_bytes);
+                        }
+                    }
+                    it.at += 1;
+                    it.slot = 0;
                 }
+                it.chunk_id = c.next;
+                it.at = 0;
             }
+            return null;
         }
+    };
+
+    pub fn instanceSlots(self: *Engine) InstanceSlots {
+        return .{ .engine = self, .chunk_id = self.objects_buckets[instance_bucket].first };
     }
 
     /// The leak report: every block alive now, by bucket - and by site,
@@ -1388,11 +1460,11 @@ pub const Engine = struct {
     }
 
     /// Instance slots issued over the heap's life, and alive now.
-    pub fn instanceCounts(self: *Engine) struct { issued: usize, live: usize } {
+    pub fn instanceCounts(self: *Engine) struct { issued: usize, live: usize, capacity: usize } {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
         const b = &self.objects_buckets[instance_bucket];
-        return .{ .issued = b.issued, .live = b.live };
+        return .{ .issued = b.issued, .live = b.live, .capacity = @as(usize, b.spans) * b.slots };
     }
 
     /// A test's choice of configuration, before the heap issues anything.

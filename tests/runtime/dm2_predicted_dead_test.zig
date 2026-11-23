@@ -58,23 +58,26 @@ fn runFake(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.Progres
 const fake_steps: DeferredTeardown.Steps = .{ .run = runFake };
 
 const Fixture = struct {
-    slab: SlabAllocator,
+    /// The scope whose slab the fixture's instances come from: made with
+    /// the fixture, which does not move once it has made one (`f` is a
+    /// test's local).
+    scope: runtime.BrowserScope,
     queue: DeferredTeardown,
     memory: ExternalMemory = .{},
 
     fn init() Fixture {
-        return .{ .slab = SlabAllocator.init(testing.allocator), .queue = DeferredTeardown.init(testing.allocator) };
+        return .{ .scope = runtime.BrowserScope.init(testing.allocator), .queue = DeferredTeardown.init(testing.allocator) };
     }
 
     fn deinit(self: *Fixture) void {
         self.queue.deinit();
-        self.slab.deinit();
+        self.scope.deinit();
     }
 
     /// The counts queue `tree` (its wrapper's reference was released): its
     /// queueing sums `tree.bytes()`.
     fn queueTree(self: *Fixture, tree: *FakeTree) !void {
-        const instance = try self.slab.alloc(&vtable);
+        const instance = try self.scope.slab.alloc(&vtable);
         try testing.expect(self.queue.push(.{
             .instance = instance,
             .generation = SlabAllocator.generationOf(instance),
@@ -282,9 +285,9 @@ test "Debug: a root predicted dead that is alive when the releases are done is c
     defer f.memory.release();
     f.memory.add(3 * 224);
     // Three roots a collection predicted dead.
-    const freed = try f.slab.alloc(&vtable);
-    const decided = try f.slab.alloc(&vtable);
-    const alive = try f.slab.alloc(&living_vtable);
+    const freed = try f.scope.slab.alloc(&vtable);
+    const decided = try f.scope.slab.alloc(&vtable);
+    const alive = try f.scope.slab.alloc(&living_vtable);
     for ([_]*Instance{ freed, decided, alive }) |root| {
         f.queue.notePredicted(.{ .instance = root, .generation = SlabAllocator.generationOf(root), .lives = &rootLives });
     }
@@ -293,7 +296,7 @@ test "Debug: a root predicted dead that is alive when the releases are done is c
     // By the releases' end: one was queued and freed (its slot is free
     // again), one is decided dead and waits for its slice (`lives` answers
     // false), one is still alive.
-    f.slab.free(freed);
+    f.scope.slab.free(freed);
     f.memory.sub(224);
     _ = f.memory.decideDead(224);
     try testing.expectEqual(@as(usize, 224), f.memory.settlePredictions());

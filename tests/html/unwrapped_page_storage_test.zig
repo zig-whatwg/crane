@@ -44,13 +44,9 @@ fn countsOf(browser: *browser_mod.Browser) Counts {
         .nodes = runtime.ownStateCount(interfaces.Node.State, browser.scope),
         .elements = runtime.ownStateCount(interfaces.Element.State, browser.scope),
     };
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (instance.vtable.counted != null) counts.node_slots += 1 else counts.other_slots += 1;
-        }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        if (instance.vtable.counted != null) counts.node_slots += 1 else counts.other_slots += 1;
     }
     return counts;
 }

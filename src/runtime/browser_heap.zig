@@ -601,6 +601,8 @@ pub const BrowserHeap = extern struct {
     /// every Browser.
     generation_seed: u64,
     /// Bytes this heap has committed and not retired (stats; oss R24).
+    /// Atomic: the node partition commits on the window agent's thread, the
+    /// objects partition on any thread of the Browser.
     committed_bytes: usize,
 
     pub const magic_value: u64 = 0x4352_414e_4548_5031; // "CRANEHP1"
@@ -753,7 +755,7 @@ pub const BrowserHeap = extern struct {
     /// (platform.commitPages).
     pub fn commit(heap: *BrowserHeap, window_offset: usize, length: usize) PageError!void {
         try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
-        heap.committed_bytes += length;
+        _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
     }
 
     /// Commit again a part `decommit` gave back (or `retire` made
@@ -763,7 +765,7 @@ pub const BrowserHeap = extern struct {
     /// part is counted again, a decommitted one never stopped counting.
     pub fn recommit(heap: *BrowserHeap, window_offset: usize, length: usize, was_retired: bool) PageError!void {
         try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
-        if (was_retired) heap.committed_bytes += length;
+        if (was_retired) _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
     }
 
     /// Give a committed part's memory back, keeping it accessible
@@ -783,7 +785,7 @@ pub const BrowserHeap = extern struct {
     pub fn retire(heap: *BrowserHeap, window_offset: usize, length: usize) PageError!void {
         try heap.decommit(window_offset, length);
         try heap.platform.protect(heap.reserved, heap.rangeOffset(window_offset, length), length, .none);
-        heap.committed_bytes -|= length;
+        _ = @atomicRmw(usize, &heap.committed_bytes, .Sub, length, .monotonic);
     }
 
     /// The address of a window offset (no check: the layout's constants).

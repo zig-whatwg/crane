@@ -301,9 +301,10 @@ pub const Browser = struct {
         errdefer scope.deinit();
         // The config turns the poison on, never off: a Debug build's scope
         // poisons already (runtime.BrowserScope.poisonsFreedStateByDefault).
-        // And with it the arena's quarantine, which no default turns on: a
-        // freed state block stays out of reuse, all poison, for a while
-        // (runtime.ArenaAllocator.quarantine_freed).
+        // And with it the heap's bug-finding detection, which no default
+        // turns on (runtime.heap.Config.bug_finding: an 8 MiB quarantine,
+        // inaccessible freed State spans, allocation sites), set before the
+        // heap starts below.
         if (config.poison_freed_state) {
             scope.arena.poison_freed = true;
             scope.arena.quarantine_freed = true;
@@ -331,6 +332,13 @@ pub const Browser = struct {
         // so a seeded run replays both. A Browser that cannot reserve fails
         // here, cleanly; the scope's end releases it, last.
         try scope.reserveHeap(platform, browser_platform);
+        // The Browser's end reports what is still alive in its heap, where
+        // the heap records sites (Debug builds, the bug-finding run).
+        scope.report_heap_leaks = true;
+        // A rung below the full one (RLIMIT_AS, a sanitizer's address map)
+        // has no objects range: its objects partition shares the cage
+        // (runtime.heap.Engine.init; the integrator's ruling, 2026-11-23).
+        if (scope.heap) |reserved| if (reserved.rung != .full) log.info("the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
 
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
@@ -384,9 +392,18 @@ pub const Browser = struct {
         // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
         event_loop.fetches = &agent_host.fetches;
+        // The Browser's heap: its quarantine runs while the loop runs a
+        // task, and its empty spans go back when the loop is idle
+        // (allocator-hardening batch A).
+        event_loop.heap = scope.existingHeapEngine();
         // Platform events become this loop's tasks from now on
         // (platform_events.zig); a Browser that fails to start lets go.
-        if (@import("platform_events.zig").of(scope)) |platform_events| platform_events.attach(event_loop);
+        if (@import("platform_events.zig").of(scope)) |platform_events| {
+            platform_events.attach(event_loop);
+            // A heap partition past 90% of its address space is answered as
+            // critical memory pressure (runtime.heap, design 5.4).
+            if (scope.existingHeapEngine()) |heap| heap.pressure_hook = .{ .context = platform_events, .call = @import("platform_events.zig").PlatformEvents.heapPressure };
+        }
         errdefer if (@import("platform_events.zig").of(scope)) |platform_events| platform_events.detach();
 
         // The user agent's cookie jar, and the CookieStores that hear it:

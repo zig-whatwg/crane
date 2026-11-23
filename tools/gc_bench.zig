@@ -215,10 +215,11 @@ const Sample = struct {
     /// Cumulative bytes handed out by the state arena. Cumulative is the right
     /// figure precisely because the arena never resets: allocated == retained.
     arena_bytes: usize,
-    /// What the state arena has taken from the general allocator: it never
-    /// gives a byte back during the Browser's life - a freed state waits on
-    /// its size class's free list for the next one - so this is the
-    /// Browser's high-water mark of state, live and dead together.
+    /// What the Browser's heap keeps committed for its State blocks and
+    /// Instance slots: its spans that are not decommitted (runtime.heap,
+    /// allocator-hardening batch A). An emptied span is given back once the
+    /// loop has been idle a while; before the heap, the state arena kept its
+    /// high-water mark for the Browser's life.
     arena_reserved: usize = 0,
     arena_allocations: usize,
     /// Allocations satisfied from a free list. Zero while a discard loop runs means
@@ -317,6 +318,14 @@ fn readCounters(storage: *[max_counters]engine.Counter) usize {
     return read.len;
 }
 
+/// The Browser's heap's committed spans, node and objects partitions.
+fn heapCommitted() usize {
+    const scope = browser_scope orelse return 0;
+    const heap_engine = scope.existingHeapEngine() orelse return 0;
+    const stats = heap_engine.stats();
+    return stats.node.committed_span_bytes + stats.objects.committed_span_bytes;
+}
+
 fn takeSample(cycle: usize) Sample {
     const arena: ?*runtime.ArenaAllocator = if (browser_scope) |scope| &scope.arena else null;
     const slab: ?*runtime.SlabAllocator = if (browser_scope) |scope| &scope.slab else null;
@@ -327,10 +336,7 @@ fn takeSample(cycle: usize) Sample {
         // HELD. The cumulative figure rises identically whether or not anything is
         // freed, so it reported the arena as leaking even after recycling landed.
         .arena_bytes = if (arena) |a| a.stats().bytes_in_use else 0,
-        // From the state `stats` copies under the arena's mutex: the arena
-        // frees none of its buffers before its Browser's end, so the list
-        // the copy starts from stays readable while a worker prepends to it.
-        .arena_reserved = if (arena) |a| a.stats().arena_state.promote(std.heap.page_allocator).queryCapacity() else 0,
+        .arena_reserved = heapCommitted(),
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
         .arena_recycled = if (arena) |a| a.stats().total_recycled else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
@@ -585,7 +591,8 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
     // and the dead nodes the teardown queue held when a batch's script
     // ended. "queued now" is the queue at the reading, "live objects" the
     // Browser's platform objects (its slab's slots in use) at the reading,
-    // "arena MB" what the state arena has reserved (`Sample.arena_reserved`).
+    // "arena MB" what the Browser's heap keeps committed for its State
+    // blocks and Instance slots (`Sample.arena_reserved`).
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>13}  {s:>10}  {s:>12}  {s:>8}\n", .{
         "cycle",        "resident MB",   "since start",
         "B/cycle",      "malloc MB",     "zig-side MB",

@@ -46,13 +46,9 @@ fn openPage() !*browser_mod.Browser {
 /// from the slab, so a status whose teardown never ran still counts.
 fn liveStatuses(browser: *browser_mod.Browser) usize {
     var count: usize = 0;
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (std.mem.eql(u8, instance.vtable.name, "PermissionStatus")) count += 1;
-        }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        if (std.mem.eql(u8, instance.vtable.name, "PermissionStatus")) count += 1;
     }
     return count;
 }

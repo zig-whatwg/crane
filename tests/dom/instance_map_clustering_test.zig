@@ -59,8 +59,9 @@ const Worst = struct {
 /// `Walked` is a realm's table, `Side` the side map. Returns the worst page
 /// of the side map.
 fn churn(comptime Walked: type, comptime Side: type) !Worst {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
 
     // The page's realm: 3,200 objects, a table of 4,096.
     var page: Walked = .empty;
