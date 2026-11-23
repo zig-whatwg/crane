@@ -121,6 +121,14 @@ fn listOf(agent: ?*engine.Agent) ?*std.ArrayListUnmanaged(*anyopaque) {
     return &host.rejections;
 }
 
+/// `listOf` for `realm`'s agent, from the host state cached on the realm
+/// (dom.agent_hosts.ofOwnAgent): one load, no registry lookup - what every
+/// rejection's bookkeeping asks (lane tpc).
+fn listOfRealm(realm: runtime.Context) ?*std.ArrayListUnmanaged(*anyopaque) {
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
+    return &host.rejections;
+}
+
 fn trackedAt(list: *std.ArrayListUnmanaged(*anyopaque), i: usize) *Tracked {
     return @ptrCast(@alignCast(list.items[i]));
 }
@@ -151,7 +159,7 @@ pub fn releaseAgent(agent: *engine.Agent) void {
 /// find everything the process keeps for it
 /// (docs/lessons/architecture-before-disposing-an-isolate-find-everything-the.md).
 pub fn forgetGlobal(global: *runtime.Instance) void {
-    const list = listOf(global.ctx.agent) orelse return;
+    const list = listOfRealm(global.ctx) orelse return;
     for (list.items, 0..) |_, i| {
         const t = trackedAt(list, i);
         if (t.global != global) continue;
@@ -165,7 +173,7 @@ pub fn forgetGlobal(global: *runtime.Instance) void {
 /// The bookkeeping for `global`, created on first use. Entries of the agent
 /// whose global has gone are released on the way.
 fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
-    const list = listOf(global.ctx.agent) orelse return null;
+    const list = listOfRealm(global.ctx) orelse return null;
     var i: usize = 0;
     var found: ?*Tracked = null;
     while (i < list.items.len) {
@@ -253,8 +261,12 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
 /// be notified at every checkpoint, which once workers track rejections too
 /// would notify the page's at a worker's.
 pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
-    _ = host;
-    const list = listOf(agent) orelse return;
+    _ = agent;
+    // The hook's host: html's AgentHost, which html made the agent with
+    // together with this hook (html.microtask_checkpoint reads it the same
+    // way) - no registry lookup at every checkpoint.
+    const agent_host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(host orelse return));
+    const list = &agent_host.rejections;
     // This agent's live entries, taken first: notifying queues tasks, and
     // the list must not move under the walk. Gone globals' entries are
     // released on the way.

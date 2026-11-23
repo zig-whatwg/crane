@@ -23,53 +23,89 @@ const Events = struct {
     }
 };
 
+/// What one Browser's thread ended with: empty when every step passed, else
+/// the step that did not and what it got - so a failure names itself (it
+/// failed once on chat2 with no more said than a flag; lane flk4,
+/// 2026-11-22). Each thread has its own; the test reads it after the join.
+const Outcome = struct {
+    buffer: [512]u8 = undefined,
+    len: usize = 0,
+
+    fn note(self: *Outcome, comptime format: []const u8, args: anytype) void {
+        const written = std.fmt.bufPrint(&self.buffer, format, args) catch self.buffer[0..];
+        self.len = written.len;
+    }
+
+    fn fail(self: *Outcome, comptime format: []const u8, args: anytype) error{StepFailed} {
+        self.note(format, args);
+        return error.StepFailed;
+    }
+
+    fn text(self: *const Outcome) []const u8 {
+        return self.buffer[0..self.len];
+    }
+};
+
 /// One embedder thread's whole use of a Browser.
-fn useOneBrowser(failed: *std.atomic.Value(bool), marker: []const u8) void {
-    run(marker) catch failed.store(true, .release);
+fn useOneBrowser(outcome: *Outcome, marker: []const u8) void {
+    run(outcome, marker) catch |err| {
+        if (outcome.len == 0) outcome.note("browser {s}: {t}", .{ marker, err });
+    };
 }
 
-fn run(marker: []const u8) !void {
+fn run(outcome: *Outcome, marker: []const u8) !void {
     var events: Events = .{};
     var handle: ?*capi.Handle = null;
     const options: capi.BrowserOptions = .{ .struct_size = @sizeOf(capi.BrowserOptions), .on_event = Events.onEvent, .event_context = &events };
-    if (capi.crane_browser_create(&options, &handle) != .ok) return error.CreateFailed;
+    const created = capi.crane_browser_create(&options, &handle);
+    if (created != .ok) return outcome.fail("browser {s}: crane_browser_create: {t}", .{ marker, created });
     defer capi.crane_browser_destroy(handle);
 
     var tab: u64 = 0;
-    if (capi.crane_tab_create(handle, "data:text/html,<title>c</title>", false, &tab) != .ok) return error.TabFailed;
+    const tab_status = capi.crane_tab_create(handle, "data:text/html,<title>c</title>", false, &tab);
+    if (tab_status != .ok) return outcome.fail("browser {s}: crane_tab_create: {t}", .{ marker, tab_status });
     var navigated: capi.NavigateResult = .{};
-    if (capi.crane_tab_navigate(handle, tab, "data:text/html,<title>c2</title>", @backingInt(capi.Readiness.complete), &navigated) != .ok) return error.NavigateFailed;
+    const navigate_status = capi.crane_tab_navigate(handle, tab, "data:text/html,<title>c2</title>", @backingInt(capi.Readiness.complete), &navigated);
+    if (navigate_status != .ok) return outcome.fail("browser {s}: crane_tab_navigate: {t}", .{ marker, navigate_status });
     capi.crane_navigate_result_free(&navigated);
 
     var buffer: [128]u8 = undefined;
     const source = try std.fmt.bufPrint(&buffer, "globalThis.marker = '{s}'; document.title + ':' + marker", .{marker});
     var result: capi.EvaluateResult = .{};
-    if (capi.crane_tab_evaluate(handle, tab, source.ptr, source.len, 0, &result) != .ok) return error.EvaluateFailed;
+    const evaluate_status = capi.crane_tab_evaluate(handle, tab, source.ptr, source.len, 0, &result);
+    if (evaluate_status != .ok) return outcome.fail("browser {s}: crane_tab_evaluate: {t}", .{ marker, evaluate_status });
     defer capi.crane_evaluate_result_free(&result);
-    if (result.exception) return error.Threw;
+    const json: []const u8 = if (result.json) |j| std.mem.span(j) else "(null)";
+    if (result.exception) return outcome.fail("browser {s}: the evaluation threw: {s}", .{ marker, json });
     var expected: [128]u8 = undefined;
     const want = try std.fmt.bufPrint(&expected, "{{\"type\":\"string\",\"value\":\"c2:{s}\"}}", .{marker});
-    if (!std.mem.eql(u8, want, std.mem.span(result.json.?))) return error.WrongResult;
+    if (!std.mem.eql(u8, want, json)) return outcome.fail("browser {s}: the evaluation answered {s}, expected {s}", .{ marker, json, want });
 
     var infos: ?[*]capi.TabInfo = null;
     var count: usize = 0;
-    if (capi.crane_tab_list(handle, &infos, &count) != .ok) return error.ListFailed;
+    const list_status = capi.crane_tab_list(handle, &infos, &count);
+    if (list_status != .ok) return outcome.fail("browser {s}: crane_tab_list: {t}", .{ marker, list_status });
     defer capi.crane_tab_info_free(infos, count);
-    if (count != 2) return error.WrongTabCount;
+    if (count != 2) return outcome.fail("browser {s}: crane_tab_list listed {d} tabs, expected 2", .{ marker, count });
 
-    if (capi.crane_tab_close(handle, tab, false) != .ok) return error.CloseFailed;
-    if (capi.crane_tab_close(handle, tab, false) != .no_such_tab) return error.ClosedTwice;
-    if (events.created.load(.acquire) != 1 or events.destroyed.load(.acquire) != 1) return error.WrongEvents;
+    const close_status = capi.crane_tab_close(handle, tab, false);
+    if (close_status != .ok) return outcome.fail("browser {s}: crane_tab_close: {t}", .{ marker, close_status });
+    const again = capi.crane_tab_close(handle, tab, false);
+    if (again != .no_such_tab) return outcome.fail("browser {s}: crane_tab_close again: {t}, expected no_such_tab", .{ marker, again });
+    const created_events = events.created.load(.acquire);
+    const destroyed_events = events.destroyed.load(.acquire);
+    if (created_events != 1 or destroyed_events != 1) return outcome.fail("browser {s}: events: {d} tab_created, {d} tab_destroyed, expected 1 and 1", .{ marker, created_events, destroyed_events });
 }
 
 test "two Browsers on two threads through the C ABI: tabs, navigation, evaluation, events, nothing shared" {
     try testing.expectEqual(capi.Status.ok, capi.crane_process_init(&.{ .struct_size = @sizeOf(capi.ProcessOptions) }));
-    var failed: std.atomic.Value(bool) = .init(false);
-    const a = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, useOneBrowser, .{ &failed, "a" });
-    const b = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, useOneBrowser, .{ &failed, "b" });
+    var outcomes: [2]Outcome = .{ .{}, .{} };
+    const a = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, useOneBrowser, .{ &outcomes[0], "a" });
+    const b = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, useOneBrowser, .{ &outcomes[1], "b" });
     a.join();
     b.join();
-    try testing.expect(!failed.load(.acquire));
+    try testing.expectEqualStrings("", outcomes[0].text());
+    try testing.expectEqualStrings("", outcomes[1].text());
 }
 
 test "the C ABI refuses what it cannot do: a profile directory, a PAC proxy, null arguments" {
