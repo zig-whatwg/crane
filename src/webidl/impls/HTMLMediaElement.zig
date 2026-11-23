@@ -76,6 +76,13 @@ pub const InternalState = struct {
     /// current playback position, as the platform's decoder reports it; 0x0 for
     /// a resource with no video.
     video_size: backend.VideoSize = .{ .width = 0, .height = 0 },
+    /// The list of newly introduced cues (HTML 4.8.11.8): cues added to a
+    /// track of this element, or in a track that joined it, since time
+    /// marches on last ran.
+    newly_introduced: std.ArrayListUnmanaged(same_object.Link) = .empty,
+    /// The current playback position when time marches on last ran (null:
+    /// it never ran).
+    cues_last_time: ?f64 = null,
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
         return self.activity.queue(@backingInt(kind), self.load.generation, target, name);
@@ -493,10 +500,8 @@ pub const InternalState = struct {
         // yet (src/html/permissions_policy.zig is not delivered), so every
         // document is allowed, as a top-level or same-origin one is.
         const steps = self.load.autoplay() orelse return;
-        // Step 2's time marches on has nothing to do yet: Crane does not
-        // process text track cues there (a follow-up), and outside normal
-        // playback it fires no timeupdate.
-        _ = steps.time_marches_on;
+        // Step 2: the show poster flag was set; time marches on.
+        if (steps.time_marches_on) self.timeMarchesOn(false);
         if (steps.play_event) try self.event("play");
         if (steps.notify_playing) try self.notifyPlaying();
     }
@@ -520,6 +525,199 @@ pub const InternalState = struct {
     fn looping(self: *InternalState) bool {
         const instance = self.activity.instance orelse return false;
         return interfaces.Element.call_hasAttribute(instance, .initInterned("loop")) catch false;
+    }
+
+    // ------------------------------------------------------------------
+    // Time marches on: the text track cues (4.8.11.8)
+    // ------------------------------------------------------------------
+
+    /// A cue of a hidden or showing text track, where text track cue order
+    /// puts it: its track's place in the list of text tracks, then its place
+    /// in its track's list of cues (kept in text track cue order).
+    const TrackedCue = struct {
+        cue: *runtime.Instance,
+        track: *runtime.Instance,
+        /// The track's list of cues, which owns the cue.
+        list: *runtime.Instance,
+        track_index: usize,
+        cue_index: usize,
+        start: f64,
+        end: f64,
+
+        fn order(a: TrackedCue, b: TrackedCue) std.math.Order {
+            if (a.track_index != b.track_index) return std.math.order(a.track_index, b.track_index);
+            return std.math.order(a.cue_index, b.cue_index);
+        }
+    };
+
+    /// One of time marches on's prepared events (step 9).
+    const CueEvent = struct {
+        time: f64,
+        cue: TrackedCue,
+        exit: bool,
+
+        fn lessThan(_: void, a: CueEvent, b: CueEvent) bool {
+            // Step 13: earlier times first; then text track cue order; then
+            // enter before exit.
+            if (a.time != b.time) return a.time < b.time;
+            switch (a.cue.order(b.cue)) {
+                .lt => return true,
+                .gt => return false,
+                .eq => return !a.exit and b.exit,
+            }
+        }
+    };
+
+    fn inCues(cues: []const TrackedCue, cue: *runtime.Instance) bool {
+        for (cues) |each| if (each.cue == cue) return true;
+        return false;
+    }
+
+    /// The time marches on steps (HTML 4.8.11.8). `normal` says the current
+    /// playback position got here through its usual monotonic increase
+    /// during normal playback (the clock's tick), not a seek or another
+    /// change. Step 6's timeupdate is the clock's own (`clockDue`, every
+    /// 250 ms of normal playback, as Chromium and Gecko pace it), and step
+    /// 18's rules for updating the text track rendering have no renderer to
+    /// update: Crane draws nothing.
+    fn timeMarchesOn(self: *InternalState, normal: bool) void {
+        self.cuesMarch(normal) catch self.cancel();
+    }
+
+    fn cuesMarch(self: *InternalState, normal: bool) !void {
+        const instance = self.activity.instance orelse return;
+        const allocator = self.load.allocator;
+        const position = self.load.position;
+        // Step 3, read before this run sets it.
+        const last_time = self.cues_last_time;
+        self.cues_last_time = position;
+        var current: std.ArrayListUnmanaged(TrackedCue) = .empty;
+        defer current.deinit(allocator);
+        var other: std.ArrayListUnmanaged(TrackedCue) = .empty;
+        defer other.deinit(allocator);
+        // Steps 1-2: the cues of the hidden and showing tracks - current
+        // when they start at or before the current playback position and end
+        // after it, other otherwise.
+        if (self.text_tracks) |list| {
+            const tracks = try interfaces.TextTrackList.get_length(list);
+            for (0..tracks) |track_index| {
+                const track = try interfaces.TextTrackList.call_getter(list, @intCast(track_index));
+                if ((try interfaces.TextTrack.get_mode(track)) == ._disabled_) continue;
+                // Read natively: reading a cue here hands none to script
+                // (an event at one does, below).
+                const cues = hooks.trackCueList(track) orelse continue;
+                for (hooks.cueListItems(cues), 0..) |entry, cue_index| {
+                    const cue = entry.link.instance;
+                    const tracked: TrackedCue = .{
+                        .cue = cue,
+                        .track = track,
+                        .list = cues,
+                        .track_index = track_index,
+                        .cue_index = cue_index,
+                        .start = try interfaces.TextTrackCue.get_startTime(cue),
+                        .end = try interfaces.TextTrackCue.get_endTime(cue),
+                    };
+                    if (tracked.start <= position and tracked.end > position) {
+                        try current.append(allocator, tracked);
+                    } else try other.append(allocator, tracked);
+                }
+            }
+        }
+        // Step 4: missed cues - only after the usual monotonic increase:
+        // the other cues that started at or after the last time and ended by
+        // now.
+        var missed: std.ArrayListUnmanaged(TrackedCue) = .empty;
+        defer missed.deinit(allocator);
+        if (normal) if (last_time) |last| for (other.items) |tracked| {
+            if (tracked.start >= last and tracked.end <= position) try missed.append(allocator, tracked);
+        };
+        // Step 5: no missed cue that was newly introduced; then empty that
+        // list.
+        var index: usize = 0;
+        while (index < missed.items.len) {
+            var introduced = false;
+            for (self.newly_introduced.items) |link| if (link.isLive() and link.instance == missed.items[index].cue) {
+                introduced = true;
+            };
+            if (introduced) _ = missed.orderedRemove(index) else index += 1;
+        }
+        self.newly_introduced.clearRetainingCapacity();
+        // Step 7: nothing changed - every current cue active, no other cue
+        // active, nothing missed.
+        var changed = missed.items.len != 0;
+        for (current.items) |tracked| {
+            if (!hooks.cueActive(tracked.cue)) changed = true;
+        }
+        for (other.items) |tracked| {
+            if (hooks.cueActive(tracked.cue)) changed = true;
+        }
+        if (!changed) return;
+        // Step 8: during normal playback, an other cue with its pause-on-exit
+        // flag set that was active or is missed pauses the element at once.
+        if (normal) for (other.items) |tracked| {
+            if (!(try interfaces.TextTrackCue.get_pauseOnExit(tracked.cue))) continue;
+            if (hooks.cueActive(tracked.cue) or inCues(missed.items, tracked.cue)) {
+                try interfaces.HTMLMediaElement.call_pause(instance);
+                break;
+            }
+        };
+        // Steps 9-12: the events. Missed cues enter at their start time;
+        // other cues that were active, or missed, exit at the later of their
+        // end and start times; current cues not yet active enter at their
+        // start time.
+        var events: std.ArrayListUnmanaged(CueEvent) = .empty;
+        defer events.deinit(allocator);
+        for (missed.items) |tracked| try events.append(allocator, .{ .time = tracked.start, .cue = tracked, .exit = false });
+        for (other.items) |tracked| {
+            if (hooks.cueActive(tracked.cue) or inCues(missed.items, tracked.cue)) try events.append(allocator, .{ .time = @max(tracked.end, tracked.start), .cue = tracked, .exit = true });
+        }
+        for (current.items) |tracked| {
+            if (!hooks.cueActive(tracked.cue)) try events.append(allocator, .{ .time = tracked.start, .cue = tracked, .exit = false });
+        }
+        // Step 13.
+        std.mem.sort(CueEvent, events.items, {}, CueEvent.lessThan);
+        // Step 14: a media element task per event, in order. An event at a
+        // cue hands it to script: its list keeps it by an edge from now on.
+        for (events.items) |prepared| {
+            hooks.cueListExpose(prepared.cue.list, prepared.cue.cue);
+            try self.queue(.event, prepared.cue.cue, if (prepared.exit) "exit" else "enter");
+        }
+        // Steps 15-16: each affected track once, in list order: cuechange at
+        // the TextTrack, then at its track element if it has one.
+        var affected: std.ArrayListUnmanaged(TrackedCue) = .empty;
+        defer affected.deinit(allocator);
+        for (events.items) |prepared| {
+            var seen = false;
+            for (affected.items) |each| if (each.track_index == prepared.cue.track_index) {
+                seen = true;
+            };
+            if (!seen) try affected.append(allocator, prepared.cue);
+        }
+        std.mem.sort(TrackedCue, affected.items, {}, struct {
+            fn lessThan(_: void, a: TrackedCue, b: TrackedCue) bool {
+                return a.track_index < b.track_index;
+            }
+        }.lessThan);
+        for (affected.items) |tracked| {
+            try self.queue(.event, tracked.track, "cuechange");
+            if (trackElementOf(instance, tracked.track)) |element| try self.queue(.event, element, "cuechange");
+        }
+        // Step 17.
+        for (current.items) |tracked| hooks.setCueActive(tracked.cue, true);
+        for (other.items) |tracked| hooks.setCueActive(tracked.cue, false);
+    }
+
+    /// Unset the active flag of every cue of every text track - "whenever
+    /// the media element's readyState is changed back to HAVE_NOTHING"
+    /// (4.8.11.11.1).
+    fn deactivateCues(self: *InternalState) void {
+        const list = self.text_tracks orelse return;
+        const tracks = interfaces.TextTrackList.get_length(list) catch return;
+        for (0..tracks) |track_index| {
+            const track = interfaces.TextTrackList.call_getter(list, @intCast(track_index)) catch return;
+            const cues = hooks.trackCueList(track) orelse continue;
+            for (hooks.cueListItems(cues)) |entry| hooks.setCueActive(entry.link.instance, false);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -593,6 +791,10 @@ pub const InternalState = struct {
         const self: *InternalState = @ptrCast(@alignCast(context));
         if (self.activity.instance == null) return;
         self.advanceClock();
+        // The position moved through its usual monotonic increase: time
+        // marches on for the cues (its timeupdate follows below).
+        self.timeMarchesOn(true);
+        if (self.activity.instance == null) return;
         // The frame at the new position may have another size.
         self.followSize(null);
         if (!self.load.potentiallyPlaying(self.looping())) return;
@@ -654,7 +856,10 @@ fn seekStable(context: *anyopaque, generation: u64) void {
     if (!self.load.finishSeek(self.load.seek_id)) return;
     // The frame at the new position may have another size.
     self.followSize(null);
-    // Steps 16-17: timeupdate, then seeked.
+    // Step 16: time marches on.
+    self.timeMarchesOn(false);
+    if (self.activity.instance == null) return;
+    // Steps 17-18: timeupdate, then seeked.
     self.event("timeupdate") catch {
         self.cancel();
         return;
@@ -681,6 +886,7 @@ fn freeOwner(context: *anyopaque) void {
     self.load.deinit();
     if (self.src_url) |url| self.load.allocator.free(url);
     self.pending_play.deinit(self.load.allocator);
+    self.newly_introduced.deinit(self.load.allocator);
     self.activity.microtasks.deinit(self.load.allocator);
     self.arena.destroy(InternalState, self);
 }
@@ -744,7 +950,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.attribute_change_steps.install("audio", attributeChanged);
     dom.attribute_change_steps.install("video", attributeChanged);
-    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, naturalSize, selectorState);
+    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, cuesChanged, naturalSize, selectorState);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
@@ -885,6 +1091,15 @@ fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u
 }
 fn child(instance: *runtime.Instance, first: bool) ?*runtime.Instance {
     return if (first) interfaces.Node.get_firstChild(instance) catch null else interfaces.Node.get_nextSibling(instance) catch null;
+}
+/// The track element child of `media` whose text track is `track`, if any.
+fn trackElementOf(media: *runtime.Instance, track: *runtime.Instance) ?*runtime.Instance {
+    var cursor = child(media, true);
+    while (cursor) |node| : (cursor = child(node, false)) {
+        if (!std.mem.eql(u8, node.vtable.name, "HTMLTrackElement")) continue;
+        if ((interfaces.HTMLTrackElement.get_track(node) catch null) == track) return node;
+    }
+    return null;
 }
 fn parent(instance: *runtime.Instance) ?*runtime.Instance {
     return interfaces.Node.get_parentNode(instance) catch null;
@@ -1153,6 +1368,9 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     self.endFetch();
     self.unregister();
     const reset = self.load.beginLoad();
+    // Step 7.5's readyState back to HAVE_NOTHING unsets every cue's active
+    // flag (4.8.11.11.1), as Blink's CueTimeline::OnReadyStateReset does.
+    if (reset.forget_tracks) self.deactivateCues();
     self.syncDelay();
     self.error_object = null;
     self.error_edge.release(instance);
@@ -1203,6 +1421,8 @@ pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
         _ = self.load.beginSeek(0);
         self.holdOfficial();
     }
+    // Internal play steps 3.2: the show poster flag was set; time marches on.
+    if (steps.time_marches_on) self.timeMarchesOn(false);
     if (steps.play_event) self.event("play") catch self.cancel();
     if (steps.waiting) self.event("waiting") catch self.cancel();
     if (steps.notify_playing) self.notifyPlaying() catch self.cancel();
@@ -1462,6 +1682,9 @@ pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind,
     // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/media/html_media_element.cc
     const list = try interfaces.HTMLMediaElement.get_textTracks(instance);
     try hooks.appendTextTrack(list, track);
+    // The track hears its mode changes reach this element's pending text
+    // track change notification (track-change-event.html).
+    hooks.linkTrackMedia(track, instance);
 
     // Step 3: queue the TrackEvent through the existing media task holder.
     // Script-created tracks survive load(), so the event is resource-independent.
@@ -1480,11 +1703,13 @@ fn trackParentChanged(element: *runtime.Instance, old_parent: ?*runtime.Instance
     if (old_parent) |old| if (common.isMedia(old)) {
         const list = get_textTracks(old) catch return;
         hooks.removeTextTrack(list, track);
+        hooks.linkTrackMedia(track, null);
         if (old.ctx.hasEngine()) data(old).activity.queueTrack(@backingInt(Kind.track_event), 0, list, "removetrack", track) catch {};
     };
     if (new_parent) |media| if (common.isMedia(media)) {
         const list = get_textTracks(media) catch return;
         appendInTreeOrder(media, list, track) catch return;
+        hooks.linkTrackMedia(track, media);
         // Sourcing out-of-band tracks: selection task precedes addtrack.
         if (media.ctx.hasEngine()) {
             data(media).activity.queueIndependent(@backingInt(Kind.select_tracks), null, null) catch {};
@@ -1516,15 +1741,51 @@ fn appendInTreeOrder(media: *runtime.Instance, list: *runtime.Instance, added: *
     try hooks.appendTextTrack(list, added);
     for (old.items) |item| try hooks.appendTextTrack(list, item.track);
 }
+/// A text track in this element's list of text tracks changed its mode
+/// (HTML 4.8.11.11.1).
 fn trackModeChanged(media: *runtime.Instance) void {
     const self = data(media);
     if (!media.ctx.hasEngine()) return;
     const list = get_textTracks(media) catch return;
-    // Mode-change steps 1–3: one notification until its task clears the flag.
-    if (!self.tracks.requestChange()) return;
-    self.activity.queueIndependent(@backingInt(Kind.track_change), list, "change") catch {
-        self.tracks.takeChange();
-    };
+    // Steps 1–3: one notification until its task clears the flag.
+    if (self.tracks.requestChange()) {
+        self.activity.queueIndependent(@backingInt(Kind.track_change), list, "change") catch {
+            self.tracks.takeChange();
+        };
+    }
+    // Step 4: "If the media element's show poster flag is not set, run the
+    // time marches on steps."
+    if (!self.load.show_poster) self.timeMarchesOn(false);
+}
+/// The cues of this element's text tracks changed (HTML 4.8.11.8):
+/// newly introduced cues join their list - and "when a media element's list
+/// of newly introduced cues has new cues added while the media element's
+/// show poster flag is not set, then the user agent must run the time
+/// marches on steps" - and a cue or track leaving, or a cue's new times
+/// (TextTrackCue startTime/endTime), run them when the flag is not set.
+fn cuesChanged(media: *runtime.Instance, change: hooks.CueChange) void {
+    const self = data(media);
+    if (!media.ctx.hasEngine()) return;
+    var added = false;
+    switch (change) {
+        .cue_added => |cue| {
+            self.newly_introduced.append(self.load.allocator, same_object.Link.to(cue)) catch return;
+            added = true;
+        },
+        .cues_added => |cues| for (cues) |cue| {
+            self.newly_introduced.append(self.load.allocator, same_object.Link.to(cue)) catch return;
+            added = true;
+        },
+        .track_added => |track| {
+            const cues = hooks.trackCueList(track) orelse return;
+            for (hooks.cueListItems(cues)) |entry| {
+                self.newly_introduced.append(self.load.allocator, entry.link) catch return;
+                added = true;
+            }
+        },
+        .cue_removed, .track_removed, .cue_times => added = true,
+    }
+    if (added and !self.load.show_poster) self.timeMarchesOn(false);
 }
 fn selectTracks(self: *InternalState) !void {
     if (self.tracks.blocked_on_parser or self.tracks.automatic_selected) return;

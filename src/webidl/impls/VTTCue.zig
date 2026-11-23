@@ -1,191 +1,265 @@
-//! Implementation for VTTCue interface
-
+//! WebVTT 9.1: the VTTCue interface - a WebVTT cue (3.2-3.3), the text
+//! track cue WebVTT files and script make. TextTrackCue (HTML 4.8.11.11.5)
+//! holds what every text track cue has; this holds the WebVTT cue settings
+//! and the cue text.
+//!
+//! A cue keeps the VTTRegion it is in: an edge from its wrapper
+//! (engine.traceChild), as Blink's VTTCue traces region_ (vtt_cue.h). A cue
+//! the WebVTT parser made has no wrapper until its list hands it to script;
+//! until then it names its region by a link only (its track keeps the
+//! regions its file made: TextTrack's keep_region), and `exposed` draws the
+//! edge.
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const dom = @import("dom");
+const html = @import("html");
+const same_object = dom.same_object;
 const VTTCue = interfaces.VTTCue;
 
 pub const State = VTTCue.State;
 
-pub const ImplError = error{
-    NotImplemented,
+const region_slot: engine.TracedSlot = .{ .name = "region" };
+
+/// A WebVTT cue's settings and cue text (WebVTT 3.3), at the values the
+/// VTTCue() constructor's steps 7-15 give them.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    /// WebVTT cue region (null: none), and whether its edge is drawn.
+    region: ?same_object.Link = null,
+    region_traced: bool = false,
+    /// WebVTT cue writing direction: horizontal ("").
+    vertical: enums.DirectionSetting = .__,
+    /// WebVTT cue snap-to-lines flag.
+    snap_to_lines: bool = true,
+    /// WebVTT cue line: auto.
+    line: typedefs.LineAndPositionSetting = .{ .auto_keyword = ._auto_ },
+    /// WebVTT cue line alignment: start.
+    line_align: enums.LineAlignSetting = ._start_,
+    /// WebVTT cue position: auto.
+    position: typedefs.LineAndPositionSetting = .{ .auto_keyword = ._auto_ },
+    /// WebVTT cue position alignment: auto.
+    position_align: enums.PositionAlignSetting = ._auto_,
+    /// WebVTT cue size: 100.
+    size: f64 = 100,
+    /// WebVTT cue text alignment: center.
+    text_align: enums.AlignSetting = ._center_,
+    /// The cue text, raw.
+    text: runtime.DOMString = .initEmpty(),
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn installHooks() void {
+    dom.media_elements.installVTTCue(exposed);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+/// The cue has a wrapper now: the edge to its region, if it has one.
+fn exposed(cue: *runtime.Instance) void {
+    const internal = (cue.stateAs(State) orelse return).own._internal orelse return;
+    const link = internal.region orelse return;
+    if (internal.region_traced or !link.isLive()) return;
+    engine.traceChild(cue, link.instance, region_slot);
+    internal.region_traced = true;
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = internal;
+}
+
+/// The cue's own teardown: its region's edge goes by name only (the region
+/// may be gone).
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        state.own._internal = null;
+        if (internal.region_traced) engine.forgetTracedChild(instance, region_slot);
+        internal.text.deinit(internal.allocator);
+        internal.allocator.destroy(internal);
+    }
+}
+
+fn internalOf(instance: *runtime.Instance) !*InternalState {
+    return (instance.stateAs(State) orelse return error.InvalidStateError).own._internal orelse error.InvalidStateError;
+}
+
+/// The VTTCue(startTime, endTime, text) constructor.
 pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, text: runtime.DOMString) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &VTTCue.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = startTime;
-    _ = endTime;
-    _ = text;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    // 3. An end time of negative Infinity or NaN: TypeError (checked before
+    // anything is made).
+    if (std.math.isNan(endTime) or endTime == -std.math.inf(f64)) return error.TypeError;
+    // 1. A new WebVTT cue; 5-15. its identifier "", pause-on-exit false,
+    // region null, writing direction horizontal, snap-to-lines true, line
+    // auto, line alignment start, position auto, position alignment auto,
+    // size 100, text alignment center (InternalState's and TextTrackCue's
+    // initial values).
+    const cue = try VTTCue.init(ctx.allocator, ctx);
+    const internal = internalOf(cue) catch unreachable;
+    // 2-3. Its start and end times. Neither setter can fail on a cue in no
+    // list.
+    interfaces.TextTrackCue.set_startTime(cue, startTime) catch unreachable;
+    interfaces.TextTrackCue.set_endTime(cue, endTime) catch unreachable;
+    // 4. Its cue text (the WebVTT rules for extracting the chapter title
+    // are the format's own).
+    internal.text = text.clone(internal.allocator) catch |err| {
+        cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
+        return err;
+    };
+    // 16.
+    return cue;
 }
 
-/// Getter for region
+/// "The VTTRegion object representing the WebVTT cue region ... if any; or
+/// null otherwise."
 pub fn get_region(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const link = (try internalOf(instance)).region orelse return null;
+    return if (link.isLive()) link.instance else null;
 }
 
-/// Getter for vertical
-pub fn get_vertical(instance: *runtime.Instance) anyerror!enums.DirectionSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for snapToLines
-pub fn get_snapToLines(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for line
-pub fn get_line(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineAlign
-pub fn get_lineAlign(instance: *runtime.Instance) anyerror!enums.LineAlignSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for position
-pub fn get_position(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for positionAlign
-pub fn get_positionAlign(instance: *runtime.Instance) anyerror!enums.PositionAlignSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for size
-pub fn get_size(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for align
-pub fn get_align(instance: *runtime.Instance) anyerror!enums.AlignSetting {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for text
-pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for region
+/// "On setting, the WebVTT cue region must be set to the new value."
 pub fn set_region(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = try internalOf(instance);
+    if (value) |region| {
+        internal.region = same_object.Link.to(region);
+        // A cue with no wrapper yet draws its edge when it gets one
+        // (`exposed`).
+        if (dom.media_elements.mayBeWrapped(instance)) {
+            engine.traceChild(instance, region, region_slot);
+            internal.region_traced = true;
+        } else if (internal.region_traced) {
+            engine.forgetTracedChild(instance, region_slot);
+            internal.region_traced = false;
+        }
+    } else {
+        internal.region = null;
+        if (internal.region_traced) engine.forgetTracedChild(instance, region_slot);
+        internal.region_traced = false;
+    }
 }
 
-/// Setter for vertical
+pub fn get_vertical(instance: *runtime.Instance) anyerror!enums.DirectionSetting {
+    return (try internalOf(instance)).vertical;
+}
+
 pub fn set_vertical(instance: *runtime.Instance, value: enums.DirectionSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).vertical = value;
 }
 
-/// Setter for snapToLines
+pub fn get_snapToLines(instance: *runtime.Instance) anyerror!bool {
+    return (try internalOf(instance)).snap_to_lines;
+}
+
+/// The API rejects no combination of snapToLines and line, so either can be
+/// set first (9.1's note).
 pub fn set_snapToLines(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).snap_to_lines = value;
 }
 
-/// Setter for line
+pub fn get_line(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
+    return (try internalOf(instance)).line;
+}
+
+/// "On setting, the WebVTT cue line must be set to the new value; if the
+/// new value is the string "auto", then it must be interpreted as the
+/// special value auto."
 pub fn set_line(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).line = value;
 }
 
-/// Setter for lineAlign
+pub fn get_lineAlign(instance: *runtime.Instance) anyerror!enums.LineAlignSetting {
+    return (try internalOf(instance)).line_align;
+}
+
 pub fn set_lineAlign(instance: *runtime.Instance, value: enums.LineAlignSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).line_align = value;
 }
 
-/// Setter for position
+pub fn get_position(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
+    return (try internalOf(instance)).position;
+}
+
+/// "On setting, if the new value is negative or greater than 100, then an
+/// IndexSizeError exception must be thrown. Otherwise, the WebVTT cue
+/// position must be set to the new value" ("auto": the special value auto).
 pub fn set_position(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = try internalOf(instance);
+    switch (value) {
+        .double => |number| if (number < 0 or number > 100) return error.IndexSizeError,
+        .auto_keyword => {},
+    }
+    internal.position = value;
 }
 
-/// Setter for positionAlign
+pub fn get_positionAlign(instance: *runtime.Instance) anyerror!enums.PositionAlignSetting {
+    return (try internalOf(instance)).position_align;
+}
+
 pub fn set_positionAlign(instance: *runtime.Instance, value: enums.PositionAlignSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).position_align = value;
 }
 
-/// Setter for size
+pub fn get_size(instance: *runtime.Instance) anyerror!f64 {
+    return (try internalOf(instance)).size;
+}
+
+/// "On setting, if the new value is negative or greater than 100, then an
+/// IndexSizeError exception must be thrown."
 pub fn set_size(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    if (value < 0 or value > 100) return error.IndexSizeError;
+    (try internalOf(instance)).size = value;
 }
 
-/// Setter for align
+pub fn get_align(instance: *runtime.Instance) anyerror!enums.AlignSetting {
+    return (try internalOf(instance)).text_align;
+}
+
 pub fn set_align(instance: *runtime.Instance, value: enums.AlignSetting) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    (try internalOf(instance)).text_align = value;
 }
 
-/// Setter for text
+/// "The raw cue text."
+pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return (try internalOf(instance)).text.clone(instance.ctx.allocator);
+}
+
 pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = try internalOf(instance);
+    const copy = try value.clone(internal.allocator);
+    internal.text.deinit(internal.allocator);
+    internal.text = copy;
 }
 
-/// Operation: getCueAsHTML
+/// "Convert the cue text to a DocumentFragment for the responsible document
+/// specified by the entry settings object by applying the WebVTT cue text
+/// DOM construction rules to the result of applying the WebVTT cue text
+/// parsing rules to the cue text" - with no fallback language.
 pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = try internalOf(instance);
+    const document = entryDocument() orelse relevantDocument(instance) orelse return error.InvalidStateError;
+    var tree = try html.webvtt.parseCueText(instance.ctx.allocator, internal.text.asSlice(), null);
+    defer tree.deinit();
+    return html.webvtt.cueTextFragment(document, tree.root);
+}
+
+/// The entry settings object's responsible document: the document of the
+/// window whose realm is the entry realm (as Location.zig's entryDocument).
+fn entryDocument() ?*runtime.Instance {
+    const realm = engine.entryRealm() orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
+}
+
+/// With no script running (no entry realm), the cue's own realm's document.
+fn relevantDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const realm = instance.ctx.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return null));
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
 }
