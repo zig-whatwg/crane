@@ -310,6 +310,17 @@ const Bucket = struct {
     /// life.
     live: u32 = 0,
     issued: usize = 0,
+    /// The live blocks' requests' bytes, and every request's over the
+    /// heap's life.
+    requested: usize = 0,
+    requested_total: usize = 0,
+    /// Of `issued`, the slots issued for the first time (the rest were
+    /// freed before: reissues).
+    fresh: usize = 0,
+    // The partition's figures (PartitionStats' live and total counts) are
+    // these, summed when asked (`Engine.stats`): one bucket's line is what
+    // an allocation and a free touch, never a second line of totals (lane
+    // hard1's P1: the totals' updates were 3.3 ns of a 36 ns pair).
 };
 
 /// The random buckets per (size class, node kind) (design 3.2 step 5,
@@ -355,6 +366,9 @@ pub const PartitionStats = struct {
     spans_empty: usize = 0,
     spans_decommitted: usize = 0,
     spans_retired: usize = 0,
+    // The live, quarantined and total figures below are summed by
+    // `Engine.stats` (from the buckets and the quarantine); a partition's
+    // own copy keeps them zero.
     live_blocks: usize = 0,
     /// Their classes' bytes.
     live_bytes: usize = 0,
@@ -937,15 +951,14 @@ pub const Engine = struct {
             b.current = no_span;
         }
         const fresh = slot >= e.issued_hi;
-        if (fresh) e.issued_hi = @intCast(slot + 1);
+        if (fresh) {
+            e.issued_hi = @intCast(slot + 1);
+            b.fresh += 1;
+        }
         b.live += 1;
         b.issued += 1;
-        p.stats.live_blocks += 1;
-        p.stats.live_bytes += b.block_bytes;
-        p.stats.requested_bytes += size;
-        p.stats.total_allocations += 1;
-        p.stats.total_requested_bytes += size;
-        if (!fresh) p.stats.total_reissued += 1;
+        b.requested += size;
+        b.requested_total += size;
 
         const address = self.spanAddress(index) + slot * b.block_bytes;
         const block: [*]u8 = @ptrFromInt(address);
@@ -1061,15 +1074,11 @@ pub const Engine = struct {
         const block: [*]u8 = @ptrFromInt(address);
         @memset(block[0..b.fill_bytes], self.config.fillByte());
         b.live -= 1;
-        p.stats.live_blocks -= 1;
-        p.stats.live_bytes -= b.block_bytes;
-        p.stats.requested_bytes -|= size;
+        b.requested -|= size;
 
         if (self.holds(thread)) {
             slotSet(map, slot, .quarantined);
             e.quarantined += 1;
-            p.stats.quarantined_blocks += 1;
-            p.stats.quarantined_bytes += b.block_bytes;
             self.hold(address, b.block_bytes, p.id == .objects);
             return;
         }
@@ -1230,8 +1239,6 @@ pub const Engine = struct {
         std.debug.assert(slotGet(self.slotMap(index), slot) == .quarantined);
         e.quarantined -= 1;
         self.quarantine.held_bytes -|= b.block_bytes;
-        p.stats.quarantined_blocks -= 1;
-        p.stats.quarantined_bytes -= b.block_bytes;
         self.release(p, b, index, slot);
     }
 
@@ -1322,10 +1329,13 @@ pub const Engine = struct {
     // Reading the heap
     // ------------------------------------------------------------------
 
+    /// The heap's figures. The live and total counts are summed from the
+    /// buckets and the quarantined ones counted from the quarantine, here:
+    /// an allocation and a free touch only their bucket's line.
     pub fn stats(self: *Engine) Stats {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-        return .{
+        var s: Stats = .{
             .node = self.node.stats,
             .objects = self.objects.stats,
             .quarantine_blocks = self.quarantine.count,
@@ -1333,6 +1343,31 @@ pub const Engine = struct {
             .quarantine_total_held = self.quarantine.total_held,
             .quarantine_total_evicted = self.quarantine.total_evicted,
         };
+        sumBuckets(&s.node, &self.node_buckets);
+        sumBuckets(&s.objects, &self.objects_buckets);
+        const entries = self.quarantineEntries();
+        for (entries[0..self.quarantine.count]) |address| {
+            const offset = address - self.heap.window_base;
+            const pid = self.partitionOfOffset(offset).?;
+            const ps = switch (pid) {
+                .node => &s.node,
+                .objects => &s.objects,
+            };
+            ps.quarantined_blocks += 1;
+            ps.quarantined_bytes += self.buckets(pid)[self.entry(offset / span_bytes).bucket].block_bytes;
+        }
+        return s;
+    }
+
+    fn sumBuckets(ps: *PartitionStats, bs: []const Bucket) void {
+        for (bs) |*b| {
+            ps.live_blocks += b.live;
+            ps.live_bytes += @as(usize, b.live) * b.block_bytes;
+            ps.requested_bytes += b.requested;
+            ps.total_allocations += b.issued;
+            ps.total_requested_bytes += b.requested_total;
+            ps.total_reissued += b.issued - b.fresh;
+        }
     }
 
     /// The address space a bucket's spans take (A12: per class).
@@ -1478,7 +1513,13 @@ pub const Engine = struct {
 
     /// A test's choice of configuration, before the heap issues anything.
     pub fn configureForTest(self: *Engine, config: Config) void {
-        if (self.node.stats.total_allocations != 0 or self.objects.stats.total_allocations != 0)
+        const issued = issued: {
+            var n: usize = 0;
+            for (&self.node_buckets) |*b| n += b.issued;
+            for (&self.objects_buckets) |*b| n += b.issued;
+            break :issued n;
+        };
+        if (issued != 0)
             @panic("heap.Engine.configureForTest: the heap has issued blocks already");
         self.config = config;
     }
