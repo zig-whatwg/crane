@@ -15,7 +15,9 @@ const common = html.media_runtime;
 const hooks = dom.media_elements;
 const same_object = @import("dom").same_object;
 pub const State = interfaces.HTMLTrackElement.State;
-const Kind = enum(u16) { read, failure };
+/// `start`: the processing model's deferred steps 6-10 (`startSteps`); `read`:
+/// a networking task reading the resource; `failure`: a failed-to-load task.
+const Kind = enum(u16) { read, failure, start };
 const webvtt = html.webvtt;
 /// A block of the Browser's runtime arena (`arena`), registered in the
 /// Browser's side table while its element lives: queued tasks may hold it
@@ -38,6 +40,9 @@ pub const InternalState = struct {
     processing: bool = false,
     waiting: bool = false,
     read_queued: bool = false,
+    /// A `start` task is queued and has not run: the processing model is at
+    /// its step 5, and reads the track URL only when that task runs.
+    start_queued: bool = false,
     fetch_document: ?same_object.Link = null,
     document_abort_pending: ?u64 = null,
     /// The resource's bytes so far, for the WebVTT parser at its end
@@ -66,6 +71,7 @@ pub const InternalState = struct {
         self.stopFetch();
         self.processing = false;
         self.waiting = false;
+        self.start_queued = false;
         self.unregister();
         self.activity.sync();
     }
@@ -81,19 +87,47 @@ pub const InternalState = struct {
             self.processing = true;
             self.generation +%= 1;
             if (common.liveRegistry(instance.ctx)) |registry| try registry.add(instance, instance.ctx);
-            try self.activity.stable(self.generation, stable);
-        } else if (!std.mem.eql(u8, self.url orelse "", self.selected_url orelse "")) {
-            // Step 10 aborts a changed URL and discards all its pending tasks.
-            // Step 12 then resumes from top only while enabled.
+            try self.awaitTop();
+        } else if (self.start_queued) {
+            // Step 1: this occurrence is still at step 5, and its step 7
+            // reads the track URL when it runs - a URL set or changed now is
+            // the one it fetches. No fetch is ongoing, so there is nothing
+            // for step 10 to abort (the track CORS tests set mode, then src,
+            // in one script: Crane fired error before any request).
+        } else if (!std.mem.eql(u8, self.url orelse "", self.selected_url orelse "") and (self.waiting or self.activity.fetching)) {
+            // Step 10, only "while fetching is ongoing": the track URL
+            // changed, or the mode became hidden or showing with the URL
+            // changed - abort fetching, discard its pending tasks, and queue
+            // the failed-to-load task. Or step 12, waiting: the URL is no
+            // longer the one fetched while the mode is hidden or showing, so
+            // step 13 jumps to top. A failure step 10 queued with no fetch
+            // (an empty URL, no browsing context) is left to run; `failed`
+            // then reaches step 12 with the changed URL.
             self.generation +%= 1;
             self.activity.discardTasks(false);
             self.stopFetch();
             if (self.waiting) {
                 self.waiting = false;
                 if (common.liveRegistry(instance.ctx)) |registry| try registry.add(instance, instance.ctx);
-                try self.activity.stable(self.generation, stable);
+                try self.awaitTop();
             } else try self.queue(.failure);
         }
+    }
+    /// Step 5, "Top: await a stable state", run as all three browsers run it:
+    /// after the current task, not in a microtask. Chrome starts a zero-delay
+    /// timer on the networking task runner (html_track_element.cc
+    /// ScheduleLoad: "We use a timer to approximate a stable state"), Safari
+    /// queues a media element task (HTMLTrackElement.cpp scheduleLoad), and
+    /// Firefox runs it in nsContentUtils::RunInStableState, after the task
+    /// (HTMLTrackElement.cpp MaybeDispatchLoadResource). Chrome 157, Firefox
+    /// 159 and Safari 27 read readyState NONE two microtasks after a mode
+    /// change, and fetch the URL set then (lane flk4's probe, 2026-11-23;
+    /// tests/wpt/crane/flk4-track-src-after-mode.html). No newer spec is
+    /// involved, so golden rule 2 takes the browsers' task; Crane queues an
+    /// element task, Safari's model. Its steps are `startSteps`.
+    fn awaitTop(self: *InternalState) !void {
+        try self.activity.queue(@backingInt(Kind.start), self.generation, null, null);
+        self.start_queued = true;
     }
     fn queueRead(context: *anyopaque) void {
         const self: *InternalState = @ptrCast(@alignCast(context));
@@ -192,7 +226,7 @@ const Registry = runtime.InstanceRegistry(.html_track_element, InternalState);
 /// `dom.teardown_sweeps`: free the state of every track element of `scope`'s
 /// Browser that no deinit reached - an orphan - at the Browser's end, as its
 /// last task would have (`freeOwner`). The realm's end and the event loop's,
-/// before this, dropped its stable sections and tasks; one still holding
+/// before this, dropped its tasks; one still holding
 /// work is left to that work rather than freed under it. Its text track is
 /// an object of its own, the collector's.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
@@ -365,15 +399,16 @@ fn documentAbortSteps(context: ?*anyopaque) void {
     const self: *InternalState = @ptrCast(@alignCast(context.?));
     self.generation +%= 1;
     self.activity.discardTasks(false);
+    self.start_queued = false;
     self.stopFetch();
     // Failed fetch processing is a new element task. The old resource's
     // queued reads keep their owners until run/drop but cannot dispatch.
     self.queue(.failure) catch self.cancel();
     self.activity.sync();
 }
-fn stable(context: *anyopaque, generation: u64) void {
-    const self: *InternalState = @ptrCast(@alignCast(context));
-    if (generation != self.generation) return;
+/// The task `awaitTop` queued: steps 6-10.
+fn startSteps(self: *InternalState) void {
+    self.start_queued = false;
     const instance = self.activity.instance orelse return;
     startFetch(instance) catch self.cancel();
 }
@@ -406,6 +441,7 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
     if (task.generation != self.generation) return;
     switch (@as(Kind, @fromBackingInt(@intCast(task.kind)))) {
         .failure => self.failed(task),
+        .start => startSteps(self),
         .read => {
             self.read_queued = false;
             const piece = self.resource.next() catch {
