@@ -459,6 +459,12 @@ pub fn getOrCreateWithExternalEventLoop(
     // the current one. Operations that enter the realm from outside it enter
     // this (engine.enterRealm) - a worker's is never the page's.
     ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
+    // And its agent's host state, for the realm to answer with one load
+    // (runtime.ContextData.host_state): the context was made in the current
+    // isolate, so its record is the one load protocol_agents.callbackRecordOf
+    // finds - null for an isolate createAgent did not make, or once its end
+    // began.
+    ctx_data.host_state = agentHostStateOf(ctx_data.agent);
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
     const entry = try state.alloc().create(ContextEntry);
@@ -565,6 +571,12 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     // the current one. Operations that enter the realm from outside it enter
     // this (engine.enterRealm) - a worker's is never the page's.
     ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
+    // And its agent's host state, for the realm to answer with one load
+    // (runtime.ContextData.host_state): the context was made in the current
+    // isolate, so its record is the one load protocol_agents.callbackRecordOf
+    // finds - null for an isolate createAgent did not make, or once its end
+    // began.
+    ctx_data.host_state = agentHostStateOf(ctx_data.agent);
 
     // Create realm for cross-realm support (only if we have an isolate)
     // Per WebIDL, every context has an associated realm with intrinsics
@@ -1580,4 +1592,13 @@ pub fn isWorkerContext(isolate: *v8.Isolate, context: *v8.Context) bool {
     const has_doc = v8.v8_Object_Has(global, context, @ptrCast(doc_key));
 
     return has_self and !has_doc;
+}
+
+/// The host state of the agent whose isolate `agent` is
+/// (AgentOptions.host_state), for a realm made in it to cache
+/// (runtime.ContextData.host_state); null for none.
+fn agentHostStateOf(agent: ?*runtime.Agent) ?*anyopaque {
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(agent orelse return null));
+    const record = @import("protocol_agents.zig").callbackRecordOf(isolate) orelse return null;
+    return @ptrCast(record.host_state orelse return null);
 }

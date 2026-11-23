@@ -265,12 +265,7 @@ fn instanceOf(node: *NodeBase) ?*runtime.Instance {
 /// principal realm's), as dom.agent_fetches finds it; null for a realm with
 /// no agent (an engine-less test's).
 fn agentHostOf(instance: *runtime.Instance) ?*AgentHost {
-    var current: ?runtime.Context = instance.ctx;
-    while (current) |realm| : (current = realm.principal_realm) {
-        const agent = realm.agent orelse continue;
-        return @import("agent_hosts.zig").ofAgent(agent);
-    }
-    return null;
+    return @import("agent_hosts.zig").of(instance.ctx);
 }
 
 // ============================================================================
