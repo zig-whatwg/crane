@@ -832,19 +832,20 @@ progress = [
   "015adbe4f, 360911cae, 9a8c1bdc3 - lane cdpd1 batch 1: the DOM's probes behind one process-wide gate (Blink's s_existingAgents) to each DOM-enabled session: childNodeInserted / Removed / CountUpdated, attributeModified / Removed, characterDataModified, inlineStyleInvalidated (revalidation task), shadowRootPushed, topLayerElementsUpdated, a child frame's commit re-sending its owner",
   "47d5f941d - lane cdpd1 batches 2-4: every non-geometry DOM command but setFileInputFiles (requestNode, push*, getFlattenedDocument, performSearch family, getAttributes, focus, node stack traces, collectClassNames, getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner), the edits over DOMEditor / InspectorHistory / DOMPatchSupport with undo / redo / marks, and the lazy events at Chrome's points: distributedNodesUpdated, adoptedStyleSheetsModified, pseudoElementAdded / Removed; 57439825c /json/list devtoolsFrontendUrl as Chrome's",
   "a3ceab226, 8304fb367 - lane cdpd1 D9: DOM.setFileInputFiles over the platform's files a host names by path (protocol 6.10.3 userFile / userDirectory, file_picker emulated on darwin / linux / testing), webkitdirectory included; bytes read at selection until file-backed Blob sources land (queued from cdpd1, main's ruling: Blink's NotFoundError / NotReadableError at read time)",
+  "b79155f1b - lane cdpd1 batch 5: Crane's DOM events and answers equal Chrome for Testing 157's recorded trace (tests/devtools/fixtures/cdpd1-chrome157-trace.txt), two stated deviations ruled by main: showModal's order (spec + WebKit + Gecko) and close()'s deferred top-layer removal (lane rend1's step 23); Chrome DevTools' bundled Elements panel on a Crane page stays live and applies its edits (cdpd1_frontend_test, screenshots in lane cdpd1's handoff); A/B over 2,013 files 153,212 = 153,212 passing, bug-finding 0 differences, timers x3 0 crashes; cost pair (86aa49935 vs b68a92f96): time and instructions within, one memory-pass row over (events.add-remove-listener 1.037, not explained by the code; leave-one-out says ~0.35 MB comes with the DOM-side changes, the devtools code ~0.1 MB) - ruling pending",
 ]
 
   [[infra.items]]
   name = "DOM mutation events to enabled sessions, Chrome's order and shape"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "DOM editing, search and node-push commands (no geometry)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Chrome DevTools frontend connected: Elements panel live (test)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "cdp-part-2"
