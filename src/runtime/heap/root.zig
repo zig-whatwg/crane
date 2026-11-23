@@ -434,9 +434,10 @@ const Quarantine = struct {
     /// Over the heap's life: blocks held, and of those evicted early.
     total_held: usize = 0,
     total_evicted: usize = 0,
-    /// The slot the next hold's block swaps with, drawn by the hold before
-    /// (`Engine.hold`).
-    next_slot: usize = 0,
+    /// The next eviction's entry, drawn by the hold before, and the address
+    /// it held then (`Engine.hold`).
+    next_slot: usize = std.math.maxInt(usize),
+    next_entry: usize = 0,
 };
 
 // ============================================================================
@@ -1244,19 +1245,11 @@ pub const Engine = struct {
         const entries = self.quarantineEntries();
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-        // The entries are in random order: each one's span entry, slot map
-        // and block are fetched `purge_ahead` releases before its own, so
-        // the misses overlap the releases in between.
-        for (entries[0..@min(q.count, purge_ahead)]) |address| self.prefetchHeld(address);
-        for (0..q.count) |i| {
-            if (i + purge_ahead < q.count) self.prefetchHeld(entries[i + purge_ahead]);
-            _ = self.releaseHeld(entries[i]);
-        }
+        for (entries[0..q.count]) |address| _ = self.releaseHeld(address);
         q.count = 0;
         q.held_bytes = 0;
+        q.next_slot = no_slot;
     }
-
-    const purge_ahead = 8;
 
     /// The turn ended: purge, and hold nothing until the next.
     pub fn endTask(self: *Engine) void {
@@ -1275,39 +1268,32 @@ pub const Engine = struct {
         return @ptrFromInt(self.heap.at(layout.quarantine.offset));
     }
 
-    /// Hold a freed block. The algorithm is Chromium's scheduler-loop
-    /// quarantine, reproduced (not copied) from
-    /// base/allocator/partition_allocator/src/partition_alloc/scheduler_loop_quarantine.cc,
-    /// SchedulerLoopQuarantineBranch::QuarantineWithSize and PurgeInternal,
-    /// at Chromium 461c62b66d7c (BSD-3-Clause, "Copyright 2023 The Chromium
-    /// Authors"):
-    /// - a block larger than the cap is free at once;
-    /// - entries leave from the back until the block fits under the cap
-    ///   ("As quarantined entries are shuffled, picking last entry is
-    ///   equivalent to picking random entry");
-    /// - the block joins at the back and swaps places with a randomly
-    ///   chosen entry ("Swap randomly so that the quarantine list remain
-    ///   shuffled"), so the back is always a random entry.
-    /// Crane's addition, which leaves the order of eviction as it is: the
-    /// swap's slot is drawn one hold ahead and its entry fetched then, and
-    /// the entry the swap moves to the back - the next hold's first to
-    /// leave - has its span entry, slot map and block fetched now. That
-    /// hold's release, and the reissue of the slot it frees, then find them
-    /// in cache: drawn and read when needed, a random cold entry was 54 ns
-    /// of a 102 ns allocate-and-free pair (lane hard1's P1, chat.local).
-    /// The objects lock is held when `objects_locked`.
+    /// Hold a freed block; past the cap, evict one at random (Chromium's
+    /// scheduler-loop quarantine evicts a uniformly random entry too:
+    /// scheduler_loop_quarantine.cc, SchedulerLoopQuarantineBranch::
+    /// QuarantineWithSize and PurgeInternal, Chromium 461c62b66d7c). A block
+    /// larger than the cap is free at once, as there.
+    ///
+    /// The entry that leaves takes the last one's place, so the list stays
+    /// in the order the blocks came, but for the holes: the task-end purge
+    /// then releases them mostly in address order. (Chromium's shuffle on
+    /// every push - "swap randomly so that the quarantine list remain
+    /// shuffled" - made the purge release them in random order: +2 to 5 ns
+    /// a pair in lane hard1's batch rows, more than it saved.)
+    ///
+    /// The victim of the next eviction is drawn one hold ahead and its entry
+    /// read then: the eviction's chain of reads (the entry, the block's span
+    /// entry, its slot map) then starts from an address already in hand, and
+    /// the read of a random cold entry overlaps the work between two frees.
+    /// The draw is among the entries the next hold will have, its own block
+    /// included, as a draw then would be; one a purge put out of range is
+    /// drawn again.
     fn hold(self: *Engine, address: usize, bytes: usize, objects_locked: bool) void {
         const q = &self.quarantine;
         const cap = self.config.quarantine_cap;
         if (bytes > cap) {
             _ = self.releaseHeldLocked(address, objects_locked);
             return;
-        }
-        const entries = self.quarantineEntries();
-        while (q.held_bytes + bytes > cap and q.count > 0) {
-            q.count -= 1;
-            q.total_evicted += 1;
-            q.held_bytes -|= self.releaseHeldLocked(entries[q.count], objects_locked);
         }
         if (q.count == q.committed) {
             // Commit more of the quarantine's part, doubling; with no room
@@ -1326,37 +1312,44 @@ pub const Engine = struct {
             };
             q.committed = want / @sizeOf(usize);
         }
+        const entries = self.quarantineEntries();
         entries[q.count] = address;
         q.count += 1;
         q.held_bytes += bytes;
         q.total_held += 1;
-        // The slot drawn by the last hold, among the entries this one would
-        // have: a draw a purge or a longer eviction has put past the end is
-        // drawn again, among these (a uniform draw either way).
-        const r = if (q.next_slot < q.count) q.next_slot else self.prng.random().uintLessThan(usize, q.count);
-        std.mem.swap(usize, &entries[r], &entries[q.count - 1]);
-        // The next hold's first to leave, and its second (a larger block
-        // can need two): what their release and reissue will read.
-        self.prefetchHeld(entries[q.count - 1]);
-        if (q.count >= 2) self.prefetchHeld(entries[q.count - 2]);
-        // The next hold's slot: drawn among the entries it will have (these
-        // and its own), its entry fetched now.
-        q.next_slot = self.prng.random().uintLessThan(usize, q.count + 1);
-        if (q.next_slot < q.count) @prefetch(&entries[q.next_slot], .{ .rw = .write });
+        var first = true;
+        while (q.held_bytes > cap and q.count > 0) {
+            // The first victim: the one drawn (and read) by the last hold,
+            // still in range; any other drawn now.
+            const ahead = first and q.next_slot < q.count;
+            const j = if (ahead) q.next_slot else self.drawBelow(q.count);
+            const evicted = if (ahead and j < q.count - 1) q.next_entry else entries[j];
+            first = false;
+            entries[j] = entries[q.count - 1];
+            q.count -= 1;
+            q.total_evicted += 1;
+            q.held_bytes -|= self.releaseHeldLocked(evicted, objects_locked);
+        }
+        // At the cap, the next hold's victim, among the entries it will have
+        // (under it nothing is drawn: the next hold may evict nothing).
+        if (first) {
+            q.next_slot = no_slot;
+            return;
+        }
+        q.next_slot = self.drawBelow(q.count + 1);
+        if (q.next_slot < q.count) q.next_entry = entries[q.next_slot];
     }
 
-    /// Fetch what a held block's release and its slot's reissue read: its
-    /// span entry, the slot map's first two lines (every slot of a class of
-    /// 32 B and over) and the block's first two lines.
-    inline fn prefetchHeld(self: *Engine, address: usize) void {
-        const index = (address - self.heap.window_base) / span_bytes;
-        @prefetch(self.entry(index), .{ .rw = .write });
-        const map: [*]const u8 = @ptrCast(self.slotMap(index));
-        @prefetch(map, .{ .rw = .write });
-        @prefetch(map + 64, .{ .rw = .write });
-        const block: [*]const u8 = @ptrFromInt(address);
-        @prefetch(block, .{});
-        @prefetch(block + 64, .{});
+    const no_slot = std.math.maxInt(usize);
+
+    /// A uniform draw in [0, n): the Engine's Xoshiro256 called directly,
+    /// bounded by multiply-shift (Lemire), which std.Random.uintLessThan
+    /// does too - without its interface call and byte fill, which were 5 to
+    /// 8% of a quarantined pair's samples (lane hard1's P1 profile). The
+    /// eviction draw is a hardening input, not a statistical one: the bias
+    /// of at most n / 2^64 is irrelevant to it.
+    inline fn drawBelow(self: *Engine, n: usize) usize {
+        return @intCast((@as(u128, self.prng.next()) * n) >> 64);
     }
 
     /// `releaseHeld`, taking the objects lock for an objects block unless
