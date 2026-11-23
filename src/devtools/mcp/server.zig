@@ -42,7 +42,7 @@ pub const McpServer = struct {
             .session = session,
             .tools_json = tools_json,
             .protocol = .{
-                .handler = .{ .context = session, .tools_json = tools_json, .call = tools.call },
+                .handler = .{ .context = session, .tools_json = tools_json, .call = tools.call, .disabled = tools.disabled },
                 .info = .{ .name = server_name, .version = server_version },
             },
         };

@@ -1,0 +1,4 @@
+<!doctype html>
+<title>Network</title>
+<script src="app.js"></script>
+<script>fetch('data.json').then((r) => r.json()).then((d) => { document.title = 'Network ' + d.from; });</script>

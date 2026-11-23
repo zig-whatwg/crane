@@ -53,7 +53,7 @@ test "list_pages, new_page, select_page, navigate_page and close_page answer as 
     // validateUrl refuses before any navigation.
     r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"chrome://settings\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Navigating to chrome: URLs is not allowed.", r.text);
+    try testing.expectEqualStrings("Error: Navigating to chrome: URLs is not allowed.", r.text);
 
     // The schema, strictly (ToolHandler's zod.object(schema).strict()).
     r = try h.tool("navigate_page", "{\"pageId\":\"1\",\"type\":\"sideways\",\"bogus\":1}");
@@ -62,7 +62,7 @@ test "list_pages, new_page, select_page, navigate_page and close_page answer as 
 
     r = try h.tool("navigate_page", "{\"pageId\":7,\"type\":\"reload\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("No page found", r.text);
+    try testing.expectEqualStrings("Error: No page found", r.text);
 
     r = try h.tool("close_page", "{\"pageId\":2}");
     try testing.expectEqualStrings("## Pages\n1: One (data:text/html,<title>One</title>one) [selected]", r.text);

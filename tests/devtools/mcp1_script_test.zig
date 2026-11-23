@@ -1,10 +1,10 @@
 //! Lane mcp1, batch 1: evaluate_script and handle_dialog as
 //! chrome-devtools-mcp v1.13.0 answers them (src/tools/script.ts,
 //! src/tools/pages.ts handleDialog, src/utils/WaitForHelper.ts): the
-//! function's JSON-stringified result, an error's message alone (a non-Error
-//! throw made an Error), format "script", dialogs answered as dialogAction
-//! says while the script runs, a navigation it causes reported, and a dialog
-//! left open shown and handled.
+//! function's JSON-stringified result, an error as McpResponse prints it
+//! ("Error: <message>"; a non-Error throw made an Error), format "script",
+//! dialogs answered as dialogAction says while the script runs, a navigation
+//! it causes reported, and a dialog left open shown and handled.
 
 const std = @import("std");
 const testing = std.testing;
@@ -34,14 +34,14 @@ test "evaluate_script: results by JSON, errors by message, format script" {
 
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"async () => { throw new TypeError('bad thing'); }\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("bad thing", r.text);
+    try testing.expectEqualStrings("Error: bad thing", r.text);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { throw {code: 7}; }\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("{\"code\":7}", r.text);
+    try testing.expectEqualStrings("Error: {\"code\":7}", r.text);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => 1\",\"format\":\"script\",\"args\":[\"1_1\"]}");
-    try testing.expectEqualStrings("args cannot be used when format is \"script\".", r.text);
+    try testing.expectEqualStrings("Error: args cannot be used when format is \"script\".", r.text);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"(el) => el.id\",\"args\":[\"1_1\"]}");
-    try testing.expectEqualStrings("No snapshot found for page 1. Use take_snapshot to capture one.", r.text);
+    try testing.expectEqualStrings("Error: No snapshot found for page 1. Use take_snapshot to capture one.", r.text);
 }
 
 test "evaluate_script: dialogs answered as dialogAction says, and a navigation reported" {
@@ -67,7 +67,7 @@ test "a dialog left open: shown with the pages, refused by evaluate_script, hand
     defer h.stop();
     var r = try h.tool("handle_dialog", "{\"pageId\":1,\"action\":\"accept\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("No open dialog found", r.text);
+    try testing.expectEqualStrings("Error: No open dialog found", r.text);
 
     // An alert after the script's wait has ended stays open.
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => alert('later'), 400); }\"}");
@@ -82,7 +82,7 @@ test "a dialog left open: shown with the pages, refused by evaluate_script, hand
 
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => 1\"}");
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("A dialog is open (alert: later).", r.text);
+    try testing.expectEqualStrings("Error: A dialog is open (alert: later).", r.text);
 
     r = try h.tool("handle_dialog", "{\"pageId\":1,\"action\":\"accept\"}");
     try testing.expectEqualStrings("Successfully accepted the dialog\n## Pages\n1: about:blank [selected]", r.text);

@@ -1,0 +1,706 @@
+{
+  "cases": [
+    {
+      "name": "pages: a fresh browser",
+      "about": "list_pages before anything: one blank page, selected.",
+      "calls": [
+        {
+          "tool": "list_pages",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "name": "pages: new, select, close",
+      "about": "new_page with a title, select_page back, close_page, and the last page refused.",
+      "calls": [
+        {
+          "tool": "new_page",
+          "args": {
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "list_pages",
+          "args": {}
+        },
+        {
+          "tool": "select_page",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "close_page",
+          "args": {
+            "pageId": 2
+          }
+        },
+        {
+          "tool": "close_page",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "close_page",
+          "args": {
+            "pageId": 9
+          }
+        }
+      ]
+    },
+    {
+      "name": "pages: navigate, reload, back, forward",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/second.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "back"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "forward"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "forward"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pages: refused URLs and arguments",
+      "about": "validateUrl, a missing target, and the schema's strict checks.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "chrome://settings"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "not a url"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": "1",
+            "type": "sideways",
+            "bogus": 1
+          }
+        },
+        {
+          "tool": "new_page",
+          "args": {
+            "url": "devtools://devtools/bundled/inspector.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 7,
+            "type": "reload"
+          }
+        }
+      ]
+    },
+    {
+      "name": "script: results and errors",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => document.title"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => ({a: [1, 2.5, 'x'], b: null, c: undefined});"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => undefined"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "1 + 2",
+            "format": "script"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => { throw new TypeError('bad thing'); }"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { throw {code: 7}; }"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { throw 'plain'; }"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "not a function"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "(el) => el.id",
+            "args": [
+              "1_1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "script: dialogs and navigations",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => confirm('sure?')"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => confirm('sure?')",
+            "dialogAction": "dismiss"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => prompt('name?', 'x')",
+            "dialogAction": "typed"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { location.href = 'second.html'; }"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { location.reload(); }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dialog: left open, then handled",
+      "calls": [
+        {
+          "tool": "handle_dialog",
+          "args": {
+            "pageId": 1,
+            "action": "accept"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { setTimeout(() => alert('later'), 300); }"
+          }
+        },
+        {
+          "sleep_ms": 1500
+        },
+        {
+          "tool": "list_pages",
+          "args": {}
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => 1"
+          }
+        },
+        {
+          "tool": "handle_dialog",
+          "args": {
+            "pageId": 1,
+            "action": "accept"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { setTimeout(() => prompt('name?'), 300); }"
+          }
+        },
+        {
+          "sleep_ms": 1500
+        },
+        {
+          "tool": "handle_dialog",
+          "args": {
+            "pageId": 1,
+            "action": "accept",
+            "promptText": "Ada"
+          }
+        }
+      ]
+    },
+    {
+      "name": "console: list, filter, pages, details",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console.html"
+          }
+        },
+        {
+          "sleep_ms": 500
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "types": [
+              "warn",
+              "error"
+            ]
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "pageSize": 3,
+            "pageIdx": 1
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "pageSize": 3,
+            "pageIdx": 9
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "includeStackTraces": true
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 1
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 3
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 4
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 6
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 7
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 99
+          }
+        }
+      ]
+    },
+    {
+      "name": "console: preserved navigations",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => console.log('after')"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "includePreservedMessages": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "network: list, filter, details",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/network.html"
+          }
+        },
+        {
+          "sleep_ms": 500
+        },
+        {
+          "tool": "list_network_requests",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_network_requests",
+          "args": {
+            "pageId": 1,
+            "resourceTypes": [
+              "script",
+              "fetch"
+            ]
+          }
+        },
+        {
+          "tool": "list_network_requests",
+          "args": {
+            "pageId": 1,
+            "pageSize": 1
+          }
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1,
+            "reqid": 3
+          }
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1,
+            "reqid": 99
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => (await fetch('missing.json')).status"
+          }
+        },
+        {
+          "tool": "list_network_requests",
+          "args": {
+            "pageId": 1,
+            "resourceTypes": [
+              "fetch"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "input: type and press",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/input.html"
+          }
+        },
+        {
+          "tool": "type_text",
+          "args": {
+            "pageId": 1,
+            "text": "Hi é!",
+            "submitKey": "Tab"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [document.getElementById('field').value, keys.join(',')]"
+          }
+        },
+        {
+          "tool": "press_key",
+          "args": {
+            "pageId": 1,
+            "key": "Control+Shift+K"
+          }
+        },
+        {
+          "tool": "press_key",
+          "args": {
+            "pageId": 1,
+            "key": "Control++"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => keys.slice(6).join(',')"
+          }
+        },
+        {
+          "tool": "press_key",
+          "args": {
+            "pageId": 1,
+            "key": "Ctrl+A"
+          }
+        },
+        {
+          "tool": "type_text",
+          "args": {
+            "pageId": 1,
+            "text": "x",
+            "submitKey": "Nope"
+          }
+        }
+      ]
+    },
+    {
+      "name": "deferred: tools and parameters not in Crane yet",
+      "about": "What a call gets before batches 2 and 3: the same shape where Google's server has one (a disabled category), else a clear error.",
+      "calls": [
+        {
+          "tool": "mock_network",
+          "args": {
+            "pageId": 1,
+            "route": "*://*:*/app.js",
+            "body": "x.js"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "filePath": "x.txt"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "x.js"
+          }
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1,
+            "reqid": 1,
+            "responseFilePath": "out.network-response"
+          }
+        }
+      ]
+    }
+  ],
+  "expected": [
+    {
+      "case": "deferred: tools and parameters not in Crane yet",
+      "call": 2,
+      "reason": "take_snapshot (the Accessibility domain, element uids) is batch 2; Crane answers \"Tool take_snapshot not found\"."
+    },
+    {
+      "case": "deferred: tools and parameters not in Crane yet",
+      "call": 3,
+      "reason": "upload_file needs element uids from take_snapshot: batch 2 (main, 2:24 PM ET); Crane answers \"Tool upload_file not found\"."
+    },
+    {
+      "case": "deferred: tools and parameters not in Crane yet",
+      "call": 4,
+      "reason": "sourcePath needs the server's file access and its path checks: batch 3 (main, 2:24 PM ET); Crane answers \"sourcePath is not supported by Crane's MCP server yet.\""
+    },
+    {
+      "case": "deferred: tools and parameters not in Crane yet",
+      "call": 5,
+      "reason": "responseFilePath needs the server's file access and its path checks: batch 3; Crane answers \"... not supported by Crane's MCP server yet.\""
+    },
+    {
+      "case": "pages: navigate, reload, back, forward",
+      "call": 3,
+      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
+    },
+    {
+      "case": "pages: navigate, reload, back, forward",
+      "call": 4,
+      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
+    },
+    {
+      "case": "pages: navigate, reload, back, forward",
+      "call": 6,
+      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
+    },
+    {
+      "case": "network: list, filter, details",
+      "call": 2,
+      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load)."
+    },
+    {
+      "case": "network: list, filter, details",
+      "call": 4,
+      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The count differs with it."
+    },
+    {
+      "case": "network: list, filter, details",
+      "call": 5,
+      "reason": "Request headers: Chrome sends its UA client hints (sec-ch-ua*, Chromium only) and its own user-agent; Crane's user-agent is Crane/0.1 (ruling 2026-11-21); the order of requestWillBeSent's headers is Blink's hash order. The response headers' order is a CDP finding (Chrome's Headers are a sorted dictionary) for Crane's Network domain."
+    },
+    {
+      "case": "network: list, filter, details",
+      "call": 9,
+      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The later reqids shift by it."
+    }
+  ]
+}

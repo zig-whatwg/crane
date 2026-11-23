@@ -308,29 +308,11 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
     };
     defer host.stop();
 
-    // The first tab, before the server starts: the client finds it as an
-    // existing target, as it finds Chrome's first window.
-    const FirstTab = struct {
-        url: []const u8,
-        failed: bool = false,
-        fn run(context: ?*anyopaque, b: *Browser) void {
-            const self: *@This() = @ptrCast(@alignCast(context.?));
-            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
-                self.failed = true;
-            };
-        }
-    };
-    // --no-startup-window: none (Chrome starts with no browser window; the
-    // client's Target.createTarget makes the first tab).
-    var first_tab: FirstTab = .{ .url = options.url };
-    if (!options.no_startup_window) host.call(&first_tab, FirstTab.run) catch {
-        first_tab.failed = true;
-    };
-    if (first_tab.failed) {
+    openFirstWindow(host, options) catch {
         try err_out.print("repl: the first tab could not open\n", .{});
         try err_out.flush();
         return 1;
-    }
+    };
 
     var origins: [32][]const u8 = undefined;
     var origin_count: usize = 0;
@@ -365,6 +347,27 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
     return 0;
 }
 
+/// The first window of a remote-debugging browser, before the server starts:
+/// the client finds it as an existing target, as it finds Chrome's first
+/// window. --no-startup-window: none (Chrome starts with no browser window;
+/// the client's Target.createTarget makes the first tab).
+pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options) !void {
+    const FirstTab = struct {
+        url: []const u8,
+        failed: bool = false,
+        fn run(context: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
+                self.failed = true;
+            };
+        }
+    };
+    if (options.no_startup_window) return;
+    var first_tab: FirstTab = .{ .url = options.url };
+    host.call(&first_tab, FirstTab.run) catch return error.FirstWindow;
+    if (first_tab.failed) return error.FirstWindow;
+}
+
 /// `--mcp` (lane mcp1; design tmp/plans/mcp1-design.md 2.2): Crane's own MCP
 /// server on stdin/stdout - what an agent's MCP configuration starts instead
 /// of `npx chrome-devtools-mcp`. The Browser runs on a thread of its own with
@@ -385,25 +388,9 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         return 1;
     };
     defer host.stop();
-    const FirstTab = struct {
-        url: []const u8,
-        failed: bool = false,
-        fn run(context: ?*anyopaque, b: *Browser) void {
-            const self: *@This() = @ptrCast(@alignCast(context.?));
-            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
-                self.failed = true;
-            };
-        }
-    };
-    var first_tab: FirstTab = .{ .url = options.url };
-    host.call(&first_tab, FirstTab.run) catch {
-        first_tab.failed = true;
-    };
-    if (first_tab.failed) {
-        try err_out.print("repl: the first tab could not open\n", .{});
-        try err_out.flush();
-        return 1;
-    }
+    // The browser's first page is the one page there is, as Chrome starts
+    // with one blank page: the MCP client opens and navigates pages itself
+    // (new_page, navigate_page).
     const server = devtools.Server.start(allocator, .{
         .user_agent = options.user_agent orelse "",
         .default_host = host,

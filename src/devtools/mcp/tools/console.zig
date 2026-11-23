@@ -32,7 +32,7 @@ const max_cause_depth = 10;
 
 fn listConsoleMessages(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     const target = page.?;
-    if (registry.stringArg(args, "serviceWorkerId") != null) return ctx.fail("Service worker not found.", .{});
+    if (registry.stringArg(args, "serviceWorkerId") != null) return ctx.failPlain("Service worker not found.", .{});
     const include_preserved = registry.boolArg(args, "includePreservedMessages") orelse false;
     const include_stacks = registry.boolArg(args, "includeStackTraces") orelse false;
     var messages = try target.console.data(ctx.arena, include_preserved);
@@ -87,9 +87,10 @@ fn getConsoleMessage(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, resp
     const id_value = registry.numberArg(args, "msgid") orelse return ctx.fail("Input validation error: Invalid arguments for tool get_console_message: msgid: Invalid input: expected number, received undefined", .{});
     // McpResponse: a falsy msgid attaches nothing.
     if (id_value == 0) return;
-    if (id_value < 1 or id_value != @floor(id_value) or id_value > std.math.maxInt(u32)) return ctx.fail("Request not found for selected page", .{});
+    // Looked up in McpResponse.handle: its failure is the message alone.
+    if (id_value < 1 or id_value != @floor(id_value) or id_value > std.math.maxInt(u32)) return ctx.failPlain("Request not found for selected page", .{});
     const id: u32 = @intFromFloat(id_value);
-    const message = target.console.byId(id) orelse return ctx.fail("Request not found for selected page", .{});
+    const message = target.console.byId(id) orelse return ctx.failPlain("Request not found for selected page", .{});
     response.detailed_console = try detailed(ctx, target, message);
 }
 

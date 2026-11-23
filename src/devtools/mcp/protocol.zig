@@ -66,6 +66,9 @@ pub const Handler = struct {
     /// Run tool `name` with `arguments` (an object); null: no such tool.
     /// Allocations in `arena` live until the answer is written.
     call: *const fn (context: *anyopaque, arena: Allocator, name: []const u8, arguments: json.Value) anyerror!?ToolResult,
+    /// A tool the server has but does not offer (a category or a flag off):
+    /// a call to it is "Tool <name> disabled", not "not found".
+    disabled: ?*const fn (name: []const u8) bool = null,
 };
 
 pub const ServerInfo = struct {
@@ -182,7 +185,10 @@ pub const Protocol = struct {
             // execution error the model can read.
             else => ToolResult{ .content = try arena.dupe(Content, &.{.{ .text = try std.fmt.allocPrint(arena, "Error: {t}", .{err}) }}), .is_error = true },
         } orelse {
-            const message = try std.fmt.allocPrint(arena, "Unknown tool: {s}", .{name_value.string});
+            // chrome-devtools-mcp's tools/call handler and ToolHandler.handle
+            // (viaMcp): InvalidParams, "not found" or "disabled".
+            const off = if (self.handler.disabled) |f| f(name_value.string) else false;
+            const message = try std.fmt.allocPrint(arena, "Tool {s} {s}", .{ name_value.string, if (off) "disabled" else "not found" });
             return errorMessage(arena, id, .invalid_params, message, null);
         };
         var out: std.Io.Writer.Allocating = .init(arena);
@@ -340,6 +346,7 @@ test "tools/list and tools/call, legacy and modern; an unknown tool is a JSON-RP
     try testing.expect(std.mem.indexOf(u8, failed, "\"isError\":true") != null);
     const unknown = (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"nope\"}}")).?;
     try testing.expect(std.mem.indexOf(u8, unknown, "\"code\":-32602") != null);
+    try testing.expect(std.mem.indexOf(u8, unknown, "Tool nope not found") != null);
 }
 
 test "modern: server/discover; an unsupported version is -32022 naming the supported ones; missing client capabilities -32602; unknown methods -32601; bad JSON -32700" {

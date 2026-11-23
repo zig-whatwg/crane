@@ -196,6 +196,21 @@ pub const Session = struct {
         self.selected = live;
     }
 
+    /// McpContext.getTargetInfos: the pages' titles as Target.getTargets
+    /// gives them now (formatPage reads a fresh TargetInfo's title).
+    pub fn refreshTitles(self: *Session) void {
+        var r = self.client.call("Target.getTargets", "{}", "", command_timeout_ms) catch return;
+        defer r.deinit();
+        const result = r.result() orelse return;
+        const infos = result.object.get("targetInfos") orelse return;
+        if (infos != .array) return;
+        for (infos.array.items) |info| {
+            if (info != .object or !std.mem.eql(u8, str(info.object.get("type")), "page")) continue;
+            const page = self.pageByTarget(str(info.object.get("targetId"))) orelse continue;
+            replace(self.allocator, &page.title, str(info.object.get("title"))) catch {};
+        }
+    }
+
     /// Free the closed pages (at a call's start).
     pub fn dropClosed(self: *Session) void {
         var i: usize = 0;

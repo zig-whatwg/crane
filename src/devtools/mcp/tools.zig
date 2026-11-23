@@ -44,11 +44,23 @@ pub const Context = struct {
     url_options: url_check.Options = .{},
     /// The message `fail` set.
     failure: ?[]const u8 = null,
+    /// `failPlain`: the failure is McpResponse.handle's own (a lookup it
+    /// makes, as of an attached message or request), which ToolHandler
+    /// answers as the message alone; a tool's own error is the response with
+    /// "Error: <message>" last.
+    plain: bool = false,
 
-    /// End the tool with `message` as its error result.
+    /// End the tool with an error the response reports ("Error: ...").
     pub fn fail(self: *Context, comptime format: []const u8, args: anytype) error{ToolFailed} {
         self.failure = std.fmt.allocPrint(self.arena, format, args) catch "Error";
         return error.ToolFailed;
+    }
+
+    /// End the tool with the message alone as its error result (ToolHandler's
+    /// errorResult: a failure of the response's own handling).
+    pub fn failPlain(self: *Context, comptime format: []const u8, args: anytype) error{ToolFailed} {
+        self.plain = true;
+        return self.fail(format, args);
     }
 };
 
@@ -81,6 +93,63 @@ pub fn listJson(allocator: Allocator) ![]u8 {
     }
     try w.writeAll("]");
     return out.toOwnedSlice();
+}
+
+/// The tools chrome-devtools-mcp v1.13.0 offers with its default flags (its
+/// tools/list, dumped by lane mcp1 into tmp/mcp1/tools-default.json): every
+/// other copied definition is a category's or a flag's, off by default.
+const default_tools = [_][]const u8{
+    "click",
+    "close_page",
+    "drag",
+    "emulate",
+    "evaluate_script",
+    "fill",
+    "fill_form",
+    "get_console_message",
+    "get_css_styles",
+    "get_network_request",
+    "handle_dialog",
+    "hover",
+    "lighthouse_audit",
+    "list_console_messages",
+    "list_network_requests",
+    "list_pages",
+    "navigate_page",
+    "new_page",
+    "performance_analyze_insight",
+    "performance_start_trace",
+    "performance_stop_trace",
+    "press_key",
+    "resize_page",
+    "screencast_start",
+    "screencast_stop",
+    "select_page",
+    "set_logpoints",
+    "take_heapsnapshot",
+    "take_screenshot",
+    "take_snapshot",
+    "type_text",
+    "upload_file",
+    "wait_for",
+};
+
+/// Handler.disabled: a tool Google's server has but leaves off by default
+/// (mock_network's category, the heap tools' flag, the Chrome products).
+pub fn disabled(name: []const u8) bool {
+    for (default_tools) |d| if (std.mem.eql(u8, d, name)) return false;
+    // A definition's name, as the copied file writes it.
+    const copied = @embedFile("schemas/tools.json");
+    var buffer: [128]u8 = undefined;
+    const needle = std.fmt.bufPrint(&buffer, "\"name\": \"{s}\"", .{name}) catch return false;
+    return std.mem.indexOf(u8, copied, needle) != null;
+}
+
+test "disabled: a copied tool off by default, not one offered by default or unknown" {
+    try std.testing.expect(disabled("mock_network"));
+    try std.testing.expect(disabled("install_extension"));
+    try std.testing.expect(!disabled("take_snapshot"));
+    try std.testing.expect(!disabled("nope"));
 }
 
 pub fn find(name: []const u8) ?Tool {
@@ -116,18 +185,27 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
             .float => |f| if (f == @floor(f) and @abs(f) < 9.0e15) @as(i64, @intFromFloat(f)) else null,
             else => return errorResult(arena, try std.fmt.allocPrint(arena, "Input validation error: Invalid arguments for tool {s}: pageId: Invalid input: expected number, received {s}", .{ name, jsonTypeName(id_value) })),
         };
+        // ToolHandler's page resolution is inside its try: a failure is the
+        // response's "Error: ..." line.
         page = if (id) |i| session.pageById(i) else session.selected;
-        const resolved = page orelse return errorResult(arena, if (id != null) "No page found" else "No page selected");
+        const resolved = page orelse {
+            response.error_message = if (id != null) "No page found" else "No page selected";
+            return try response.finish(session);
+        };
         try pages.emulateFocus(&ctx, resolved);
         if (tool.set_page) response.page = resolved;
         if (tool.blocked_by_dialog) if (resolved.dialog) |d| {
-            return errorResult(arena, try std.fmt.allocPrint(arena, "A dialog is open ({s}: {s}).", .{ d.type, d.message }));
+            response.error_message = try std.fmt.allocPrint(arena, "A dialog is open ({s}: {s}).", .{ d.type, d.message });
+            return try response.finish(session);
         };
     }
     tool.run(&ctx, arguments.object, page, &response) catch |err| switch (err) {
-        error.ToolFailed => return errorResult(arena, ctx.failure orelse "Error"),
+        error.ToolFailed => {
+            if (ctx.plain) return errorResult(arena, ctx.failure orelse "Error");
+            response.error_message = ctx.failure orelse "Error";
+        },
         error.OutOfMemory => return error.OutOfMemory,
-        else => return errorResult(arena, try std.fmt.allocPrint(arena, "{t}", .{err})),
+        else => response.error_message = try std.fmt.allocPrint(arena, "{t}", .{err}),
     };
     try session.initPages();
     return try response.finish(session);

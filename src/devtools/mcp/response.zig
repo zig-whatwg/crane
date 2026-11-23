@@ -23,6 +23,9 @@ pub const Response = struct {
     images: std.ArrayList(protocol.Content) = .empty,
     /// McpResponse.setError: the answer is an error result.
     is_error: bool = false,
+    /// McpResponse.setError's message: the answer's last line is
+    /// "Error: <message>", after every section.
+    error_message: ?[]const u8 = null,
     /// attachWaitForResult: what the action led to.
     wait_result: ?WaitResult = null,
     /// The sections McpResponse.handle computes, in format's order after
@@ -54,7 +57,10 @@ pub const Response = struct {
     pub fn finish(self: *Response, session: *Session) !protocol.ToolResult {
         var out: std.ArrayList([]const u8) = .empty;
         const any_opened = if (self.wait_result) |r| r.opened_pages.len > 0 else false;
-        if (self.include_pages or any_opened) session.snapshot();
+        if (self.include_pages or any_opened) {
+            session.snapshot();
+            session.refreshTitles();
+        }
         if (self.include_pages) {
             if (self.page == null or self.page.?.closed) self.page = session.selected;
         }
@@ -80,11 +86,12 @@ pub const Response = struct {
         if (self.detailed_console) |text| try out.append(self.arena, text);
         if (self.network_list) |section| try out.appendSlice(self.arena, section);
         if (self.console_list) |section| try out.appendSlice(self.arena, section);
+        if (self.error_message) |message| try out.append(self.arena, try std.fmt.allocPrint(self.arena, "Error: {s}", .{message}));
         const text = try std.mem.join(self.arena, "\n", out.items);
         var content: std.ArrayList(protocol.Content) = .empty;
         try content.append(self.arena, .{ .text = text });
         try content.appendSlice(self.arena, self.images.items);
-        return .{ .content = content.items, .is_error = self.is_error };
+        return .{ .content = content.items, .is_error = self.is_error or self.error_message != null };
     }
 
     fn pagesSection(self: *Response, session: *Session, out: *std.ArrayList([]const u8)) !void {

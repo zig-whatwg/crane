@@ -20,8 +20,10 @@ pub const list = [_]Tool{
     .{ .name = "type_text", .page_tool = true, .blocked_by_dialog = true, .run = typeText },
 };
 
+/// A schema transform's (parseKey's) failure: ToolHandler's validation
+/// error, the message alone.
 fn validationError(ctx: *Context, tool: []const u8, field: []const u8, message: []const u8) error{ToolFailed} {
-    return ctx.fail("Input validation error: Invalid arguments for tool {s}: {s}: {s}", .{ tool, field, message });
+    return ctx.failPlain("Input validation error: Invalid arguments for tool {s}: {s}: {s}", .{ tool, field, message });
 }
 
 fn pressKey(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {

@@ -127,8 +127,10 @@ fn newPage(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
     };
     _ = wait.afterAction(ctx, new, .{ .timeout = timeout }, Goto{ .page = new, .url = url, .timeout = timeout }) catch |err| {
         if (err != error.ToolFailed) return err;
-        // A dialog-blocked load stays open for handle_dialog; otherwise the
-        // previous selection comes back and the new tab is closed.
+        // A dialog-blocked load stays open for handle_dialog (the pages are
+        // listed); otherwise the previous selection comes back and the new
+        // tab is closed.
+        if (new.dialog != null) response.include_pages = true;
         if (new.dialog == null) {
             if (previous) |p| if (!p.closed) session.select(p);
             if ((try session.livePages(ctx.arena)).len > 1) {

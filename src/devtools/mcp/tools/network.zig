@@ -74,8 +74,9 @@ fn getNetworkRequest(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, resp
         try response.line("Nothing is currently selected in the DevTools Network panel.", .{});
         return;
     }
-    if (reqid < 0 or reqid != @floor(reqid) or reqid > std.math.maxInt(u32)) return ctx.fail("Request not found for selected page", .{});
-    const request = target.network.requests.byId(@intFromFloat(reqid)) orelse return ctx.fail("Request not found for selected page", .{});
+    // Looked up in McpResponse.handle: its failure is the message alone.
+    if (reqid < 0 or reqid != @floor(reqid) or reqid > std.math.maxInt(u32)) return ctx.failPlain("Request not found for selected page", .{});
+    const request = target.network.requests.byId(@intFromFloat(reqid)) orelse return ctx.failPlain("Request not found for selected page", .{});
     response.detailed_network = try detailed(ctx, target, request);
 }
 
