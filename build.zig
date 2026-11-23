@@ -16,6 +16,8 @@ const engine_build = @import("src/runtime/engine_build_protocol.zig");
 /// answers for, the extra kit parts it builds in and the system libraries they link. This file names no
 /// platform.
 const platform_build = @import("src/platform/platform_build_protocol.zig");
+/// The kit's build side, reached through the platform protocol's.
+const kit_build = platform_build.kit;
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
 const zig_toolchain = @import("tools/zig_toolchain.zig");
@@ -456,76 +458,8 @@ fn removeCMacro(module: *std.Build.Module, name: []const u8) void {
     }
 }
 
-/// Google's pinned RFC 7932 implementation, following upstream CMake's three
-/// library source sets. Only the C codec is built, for the requested target.
-const BrotliLibraries = struct { common: *std.Build.Step.Compile, decoder: *std.Build.Step.Compile, encoder: *std.Build.Step.Compile };
-fn buildBrotli(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?BrotliLibraries {
-    const upstream = b.lazyDependency("brotli", .{}) orelse return null;
-    var libs: [3]*std.Build.Step.Compile = undefined;
-    const groups = .{ .{ "common", &brotli_common_sources }, .{ "dec", &brotli_dec_sources }, .{ "enc", &brotli_enc_sources } };
-    inline for (groups, 0..) |group, i| {
-        const lib = b.addLibrary(.{
-            .name = "brotli" ++ group[0],
-            .linkage = .static,
-            .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
-        });
-        if (sanitize_c) |sanitizer| lib.root_module.sanitize_c = sanitizer;
-        lib.root_module.addIncludePath(upstream.path("c/include"));
-        lib.root_module.addCSourceFiles(.{ .root = upstream.path("c"), .files = group[1], .flags = &.{"-std=c99"} });
-        lib.installHeadersDirectory(upstream.path("c/include/brotli"), "brotli", .{});
-        if (target.result.os.tag == .ios) addIosSdkPaths(lib.root_module, iosSdkPath(b));
-        libs[i] = lib;
-    }
-    libs[1].root_module.linkLibrary(libs[0]);
-    // The upstream default calls exit() on OOM; embedders must unwind instead.
-    libs[2].root_module.addCMacro("BROTLI_ENCODER_CLEANUP_ON_OOM", "1");
-    libs[2].root_module.linkLibrary(libs[0]);
-    return .{ .common = libs[0], .decoder = libs[1], .encoder = libs[2] };
-}
-
-const brotli_common_sources = [_][]const u8{
-    "common/constants.c",
-    "common/context.c",
-    "common/dictionary.c",
-    "common/platform.c",
-    "common/shared_dictionary.c",
-    "common/transform.c",
-};
-
-const brotli_dec_sources = [_][]const u8{
-    "dec/bit_reader.c",
-    "dec/decode.c",
-    "dec/huffman.c",
-    "dec/prefix.c",
-    "dec/state.c",
-    "dec/static_init.c",
-};
-
-const brotli_enc_sources = [_][]const u8{
-    "enc/backward_references.c",
-    "enc/backward_references_hq.c",
-    "enc/bit_cost.c",
-    "enc/block_splitter.c",
-    "enc/brotli_bit_stream.c",
-    "enc/cluster.c",
-    "enc/command.c",
-    "enc/compound_dictionary.c",
-    "enc/compress_fragment.c",
-    "enc/compress_fragment_two_pass.c",
-    "enc/dictionary_hash.c",
-    "enc/encode.c",
-    "enc/encoder_dict.c",
-    "enc/entropy_encode.c",
-    "enc/fast_log.c",
-    "enc/histogram.c",
-    "enc/literal_cost.c",
-    "enc/memory.c",
-    "enc/metablock.c",
-    "enc/static_dict.c",
-    "enc/static_dict_lut.c",
-    "enc/static_init.c",
-    "enc/utf8_util.c",
-};
+/// Brotli's libraries: the kit's (kit/brotli/brotli_build.zig).
+const BrotliLibraries = kit_build.brotli.BrotliLibraries;
 
 /// The testing image decoders. Unmodified pinned sources; no tools, test
 /// corpus, system JPEG/XML dependency, or build-time interpreter. Scalar JPEG
@@ -2488,6 +2422,25 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
     module.addFrameworkPath(root.path(module.owner, "System/Library/Frameworks"));
 }
 
+/// What the kit's C needs for `target` beyond what Zig finds by itself
+/// (kit_build.PrepareC): the SDK's paths, for the one target whose SDK is
+/// recorded (recordSdkRoot); nothing for any other. Batch P3 moves it behind
+/// the build side of the platform that answers for that target.
+fn prepareCFor(target: std.Build.ResolvedTarget) ?kit_build.PrepareC {
+    return if (target.result.os.tag == .ios) sdk_prepare_c else null;
+}
+const sdk_prepare_c: kit_build.PrepareC = .{ .module = sdkModule, .graph = sdkGraph, .translate = sdkTranslate };
+fn sdkModule(module: *std.Build.Module) void {
+    addIosSdkPaths(module, iosSdkPath(module.owner));
+}
+fn sdkGraph(step: *std.Build.Step) void {
+    applyIosSdkRecursively(step.owner, step, iosSdkPath(step.owner));
+}
+fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
+    const b = translate.step.owner;
+    if (iosSdkPath(b)) |sdk| translate.addSystemIncludePath(sdk.path(b, "usr/include"));
+}
+
 /// A C header set translated to Zig by the build: what a file's `@cImport`
 /// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; Step.TranslateC
 /// is deprecated in 0.17 but present). The file
@@ -3117,7 +3070,7 @@ pub fn build(b: *std.Build) void {
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    const brotli = buildBrotli(b, target, optimize, null);
+    const brotli = kit_build.brotli.buildBrotli(b, target, optimize, null, prepareCFor(target));
     const image_codecs = buildImageCodecs(b, target, optimize, null);
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
@@ -7473,7 +7426,7 @@ fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_b
     if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
     var config = ctx.module_config;
     config.optimize = runner.modes.crane_modules;
-    config.brotli = buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
+    config.brotli = kit_build.brotli.buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, prepareCFor(target));
     config.image_codecs = buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
     config.static_libcurl = buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null);
     // A private graph (`public` false).
