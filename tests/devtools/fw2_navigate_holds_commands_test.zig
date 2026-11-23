@@ -379,6 +379,36 @@ test "Debugger.pause sent while commands are held is not held (Chrome sends it o
     try testing.expect(navigation_at < document_at);
 }
 
+test "params Chrome decodes in the browser and that do not decode are answered at once; the page's own params wait with their command" {
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    var setup = try Setup.start(gpa.allocator());
+    defer setup.stop();
+    var target: [64]u8 = undefined;
+    const session = try setup.attachPage(&target);
+    defer gpa.allocator().free(session);
+    const r = setup.rec();
+    try setup.navigate(session, "/page.html");
+
+    _ = try setup.sendNavigate(session, "/gated.html");
+    try setup.site.awaitArrived(1);
+    // Runtime.evaluate's params are the page's to decode: it waits.
+    const page_decoded = try r.send("Runtime.evaluate", "{\"expression\":5}", session);
+    // Emulation.setUserAgentOverride's are the browser's (EmulationHandler,
+    // which then lets it through): -32602 now.
+    const browser_decoded = try r.send("Emulation.setUserAgentOverride", "{\"userAgent\":5}", session);
+    try testing.expectEqual(@as(?i64, -32602), try r.errorCode(browser_decoded));
+    try testing.expectEqual(@as(?usize, null), r.responseIndex(page_decoded));
+    // Well-formed, it waits as any of the page's commands.
+    const well_formed = try r.send("Emulation.setUserAgentOverride", "{\"userAgent\":\"fw2\"}", session);
+    _ = try r.awaitResponse(try r.send("Page.getNavigationHistory", "{}", session));
+    try testing.expectEqual(@as(?usize, null), r.responseIndex(well_formed));
+    setup.site.release();
+    try testing.expectEqual(@as(?i64, -32602), try r.errorCode(page_decoded));
+    try testing.expectEqual(@as(?i64, null), try r.errorCode(well_formed));
+    try testing.expect(r.responseIndex(page_decoded).? < r.responseIndex(well_formed).?);
+}
+
 test "a session that attaches while its tab navigates holds too (kAll)" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");

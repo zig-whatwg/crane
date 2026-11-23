@@ -137,20 +137,24 @@ pub const PageSession = struct {
         switch (parsed) {
             .failure => |f| dispatch_mod.sendError(self.link, f.id, @backingInt(f.code), f.message, null),
             .command => |command| {
-                if (may_hold and self.holds(command.method, raw)) return;
+                if (may_hold and self.holds(&command, arena_state.allocator(), raw)) return;
                 dispatch_mod.dispatch(page_domains.Handlers, self, arena_state.allocator(), &command);
             },
         }
     }
 
-    /// Hold `raw`, a command for `method`, if the tab navigates and the
-    /// command is one its page answers (held_commands.holds) - or if
-    /// earlier ones still wait for their release, so that they go first.
-    /// Chrome: DevToolsSession::DispatchProtocolMessageInternal, then the
-    /// browser handlers, then FallThrough (devtools_session.cc).
-    fn holds(self: *PageSession, method: []const u8, raw: []const u8) bool {
+    /// Hold `raw`, `command`'s text, if the tab navigates and the command is
+    /// one its page answers (held_commands.holds) - or if earlier ones still
+    /// wait for their release, so that they go first. One whose params
+    /// Chrome decodes in the browser and that do not decode is not held: the
+    /// dispatcher answers it at once, as Chrome's does (`arena` holds the
+    /// decode). Chrome: DevToolsSession::DispatchProtocolMessageInternal,
+    /// then the browser handlers, then FallThrough (devtools_session.cc).
+    fn holds(self: *PageSession, command: *const json_rpc.Command, arena: Allocator, raw: []const u8) bool {
+        const method = command.method;
         const mode = self.holdMode() orelse return false;
         if (!held_commands.holds(mode, method)) return false;
+        if (held_commands.decodedInBrowser(method) and !dispatch_mod.paramsDecode(page_domains.Handlers, arena, command)) return false;
         const copy = self.allocator.dupe(u8, raw) catch return false;
         self.held.append(self.allocator, copy) catch {
             self.allocator.free(copy);

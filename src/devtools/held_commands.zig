@@ -37,15 +37,24 @@
 //! chrome/browser/devtools/protocol/*_handler.cc), less each method whose
 //! handler returns Response::FallThrough() (or calls the callback's
 //! fallThrough()) on its successful path: those reach the agent too.
-//! `answered_in_browser` lists the rest, read at that revision. A method a
-//! browser handler answers only on an error path (Network.setExtraHTTPHeaders
-//! with an invalid header, DOM.setFileInputFiles refused) is the agent's: its
-//! command is held, and its error comes after the navigation, where Chrome's
-//! comes at once - a difference of when an error for invalid input arrives,
-//! not of what it says. So are Emulation.setDeviceMetricsOverride and
-//! clearDeviceMetricsOverride, which Chrome answers in the browser only when
-//! they change nothing (EmulationHandler: the same parameters again, or no
-//! override to clear).
+//! `answered_in_browser` lists the rest, read at that revision.
+//! `decoded_in_browser` lists the methods a browser handler takes and then
+//! lets through: their params are decoded in the browser, so params that do
+//! not parse are answered at once, held or not, as Chrome's crdtp dispatcher
+//! answers them (`PageSession.holds` asks the dispatcher to decode them
+//! before it holds). Two differences remain, stated:
+//! - A check a Chrome browser handler makes on params that do parse
+//!   (Network.setExtraHTTPHeaders' header names, Emulation.
+//!   setDeviceMetricsOverride's ranges, DOM.setFileInputFiles refused) is
+//!   answered at once there; here it is the domain handler's, so its error
+//!   comes after the navigation. Answering it at once needs each such
+//!   handler split into a check and its effect.
+//! - Emulation.setDeviceMetricsOverride and clearDeviceMetricsOverride that
+//!   change nothing - the same parameters again, or no override to clear -
+//!   Chrome answers in the browser (EmulationHandler compares its
+//!   device_emulation_params_); here they are held. Telling needs the
+//!   emulation domain to keep the parameters it applied, not only the
+//!   viewport and screen it set.
 //!
 //! kExecutionOnly is the mode of a session attached to an agent host made
 //! for a navigation already in flight - one whose host is created at the
@@ -448,6 +457,84 @@ const answered_in_browser = setOf(&.{
     "WebMCP.invokeTool",
 });
 
+/// Whether Chrome's browser process decodes `method`'s params before the
+/// command goes on to the page: the browser handles it (a browser handler's
+/// generated dispatcher parses the params, crdtp) but falls through on
+/// success. Params that do not parse are answered there, at once (-32602),
+/// held or not (DevToolsSession::HandleCommand -> UberDispatcher).
+pub fn decodedInBrowser(method: []const u8) bool {
+    return decoded_in_browser.has(method);
+}
+
+/// The methods a browser-side handler takes, then lets through to the page
+/// (content/browser/devtools/protocol_config.json and chrome/browser/
+/// devtools/inspector_protocol_config.json name them; their handlers return
+/// FallThrough on success). Their params are decoded in the browser.
+const decoded_in_browser = setOf(&.{
+    // Audits
+    "Audits.disable",
+    "Audits.enable",
+
+    // DOM
+    "DOM.getFileInfo",
+    "DOM.setFileInputFiles",
+
+    // Debugger
+    "Debugger.removeBreakpoint",
+    "Debugger.setBreakpointByUrl",
+
+    // DeviceOrientation
+    "DeviceOrientation.clearDeviceOrientationOverride",
+    "DeviceOrientation.setDeviceOrientationOverride",
+
+    // Emulation
+    "Emulation.clearDeviceMetricsOverride",
+    "Emulation.setAutomationOverride",
+    "Emulation.setDeviceMetricsOverride",
+    "Emulation.setEmulatedMedia",
+    "Emulation.setFocusEmulationEnabled",
+    "Emulation.setUserAgentOverride",
+
+    // Log
+    "Log.disable",
+    "Log.enable",
+
+    // Network
+    "Network.disable",
+    "Network.emulateNetworkConditions",
+    "Network.enable",
+    "Network.getResponseBody",
+    "Network.searchInResponseBody",
+    "Network.setBypassServiceWorker",
+    "Network.setCacheDisabled",
+    "Network.setExtraHTTPHeaders",
+
+    // Overlay
+    "Overlay.enable",
+    "Overlay.setInspectMode",
+    "Overlay.setPausedInDebuggerMessage",
+
+    // Page
+    "Page.addCompilationCache",
+    "Page.addScriptToEvaluateOnLoad",
+    "Page.addScriptToEvaluateOnNewDocument",
+    "Page.crash",
+    "Page.disable",
+    "Page.enable",
+    "Page.reload",
+    "Page.removeScriptToEvaluateOnNewDocument",
+    "Page.setBypassCSP",
+
+    // Preload
+    "Preload.disable",
+    "Preload.enable",
+
+    // WebMCP
+    "WebMCP.cancelInvocation",
+    "WebMCP.disable",
+    "WebMCP.enable",
+});
+
 fn setOf(comptime names: []const []const u8) std.StaticStringMap(void) {
     @setEvalBranchQuota(names.len * 2000);
     comptime var pairs: [names.len]struct { []const u8, void } = undefined;
@@ -541,6 +628,16 @@ test "kExecutionOnly holds only what may run script: Runtime.terminateExecution 
     // to be held.
     for ([_][]const u8{ "WebMCP.invokeTool", "Runtime.terminateExecution", "Runtime.enable", "Runtime.runIfWaitingForDebugger", "DOM.getDocument", "Page.getFrameTree", "Page.enable", "Network.enable", "Debugger.enable", "Debugger.stepOver", "Page.navigate", "Target.getTargets", "No.suchMethod" }) |method| {
         try testing.expect(!holds(.execution_only, method));
+    }
+}
+
+test "what a browser handler takes and lets through has its params decoded in the browser; what the page alone takes does not" {
+    for ([_][]const u8{ "Page.enable", "Page.reload", "Page.addScriptToEvaluateOnNewDocument", "Network.enable", "Network.setExtraHTTPHeaders", "Network.setCacheDisabled", "Emulation.setUserAgentOverride", "Emulation.setDeviceMetricsOverride", "DOM.setFileInputFiles" }) |method| {
+        try testing.expect(decodedInBrowser(method));
+    }
+    // The page's alone, and the browser's alone (answered there, never held).
+    for ([_][]const u8{ "Runtime.evaluate", "DOM.getDocument", "Page.getFrameTree", "Page.navigate", "Target.getTargets", "Fetch.continueRequest" }) |method| {
+        try testing.expect(!decodedInBrowser(method));
     }
 }
 
