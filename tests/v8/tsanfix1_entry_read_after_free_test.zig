@@ -13,6 +13,12 @@
 //! On one thread the read answers null and changes nothing, so this test
 //! counts it instead: the bridge counts every getNodeBase of a freed slot
 //! (instance_bridge.deadSlotLookups), and a realm's end must make none.
+//!
+//! Since the wrapper redesign a node's main-world wrapper lives in its own
+//! slot and never enters a wrapper cache (node_wrappers.zig): the nodes below
+//! are freed by their counts, not by the cache's sweep, and only the Event
+//! and the AbortController take the sweep's gc.onObjectFreed branch this
+//! test was written for (lane mem1's audit, 2026-11-22).
 
 const std = @import("std");
 const testing = std.testing;
@@ -70,7 +76,8 @@ test "a realm's end reads nothing of an instance its wrapper cache freed" {
     dom.document_browsing_context.setWindow(document, window);
 
     // Detached nodes and an event that only their wrappers keep: the realm's
-    // end frees each (the wrapper cache's last branch, gc.onObjectFreed).
+    // end frees each - the Event and the AbortController through the wrapper
+    // cache's last branch (gc.onObjectFreed), the nodes by their counts.
     try expect(page,
         \\globalThis.kept = [new Text('a'), new Comment('b'), new DocumentFragment(),
         \\  document.createElement('p'), new Event('e'), new AbortController()];
