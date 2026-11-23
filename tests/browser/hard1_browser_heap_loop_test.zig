@@ -37,8 +37,8 @@ test "a Browser's window loop holds what a task frees until the task ends" {
         held: bool = false,
         block: ?[*]u8 = null,
 
-        fn run(context: *anyopaque) void {
-            const self: *@This() = @ptrCast(@alignCast(context));
+        fn run(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
             self.active = self.engine.quarantine.active.load(.monotonic);
             const block = self.scope.arena.createRaw(112, 8) catch return;
             self.scope.arena.destroyRaw(block, 112, 8);
