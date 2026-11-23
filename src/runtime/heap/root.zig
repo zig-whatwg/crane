@@ -434,6 +434,9 @@ const Quarantine = struct {
     /// Over the heap's life: blocks held, and of those evicted early.
     total_held: usize = 0,
     total_evicted: usize = 0,
+    /// The slot the next hold's block swaps with, drawn by the hold before
+    /// (`Engine.hold`).
+    next_slot: usize = 0,
 };
 
 // ============================================================================
@@ -1162,10 +1165,19 @@ pub const Engine = struct {
         const entries = self.quarantineEntries();
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-        for (entries[0..q.count]) |address| self.releaseHeld(address);
+        // The entries are in random order: each one's span entry, slot map
+        // and block are fetched `purge_ahead` releases before its own, so
+        // the misses overlap the releases in between.
+        for (entries[0..@min(q.count, purge_ahead)]) |address| self.prefetchHeld(address);
+        for (0..q.count) |i| {
+            if (i + purge_ahead < q.count) self.prefetchHeld(entries[i + purge_ahead]);
+            _ = self.releaseHeld(entries[i]);
+        }
         q.count = 0;
         q.held_bytes = 0;
     }
+
+    const purge_ahead = 8;
 
     /// The turn ended: purge, and hold nothing until the next.
     pub fn endTask(self: *Engine) void {
@@ -1184,12 +1196,40 @@ pub const Engine = struct {
         return @ptrFromInt(self.heap.at(layout.quarantine.offset));
     }
 
-    /// Hold a freed block; past the cap, evict one at random (Chrome's
-    /// "swap it with a randomly chosen slot so that the quarantine list
-    /// remains shuffled", scheduler_loop_quarantine.cc:462-518). The objects
-    /// lock is held when `objects_locked`.
+    /// Hold a freed block. The algorithm is Chromium's scheduler-loop
+    /// quarantine, reproduced (not copied) from
+    /// base/allocator/partition_allocator/src/partition_alloc/scheduler_loop_quarantine.cc,
+    /// SchedulerLoopQuarantineBranch::QuarantineWithSize and PurgeInternal,
+    /// at Chromium 461c62b66d7c (BSD-3-Clause, "Copyright 2023 The Chromium
+    /// Authors"):
+    /// - a block larger than the cap is free at once;
+    /// - entries leave from the back until the block fits under the cap
+    ///   ("As quarantined entries are shuffled, picking last entry is
+    ///   equivalent to picking random entry");
+    /// - the block joins at the back and swaps places with a randomly
+    ///   chosen entry ("Swap randomly so that the quarantine list remain
+    ///   shuffled"), so the back is always a random entry.
+    /// Crane's addition, which leaves the order of eviction as it is: the
+    /// swap's slot is drawn one hold ahead and its entry fetched then, and
+    /// the entry the swap moves to the back - the next hold's first to
+    /// leave - has its span entry, slot map and block fetched now. That
+    /// hold's release, and the reissue of the slot it frees, then find them
+    /// in cache: drawn and read when needed, a random cold entry was 54 ns
+    /// of a 102 ns allocate-and-free pair (lane hard1's P1, chat.local).
+    /// The objects lock is held when `objects_locked`.
     fn hold(self: *Engine, address: usize, bytes: usize, objects_locked: bool) void {
         const q = &self.quarantine;
+        const cap = self.config.quarantine_cap;
+        if (bytes > cap) {
+            _ = self.releaseHeldLocked(address, objects_locked);
+            return;
+        }
+        const entries = self.quarantineEntries();
+        while (q.held_bytes + bytes > cap and q.count > 0) {
+            q.count -= 1;
+            q.total_evicted += 1;
+            q.held_bytes -|= self.releaseHeldLocked(entries[q.count], objects_locked);
+        }
         if (q.count == q.committed) {
             // Commit more of the quarantine's part, doubling; with no room
             // left, the block is free at once.
@@ -1197,38 +1237,65 @@ pub const Engine = struct {
             const have = q.committed * @sizeOf(usize);
             const room: usize = @intCast(layout.quarantine.bytes);
             const want = @min(room, std.mem.alignForward(usize, @max(have * 2, self.page), self.page));
-            if (want <= have) return self.releaseHeldLocked(address, objects_locked);
-            self.heap.commit(base + have, want - have) catch return self.releaseHeldLocked(address, objects_locked);
+            if (want <= have) {
+                _ = self.releaseHeldLocked(address, objects_locked);
+                return;
+            }
+            self.heap.commit(base + have, want - have) catch {
+                _ = self.releaseHeldLocked(address, objects_locked);
+                return;
+            };
             q.committed = want / @sizeOf(usize);
         }
-        const entries = self.quarantineEntries();
         entries[q.count] = address;
         q.count += 1;
         q.held_bytes += bytes;
         q.total_held += 1;
-        while (q.held_bytes > self.config.quarantine_cap and q.count > 0) {
-            const j = self.prng.random().uintLessThan(usize, q.count);
-            const evicted = entries[j];
-            entries[j] = entries[q.count - 1];
-            q.count -= 1;
-            q.total_evicted += 1;
-            self.releaseHeldLocked(evicted, objects_locked);
-        }
+        // The slot drawn by the last hold, among the entries this one would
+        // have: a draw a purge or a longer eviction has put past the end is
+        // drawn again, among these (a uniform draw either way).
+        const r = if (q.next_slot < q.count) q.next_slot else self.prng.random().uintLessThan(usize, q.count);
+        std.mem.swap(usize, &entries[r], &entries[q.count - 1]);
+        // The next hold's first to leave, and its second (a larger block
+        // can need two): what their release and reissue will read.
+        self.prefetchHeld(entries[q.count - 1]);
+        if (q.count >= 2) self.prefetchHeld(entries[q.count - 2]);
+        // The next hold's slot: drawn among the entries it will have (these
+        // and its own), its entry fetched now.
+        q.next_slot = self.prng.random().uintLessThan(usize, q.count + 1);
+        if (q.next_slot < q.count) @prefetch(&entries[q.next_slot], .{ .rw = .write });
     }
 
-    fn releaseHeldLocked(self: *Engine, address: usize, objects_locked: bool) void {
+    /// Fetch what a held block's release and its slot's reissue read: its
+    /// span entry, the slot map's first two lines (every slot of a class of
+    /// 32 B and over) and the block's first two lines.
+    inline fn prefetchHeld(self: *Engine, address: usize) void {
+        const index = (address - self.heap.window_base) / span_bytes;
+        @prefetch(self.entry(index), .{ .rw = .write });
+        const map: [*]const u8 = @ptrCast(self.slotMap(index));
+        @prefetch(map, .{ .rw = .write });
+        @prefetch(map + 64, .{ .rw = .write });
+        const block: [*]const u8 = @ptrFromInt(address);
+        @prefetch(block, .{});
+        @prefetch(block + 64, .{});
+    }
+
+    /// `releaseHeld`, taking the objects lock for an objects block unless
+    /// the caller holds it. Returns the block's bytes.
+    fn releaseHeldLocked(self: *Engine, address: usize, objects_locked: bool) usize {
         const offset = address - self.heap.window_base;
         if (self.partitionOfOffset(offset) == .objects and !objects_locked) {
             std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
             return self.releaseHeld(address);
         }
-        self.releaseHeld(address);
+        return self.releaseHeld(address);
     }
 
     /// A held block leaves the quarantine (the objects lock held, or the
-    /// block is the node partition's).
-    fn releaseHeld(self: *Engine, address: usize) void {
+    /// block is the node partition's). Returns its bytes: the caller keeps
+    /// the quarantine's count.
+    fn releaseHeld(self: *Engine, address: usize) usize {
         const offset = address - self.heap.window_base;
         const pid = self.partitionOfOffset(offset).?;
         const p = self.partition(pid);
@@ -1238,8 +1305,8 @@ pub const Engine = struct {
         const slot = (offset - index * span_bytes) / b.block_bytes;
         std.debug.assert(slotGet(self.slotMap(index), slot) == .quarantined);
         e.quarantined -= 1;
-        self.quarantine.held_bytes -|= b.block_bytes;
         self.release(p, b, index, slot);
+        return b.block_bytes;
     }
 
     // ------------------------------------------------------------------
