@@ -63,6 +63,11 @@ pub const TabScope = struct {
     /// as focused whatever its system focus is, as Chrome's emulated page
     /// does.
     focus_emulation: u32 = 0,
+    /// The system focus the tab's pages last heard of (html.focus's
+    /// SystemFocusTask fires the events of a change), and whether a task to
+    /// tell them is queued: a change undone before it runs is never heard.
+    focus_reported: bool = true,
+    focus_task_queued: bool = false,
     slots: [slot_count]?*anyopaque = @splat(null),
     ends: [slot_count]?*const fn (ptr: *anyopaque, allocator: Allocator) void = @splat(null),
 
