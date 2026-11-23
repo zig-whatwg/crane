@@ -162,93 +162,6 @@ pub fn isLeaf(node: anytype) bool {
     return node.firstChild() == null;
 }
 
-/// Check if node A is following node B (comes after B in tree order)
-/// Per WHATWG DOM: An object A is following an object B if A and B are in
-/// the same tree and A comes after B in tree order (preorder depth-first).
-pub fn isFollowing(nodeA: anytype, nodeB: anytype) bool {
-    // Use tree order comparison
-    return compareTreeOrder(nodeA, nodeB) == .after;
-}
-
-/// Check if node A is preceding node B (comes before B in tree order)
-/// Per WHATWG DOM: An object A is preceding an object B if A and B are in
-/// the same tree and A comes before B in tree order.
-pub fn isPreceding(nodeA: anytype, nodeB: anytype) bool {
-    return compareTreeOrder(nodeA, nodeB) == .before;
-}
-
-/// Compare two nodes in tree order
-/// Returns: .before if nodeA comes before nodeB, .after if nodeA comes after nodeB, .equal if same node
-pub fn compareTreeOrder(nodeA: anytype, nodeB: anytype) enum { before, equal, after } {
-    if (nodeA == nodeB) return .equal;
-
-    // Find common ancestor and determine relative positions
-    // This is essentially a tree traversal comparison
-
-    // First check if one is ancestor of the other
-    if (isAncestor(nodeA, nodeB)) {
-        // A is ancestor of B, so A comes before B in preorder
-        return .before;
-    }
-    if (isAncestor(nodeB, nodeA)) {
-        // B is ancestor of A, so A comes after B in preorder
-        return .after;
-    }
-
-    // Neither is ancestor of the other, find common ancestor
-    // and compare which branch comes first
-    var ancestorsA = infra.List(*const Node).init(std.heap.page_allocator);
-    defer ancestorsA.deinit();
-
-    // Build ancestor chain for A
-    var currentA: ?*const Node = nodeA;
-    while (currentA) |node| {
-        ancestorsA.append(node) catch return .equal; // fallback on error
-        currentA = node.parent_node;
-    }
-
-    // Walk up from B until we find common ancestor
-    var currentB: ?*const Node = nodeB;
-    while (currentB) |nodeB_ancestor| {
-        // Check if this B ancestor is in A's chain
-        var i: usize = 0;
-        while (i < ancestorsA.len) : (i += 1) {
-            const nodeA_ancestor = ancestorsA.get(i).?;
-            if (nodeA_ancestor == nodeB_ancestor) {
-                // Found common ancestor
-                // Compare which child branch comes first
-                if (i == 0) {
-                    // nodeA itself is the common ancestor (shouldn't happen, we checked above)
-                    return .before;
-                }
-
-                const childOfCommonA = ancestorsA.get(i - 1).?;
-
-                // Find B's child of common ancestor
-                var childOfCommonB: *const Node = nodeB;
-                var parentOfB = nodeB.parent_node;
-                while (parentOfB != null and parentOfB != nodeB_ancestor) {
-                    childOfCommonB = parentOfB.?;
-                    parentOfB = childOfCommonB.parent_node;
-                }
-
-                // Compare the positions of these children: A is before B when
-                // B follows A along the sibling links
-                if (childOfCommonA == childOfCommonB) return .equal; // fallback
-                var sibling = childOfCommonA.next_sibling;
-                while (sibling) |s| : (sibling = s.next_sibling) {
-                    if (s == childOfCommonB) return .before;
-                }
-                return .after;
-            }
-        }
-        currentB = nodeB_ancestor.parent_node;
-    }
-
-    // No common ancestor found (different trees) - treat as equal
-    return .equal;
-}
-
 // ============================================================================
 // Tree Traversal
 // ============================================================================
@@ -368,37 +281,6 @@ pub fn countDescendants(node: anytype) usize {
     }
 
     return count;
-}
-
-// ============================================================================
-// Common Ancestor
-// ============================================================================
-
-/// Find the lowest common ancestor of two nodes
-/// Returns null if nodes are in different trees
-pub fn findCommonAncestor(a: anytype, b: anytype) ?*Node {
-    // Collect all ancestors of a
-    var a_ancestors = infra.List(*const Node).init(std.heap.page_allocator);
-    defer a_ancestors.deinit();
-
-    var current = a;
-    while (true) {
-        a_ancestors.append(current) catch return null;
-        current = getParentNode(current) orelse break;
-    }
-
-    // Walk up from b until we find a common ancestor
-    current = b;
-    while (true) {
-        var j: usize = 0;
-        while (j < a_ancestors.len) : (j += 1) {
-            const ancestor = a_ancestors.get(j).?;
-            if (ancestor == current) {
-                return @constCast(current);
-            }
-        }
-        current = getParentNode(current) orelse return null;
-    }
 }
 
 // ============================================================================

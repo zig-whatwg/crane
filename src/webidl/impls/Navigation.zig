@@ -1448,9 +1448,12 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
 /// navigation-traverseTo-in-iframe-same-document-preventDefault.html 1/1
 /// each; Firefox 158 times out, as the spec text does).
 fn abortTraversalsCanceledAt(s: navigation_entries.Scope, top_target: *const joint_history.Entry) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = s.navigable.allocator;
     var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    s.navigable.collectDescendants(std.heap.page_allocator, &tree) catch return;
+    defer tree.deinit(allocator);
+    s.navigable.collectDescendants(allocator, &tree) catch return;
     for (tree.items) |bc| {
         if (bc == s.navigable) continue;
         const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));

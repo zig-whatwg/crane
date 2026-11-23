@@ -21,33 +21,30 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for DOMException
-/// Stores the message, name, and legacy error code
+/// Internal state for DOMException: its name, message and legacy code.
 ///
-/// NOTE: InternalState and its strings are arena-allocated to ensure cleanup
-/// happens even when deinitWithoutCallbacks() is used during child context teardown.
-/// The arena is reset when the context is destroyed, freeing all memory.
+/// Its lifetime is its object's (lane leak3): the block is a block of the
+/// Browser's state arena, made by `initializeException` and given back by
+/// `deinit` (runtime.arenaOf: `create`/`destroy`, its free lists), and the two
+/// strings are the Browser allocator's (runtime.allocatorOf), freed with it.
+/// They were the arena's `dupe` - its bump path, which never frees - with no
+/// destroy at all, so every exception a page made, threw or cloned kept its
+/// state and both strings until its Browser ended (allocator-hardening design
+/// 10.1 item 1).
 pub const InternalState = struct {
-    allocator: std.mem.Allocator,
+    /// Owned by the instance's Browser allocator; "" is not allocated.
     message: []const u8,
+    /// Owned by the instance's Browser allocator.
     name: []const u8,
     code: u16,
-    /// Whether we own the message/name memory (allocated by us)
-    /// When arena-allocated, these should be false.
-    owns_message: bool,
-    owns_name: bool,
 
-    pub fn deinit(self: *InternalState) void {
-        // Only free strings if we own them (non-arena allocation)
-        if (self.owns_message and self.message.len > 0) {
-            self.allocator.free(self.message);
-        }
-        if (self.owns_name and self.name.len > 0) {
-            self.allocator.free(self.name);
-        }
-        // NOTE: Don't call allocator.destroy(self) here.
-        // InternalState is arena-allocated, so the arena will handle cleanup.
-        // Calling destroy with a different allocator would cause issues.
+    /// Free the strings and give the block back: `instance` is the
+    /// exception whose state this is.
+    fn destroy(self: *InternalState, instance: *runtime.Instance) void {
+        const allocator = runtime.allocatorOf(instance);
+        if (self.message.len > 0) allocator.free(self.message);
+        allocator.free(self.name);
+        runtime.arenaOf(instance).destroy(InternalState, self);
     }
 };
 
@@ -62,11 +59,13 @@ pub fn init(
     return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: its internal state goes with it (a derived
+/// exception's chain reaches here through DOMException's deinitChain).
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        state.own._internal = null;
+        internal.destroy(instance);
     }
     // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
@@ -91,35 +90,30 @@ pub fn installHooks() void {
     @import("dom").dom_exceptions.install(.{ .initialize = initializeException });
 }
 
+/// Set `instance`'s name and message (and so its legacy code): the
+/// constructor's steps 1-2, the deserialization steps' 1-2, and every
+/// exception the platform makes (dom.dom_exceptions). The state is the
+/// instance's own, freed by `deinit` (`InternalState`).
 fn initializeException(instance: *runtime.Instance, name_str: []const u8, msg_str: []const u8) !void {
     const state = instance.getState(State);
-
-    // Use arena allocator for InternalState and strings.
-    // This ensures cleanup happens when the context is destroyed, even if
-    // deinitWithoutCallbacks() is used during child context teardown.
+    const allocator = runtime.allocatorOf(instance);
     const arena = runtime.arenaOf(instance);
 
-    // Create internal state using arena
     const internal = try arena.create(InternalState);
-
-    // Duplicate strings using arena - no manual cleanup needed
-    const owned_message = if (msg_str.len > 0) try arena.dupe(u8, msg_str) else "";
-    const owned_name = try arena.dupe(u8, name_str);
-
-    // Get legacy error code from name
-    const code = getLegacyCodeForName(name_str);
+    errdefer arena.destroy(InternalState, internal);
+    const owned_message: []const u8 = if (msg_str.len > 0) try allocator.dupe(u8, msg_str) else "";
+    errdefer if (owned_message.len > 0) allocator.free(owned_message);
+    const owned_name = try allocator.dupe(u8, name_str);
 
     internal.* = .{
-        // Store ctx.allocator for compatibility, but arena handles cleanup
-        .allocator = instance.ctx.allocator,
         .message = owned_message,
         .name = owned_name,
-        .code = code,
-        // Arena-allocated strings don't need individual cleanup
-        .owns_message = false,
-        .owns_name = false,
+        // The legacy code is the name's (WebIDL 2.8.1, the error names table).
+        .code = getLegacyCodeForName(name_str),
     };
 
+    // Set once per exception; a second setting replaces the first, freed.
+    if (state.own._internal) |previous| previous.destroy(instance);
     state.own._internal = internal;
 }
 

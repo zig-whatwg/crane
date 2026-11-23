@@ -3130,8 +3130,10 @@ pub fn byteStringToV8(comptime T: type, isolate: *v8.Isolate, value: T) Conversi
     if (T != []const u8 and T != []u8) @compileError("ByteString result must be a byte slice");
     if (value.len > std.math.maxInt(c_int)) return ConversionError.StringError;
     var small: [256]u16 = undefined;
-    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.page_allocator.alloc(u16, value.len);
-    defer if (value.len > small.len) std.heap.page_allocator.free(units);
+    // A longer one's code units on libc's heap: no allocator is in reach of
+    // a return conversion, and std.heap.page_allocator mapped a page per call.
+    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.c_allocator.alloc(u16, value.len);
+    defer if (value.len > small.len) std.heap.c_allocator.free(units);
     for (value, units) |byte, *unit| unit.* = byte;
     return v8.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(units.len)) orelse ConversionError.StringError;
 }

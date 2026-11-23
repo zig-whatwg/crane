@@ -77,20 +77,16 @@ pub const InternalState = struct {
     // nsGlobalWindowInner::mEvent), and inner invoke swaps it through
     // dom.window_globals.
 
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.deinitEx(allocator, true);
-    }
-
     /// Deinitialize, releasing the engine values held - the listeners'
     /// callbacks and the event handlers' functions - only when
     /// `release_engine_values`: during final runtime cleanup the engine's
-    /// agent is already gone. Native memory (types, raw handlers, the block)
-    /// is freed either way.
-    pub fn deinitEx(self: *InternalState, allocator: std.mem.Allocator, release_engine_values: bool) void {
+    /// agent is already gone. Native memory (types, raw handlers, the block,
+    /// the listeners' signal records in `registry`) is freed either way.
+    pub fn deinitEx(self: *InternalState, allocator: std.mem.Allocator, registry: ?*Registry, release_engine_values: bool) void {
         // From the end, each out of the list before it is released.
         while (self.listeners.len() > 0) {
             const listener = self.listeners.removeAt(self.listeners.len() - 1);
-            releaseListener(allocator, listener, release_engine_values);
+            releaseListener(allocator, registry, listener, release_engine_values);
         }
         self.listeners.deinit(allocator);
     }
@@ -106,10 +102,13 @@ comptime {
     if (@sizeOf(InternalState) != 8) @compileError(std.fmt.comptimePrint("EventTarget's InternalState is one pointer, not {d} bytes", .{@sizeOf(InternalState)}));
 }
 
-/// Release what a listener taken out of a list owns: its type's copy, and
-/// its callback or its event handler's value - the engine's values only
-/// while `engine_alive`.
-fn releaseListener(allocator: std.mem.Allocator, listener: Listener, engine_alive: bool) void {
+/// Release what a listener taken out of a list owns: its type's copy, its
+/// callback or its event handler's value - the engine's values only while
+/// `engine_alive` - and the abort steps a signal holds for it, which leave
+/// the signal with it (`forgetAbortSteps`; `registry` is its target's
+/// Browser's).
+fn releaseListener(allocator: std.mem.Allocator, registry: ?*Registry, listener: Listener, engine_alive: bool) void {
+    if (listener.bits.abort_steps) forgetAbortSteps(registry, listener.bits.id);
     listener.type.deinit(allocator);
     releaseValue(allocator, listener, engine_alive);
 }
@@ -336,13 +335,13 @@ const Listeners = struct {
     /// copy, and its callback or event handler value, the engine's only
     /// while `engine_alive` - then free the list's block. The list is empty
     /// after.
-    fn release(self: Listeners, allocator: std.mem.Allocator, engine_alive: bool) void {
+    fn release(self: Listeners, allocator: std.mem.Allocator, registry: ?*Registry, engine_alive: bool) void {
         var list = self.current();
         if (list.header == null) return;
         // From the end, each out of the list before it is released.
         while (list.len() > 0) {
             const listener = list.removeAt(list.len() - 1);
-            releaseListener(allocator, listener, engine_alive);
+            releaseListener(allocator, registry, listener, engine_alive);
         }
         list.deinit(allocator);
         switch (self.place) {
@@ -391,7 +390,7 @@ fn ensureListeners(target: *runtime.Instance) !Listeners {
 fn releaseNodeListeners(node: *runtime.Instance) void {
     const base = dom_module.instance_bridge.getNodeBaseUnaudited(node) orelse return;
     const listeners: Listeners = .{ .place = .{ .node = base } };
-    listeners.release(runtime.allocatorOf(node), true);
+    listeners.release(runtime.allocatorOf(node), registryOf(node), true);
 }
 
 /// What an entry made lazily records about the instance it was made for.
@@ -523,7 +522,7 @@ fn leavesOutOwnState(comptime StateType: type) bool {
 /// chain. The slot itself is the collector's to free, or the queue's.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Own.get(instance)) |internal| {
-        internal.deinit(runtime.allocatorOf(instance));
+        internal.deinitEx(runtime.allocatorOf(instance), registryOf(instance), true);
         Own.remove(instance);
         return;
     }
@@ -537,7 +536,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // An entry made lazily for it after its own state went (a listener added
     // to a torn-down target).
     if (getInternalFromRegistry(instance)) |internal| {
-        internal.deinit(runtime.allocatorOf(instance));
+        internal.deinitEx(runtime.allocatorOf(instance), registryOf(instance), true);
         removeFromRegistry(instance);
     }
 }
@@ -608,6 +607,14 @@ pub const Registry = struct {
     /// made in it (`initInternal`): its end walks the scope's slab for the
     /// chained states left, as it releases the lazy entries left.
     scope: std.atomic.Value(?*runtime.BrowserScope) = .init(null),
+    /// The Browser's listeners that a signal holds abort steps for
+    /// (`Bits.abort_steps`), by listener id: each one's `SignalRemoval`,
+    /// so the record leaves its signal when its listener leaves its list
+    /// (`forgetAbortSteps`). Under `mutex`. A record here is still in its
+    /// signal's abort algorithms, or in its abort walk; whoever takes it out
+    /// of this map decides who frees it (`SignalRemoval`).
+    signal_removals: std.AutoHashMapUnmanaged(u64, *SignalRemoval) = .empty,
+    removals_guard: webidl.utils.tombstones.TombstoneGuard = .{},
 
     pub fn init(allocator: std.mem.Allocator) Registry {
         return .{ .allocator = allocator };
@@ -620,20 +627,55 @@ pub const Registry = struct {
         // The chained states left (Own): a walk of the scope's slab, which
         // ends after its tables. Without the engine, which is gone.
         if (self.scope.load(.acquire)) |scope| {
-            Own.sweep(scope, {}, struct {
-                fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
-                    internal.deinitEx(runtime.allocatorOf(instance), false);
+            Own.sweep(scope, self, struct {
+                fn visit(registry: *Registry, instance: *runtime.Instance, internal: *InternalState) void {
+                    internal.deinitEx(runtime.allocatorOf(instance), registry, false);
                 }
             }.visit);
             // And the nodes left with a NodeBase (a scope no Browser swept):
             // their lists are fields of their rare blocks.
-            releaseNodesListeners(scope, false);
+            releaseNodesListeners(scope, self, false);
         }
-        var map = self.takeAll() orelse return;
-        // Every entry is this scope's: its allocator is this table's.
-        var iter = map.valueIterator();
-        while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(self.allocator, false);
-        map.deinit();
+        if (self.takeAll()) |taken| {
+            var map = taken;
+            // Every entry is this scope's: its allocator is this table's.
+            var iter = map.valueIterator();
+            while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(self.allocator, self, false);
+            map.deinit();
+        }
+        // Records whose listeners no release reached. Each leaves a signal
+        // that still lists it (its slot is still the signal's: the slab ends
+        // after the tables) and is freed: no abort walk runs at a Browser's
+        // end, and a signal torn down already dropped its records, which
+        // took them out of this map.
+        var removals = self.signal_removals.valueIterator();
+        while (removals.next()) |record| {
+            if (record.*.signalStands()) _ = abort_algorithms.removeListed(record.*.signal, record.*);
+            self.allocator.destroy(record.*);
+        }
+        self.signal_removals.deinit(self.allocator);
+    }
+
+    /// Index `record` under its listener's id. Locks `mutex`.
+    fn putRemoval(self: *Registry, record: *SignalRemoval) error{OutOfMemory}!void {
+        self.lock();
+        defer self.unlock();
+        self.removals_guard.beforeInsert(&self.signal_removals);
+        try self.signal_removals.put(self.allocator, record.listener_id, record);
+    }
+
+    /// Take the record indexed under listener `id`, if any. Locks `mutex`.
+    /// A table that empties after a large one gives its slots back.
+    fn takeRemoval(self: *Registry, id: u56) ?*SignalRemoval {
+        self.lock();
+        defer self.unlock();
+        const kv = self.signal_removals.fetchRemove(id) orelse return null;
+        self.removals_guard.noteRemoval(&self.signal_removals);
+        if (self.signal_removals.count() == 0 and self.signal_removals.capacity() > 64) {
+            self.signal_removals.clearAndFree(self.allocator);
+            self.removals_guard.reset();
+        }
+        return kv.value;
     }
 
     fn lock(self: *Registry) void {
@@ -686,24 +728,25 @@ fn registryOf(instance: *runtime.Instance) ?*Registry {
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
     // The chained EventTargets no deinit reached: a walk of the Browser's
     // slab (runtime.OwnState.sweep), each field cleared after.
-    Own.sweep(scope, {}, struct {
-        fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
-            internal.deinitEx(runtime.allocatorOf(instance), true); // the agent is alive: release its values
+    const registry = scope.existingTable(.event_targets, Registry);
+    Own.sweep(scope, registry, struct {
+        fn visit(table: ?*Registry, instance: *runtime.Instance, internal: *InternalState) void {
+            internal.deinitEx(runtime.allocatorOf(instance), table, true); // the agent is alive: release its values
         }
     }.visit);
     // The nodes no deinit reached: their lists are fields of their rare
     // blocks, which the `.nodes` sweep frees later, with nothing left to
     // release.
-    releaseNodesListeners(scope, true);
+    releaseNodesListeners(scope, registry, true);
     // Then the lazy entries.
-    const registry = scope.existingTable(.event_targets, Registry) orelse return;
-    registry.lock();
-    var taken = registry.takeAll();
-    registry.unlock();
+    const table = registry orelse return;
+    table.lock();
+    var taken = table.takeAll();
+    table.unlock();
     if (taken) |*map| {
         var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| {
-            internal_ptr.*.deinitEx(registry.allocator, true); // the agent is alive: release its values
+            internal_ptr.*.deinitEx(table.allocator, table, true); // the agent is alive: release its values
         }
         map.deinit();
     }
@@ -711,16 +754,20 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 
 /// Release the event listener list of every node of `scope` whose NodeBase
 /// still stands - a walk of the Browser's slab, for its end. The engine's
-/// values only while `engine_alive`.
-fn releaseNodesListeners(scope: *runtime.BrowserScope, engine_alive: bool) void {
+/// values only while `engine_alive`; the listeners' signal records are
+/// `registry`'s, the scope's table.
+fn releaseNodesListeners(scope: *runtime.BrowserScope, registry: ?*Registry, engine_alive: bool) void {
     const Walk = struct {
-        fn visit(alive: bool, node: *dom_module.NodeBase) void {
+        registry: ?*Registry,
+        engine_alive: bool,
+        fn visit(self: *const @This(), node: *dom_module.NodeBase) void {
             if (!node.hasEventListenerBlock()) return;
             const listeners: Listeners = .{ .place = .{ .node = node } };
-            listeners.release(node.allocator(), alive);
+            listeners.release(node.allocator(), self.registry, self.engine_alive);
         }
     };
-    dom_module.instance_bridge.visitNodes(scope, std.math.maxInt(usize), engine_alive, Walk.visit);
+    const walk: Walk = .{ .registry = registry, .engine_alive = engine_alive };
+    dom_module.instance_bridge.visitNodes(scope, std.math.maxInt(usize), &walk, Walk.visit);
 }
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
@@ -784,7 +831,7 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
 /// Browser's arena (runtime.arenaOf), where it was made.
 fn releaseEntry(address: usize, internal: *InternalState) void {
     const instance: *runtime.Instance = @ptrFromInt(address);
-    internal.deinitEx(runtime.allocatorOf(instance), true);
+    internal.deinitEx(runtime.allocatorOf(instance), registryOf(instance), true);
     runtime.arenaOf(instance).destroy(LazyEntry, LazyEntry.of(internal));
 }
 
@@ -798,22 +845,25 @@ fn releaseRealmEntries(environment: runtime.Context) void {
     // The realm's Browser's entries: its objects are that Browser's.
     const scope = environment.browserScope() orelse return;
     const registry = scope.existingTable(.event_targets, Registry) orelse return;
+    // The lists live for this call: the Browser's allocator, as the table's
+    // own (allocator mapped pages for them at every realm end).
+    const allocator = registry.allocator;
     const Doomed = struct { address: usize, internal: *InternalState };
     var doomed: std.ArrayListUnmanaged(Doomed) = .empty;
-    defer doomed.deinit(std.heap.page_allocator);
+    defer doomed.deinit(allocator);
     {
         registry.lock();
         defer registry.unlock();
         const map = &(registry.map orelse return);
         var keys: std.ArrayListUnmanaged(usize) = .empty;
-        defer keys.deinit(std.heap.page_allocator);
+        defer keys.deinit(allocator);
         var it = map.iterator();
         while (it.next()) |entry| {
-            if (LazyEntry.of(entry.value_ptr.*).realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+            if (LazyEntry.of(entry.value_ptr.*).realm == environment) keys.append(allocator, entry.key_ptr.*) catch continue;
         }
         // Room first: an entry taken out must reach `releaseEntry`. Out of
         // memory, the entries stay in the map for the Browser's end.
-        doomed.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
+        doomed.ensureTotalCapacity(allocator, keys.items.len) catch return;
         for (keys.items) |key| {
             const taken = registry.take(key) orelse continue;
             doomed.appendAssumeCapacity(.{ .address = key, .internal = taken });
@@ -877,20 +927,67 @@ fn nextListenerId() u56 {
 }
 
 /// The abort steps of "add an event listener" step 6, as the signal holds
-/// them. The signal owns this: `run` frees it, and so does `drop` when the
-/// signal is collected unaborted. The target is held by address and slab
-/// generation, because it can be collected first - nothing V8 sees keeps it
-/// alive for the signal's sake - and the listener by id. A listener removed
-/// some other way leaves this in place until the signal aborts or dies,
-/// where it finds nothing and only frees itself.
+/// them: a small record of the Browser's allocator (its target's,
+/// runtime.allocatorOf), indexed by its listener's id in the Browser's
+/// `Registry` while its listener is in a list (`Bits.abort_steps`).
+///
+/// The target is held by address and slab generation, because it can be
+/// collected first - nothing V8 sees keeps it alive for the signal's sake -
+/// the listener by id, and the signal by address and generation, for the
+/// listener's side to take the steps off it.
+///
+/// Who frees it is who takes it off the signal's abort algorithms:
+/// - the signal: `run` when it aborts (its walk took the list), `drop` when it
+///   is torn down unaborted; each takes the index entry first, if still there;
+/// - the listener's side, when the listener leaves its list - removed,
+///   fired `once`, erased, or torn down with its target (`forgetAbortSteps`):
+///   it takes the index entry, then the algorithm off a signal that still
+///   lists it (dom.abort_algorithms.removeListed), and frees it only then. A
+///   signal whose abort walk holds it (an earlier algorithm of the walk
+///   removed the listener) lists it no more: the walk runs it and frees it.
+///
+/// Before lane leak3 this was one std.heap.page_allocator page per listener
+/// (16 KiB on macOS, a mapping on Linux), left on the signal by a listener
+/// removed any other way until the signal aborted or died (allocator-
+/// hardening design 10.1 item 3; docs/lessons/architecture-std-heap-page-
+/// allocator-maps-a-page-per-allocation.md). The design is Gecko's: a
+/// listener's ListenerSignalFollower unfollows its signal when the listener
+/// is removed (dom/events/EventListenerManager.cpp, `RemoveEventListenerInternal`
+/// and `ListenerSignalFollower`; read, not copied - MPL), where WebKit's
+/// algorithm stays on the signal until it aborts (EventTarget::addEventListener,
+/// `signal->addAlgorithm`). Blink's signal holds its algorithms weakly, by a
+/// handle the listener keeps (abort_signal.h `AlgorithmHandle`), which ends
+/// the same way: gone with the listener.
 const SignalRemoval = struct {
     target: *runtime.Instance,
     target_generation: u64,
+    signal: *runtime.Instance,
+    signal_generation: u64,
     listener_id: u56,
+
+    /// Whether the signal's slot is still the signal's.
+    fn signalStands(self: *const SignalRemoval) bool {
+        return runtime.SlabAllocator.generationOf(self.signal) == self.signal_generation;
+    }
+
+    /// The signal took it off its abort algorithms to run it or drop it, so
+    /// it is the caller's to free: off the index first, if the listener's
+    /// side has not taken it (it may have, while the walk held it). Returns
+    /// the Browser's table, if it still has one. Its scope is read from the
+    /// signal's address, which answers until the Browser ends.
+    fn unindex(self: *SignalRemoval) struct { ?*Registry, std.mem.Allocator } {
+        const scope = runtime.BrowserScope.ofInstance(self.signal);
+        const registry = scope.existingTable(.event_targets, Registry);
+        if (registry) |table| _ = table.takeRemoval(self.listener_id);
+        return .{ registry, scope.allocator };
+    }
 
     fn run(ctx: *anyopaque) void {
         const self: *SignalRemoval = @ptrCast(@alignCast(ctx));
-        defer std.heap.page_allocator.destroy(self);
+        // Off the index before the listener goes, so its release below finds
+        // nothing to take off the signal (its walk has the list).
+        const registry, const allocator = self.unindex();
+        defer allocator.destroy(self);
         // "Remove an event listener with eventTarget and listener."
         if (runtime.SlabAllocator.generationOf(self.target) != self.target_generation) return;
         const listeners = listenersOf(self.target) orelse return;
@@ -899,15 +996,61 @@ const SignalRemoval = struct {
         // eventTarget's event listener list": out of the list, it is out of
         // every clone a dispatch walks (dom.event_listener_list `Cursor`).
         const removed = listeners.removeAt(index);
-        releaseListener(runtime.allocatorOf(self.target), removed, true);
+        releaseListener(runtime.allocatorOf(self.target), registry, removed, true);
         listenersChanged(listeners, self.target);
     }
 
     fn drop(ctx: *anyopaque) void {
         const self: *SignalRemoval = @ptrCast(@alignCast(ctx));
-        std.heap.page_allocator.destroy(self);
+        _, const allocator = self.unindex();
+        allocator.destroy(self);
     }
 };
+
+/// The listener `id` left its target's list and has abort steps on a signal
+/// (`Bits.abort_steps`): take its record off the signal and free it - unless
+/// the signal's abort walk holds the record, which then runs it and frees it
+/// (`SignalRemoval`). `registry` is the target's Browser's.
+fn forgetAbortSteps(registry: ?*Registry, id: u56) void {
+    const table = registry orelse return;
+    // Not indexed: the signal ran or dropped it already, or arming it failed.
+    const record = table.takeRemoval(id) orelse return;
+    // A signal whose slot was freed without its teardown dropping its
+    // algorithms holds nothing any more; one that stands gives it up only if
+    // it still lists it.
+    if (record.signalStands() and !abort_algorithms.removeListed(record.signal, record)) return;
+    table.allocator.destroy(record);
+}
+
+/// "Add an event listener" step 6 for the listener `id` just appended to
+/// `instance`'s list with `abort_steps` set: give `signal` the abort steps
+/// that remove it. Its record is indexed first, so a failure after the
+/// listener was stored leaves it registered with no steps, "as an
+/// allocation failure anywhere else would" - and its bit finds no record.
+fn armAbortSteps(instance: *runtime.Instance, signal: *runtime.Instance, id: u56) !void {
+    // "Add an algorithm" step 1: an aborted signal takes none. Step 2 of
+    // "add an event listener" returned for one, and nothing since runs
+    // script; asked again so that no record is ever indexed that no signal
+    // lists.
+    if (interfaces.AbortSignal.get_aborted(signal) catch true) return;
+    const registry = try registryFor(instance);
+    const record = try registry.allocator.create(SignalRemoval);
+    record.* = .{
+        .target = instance,
+        .target_generation = runtime.SlabAllocator.generationOf(instance),
+        .signal = signal,
+        .signal_generation = runtime.SlabAllocator.generationOf(signal),
+        .listener_id = id,
+    };
+    registry.putRemoval(record) catch |err| {
+        registry.allocator.destroy(record);
+        return err;
+    };
+    abort_algorithms.add(signal, .{ .ctx = record, .run = SignalRemoval.run, .drop = SignalRemoval.drop }) catch {
+        _ = registry.takeRemoval(id);
+        registry.allocator.destroy(record);
+    };
+}
 
 /// DOM §2.7 - add an event listener
 /// To add an event listener, given an EventTarget object eventTarget and
@@ -979,25 +1122,16 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
         .type = kept_type,
         .object = packObject(callback_value.object),
         .context = callback_value.context,
-        .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once },
+        .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once, .abort_steps = options.signal != null },
     });
     // Appended: its owner hears of it before step 6 can fail.
     if (list.watched()) dom_module.event_listener_changes.changed(instance);
 
     // Step 6: If listener's signal is not null, then add the following abort
     // steps to it: remove an event listener with eventTarget and listener.
-    if (options.signal) |signal| {
-        const removal = try std.heap.page_allocator.create(SignalRemoval);
-        removal.* = .{
-            .target = instance,
-            .target_generation = runtime.SlabAllocator.generationOf(instance),
-            .listener_id = id,
-        };
-        // The listener is stored; failing to arm its removal leaves it
-        // registered, as an allocation failure anywhere else would.
-        abort_algorithms.add(signal, .{ .ctx = removal, .run = SignalRemoval.run, .drop = SignalRemoval.drop }) catch
-            std.heap.page_allocator.destroy(removal);
-    }
+    // The listener is stored; failing to arm its removal leaves it
+    // registered, as an allocation failure anywhere else would.
+    if (options.signal) |signal| try armAbortSteps(instance, signal, id);
 }
 
 /// DOM §2.7 - remove an event listener, as removeEventListener() runs it
@@ -1023,7 +1157,7 @@ fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"ty
     // of every clone a dispatch walks (dom.event_listener_list `Cursor`),
     // which is what its removed flag is for; its callback goes with it.
     const removed = list.removeAt(index);
-    releaseListener(runtime.allocatorOf(instance), removed, true);
+    releaseListener(runtime.allocatorOf(instance), registryOf(instance), removed, true);
     if (list.watched()) dom_module.event_listener_changes.changed(instance);
 }
 
@@ -1169,7 +1303,7 @@ fn deactivateEventHandler(target: *runtime.Instance, listeners: Listeners, event
     // event listener with eventTarget and listener. Set eventHandler's
     // listener to null."
     const removed = listeners.removeAt(index);
-    releaseListener(runtime.allocatorOf(target), removed, true);
+    releaseListener(runtime.allocatorOf(target), registryOf(target), removed, true);
     listenersChanged(listeners, target);
 }
 
@@ -1183,13 +1317,14 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     const listeners = listenersOf(target) orelse return;
     if (listeners.len() == 0) return;
     const allocator = runtime.allocatorOf(target);
+    const registry = registryOf(target);
     // Step 1, each handler's value null and its listener removed, then step
     // 2, DOM "remove all event listeners" - for each listener, "remove an
     // event listener" (its removed flag set, out of the list): every
     // listener leaves, each out of the list before what it owns is released.
     while (listeners.len() > 0) {
         const removed = listeners.removeAt(listeners.len() - 1);
-        releaseListener(allocator, removed, true);
+        releaseListener(allocator, registry, removed, true);
     }
     listenersChanged(listeners, target);
 }
@@ -1902,6 +2037,8 @@ fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?eng
     // "Set listener's removed to true and remove listener from eventTarget's
     // event listener list."
     const removed = listeners.removeAt(index);
+    // Its abort steps leave its signal with it (`forgetAbortSteps`).
+    if (removed.bits.abort_steps) forgetAbortSteps(registryOf(target), removed.bits.id);
     removed.type.deinit(runtime.allocatorOf(target));
     listenersChanged(listeners, target);
     return callbackOf(removed);

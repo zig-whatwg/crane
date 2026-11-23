@@ -230,7 +230,7 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
     const p3_init = dictionaries.DOMPointInit{ .x = x + width, .y = y + height, .z = 0, .w = 1 };
     const p4_init = dictionaries.DOMPointInit{ .x = x, .y = y + height, .z = 0, .w = 1 };
 
-    return initWithPoints(std.heap.page_allocator, ctx, p1_init, p2_init, p3_init, p4_init);
+    return initWithPoints(ctx.allocator, ctx, p1_init, p2_init, p3_init, p4_init);
 }
 
 /// Operation: fromQuad (static)
@@ -252,7 +252,7 @@ pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dicti
         p4_init = other.value.p4;
     }
 
-    return initWithPoints(std.heap.page_allocator, ctx, p1_init, p2_init, p3_init, p4_init);
+    return initWithPoints(ctx.allocator, ctx, p1_init, p2_init, p3_init, p4_init);
 }
 
 // ============================================================================
