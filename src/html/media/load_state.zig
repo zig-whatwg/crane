@@ -416,6 +416,8 @@ pub const LoadState = struct {
         notify_playing: bool = false,
         /// Step 4: take pending play promises and queue their resolution.
         resolve_pending: bool = false,
+        /// Step 3.2: the show poster flag was set; run time marches on.
+        time_marches_on: bool = false,
     };
 
     /// The internal play steps' state changes.
@@ -424,6 +426,7 @@ pub const LoadState = struct {
         if (self.endedPlayback(loop) and self.playback_rate >= 0) steps.seek_to_start = true;
         if (self.paused) {
             self.paused = false;
+            steps.time_marches_on = self.show_poster;
             self.show_poster = false;
             steps.play_event = true;
             if (@backingInt(self.ready) <= @backingInt(Ready.current_data)) steps.waiting = true else steps.notify_playing = true;

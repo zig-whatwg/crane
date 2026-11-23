@@ -542,6 +542,13 @@ INCLUDE = [
     ('html/semantics/the-button-element/', 'button'),
     ('html/semantics/links/',              'a, href'),
     ('html/semantics/embedded-content/the-iframe-element/', 'iframe, full spec minus rendering'),
+    # Media elements and text tracks (the integrator, 2026-11-23, lane vtt1's survey: 312 testharness
+    # sources, 7 tentative out by the blanket rule; reftests and crashtests are not testharness). A file that
+    # only waits on a video or non-WAV audio decoder is needs-decoder in tools/wpt_gate_exemptions.txt.
+    ('html/semantics/embedded-content/media-elements/',
+     'audio/video: resource selection, loading, the media timeline, and text tracks (TextTrack, TextTrackCue, VTTCue, <track>)'),
+    ('webvtt/api/',     'WebVTT 9: VTTCue and VTTRegion'),
+    ('webvtt/parsing/', 'WebVTT 6: file parsing through <track>, cue text parsing through getCueAsHTML; webvtt/rendering/ is reftests only (geometry)'),
     # Lane ifr1 b1 (the integrator, 2026-11-14): Fullscreen is a WHATWG Living
     # Standard all three browsers ship; Crane keeps its state functional (the
     # fullscreen flag, the fullscreen element, its events, :fullscreen), nothing
