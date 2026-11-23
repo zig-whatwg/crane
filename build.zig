@@ -5857,6 +5857,17 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&addSuiteRun(b, launch, build_side_tests, build_test.suite, null).step);
     }
 
+    // The build side of the platform protocol: its own file's tests - the
+    // list and -Dplatform's values, each target's default platform, the
+    // names its options take, the conformance bindings and the lint's words -
+    // std-only.
+    const platform_build_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/platform_build_protocol.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, platform_build_tests, "platform-build-protocol", null).step);
+
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
     // ========================================================================
