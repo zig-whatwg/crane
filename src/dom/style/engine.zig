@@ -1199,6 +1199,10 @@ const Resolution = struct {
     /// condition asks (`containerQueries`); a pseudo-element's originating
     /// element with `pseudo` set.
     query_subject: ?QuerySubject = null,
+    /// CDP's DOM.getQueryingDescendantsForContainer (`queriesContainer`):
+    /// set only for that read - null on every resolution a page makes, one
+    /// test per candidate rule.
+    container_probe: ?*ContainerProbe = null,
 
     /// The element whose rules are being matched, for @container conditions
     /// (sheet.Contents.conditionHoldsFor).
@@ -2234,9 +2238,59 @@ fn containerHolds(context: *anyopaque, compiled: *const css.container_queries.Co
 fn containerConditionHolds(res: *Resolution, subject: QuerySubject, condition: css.container_queries.CompiledCondition) anyerror!bool {
     if (condition.needs.unknown) return false;
     const container = queryContainer(subject, condition.name, condition.needs) orelse return false;
-    const query = condition.query orelse return true;
-    var evaluation: ContainerEvaluation = .{ .res = res, .container = container };
-    return (try css.container_queries.Compiled.evaluate(query, &evaluation)) == .true;
+    const holds = if (condition.query) |query| blk: {
+        var evaluation: ContainerEvaluation = .{ .res = res, .container = container };
+        break :blk (try css.container_queries.Compiled.evaluate(query, &evaluation)) == .true;
+    } else true;
+    // The probe: this rule's @container selected the probed container.
+    if (res.container_probe) |probe| if (holds and container.element == probe.container) {
+        probe.pending = true;
+    };
+    return holds;
+}
+
+/// What `queriesContainer` asks of one resolution: whether a rule that
+/// matched the element had an @container whose query container is
+/// `container` (Blink's InspectorDOMAgent::ContainerQueriedByElement walks
+/// the matched rules' parent @container rules for the same answer).
+pub const ContainerProbe = struct {
+    container: *runtime.Instance,
+    /// The rule being matched now selected the container.
+    pending: bool = false,
+    /// A matched rule did.
+    hit: bool = false,
+};
+
+/// Whether `element`'s style queries `container`: one of the style rules
+/// that match it sits in an @container rule whose query container, for
+/// this element, is `container` (CDP's
+/// DOM.getQueryingDescendantsForContainer; Blink's
+/// ContainerQueriedByElement). Read only: the element's rules are matched
+/// once more with the probe set, and nothing is cached from it.
+pub fn queriesContainer(element: *runtime.Instance, container: *runtime.Instance) bool {
+    // The element's (and its ancestors') styles first: the query containers
+    // are read from their cached styles.
+    _ = (computedStyle(element, null) catch return false) orelse return false;
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const engine = hooks.engineOf(document) orelse return false;
+    const state = element_style.of(element) orelse return false;
+    engine.enterResolution();
+    defer engine.resolving = false;
+    const active = engine.ensureActive(document) catch return false;
+    var probe: ContainerProbe = .{ .container = container };
+    var res: Resolution = .{
+        .allocator = engine.allocator,
+        .document = document,
+        .engine = engine,
+        .active = active,
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
+        .container_probe = &probe,
+    };
+    defer res.deinit();
+    var reads: selector_matching.StateReads = .{};
+    collectMatched(&res, element, node, state, null, &reads) catch return false;
+    return probe.hit;
 }
 
 /// The nearest flat-tree ancestor - the originating element first for a
@@ -2257,6 +2311,110 @@ fn queryContainer(subject: QuerySubject, name: []const u8, needs: css.container_
         next = flatParent(node, &slotted);
     }
     return null;
+}
+
+/// The pseudo-elements an element generates boxes for, of those CDP's DOM
+/// domain reports (Blink keeps a PseudoElement node for each:
+/// ForEachSupportedPseudo's before, after, marker, backdrop).
+pub const GeneratedPseudos = packed struct(u4) {
+    before: bool = false,
+    after: bool = false,
+    marker: bool = false,
+    backdrop: bool = false,
+};
+
+/// Which pseudo-elements `element` has now, as Blink decides at its style
+/// recalc whether to make a PseudoElement (Element::UpdatePseudoElement:
+/// CanGeneratePseudoElement - the element has a computed style that is not
+/// display: none - and PseudoElementLayoutObjectIsNeeded - the
+/// pseudo-element's own display is not none and, for ::before and ::after,
+/// its content is not none or normal; ::marker only on a list item, its
+/// content not none; ::backdrop only in the top layer). Read only: styles
+/// are resolved as getComputedStyle would. CDP's DOM agents ask (lane
+/// cdpd1).
+pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
+    const style = (computedStyle(element, null) catch null) orelse return .{};
+    const state = element_style.existingOf(element) orelse return .{};
+    const cached = state.cached orelse return .{};
+    if (!cached.rendered) return .{};
+    const display = style.display();
+    if (display.box == .none) return .{};
+    var out: GeneratedPseudos = .{};
+    out.before = pseudoGenerates(element, "before", true);
+    out.after = pseudoGenerates(element, "after", true);
+    if (display.list_item) out.marker = pseudoGenerates(element, "marker", false);
+    if (inTopLayerOf(element)) out.backdrop = pseudoGenerates(element, "backdrop", false);
+    return out;
+}
+
+/// The pseudo-element `name` of `element` has a box: its display is not
+/// none, and its content generates something - a list for ::before and
+/// ::after (none and normal compute to nothing there), anything but none
+/// otherwise.
+fn pseudoGenerates(element: *runtime.Instance, comptime name: []const u8, comptime needs_list: bool) bool {
+    const style = (computedStyle(element, name) catch null) orelse return false;
+    if (style.display().box == .none) return false;
+    const content = style.get(.content);
+    if (content == .content) return true;
+    if (needs_list) return false;
+    return !(content == .keyword and content.keyword == .none);
+}
+
+fn inTopLayerOf(element: *runtime.Instance) bool {
+    const layer = (top_layer_mod.ofElement(element, false) catch null) orelse return false;
+    return layer.inTopLayer(element);
+}
+
+/// What CDP's DOM.getContainerForNode asks for (Blink's ContainerSelector
+/// from its params): a container name, the axes a size query would read,
+/// and the scroll-state and anchored container types.
+pub const ContainerRequest = struct {
+    name: []const u8 = "",
+    physical_horizontal: bool = false,
+    physical_vertical: bool = false,
+    logical_inline: bool = false,
+    logical_block: bool = false,
+    scroll_state: bool = false,
+    anchored: bool = false,
+};
+
+/// The element's query container for `request` (CDP DOM.getContainerForNode:
+/// Blink's StyleResolver::FindContainerForElement ->
+/// ContainerQueryEvaluator::FindContainer): the nearest flat-tree ancestor
+/// whose computed container-name lists the name (any, with none) and whose
+/// container-type has every type the request selects
+/// (ContainerSelector::Type: a physical axis is the candidate's inline or
+/// block axis by its writing mode; inline needs inline-size or size, block
+/// needs size). Read only: styles are resolved as getComputedStyle would.
+/// No anchored container type exists here, so a request for one finds none.
+pub fn findQueryContainer(element: *runtime.Instance, request: ContainerRequest) ?*runtime.Instance {
+    if (request.anchored) return null;
+    const node = instance_bridge.getNodeBase(element) orelse return null;
+    var slotted = false;
+    var next = flatParent(node, &slotted);
+    while (next == .element) {
+        const candidate = instanceOf(next.element) orelse return null;
+        const style = (computedStyle(candidate, null) catch null) orelse return null;
+        if (requestMatches(style, request)) return candidate;
+        next = flatParent(next.element, &slotted);
+    }
+    return null;
+}
+
+fn requestMatches(style: *const ComputedStyle, request: ContainerRequest) bool {
+    if (request.name.len != 0 and !css.container_values.namesContain(style.get(.container_name), request.name)) return false;
+    const horizontal = switch (style.keyword(.writing_mode)) {
+        .vertical_rl, .vertical_lr, .sideways_rl, .sideways_lr => false,
+        else => true,
+    };
+    const inline_axis = request.logical_inline or (if (horizontal) request.physical_horizontal else request.physical_vertical);
+    const block_axis = request.logical_block or (if (horizontal) request.physical_vertical else request.physical_horizontal);
+    const container_type = style.get(.container_type);
+    const size = css.container_values.sizeType(container_type);
+    if (inline_axis and size == null) return false;
+    if (block_axis and size != .size) return false;
+    if (request.scroll_state and !css.container_values.hasScrollState(container_type)) return false;
+    return true;
 }
 
 fn eligibleQueryContainer(style: *const ComputedStyle, name: []const u8, needs: css.container_queries.Needs) bool {
@@ -2646,6 +2804,7 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
+        if (res.container_probe) |probe| probe.pending = false;
         if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
@@ -2663,6 +2822,9 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 
@@ -2697,6 +2859,7 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
+        if (res.container_probe) |probe| probe.pending = false;
         if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
@@ -2717,6 +2880,9 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 
@@ -2742,6 +2908,7 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
+        if (res.container_probe) |probe| probe.pending = false;
         if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
@@ -2756,6 +2923,9 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         }
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 

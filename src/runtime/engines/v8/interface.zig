@@ -1740,18 +1740,24 @@ fn ArgView(comptime mask: u32) type {
 /// `Error("ExceptionPending")` - an attribute setter's catch called this
 /// where an operation's caught it first (review-codex-aria D7).
 pub fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror) void {
+    throwMemberErrorFor(isolate, member_context, err, null);
+}
+
+/// `throwMemberError` naming the member that failed, for the exception's
+/// message (conv.throwWebIDLErrorFromContextFor; runtime.exception_text).
+pub fn throwMemberErrorFor(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror, member: ?runtime.exception_text.Member) void {
     if (err == error.ExceptionPending) return;
     if (comptime engine_capabilities.cross_origin_objects == .unsupported) {
         if (err == error.SecurityError) {
             if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
                 // Owned: a fresh Global<Context>, used only to pick the realm.
                 defer v8.v8_Context_Dispose(entered);
-                conv.throwWebIDLErrorFromContext(isolate, entered, @errorName(err));
+                conv.throwWebIDLErrorFromContextFor(isolate, entered, @errorName(err), member);
                 return;
             }
         }
     }
-    conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
+    conv.throwWebIDLErrorFromContextFor(isolate, member_context, @errorName(err), member);
 }
 
 /// A special operation's own exception - an indexed or named setter's, a

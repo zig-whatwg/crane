@@ -4,6 +4,14 @@ const std = @import("std");
 const dom = @import("dom");
 const a = std.testing.allocator;
 
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
+
 fn value(allocator: std.mem.Allocator, rule: *dom.style.rules.Rule, name: []const u8, expected: []const u8) !void {
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(allocator);
@@ -152,9 +160,9 @@ test "conditional groups keep their leading declaration wrapper after recovery" 
 }
 
 test "declaration run recovery unwinds every allocation failure" {
-    try std.testing.checkAllAllocationFailures(a, leading, .{});
-    try std.testing.checkAllAllocationFailures(a, invalidQualified, .{});
-    try std.testing.checkAllAllocationFailures(a, trailing, .{});
-    try std.testing.checkAllAllocationFailures(a, importance, .{});
-    try std.testing.checkAllAllocationFailures(a, groups, .{});
+    try sweep("cp1_rule_recovery_test", leading, .{});
+    try sweep("cp1_rule_recovery_test", invalidQualified, .{});
+    try sweep("cp1_rule_recovery_test", trailing, .{});
+    try sweep("cp1_rule_recovery_test", importance, .{});
+    try sweep("cp1_rule_recovery_test", groups, .{});
 }

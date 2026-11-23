@@ -1162,6 +1162,16 @@ pub extern fn v8_ExternalMemoryAccounter_New() ?*ExternalMemoryAccounter;
 /// marking, or collect, before it returns (V8 15.7 Heap::UpdateExternalMemory);
 /// a fall never does. On the isolate's thread, with it entered.
 pub extern fn v8_ExternalMemoryAccounter_Update(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// `v8_ExternalMemoryAccounter_Update` with NO drain of the agent's
+/// finalizer queue after it: the report inside a callback (lane mem1;
+/// external_memory.zig `reportInCallback`). What a collection it starts or
+/// finishes queues runs by the fresh rule at the next binding return. On the
+/// isolate's thread, with it entered; ask `v8_Isolate_InCallbackReportOpen`
+/// first.
+pub extern fn v8_ExternalMemoryAccounter_UpdateNoDrain(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// Whether the report inside a callback may be made at this binding's
+/// return: no finalizer running, no exception pending.
+pub extern fn v8_Isolate_InCallbackReportOpen(isolate: *Isolate) bool;
 /// ExternalMemoryAccounter::Decrease of `bytes` and nothing else: it starts
 /// no collection and runs no finalizer, so it may be called inside a
 /// collection's pause (external_memory.zig `endOfMarking`).

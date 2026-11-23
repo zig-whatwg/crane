@@ -15,6 +15,7 @@ const sheet_mod = @import("sheet.zig");
 const hooks = @import("hooks.zig");
 const NodeBase = @import("../node_base.zig").NodeBase;
 const instance_bridge = @import("../instance_bridge.zig");
+const inspector_probes = @import("../inspector_probes.zig");
 
 const SheetRecord = sheet_mod.SheetRecord;
 
@@ -48,6 +49,26 @@ pub const AdoptedSheets = struct {
     }
 };
 
+/// `owner`'s adopted sheets - the CSSStyleSheet objects of its
+/// adoptedStyleSheets array, in order - appended to `out` (nothing when the
+/// array was never made). Read from the array itself, so a document's state
+/// keeps no second list for CDP's DOM agents. BORROWED until script next
+/// runs (engine.observableArrayItems).
+pub fn sheetsOf(owner: *runtime.Instance, allocator: std.mem.Allocator, out: *std.ArrayList(*runtime.Instance)) !void {
+    const held = engine.tracedValue(owner, slot) orelse return;
+    defer held.release();
+    try engine.observableArrayItems(held.value, allocator, out);
+}
+
+/// Whether `owner`'s adoptedStyleSheets array was made (its getter or
+/// setter ran): Blink's TreeScope::AdoptedStyleSheets() is non-null, and
+/// CDP's DOM.Node lists the sheets, none included.
+pub fn arrayExists(owner: *runtime.Instance) bool {
+    const held = engine.tracedValue(owner, slot) orelse return false;
+    held.release();
+    return true;
+}
+
 /// The array's element type: a CSSStyleSheet (every StyleSheet object is
 /// one).
 pub fn isStyleSheet(instance: *runtime.Instance) bool {
@@ -78,6 +99,10 @@ fn changed(owner: *runtime.Instance, values: []const *runtime.Instance) void {
     const adopted = hooks.adoptedSheetsOf(owner) orelse return;
     @import("font_loading.zig").adoptedSheetsChanged(owner, adopted.records.items, values);
     adopted.replace(values);
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's TreeScope::StyleSheetWasAdded / Removed ->
+    // probe::DidModifyAdoptedStyleSheets.
+    if (inspector_probes.active()) inspector_probes.didModifyAdoptedStyleSheets(owner);
     const document = nodeDocumentOf(owner) orelse return;
     const e = hooks.engineOf(document) orelse return;
     if (owner != document) e.addAdoptingRoot(owner) catch {};

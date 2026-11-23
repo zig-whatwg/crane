@@ -100,6 +100,12 @@ pub const Callback = struct {
 /// before it tries again.
 const accept_retry_ms: u32 = 200;
 
+/// The Chromium revision of the pinned protocol's Chrome (Chrome for
+/// Testing 157.0.8103.78, tag commit; specs/devtools-protocol/PIN.md): the
+/// DevTools front end /json/list's devtoolsFrontendUrl names
+/// (kRemoteUrlPattern's "@<revision>").
+pub const frontend_revision = "4b3d0dabb8250b6f152d2d85d79e7706e309d087";
+
 pub const Server = struct {
     /// Thread-safe.
     allocator: Allocator,
@@ -866,7 +872,7 @@ pub const Server = struct {
             return self.respond(connection, 200, http.json_type, body);
         }
         if (eqlPath(path, "/json") or eqlPath(path, "/json/list")) {
-            const body = self.listJson() catch return self.respond(connection, 500, http.text_type, "");
+            const body = self.listJson(request.host) catch return self.respond(connection, 500, http.text_type, "");
             defer self.allocator.free(body);
             return self.respond(connection, 200, http.json_type, body);
         }
@@ -946,17 +952,26 @@ pub const Server = struct {
     }
 
     /// /json/list: the page targets (devtools_http_handler.cc
-    /// SerializeDescriptor), without devtoolsFrontendUrl - Crane serves no
-    /// DevTools front end.
-    fn listJson(self: *Server) ![]u8 {
+    /// SerializeDescriptor; its keys come in base::Value::Dict's sorted
+    /// order). Both URLs name the host the request was sent to, as Chrome's
+    /// do (its Host header; 127.0.0.1 and the port without one), and
+    /// devtoolsFrontendUrl is Chrome's GetFrontendURLInternal with no
+    /// bundled front end: kRemoteUrlPattern at the Chromium revision of the
+    /// pinned protocol's Chrome (`frontend_revision`), so chrome://inspect
+    /// and a browser open DevTools of that revision on this target. Crane
+    /// writes the URL and never fetches it.
+    fn listJson(self: *Server, request_host: ?[]const u8) ![]u8 {
         const Entry = struct {
             description: []const u8 = "",
+            devtoolsFrontendUrl: []const u8,
             id: []const u8,
             title: []const u8,
             type: []const u8,
             url: []const u8,
             webSocketDebuggerUrl: []const u8,
         };
+        var host_buffer: [64]u8 = undefined;
+        const host = if (request_host != null and request_host.?.len != 0) request_host.? else try std.fmt.bufPrint(&host_buffer, "127.0.0.1:{d}", .{self.port});
         var entries: std.ArrayList(Entry) = .empty;
         defer entries.deinit(self.allocator);
         var urls: std.ArrayList([]u8) = .empty;
@@ -966,9 +981,13 @@ pub const Server = struct {
         }
         for (self.target_list.items) |t| {
             if (t.type != .page) continue;
-            const ws_url = try std.fmt.allocPrint(self.allocator, "ws://127.0.0.1:{d}/devtools/page/{s}", .{ self.port, t.id.slice() });
+            const ws_url = try std.fmt.allocPrint(self.allocator, "ws://{s}/devtools/page/{s}", .{ host, t.id.slice() });
             try urls.append(self.allocator, ws_url);
+            // GetFrontendURLInternal: "<frontend>?ws=<host>/devtools/page/<id>".
+            const frontend_url = try std.fmt.allocPrint(self.allocator, "https://chrome-devtools-frontend.appspot.com/serve_rev/@{s}/inspector.html?ws={s}/devtools/page/{s}", .{ frontend_revision, host, t.id.slice() });
+            try urls.append(self.allocator, frontend_url);
             try entries.append(self.allocator, .{
+                .devtoolsFrontendUrl = frontend_url,
                 .id = t.id.slice(),
                 .title = if (t.title.len != 0) t.title else t.url,
                 .type = "page",

@@ -27,6 +27,10 @@ pub const Instance = @import("instance.zig").Instance;
 /// ...)`, which needs only the agent. The HTML owner installs the steps once
 /// at process start; the runtime tier only carries their agent-owned scope.
 pub const CEReactions = @import("ce_reactions.zig");
+/// The text an impl gives the exception its failing binding call throws
+/// (exception_text.zig): recorded with the error, taken by the engine
+/// adapter's conversion of it.
+pub const exception_text = @import("exception_text.zig");
 pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;

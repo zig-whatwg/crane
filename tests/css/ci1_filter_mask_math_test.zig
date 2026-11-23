@@ -5,6 +5,14 @@ const std = @import("std");
 const css = @import("css");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
+
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
 const Case = struct { name: []const u8, input: []const u8, expected: []const u8, specified: ?[]const u8 = null };
 
 fn computed(allocator: Allocator, case: Case) !void {
@@ -46,9 +54,9 @@ fn scalarFunction(allocator: Allocator, name: []const u8, clamps: bool) !void {
 
 test "filter math converts percentages and clamps only the outer numeric result" {
     for ([_][]const u8{ "brightness", "contrast", "saturate" }) |name|
-        try testing.checkAllAllocationFailures(testing.allocator, scalarFunction, .{ name, false });
+        try sweep("ci1_filter_mask_math_test", scalarFunction, .{ name, false });
     for ([_][]const u8{ "grayscale", "invert", "opacity", "sepia" }) |name|
-        try testing.checkAllAllocationFailures(testing.allocator, scalarFunction, .{ name, true });
+        try sweep("ci1_filter_mask_math_test", scalarFunction, .{ name, true });
 }
 
 test "filter length and angle math uses computed units without reducing whole turns" {
@@ -59,7 +67,7 @@ test "filter length and angle math uses computed units without reducing whole tu
         .{ .name = "filter", .input = "hue-rotate(calc(1turn + 90deg))", .expected = "hue-rotate(450deg)" },
         .{ .name = "filter", .input = "hue-rotate(calc(-0.25turn))", .expected = "hue-rotate(-90deg)" },
         .{ .name = "filter", .input = "drop-shadow(calc(-1em) calc(2px) calc(-1px))", .expected = "drop-shadow(rgb(255, 0, 0) -40px 2px 0px)" },
-    }) |case| try testing.checkAllAllocationFailures(testing.allocator, computed, .{case});
+    }) |case| try sweep("ci1_filter_mask_math_test", computed, .{case});
 }
 
 test "mask border math preserves slice percentages and computes only absolute lengths" {
@@ -70,7 +78,7 @@ test "mask border math preserves slice percentages and computes only absolute le
         .{ .name = "mask-border-width", .input = "calc(-2) calc(-1em)", .expected = "0 0px" },
         .{ .name = "mask-border-outset", .input = "calc(2) calc(1em)", .expected = "2 40px" },
         .{ .name = "mask-border-outset", .input = "calc(-1em)", .expected = "0px" },
-    }) |case| try testing.checkAllAllocationFailures(testing.allocator, computed, .{case});
+    }) |case| try sweep("ci1_filter_mask_math_test", computed, .{case});
 }
 
 fn dependencies(allocator: Allocator, name: []const u8, input: []const u8, tree: bool, random: bool, metrics: bool) !void {
@@ -96,29 +104,29 @@ fn dependencyModes(allocator: Allocator, name: []const u8, input: []const u8, tr
 
 test "filter and mask border math retain all dependency queries after declaration release" {
     for ([_][]const u8{ "mask-border-slice", "mask-border-width", "mask-border-outset" }) |name| {
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ name, "calc(sibling-index())", true, false, false });
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ name, "random(1, 2)", false, true, false });
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ name, "random(fixed 0.5, 1, 2)", false, false, false });
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ name, "calc(sign(1cap - 1px))", false, false, true });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ name, "calc(sibling-index())", true, false, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ name, "random(1, 2)", false, true, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ name, "random(fixed 0.5, 1, 2)", false, false, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ name, "calc(sign(1cap - 1px))", false, false, true });
     }
     for ([_][]const u8{ "brightness(calc(sibling-index()))", "hue-rotate(calc(sibling-index() * 30deg))", "blur(calc(sibling-index() * 1px))", "drop-shadow(0px calc(sibling-index() * 1px))" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "filter", input, true, false, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ "filter", input, true, false, false });
     for ([_][]const u8{ "brightness(random(1, 2))", "hue-rotate(random(10deg, 20deg))", "blur(random(1px, 2px))", "drop-shadow(0px random(1px, 2px))" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "filter", input, false, true, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ "filter", input, false, true, false });
     for ([_][]const u8{ "brightness(random(fixed 0.5, 1, 2))", "hue-rotate(random(fixed 0.5, 10deg, 20deg))", "blur(random(fixed 0.5, 1px, 2px))" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "filter", input, false, false, false });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ "filter", input, false, false, false });
     for ([_][]const u8{ "brightness(calc(sign(1cap - 1px)))", "hue-rotate(calc(sign(1cap - 1px) * 1deg))" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "filter", input, false, false, true });
+        try sweep("ci1_filter_mask_math_test", dependencies, .{ "filter", input, false, false, true });
     // Q151: main's interim geometry mode permits an unresolved LENGTH,
     // whereas a scalar/angle containing a metric dependency stays unavailable.
     for ([_][]const u8{ "blur(calc(1cap))", "drop-shadow(0px calc(1cap))" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencyModes, .{ "filter", input, false, false, true, false });
+        try sweep("ci1_filter_mask_math_test", dependencyModes, .{ "filter", input, false, false, true, false });
 }
 
 test "filter extended length literals follow the same dependency modes as math" {
     // Q151 literal controls also expose the separate parser gap asked in Q152.
     for ([_][]const u8{ "blur(1cap)", "drop-shadow(0px 1cap)" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, dependencyModes, .{ "filter", input, false, false, true, false });
+        try sweep("ci1_filter_mask_math_test", dependencyModes, .{ "filter", input, false, false, true, false });
 }
 
 fn literalFallback(allocator: Allocator, input: []const u8, fallback: []const u8) !void {
@@ -155,7 +163,7 @@ test "filter extended length literals preserve specified units and fall back wit
     // Values4 lengths. Q152 requires the literal's ordinary CSSOM spelling.
     for ([_][]const u8{ "blur(1cap)", "drop-shadow(-1cap 1cap 1cap)" }) |input| {
         for ([_][]const u8{ "none", "blur(2px)" }) |fallback|
-            try testing.checkAllAllocationFailures(testing.allocator, literalFallback, .{ input, fallback });
+            try sweep("ci1_filter_mask_math_test", literalFallback, .{ input, fallback });
     }
 }
 
@@ -175,7 +183,7 @@ fn invalidLiteral(allocator: Allocator, input: []const u8) !void {
 test "filter extended length literals reject negative radii and other dimensions" {
     // Q152 / Filter Effects1 §6.1: only the first two shadow lengths are signed.
     for ([_][]const u8{ "blur(-1cap)", "drop-shadow(0px 0px -1cap)", "blur(1deg)", "blur(1%)", "drop-shadow(0px 1deg)", "blur(1furlong)" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, invalidLiteral, .{input});
+        try sweep("ci1_filter_mask_math_test", invalidLiteral, .{input});
 }
 
 const Counts = struct {
@@ -217,9 +225,9 @@ fn inherited(allocator: Allocator, name: []const u8, input: []const u8, allowed:
 
 test "filter and mask border math capture the winning source and computed inheritance" {
     for ([_]bool{ false, true }) |allowed| {
-        try testing.checkAllAllocationFailures(testing.allocator, inherited, .{ "filter", "brightness(calc(sibling-index() + sign(1em - 10px)))", allowed, if (allowed) "brightness(4)" else "brightness(1)" });
+        try sweep("ci1_filter_mask_math_test", inherited, .{ "filter", "brightness(calc(sibling-index() + sign(1em - 10px)))", allowed, if (allowed) "brightness(4)" else "brightness(1)" });
         for ([_][]const u8{ "mask-border-slice", "mask-border-width", "mask-border-outset" }) |name|
-            try testing.checkAllAllocationFailures(testing.allocator, inherited, .{ name, "calc(sibling-index() + sign(1em - 10px))", allowed, if (allowed) "4" else "1" });
+            try sweep("ci1_filter_mask_math_test", inherited, .{ name, "calc(sibling-index() + sign(1em - 10px))", allowed, if (allowed) "4" else "1" });
     }
 }
 
@@ -231,11 +239,11 @@ fn invalid(allocator: Allocator, name: []const u8, input: []const u8) !void {
 
 test "filter and mask border math reject dimensions outside each component grammar" {
     for ([_][]const u8{ "blur(calc(1%))", "blur(calc(1))", "hue-rotate(calc(1px))", "brightness(calc(1px))", "drop-shadow(calc(1%) 2px)" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, invalid, .{ "filter", input });
+        try sweep("ci1_filter_mask_math_test", invalid, .{ "filter", input });
     for ([_][]const u8{ "calc(1px)", "calc(1 + 10%)" }) |input|
-        try testing.checkAllAllocationFailures(testing.allocator, invalid, .{ "mask-border-slice", input });
-    try testing.checkAllAllocationFailures(testing.allocator, invalid, .{ "mask-border-width", "calc(1 + 1px)" });
-    try testing.checkAllAllocationFailures(testing.allocator, invalid, .{ "mask-border-outset", "calc(10%)" });
+        try sweep("ci1_filter_mask_math_test", invalid, .{ "mask-border-slice", input });
+    try sweep("ci1_filter_mask_math_test", invalid, .{ "mask-border-width", "calc(1 + 1px)" });
+    try sweep("ci1_filter_mask_math_test", invalid, .{ "mask-border-outset", "calc(10%)" });
 }
 
 fn randomFallback(allocator: Allocator, name: []const u8, fallback: []const u8, fixed: bool) !void {
@@ -262,9 +270,9 @@ fn randomFallback(allocator: Allocator, name: []const u8, fallback: []const u8, 
 
 test "filter and mask border unavailable random falls back while fixed random computes" {
     for ([_]bool{ false, true }) |fixed| {
-        try testing.checkAllAllocationFailures(testing.allocator, randomFallback, .{ "filter", "none", fixed });
-        try testing.checkAllAllocationFailures(testing.allocator, randomFallback, .{ "mask-border-slice", "0", fixed });
-        try testing.checkAllAllocationFailures(testing.allocator, randomFallback, .{ "mask-border-width", "auto", fixed });
-        try testing.checkAllAllocationFailures(testing.allocator, randomFallback, .{ "mask-border-outset", "0", fixed });
+        try sweep("ci1_filter_mask_math_test", randomFallback, .{ "filter", "none", fixed });
+        try sweep("ci1_filter_mask_math_test", randomFallback, .{ "mask-border-slice", "0", fixed });
+        try sweep("ci1_filter_mask_math_test", randomFallback, .{ "mask-border-width", "auto", fixed });
+        try sweep("ci1_filter_mask_math_test", randomFallback, .{ "mask-border-outset", "0", fixed });
     }
 }
