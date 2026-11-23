@@ -184,3 +184,28 @@ test "a tab's system visibility is its scope's, and its frames read it" {
     try fixture.run(popup, "globalThis.f = document.createElement('iframe'); document.body.appendChild(f); true");
     try fixture.expect(popup, "f.contentDocument.visibilityState", "hidden");
 }
+
+test "a tab's animation frames are its own: closing another tab leaves them running" {
+    // The instances design 6.3.2. The frame clock and the animation frame
+    // callbacks were the Browser loop's (EventLoop.frames), one set for every
+    // tab: a host-opened tab's end (Context.deinit -> rendering.endPage)
+    // released every tab's callbacks, and the host page's requestAnimationFrame
+    // loop stopped for good.
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    try fixture.run(host, "globalThis.frames_seen = 0; (function tick() { frames_seen++; requestAnimationFrame(tick); })(); true");
+    try fixture.waitFor(host, "frames_seen >= 2");
+
+    // A tab the host opens, ticking too; then closed.
+    const id = try fixture.browser.createTab(.{});
+    const opened = fixture.tab(id) orelse return error.NoSuchTab;
+    try fixture.run(opened, "globalThis.frames_seen = 0; (function tick() { frames_seen++; requestAnimationFrame(tick); })(); true");
+    try fixture.waitFor(opened, "frames_seen >= 2");
+    try fixture.browser.closeTab(id, .{});
+    try fixture.waitUntilGone(id);
+
+    // The host's tab keeps its frames.
+    try fixture.run(host, "globalThis.after_close = frames_seen; true");
+    try fixture.waitFor(host, "frames_seen >= after_close + 3");
+}
