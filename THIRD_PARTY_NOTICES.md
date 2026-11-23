@@ -62,6 +62,16 @@ Crane is MIT-licensed (see `LICENSE`). The following files contain code derived 
 - What was derived: the two tables' entries, in their order, as data.
 - License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright line: Copyright 2012 The Chromium Authors.
 
+### `src/dom/accessibility_roles.zig`
+
+- Upstream project: Chromium, https://chromium.googlesource.com/chromium/src
+- Revision: tag `157.0.8103.78` (commit `4b3d0dabb8250b6f152d2d85d79e7706e309d087`; Chrome for Testing 157, the CDP pin's Chrome)
+- Upstream files:
+  - `ui/accessibility/ax_enums.mojom`: `enum Role`, every name and its integer value (CDP's `chromeRole`)
+  - `third_party/blink/renderer/core/html/aria_properties.json5`: each ARIA role's `internalRoles`, which `third_party/blink/renderer/build/scripts/make_ax_utilities.py` turns into `InternalRoleToAriaRole` (the ARIA name CDP sends as an AXNode's `role`)
+- What was derived: the role enumeration with its values, and the internal-role-to-ARIA-name table, as data.
+- License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright lines: Copyright 2018 The Chromium Authors (`ax_enums.mojom`); `aria_properties.json5` carries no header of its own and is under Chromium's `LICENSE` (Copyright The Chromium Authors).
+
 ## Vendored and pinned dependencies
 
 These are listed here by reference. Their license texts are kept beside them:

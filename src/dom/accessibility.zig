@@ -40,34 +40,34 @@ fn wordStart(points: []const u21, index: usize) bool {
 /// the full HTML implementation or duplicate its focusability rules.
 pub const Options = struct { is_focusable: *const fn (*Instance) bool };
 
-fn eq(a: []const u8, b: []const u8) bool {
+pub fn eq(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-fn oneOf(value: []const u8, comptime values: anytype) bool {
+pub fn oneOf(value: []const u8, comptime values: anytype) bool {
     inline for (values) |v| if (eq(value, v)) return true;
     return false;
 }
 
-fn attribute(node: *Instance, name: []const u8) ?[]const u8 {
+pub fn attribute(node: *Instance, name: []const u8) ?[]const u8 {
     const element = data.of(node) orelse return null;
     return if (element.findAttribute(null, name)) |a| a.value else null;
 }
 
-fn localName(node: *Instance) []const u8 {
+pub fn localName(node: *Instance) []const u8 {
     return if (data.of(node)) |element| element.localName() else "";
 }
 
-fn isHtml(node: *Instance) bool {
+pub fn isHtml(node: *Instance) bool {
     const element = data.of(node) orelse return false;
     return eq(element.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
 }
 
-fn instance(node: *NodeBase) ?*Instance {
+pub fn instance(node: *NodeBase) ?*Instance {
     return bridge.getInstanceTyped(Instance, node);
 }
 
-fn parent(node: *Instance) ?*Instance {
+pub fn parent(node: *Instance) ?*Instance {
     if (bridge.getNodeBase(node)) |base| {
         if (slots.slottable(base)) |slottable| if (slottable.state.assignedSlot()) |slot| return instance(slot);
         if (base.parent_node) |p| {
@@ -81,7 +81,7 @@ fn parent(node: *Instance) ?*Instance {
 
 /// HTML 4.13.7.4: presence of an author attribute, even empty, overrides
 /// the internals default. Returned bytes belong to the computation arena.
-fn effective(allocator: Allocator, node: *Instance, comptime content: []const u8, comptime member: []const u8) !?[]const u8 {
+pub fn effective(allocator: Allocator, node: *Instance, comptime content: []const u8, comptime member: []const u8) !?[]const u8 {
     if (attribute(node, content)) |value| return value;
     const internals = custom.attachedInternals(node) orelse return null;
     var value = (try @field(interfaces.ElementInternals, "get_" ++ member)(internals)) orelse return null;
@@ -94,7 +94,7 @@ const roles = .{
     "doc-abstract", "doc-acknowledgments", "doc-afterword", "doc-appendix", "doc-backlink", "doc-biblioentry", "doc-bibliography", "doc-biblioref", "doc-chapter", "doc-colophon", "doc-conclusion", "doc-cover",    "doc-credit", "doc-credits", "doc-dedication", "doc-endnote", "doc-endnotes", "doc-epigraph", "doc-epilogue", "doc-errata", "doc-example", "doc-footnote", "doc-foreword", "doc-glossary", "doc-glossref", "doc-index", "doc-introduction", "doc-noteref", "doc-notice", "doc-pagebreak", "doc-pagelist", "doc-part", "doc-preface", "doc-prologue", "doc-pullquote", "doc-qna", "doc-subtitle", "doc-tip", "doc-toc", "graphics-document", "graphics-object", "graphics-symbol",
 };
 
-fn canonicalRole(token: []const u8) ?[]const u8 {
+pub fn canonicalRole(token: []const u8) ?[]const u8 {
     if (std.ascii.eqlIgnoreCase(token, "presentation")) return "none";
     if (std.ascii.eqlIgnoreCase(token, "img")) return "image";
     if (std.ascii.eqlIgnoreCase(token, "directory")) return "list";
@@ -102,12 +102,12 @@ fn canonicalRole(token: []const u8) ?[]const u8 {
     return null;
 }
 
-fn hasGlobalAria(node: *Instance) bool {
+pub fn hasGlobalAria(node: *Instance) bool {
     inline for (.{ "aria-atomic", "aria-braillelabel", "aria-brailleroledescription", "aria-busy", "aria-controls", "aria-current", "aria-describedby", "aria-description", "aria-details", "aria-disabled", "aria-dropeffect", "aria-errormessage", "aria-flowto", "aria-grabbed", "aria-haspopup", "aria-hidden", "aria-invalid", "aria-keyshortcuts", "aria-label", "aria-labelledby", "aria-live", "aria-owns", "aria-relevant", "aria-roledescription" }) |a| if (attribute(node, a) != null) return true;
     return false;
 }
 
-fn authorNamed(allocator: Allocator, node: *Instance) !bool {
+pub fn authorNamed(allocator: Allocator, node: *Instance) !bool {
     if (try effective(allocator, node, "aria-label", "ariaLabel")) |value| if (std.mem.trim(u8, value, spaces).len > 0) return true;
     const labelled = try related(allocator, node, .labelledby);
     if (labelled.len > 0) return true;
@@ -224,9 +224,9 @@ fn requiredNativeChild(parent_tag: []const u8, tag: []const u8) bool {
     return false;
 }
 
-const Relation = enum { labelledby, owns };
+pub const Relation = enum { labelledby, owns };
 
-fn related(allocator: Allocator, node: *Instance, comptime relation: Relation) ![]*Instance {
+pub fn related(allocator: Allocator, node: *Instance, comptime relation: Relation) ![]*Instance {
     const attr_name = if (relation == .labelledby) "aria-labelledby" else "aria-owns";
     const member = if (relation == .labelledby) "ariaLabelledByElements" else "ariaOwnsElements";
     // Read the native reflected array, never a script-overridable property
@@ -260,7 +260,7 @@ fn related(allocator: Allocator, node: *Instance, comptime relation: Relation) !
     return result.items;
 }
 
-fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
+pub fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
     const base = bridge.getNodeBase(node) orelse return null;
     var child = base.firstChild();
     while (child) |at| : (child = at.next_sibling) if (instance(at)) |candidate| if (eq(localName(candidate), name)) return candidate;
@@ -291,7 +291,7 @@ fn nextInTree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
 /// HTML 4.8.14 and 2.3.9: the first image whose hash-name reference
 /// resolves to an ancestor map. Like Blink's AXObject hidden-style check,
 /// an area's accessibility visibility comes from that image's CSS box.
-fn imageForArea(node: *Instance) ?*Instance {
+pub fn imageForArea(node: *Instance) ?*Instance {
     const base = bridge.getNodeBase(node) orelse return null;
     var map: ?*Instance = null;
     var at = base.parent_node;
@@ -361,7 +361,7 @@ fn isFlowWithinFigure(node: *Instance) bool {
     });
 }
 
-fn visibilityHidden(node: *Instance) anyerror!bool {
+pub fn visibilityHidden(node: *Instance) anyerror!bool {
     if (isHtml(node) and eq(localName(node), "area")) return visibilityHidden(imageForArea(node) orelse return true);
     // Visibility is inherited, but a visible descendant can override it.
     const element = if (data.of(node) != null) node else parent(node) orelse return false;
@@ -370,7 +370,7 @@ fn visibilityHidden(node: *Instance) anyerror!bool {
 }
 
 /// Rendering follows the flat DOM tree even when ARIA changes ownership.
-fn displayHidden(node: *Instance) anyerror!bool {
+pub fn displayHidden(node: *Instance) anyerror!bool {
     if (isHtml(node) and eq(localName(node), "area")) {
         return displayHidden(imageForArea(node) orelse return true);
     }
@@ -383,7 +383,7 @@ fn displayHidden(node: *Instance) anyerror!bool {
     return false;
 }
 
-fn nameFromContent(role_name: []const u8) bool {
+pub fn nameFromContent(role_name: []const u8) bool {
     return oneOf(role_name, .{ "button", "cell", "checkbox", "columnheader", "gridcell", "heading", "link", "menuitem", "menuitemcheckbox", "menuitemradio", "option", "radio", "row", "rowheader", "switch", "tab", "tooltip", "treeitem", "html-summary" });
 }
 
@@ -398,6 +398,21 @@ const Name = struct {
     /// Like Blink AXRelationCache's child-to-owner map, but arena-only and
     /// rebuilt for this computation; no node survives a task through it.
     owners: address_map.AddressHashMapUnmanaged(*Instance, *Instance) = .empty,
+    /// Whether the node named takes a name from its contents, when the
+    /// caller decides it by its own role (the accessibility tree, by
+    /// Chromium's roles); null: by the computed role (WebDriver's).
+    root_from_contents: ?bool = null,
+    /// When set, the related elements whose text names the root (aria-
+    /// labelledby's targets, its labels, a legend or caption) are recorded
+    /// here with that text: CDP's labelledby property (Blink's name
+    /// sources' related objects).
+    related_out: ?*std.ArrayListUnmanaged(RelatedText) = null,
+
+    fn record(self: *Name, node: *Instance, target: *Instance, value: []const u8) !void {
+        if (node != self.root) return;
+        const out = self.related_out orelse return;
+        try out.append(self.allocator, .{ .node = target, .text = value });
+    }
 
     fn accessibilityParent(self: *const Name, node: *Instance) ?*Instance {
         return self.owners.get(node) orelse parent(node);
@@ -484,6 +499,7 @@ const Name = struct {
         if (!walk.relation) {
             const targets = try related(self.allocator, node, .labelledby);
             var labelled: std.ArrayList(u8) = .empty;
+            const recorded = if (self.related_out) |out| out.items.len else 0;
             for (targets) |target| {
                 const relation_walk: Walk = .{ .relation = true, .include_hidden = try self.hidden(target) };
                 const text_value = if (target == node) blk: {
@@ -493,9 +509,11 @@ const Name = struct {
                     if (self_entry.found_existing) continue;
                     break :blk try self.alternative(target, relation_walk);
                 } else try self.text(target, relation_walk);
+                try self.record(node, target, text_value);
                 try self.append(&labelled, text_value, true);
             }
             if (std.mem.trim(u8, labelled.items, spaces).len > 0) return labelled.items;
+            if (self.related_out) |out| out.items.len = recorded;
         }
         const role_name = try role(self.allocator, node, self.options);
         // 2C: embedded values precede labels (including editable text).
@@ -511,7 +529,8 @@ const Name = struct {
         if (!eq(role_name, "none")) if (try self.native(node, walk)) |value| return value;
         // 2F/2H: rendered children, not textContent's light-DOM traversal.
         const native_row = isHtml(node) and eq(tag, "tr") and attribute(node, "role") == null;
-        if ((!native_row and nameFromContent(role_name)) or walk.relation or walk.native_label or walk.recursive) {
+        const from_contents = if (node == self.root and self.root_from_contents != null) self.root_from_contents.? else (!native_row and nameFromContent(role_name));
+        if (from_contents or walk.relation or walk.native_label or walk.recursive) {
             const content = try self.contents(node, walk);
             if (content.len > 0) return content;
         }
@@ -534,31 +553,7 @@ const Name = struct {
     /// Blink's LayoutText and WebKit's RenderText map each Text separately).
     /// OWNED by the walk's allocator.
     fn renderedText(self: *Name, text_node: *Instance, bytes: []const u8) ![]const u8 {
-        const element = parent(text_node) orelse return try self.allocator.dupe(u8, bytes);
-        const computed = (try style.computedStyle(element, null)) orelse return try self.allocator.dupe(u8, bytes);
-        const case = computed.textTransform().case;
-        if (case == .none) return try self.allocator.dupe(u8, bytes);
-        var points: std.ArrayList(u21) = .empty;
-        defer points.deinit(self.allocator);
-        const view = std.unicode.Wtf8View.init(bytes) catch return try self.allocator.dupe(u8, bytes);
-        var it = view.iterator();
-        while (it.nextCodepoint()) |cp| try points.append(self.allocator, cp);
-        var out: std.ArrayList(u8) = .empty;
-        for (points.items, 0..) |cp, index| {
-            const mode: ?unicode_case.CaseMode = switch (case) {
-                .uppercase => .upper,
-                .lowercase => .lower,
-                .capitalize => if (wordStart(points.items, index)) .title else null,
-                .none => null,
-            };
-            const mapping = if (mode) |m| unicode_case.map(points.items, index, m, "") else unicode_case.Mapping.identity(cp);
-            for (mapping.points[0..mapping.len]) |mapped| {
-                var encoded: [4]u8 = undefined;
-                const length = try std.unicode.wtf8Encode(mapped, &encoded);
-                try out.appendSlice(self.allocator, encoded[0..length]);
-            }
-        }
-        return out.items;
+        return transformedText(self.allocator, text_node, bytes);
     }
 
     fn append(self: *Name, out: *std.ArrayList(u8), value: []const u8, separate: bool) !void {
@@ -639,6 +634,7 @@ const Name = struct {
             }
             if (labels) |list| {
                 var out: std.ArrayList(u8) = .empty;
+                const recorded = if (self.related_out) |related_list| related_list.items.len else 0;
                 const count = try interfaces.NodeList.get_length(list);
                 for (0..count) |i| if (try interfaces.NodeList.call_item(list, @intCast(i))) |label| {
                     // HTML-AAM 3.5.83 (the label note, w3c/html-aam#533): a
@@ -648,9 +644,12 @@ const Name = struct {
                     // hidden label", wpt.fyi 4786307730243584,
                     // 4877168468033536; Safari 27.2 names it).
                     if (try self.hidden(label)) continue;
-                    try self.append(&out, try self.text(label, .{ .native_label = true, .relation = walk.relation }), true);
+                    const label_text = try self.text(label, .{ .native_label = true, .relation = walk.relation });
+                    try self.record(node, label, label_text);
+                    try self.append(&out, label_text, true);
                 };
                 if (std.mem.trim(u8, out.items, spaces).len > 0) return out.items;
+                if (self.related_out) |related_list| related_list.items.len = recorded;
             }
             if (oneOf(tag, .{ "img", "area" })) if (attribute(node, "alt")) |value| return value;
             if (eq(tag, "input")) {
@@ -694,11 +693,17 @@ const Name = struct {
             // the hidden one). Together: Chrome's result.
             if (eq(tag, "table")) if (try firstVisibleChildNamed(self, node, "caption")) |caption| {
                 const value = try self.text(caption, .{ .native_label = true, .relation = walk.relation });
-                if (std.mem.trim(u8, value, spaces).len > 0) return value;
+                if (std.mem.trim(u8, value, spaces).len > 0) {
+                    try self.record(node, caption, value);
+                    return value;
+                }
             };
             if (eq(tag, "fieldset")) if (firstChildNamed(node, "legend")) |legend| if (!try self.hidden(legend)) {
                 const value = try self.text(legend, .{ .native_label = true, .relation = walk.relation });
-                if (std.mem.trim(u8, value, spaces).len > 0) return value;
+                if (std.mem.trim(u8, value, spaces).len > 0) {
+                    try self.record(node, legend, value);
+                    return value;
+                }
             };
             if (oneOf(tag, .{ "option", "optgroup" })) if (attribute(node, "label")) |value| if (value.len > 0) return value;
         } else if (firstChildNamed(node, "title")) |title| {
@@ -791,15 +796,42 @@ const Name = struct {
     }
 };
 
-/// Caller owns the flattened UTF-8 name. All traversal state is temporary.
-pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    var computation: Name = .{ .allocator = arena.allocator(), .root = node, .options = options };
-    var scope = node;
-    while (parent(scope)) |ancestor| scope = ancestor;
-    try computation.collectOwners(scope);
-    const value = try computation.text(node, .{});
+/// A Text's characters with its parent element's text-transform applied:
+/// each Text maps its own code points, capitalize at each word start within
+/// it (as Blink's LayoutText and WebKit's RenderText map each Text
+/// separately; the accessibility tree's StaticText reads the same). OWNED by
+/// `allocator` (an arena's).
+pub fn transformedText(allocator: Allocator, text_node: *Instance, bytes: []const u8) ![]const u8 {
+    const element = parent(text_node) orelse return try allocator.dupe(u8, bytes);
+    const computed = (try style.computedStyle(element, null)) orelse return try allocator.dupe(u8, bytes);
+    const case = computed.textTransform().case;
+    if (case == .none) return try allocator.dupe(u8, bytes);
+    var points: std.ArrayList(u21) = .empty;
+    defer points.deinit(allocator);
+    const view = std.unicode.Wtf8View.init(bytes) catch return try allocator.dupe(u8, bytes);
+    var it = view.iterator();
+    while (it.nextCodepoint()) |cp| try points.append(allocator, cp);
+    var out: std.ArrayList(u8) = .empty;
+    for (points.items, 0..) |cp, index| {
+        const mode: ?unicode_case.CaseMode = switch (case) {
+            .uppercase => .upper,
+            .lowercase => .lower,
+            .capitalize => if (wordStart(points.items, index)) .title else null,
+            .none => null,
+        };
+        const mapping = if (mode) |m| unicode_case.map(points.items, index, m, "") else unicode_case.Mapping.identity(cp);
+        for (mapping.points[0..mapping.len]) |mapped| {
+            var encoded: [4]u8 = undefined;
+            const length = try std.unicode.wtf8Encode(mapped, &encoded);
+            try out.appendSlice(allocator, encoded[0..length]);
+        }
+    }
+    return out.items;
+}
+
+/// AccName's flattening of a computed text alternative: runs of white
+/// space become one space, none at either end.
+fn flatten(allocator: Allocator, value: []const u8) ![]u8 {
     var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
     var pending_space = false;
@@ -814,6 +846,103 @@ pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]
     }
     return result.toOwnedSlice(allocator);
 }
+
+/// Caller owns the flattened UTF-8 name. All traversal state is temporary.
+pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var scope = node;
+    while (parent(scope)) |ancestor| scope = ancestor;
+    var names = try Names.init(arena.allocator(), scope, options);
+    const value = try names.raw(node);
+    return flatten(allocator, value);
+}
+
+/// A related element of a name, and the text it gave.
+pub const RelatedText = struct { node: *Instance, text: []const u8 };
+
+/// The names of many nodes of one tree, sharing what does not depend on
+/// the node named: the aria-owns map (ARIA 6.8: one accessibility parent per
+/// owned node), built once. The accessibility tree names every node through
+/// one (dom/accessibility_tree.zig); WebDriver's computed label through its
+/// own, for one node. Everything lives in `arena` and is dropped with it.
+pub const Names = struct {
+    computation: Name,
+
+    /// `scope` is the root of the tree the names are computed in.
+    pub fn init(arena: Allocator, scope: *Instance, options: Options) !Names {
+        var names: Names = .{ .computation = .{ .allocator = arena, .root = scope, .options = options } };
+        try names.computation.collectOwners(scope);
+        return names;
+    }
+
+    /// `node`'s text alternative before flattening, in the arena.
+    fn raw(self: *Names, node: *Instance) ![]const u8 {
+        self.computation.root_from_contents = null;
+        self.computation.root = node;
+        self.computation.seen.clearRetainingCapacity();
+        self.computation.self_labels.clearRetainingCapacity();
+        return self.computation.text(node, .{});
+    }
+
+    /// `node`'s accessible name (AccName 4.3.2, flattened), in the arena.
+    pub fn nameOf(self: *Names, node: *Instance) ![]const u8 {
+        return flatten(self.computation.allocator, try self.raw(node));
+    }
+
+    /// `node`'s accessible name with its name-from-contents decided by the
+    /// caller's role for it (the accessibility tree's Chromium roles:
+    /// AXObject::SupportsNameFromContents), flattened.
+    /// `sources`, when given, gets the related elements whose text is the
+    /// name, each with its text (unflattened, as Blink's name sources keep
+    /// it).
+    pub fn nameWithContents(self: *Names, node: *Instance, from_contents: bool, sources: ?*std.ArrayListUnmanaged(RelatedText)) ![]const u8 {
+        self.computation.root = node;
+        self.computation.seen.clearRetainingCapacity();
+        self.computation.self_labels.clearRetainingCapacity();
+        self.computation.root_from_contents = from_contents;
+        self.computation.related_out = sources;
+        defer {
+            self.computation.root_from_contents = null;
+            self.computation.related_out = null;
+        }
+        return flatten(self.computation.allocator, try self.computation.text(node, .{}));
+    }
+
+    /// The text `target` contributes as an aria-labelledby or
+    /// aria-describedby target (AccName 2B: a relation traversal, hidden
+    /// content included when the target itself is hidden), flattened.
+    pub fn nameOfRelation(self: *Names, target: *Instance) ![]const u8 {
+        self.computation.root = target;
+        self.computation.seen.clearRetainingCapacity();
+        self.computation.self_labels.clearRetainingCapacity();
+        const walk: Walk = .{ .relation = true, .include_hidden = try self.computation.hidden(target) };
+        return flatten(self.computation.allocator, try self.computation.text(target, walk));
+    }
+
+    /// The element whose aria-owns makes `node` its child, if one does.
+    pub fn ownerOf(self: *const Names, node: *Instance) ?*Instance {
+        return self.computation.owners.get(node);
+    }
+
+    /// Whether `node` is hidden from the accessibility tree: display:none
+    /// or visibility:hidden, or aria-hidden through its accessibility
+    /// ancestors.
+    pub fn hidden(self: *Names, node: *Instance) !bool {
+        return self.computation.hidden(node);
+    }
+
+    /// Whether `node` or an accessibility ancestor has aria-hidden=true.
+    pub fn ariaHidden(self: *Names, node: *Instance) !bool {
+        return self.computation.ariaHidden(node);
+    }
+
+    /// The accessibility parent: the aria-owns owner, else the flat-tree
+    /// parent.
+    pub fn accessibilityParent(self: *const Names, node: *Instance) ?*Instance {
+        return self.computation.accessibilityParent(node);
+    }
+};
 
 test "computed roles reject abstract and invalid tokens and canonicalize synonyms" {
     try std.testing.expect(canonicalRole("widget") == null);
