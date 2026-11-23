@@ -1,0 +1,361 @@
+# React 19.3.1 (tag v19.3.1, 61aa00df822d): React's own Jest suite (CI's `yarn test -r=experimental
+# --env=development --ci`, scripts/jest/config.source.js), its jsdom-environment files run in a browser page by
+# tests/frameworks/react-jest - the tests the matrix does not count, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format). Ids are Jest's: describe blocks and the test, joined by
+# " > " (fw_matrix import --reader=jest-json). The list is also passed to Jest's own testNamePattern, so none of
+# these runs in any column (tests/frameworks/react-jest/README.md). Lane react1, 2026-11-22; classes and their
+# evidence approved by the integrator 11:38 PM ET.
+
+[file:packages/react/src/__tests__/ReactClassEquivalence-test.js]
+kind      = node-runner-only
+why       = spawns React's own `yarn test` with child_process (spawnSync) to compare two runs of other test files; a browser page starts no processes
+source    = packages/react/src/__tests__/ReactClassEquivalence-test.js:12
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch discrete capture events]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:32
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch continuous capture events]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:86
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch bubbling discrete events]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:136
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch bubbling continuous events]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:186
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > does not batch discrete events between handlers]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:236
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch continuous events between handlers]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:299
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should flush discrete events between handlers from different roots]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:363
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should batch continuous events between handlers from different roots]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:427
+
+[ReactInternalTestUtilsDOM > simulateEventDispatch > should fire on nodes removed while dispatching]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/internal-test-utils/__tests__/ReactInternalTestUtilsDOM-test.js:490
+
+[ReactDOMEventListener > Propagation > should batch between handlers from different roots (discrete)]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMEventListener-test.js:157
+
+[ReactDOMEventListener > Propagation > should batch between handlers from different roots (continuous)]
+kind      = jsdom-only
+why       = internal-test-utils' simulateEventDispatch is a fork of jsdom's dispatch that reads jsdom's own implementation objects through the wrapper symbol (jsdom/lib/jsdom/living/...); a browser's event has no such object
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; an Event has 0 own symbols in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMEventListener-test.js:231
+
+[InvalidEventListeners > should prevent non-function listeners, at dispatch]
+kind      = jsdom-only
+why       = expects console.error called with jsdom's report of the uncaught listener exception ({type: 'unhandled exception'}: jsdom's virtual console, which jest-environment-jsdom forwards to the console); a browser reports an uncaught exception to its developer console, never through the page's console.error
+browsers  = Chrome 157, Firefox 159 and Safari 27 fail it through the harness; the page's console.error is called 0 times for an uncaught listener exception in all three (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/InvalidEventListeners-test.js:36
+
+[ReactBrowserEventEmitter > should continue bubbling if an error is thrown]
+kind      = jsdom-only
+why       = expects the window error event's message to be the error's own message ("Boom"), as jsdom's ErrorEvent has it
+browsers  = Chrome 157 "Uncaught Error: Boom", Firefox 159 and Safari 27 "Error: Boom"; all three fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactBrowserEventEmitter-test.js:181
+
+[ReactDOMConsoleErrorReporting > ReactDOMClient.createRoot > logs errors during event handlers]
+kind      = jsdom-only
+why       = expects the window error event's message to be the error's own message ("Boom"), as jsdom's ErrorEvent has it
+browsers  = Chrome 157 "Uncaught Error: Boom", Firefox 159 and Safari 27 "Error: Boom"; all three fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMConsoleErrorReporting-test.js:64
+
+[ReactDOMConsoleErrorReporting > ReactDOMClient.createRoot > logs render errors without an error boundary]
+kind      = jsdom-only
+why       = expects the window error event's message to be the error's own message ("Boom"), as jsdom's ErrorEvent has it
+browsers  = Chrome 157 "Uncaught Error: Boom", Firefox 159 and Safari 27 "Error: Boom"; all three fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMConsoleErrorReporting-test.js:115
+
+[ReactDOMConsoleErrorReporting > ReactDOMClient.createRoot > logs layout effect errors without an error boundary]
+kind      = jsdom-only
+why       = expects the window error event's message to be the error's own message ("Boom"), as jsdom's ErrorEvent has it
+browsers  = Chrome 157 "Uncaught Error: Boom", Firefox 159 and Safari 27 "Error: Boom"; all three fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMConsoleErrorReporting-test.js:243
+
+[ReactDOMConsoleErrorReporting > ReactDOMClient.createRoot > logs passive effect errors without an error boundary]
+kind      = jsdom-only
+why       = expects the window error event's message to be the error's own message ("Boom"), as jsdom's ErrorEvent has it
+browsers  = Chrome 157 "Uncaught Error: Boom", Firefox 159 and Safari 27 "Error: Boom"; all three fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMConsoleErrorReporting-test.js:381
+
+[DOMPropertyOperations > setValueForProperty > should set values as attributes if necessary]
+kind      = jsdom-only
+why       = expects element.enterKeyHint to be undefined, as jsdom lacks the attribute
+browsers  = enterKeyHint is a string in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/DOMPropertyOperations-test.js:49
+
+[ReactDOMActivity > hiding an Activity boundary also hides the direct children of any portals it contains, regardless of how deeply nested they are]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:58
+
+[ReactDOMActivity > revealing an Activity boundary inside a portal does not reveal the portal contents if has a hidden Activity parent]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:103
+
+[ReactDOMActivity > hides new portals added to an already hidden tree]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:152
+
+[ReactDOMActivity > hides new insertions inside an already hidden portal]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:218
+
+[ReactDOMActivity > reveal an inner Suspense boundary without revealing an outer Activity on the same host child]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:288
+
+[ReactDOMActivity > mounts/unmounts layout effects in portal when visibility changes (starting visible)]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:388
+
+[ReactDOMActivity > mounts/unmounts layout effects in portal when visibility changes (starting hidden)]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:388
+
+[ReactDOM > can render a Suspense boundary above the <html> tag]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOM-test.js:802
+
+[ReactSuspenseEffectsSemanticsDOM > does not destroy ref cleanup twice when hidden child is removed]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-reconciler/src/__tests__/ReactSuspenseEffectsSemanticsDOM-test.js:142
+
+[ReactSuspenseEffectsSemanticsDOM > does not destroy ref cleanup twice when parent suspense is removed]
+kind      = jsdom-only
+why       = expects style="display: none;" where React set display none with priority important: jsdom's CSSOM drops the priority
+browsers  = setProperty('display', 'none', 'important') serializes as "display: none !important;" in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-reconciler/src/__tests__/ReactSuspenseEffectsSemanticsDOM-test.js:321
+
+[ReactDOMImageLoad > captures the load event for Blob sources if it happens before commit phase]
+kind      = jsdom-only
+why       = expects no load event from a Blob image source, as jsdom loads no images
+browsers  = a blob: image loads (its load event fires) in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMImageLoad-test.internal.js:602
+
+[ReactDOMImageLoad > captures the load event for Blob sources if it happens after commit phase and replays it]
+kind      = jsdom-only
+why       = expects no load event from a Blob image source, as jsdom loads no images
+browsers  = a blob: image loads (its load event fires) in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMImageLoad-test.internal.js:635
+
+[ReactDOMForm > should submit the inner of nested forms]
+kind      = jsdom-only
+why       = expects a submit event whose target is not a form (a submitter, an inner form) to bubble past the form to React's root; browsers stop it at the form (Blink's and WebKit's HTMLFormElement::HandleLocalEvents, Gecko's WillHandleEvent; Crane's HTMLFormElement stopNestedFormEvent)
+browsers  = the outer listener sees nothing in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMForm-test.js:364
+
+[ReactDOMForm > should submit once if one root is nested inside the other]
+kind      = jsdom-only
+why       = expects a submit event whose target is not a form (a submitter, an inner form) to bubble past the form to React's root; browsers stop it at the form (Blink's and WebKit's HTMLFormElement::HandleLocalEvents, Gecko's WillHandleEvent; Crane's HTMLFormElement stopNestedFormEvent)
+browsers  = the outer listener sees nothing in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMForm-test.js:402
+
+[SimpleEventPlugin > includes the submitter in submit events]
+kind      = jsdom-only
+why       = expects a submit event whose target is not a form (a submitter, an inner form) to bubble past the form to React's root; browsers stop it at the form (Blink's and WebKit's HTMLFormElement::HandleLocalEvents, Gecko's WillHandleEvent; Crane's HTMLFormElement stopNestedFormEvent)
+browsers  = the outer listener sees nothing in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/events/plugins/__tests__/SimpleEventPlugin-test.js:596
+
+[when Trusted Types are available in global object > should not stringify trusted values for dangerouslySetInnerHTML]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:56
+
+[when Trusted Types are available in global object > should not stringify trusted values for setAttribute (unknown attribute)]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:100
+
+[when Trusted Types are available in global object > should not stringify trusted values for setAttribute (known attribute)]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:143
+
+[when Trusted Types are available in global object > should not stringify trusted values for setAttributeNS]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:186
+
+[when Trusted Types are available in global object > should warn once when rendering script tag in jsx on client]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:231
+
+[when Trusted Types are available in global object > should not warn when rendering a data block script tag]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:252
+
+[when Trusted Types are available in global object > should not warn when rendering a ld+json script tag]
+kind      = jsdom-only
+why       = the describe's beforeEach assigns window.trustedTypes, which jsdom lacks; in a browser it is a getter-only property of the global and the strict-mode assignment throws, so the describe's first test fails, and a later one passes only because that test's afterEach deleted the global's own accessor (and the setAttribute cases then also meet the attribute-value serialization browsers now escape < and > in, which jsdom does not) - every test of the describe assumes jsdom's missing trustedTypes
+browsers  = the assignment throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js:261
+
+[SyntheticMouseEvent > should only use values from movementX/Y when event type is mousemove]
+kind      = jsdom-only
+why       = expects React to compute movementX/Y from screen coordinates, which it does only when the event has no movementX, as jsdom's MouseEvent has none
+browsers  = 'movementX' in new MouseEvent(...) is true in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/events/__tests__/SyntheticMouseEvent-test.js:35
+
+[SyntheticMouseEvent > should correctly calculate movementX/Y for capture phase]
+kind      = jsdom-only
+why       = expects React to compute movementX/Y from screen coordinates, which it does only when the event has no movementX, as jsdom's MouseEvent has none
+browsers  = 'movementX' in new MouseEvent(...) is true in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-dom/src/events/__tests__/SyntheticMouseEvent-test.js:91
+
+[ReactSuspense > suspends rendering and continues later]
+kind      = jsdom-only
+why       = expects element.innerText to be undefined, as jsdom lacks innerText
+browsers  = innerText is a string in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-reconciler/src/__tests__/ReactSuspense-test.internal.js:98
+
+[ReactFlightDOMForm > useActionState can return binary state during MPA form submission]
+kind      = jsdom-only
+why       = the test's own Blob.prototype.stream polyfill reads jsdom's Blob implementation through its wrapper symbol
+browsers  = a Blob has 0 own symbols in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOMForm-test.js:1067
+
+[ReactDOMFrameScheduling > can import findDOMNode in Node environment]
+kind      = jsdom-only
+why       = deletes and reassigns window.window to simulate Node; in a browser window is [LegacyUnforgeable], and the strict-mode delete throws
+browsers  = delete window.window throws a TypeError in Chrome 157, Firefox 159 and Safari 27, which all fail it through the harness (probe tmp/react1/probes/jsdom-classes.html and the file through tests/frameworks/react-jest, lane react1, 2026-11-22)
+source    = packages/shared/__tests__/ReactDOMFrameScheduling-test.js:21
+
+[ReactDOMComponent > mountComponent > should work error event on <source> element]
+kind      = jsdom-only
+why       = renders <video><source src="http://example.org/video" onError> and asserts its own synthetic error event; jsdom loads no media, but a browser fetches the source (the resource selection algorithm needs no connected element) and its real error event arrives after the test, logging into a later test ("Log of yielded values is not empty"). Excluded so it never runs: the harness and the jsdom run pass the exclusion list to Jest's own testNamePattern
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fetch a detached video's <source> and fire its error event (4-42 ms: tmp/react1/probes/media-stack.html); the later test fails in Crane, Chrome and Firefox through the harness
+source    = packages/react-dom/src/__tests__/ReactDOMComponent-test.js:1687
+
+[ReactFlightTurbopackDOMNode > should allow an alternative module mapping to be used for SSR]
+kind      = needs-node
+why       = Flight's hints after an await reach the request only through Node's AsyncLocalStorage, which carries it across the await (React's server config for Node); no browser propagates async context (TC39 AsyncContext is a proposal), and the harness's AsyncLocalStorage holds its store only synchronously
+source    = packages/react-server-dom-turbopack/src/__tests__/ReactFlightTurbopackDOMNode-test.js:109
+
+[ReactFlightDOM > should support float methods when rendering in Fiber]
+kind      = needs-node
+why       = Flight's hints after an await reach the request only through Node's AsyncLocalStorage, which carries it across the await (React's server config for Node); no browser propagates async context (TC39 AsyncContext is a proposal), and the harness's AsyncLocalStorage holds its store only synchronously
+source    = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:1697
+
+[ReactFlightDOM > should support float methods when rendering in Fizz]
+kind      = needs-node
+why       = Flight's hints after an await reach the request only through Node's AsyncLocalStorage, which carries it across the await (React's server config for Node); no browser propagates async context (TC39 AsyncContext is a proposal), and the harness's AsyncLocalStorage holds its store only synchronously
+source    = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:1826
+
+[ReactFlightDOM > supports Float hints from concurrent Flight -> Fizz renders]
+kind      = needs-node
+why       = Flight's hints after an await reach the request only through Node's AsyncLocalStorage, which carries it across the await (React's server config for Node); no browser propagates async context (TC39 AsyncContext is a proposal), and the harness's AsyncLocalStorage holds its store only synchronously
+source    = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:1958
+
+[ReactFlightDOM > supports deduping hints by Float key]
+kind      = needs-node
+why       = Flight's hints after an await reach the request only through Node's AsyncLocalStorage, which carries it across the await (React's server config for Node); no browser propagates async context (TC39 AsyncContext is a proposal), and the harness's AsyncLocalStorage holds its store only synchronously
+source    = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:2076
+
+[ReactDOMServerIntegrationUserInteraction > user interaction with inputs before client render > should not blow away user-interaction on successful reconnect to a controlled range input]
+kind      = jsdom-only
+why       = the user's value 1 on a server-rendered <input type=range value=0.25> must survive hydration; in a browser the range's step base is its value attribute (0.25, HTML's step base), so setting 1 suffers a step mismatch and sanitizes to 1.25, which jsdom does not do
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness with 1.25; Chrome's trace: range.value = "1" reads back "1.25" (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:310
+
+[ReactDOMServerIntegrationUserInteraction > user interaction with inputs before client render > should not blow away user-entered text on successful reconnect to an uncontrolled checkbox]
+kind      = jsdom-only
+why       = React replays the user's change during hydration by dispatching a fake click, a PointerEvent where the global has one (ReactDOMEventReplaying replayChangeEvent); jsdom has no PointerEvent, so the click is a plain Event and runs no activation behaviour, while in a browser the MouseEvent click toggles the checkbox back
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness; Chrome's trace: the replayed PointerEvent click turns checked false to true (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:297
+
+[ReactDOMServerIntegrationUserInteraction > user interaction with inputs before client render > should not blow away user-entered text on successful reconnect to a controlled checkbox]
+kind      = jsdom-only
+why       = React replays the user's change during hydration by dispatching a fake click, a PointerEvent where the global has one (ReactDOMEventReplaying replayChangeEvent); jsdom has no PointerEvent, so the click is a plain Event and runs no activation behaviour, while in a browser the MouseEvent click toggles the checkbox back
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness; Chrome's trace: the replayed PointerEvent click turns checked false to true (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:297
+
+[ReactDOMServerIntegrationUserInteraction > user interaction with inputs before client render > should not blow away user-interaction cascading hydration to a controlled range input]
+kind      = jsdom-only
+why       = the user's value 1 on a server-rendered <input type=range value=0.25> must survive hydration; in a browser the range's step base is its value attribute (0.25, HTML's step base), so setting 1 suffers a step mismatch and sanitizes to 1.25, which jsdom does not do
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness with 1.25; Chrome's trace: range.value = "1" reads back "1.25" (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:399
+
+[ReactDOMServerIntegrationUserInteraction > user interaction with inputs before client render > should not blow away user-entered text cascading hydration to a controlled checkbox]
+kind      = jsdom-only
+why       = React replays the user's change during hydration by dispatching a fake click, a PointerEvent where the global has one (ReactDOMEventReplaying replayChangeEvent); jsdom has no PointerEvent, so the click is a plain Event and runs no activation behaviour, while in a browser the MouseEvent click toggles the checkbox back
+browsers  = Chrome 157, Firefox 159 and Safari 27 all fail it through the harness; Chrome's trace: the replayed PointerEvent click turns checked false to true (the file through tests/frameworks/react-jest; probe traces tmp/react1/probes/input-trace.js in Chrome; lane react1, 2026-11-22)
+source    = packages/react-dom/src/__tests__/ReactDOMServerIntegrationUserInteraction-test.js:390
+
+[FragmentRefs > compareDocumentPosition > returns the relationship between the fragment instance and a given node]
+kind      = follows-spec
+why       = asserts DOCUMENT_POSITION_FOLLOWING for an element in another tree; DOM's compareDocumentPosition makes that side implementation-specific (DISCONNECTED + IMPLEMENTATION_SPECIFIC + either PRECEDING or FOLLOWING, consistently). Crane gives Chrome's side in every probe (an element made earlier reads PRECEDING; consistent across 200 nodes of one tree: tmp/react1/probes/cdp-pos.html, cdp-order.html); Firefox 159 picks FOLLOWING in both tests, Safari 27 in one of the two - no browser majority on the side, so the spec decides, which Crane meets
+ruling    = integrator ruling 2026-11-22 11:57 PM ET (follows-spec: implementation-specific by DOM, no browser majority; Crane = Chrome)
+source    = packages/react-dom/src/__tests__/ReactDOMFragmentRefs-test.js:2448
+
+[FragmentRefs > compareDocumentPosition > handles fragment instances with one child]
+kind      = follows-spec
+why       = asserts DOCUMENT_POSITION_FOLLOWING for an element in another tree; DOM's compareDocumentPosition makes that side implementation-specific (DISCONNECTED + IMPLEMENTATION_SPECIFIC + either PRECEDING or FOLLOWING, consistently). Crane gives Chrome's side in every probe (an element made earlier reads PRECEDING; consistent across 200 nodes of one tree: tmp/react1/probes/cdp-pos.html, cdp-order.html); Firefox 159 picks FOLLOWING in both tests, Safari 27 in one of the two - no browser majority on the side, so the spec decides, which Crane meets
+ruling    = integrator ruling 2026-11-22 11:57 PM ET (follows-spec: implementation-specific by DOM, no browser majority; Crane = Chrome)
+source    = packages/react-dom/src/__tests__/ReactDOMFragmentRefs-test.js:2580
+
+[Shared useSyncExternalStore behavior (shim and built-in) > compares to current state before bailing out, even when there's a mutation in between the sync and passive effects]
+kind      = jsdom-only
+why       = runs React 17's UMD build (the shim test) and, by design, renders without act, leaving a passive effect scheduled when it ends; React 17's scheduler posts it through MessageChannel where the global has one, else through setTimeout, which Jest's fake timers hold - jsdom has no MessageChannel, so under jsdom the effect never runs, while in a browser it runs during the NEXT test and logs into it ("Passive effect: 0" before "A1"). Excluded so it never runs (the filter): its successors then pass
+browsers  = MessageChannel works in Chrome 157, Firefox 159 and Safari 27 (probe tmp/react1/probes/jsdom-classes.html), jsdom 26's window has none; with this test running, the test after it fails in all three through the harness, and filtering only the victim moves the failure to the next test (Crane and Chrome runs c8, k-r1, c-r1)
+source    = packages/use-sync-external-store/src/__tests__/useSyncExternalStoreShared-test.js:281
