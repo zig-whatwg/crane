@@ -88,3 +88,99 @@ test "tabs opened and closed leave no tab scope behind" {
     }
     try testing.expectEqual(live_before, TabScope.liveCount());
 }
+
+const SessionShed = @import("html").web_storage.TraversableStorageShed;
+
+test "a tab's session storage shed is its scope's, and ends with the tab" {
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
+    const tab = (try realmTab(popup)).retain();
+    defer tab.release();
+    const host_tab = try realmTab(host);
+
+    // Storage 4.3: "A traversable navigable holds a storage shed" - its
+    // tab's, made with the tab's first session storage.
+    try fixture.run(popup, "sessionStorage.setItem('s', 'popup'); true");
+    try testing.expect(tab.get(.session_storage, SessionShed) != null);
+    // A frame of the popup shares it: its realm is of the same tab.
+    try fixture.run(popup, "globalThis.f = document.createElement('iframe'); document.body.appendChild(f); true");
+    try fixture.expect(popup, "f.contentWindow.sessionStorage.getItem('s')", "popup");
+    // The host's tab holds its own.
+    try fixture.run(host, "sessionStorage.setItem('h', 'host'); true");
+    try testing.expect(host_tab.get(.session_storage, SessionShed) != null);
+    try testing.expect(host_tab.get(.session_storage, SessionShed) != tab.get(.session_storage, SessionShed));
+    try fixture.expect(popup, "String(sessionStorage.getItem('h'))", "null");
+
+    // The tab ends: its shed with it.
+    try fixture.run(host, "p.close(); p = null; true");
+    try fixture.waitUntilGone(popup.id);
+    try testing.expect(tab.closed);
+    try testing.expect(tab.get(.session_storage, SessionShed) == null);
+}
+
+const JointHistory = @import("html").navigation.joint_history.JointHistory;
+
+test "a tab's session history is its scope's: each tab keeps its own, and it ends with the tab" {
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const host_tab = try realmTab(host);
+    // Two navigations of the host's tab, as a host's UI makes them.
+    try fixture.run(host, "globalThis.before = history.length; history.pushState(null, '', '/host.html#one'); history.pushState(null, '', '/host.html#two'); true");
+    try fixture.expect(host, "history.length - before", "2");
+    const history = host_tab.get(.session_history, JointHistory) orelse return error.NoHistory;
+    // The record reads it as its own: one session history.
+    try testing.expect(host.joint_history == history);
+
+    // A tab opened beside it has a session history of its own.
+    const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1', 'noopener'); true", "/page.html");
+    const tab = (try realmTab(popup)).retain();
+    defer tab.release();
+    try fixture.expect(popup, "history.length", "1");
+    const popup_history = tab.get(.session_history, JointHistory) orelse return error.NoHistory;
+    try testing.expect(popup_history != history);
+    try fixture.expect(host, "history.length - before", "2");
+
+    // The tab closes: its history goes with it; the host's stays.
+    try fixture.browser.closeTraversable(popup.id);
+    try fixture.waitUntilGone(tab.id);
+    try testing.expect(tab.closed);
+    try testing.expect(tab.get(.session_history, JointHistory) == null);
+    try testing.expect(host_tab.get(.session_history, JointHistory) == history);
+}
+
+const platform = @import("platform");
+const html = @import("html");
+
+/// Post the platform's `visibility_changed(tab, visibility)` to the
+/// fixture's Browser, as a platform's observer would.
+fn postVisibility(fixture: *Fixture, tab: platform.TabId, visibility: platform.Visibility) !void {
+    const realm = fixture.browser.getRealm() orelse return error.NoRealm;
+    const browser_platform = html.platform_state.of(realm) orelse return error.NoBrowserPlatform;
+    const event: platform.PlatformEvent = .{ .kind = .visibility_changed, .tab = tab, .visibility = visibility };
+    platform.adapter.postEvent(browser_platform, &event);
+}
+
+test "a tab's system visibility is its scope's, and its frames read it" {
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const host_tab = try realmTab(host);
+    const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
+    const tab = try realmTab(popup);
+    try testing.expectEqual(TabScope.Visibility.visible, tab.system_visibility);
+
+    // HTML 6.2: the user agent decides a traversable's system visibility -
+    // here the platform, for the popup's tab alone.
+    try postVisibility(fixture, popup.id, .hidden);
+    try fixture.waitFor(popup, "document.visibilityState === 'hidden'");
+    try testing.expectEqual(TabScope.Visibility.hidden, tab.system_visibility);
+    try testing.expectEqual(TabScope.Visibility.visible, host_tab.system_visibility);
+    try fixture.expect(host, "document.visibilityState", "visible");
+    // A frame made in the hidden tab starts hidden ("set the initial
+    // visibility state" from its traversable's).
+    try fixture.run(popup, "globalThis.f = document.createElement('iframe'); document.body.appendChild(f); true");
+    try fixture.expect(popup, "f.contentDocument.visibilityState", "hidden");
+}
