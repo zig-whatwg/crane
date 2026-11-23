@@ -6409,7 +6409,7 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // LINT: reference counting's structural rules, as a ratchet
     // ========================================================================
-    // tmp/plans/refcount-design.md section 7 step 2. tools/lint_refcount.zig
+    // docs/refcount-design.md section 7 step 2. tools/lint_refcount.zig
     // counts, through std.zig.Ast, every write to `.parent_node` outside
     // NodeBase's one setter and every counted reference (`Ref`, `GCReachableRef`)
     // held inside a node's own state, per file, and fails if any count rises

@@ -1,5 +1,5 @@
 //! Refcount step 7b: a realm's end frees no node whatever its counts (lane
-//! rc7b; tmp/plans/refcount9-design.md B4). This file was lane wr1 batch
+//! rc7b; docs/refcount9-design.md B4). This file was lane wr1 batch
 //! 11's tests of step 7a's ended-realm net and its hole (node_wrappers.zig
 //! `endedRealmNet`, `endRealm`): a detached tree of a realm that ended,
 //! still held by a counted reference, was freed whatever its counts once no

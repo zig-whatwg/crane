@@ -64,7 +64,7 @@ pub fn hostDestroyed(shadow: *runtime.Instance) void {
 /// `shadow` was just attached to `host` (DOM "attach a shadow root", the
 /// step every shadow root - scripted or declarative - attaches through): its
 /// holds count in the host's chain from here on (the host-including chain of
-/// tmp/plans/refcount-design.md 1.4), and it is connected exactly when its
+/// docs/refcount-design.md 1.4), and it is connected exactly when its
 /// host is - "connected" is "its shadow-including root is a document".
 ///
 /// The flag on the new root is the one fact the insert, remove and move

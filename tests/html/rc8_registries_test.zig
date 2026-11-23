@@ -1,4 +1,4 @@
-//! Lane refcount8, refcount step 5i (tmp/plans/refcount-design.md 1.3): a
+//! Lane refcount8, refcount step 5i (docs/refcount-design.md 1.3): a
 //! document's registries never count their nodes. Each is raw and
 //! unregistered when its node goes, or a WEAK link - and a weak link reads a
 //! node of a GARBAGE tree as gone (design 1.4, "weak references see garbage

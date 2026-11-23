@@ -1,9 +1,9 @@
 //! Reference counting for DOM nodes: the types (lane rc12, step 2 of
-//! tmp/plans/refcount-design.md; decisions in tmp/plans/refcount-decisions.md).
+//! docs/refcount-design.md; decisions in docs/refcount-decisions.md).
 //!
 //! The counts - the tree links (step 3), the wrapper's reference (step 4),
 //! the holders' references (step 5) - DECIDE every free of a node since step
-//! 7 (lane refcount9's 7a, tmp/plans/refcount9-design.md B1-B2;
+//! 7 (lane refcount9's 7a, docs/refcount9-design.md B1-B2;
 //! dom.refcount_teardown): a tree is freed only once its total is zero, in
 //! every agent made with a deferred teardown queue - every production agent
 //! (Browser.zig, html/worker_host.zig), and since the wrapper redesign's P2 in
