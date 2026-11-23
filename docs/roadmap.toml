@@ -926,6 +926,28 @@ progress = [
   status = "todo"
 
 [[infra]]
+id = "approx-layout"
+title = "Approximate geometry: an emulated layout renderer (0.2)"
+why = """The user, 2026-11-23 12:48 PM ET: "we should do a geometry approximation, can you scope this out? I \
+think it may be a good 0.2 item". Headless automation (Puppeteer/Playwright actionability waits, the MCP click \
+tools, elementFromPoint, IntersectionObserver) needs boxes; Crane has none until a renderer plugs into protocol \
+6.9. An approximate layout behind the platform `layout` capability (.emulated) - the model Lightpanda ships \
+(read only, AGPL) - answers those reads plausibly. Scope: tmp/plans/queue-0.2.md, "Approximate geometry"."""
+done_when = """The emulated layout answers protocol 6.9 for block, inline (approximate text metrics), flex, grid, \
+positioned and replaced boxes with hit-testing and scrolling; measured against Chrome 157 on a page corpus \
+(element boxes within N px, hit agreement at click targets) with the numbers published; the user's rulings on \
+production inclusion, needs-renderer and CDP D7 recorded; WPT A/B shows no unruled loss."""
+progress = []
+
+  [[infra.items]]
+  name = "Design + Chrome-comparison harness"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Emulated layout behind protocol 6.9, measured"
+  status = "todo"
+
+[[infra]]
 id = "cdp-part-2"
 title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
 why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
