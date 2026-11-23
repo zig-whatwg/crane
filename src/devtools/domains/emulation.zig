@@ -26,7 +26,44 @@ pub const State = struct {
     /// This session set the tab's viewport override (the viewport keeps one,
     /// with no owner: the session that set it last clears it).
     viewport_set: bool = false,
+    /// A device metrics override is in force, set by this session's
+    /// setDeviceMetricsOverride with these params (EmulationHandler's
+    /// device_emulation_enabled_ and device_emulation_params_): the same
+    /// params again change nothing, nor does a clear with none set
+    /// (`changesNothing`).
+    device_emulation_enabled: bool = false,
+    device_emulation_params: ?E.setDeviceMetricsOverride.Params = null,
 };
+
+/// The params that make a device metrics override, as EmulationHandler
+/// compares them (blink::DeviceEmulationParams: view and screen size and
+/// position, scale factor, mobile, scale, viewport, orientation, display
+/// feature, posture) - not dontSetVisibleSize or the scrollbar type, which
+/// it keeps out of them.
+fn emulationParamsOf(params: E.setDeviceMetricsOverride.Params) E.setDeviceMetricsOverride.Params {
+    var p = params;
+    p.dontSetVisibleSize = null;
+    p.scrollbarType = null;
+    return p;
+}
+
+/// Whether `method` with `params` would change nothing - what Chrome's
+/// browser answers itself, at once, even while the page's commands are held
+/// for a navigation (EmulationHandler::SetDeviceMetricsOverride returns
+/// Success for `device_emulation_enabled_ && params ==
+/// device_emulation_params_`; ClearDeviceMetricsOverride for
+/// `!device_emulation_enabled_`; content/browser/devtools/protocol/
+/// emulation_handler.cc, chromium/src 65b1b80ff52b). `arena` holds the
+/// params' decode. PageSession.holds asks it.
+pub fn changesNothing(session: *const PageSession, method: []const u8, params: std.json.Value, arena: std.mem.Allocator) bool {
+    const s = &session.states.Emulation;
+    if (std.mem.eql(u8, method, "Emulation.clearDeviceMetricsOverride")) return !s.device_emulation_enabled;
+    if (!std.mem.eql(u8, method, "Emulation.setDeviceMetricsOverride")) return false;
+    if (!s.device_emulation_enabled) return false;
+    const stored = s.device_emulation_params orelse return false;
+    const given = std.json.parseFromValueLeaky(E.setDeviceMetricsOverride.Params, arena, params, .{ .ignore_unknown_fields = true }) catch return false;
+    return std.meta.eql(emulationParamsOf(given), stored);
+}
 
 /// The owner token of the session's overrides.
 fn owner(session: *PageSession) host_overrides.Owner {
@@ -43,6 +80,8 @@ pub fn sessionEnded(session: *PageSession) void {
         _ = browser_mod.viewport.setOverride(browser.scope, session.tab, null);
         session.states.Emulation.viewport_set = false;
     }
+    session.states.Emulation.device_emulation_enabled = false;
+    session.states.Emulation.device_emulation_params = null;
     const bc = tabOf(session) orelse return;
     const had_media = bc.host_overrides.media_owner == owner(session);
     const had_screen = bc.host_overrides.screen_owner == owner(session);
@@ -80,6 +119,12 @@ pub fn setDeviceMetricsOverride(session: *PageSession, params: E.setDeviceMetric
             .landscapeSecondary => .landscape_secondary,
         }, .angle = @intCast(given.angle) };
     }
+    // The same params again: nothing to change (EmulationHandler answers
+    // Success then, without applying anything).
+    const state = &session.states.Emulation;
+    if (state.device_emulation_enabled) if (state.device_emulation_params) |stored| {
+        if (std.meta.eql(emulationParamsOf(params), stored)) return .{};
+    };
     const size: ?frames.ViewportSize = if (params.width == 0 and params.height == 0) null else blk: {
         const window = bc.viewport;
         const width: i32 = if (params.width > 0) @intCast(@min(params.width, std.math.maxInt(i32))) else if (window) |w| w.width else 0;
@@ -99,6 +144,8 @@ pub fn setDeviceMetricsOverride(session: *PageSession, params: E.setDeviceMetric
     };
     const any = screen.width != null or screen.device_pixel_ratio != null or screen.orientation != null;
     setScreen(session, bc, if (any) screen else null);
+    state.device_emulation_enabled = true;
+    state.device_emulation_params = emulationParamsOf(params);
     // Chrome tells the page's sessions its frame was resized.
     if (session.states.Page.enabled) session.emit(protocol.Page.frameResized, .{});
     return .{};
@@ -106,6 +153,10 @@ pub fn setDeviceMetricsOverride(session: *PageSession, params: E.setDeviceMetric
 
 pub fn clearDeviceMetricsOverride(session: *PageSession, params: E.clearDeviceMetricsOverride.Params) !E.clearDeviceMetricsOverride.Result {
     _ = params;
+    // None set: nothing to clear (EmulationHandler answers Success).
+    if (!session.states.Emulation.device_emulation_enabled) return .{};
+    session.states.Emulation.device_emulation_enabled = false;
+    session.states.Emulation.device_emulation_params = null;
     const browser = session.browser orelse return .{};
     _ = browser_mod.viewport.setOverride(browser.scope, session.tab, null);
     session.states.Emulation.viewport_set = false;

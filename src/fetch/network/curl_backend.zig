@@ -903,12 +903,15 @@ pub const Transfer = struct {
         var status_code: c_long = 0;
         _ = curl.easy_getinfo(self.handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
         if (isCloseDelimitedEndOfBlock(result, status_code, self.ctx.raw_headers.items[self.ctx.block_start..end])) return;
-        const net_err = curl_error.mapCurlError(result);
+        const message = curl.errorBufferMessage(&self.error_buf, result);
+        // Chromium's name for it: a body cut short, or a chunked body that
+        // does not parse, is told by curl's message (refineTransferError).
+        const net_err = refineTransferError(curl_error.mapCurlError(result), message);
         log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
             self.method,
             self.url,
             result,
-            curl.errorBufferMessage(&self.error_buf, result),
+            message,
             @errorName(net_err),
         });
         return net_err;
@@ -958,12 +961,13 @@ pub const Transfer = struct {
                 // and the WPT runner's default level is `.warn`, so a DNS
                 // failure, a refused connection and a TLS handshake error all
                 // printed exactly nothing.
-                const net_err = curl_error.mapCurlError(result);
+                const message = curl.errorBufferMessage(&self.error_buf, result);
+                const net_err = refineTransferError(curl_error.mapCurlError(result), message);
                 log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
                     self.method,
                     self.url,
                     result,
-                    curl.errorBufferMessage(&self.error_buf, result),
+                    message,
                     @errorName(net_err),
                 });
                 return net_err;
@@ -1106,6 +1110,74 @@ fn codingsOfBlock(block: []const u8) content_coding.Plan {
         else => {},
     };
     return content_coding.plan(BlockFields{ .lines = headerLines(block), .name = "content-encoding" });
+}
+
+/// A transfer's failure as Chromium names it (net_error_list.h), where curl's
+/// code does not say and its message does. `err` is the code's mapping
+/// (curl_error.mapCurlError), `message` what curl wrote for the failure
+/// (CURLOPT_ERRORBUFFER keeps the first). lib/ at the vendored curl
+/// (zig-whatwg/curl 8300fa889e5e, curl 8.18.0):
+/// - a chunked body whose framing does not parse: http_chunks.c fails it
+///   with CURLE_RECV_ERROR, a reset's code, and one of its messages
+///   (`isChunkFramingMessage`): ERR_INVALID_CHUNKED_ENCODING;
+/// - a body cut short: CURLE_PARTIAL_FILE, which the code mapping leaves
+///   unknown - of a chunked body (http_chunks.c "transfer closed with
+///   outstanding read data remaining"): ERR_INCOMPLETE_CHUNKED_ENCODING; of
+///   a Content-Length (sendf.c "end of response with %d bytes missing",
+///   transfer.c "transfer closed with %d bytes remaining to read"):
+///   ERR_CONTENT_LENGTH_MISMATCH.
+/// A curl update that rewords these fails tests/fetch/
+/// fw2_chunked_errors_test.zig, which sends each through the vendored curl.
+fn refineTransferError(err: NetworkError, message: []const u8) NetworkError {
+    if (err == NetworkError.ConnectionReset and isChunkFramingMessage(message)) return NetworkError.InvalidChunkedEncoding;
+    if (err == NetworkError.Unknown) {
+        if (std.mem.eql(u8, message, "transfer closed with outstanding read data remaining")) return NetworkError.IncompleteChunkedEncoding;
+        if (std.mem.startsWith(u8, message, "end of response with ") and std.mem.endsWith(u8, message, " bytes missing")) return NetworkError.ContentLengthMismatch;
+        if (std.mem.startsWith(u8, message, "transfer closed with ") and std.mem.endsWith(u8, message, " bytes remaining to read")) return NetworkError.ContentLengthMismatch;
+    }
+    return err;
+}
+
+/// curl's messages for a chunked body whose framing does not parse
+/// (http_chunks.c): httpchunk_readwrite's own for a hex length too long
+/// ("chunk hex-length longer than %d"), a length character that is not hex
+/// ("chunk hex-length char not a hex digit: 0x%x") and a length that does
+/// not parse ("invalid chunk size: '%s'"); Curl_httpchunk_read's "%s in
+/// chunked-encoding" for those without one, of which the framing ones are
+/// Curl_chunked_strerror's CHUNKE_TOO_LONG_HEX, CHUNKE_ILLEGAL_HEX and
+/// CHUNKE_BAD_CHUNK (a chunk's data not followed by CRLF). Not
+/// CHUNKE_PASSTHRU_ERROR ("Failed reading the chunked-encoded stream": the
+/// writer behind the parser failed) nor CHUNKE_OUT_OF_MEMORY.
+fn isChunkFramingMessage(message: []const u8) bool {
+    const prefixes = [_][]const u8{ "chunk hex-length longer than ", "chunk hex-length char not a hex digit: ", "invalid chunk size: " };
+    for (prefixes) |p| if (std.mem.startsWith(u8, message, p)) return true;
+    const whole = [_][]const u8{
+        "Too long hexadecimal number in chunked-encoding",
+        "Illegal or missing hexadecimal sequence in chunked-encoding",
+        "Malformed encoding found in chunked-encoding",
+    };
+    for (whole) |w| if (std.mem.eql(u8, message, w)) return true;
+    return false;
+}
+
+test "refineTransferError: curl's messages for a body cut short and a chunked body that does not parse" {
+    try std.testing.expectEqual(NetworkError.ContentLengthMismatch, refineTransferError(NetworkError.Unknown, "end of response with 95 bytes missing"));
+    try std.testing.expectEqual(NetworkError.ContentLengthMismatch, refineTransferError(NetworkError.Unknown, "transfer closed with 95 bytes remaining to read"));
+    try std.testing.expectEqual(NetworkError.IncompleteChunkedEncoding, refineTransferError(NetworkError.Unknown, "transfer closed with outstanding read data remaining"));
+    for ([_][]const u8{
+        "chunk hex-length char not a hex digit: 0x7a",
+        "chunk hex-length longer than 16",
+        "invalid chunk size: 'ffffffffffffffffff'",
+        "Illegal or missing hexadecimal sequence in chunked-encoding",
+        "Malformed encoding found in chunked-encoding",
+        "Too long hexadecimal number in chunked-encoding",
+    }) |message| try std.testing.expectEqual(NetworkError.InvalidChunkedEncoding, refineTransferError(NetworkError.ConnectionReset, message));
+    // A reset stays a reset; the parser's writer failing is no framing error;
+    // another unknown failure stays unknown.
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Recv failure: Connection reset by peer"));
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Failed reading the chunked-encoded stream"));
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Out of memory in chunked-encoding"));
+    try std.testing.expectEqual(NetworkError.Unknown, refineTransferError(NetworkError.Unknown, "HTTP/2 stream 1 was reset"));
 }
 
 fn blockHasField(block: []const u8, name: []const u8) bool {

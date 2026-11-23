@@ -1,15 +1,18 @@
 <!doctype html>
 <!--
-/frameworks/'s card without its rates: base.png (1200x630), drawn once in the WPT site's faces.
-The rates are composited onto it by tools/fw_matrix/card.zig from the WPT site's own digit atlas
-(tools/wpt_site/card/atlas.png, the 400/60px cut). Each rate's decimal point and "%" are drawn
-here, at the positions card.zig computes: change COLUMN_RIGHT, ROW_BASELINE, ROWS and WAITING
-here and column_right, row_baseline, row_titles and waiting_titles there together.
-  ?part=base     -> base.png
-  ?part=marks    -> marks.png (120x80: ">" and "<" in the 400/60px cut, black on white, one per cell as
-                    the WPT atlas lays out its `of` row: cell 60x80, origin x 10, baseline 62)
-  ?part=metrics  -> the advances of ".", ">" and "<" in that cut (card.zig `period`, `mark_advance`)
-How it was made, and how to remake it: README.md beside this file.
+/frameworks/'s card, the parts tools/fw_matrix/card.zig composes it from, drawn once in the WPT site's faces:
+  ?part=base     -> base.png (1200x630): the frame - title, scope line, column heads, the rules above and below
+                    the rows, footer. The rows' area between the rules is paper: card.zig lays the rows out there,
+                    as many as the chart has, at the largest size they fit in.
+  ?part=sheet    -> marks.png (SHEET_W x SHEET_H): every glyph card.zig writes that the WPT digit atlas
+                    (tools/wpt_site/card/atlas.png) does not hold, black on white, one per cell, face by face
+                    (FACES), PER_ROW cells to a row (one 3800px-wide row lost its last face's glyphs in
+                    headless Chrome's capture): the rates' ">", "<" and "." and their "%" in each of the two sizes, and printable
+                    ASCII in the row labels' two sizes (a row's title, "can't run yet").
+  ?part=metrics  -> each face's glyph advances, measured as the atlas's were (card.zig's `*_advances`).
+FACES and PER_ROW here and card.zig's faces (row_y, cell, origin, baseline, per_row) change together; so do the rules' places
+(RULE_TOP, RULE_BOTTOM: rows_top, rows_bottom). How it was made, and how to remake it: README.md beside
+this file.
 -->
 <html lang="en">
 <head>
@@ -22,18 +25,34 @@ svg { display: block; }
 text { font-kerning: none; font-variant-numeric: tabular-nums lining-nums; }
 .serif { font-family: "Source Serif 4"; }
 .sans { font-family: "Public Sans"; }
-pre { font: 14px monospace; margin: 0; }
+pre { font: 14px monospace; margin: 0; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <script>
 const NS = "http://www.w3.org/2000/svg";
-// card.zig's constants. DIGIT is the atlas's 400/60px digit advance (tools/wpt_site/card.zig `of`).
+// card.zig's constants.
 const COLUMN_RIGHT = [780, 1040];
-const ROW_BASELINE = [296, 358, 420, 482];
-const ROWS = ["Angular", "htmx", "jQuery", "TodoMVC apps"];
-const WAITING = "React, Svelte and Vue can’t run yet: they wait for CDP";
-const DIGIT = 28.203125;
+const RULE_TOP = 232;
+const RULE_BOTTOM = 572;
+let ASCII = "";
+for (let c = 0x20; c < 0x7f; c++) ASCII += String.fromCharCode(c);
+// Each face: its glyphs, its font, and its cells in the sheet (row_y, cell w x h, origin x, baseline).
+const FACES = [
+  { name: "large_marks", glyphs: "><.", cls: "serif", weight: 400, size: 60, row_y: 0, w: 60, h: 80, ox: 10, base: 62 },
+  { name: "large_percent", glyphs: "%", cls: "serif", weight: 400, size: 40, row_y: 80, w: 44, h: 56, ox: 8, base: 42 },
+  { name: "small_marks", glyphs: "><.", cls: "serif", weight: 600, size: 40, row_y: 136, w: 44, h: 56, ox: 8, base: 42 },
+  { name: "small_percent", glyphs: "%", cls: "serif", weight: 400, size: 28, row_y: 192, w: 32, h: 40, ox: 6, base: 30 },
+  { name: "label_large", glyphs: ASCII, cls: "sans", weight: 500, size: 28, row_y: 232, w: 40, h: 44, ox: 6, base: 32 },
+  { name: "label_small", glyphs: ASCII, cls: "sans", weight: 500, size: 22, row_y: 364, w: 32, h: 36, ox: 5, base: 26 },
+];
+// A face's cells wrap after PER_ROW: glyph i is in cell (i % PER_ROW, i / PER_ROW) from the face's row_y.
+const PER_ROW = 32;
+const rowsOf = (f) => Math.ceil(f.glyphs.length / PER_ROW);
+const cellX = (f, i) => (i % PER_ROW) * f.w;
+const cellY = (f, i) => f.row_y + Math.floor(i / PER_ROW) * f.h;
+const SHEET_W = Math.max(...FACES.map((f) => f.w * Math.min(PER_ROW, f.glyphs.length)));
+const SHEET_H = Math.max(...FACES.map((f) => f.row_y + rowsOf(f) * f.h));
 const part = new URLSearchParams(location.search).get("part") || "base";
 function svg(w, h) {
   const s = document.createElementNS(NS, "svg");
@@ -50,36 +69,47 @@ function text(s, x, y, str, cls, size, weight, fill, extra = {}) {
   s.append(t);
   return t;
 }
-document.fonts.load('400 60px "Source Serif 4"').then(() => document.fonts.load('620 46px "Source Serif 4"'))
-  .then(() => document.fonts.load('400 20px "Public Sans"')).then(() => document.fonts.ready).then(() => {
-  // The point's advance in the rates' cut, measured as the atlas's advances were.
-  const probe = svg(10, 10);
-  const PERIOD = text(probe, 0, 5, ".", "serif", 60, 400, "#000").getComputedTextLength();
-  probe.remove();
-  if (part === "marks") {
-    const s = svg(120, 80);
-    const bg = document.createElementNS(NS, "rect");
-    bg.setAttribute("width", 120); bg.setAttribute("height", 80); bg.setAttribute("fill", "#ffffff");
-    s.append(bg);
-    [">", "<"].forEach((g, i) => text(s, i * 60 + 10, 62, g, "serif", 60, 400, "#000"));
+function paper(s, w, h) {
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#ffffff");
+  s.append(bg);
+}
+Promise.all([
+  document.fonts.load('400 60px "Source Serif 4"'), document.fonts.load('600 40px "Source Serif 4"'),
+  document.fonts.load('620 46px "Source Serif 4"'), document.fonts.load('400 20px "Public Sans"'),
+  document.fonts.load('500 28px "Public Sans"'), document.fonts.load('600 22px "Public Sans"'),
+]).then(() => document.fonts.ready).then(() => {
+  if (part === "sheet") {
+    const s = svg(SHEET_W, SHEET_H);
+    paper(s, SHEET_W, SHEET_H);
+    for (const f of FACES) {
+      [...f.glyphs].forEach((g, i) => { if (g !== " ") text(s, cellX(f, i) + f.ox, cellY(f, i) + f.base, g, f.cls, f.size, f.weight, "#000"); });
+    }
     document.title = "ready";
     return;
   }
   if (part === "metrics") {
-    const probe2 = svg(10, 10);
-    const adv = (g) => text(probe2, 0, 5, g, "serif", 60, 400, "#000").getComputedTextLength();
+    const probe = svg(10, 10);
+    const out = {};
+    for (const f of FACES) {
+      // A space measured alone is 0 in some builds: measured between two glyphs instead.
+      out[f.name] = [...f.glyphs].map((g) => {
+        if (g !== " ") return text(probe, 0, 5, g, f.cls, f.size, f.weight, "#000").getComputedTextLength();
+        const both = text(probe, 0, 5, "x x", f.cls, f.size, f.weight, "#000", { "xml:space": "preserve" }).getComputedTextLength();
+        const xx = text(probe, 0, 5, "xx", f.cls, f.size, f.weight, "#000").getComputedTextLength();
+        return both - xx;
+      });
+    }
     const pre = document.createElement("pre");
     pre.id = "metrics";
-    pre.textContent = JSON.stringify({ period: PERIOD, gt: adv(">"), lt: adv("<") });
+    pre.textContent = JSON.stringify({ sheet: [SHEET_W, SHEET_H], faces: out });
     document.body.replaceChildren(pre);
     document.title = "ready";
     return;
   }
   // Tokens: paper #ffffff, ink #202124, ink-2 #5a5e63, rule #d9dce0 (the WPT site's, light).
   const s = svg(1200, 630);
-  const bg = document.createElementNS(NS, "rect");
-  bg.setAttribute("width", 1200); bg.setAttribute("height", 630); bg.setAttribute("fill", "#ffffff");
-  s.append(bg);
+  paper(s, 1200, 630);
   const title = text(s, 80, 104, "", "serif", 46, 620, "#202124");
   const a = document.createElementNS(NS, "tspan"); a.textContent = "Crane ";
   const b = document.createElementNS(NS, "tspan"); b.textContent = "Frameworks"; b.setAttribute("font-weight", 380);
@@ -87,20 +117,10 @@ document.fonts.load('400 60px "Source Serif 4"').then(() => document.fonts.load(
   text(s, 80, 152, "SHARE OF EACH FRAMEWORK’S OWN TESTS THAT PASS", "sans", 20, 600, "#5a5e63", { "letter-spacing": "1.6" });
   const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
   ["Crane", "Chrome"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 38, 214, l, "sans", 22, 600, i === 0 ? "#202124" : "#5a5e63", { "text-anchor": "end" }));
-  rule(232);
-  ROWS.forEach((l, r) => {
-    text(s, 80, ROW_BASELINE[r], l, "sans", 28, 500, "#202124");
-    COLUMN_RIGHT.forEach((right, c) => {
-      const fill = c === 0 ? "#202124" : "#5a5e63";
-      // The point, where card.zig puts it: right - DIGIT - PERIOD; the "%" just right of the tenth.
-      text(s, right - DIGIT - PERIOD, ROW_BASELINE[r], ".", "serif", 60, 400, fill);
-      text(s, right + 4, ROW_BASELINE[r], "%", "serif", 40, 400, "#5a5e63");
-    });
-  });
-  rule(512);
-  text(s, 80, 552, WAITING, "sans", 22, 500, "#5a5e63");
-  text(s, 80, 600, "zig-whatwg.github.io/crane/frameworks", "sans", 20, 500, "#202124");
-  text(s, 1120, 600, "Crane beside Chrome; tests passed of tests run", "sans", 18, 400, "#5a5e63", { "text-anchor": "end" });
+  rule(RULE_TOP);
+  rule(RULE_BOTTOM);
+  text(s, 80, 608, "zig-whatwg.github.io/crane/frameworks", "sans", 20, 500, "#202124");
+  text(s, 1120, 608, "Crane beside Chrome; tests passed of tests run", "sans", 18, 400, "#5a5e63", { "text-anchor": "end" });
   document.title = "ready";
 });
 </script>

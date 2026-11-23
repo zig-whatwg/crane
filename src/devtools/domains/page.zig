@@ -378,6 +378,7 @@ pub fn onBrowserMilestone(side: *BrowserSide, milestone: *const frames.Milestone
     // inspector does (contexts.zig onServedCommit).
     contexts.onServedCommit(side, milestone);
     const navigable = milestone.navigable_id;
+    noteNavigationInFlight(side, milestone);
     switch (milestone.event) {
         .committed, .navigable_destroyed => stopIdleness(side, navigable),
         .dom_content_loaded => |loaded| {
@@ -387,6 +388,47 @@ pub fn onBrowserMilestone(side: *BrowserSide, milestone: *const frames.Milestone
         },
         else => {},
     }
+}
+
+/// The Browser's record of the tabs' cross-document navigations in flight
+/// (BrowserSide.navigations), whose sessions hold the commands the page
+/// answers (held_commands.zig): from a navigation's request start until it
+/// commits or ends, or its tab goes. Chrome keeps it on the page's agent
+/// host, for its frame only (RenderFrameDevToolsAgentHost::
+/// DidStartNavigation returns for another frame tree node's navigation):
+/// a frame's navigation holds nothing. When a tab's last one ends, its
+/// sessions' held commands go, from a session message of their own
+/// (PageSession.scheduleRelease) - after the commit, in the new document.
+fn noteNavigationInFlight(side: *BrowserSide, milestone: *const frames.Milestone) void {
+    const navigable = milestone.navigable_id;
+    const ended = switch (milestone.event) {
+        .request_started => {
+            if (!isTab(side, navigable)) return;
+            side.navigations.begin(side.allocator, navigable, milestone.navigation_id) catch {
+                log.warn("out of memory: the commands of tab {d} are not held for its navigation", .{navigable});
+            };
+            return;
+        },
+        .committed => milestone.navigation_id != 0 and side.navigations.end(navigable, milestone.navigation_id),
+        .aborted => side.navigations.end(navigable, milestone.navigation_id),
+        .navigable_destroyed => {
+            side.navigations.forget(navigable);
+            return;
+        },
+        else => return,
+    };
+    if (!ended) return;
+    for (side.sessions.items) |session| {
+        if (session.tab == navigable) session.scheduleRelease();
+    }
+}
+
+/// Whether `navigable` is a top-level traversable: a tab.
+fn isTab(side: *BrowserSide, navigable: u64) bool {
+    const b = side.browser orelse return false;
+    const navigables = @import("dom").browser_state.existingNavigablesIn(b.scope) orelse return false;
+    const bc = navigables.byId(navigable) orelse return false;
+    return bc.parent == null;
 }
 
 /// fetch_observer: `navigable`'s count of fetches in flight is `in_flight`
