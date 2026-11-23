@@ -1778,51 +1778,6 @@ fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
     if (iosSdkPath(b)) |sdk| translate.addSystemIncludePath(sdk.path(b, "usr/include"));
 }
 
-/// A C header set translated to Zig by the build: what a file's `@cImport`
-/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; Step.TranslateC
-/// is deprecated in 0.17 but present). The file
-/// imports the result by name (`const c = @import("curl_c");`).
-///
-/// `@cImport` translated against its module's include paths and C macros; a
-/// translate-c step sees only its own, so each set names them: `libs`'
-/// installed headers (what linkLibrary gave the module), `macros` (what
-/// addCMacro gave it), `system_libs` (linkSystemLibrary's pkg-config flags)
-/// and, for aarch64-ios, the SDK's usr/include - which kit/posix's time.h
-/// never had (the iOS lib-full break since de4a36b9529a).
-///
-/// ONE module per header set per graph: two translate-c modules with the same
-/// inputs have the same output file, and a file in two modules of one compile
-/// is an error. So a set two importers in one graph share is made once and
-/// handed to both (PlatformBinding.c_time, for tests/platform).
-///
-/// Translated as Debug: none of these headers tests __OPTIMIZE__ or NDEBUG
-/// (curl 8.18, mbedTLS 3.6.6, Brotli, image_codecs.h and <time.h>; checked
-/// 2026-10-29), so the result is the same in every mode the importers build.
-/// The threading configuration buildStaticLibcurl compiles mbedTLS with, which
-/// every translation of its headers must see too.
-const mbedtls_threading_macros = [_][2][]const u8{ .{ "MBEDTLS_THREADING_C", "" }, .{ "MBEDTLS_THREADING_PTHREAD", "" } };
-
-const CImport = struct {
-    includes: []const []const u8,
-    libs: []const *std.Build.Step.Compile = &.{},
-    macros: []const [2][]const u8 = &.{},
-    system_libs: []const []const u8 = &.{},
-};
-
-fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget, spec: CImport) *std.Build.Module {
-    var text: std.ArrayList(u8) = .empty;
-    for (spec.includes) |include| text.print(b.allocator, "#include <{s}>\n", .{include}) catch @panic("OOM");
-    const header = b.addWriteFiles().add(b.fmt("{s}.h", .{name}), text.items);
-    const translate = b.addTranslateC(.{ .root_source_file = header, .target = target, .optimize = .Debug, .link_libc = true });
-    for (spec.libs) |lib| translate.addIncludePath(lib.getEmittedIncludeTree());
-    for (spec.macros) |macro| translate.defineCMacro(macro[0], macro[1]);
-    for (spec.system_libs) |lib| translate.linkSystemLibrary(lib, .{});
-    if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
-        translate.addSystemIncludePath(sdk.path(b, "usr/include"));
-    };
-    return translate.createModule();
-}
-
 /// The platform a module graph is built for: a listed adapter or a third
 /// party's (platform_build.Platform).
 const Platform = platform_build.Platform;
@@ -1949,7 +1904,7 @@ const PlatformBinding = struct {
     /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
     /// whose own test blocks the platform tests run.
     kit_media_decoding: *std.Build.Module,
-    /// <time.h> translated (addCImport), which kit/posix imports as `c_time`;
+    /// <time.h> translated (kit_build.cImport), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
 };
@@ -2050,7 +2005,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
-        kit[7].addImport("brotli_c", addCImport(b, "brotli_c", target, .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
+        kit[7].addImport("brotli_c", kit_build.cImport(b, "brotli_c", target, prepareCFor(target), .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
     };
     // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
     // kit/brotli - headless's NotSupported when no Brotli library is built.
@@ -2075,7 +2030,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_media_decoding.addImport("mimesniff", options.mimesniff);
     if (options.image_codecs) |codecs| {
         kit[8].linkLibrary(codecs);
-        kit[8].addImport("image_codecs_c", addCImport(b, "image_codecs_c", target, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
+        kit[8].addImport("image_codecs_c", kit_build.cImport(b, "image_codecs_c", target, prepareCFor(target), .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
     }
     if (target.result.os.tag == .ios) {
         addIosSdkPaths(kit[7], iosSdkPath(b));
@@ -2093,7 +2048,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("host", options.host);
     kit[0].addImport("memory", options.memory);
     // and reads the local time zone through <time.h> (localtime_r, tzset).
-    const c_time = addCImport(b, "c_time", target, .{ .includes = &.{"time.h"} });
+    const c_time = kit_build.cImport(b, "c_time", target, prepareCFor(target), .{ .includes = &.{"time.h"} });
     kit[0].addImport("c_time", c_time);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
@@ -2111,10 +2066,10 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
     if (options.mbedtls) |mbedtls| {
         kit_curl_share.linkLibrary(mbedtls);
-        kit_curl_share.addImport("mbedtls_c", addCImport(b, "mbedtls_trust_c", target, .{
+        kit_curl_share.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_trust_c", target, prepareCFor(target), .{
             .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
             .libs = &.{mbedtls},
-            .macros = &mbedtls_threading_macros,
+            .macros = &kit_build.mbedtls_threading_macros,
         }));
         if (target.result.os.tag == .ios) addIosSdkPaths(kit_curl_share, iosSdkPath(b));
     }
@@ -2124,10 +2079,10 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
     if (options.libcurl) |libcurl| {
         kit_build.curl.linkStaticLibcurl(kit[3], target, libcurl, prepareCFor(target));
-        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     } else {
         kit[3].linkSystemLibrary("curl", .{});
-        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
     return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
@@ -2900,7 +2855,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "fetch", .module = testing_graph.fetch }},
         });
         deps_test_mod.linkLibrary(mbedtls_library);
-        deps_test_mod.addImport("mbedtls_version_c", addCImport(b, "mbedtls_version_c", target, .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &mbedtls_threading_macros }));
+        deps_test_mod.addImport("mbedtls_version_c", kit_build.cImport(b, "mbedtls_version_c", target, prepareCFor(target), .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &kit_build.mbedtls_threading_macros }));
         const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), "tests-linked_libraries", null);
         b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
@@ -3733,7 +3688,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "platform", .module = testing_graph.platform },
             .{ .name = "platform_options", .module = testing_graph.platform_options },
             // dp1_local_datetime_test.zig checks against localtime_r through the
-            // <time.h> module kit/posix imports (addCImport: one per graph).
+            // <time.h> module kit/posix imports (kit_build.cImport: one per graph).
             .{ .name = "c_time", .module = testing_graph.c_time },
             // tls1_stack_overflow_test.zig runs the stack-overflow fixture
             // (tests/platform/stack_overflow_fixture.zig): a program set up
@@ -6469,7 +6424,8 @@ const CheckedBuild = struct {
 /// when they need it. What a build links is found from its executable: every
 /// library artifact reachable through the link entries of the modules in its
 /// graph, and of those libraries in turn (libcurl's mbedTLS, zlib, nghttp2,
-/// Brotli). libcurl's own sources are held to `libcurl_sanitize_c`.
+/// Brotli). A kit library whose sanitizer is its own in every mode is held
+/// to it (kit_build.expectedSanitizer).
 fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
     const gpa = b.allocator;
     var linked: std.ArrayList(runner_build_mode.LinkedCLibrary) = .empty;
@@ -6509,7 +6465,6 @@ fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
             };
         }
         for (libraries.keys()) |library| {
-            const is_libcurl = std.mem.eql(u8, library.name, "curl");
             linked.append(gpa, .{
                 .build = checked.exe.name,
                 .library = library.name,
@@ -6517,7 +6472,7 @@ fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
                 .optimize = library.root_module.optimize orelse .debug,
                 .sanitize_c = library.root_module.sanitize_c,
                 .want_optimize = checked.c.optimize,
-                .want_sanitize_c = if (is_libcurl) kit_build.curl.libcurl_sanitize_c else checked.c.sanitize_c,
+                .want_sanitize_c = kit_build.expectedSanitizer(library.name) orelse checked.c.sanitize_c,
             }) catch @panic("OOM");
         }
     }
@@ -7784,11 +7739,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     if (use_system_curl) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
-        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
     } else if (config.static_libcurl) |static| {
         // Production: the statically compiled libcurl with mbedTLS
         kit_build.curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, prepareCFor(target));
-        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     }
     const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
 
@@ -7797,10 +7752,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // installed headers, translated with the library's threading macros.
     if (linked_mbedtls) |library| {
         webcrypto_mod.linkLibrary(library);
-        webcrypto_mod.addImport("mbedtls_c", addCImport(b, "mbedtls_c", target, .{
+        webcrypto_mod.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_c", target, prepareCFor(target), .{
             .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
             .libs = &.{library},
-            .macros = &mbedtls_threading_macros,
+            .macros = &kit_build.mbedtls_threading_macros,
         }));
     }
     const webcrypto_options = b.addOptions();
