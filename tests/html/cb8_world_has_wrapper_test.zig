@@ -72,14 +72,44 @@ fn quotaExceededCaughtInWorld() !void {
     var page = try Page.open("");
     defer page.close();
     const world = try openWithWorld(&page);
+    // Crypto's quotaExceeded frees the exception it threw "if unwrapped"
+    // (`defer if (!engine.hasWrapper(exception)) deinit`). Its throw wraps it
+    // in the realm it entered, so it is a pin, green before and after the
+    // ruling: the name and the legacy code still read after collections.
+    // (Its message is "" - the exception is made with none - which an earlier
+    // version of this test read as a free.)
     try expectInWorld(world,
         \\globalThis.caught = null;
         \\try { crypto.getRandomValues(new Uint8Array(70000)); } catch (e) { globalThis.caught = e; }
-        \\caught.name
-    , "QuotaExceededError");
+        \\caught.name + ' ' + String(caught.code)
+    , "QuotaExceededError 22");
     try page.settle();
-    try expectInWorld(world, "caught.name + ' ' + String(caught.message.length > 0)", "QuotaExceededError true");
+    try expectInWorld(world, "caught.name + ' ' + String(caught.code)", "QuotaExceededError 22");
 }
 test "a QuotaExceededError a world caught stays readable after collections" {
     try probe.onFreshThread(quotaExceededCaughtInWorld);
+}
+
+fn messageEventOnlyAWorldSaw() !void {
+    var page = try Page.open("");
+    defer page.close();
+    const world = try openWithWorld(&page);
+    // Only the world listens for message: the event the user agent fires is
+    // wrapped in the world alone, and the world keeps it. After the dispatch
+    // the Window frees the event "if unwrapped" (Window.zig fireMessageEvent:
+    // `if (engine.hasWrapper(event)) return; deinit`) - which must ask the
+    // world too, or the world's `ev` reads a freed event.
+    try expectInWorld(world,
+        \\globalThis.ev = null;
+        \\window.addEventListener('message', (e) => { globalThis.ev = e; });
+        \\'ok'
+    , "ok");
+    try page.run("window.postMessage('hello', '*');");
+    _ = try page.browser.runEventLoopBlocking(50);
+    try expectInWorld(world, "ev === null ? 'none' : ev.type + ' ' + ev.data", "message hello");
+    try page.settle();
+    try expectInWorld(world, "ev.type + ' ' + ev.data + ' ' + String(ev.isTrusted)", "message hello true");
+}
+test "a MessageEvent only a world's listener saw is not freed under the world's wrapper" {
+    try probe.onFreshThread(messageEventOnlyAWorldSaw);
 }
