@@ -42,6 +42,7 @@ const range_boundaries = @import("range_boundaries.zig");
 const custom_elements = @import("custom_elements.zig");
 const tree_ordered_map = @import("tree_ordered_map.zig");
 const heading_offsets = @import("heading_offsets.zig");
+const inspector_probes = @import("inspector_probes.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -978,6 +979,13 @@ fn insertWith(
         // that node brings a slot into.
         insertionSlotSteps(parent.allocator(), n, @ptrCast(parent));
 
+        // CDP's DOM agents (dom.inspector_probes; one load while none is
+        // enabled): Blink's probe::DidInsertDOMNode, after the link and the
+        // slot check, before the insertion steps (ContainerNode::
+        // InsertNodeVector: mutator, ChildAdded, CheckSlotChangeAfterInserted,
+        // DidInsertDOMNode, NotifyNodeInsertedInternal).
+        if (inspector_probes.active()) inspector_probes.didInsertDOMNode(n);
+
         // Step 7.7: For each shadow-including inclusive descendant of node,
         // in shadow-including tree order, run the insertion steps
         // Spec: DOM §4.2.5 step 7.7
@@ -1140,6 +1148,9 @@ pub fn appendChildren(
     }
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
+    // CDP's DOM agents: each inserted child, in order (Blink's
+    // DidInsertDOMNode; insert's step 7 has the same probe).
+    if (inspector_probes.active()) for (children) |child| inspector_probes.didInsertDOMNode(child);
 
     // Step 6: Update live ranges if document is available (the first
     // appended child's index: counted only when there are live ranges)
@@ -1274,6 +1285,8 @@ pub fn insertChildrenBefore(
     for (children) |child| parent.linkChildBefore(child, ref_child);
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
+    // CDP's DOM agents: each inserted child, in order (DidInsertDOMNode).
+    if (inspector_probes.active()) for (children) |child| inspector_probes.didInsertDOMNode(child);
 
     // Update live ranges (the first inserted child's index: counted only
     // when there are live ranges)
@@ -1624,6 +1637,12 @@ fn removeHeldMoving(
         return error.HierarchyRequestError;
     };
 
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::WillRemoveDOMNode, while node still has its
+    // parent (ContainerNode::WillRemoveChild and WillRemoveChildren, before
+    // the removal and before any frame in it is disconnected).
+    if (inspector_probes.active()) inspector_probes.willRemoveDOMNode(node);
+
     // Step 3: Run the live range pre-remove steps
     runLiveRangePreRemoveSteps(node);
 
@@ -1922,6 +1941,12 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     const old_parent = node.parent_node orelse return error.HierarchyRequestError;
     const allocator = new_parent.allocator();
 
+    // CDP's DOM agents: a move is Blink's removal and insertion
+    // (ContainerNode::moveBefore runs WillRemoveChild, then
+    // InsertNodeVector): WillRemoveDOMNode now, while node is oldParent's
+    // child, and DidInsertDOMNode after step 24.
+    if (inspector_probes.active()) inspector_probes.willRemoveDOMNode(node);
+
     // 9. "Run the live range pre-remove steps, given node."
     runLiveRangePreRemoveSteps(node);
     // 10. "For each NodeIterator object iterator whose root's node document
@@ -2002,6 +2027,9 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // newParent." 24. "Run assign slottables for a tree with node's root."
     // (The insert steps 7.4-7.6.)
     insertionSlotSteps(allocator, node, new_parent);
+
+    // CDP's DOM agents: the move's insertion (DidInsertDOMNode).
+    if (inspector_probes.active()) inspector_probes.didInsertDOMNode(node);
 
     // The new parent's children changed - the stated deviation above.
     runChildrenChangedSteps(new_parent, .moved);

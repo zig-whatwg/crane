@@ -75,6 +75,15 @@ pub fn updateStyleAttribute(element: *runtime.Instance) (Allocator.Error || elem
     if (state.inline_state == .blocked) state.inline_state = .parsed;
 }
 
+/// Whether `element`'s style attribute is being set by its own declaration
+/// block now (CSSOM "update style attribute for", the block's updating
+/// flag): CDP's DOM agents then see an inline style change, not an
+/// attribute change (dom.inspector_probes.attributeChanged).
+pub fn updatingStyleAttribute(element: *runtime.Instance) bool {
+    const state = element_style.existingOf(element) orelse return false;
+    return state.updating;
+}
+
 /// The serialized value of property `name` in the element's inline block,
 /// or null when it has none. Owned by `allocator`.
 pub fn inlineValue(element: *runtime.Instance, name: []const u8, allocator: Allocator) Allocator.Error!?[]u8 {

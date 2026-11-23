@@ -179,6 +179,10 @@ pub const BrowserScope = struct {
         /// dense u32 id (lane nd2 batch 2, A1: Blink's and WebKit's
         /// AtomString values). Weak, like `element_names`.
         attribute_values,
+        /// dom.inspector_probes.Sink: the Browser's CDP DOM agents, which a
+        /// probe reaches in one load while any agent is enabled (lane
+        /// cdpd1; Blink's per-local-root CoreProbeSink).
+        inspector_probes,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 

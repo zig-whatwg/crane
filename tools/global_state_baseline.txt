@@ -19,6 +19,7 @@ src/dom/auxiliary_navigables.zig top_level_chooser 1 G H decl:560681e25ee26e75
 src/dom/bfcache.zig cache 1 G H decl:d135333fef73a47d
 src/dom/bfcache.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/bfcache.zig owner_steps 1 G H decl:f1bed46231e7978d
+src/dom/blob_bytes.zig file_steps 1 G H decl:c10eb19bdb723dd4
 src/dom/blob_bytes.zig steps 1 G H decl:b2503bead4c9677b
 src/dom/character_data.zig steps 1 G H decl:25197d739fa0326e
 src/dom/child_navigables.zig implementation 1 G H decl:ff436fb405f84ffb
@@ -81,6 +82,7 @@ src/dom/indexeddb.zig records 1 G H decl:5aa0c591d1a18137
 src/dom/indexeddb.zig requests 1 G H decl:6740d2e3e96e2e48
 src/dom/indexeddb.zig stores 1 G H decl:62e176784ecc77da
 src/dom/indexeddb.zig transactions 1 G H decl:767da84fdc7ee6d5
+src/dom/inspector_probes.zig enabled_agents 1 G P-res decl:6160991ba0a1e2bb
 src/dom/instance_bridge.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/intersection_targets.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/live_collections.zig implementation 1 G H decl:ff436fb405f84ffb

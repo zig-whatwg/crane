@@ -1,0 +1,137 @@
+step getDocument
+  answer {root:{backendNodeId:backend1,baseURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",childNodeCount:2,children:[{backendNodeId:backend2,localName:"",nodeId:2,nodeName:"html",nodeType:10,nodeValue:"",parentId:1,publicId:"",systemId:""},{attributes:[],backendNodeId:backend3,childNodeCount:2,children:[{attributes:[],backendNodeId:backend4,childNodeCount:1,children:[{attributes:[],backendNodeId:backend5,childNodeCount:1,children:[{backendNodeId:backend6,localName:"",nodeId:6,nodeName:"#text",nodeType:3,nodeValue:".k::before{content:'b'}",parentId:5}],localName:"style",nodeId:5,nodeName:"STYLE",nodeType:1,nodeValue:"",parentId:4}],localName:"head",nodeId:4,nodeName:"HEAD",nodeType:1,nodeValue:"",parentId:3},{attributes:[],backendNodeId:backend7,childNodeCount:7,children:[{attributes:["id","a","class","k"],backendNodeId:backend8,childNodeCount:1,children:[{attributes:[],backendNodeId:backend9,childNodeCount:1,children:[{backendNodeId:backend10,localName:"",nodeId:11,nodeName:"#text",nodeType:3,nodeValue:"x",parentId:10}],localName:"span",nodeId:10,nodeName:"SPAN",nodeType:1,nodeValue:"",parentId:8}],localName:"div",nodeId:8,nodeName:"DIV",nodeType:1,nodeValue:"",parentId:7,pseudoElements:[{attributes:[],backendNodeId:backend11,childNodeCount:0,localName:"::before",nodeId:9,nodeName:"::before",nodeType:1,nodeValue:"",pseudoType:"before"}]},{attributes:["id","b"],backendNodeId:backend12,childNodeCount:0,children:[],localName:"p",nodeId:12,nodeName:"P",nodeType:1,nodeValue:"",parentId:7},{attributes:[],backendNodeId:backend13,childNodeCount:1,children:[{attributes:[],backendNodeId:backend14,childNodeCount:1,children:[{backendNodeId:backend15,localName:"",nodeId:16,nodeName:"#text",nodeType:3,nodeValue:"one",parentId:14}],localName:"li",nodeId:14,nodeName:"LI",nodeType:1,nodeValue:"",parentId:13,pseudoElements:[{attributes:[],backendNodeId:backend16,childNodeCount:0,localName:"::marker",nodeId:15,nodeName:"::marker",nodeType:1,nodeValue:"",pseudoType:"marker"}]}],localName:"ul",nodeId:13,nodeName:"UL",nodeType:1,nodeValue:"",parentId:7},{attributes:["id","d"],backendNodeId:backend17,childNodeCount:0,children:[],localName:"dialog",nodeId:17,nodeName:"DIALOG",nodeType:1,nodeValue:"",parentId:7},{attributes:["id","h"],backendNodeId:backend18,childNodeCount:1,children:[{assignedSlot:{backendNodeId:backend19,nodeName:"SLOT",nodeType:1},attributes:[],backendNodeId:backend20,childNodeCount:1,children:[{backendNodeId:backend21,localName:"",nodeId:22,nodeName:"#text",nodeType:3,nodeValue:"slotted",parentId:21}],localName:"i",nodeId:21,nodeName:"I",nodeType:1,nodeValue:"",parentId:18}],localName:"section",nodeId:18,nodeName:"SECTION",nodeType:1,nodeValue:"",parentId:7,shadowRoots:[{backendNodeId:backend22,childNodeCount:1,children:[{attributes:[],backendNodeId:backend19,childNodeCount:0,children:[],distributedNodes:[{backendNodeId:backend20,nodeName:"I",nodeType:1}],localName:"slot",nodeId:20,nodeName:"SLOT",nodeType:1,nodeValue:"",parentId:19}],localName:"",nodeId:19,nodeName:"#document-fragment",nodeType:11,nodeValue:"",shadowRootType:"open"}]},{attributes:["id","g"],backendNodeId:backend23,childNodeCount:0,children:[],localName:"article",nodeId:23,nodeName:"ARTICLE",nodeType:1,nodeValue:"",parentId:7},{attributes:["id","f"],backendNodeId:backend24,childNodeCount:0,children:[],contentDocument:{backendNodeId:backend25,baseURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",childNodeCount:1,children:[{attributes:[],backendNodeId:backend26,childNodeCount:2,children:[{attributes:[],backendNodeId:backend27,childNodeCount:0,children:[],localName:"head",nodeId:27,nodeName:"HEAD",nodeType:1,nodeValue:"",parentId:26},{attributes:[],backendNodeId:backend28,childNodeCount:0,children:[],localName:"body",nodeId:28,nodeName:"BODY",nodeType:1,nodeValue:"",parentId:26}],frameId:frame1,localName:"html",nodeId:26,nodeName:"HTML",nodeType:1,nodeValue:"",parentId:25}],compatibilityMode:"QuirksMode",documentURL:"about:blank",localName:"",nodeId:25,nodeName:"#document",nodeType:9,nodeValue:"",xmlVersion:""},frameId:frame1,localName:"iframe",nodeId:24,nodeName:"IFRAME",nodeType:1,nodeValue:"",parentId:7}],localName:"body",nodeId:7,nodeName:"BODY",nodeType:1,nodeValue:"",parentId:3}],frameId:frame2,localName:"html",nodeId:3,nodeName:"HTML",nodeType:1,nodeValue:"",parentId:1}],compatibilityMode:"NoQuirksMode",documentURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",localName:"",nodeId:1,nodeName:"#document",nodeType:9,nodeValue:"",xmlVersion:""}}
+step insert
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend29,childNodeCount:0,localName:"i",nodeId:29,nodeName:"I",nodeType:1,nodeValue:""},parentNodeId:12,previousNodeId:0}
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend30,childNodeCount:0,localName:"em",nodeId:30,nodeName:"EM",nodeType:1,nodeValue:""},parentNodeId:12,previousNodeId:0}
+  event DOM.childNodeInserted {node:{backendNodeId:backend31,localName:"",nodeId:31,nodeName:"#text",nodeType:3,nodeValue:"tt"},parentNodeId:12,previousNodeId:29}
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend32,childNodeCount:1,children:[{backendNodeId:backend33,localName:"",nodeId:33,nodeName:"#text",nodeType:3,nodeValue:"y",parentId:32}],localName:"span",nodeId:32,nodeName:"SPAN",nodeType:1,nodeValue:""},parentNodeId:12,previousNodeId:31}
+step remove-and-reinsert
+  event DOM.childNodeRemoved {nodeId:8,parentNodeId:7}
+  event DOM.childNodeInserted {node:{attributes:["id","a","class","k","title","t"],backendNodeId:backend8,childNodeCount:1,localName:"div",nodeId:34,nodeName:"DIV",nodeType:1,nodeValue:""},parentNodeId:7,previousNodeId:0}
+  event DOM.setChildNodes {nodes:[{attributes:[],backendNodeId:backend9,childNodeCount:2,localName:"span",nodeId:35,nodeName:"SPAN",nodeType:1,nodeValue:"",parentId:34}],parentId:34}
+  event DOM.pseudoElementAdded {parentId:34,pseudoElement:{attributes:[],backendNodeId:backend34,childNodeCount:0,localName:"::before",nodeId:36,nodeName:"::before",nodeType:1,nodeValue:"",pseudoType:"before"}}
+step attributes
+  event DOM.attributeModified {name:"lang",nodeId:34,value:"en"}
+  event DOM.attributeModified {name:"lang",nodeId:34,value:"fr"}
+  event DOM.attributeRemoved {name:"lang",nodeId:34}
+  event DOM.attributeModified {name:"xl:href",nodeId:34,value:"v"}
+  event DOM.attributeRemoved {name:"xl:href",nodeId:34}
+  event DOM.attributeModified {name:"hidden",nodeId:34,value:""}
+  event DOM.attributeRemoved {name:"hidden",nodeId:34}
+step character-data
+  event DOM.characterDataModified {characterData:"two",nodeId:16}
+  event DOM.characterDataModified {characterData:"two!",nodeId:16}
+  event DOM.childNodeRemoved {nodeId:16,parentNodeId:14}
+  event DOM.childNodeInserted {node:{backendNodeId:backend15,localName:"",nodeId:37,nodeName:"#text",nodeType:3,nodeValue:"three"},parentNodeId:14,previousNodeId:0}
+step fragment-and-innerHTML
+  event DOM.childNodeInserted {node:{backendNodeId:backend35,localName:"",nodeId:38,nodeName:"#text",nodeType:3,nodeValue:"one"},parentNodeId:13,previousNodeId:14}
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend36,childNodeCount:0,localName:"em",nodeId:39,nodeName:"EM",nodeType:1,nodeValue:""},parentNodeId:13,previousNodeId:38}
+  event DOM.childNodeInserted {node:{backendNodeId:backend37,localName:"",nodeId:40,nodeName:"#text",nodeType:3,nodeValue:"two"},parentNodeId:13,previousNodeId:39}
+  event DOM.childNodeRemoved {nodeId:37,parentNodeId:14}
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend38,childNodeCount:1,children:[{backendNodeId:backend39,localName:"",nodeId:42,nodeName:"#text",nodeType:3,nodeValue:"q",parentId:41}],localName:"b",nodeId:41,nodeName:"B",nodeType:1,nodeValue:""},parentNodeId:14,previousNodeId:0}
+step inline-style
+  event DOM.attributeModified {name:"style",nodeId:35,value:"color: blue"}
+  event DOM.inlineStyleInvalidated {nodeIds:[000000000034,000000000035]}
+step attach-shadow
+  event DOM.shadowRootPushed {hostId:23,root:{backendNodeId:backend40,childNodeCount:0,localName:"",nodeId:43,nodeName:"#document-fragment",nodeType:11,nodeValue:"",shadowRootType:"open"}}
+  event DOM.childNodeCountUpdated {childNodeCount:1,nodeId:43}
+step distribution
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend41,childNodeCount:0,localName:"u",nodeId:44,nodeName:"U",nodeType:1,nodeValue:""},parentNodeId:18,previousNodeId:21}
+  event DOM.distributedNodesUpdated {distributedNodes:[{backendNodeId:backend20,nodeName:"I",nodeType:1},{backendNodeId:backend41,nodeName:"U",nodeType:1}],insertionPointId:20}
+step top-layer-open
+  event DOM.topLayerElementsUpdated {}
+  event DOM.attributeModified {name:"open",nodeId:17,value:""}
+  event DOM.topLayerElementsUpdated {}
+  event DOM.pseudoElementAdded {parentId:17,pseudoElement:{attributes:[],backendNodeId:backend42,childNodeCount:0,localName:"::backdrop",nodeId:45,nodeName:"::backdrop",nodeType:1,nodeValue:"",pseudoType:"backdrop"}}
+step top-layer-close
+  event DOM.attributeRemoved {name:"open",nodeId:17}
+  event DOM.pseudoElementRemoved {parentId:17,pseudoElementId:45}
+  event DOM.topLayerElementsUpdated {}
+  event DOM.topLayerElementsUpdated {}
+step pseudo-toggle
+  event DOM.attributeModified {name:"class",nodeId:34,value:""}
+  event DOM.attributeModified {name:"class",nodeId:12,value:"k"}
+  event DOM.pseudoElementRemoved {parentId:34,pseudoElementId:36}
+  event DOM.pseudoElementAdded {parentId:12,pseudoElement:{attributes:[],backendNodeId:backend43,childNodeCount:0,localName:"::before",nodeId:46,nodeName:"::before",nodeType:1,nodeValue:"",pseudoType:"before"}}
+step adopted-sheets
+  event DOM.adoptedStyleSheetsModified {adoptedStyleSheets:[sheet1],nodeId:1}
+step frame-commit
+  event DOM.attributeModified {name:"srcdoc",nodeId:24,value:"<p>z</p>"}
+  event DOM.childNodeRemoved {nodeId:24,parentNodeId:7}
+  event DOM.childNodeInserted {node:{attributes:["id","f","srcdoc","<p>z</p>"],backendNodeId:backend24,childNodeCount:0,contentDocument:{backendNodeId:backend44,baseURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",childNodeCount:0,compatibilityMode:"NoQuirksMode",documentURL:"about:srcdoc",localName:"",nodeId:48,nodeName:"#document",nodeType:9,nodeValue:"",xmlVersion:""},frameId:frame1,localName:"iframe",nodeId:47,nodeName:"IFRAME",nodeType:1,nodeValue:""},parentNodeId:7,previousNodeId:23}
+  event DOM.childNodeCountUpdated {childNodeCount:1,nodeId:48}
+step setAttributeValue
+  lookup #a
+  answer {}
+  event DOM.attributeModified {name:"title",nodeId:34,value:"edited"}
+step undo
+  answer {}
+  event DOM.attributeModified {name:"title",nodeId:34,value:"t"}
+step redo
+  answer {}
+  event DOM.attributeModified {name:"title",nodeId:34,value:"edited"}
+step setAttributesAsText
+  lookup #a
+  answer {}
+  event DOM.attributeModified {name:"title",nodeId:34,value:"x"}
+  event DOM.attributeModified {name:"data-q",nodeId:34,value:"1"}
+step removeAttribute
+  lookup #a
+  answer {}
+  event DOM.attributeRemoved {name:"data-q",nodeId:34}
+step markUndoableState
+  answer {}
+step removeNode
+  lookup ul
+  answer {}
+  event DOM.childNodeRemoved {nodeId:13,parentNodeId:7}
+step undo-remove
+  answer {}
+  event DOM.childNodeInserted {node:{attributes:[],backendNodeId:backend13,childNodeCount:4,localName:"ul",nodeId:49,nodeName:"UL",nodeType:1,nodeValue:""},parentNodeId:7,previousNodeId:12}
+step moveTo
+  lookup #b
+  lookup #a
+  answer {nodeId:50}
+  event DOM.childNodeRemoved {nodeId:12,parentNodeId:7}
+  event DOM.childNodeInserted {node:{attributes:["id","b","class","k"],backendNodeId:backend12,childNodeCount:4,localName:"p",nodeId:50,nodeName:"P",nodeType:1,nodeValue:""},parentNodeId:34,previousNodeId:35}
+  event DOM.setChildNodes {nodes:[{attributes:[],backendNodeId:backend30,childNodeCount:0,localName:"em",nodeId:51,nodeName:"EM",nodeType:1,nodeValue:"",parentId:50},{attributes:[],backendNodeId:backend29,childNodeCount:0,localName:"i",nodeId:52,nodeName:"I",nodeType:1,nodeValue:"",parentId:50},{backendNodeId:backend31,localName:"",nodeId:53,nodeName:"#text",nodeType:3,nodeValue:"tt",parentId:50},{attributes:[],backendNodeId:backend32,childNodeCount:1,children:[{backendNodeId:backend33,localName:"",nodeId:55,nodeName:"#text",nodeType:3,nodeValue:"y",parentId:54}],localName:"span",nodeId:54,nodeName:"SPAN",nodeType:1,nodeValue:"",parentId:50}],parentId:50}
+  event DOM.pseudoElementAdded {parentId:50,pseudoElement:{attributes:[],backendNodeId:backend45,childNodeCount:0,localName:"::before",nodeId:56,nodeName:"::before",nodeType:1,nodeValue:"",pseudoType:"before"}}
+step copyTo
+  lookup span
+  lookup section
+  answer {nodeId:57}
+  event DOM.childNodeInserted {node:{attributes:["style","color: blue"],backendNodeId:backend46,childNodeCount:2,localName:"span",nodeId:57,nodeName:"SPAN",nodeType:1,nodeValue:""},parentNodeId:18,previousNodeId:44}
+  event DOM.distributedNodesUpdated {distributedNodes:[{backendNodeId:backend20,nodeName:"I",nodeType:1},{backendNodeId:backend41,nodeName:"U",nodeType:1},{backendNodeId:backend46,nodeName:"SPAN",nodeType:1}],insertionPointId:20}
+step setNodeName
+  lookup #a
+  answer {nodeId:58}
+  event DOM.childNodeRemoved {nodeId:35,parentNodeId:34}
+  event DOM.childNodeRemoved {nodeId:50,parentNodeId:34}
+  event DOM.childNodeInserted {node:{attributes:["id","a","class","","title","x","style","color: red;"],backendNodeId:backend47,childNodeCount:2,localName:"article",nodeId:58,nodeName:"ARTICLE",nodeType:1,nodeValue:""},parentNodeId:7,previousNodeId:34}
+  event DOM.childNodeRemoved {nodeId:34,parentNodeId:7}
+step setOuterHTML-merge
+  lookup #b
+  answer {}
+  event DOM.setChildNodes {nodes:[{attributes:["style","color: blue"],backendNodeId:backend9,childNodeCount:2,localName:"span",nodeId:59,nodeName:"SPAN",nodeType:1,nodeValue:"",parentId:58},{attributes:["id","b","class","k"],backendNodeId:backend12,childNodeCount:4,children:[{attributes:[],backendNodeId:backend30,childNodeCount:0,localName:"em",nodeId:62,nodeName:"EM",nodeType:1,nodeValue:"",parentId:60},{attributes:[],backendNodeId:backend29,childNodeCount:0,localName:"i",nodeId:63,nodeName:"I",nodeType:1,nodeValue:"",parentId:60},{backendNodeId:backend31,localName:"",nodeId:64,nodeName:"#text",nodeType:3,nodeValue:"tt",parentId:60},{attributes:[],backendNodeId:backend32,childNodeCount:1,children:[{backendNodeId:backend33,localName:"",nodeId:66,nodeName:"#text",nodeType:3,nodeValue:"y",parentId:65}],localName:"span",nodeId:65,nodeName:"SPAN",nodeType:1,nodeValue:"",parentId:60}],localName:"p",nodeId:60,nodeName:"P",nodeType:1,nodeValue:"",parentId:58,pseudoElements:[{attributes:[],backendNodeId:backend48,childNodeCount:0,localName:"::before",nodeId:61,nodeName:"::before",nodeType:1,nodeValue:"",pseudoType:"before"}]}],parentId:58}
+  event DOM.childNodeRemoved {nodeId:62,parentNodeId:60}
+  event DOM.childNodeRemoved {nodeId:63,parentNodeId:60}
+  event DOM.childNodeRemoved {nodeId:64,parentNodeId:60}
+  event DOM.childNodeRemoved {nodeId:65,parentNodeId:60}
+  event DOM.childNodeInserted {node:{backendNodeId:backend49,localName:"",nodeId:67,nodeName:"#text",nodeType:3,nodeValue:"merged"},parentNodeId:60,previousNodeId:0}
+step getAttributes
+  lookup #b
+  answer {attributes:["id","b","class","k"]}
+step performSearch
+  answer {resultCount:1,searchId:search1}
+step getSearchResults
+  answer {nodeIds:[68]}
+  event DOM.setChildNodes {nodes:[{attributes:[],backendNodeId:backend14,childNodeCount:1,children:[{attributes:[],backendNodeId:backend38,childNodeCount:1,children:[{backendNodeId:backend39,localName:"",nodeId:71,nodeName:"#text",nodeType:3,nodeValue:"q",parentId:70}],localName:"b",nodeId:70,nodeName:"B",nodeType:1,nodeValue:"",parentId:68}],localName:"li",nodeId:68,nodeName:"LI",nodeType:1,nodeValue:"",parentId:49,pseudoElements:[{attributes:[],backendNodeId:backend50,childNodeCount:0,localName:"::marker",nodeId:69,nodeName:"::marker",nodeType:1,nodeValue:"",pseudoType:"marker"}]},{backendNodeId:backend35,localName:"",nodeId:72,nodeName:"#text",nodeType:3,nodeValue:"one",parentId:49},{attributes:[],backendNodeId:backend36,childNodeCount:0,localName:"em",nodeId:73,nodeName:"EM",nodeType:1,nodeValue:"",parentId:49},{backendNodeId:backend37,localName:"",nodeId:74,nodeName:"#text",nodeType:3,nodeValue:"two",parentId:49}],parentId:49}
+step pushNodeByPathToFrontend
+  answer error No node with given path found
+step collectClassNamesFromSubtree
+  lookup body
+  answer {classNames:[k]}
+step getTopLayerElements
+  answer {nodeIds:[]}
+step getFlattenedDocument
+  answer {nodes:[{backendNodeId:backend2,localName:"",nodeId:76,nodeName:"html",nodeType:10,nodeValue:"",parentId:75,publicId:"",systemId:""},{attributes:[],backendNodeId:backend4,childNodeCount:1,localName:"head",nodeId:78,nodeName:"HEAD",nodeType:1,nodeValue:"",parentId:77},{attributes:[],backendNodeId:backend7,childNodeCount:6,localName:"body",nodeId:79,nodeName:"BODY",nodeType:1,nodeValue:"",parentId:77},{attributes:[],backendNodeId:backend3,childNodeCount:2,children:[],frameId:frame2,localName:"html",nodeId:77,nodeName:"HTML",nodeType:1,nodeValue:"",parentId:75},{adoptedStyleSheets:[sheet1],backendNodeId:backend1,baseURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",childNodeCount:2,children:[],compatibilityMode:"NoQuirksMode",documentURL:"data:text/html,<!doctype html><html><head><style>.k::before{content:'b'}</style></head><body><div id=a class=k><span>x</span></div><p id=b></p><ul><li>one</li></ul><dialog id=d></dialog><section id=h><template shadowrootmode=open><slot></slot></template><i>slotted</i></section><article id=g></article><iframe id=f></iframe></body></html>",localName:"",nodeId:75,nodeName:"#document",nodeType:9,nodeValue:"",xmlVersion:""}]}

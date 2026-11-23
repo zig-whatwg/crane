@@ -28,9 +28,18 @@ pub const NodeIds = struct {
 
     const Entry = struct {
         id: i64,
+        /// The node's address - or, for a pseudo-element, its originating
+        /// element's address with the pseudo-element's kind (1-7) in the
+        /// low bits an Instance's alignment leaves clear.
         node: usize,
         generation: u64,
     };
+
+    /// The key of `element`'s pseudo-element of kind `kind` (1-7).
+    pub fn pseudoKey(element: *runtime.Instance, kind: u3) usize {
+        std.debug.assert(kind != 0 and @intFromPtr(element) & 7 == 0);
+        return @intFromPtr(element) | kind;
+    }
 
     pub fn init(allocator: Allocator) NodeIds {
         return .{ .allocator = allocator };
@@ -43,8 +52,26 @@ pub const NodeIds = struct {
 
     /// `node`'s id, given on first ask.
     pub fn idOf(self: *NodeIds, node: *runtime.Instance) Allocator.Error!i64 {
-        const address = @intFromPtr(node);
-        const generation = runtime.SlabAllocator.generationOf(node);
+        return self.idOfKey(@intFromPtr(node), runtime.SlabAllocator.generationOf(node));
+    }
+
+    /// The backendNodeId of `element`'s pseudo-element of kind `kind`
+    /// (Blink's PseudoElement is a Node with its own DOMNodeId), given on
+    /// first ask; it lives as long as its originating element.
+    pub fn idOfPseudo(self: *NodeIds, element: *runtime.Instance, kind: u3) Allocator.Error!i64 {
+        return self.idOfKey(pseudoKey(element, kind), runtime.SlabAllocator.generationOf(element));
+    }
+
+    /// `element`'s pseudo-element of kind `kind` was destroyed (Blink frees
+    /// a removed element's PseudoElements): its id goes, and one made again
+    /// is a new node with a new id, as in Chrome.
+    pub fn forgetPseudo(self: *NodeIds, element: *runtime.Instance, kind: u3) void {
+        const removed = self.by_node.fetchRemove(pseudoKey(element, kind)) orelse return;
+        self.by_node_guard.noteRemoval(&self.by_node);
+        if (self.by_id.remove(removed.value.id)) self.by_id_guard.noteRemoval(&self.by_id);
+    }
+
+    fn idOfKey(self: *NodeIds, address: usize, generation: u64) Allocator.Error!i64 {
         if (self.by_node.get(address)) |entry| {
             if (entry.generation == generation) return entry.id;
             // The slot holds another node now: the old one's id goes.
@@ -60,9 +87,11 @@ pub const NodeIds = struct {
         return entry.id;
     }
 
-    /// The node named `id`, while it lives; null otherwise.
+    /// The node named `id`, while it lives; null otherwise - and for a
+    /// pseudo-element's id, which names no node here.
     pub fn nodeOf(self: *NodeIds, id: i64) ?*runtime.Instance {
         const entry = self.by_id.get(id) orelse return null;
+        if (entry.node & 7 != 0) return null;
         const node: *runtime.Instance = @ptrFromInt(entry.node);
         if (runtime.SlabAllocator.generationOf(node) != entry.generation) {
             if (self.by_id.remove(id)) self.by_id_guard.noteRemoval(&self.by_id);
