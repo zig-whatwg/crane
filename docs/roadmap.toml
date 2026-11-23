@@ -915,6 +915,7 @@ needs-renderer with the CDP call each lacks; the element-input path without geom
 from the design's options before it is built; what the tools need from cdp-part-2 moves into 0.1 here."""
 progress = [
   "decided 2026-11-23 10:24 AM ET (the user) - built into Crane, not Google's Node server: slim, compiled in with CDP, for devices such as the iPhone",
+  "decided 2026-11-23 12:51 PM ET (the user, option 1) - element input by uid is element-targeted trusted input (WebDriver's element-origin path, Crane's user_input pipeline): Chrome's events, order, isTrusted, focus and :hover; no approximate geometry in 0.1 (that is roadmap approx-layout, 0.2). Design tmp/plans/mcp1-design.md pins chrome-devtools-mcp v1.13.0",
 ]
 
   [[infra.items]]
@@ -923,6 +924,28 @@ progress = [
 
   [[infra.items]]
   name = "Built-in MCP server: every non-pixel tool matches Chrome's server (differential suite)"
+  status = "todo"
+
+[[infra]]
+id = "approx-layout"
+title = "Approximate geometry: an emulated layout renderer (0.2)"
+why = """The user, 2026-11-23 12:48 PM ET: "we should do a geometry approximation, can you scope this out? I \
+think it may be a good 0.2 item". Headless automation (Puppeteer/Playwright actionability waits, the MCP click \
+tools, elementFromPoint, IntersectionObserver) needs boxes; Crane has none until a renderer plugs into protocol \
+6.9. An approximate layout behind the platform `layout` capability (.emulated) - the model Lightpanda ships \
+(read only, AGPL) - answers those reads plausibly. Scope: tmp/plans/queue-0.2.md, "Approximate geometry"."""
+done_when = """The emulated layout answers protocol 6.9 for block, inline (approximate text metrics), flex, grid, \
+positioned and replaced boxes with hit-testing and scrolling; measured against Chrome 157 on a page corpus \
+(element boxes within N px, hit agreement at click targets) with the numbers published; the user's rulings on \
+production inclusion, needs-renderer and CDP D7 recorded; WPT A/B shows no unruled loss."""
+progress = []
+
+  [[infra.items]]
+  name = "Design + Chrome-comparison harness"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Emulated layout behind protocol 6.9, measured"
   status = "todo"
 
 [[infra]]
