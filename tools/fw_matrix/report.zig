@@ -943,7 +943,7 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
             try w.writeAll(".");
         }
         if (newer_spec > 0) {
-            try w.writeAll(" The newer spec, which a shipping browser follows: ");
+            try w.writeAll(" The spec, which a shipping browser follows: ");
             try html.plural(w, newer_spec, "test", "tests");
             _ = try perFramework(arena, w, suites, countOf(.follows_spec));
             try w.writeAll(".");
