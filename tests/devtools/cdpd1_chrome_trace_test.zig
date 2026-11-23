@@ -439,8 +439,9 @@ const deviations = [_]Deviation{
     // performs it at the next style update (Document::ScheduleForTopLayerRemoval
     // / RemoveFinishedTopLayerElements: CSS Position 4's "request an element
     // to be removed from the top layer", for overlay transitions), after the
-    // ::backdrop's PseudoElementDestroyed. Queued: tmp/plans/feature-queue.md,
-    // "GOLDEN-RULE-2 CHECK (lane cdpd1)", the top layer's pending removals.
+    // ::backdrop's PseudoElementDestroyed. Queued with lane rend1's
+    // update-the-rendering step 23, "top layer removals" (main's ruling):
+    // when it lands, this deviation goes.
     .{
         .chrome =
         \\step top-layer-close
