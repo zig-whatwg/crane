@@ -359,13 +359,39 @@ pub const BrowserScope = struct {
         self.slab.deinit();
         if (self.heap) |heap| {
             if (self.engine.load(.acquire)) |engine| {
-                if (self.report_heap_leaks and engine.config.record_sites) reportHeapLeaks(engine);
+                const swept = self.releaseSweptNodes(engine);
+                if (self.report_heap_leaks and engine.config.record_sites) {
+                    if (swept != 0) std.log.scoped(.heap).warn("heap swept: {d} node(s) released at the Browser's end, after the final sweep (held past every realm's end: refcount_teardown.agentEnded's count)", .{swept});
+                    reportHeapLeaks(engine);
+                }
             }
             self.engine.store(null, .release);
             self.heap = null;
             heap.release(self.allocator);
         }
         _ = live_scopes.fetchSub(1, .monotonic);
+    }
+
+    /// The final sweep's nodes (dom.teardown_sweeps: the nodes held past
+    /// every realm's end, refcount decision D9) - their side tables freed,
+    /// their deinit chains run or never needed - have their State block and
+    /// slot released explicitly: the final sweep is their reviewed owner (the
+    /// integrator, 2026-11-23 6:18 AM ET), and the arena that used to free
+    /// them wholesale is gone. Every other live Instance is left for the
+    /// leak report. On the scope's thread, after its agent ended and its
+    /// tables, so nothing reaches them. The count of nodes released.
+    pub fn releaseSweptNodes(self: *BrowserScope, engine: *heap_engine.Engine) usize {
+        var released: usize = 0;
+        var slots = engine.instanceSlots();
+        while (slots.next()) |bytes| {
+            const instance: *Instance = @ptrCast(@alignCast(bytes));
+            if (SlabAllocator.generationOf(instance) == SlabAllocator.dead_generation) continue;
+            if (instance.vtable.counted == null) continue;
+            if (instance.vtable.state_size != 0) self.arena.destroyRaw(@ptrCast(instance.state), instance.vtable.state_size, instance.vtable.state_align);
+            self.slab.free(instance);
+            released += 1;
+        }
+        return released;
     }
 
     /// The heap's leak report at the scope's end: one `heap leak:` line per
@@ -386,7 +412,39 @@ pub const BrowserScope = struct {
         };
         const blocks = engine.leakReport({}, Report.line);
         const slots = engine.instanceCounts().live;
-        if (blocks != 0 or slots != 0) log.warn("heap leak: {d} State block(s) and {d} Instance slot(s) alive at the Browser's end", .{ blocks, slots });
+        if (blocks != 0 or slots != 0) {
+            reportLiveInstances(engine);
+            log.warn("heap leak: {d} State block(s) and {d} Instance slot(s) alive at the Browser's end", .{ blocks, slots });
+        }
+    }
+
+    /// The Instances alive at the scope's end, by interface and lifecycle
+    /// flags (runtime.instance_lifecycle: wrapped, wrapper gone, cleanup
+    /// started / complete): what held each - a wrapper that never died, one
+    /// whose finalizer never freed it, a native owner. Reads each live
+    /// slot's vtable and stamp only (its realm may have ended).
+    fn reportLiveInstances(engine: *heap_engine.Engine) void {
+        const log = std.log.scoped(.heap);
+        const Group = struct { name: []const u8, bits: u8, count: usize };
+        var groups: [24]Group = undefined;
+        var n: usize = 0;
+        var slots = engine.instanceSlots();
+        while (slots.next()) |bytes| {
+            const instance: *Instance = @ptrCast(@alignCast(bytes));
+            if (SlabAllocator.generationOf(instance) == SlabAllocator.dead_generation) continue;
+            const name = instance.vtable.name;
+            const bits = SlabAllocator.lifecycleBitsOf(instance);
+            for (groups[0..n]) |*g| {
+                if (g.bits == bits and std.mem.eql(u8, g.name, name)) {
+                    g.count += 1;
+                    break;
+                }
+            } else if (n < groups.len) {
+                groups[n] = .{ .name = name, .bits = bits, .count = 1 };
+                n += 1;
+            }
+        }
+        for (groups[0..n]) |g| log.warn("heap leak: {d} live {s} (lifecycle flags 0b{b:0>8}: cleanup_started, cleanup_complete, attached, weak_pending, wrapped, wrapper_gone from bit 0)", .{ g.count, g.name, g.bits });
     }
 
     /// How many scopes are alive in the process: every Browser's, and the

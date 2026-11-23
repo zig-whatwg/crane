@@ -407,3 +407,59 @@ test "the configuration is a function of the build and the Browser's request: pr
     try testing.expect(BrowserScope.poisonsFreedStateByDefault(.debug));
     try testing.expect(!BrowserScope.poisonsFreedStateByDefault(.safe));
 }
+
+// ---------------------------------------------------------------------------
+// The Browser's end gives back what the arena used to free wholesale (the
+// integrator's classes A, 2026-11-23): a registry's owned blocks, and the
+// final sweep's nodes.
+// ---------------------------------------------------------------------------
+
+const SideState = struct {
+    words: [6]u64 = @splat(0),
+    deinits: *usize,
+    pub fn deinit(self: *SideState) void {
+        self.deinits.* += 1;
+    }
+};
+
+test "a registry's sweep gives the blocks it owns back to the heap, as its end does" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const Registry = runtime.InstanceRegistry(.html_output_element, SideState);
+    var deinits: usize = 0;
+    const before = scope.arena.stats().live_blocks;
+    var made: [3]*runtime.Instance = undefined;
+    for (&made) |*instance| {
+        instance.* = try scope.slab.alloc(&slot_vtable);
+        const state = try Registry.createIn(instance.*, &scope.arena);
+        state.* = .{ .deinits = &deinits };
+    }
+    try testing.expectEqual(before + 3, scope.arena.stats().live_blocks);
+    Registry.deinitAllAndClear(&scope);
+    try testing.expectEqual(@as(usize, 3), deinits);
+    try testing.expectEqual(before, scope.arena.stats().live_blocks);
+    for (made) |instance| scope.slab.free(instance);
+}
+
+test "the final sweep's nodes are released by the scope's end: State block and slot" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try engineOf(&scope);
+    const node_vtable: runtime.VTable = .{
+        .name = "Hard1Node",
+        .deinit = null,
+        .methods_ptr = &no_methods,
+        .state_size = @sizeOf(DivState),
+        .state_align = @alignOf(DivState),
+        .counted = &runtime.lifetime.node,
+    };
+    // A node held past every realm's end, and an object that is not a node.
+    const node = try scope.slab.alloc(&node_vtable);
+    node.state = try scope.arena.create(DivState);
+    const other = try scope.slab.alloc(&slot_vtable);
+    try testing.expectEqual(@as(usize, 1), scope.releaseSweptNodes(engine));
+    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(node));
+    try testing.expect(runtime.SlabAllocator.generationOf(other) != runtime.SlabAllocator.dead_generation);
+    try testing.expectEqual(@as(usize, 0), scope.arena.stats().live_blocks);
+    scope.slab.free(other);
+}

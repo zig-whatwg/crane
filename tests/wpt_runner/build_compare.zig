@@ -388,6 +388,11 @@ pub const LogFindings = struct {
     /// with State blocks or Instance slots still alive in their heap - which
     /// the heap's release frees, so no allocator reports them as leaked.
     heap_leaks: usize = 0,
+    /// Nodes the final sweep released at Browser ends (`heap swept:`): held
+    /// past every realm's end - refcount decision D9's count, reported by
+    /// refcount_teardown.agentEnded - never a gate failure here, so the
+    /// heap does not report them twice (the integrator, 2026-11-23).
+    heap_swept_nodes: usize = 0,
 
     pub fn total(self: LogFindings) usize {
         return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks;
@@ -409,6 +414,11 @@ pub const LogFindings = struct {
         // The summary line, one per Browser; the per-type lines before it
         // name what it counts.
         if (contains(line, "heap leak: ") and contains(line, " alive at the Browser's end") and contains(line, " Instance slot(s)")) self.heap_leaks += 1;
+        if (std.mem.indexOf(u8, line, "heap swept: ")) |at| {
+            const rest = line[at + "heap swept: ".len ..];
+            const digits = std.mem.indexOfNone(u8, rest, "0123456789") orelse rest.len;
+            self.heap_swept_nodes += std.fmt.parseInt(usize, rest[0..digits], 10) catch 0;
+        }
     }
 };
 
@@ -463,7 +473,7 @@ pub const Report = struct {
         if (self.wrong_build > 0) try w.print("  WRONG BUILD: {d} journal record(s) are not the side they were given as (a production journal as --production, a bug-finding one as --bug-finding)\n", .{self.wrong_build});
         try w.print("bug-finding gate: {s} - crashes {d}, ownership violations {d}", .{ if (self.gatePassed()) "PASS" else "FAIL", self.crashes.len, self.ownership_violations });
         if (self.log) |l| {
-            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks });
+            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.heap_swept_nodes });
         } else try w.writeAll(" (no log given: leaks, bad frees, panics and poison reads not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
@@ -850,6 +860,7 @@ test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount r
         \\a test that mentions leaked: memory in its message
         \\warning(heap): heap leak: 3 block(s) of 112 B alive at the Browser's end: webidl.Event.State
         \\warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end
+        \\warning(heap): heap swept: 12 node(s) released at the Browser's end, after the final sweep
     );
     try testing.expectEqual(@as(usize, 2), f.leaks);
     try testing.expectEqual(@as(usize, 2), f.bad_frees);
@@ -859,6 +870,8 @@ test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount r
     try testing.expectEqual(@as(usize, 2), f.refcount);
     // One Browser ended with blocks alive in its heap: counted once.
     try testing.expectEqual(@as(usize, 1), f.heap_leaks);
+    // The final sweep's nodes are counted apart, and fail nothing.
+    try testing.expectEqual(@as(usize, 12), f.heap_swept_nodes);
     try testing.expectEqual(@as(usize, 10), f.total());
 }
 
