@@ -85,3 +85,29 @@ test "blur() in a tab without system focus clears the designation, firing nothin
     try fixture.waitFor(host, "log.length === 1");
     try fixture.expect(host, "log.join()", "window-focus");
 }
+
+test "focus emulation: a tab without system focus answers as focused while a DevTools session emulates it" {
+    // CDP Emulation.setFocusEmulationEnabled (Blink FocusController:
+    // IsFocused() is is_focused_ || is_emulating_focus_, and turning the
+    // emulation on or off fires the change it makes).
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    try fixture.run(host, listeners);
+    try fixture.run(host, "input.focus(); log.length = 0; true");
+    // Emulating while the tab has system focus changes nothing.
+    html.focus.setFocusEmulation(host, true);
+    html.focus.setFocusEmulation(host, false);
+    try fixture.turn(20);
+    try fixture.expect(host, "log.length", "0");
+
+    html.focus.setSystemFocus(host, false);
+    try fixture.waitFor(host, "log.length === 3");
+    html.focus.setFocusEmulation(host, true);
+    try fixture.waitFor(host, "log.length === 6");
+    try fixture.expect(host, "log.slice(3).join()", "window-focus,focus,focusin");
+    try fixture.expect(host, "[document.hasFocus(), input.matches(':focus')].join()", "true,true");
+    html.focus.setFocusEmulation(host, false);
+    try fixture.waitFor(host, "log.length === 9");
+    try fixture.expect(host, "[document.hasFocus(), log.slice(6).join()].join()", "false,blur,focusout,window-blur");
+}

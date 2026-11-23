@@ -378,6 +378,13 @@ pub fn setSystemFocus(traversable: *dom.browser_state.BrowsingContext, focused: 
     tab.system_focus = focused;
 }
 
+/// A DevTools session emulates focus for the tab, or stops. (Red-run stub:
+/// counts only.)
+pub fn setFocusEmulation(traversable: *dom.browser_state.BrowsingContext, enabled: bool) void {
+    const tab = traversable.tabScope() orelse return;
+    if (enabled) tab.focus_emulation +|= 1 else tab.focus_emulation -|= 1;
+}
+
 /// HTML "has focus steps" for `document`.
 pub fn hasFocus(document: *Instance) bool {
     var candidate = topLevelDocumentOf(document);
