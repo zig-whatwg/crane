@@ -4470,22 +4470,13 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&addSuiteRun(b, launch, retained_old_platform, "retained_old_platform", null).step);
 
-        // The contract against every built-in platform (the directory's
-        // executable above binds `testing`), and once with capabilities
+        // The contract against every built-in platform but the tests' own
+        // (the directory's executable above binds it), and with capabilities
         // compiled out: tests/platform/protocol_conformance_test.zig, each its
         // own small executable - the facade, one platform, the kit, nothing
-        // of the engine.
-        const conformance_bindings = [_]struct { name: []const u8, platform: Platform, without: []const []const u8 }{
-            .{ .name = "darwin", .platform = .darwin, .without = &.{} },
-            .{ .name = "linux", .platform = .linux, .without = &.{} },
-            .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
-            .{ .name = "testing_without_brotli_and_deflate_decoding", .platform = .testing, .without = &.{ "brotli", "deflate_decoding" } },
-            .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
-            .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
-            .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
-            .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
-        };
-        for (conformance_bindings) |binding| {
+        // of the engine. The bindings are the protocol's
+        // (platform_build.conformance).
+        for (platform_build.conformance) |binding| {
             const bound = platformBinding(b, target, .{
                 .platform = binding.platform,
                 .brotli = brotli,
@@ -4514,9 +4505,9 @@ pub fn build(b: *std.Build) void {
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
-            // The font operations on darwin and linux (decision 20):
+            // A built-in platform's own font operations (decision 20):
             // tests/platform/font_adapters.zig, bound to each.
-            if ((binding.platform == .darwin or binding.platform == .linux) and binding.without.len == 0) {
+            if (binding.fonts_and_media) {
                 const font_adapters = b.addTest(.{
                     .name = b.fmt("platform_fonts_{s}", .{binding.name}),
                     .root_module = b.createModule(.{
@@ -4530,9 +4521,9 @@ pub fn build(b: *std.Build) void {
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
                 check_target_step.dependOn(&font_adapters.step);
-                // Media decoding on darwin and linux (lane wptcfg, D4): the
-                // directory's tests/platform/media_decoding_test.zig, bound to
-                // each - the three default platforms share kit/media_decoding.
+                // And its media decoding (lane wptcfg, D4): the directory's
+                // tests/platform/media_decoding_test.zig, bound to each - the
+                // built-in platforms share kit/media_decoding.
                 const media_decoding = b.addTest(.{
                     .name = b.fmt("platform_media_{s}", .{binding.name}),
                     .root_module = b.createModule(.{
@@ -4546,7 +4537,7 @@ pub fn build(b: *std.Build) void {
             }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
-            if (std.mem.eql(u8, binding.name, "darwin")) {
+            if (binding.kit_tests) {
                 for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
                     const kit_tests = b.addTest(.{ .name = name, .root_module = module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
