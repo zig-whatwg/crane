@@ -8,7 +8,11 @@
 //!
 //! A node the parser attached belongs to V8 from that moment: the wrapper cache
 //! holds it and a weak callback can return its Instance handle to the slab at any
-//! time, after which the address is whatever allocated next. So "attached" is a
+//! time, after which the address is whatever allocated next. (Since the wrapper
+//! redesign a node's main-world wrapper lives in its own slot and never enters a wrapper
+//! cache - node_wrappers.zig - and a tree is freed by its counts; none of these
+//! tests reads the cache, and what they pin - the adapter records "attached"
+//! when it happens - is unchanged: lane mem1's audit, 2026-11-22.) So "attached" is a
 //! fact the adapter must record when it happens, not a property it can re-derive
 //! later by reading `parentNode` back off a pointer it is no longer sure of.
 

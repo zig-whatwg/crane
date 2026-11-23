@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const VideoFrameRequestCallback = *const fn (now: *runtime.Instance, metadata: runtime.JSValue) void;
+/// callback VideoFrameRequestCallback = undefined (DOMHighResTimeStamp now, VideoFrameCallbackMetadata metadata)
+pub const VideoFrameRequestCallback = runtime.BorrowedCallbackFunction;

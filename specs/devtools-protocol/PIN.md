@@ -23,6 +23,11 @@ the devtools protocol generator (`tools/devtools_protocol_gen.zig`; `zig build c
     `3716f86e2228f9414ffff43551249bc6a5783388c3fbdba5226f14e6941774f1`;
   - `LICENSE` (package `LICENSE`): BSD-3-Clause, Copyright 2014 The Chromium Authors.
 
+- The DevTools front end of that Chrome: Chromium revision `4b3d0dabb8250b6f152d2d85d79e7706e309d087` (the
+  `157.0.8103.78` tag's commit). `/json/list`'s devtoolsFrontendUrl names it, as Chrome's DevToolsHttpHandler
+  does (kRemoteUrlPattern, `https://chrome-devtools-frontend.appspot.com/serve_rev/@<revision>/inspector.html`);
+  it is `frontend_revision` in src/devtools/server.zig and moves with the pin.
+
 Nothing in this directory is Crane's. `GET /json/protocol` serves these two files' domains merged, as
 Chrome's DevToolsHttpHandler serves its own compiled-in copy.
 

@@ -8,6 +8,8 @@ const enums = @import("enums");
 const GPUVertexAttribute = @import("GPUVertexAttribute.zig").GPUVertexAttribute;
 
 pub const GPUVertexBufferLayout = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     arrayStride: typedefs.GPUSize64,
     stepMode: ?enums.GPUVertexStepMode = null,
     attributes: []const GPUVertexAttribute,

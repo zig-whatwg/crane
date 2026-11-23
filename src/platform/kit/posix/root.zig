@@ -23,6 +23,8 @@ const signal_stack = @import("signal_stack.zig");
 /// rule and the reads a platform's observer polls (the linux platform's
 /// memory_pressure.zig).
 pub const meminfo = @import("meminfo.zig");
+/// Files a host names by path, per Browser (6.10.3 userFile / userDirectory).
+pub const user_files = @import("user_files.zig");
 /// The remote debugging transport (protocol 6.12): loopback TCP and the
 /// inherited pipe pair.
 const devtools_transport = @import("devtools_transport.zig");

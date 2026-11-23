@@ -161,7 +161,7 @@ pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
 
 /// addListener(callback): "Add an event listener with this and an event
 /// listener whose type is change, and callback is callback."
-pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
+pub fn call_addListener(instance: *runtime.Instance, callback: ?runtime.BorrowedCallbackInterface) anyerror!void {
     try interfaces.EventTarget.call_addEventListener(instance, runtime.DOMString.initInterned("change"), callback, webidl.Opt(runtime.JSValue).notPassed());
 }
 
@@ -169,6 +169,6 @@ pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.Callba
 /// event listener whose type is change, callback is callback, and capture is
 /// false, then remove an event listener with this and that event listener" -
 /// removeEventListener with no options, whose capture is false.
-pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
+pub fn call_removeListener(instance: *runtime.Instance, callback: ?runtime.BorrowedCallbackInterface) anyerror!void {
     try interfaces.EventTarget.call_removeEventListener(instance, runtime.DOMString.initInterned("change"), callback, webidl.Opt(runtime.JSValue).notPassed());
 }

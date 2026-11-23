@@ -1694,9 +1694,13 @@ pub const Keyboard = struct {
 /// HTML "when a key event is to be routed in a top-level traversable":
 /// the DOM anchor of the currently focused area of the top-level traversable
 /// `document` is in, the body element or document element standing for a
-/// Document.
+/// Document. Step 2 asserts the traversable has system focus ("key events
+/// are only routed to top-level traversables that have system focus"): the
+/// host that sends a key press to a tab routes it there, focused or not, so
+/// the area is the one the tab designates (html.focus.designatedFocusedArea)
+/// - its currently focused area whenever it has system focus.
 pub fn keyTarget(document: *Instance) ?*Instance {
-    const area = focus.currentlyFocusedArea(document);
+    const area = focus.designatedFocusedArea(document);
     if (isElement(area)) return area;
     return bodyOrDocumentElement(area);
 }

@@ -80,6 +80,7 @@ fn install(name: []const u8, callback: ffi.FunctionCallback) !void {
 
 /// A dictionary as codegen emits one.
 const Options = struct {
+    pub const webidl_dictionary = true;
     label: ?runtime.DOMString = null,
     length: ?f64 = null,
 };

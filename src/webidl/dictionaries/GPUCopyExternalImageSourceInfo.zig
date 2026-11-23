@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUCopyExternalImageSourceInfo = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     source: typedefs.GPUCopyExternalImageSource,
     origin: ?typedefs.GPUOrigin2D = null,
     flipY: ?bool = null,

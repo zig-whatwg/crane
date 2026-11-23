@@ -36,13 +36,30 @@
 //! callbacks are tasks of the Browser loop, each followed by a microtask
 //! checkpoint (event_loop.zig `runOnceBlocking` step 4).
 //!
+//! ## Per tab
+//!
+//! A navigable's rendering opportunities follow ITS display: each tab has a
+//! frame clock of its own (`Frames`, the tab scope's `frames` slot - the
+//! instances design 4.3, "the frame clock (one frame timer; rendering
+//! opportunity)"), whose refresh interval is its display's
+//! (platform.displayRefreshInterval(browser, the tab's id)), whose timer is
+//! armed on the Browser's one event loop, and whose rendering task visits
+//! that tab's documents (HTML permits any order between unrelated top-level
+//! documents). The grid's origin is the loop's: every tab on one display
+//! shares its vsync, as Chrome's per-display BeginFrameSource. One tab's end
+//! takes only its own frames - the loop's single clock let a host-opened
+//! tab's end release every tab's animation frame callbacks (lane tab1).
+//!
 //! ## Ownership
 //!
-//! The state is the event loop's (`EventLoop.frames`), never a thread's.
-//! Each entry OWNS its callback until it runs, is cancelled, its document
-//! goes, or the page ends (`endPage`, before the realm ends). The documents a
-//! frame visits and the documents that asked for one are BORROWED
-//! identities, checked by slab generation before every use.
+//! The state is the tab's, never a thread's: the tab scope ends it with the
+//! tab, and the loop - which keeps a list of its tabs' clocks
+//! (`EventLoop.frame_clocks`) for its idle deadline - tells each at its own
+//! end (`loopEnded`), while the agent lives. Each entry OWNS its callback
+//! until it runs, is cancelled, its document goes, or the page ends
+//! (`endPage`, before the realm ends). The documents a frame visits and the
+//! documents that asked for one are BORROWED identities, checked by slab
+//! generation before every use.
 const std = @import("std");
 const log = std.log.scoped(.rendering);
 const engine = @import("engine");
@@ -136,7 +153,8 @@ const Identifier = struct {
     last: u32 = 0,
 };
 
-/// A Browser event loop's rendering state (`EventLoop.frames`).
+/// A tab's frame clock and its documents' rendering state (the tab scope's
+/// `frames` slot; `framesOf`).
 pub const Frames = struct {
     allocator: Allocator,
     /// The refresh interval (ns) of the display the loop's navigables are on.
@@ -179,7 +197,7 @@ pub const Frames = struct {
     /// The identifier of a Window that has no document to key it by (a
     /// realm that ended, a navigable between documents).
     unkeyed_identifier: u32 = 0,
-    /// The loop's animations (Web Animations): the global animation list,
+    /// The tab's animations (Web Animations): the global animation list,
     /// each document's default timeline, animation time and pending
     /// animation event queue. Step 11 runs them.
     animations: dom_mod.animations.Registry,
@@ -187,6 +205,14 @@ pub const Frames = struct {
     /// refresh grid and the frame timer are read against: a virtual clock
     /// gives frames in virtual time. BORROWED, as the loop's.
     clock: platform.BrowserClock = .real,
+    /// The Browser loop the frame timer is armed on - every tab's is the
+    /// Browser's one loop. BORROWED; null once the loop ended
+    /// (`loopEnded`), and for a test's clock with none.
+    event_loop: ?*EventLoop = null,
+    /// The tab whose clock this is: its documents are the ones a frame
+    /// visits, its id names its display. BORROWED (the tab owns the clock);
+    /// null for a test's clock, which visits every document of the loop.
+    tab: ?*runtime.TabScope = null,
 
     pub fn init(allocator: Allocator, origin_ns: i64) Frames {
         return .{ .allocator = allocator, .origin_ns = origin_ns, .animations = dom_mod.animations.Registry.init(allocator) };
@@ -199,26 +225,70 @@ pub const Frames = struct {
         return frames;
     }
 
+    /// The tab `tab`'s clock on `loop`, the loop's grid and clock: handed
+    /// to the tab (its `frames` slot), which ends it with the tab, and
+    /// listed on the loop, which tells it at its end. Null out of memory, or
+    /// for a tab that closed.
+    pub fn create(loop: *EventLoop, tab: *runtime.TabScope) ?*Frames {
+        if (tab.closed) return null;
+        loop.frame_clocks.ensureUnusedCapacity(loop.allocator, 1) catch return null;
+        const frames = tab.allocator.create(Frames) catch return null;
+        frames.* = init(tab.allocator, loop.frame_origin_ns);
+        frames.clock = loop.browser_clock;
+        frames.event_loop = loop;
+        frames.tab = tab;
+        if (!tab.put(.frames, Frames, frames)) return null;
+        loop.frame_clocks.appendAssumeCapacity(frames);
+        return frames;
+    }
+
     /// The loop's clock now (ns).
     fn nowNs(self: *const Frames) i64 {
         return @intCast(self.clock.monotonicNow().ns);
     }
 
-    /// The loop ends (EventLoop.deinit, before its agent): what the page's
-    /// end left - nothing, normally - is released now, while the engine
-    /// lives. The loop's timers end with its timer manager.
+    /// The clock's end - its tab's close (the tab scope ends its slot), or a
+    /// test's: its frame timer is cancelled and it leaves the loop's list,
+    /// while the loop runs; what the page's end left - nothing, normally - is
+    /// released, the animations' queued events with it while the loop (and
+    /// so the agent) lives. A clock whose loop ended was emptied then
+    /// (`loopEnded`): it touches nothing of the engine.
     pub fn deinit(self: *Frames) void {
+        if (self.event_loop) |owner| {
+            if (self.timer_id) |id| if (owner.timerInterface()) |timers| {
+                _ = timers.clearTimeout(id);
+            };
+            for (owner.frame_clocks.items, 0..) |clock, i| {
+                if (clock != self) continue;
+                _ = owner.frame_clocks.swapRemove(i);
+                break;
+            }
+            self.event_loop = null;
+            self.animations.endPage();
+        }
+        self.timer_id = null;
         for (self.running) |*entry| entry.cancelled = true;
         for (self.pending.items) |*entry| entry.deinit();
         self.pending.deinit(self.allocator);
         self.requests.deinit(self.allocator);
         self.identifiers.deinit(self.allocator);
         self.animations.deinit();
-        self.* = .{ .allocator = self.allocator, .origin_ns = self.origin_ns, .animations = dom_mod.animations.Registry.init(self.allocator) };
     }
 
-    fn loop(self: *Frames) *EventLoop {
-        return @fieldParentPtr("frames", self);
+    /// The loop ends (EventLoop.deinit, before its agent; its timers ended
+    /// with its timer manager): what the page's end left - nothing,
+    /// normally - is released now, while the engine lives, and the clock no
+    /// longer names the loop. Its tab ends it later (`deinit`).
+    pub fn loopEnded(self: *Frames) void {
+        self.event_loop = null;
+        self.timer_id = null;
+        for (self.running) |*entry| entry.cancelled = true;
+        for (self.pending.items) |*entry| entry.deinit();
+        self.pending.clearAndFree(self.allocator);
+        self.requests.clearAndFree(self.allocator);
+        self.identifiers.clearAndFree(self.allocator);
+        self.animations.deinit();
+        self.animations = dom_mod.animations.Registry.init(self.allocator);
     }
 
     /// The first refresh moment at or after `at_ns`.
@@ -240,10 +310,39 @@ pub fn nextRenderDeadline(frames: *const Frames) ?i64 {
     return frames.timer_due_ns;
 }
 
-/// The rendering state of `realm`'s event loop, when it is a Browser loop.
+/// The loop's next rendering opportunity: the earliest its tabs' clocks are
+/// armed for (`nextRenderDeadline`), if any is.
+pub fn nextRenderDeadlineOf(loop: *const EventLoop) ?i64 {
+    var earliest: ?i64 = null;
+    for (loop.frame_clocks.items) |frames| {
+        const due = nextRenderDeadline(frames) orelse continue;
+        earliest = if (earliest) |e| @min(e, due) else due;
+    }
+    return earliest;
+}
+
+/// The loop ends (EventLoop.deinit, after its timer manager, before its
+/// agent): each tab's clock is told (`Frames.loopEnded`), and the list goes.
+pub fn loopEnded(loop: *EventLoop) void {
+    for (loop.frame_clocks.items) |frames| frames.loopEnded();
+    loop.frame_clocks.deinit(loop.allocator);
+    loop.frame_clocks = .empty;
+}
+
+/// The frame clock of `realm`'s tab (the tab scope's `frames` slot), made
+/// on first use, on the realm's Browser loop. Null for a realm of no tab -
+/// a worker's, one whose Window ended - or on no Browser loop.
 fn framesOf(realm: runtime.Context) ?*Frames {
+    const tab = runtime.TabScope.ofRealm(realm) orelse return null;
+    if (tab.get(.frames, Frames)) |frames| return frames;
     const loop = EventLoop.of(realm) orelse return null;
-    return &loop.frames;
+    return Frames.create(loop, tab);
+}
+
+/// `realm`'s tab's frame clock if it has one; never makes one.
+fn existingFramesOf(realm: runtime.Context) ?*Frames {
+    const tab = runtime.TabScope.ofRealm(realm) orelse return null;
+    return tab.get(.frames, Frames);
 }
 
 const Disposition = enum { ready, deferred, terminal };
@@ -475,7 +574,8 @@ fn schedule(frames: *Frames) void {
     if (frames.dispatch_token != null) return;
     if (frames.pending.items.len == 0 and frames.requests.items.len == 0) return;
     if (!anyMayRender(frames)) return;
-    const timers = frames.loop().timerInterface() orelse return;
+    const loop = frames.event_loop orelse return;
+    const timers = loop.timerInterface() orelse return;
     refreshIntervalFromPlatform(frames);
     const now = frames.nowNs();
     // The next refresh moment after the last rendering opportunity: at most
@@ -513,9 +613,10 @@ fn realmMayRender(realm: runtime.Context) bool {
     return (interfaces.Document.get_visibilityState(document) catch return true) != ._hidden_;
 }
 
-/// The refresh interval of the display the loop's navigables are on: the
-/// platform's (`displayRefreshInterval`; tab 0 until the platform protocol's
-/// recipes step 7 maps documents to tabs, as html.platform_state does).
+/// The refresh interval of the display the tab is on: the platform's
+/// (`displayRefreshInterval`, given the tab's id - recipes step 7's
+/// document-to-TabId mapping, the realm's tab; 0, every tab, for a test's
+/// clock).
 fn refreshIntervalFromPlatform(frames: *Frames) void {
     const seed = if (frames.pending.items.len != 0)
         frames.pending.items[0].realm
@@ -524,7 +625,7 @@ fn refreshIntervalFromPlatform(frames: *Frames) void {
     else
         return;
     const browser = html_mod.platform_state.of(seed) orelse return;
-    const interval = platform.displayRefreshInterval(browser, 0);
+    const interval = platform.displayRefreshInterval(browser, if (frames.tab) |tab| tab.id else 0);
     if (interval == 0 or interval > std.math.maxInt(i32)) return;
     frames.interval_ns = @intCast(interval);
 }
@@ -537,7 +638,8 @@ fn frameTimerFired(data: ?*anyopaque) void {
     // Never before the refresh moment it was armed for (the timer counts
     // whole milliseconds): a frame's instant is never after its now.
     if (now < frames.timer_due_ns) {
-        const timers = frames.loop().timerInterface() orelse return;
+        const loop = frames.event_loop orelse return;
+        const timers = loop.timerInterface() orelse return;
         const id = timers.setTimeout(1, frameTimerFired, frames);
         if (id != 0) frames.timer_id = id;
         return;
@@ -572,7 +674,7 @@ fn updateTheRendering(frames: *Frames) void {
     // Steps 2-3: every fully active, renderable document of the loop, in
     // order - including documents with no callback and no request: an
     // earlier parent turn can add their first callback.
-    var documents = collectDocuments(frames.allocator, seed) catch {
+    var documents = collectDocuments(frames.allocator, frames.tab, seed) catch {
         schedule(frames);
         return;
     };
@@ -782,8 +884,11 @@ fn takeAnimationFrameBatch(
 /// HTML update-rendering steps 2–3 collect and filter all documents before JS.
 /// The no-callback documents matter: an earlier parent turn can add their
 /// first callback. Documents created during a callback wait until next frame.
+/// A tab's clock visits its own tab's documents (`tab`; null: every one of
+/// the loop's, a test's clock).
 fn collectDocuments(
     allocator: Allocator,
+    tab: ?*runtime.TabScope,
     seed: runtime.Context,
 ) error{OutOfMemory}!std.ArrayListUnmanaged(FrameDocument) {
     const navigables = dom_mod.browser_state.navigablesOf(seed) orelse return .empty;
@@ -794,6 +899,7 @@ fn collectDocuments(
     const loop = seed.getOptionalEventLoop();
     for (contexts) |navigable| {
         if (navigable.is_closed or navigable.orphaned) continue;
+        if (tab) |own| if (navigable.tab != own) continue;
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.active_window orelse continue));
         if (runtime.SlabAllocator.generationOf(window) == runtime.SlabAllocator.dead_generation) continue;
         if (instance_lifecycle.isCleanupStarted(window)) continue;
@@ -951,7 +1057,7 @@ fn disposition(realm: runtime.Context) Disposition {
 /// A frame's document is being destroyed, and with it its window's map of
 /// animation frame callbacks and its requests.
 pub fn windowDestroyed(realm: runtime.Context) void {
-    const frames = framesOf(realm) orelse return;
+    const frames = existingFramesOf(realm) orelse return;
     // The batch in progress sees its own entries through `running`; one of
     // this window's is skipped rather than removed from under the loop.
     for (frames.running) |*entry| {
@@ -994,14 +1100,17 @@ pub fn windowResumed(realm: runtime.Context) void {
     schedule(frames);
 }
 
-/// The page ends (Context.deinit, before its realm ends): the frame timer is
-/// cancelled and every callback still in a map is released, never run. A
-/// turn in progress only has its entries cancelled: it releases each one
-/// exactly once when it reaches it.
+/// The page ends (Context.deinit, before its realm ends) - its tab's: the
+/// tab's frame timer is cancelled and every callback still in its maps is
+/// released, never run. Another tab's frames are its own. A turn in progress
+/// only has its entries cancelled: it releases each one exactly once when it
+/// reaches it.
 pub fn endPage(realm: runtime.Context) void {
-    const frames = framesOf(realm) orelse return;
+    const frames = existingFramesOf(realm) orelse return;
     if (frames.timer_id) |id| {
-        if (frames.loop().timerInterface()) |timers| _ = timers.clearTimeout(id);
+        if (frames.event_loop) |loop| if (loop.timerInterface()) |timers| {
+            _ = timers.clearTimeout(id);
+        };
         frames.timer_id = null;
     }
     for (frames.running) |*entry| entry.cancelled = true;
@@ -1182,7 +1291,7 @@ test "frame document collection reserve failure leaves callback owners untouched
     defer frames.pending.deinit(allocator);
     try frames.pending.append(allocator, .{ .handle = 7, .callback = .{ .number = 17 }, .realm = &realm });
     var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
-    try std.testing.expectError(error.OutOfMemory, collectDocuments(failing.allocator(), &realm));
+    try std.testing.expectError(error.OutOfMemory, collectDocuments(failing.allocator(), null, &realm));
     try std.testing.expectEqual(@as(usize, 1), frames.pending.items.len);
     try std.testing.expectEqual(@as(f64, 17), frames.pending.items[0].callback.number);
     try std.testing.expectEqual(@as(u32, 7), frames.pending.items[0].handle);
@@ -1307,7 +1416,7 @@ test "native autofocus rendering retires replaced and destroyed documents and ex
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;
-            const frames = &browser.event_loop.?.frames;
+            const frames = framesOf(context.realm.?) orelse return error.NoFrameClock;
             // The candidate goes in after the load: a load is a navigation,
             // which turns the event loop until it settles (lane loadpath1), and
             // a rendering opportunity in those turns - one 16 ms frame on a
@@ -1373,7 +1482,7 @@ test "reactivation restores pending native autofocus rendering without an idle t
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;
-            const frames = &browser.event_loop.?.frames;
+            const frames = framesOf(context.realm.?) orelse return error.NoFrameClock;
             // Inserted after the load, as in the test above: a rendering
             // opportunity during the load's turns would flush it first.
             try context.loadHTML("<!doctype html><body>", .{ .base_url = "about:blank" });

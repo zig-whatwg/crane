@@ -4,9 +4,16 @@ const engine = @import("engine");
 const v8 = @import("v8");
 const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
-const Callback = ?*const fn () void;
-const Strategy = struct { size: Callback = null };
-const Ordinary = struct { mode: enum { valid } = .valid };
+/// A nullable callback function, as codegen types one.
+const Callback = ?@import("runtime").BorrowedCallbackFunction;
+const Strategy = struct {
+    pub const webidl_dictionary = true;
+    size: Callback = null,
+};
+const Ordinary = struct {
+    pub const webidl_dictionary = true;
+    mode: enum { valid } = .valid,
+};
 const Case = enum { argument, callback_member, ordinary_member };
 
 fn eval(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8) !*ffi.Value {
@@ -77,8 +84,11 @@ test "ordinary dictionary member failure still releases its Get handle" {
 // Pin the ownership predicate's default before using it on an open set of types.
 test "only raw callback conversions adopt their input on success" {
     const adopts = v8.conversions.callbackConversionAdoptsInput;
-    try std.testing.expect(adopts(*const fn () void));
+    try std.testing.expect(adopts(@import("runtime").BorrowedCallbackFunction));
+    try std.testing.expect(adopts(@import("runtime").BorrowedCallbackInterface));
     try std.testing.expect(adopts(Callback));
+    // A function pointer is no callback value any more: an unknown type.
+    try std.testing.expect(!adopts(*const fn () void));
     try std.testing.expect(!adopts(*anyopaque));
     try std.testing.expect(!adopts(?*anyopaque));
     try std.testing.expect(!adopts(struct { unknown: *anyopaque }));

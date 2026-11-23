@@ -7,6 +7,8 @@ const enums = @import("enums");
 const AudioSinkOptions = @import("AudioSinkOptions.zig").AudioSinkOptions;
 
 pub const AudioContextOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     latencyHint: ?runtime.JSValue = null,
     sampleRate: ?f32 = null,
     sinkId: ?runtime.JSValue = null,

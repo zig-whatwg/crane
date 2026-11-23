@@ -7,6 +7,8 @@ const GPUProgrammableStage = @import("GPUProgrammableStage.zig").GPUProgrammable
 const GPUPipelineDescriptorBase = @import("GPUPipelineDescriptorBase.zig").GPUPipelineDescriptorBase;
 
 pub const GPUComputePipelineDescriptor = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from GPUPipelineDescriptorBase
     base: GPUPipelineDescriptorBase,
 

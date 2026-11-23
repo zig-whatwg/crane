@@ -236,9 +236,9 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 ///
 /// Defines a new custom element, mapping the given name to the given constructor.
 pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor_data: callbacks.CustomElementConstructor, options: webidl.Opt(dictionaries.ElementDefinitionOptions)) anyerror!void {
-    // The binding hands the constructor over: take it before anything can
+    // The constructor is BORROWED for the call: kept before anything can
     // fail. The definition keeps it; every other way out releases it.
-    const constructor = engine.takeCallbackFunction(@ptrCast(constructor_data));
+    const constructor = constructor_data.keep();
     var kept = false;
     defer if (!kept) constructor.release();
 
@@ -513,14 +513,12 @@ fn constructorValue(realm: runtime.Context, def: *const CustomElementDefinition)
 ///
 /// Returns the name for the given constructor, or null if not defined.
 pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.CustomElementConstructor) anyerror!?runtime.DOMString {
-    // The binding hands the argument over; it is only compared.
-    const constructor = engine.takeCallbackFunction(@ptrCast(constructor_data));
-    defer constructor.release();
+    // The argument is BORROWED for the call; it is only compared.
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: "If this's custom element definition set contains an item with
     // constructor constructor, then return that item's name."
-    if (internal.getDefinitionByConstructor(instance.ctx, constructor.function.value)) |def| {
+    if (internal.getDefinitionByConstructor(instance.ctx, constructor_data.function)) |def| {
         return runtime.DOMString.initInterned(def.name);
     }
 

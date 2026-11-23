@@ -8,6 +8,8 @@ const enums = @import("enums");
 const NotificationAction = @import("NotificationAction.zig").NotificationAction;
 
 pub const NotificationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     dir: ?enums.NotificationDirection = null,
     lang: ?runtime.DOMString = null,
     body: ?runtime.DOMString = null,

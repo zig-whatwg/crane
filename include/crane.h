@@ -159,8 +159,8 @@ typedef enum {
     CRANE_PROXY_SYSTEM = 0,     /* http_proxy/https_proxy/no_proxy */
     CRANE_PROXY_DIRECT = 1,
     CRANE_PROXY_MANUAL = 2,
-    CRANE_PROXY_PAC = 3,        /* CRANE_ERR_UNSUPPORTED */
-    CRANE_PROXY_AUTODETECT = 4  /* CRANE_ERR_UNSUPPORTED */
+    CRANE_PROXY_PAC = 3,        /* CRANE_ERR_UNSUPPORTED until 0.2 */
+    CRANE_PROXY_AUTODETECT = 4  /* CRANE_ERR_UNSUPPORTED until 0.2 */
 } crane_proxy_kind;
 
 typedef struct {
@@ -173,8 +173,10 @@ typedef struct {
 
 typedef struct {
     uint32_t struct_size;
-    const char *profile_dir;    /* NULL: in memory (a directory:
-                                   CRANE_ERR_UNSUPPORTED for now) */
+    const char *profile_dir;    /* NULL: in memory; a directory: the
+                                   Browser's stores persist there, and it
+                                   holds it while it lives (a second live
+                                   Browser on it: CRANE_ERR_PROFILE_IN_USE) */
     const char *user_agent;     /* NULL: Crane's */
     const crane_proxy_t *proxy; /* NULL: system */
     bool accept_insecure_certs;
@@ -183,7 +185,16 @@ typedef struct {
     bool answers_dialogs;       /* the embedder answers every dialog
                                    (crane_tab_answer_dialog); false: the
                                    platform's dialog does */
+    uint32_t focus_mode;        /* crane_focus_mode: which tabs have
+                                   system focus (document.hasFocus(),
+                                   :focus) */
 } crane_browser_options_t;
+
+typedef enum {
+    CRANE_FOCUS_EVERY_TAB = 0,  /* every tab, as headless Chrome (default) */
+    CRANE_FOCUS_ACTIVE_TAB = 1  /* only the tab crane_tab_activate names:
+                                   an embedder showing one tab at a time */
+} crane_focus_mode;
 
 /* A Browser on a thread of its own, sharing nothing with any other. */
 crane_status crane_browser_create(const crane_browser_options_t *options, crane_browser_t **out);

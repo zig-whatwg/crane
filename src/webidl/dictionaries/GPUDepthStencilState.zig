@@ -8,6 +8,8 @@ const enums = @import("enums");
 const GPUStencilFaceState = @import("GPUStencilFaceState.zig").GPUStencilFaceState;
 
 pub const GPUDepthStencilState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     format: enums.GPUTextureFormat,
     depthWriteEnabled: ?bool = null,
     depthCompare: ?enums.GPUCompareFunction = null,

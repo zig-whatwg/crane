@@ -139,10 +139,10 @@ pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMStr
     var options: dom.trusted_types.PolicyOptions = .{};
     if (policyOptions.wasPassed()) {
         const given = policyOptions.getValue();
-        if (given.createHTML) |f| options.html = engine.takeCallbackFunction(@ptrCast(f));
-        if (given.createScript) |f| options.script = engine.takeCallbackFunction(@ptrCast(f));
-        if (given.createScriptURL) |f| options.script_url = engine.takeCallbackFunction(@ptrCast(f));
-        if (given.createParserOptions) |f| options.parser_options = engine.takeCallbackFunction(@ptrCast(f));
+        if (given.createHTML) |f| options.html = f.keep();
+        if (given.createScript) |f| options.script = f.keep();
+        if (given.createScriptURL) |f| options.script_url = f.keep();
+        if (given.createParserOptions) |f| options.parser_options = f.keep();
     }
     defer for ([_]Kind{ .html, .script, .script_url }) |kind| {
         if (options.get(kind)) |callback| callback.release();

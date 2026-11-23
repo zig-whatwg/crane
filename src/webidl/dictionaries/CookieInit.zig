@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const CookieInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     name: runtime.USVString,
     value: runtime.USVString,
     expires: ?typedefs.DOMHighResTimeStamp = null,

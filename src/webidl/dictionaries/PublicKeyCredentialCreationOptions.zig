@@ -12,6 +12,8 @@ const PublicKeyCredentialDescriptor = @import("PublicKeyCredentialDescriptor.zig
 const AuthenticatorSelectionCriteria = @import("AuthenticatorSelectionCriteria.zig").AuthenticatorSelectionCriteria;
 
 pub const PublicKeyCredentialCreationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     rp: PublicKeyCredentialRpEntity,
     user: PublicKeyCredentialUserEntity,
     challenge: typedefs.BufferSource,

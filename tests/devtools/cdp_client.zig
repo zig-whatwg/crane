@@ -27,7 +27,9 @@ fn connect(port: u16) !std.Io.net.Stream {
     return address.connect(io, .{ .mode = .stream });
 }
 
-/// One HTTP/1.1 request; the server closes the connection after it.
+/// One HTTP/1.1 request, read until the server closes the connection or
+/// the body's Content-Length has arrived - Crane's server closes after its
+/// answer, Chrome's (net::HttpServer) keeps the connection open.
 /// `headers` are whole lines ("Host: 127.0.0.1").
 pub fn httpGet(allocator: Allocator, port: u16, path: []const u8, headers: []const []const u8) !HttpResponse {
     const stream = try connect(port);
@@ -43,7 +45,7 @@ pub fn httpGet(allocator: Allocator, port: u16, path: []const u8, headers: []con
     var reader = stream.reader(io, &read_buffer);
     var raw: std.ArrayList(u8) = .empty;
     errdefer raw.deinit(allocator);
-    while (true) {
+    while (!complete(raw.items)) {
         reader.interface.fillMore() catch break;
         const got = reader.interface.buffered();
         try raw.appendSlice(allocator, got);
@@ -51,6 +53,19 @@ pub fn httpGet(allocator: Allocator, port: u16, path: []const u8, headers: []con
     }
     const owned = try raw.toOwnedSlice(allocator);
     return .{ .allocator = allocator, .status = parseStatus(owned), .raw = owned, .body = bodyOf(owned) };
+}
+
+/// Whether `raw` holds a whole response with a Content-Length.
+fn complete(raw: []const u8) bool {
+    const end = std.mem.indexOf(u8, raw, "\r\n\r\n") orelse return false;
+    var lines = std.mem.splitSequence(u8, raw[0..end], "\r\n");
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " "), "content-length")) continue;
+        const length = std.fmt.parseInt(usize, std.mem.trim(u8, line[colon + 1 ..], " "), 10) catch return false;
+        return raw.len >= end + 4 + length;
+    }
+    return false;
 }
 
 fn parseStatus(raw: []const u8) u16 {

@@ -9170,9 +9170,11 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
 /// top-level traversable this engine makes (the host's page, a popup), the
 /// platform's answer for its tab, whose TabId is its browsing context's id
 /// (docs/platform-protocol.md 6.10.4). The headless platforms answer visible.
+/// The tab holds it (runtime.TabScope.system_visibility).
 fn initialSystemVisibility(realm: runtime.Context, browsing_context: *html_core.BrowsingContext) void {
     const browser = html_module.platform_state.of(realm) orelse return;
-    browsing_context.system_visibility = switch (@import("platform").systemVisibility(browser, browsing_context.id)) {
+    const tab = browsing_context.tabScope() orelse return;
+    tab.system_visibility = switch (@import("platform").systemVisibility(browser, browsing_context.id)) {
         .visible => .visible,
         .hidden => .hidden,
     };

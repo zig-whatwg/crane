@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const HandwritingHints = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     recognitionType: ?runtime.DOMString = null,
     inputType: ?runtime.DOMString = null,
     textContext: ?runtime.DOMString = null,

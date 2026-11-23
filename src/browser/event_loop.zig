@@ -147,10 +147,17 @@ pub const EventLoop = struct {
     /// The thread the loop runs on - the one that made it.
     owner_thread: std.Thread.Id,
 
-    /// The window event loop's rendering opportunities: the frame clock, the
-    /// documents' maps of animation frame callbacks and "update the
-    /// rendering" (rendering.zig). Its timer is one of this loop's.
-    frames: rendering.Frames,
+    /// The frame clocks of the tabs whose documents this loop runs - each
+    /// tab's rendering opportunities, its documents' maps of animation frame
+    /// callbacks and "update the rendering" (rendering.zig): OWNED by each
+    /// tab (its scope's `frames` slot), listed here for the loop's idle
+    /// deadline and its end (rendering.loopEnded). Each one's timer is one
+    /// of this loop's.
+    frame_clocks: std.ArrayListUnmanaged(*rendering.Frames) = .empty,
+    /// The refresh grid's origin (monotonic ns, the loop's creation on its
+    /// clock): every tab's frame clock is on the one grid of the display -
+    /// one vsync for every tab, as Chrome's per-display BeginFrameSource.
+    frame_origin_ns: i64,
 
     /// The Browser's clock (platform.browserClock): what the loop's idle
     /// periods, its frame clock and its timers measure time with. The
@@ -221,7 +228,7 @@ pub const EventLoop = struct {
             .timer_manager = timer_mgr,
             .frozen = false,
             .owner_thread = std.Thread.getCurrentId(),
-            .frames = rendering.Frames.initWithClock(allocator, browser_clock),
+            .frame_origin_ns = @intCast(browser_clock.monotonicNow().ns),
             .browser_clock = browser_clock,
             .memory_gate = memory_release.processGate(),
         };
@@ -233,10 +240,11 @@ pub const EventLoop = struct {
     /// still in the agent's queue are the engine's.
     pub fn deinit(self: *Self) void {
         if (self.timer_manager) |mgr| mgr.deinit();
-        // What the page's end left in the maps of animation frame callbacks
-        // (nothing, normally: Context.deinit ends the page first) is
-        // released while the agent lives.
-        self.frames.deinit();
+        // What the pages' ends left in the tabs' maps of animation frame
+        // callbacks (nothing, normally: Context.deinit ends each page first)
+        // is released while the agent lives; each tab's clock forgets the
+        // loop, and its tab ends it later.
+        rendering.loopEnded(self);
         // Other threads post nothing more; what they posted is dropped.
         self.sink.close();
         // A task still queued will never run: let it free what it carries.
@@ -1232,8 +1240,14 @@ pub const EventLoop = struct {
     /// and no later than the next rendering opportunity the frame clock is
     /// armed for (computeDeadline's nextRenderDeadline, exact: the frame
     /// timer itself counts whole milliseconds).
+    /// Whether a rendering opportunity is armed: one of the loop's tabs'
+    /// frame clocks has its timer armed (rendering.nextRenderDeadlineOf).
+    pub fn renderingArmed(self: *const Self) bool {
+        return rendering.nextRenderDeadlineOf(self) != null;
+    }
+
     fn nextTimerDueNs(self: *Self, now: i64) ?i64 {
-        const render = rendering.nextRenderDeadline(&self.frames);
+        const render = rendering.nextRenderDeadlineOf(self);
         const mgr = self.timer_manager orelse return render;
         // Whole milliseconds, rounded down: never later than the timer.
         const due_in_ms = mgr.getNextTimerDeadline() orelse return render;

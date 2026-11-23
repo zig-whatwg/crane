@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUMultisampleState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     count: ?typedefs.GPUSize32 = null,
     mask: ?typedefs.GPUSampleMask = null,
     alphaToCoverageEnabled: ?bool = null,

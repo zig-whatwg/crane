@@ -7,6 +7,8 @@ const AuthenticationExtensionsLargeBlobInputsJSON = @import("AuthenticationExten
 const AuthenticationExtensionsPRFInputsJSON = @import("AuthenticationExtensionsPRFInputsJSON.zig").AuthenticationExtensionsPRFInputsJSON;
 
 pub const AuthenticationExtensionsClientInputsJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     appid: ?runtime.DOMString = null,
     appidExclude: ?runtime.DOMString = null,
     credProps: ?bool = null,

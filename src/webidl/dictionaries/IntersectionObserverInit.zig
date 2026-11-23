@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const IntersectionObserverInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     root: ?runtime.JSValue = null,
     rootMargin: ?runtime.DOMString = null,
     scrollMargin: ?runtime.DOMString = null,

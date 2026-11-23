@@ -284,6 +284,16 @@ pub fn releasePickedFile(browser: *BrowserPlatform, file: platform.FileToken) vo
     _ = .{ browser, file };
 }
 
+pub fn userFile(browser: *BrowserPlatform, path: Str, reply: Reply(platform.PickedFile)) void {
+    _ = .{ browser, path };
+    drop(reply);
+}
+
+pub fn userDirectory(browser: *BrowserPlatform, path: Str, reply: Reply(platform.PickedFiles)) void {
+    _ = .{ browser, path };
+    drop(reply);
+}
+
 // ---------------------------------------------------------------------------
 // 6.10.5 Media
 // ---------------------------------------------------------------------------

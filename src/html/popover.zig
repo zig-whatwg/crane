@@ -318,6 +318,10 @@ fn show(element: *Instance, throws: bool, source: ?*Instance, picker: bool) anye
     active.mode = effective;
     active.picker = picker;
     active.showing = true;
+    // A top-layer member now: CDP's DOM agents hear it (Blink's
+    // AddToTopLayer -> probe::TopLayerElementsChanged; the hide's
+    // State.remove reports the removal).
+    state.membersChanged();
     active.keepSource(document, source);
     if (picker) try dom.form_controls.setPickerOpen(element, true);
     if (effective == .hint) if (ancestor_pin) |id| {

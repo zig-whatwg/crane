@@ -2356,10 +2356,15 @@ fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) vo
     // activation behavior when inactive/immutable; otherwise consume.
     if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
     activation.consume(window);
-    // Step 4: an unsupported file dialog is dismissed without a selection.
-    // Use the existing kept-control element-task mechanism for cancel.
-    // Other pickers need host operations that the current protocol lacks.
-    if (input_type == .file and @import("platform").capabilities.file_picker == .unsupported) {
+    // Step 4: a file dialog the platform cannot show is dismissed without a
+    // selection: unsupported, or emulated - the built-in platforms' files a
+    // host names by path, with no picker UI (their showFilePicker answers
+    // none chosen; html/file_selection.zig takes the host's files). Use the
+    // existing kept-control element-task mechanism for cancel.
+    // TODO(file picker UI): a `.native` picker calls platform.showFilePicker
+    // and applies its answer through html.file_selection; no platform has
+    // one yet. Other pickers need host operations the protocol lacks.
+    if (input_type == .file and @import("platform").capabilities.file_picker != .native) {
         form_associated.queueCancelEvent(instance, &pendingSelectTasks);
     }
 }

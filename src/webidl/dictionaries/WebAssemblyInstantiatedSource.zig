@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const WebAssemblyInstantiatedSource = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     module: *runtime.Instance,
     instance: *runtime.Instance,
 

@@ -317,9 +317,11 @@ pub fn systemVisibilityChanged(scope: *runtime.BrowserScope, tab: platform.TabId
     for (navigables.contexts()) |traversable| {
         if (traversable.parent != null or traversable.is_closed) continue;
         if (tab != 0 and traversable.id != tab) continue;
+        // The traversable's state is its tab's (runtime.TabScope).
+        const tab_scope = traversable.tabScope() orelse continue;
         // Only a change is one ("has changed to newState").
-        if (traversable.system_visibility == new_state) continue;
-        traversable.system_visibility = new_state;
+        if (tab_scope.system_visibility == new_state) continue;
+        tab_scope.system_visibility = new_state;
         const active: *runtime.Instance = @ptrCast(@alignCast(traversable.getActiveDocument() orelse continue));
         // 1. "Let navigables be the inclusive descendant navigables of
         // traversable's active document."

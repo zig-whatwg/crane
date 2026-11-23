@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const BlobCallback = *const fn (blob: ?*runtime.Instance) void;
+/// callback BlobCallback = undefined (Blob? blob)
+pub const BlobCallback = runtime.BorrowedCallbackFunction;

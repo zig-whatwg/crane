@@ -65,7 +65,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObserverCallback, options: webidl.Opt(dictionaries.ReportingObserverOptions)) !*runtime.Instance {
     // Reporting §4.1 constructor steps 1-3. The binding transfers callback.
-    const owned_callback = engine.takeCallbackFunction(@ptrCast(callback));
+    const owned_callback = callback.keep();
     const instance = init(ctx.allocator, State, &ReportingObserver.vtable, ctx) catch |err| {
         owned_callback.release();
         return err;

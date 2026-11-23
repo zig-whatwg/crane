@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const MutationCallback = *const fn (mutations: runtime.JSValue, observer: *runtime.Instance) void;
+/// callback MutationCallback = undefined (sequence<MutationRecord> mutations, MutationObserver observer)
+pub const MutationCallback = runtime.BorrowedCallbackFunction;

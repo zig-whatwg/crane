@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const NavigationOptions = @import("NavigationOptions.zig").NavigationOptions;
 
 pub const NavigationReloadOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from NavigationOptions
     base: NavigationOptions,
 

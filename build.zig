@@ -1071,7 +1071,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // Suites that start the engine or a Browser: a process per test. (The
     // engine adapter's own test directory: its row is its build file's,
     // `facts.tests`.)
-    .{ .name = "tests-dom", .config = .{ .batch = 1 } },
+    .{ .name = "tests-dom", .config = .{ .batch = 1, .slow = &dom_slow } },
     // Both test variants fail (lane tsanfix1 fixed lane tsan1's findings,
     // docs/testing/test-variant-findings-2026-11-02.tsv).
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .tsan_skip = &html_tsan_skip } },
@@ -1108,6 +1108,26 @@ const html_slow = [_][]const u8{
     "nodeholds_cost_test.test.1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections",
     // 77.0 s.
     "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
+    // Lane flk4 item 8, 2026-11-23: chat2 gate (loaded) / alone on chat2 / server1 gate. Their work is
+    // the claim - a script's names collected, 2,500 delete-joins - and std.testing.allocator is a small share
+    // of it (`sample`: 15%, and the kept-edge test is on the churn allocator already).
+    // 128 s / 55 s / 18.5 s.
+    "nd2_name_lifetime_test.test.names made by script and collected leave the Browser's name table where it started",
+    // 293 s / 25 s / 75 s.
+    "mem1_kept_edge_teardown_test.test.a delete-join loop past the undo bound keeps no element.style object past its element",
+};
+
+// tests-dom's slow tests (lane flk4 item 8, 2026-11-23): chat2 gate (loaded) / alone on chat2 /
+// server1 gate. A crash-safety depth (3,000 levels) and a million-name lifetime claim are their subject,
+// so their sizes stay; a loaded gate stretches them toward the 300 s timeout.
+const dom_slow = [_][]const u8{
+    // 281 s / 26 s / 42 s.
+    "crash1_range_depth_test.test.cloneContents: a start and an end 3,000 levels deep clone as two chains, the tree untouched",
+    // 161 s and 160 s / - / 17 s and 18 s.
+    "crash1_range_depth_test.test.extractContents: a start 3,000 levels below the common ancestor comes out as one clone chain",
+    "crash1_range_depth_test.test.extractContents: an end 3,000 levels below the common ancestor comes out as one clone chain",
+    // 118 s / 12 s / 28 s (already on the churn allocator).
+    "nd2_element_name_test.test.a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started",
 };
 
 /// The row of the suite `name`: the engine adapter's own test directory's

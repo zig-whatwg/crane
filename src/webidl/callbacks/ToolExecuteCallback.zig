@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ToolExecuteCallback = *const fn (inputObject: runtime.JSValue, options: runtime.JSValue) runtime.JSValue;
+/// callback ToolExecuteCallback = Promise<any> (object inputObject, ToolExecuteCallbackOptions options)
+pub const ToolExecuteCallback = runtime.BorrowedCallbackFunction;

@@ -15,6 +15,11 @@
 //! - node tracing collects a wrapped element's wrapper only together with
 //!   its whole tree's, and the tree's root teardown frees the element then -
 //!   its internals go in that same collection;
+//!   (since the wrapper redesign the element's own main-world wrapper lives in its slot
+//!   and never enters a wrapper cache - node_wrappers.zig; the internals',
+//!   a non-node object's, is the cache's, and its AlreadyWrapped refusal is
+//!   pinned in tests/v8/constructed_wrapper_test.zig with a Headers object:
+//!   lane mem1's audit, 2026-11-22)
 //! - an element adopted out of a frame keeps its wrapper in the frame's
 //!   realm, which therefore lives as long as script holds the element.
 //! Blink's ElementRareData traces Member<ElementInternals>; WebKit's holds a

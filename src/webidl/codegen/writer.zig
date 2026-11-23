@@ -2969,7 +2969,7 @@ pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
 
 /// The Zig type of one constructor argument, as the binding converts it:
 /// `optional T` is `webidl.Opt(T)`, `T...` a slice, an interface type
-/// `*runtime.Instance`, a callback interface `?*runtime.CallbackWrapper`.
+/// `*runtime.Instance`, a callback interface `runtime.BorrowedCallbackInterface`.
 /// Shared by a single constructor's parameters and an overloaded
 /// constructor's ConstructorArgs variants - which typed an interface by its
 /// generated struct (`KeyframeEffect: KeyframeEffect`), a type no
@@ -3014,7 +3014,7 @@ fn writeConstructorArgType(
     var arg_type = type_mapping.type_name;
 
     // Check if this is an interface type - if so, use *runtime.Instance
-    // Callback interfaces use ?*runtime.CallbackWrapper
+    // Callback interfaces use runtime.BorrowedCallbackInterface
     const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
     const is_interface = type_kind != null and type_kind.? == .interface;
     const is_callback_interface = type_kind != null and type_kind.? == .callback_interface;
@@ -3024,14 +3024,15 @@ fn writeConstructorArgType(
         arg_type = "runtime.JSValue";
     }
 
-    // For callback interface types, use ?*runtime.CallbackWrapper
-    // For regular interface types, use *runtime.Instance directly
+    // A callback interface type's value is the engine protocol's borrowed
+    // callback interface (WebIDL 3.2.16), BORROWED for the call and kept with
+    // `keep()`; a regular interface type's is *runtime.Instance.
     // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
     if (is_callback_interface) {
         if (arg.idlType.nullable and !arg.variadic) {
             try writer.writeAll("?");
         }
-        try writer.writeAll("?*runtime.CallbackWrapper");
+        try writer.writeAll("runtime.BorrowedCallbackInterface");
     } else if (is_interface) {
         if (arg.idlType.nullable and !arg.variadic) {
             try writer.writeAll("?");
@@ -3161,6 +3162,9 @@ pub fn writeOverloadedConstructor(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (ctor.arguments) |arg| {
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
@@ -3443,13 +3447,15 @@ fn writeOperationDelegate(
         return_type = to_json_type_buf.?;
     } else {
         // Check if return type is an interface - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper
+        // A callback interface value an operation returns is the object
+        // (WebIDL 3.2.16: "a reference to the same object"), a value the
+        // binding releases, as a callback interface attribute's is.
         const return_type_kind = if (type_registry) |reg| reg.lookup(op.idlType.type) else null;
         const is_interface_return = return_type_kind != null and return_type_kind.? == .interface;
         const is_callback_interface_return = return_type_kind != null and return_type_kind.? == .callback_interface;
 
         return_type = if (is_callback_interface_return)
-            "?*runtime.CallbackWrapper"
+            "runtime.JSValue"
         else if (is_interface_return)
             "*runtime.Instance"
         else if (type_registry) |reg|
@@ -3526,14 +3532,15 @@ fn writeOperationDelegate(
         }
 
         // Check if parameter type is an interface - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper: the binding's
-        // wrapper, borrowed for the call (engine.takeCallbackInterface)
+        // Callback interfaces use runtime.BorrowedCallbackInterface: the
+        // object, BORROWED for the call (kept with `keep()`,
+        // engine.keepCallbackInterface)
         const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
         const is_interface_param = type_kind != null and type_kind.? == .interface;
         const is_callback_interface_param = type_kind != null and type_kind.? == .callback_interface;
 
         var arg_type = if (is_callback_interface_param)
-            "?*runtime.CallbackWrapper"
+            "runtime.BorrowedCallbackInterface"
         else if (is_interface_param)
             "*runtime.Instance"
         else if (type_registry) |reg|
@@ -5155,6 +5162,9 @@ fn writeOverloadedOperation(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (op.arguments) |arg| {
                 // Build type with optional, variadic, nullable, and union handling
                 var buffer: [512]u8 = undefined;
@@ -5268,8 +5278,8 @@ fn capitalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
 pub fn getterReturnType(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) []const u8 {
     // Check if this is an interface type - if so, use *runtime.Instance
     // A callback interface attribute returns the object that was given
-    // (NodeIterator.filter): a runtime.JSValue. Only an ARGUMENT of a
-    // callback interface type is a *runtime.CallbackWrapper.
+    // (NodeIterator.filter): a runtime.JSValue. Only a value the binding
+    // CONVERTS - an argument, a member - is a runtime.BorrowedCallbackInterface.
     const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
     const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
     const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;

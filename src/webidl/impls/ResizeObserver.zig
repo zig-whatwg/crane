@@ -140,7 +140,7 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ResizeObserver
     errdefer deinit(instance);
     const internal = getInternal(instance);
     internal.self_instance = instance;
-    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+    internal.callback = callback.keep();
     return instance;
 }
 

@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const TaskSignalAnyInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     priority: ?runtime.JSValue = null,
 
     /// Inline union members typed runtime.JSValue: one present with the

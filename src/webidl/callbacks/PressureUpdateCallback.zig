@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const PressureUpdateCallback = *const fn (changes: runtime.JSValue, observer: *runtime.Instance) void;
+/// callback PressureUpdateCallback = undefined (sequence<PressureRecord> changes, PressureObserver observer)
+pub const PressureUpdateCallback = runtime.BorrowedCallbackFunction;

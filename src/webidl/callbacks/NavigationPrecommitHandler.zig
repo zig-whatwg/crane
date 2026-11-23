@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const NavigationPrecommitHandler = *const fn (controller: *runtime.Instance) runtime.JSValue;
+/// callback NavigationPrecommitHandler = Promise<undefined> (NavigationPrecommitController controller)
+pub const NavigationPrecommitHandler = runtime.BorrowedCallbackFunction;

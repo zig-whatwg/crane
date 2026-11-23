@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const SchedulerPostTaskOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     signal: ?*runtime.Instance = null,
     priority: ?enums.TaskPriority = null,
     delay: ?u64 = null,

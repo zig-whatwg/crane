@@ -331,7 +331,8 @@ pub const Capabilities = struct {
     simple_dialogs: Support,
     /// The printing steps end without output.
     printing: Support,
-    /// No files chosen (`cancel`; AbortError for File System Access).
+    /// No files chosen (`cancel`; AbortError for File System Access), and
+    /// no file a host names by path (`userFile` drops).
     file_picker: Support,
     /// Every popup allowed; window rects ignored.
     windows: Support,
@@ -1527,8 +1528,9 @@ pub const CssEnvironmentVariable = enum(u8) {
 /// fallback. x/y index viewport segments horizontally/vertically; ignored
 /// for scalars. Hosts supply finite values and bump cssEnvironmentRevision
 /// whenever a value changes. Available without the layout capability.
-/// Until recipes step 7 supplies document -> TabId mapping, built-in
-/// platforms answer per Browser, ignoring tab; DOM callers pass 0.
+/// DOM callers pass the document's tab - its realm's (runtime.TabScope:
+/// recipes step 7's document -> TabId mapping), 0 for a realm of no tab;
+/// built-in platforms answer per Browser, ignoring tab.
 pub inline fn cssEnvironmentVariable(browser: *BrowserPlatform, tab: TabId, variable: CssEnvironmentVariable, x: u32, y: u32) ?f64 {
     return impl.cssEnvironmentVariable(browser, tab, variable, x, y);
 }
@@ -1800,6 +1802,10 @@ pub const PickedFile = extern struct {
     mime_type: Str = .{},
     size: u64,
     last_modified: WallTime,
+    /// A file of a chosen directory: its path from the directory, the
+    /// directory's own name first ("photos/2026/a.jpg") - File's
+    /// webkitRelativePath. Empty for a file chosen on its own.
+    relative_path: Str = .{},
 };
 
 /// The files chosen; none: canceled. BORROWED for `deliver`.
@@ -1823,6 +1829,27 @@ pub inline fn readPickedFile(browser: *BrowserPlatform, file: FileToken, offset:
 pub inline fn releasePickedFile(browser: *BrowserPlatform, file: FileToken) void {
     comptime gate(.file_picker, "releasePickedFile");
     return impl.releasePickedFile(browser, file);
+}
+
+/// A file the HOST chose by its path, with no picker: a remote end's
+/// DOM.setFileInputFiles (Blink's FileInputType::SetFilesFromPaths), an
+/// automation's "set input files". Answers the PickedFile a picker would -
+/// its token read by `readPickedFile` and let go by `releasePickedFile`, and
+/// let go at the Browser's end when Crane never does. Dropped when `path`
+/// (BORROWED for the call) names no regular file the platform can read.
+pub inline fn userFile(browser: *BrowserPlatform, path: Str, reply: Reply(PickedFile)) void {
+    comptime gate(.file_picker, "userFile");
+    return impl.userFile(browser, path, reply);
+}
+
+/// The files of a directory the HOST chose by its path (a remote end's
+/// DOM.setFileInputFiles on an input with webkitdirectory: Blink's
+/// FileInputType::SetFilesFromDirectory): every regular file under it, at
+/// any depth, each with its own token and its `relative_path`. Dropped when
+/// `path` (BORROWED for the call) names no directory the platform can list.
+pub inline fn userDirectory(browser: *BrowserPlatform, path: Str, reply: Reply(PickedFiles)) void {
+    comptime gate(.file_picker, "userDirectory");
+    return impl.userDirectory(browser, path, reply);
 }
 
 // ---- 6.10.4 Screen and system state (required; defaults allowed) ----

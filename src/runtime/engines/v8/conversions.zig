@@ -25,7 +25,6 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const interface_mod = @import("interface.zig");
-const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
@@ -35,22 +34,6 @@ const value_operations = @import("value_operations.zig");
 const protocol_engine = @import("engine");
 const protocol_support = @import("protocol_support.zig");
 const protocol_conversions = @import("protocol_conversions.zig");
-const Hook = @import("process").Hook;
-
-/// What a callback-interface argument's wrapper is allocated from: a
-/// general-purpose allocator, since the binding makes and frees one per call
-/// (the page allocator it used spent a whole page on each). The same for
-/// every Browser and never written in production; a test overrides it with
-/// `std.testing.allocator` to see that none outlives its call.
-pub var callback_allocator: Hook(std.mem.Allocator) = .init(std.heap.c_allocator);
-
-/// Release a callback interface argument (`*runtime.CallbackWrapper`) the
-/// binding converted, once the call it was converted for has returned: the
-/// wrapper, the argument's handle it took over, and its context handle.
-pub fn releaseCallbackWrapper(argument: *runtime.CallbackWrapper) void {
-    const wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(argument));
-    wrapper.deinit();
-}
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -1142,6 +1125,88 @@ fn byteStringRecordFrom(allocator: std.mem.Allocator, isolate: *v8.Isolate, cont
     return result.toOwnedSlice(allocator);
 }
 
+/// WebIDL 3.2.23, converting the Object O to record<K, V> - a record as codegen
+/// types one, `[]const Entry` with `Entry = struct { key: K, value: V }`
+/// (marked `webidl_record_entry`): a dictionary member, an argument. Each key
+/// and value is converted as it is reached, as byteStringRecordFrom's are.
+/// OWNED: an exact-length slice of entries freed with the value
+/// (interface.freeConvertedArg walks a record entry as a dictionary). A value
+/// kept as its Get handle (an `any` or `object` V) is that handle, released
+/// with it. `Interface` is the interface a value of interface type converts
+/// to - codegen's table for the record's position names it (MLNamedOperands'
+/// MLOperand), as it names a sequence's elements'.
+fn recordFrom(comptime Entry: type, comptime Interface: ?type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Value) ConversionError![]const Entry {
+    const K = @FieldType(Entry, "key");
+    const V = @FieldType(Entry, "value");
+    // 1. If O is not an Object, throw a TypeError (the caller checked).
+    // 2. Let result be a new empty instance of record<K, V>.
+    var result: std.ArrayListUnmanaged(Entry) = .empty;
+    errdefer {
+        for (result.items) |entry| interface_mod.freeArgument(Entry, allocator, entry);
+        result.deinit(allocator);
+    }
+
+    // 3. Let keys be ? O.[[OwnPropertyKeys]]().
+    var threw = false;
+    const own_keys = v8.v8_Object_OwnPropertyKeysCatching(context, object, &threw);
+    if (threw) return rethrowCaught(isolate, own_keys);
+    const keys: *v8.Array = @ptrCast(own_keys orelse return ConversionError.TypeError);
+    defer v8.v8_Global_Dispose(@ptrCast(keys));
+
+    // 4. For each key of keys:
+    const count = v8.v8_Array_Length(keys);
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const key = v8.v8_Array_Get(context, keys, i) orelse return ConversionError.TypeError;
+        defer v8.v8_Value_Dispose(key);
+        // 1. Let desc be ? O.[[GetOwnProperty]](key).
+        var enumerable = false;
+        const thrown = v8.v8_Object_IsOwnEnumerableCatching(context, object, key, &enumerable, &threw);
+        if (threw) return rethrowCaught(isolate, thrown);
+        // 2. If desc is not undefined and desc.[[Enumerable]] is true:
+        if (!enumerable) continue;
+        //    1. Let typedKey be key converted to an IDL value of type K - a
+        //       Symbol is the string conversion's TypeError.
+        const typed_key = try fromV8Value(K, allocator, isolate, context, key);
+        errdefer interface_mod.freeConvertedArg(K, allocator, typed_key);
+        //    2. Let value be ? Get(O, key).
+        const item = v8.v8_Object_GetByKeyCatching(context, object, key, &threw);
+        if (threw) return rethrowCaught(isolate, item);
+        const item_value = item orelse return ConversionError.TypeError;
+        //    3. Let typedValue be value converted to an IDL value of type V.
+        //       A copying conversion leaves Get's handle to go now; one that
+        //       keeps it (an `any`) holds it until the entry is freed.
+        const typed_value: V = converted: {
+            if (comptime interface_mod.argHandleIsCopied(V)) {
+                defer v8.v8_Value_Dispose(item_value);
+                break :converted try fromV8ValueAs(V, Interface, allocator, isolate, context, item_value);
+            }
+            const converted_value = fromV8ValueAs(V, Interface, allocator, isolate, context, item_value) catch |err| {
+                v8.v8_Value_Dispose(item_value);
+                return err;
+            };
+            if (interface_mod.conversionLeavesHandle(V, converted_value)) v8.v8_Value_Dispose(item_value);
+            break :converted converted_value;
+        };
+        //    4. Set result[typedKey] to typedValue. Two keys give one typedKey
+        //       only through a USVString's lone surrogates (each becomes
+        //       U+FFFD): the later value replaces the earlier, in its place.
+        if (comptime K == []const u8) {
+            if (for (result.items) |*entry| {
+                if (std.mem.eql(u8, entry.key, typed_key)) break entry;
+            } else null) |existing| {
+                interface_mod.freeConvertedArg(K, allocator, typed_key);
+                interface_mod.freeArgument(V, allocator, existing.value);
+                existing.value = typed_value;
+                continue;
+            }
+        }
+        try result.append(allocator, .{ .key = typed_key, .value = typed_value });
+    }
+    // 5. Return result.
+    return result.toOwnedSlice(allocator);
+}
+
 /// Make pending a value a Catching call caught (OWNED, taken); a null one -
 /// a terminating isolate - leaves nothing to throw.
 fn rethrowCaught(isolate: *v8.Isolate, thrown: ?*v8.Value) ConversionError {
@@ -1945,20 +2010,17 @@ pub fn fromV8Value(
 pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
     const Child = @typeInfo(T).optional.child;
     if (!v8.v8_Value_IsObject(value)) return null;
-    return callbackFunctionValue(Child, value);
+    comptime std.debug.assert(Child == runtime.BorrowedCallbackFunction);
+    return borrowedCallbackFunction(value);
 }
 
-/// The transitional callback representation is the untagged Global address,
-/// never a callable Zig function. BORROWED: the binding frees it with the
-/// value, and a consumer that keeps it takes a hold of its own through the
-/// protocol (takeCallbackFunction).
-fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
-    const address: usize = @intFromPtr(value);
-    std.debug.assert(std.mem.isAligned(address, @alignOf(@typeInfo(T).pointer.child)));
-    comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
-    var function_value: T = undefined;
-    @memcpy(std.mem.asBytes(&function_value), std.mem.asBytes(&address));
-    return function_value;
+/// A callback function type's value (WebIDL 3.2.19 step 2): the function the
+/// binding's Global `value` holds, with that Global as its handle - BORROWED
+/// for the call and freed with the value (interface.freeConvertedArg), which
+/// is why the conversion adopts its input. Its callback context is recorded
+/// when an impl keeps it (engine.keepCallbackFunction).
+fn borrowedCallbackFunction(value: *v8.Value) runtime.BorrowedCallbackFunction {
+    return .{ .function = .{ .handle = .{ .ptr = @ptrCast(value) } } };
 }
 
 /// `fromV8Value`, where `T`'s interface-typed positions convert to
@@ -2123,6 +2185,15 @@ fn convertValueAs(
             return buffer;
         }
 
+        // A record<K, V> (codegen's `[]const Entry`, the entry marked
+        // `webidl_record_entry`), WebIDL 3.2.23: "1. If O is not an Object,
+        // throw a TypeError", then its own enumerable keys (`recordFrom`). Never
+        // read as a sequence of {key, value} objects, as it was.
+        if (comptime interface_mod.isRecordEntryType(ElemType)) {
+            if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+            return try recordFrom(ElemType, Interface, allocator, isolate, context, value);
+        }
+
         // WebIDL 3.2.21, converting V to sequence<T>:
         // 1. If V is not an Object, throw a TypeError.
         if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
@@ -2227,6 +2298,35 @@ fn convertValueAs(
         return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
     }
 
+    // WebIDL 3.2.19, converting V to a callback function type:
+    if (T == runtime.BorrowedCallbackFunction) {
+        // 1. "If the result of calling IsCallable(V) is false" - and V is not
+        //    being assigned to a nullable [LegacyTreatNonObjectAsNull]
+        //    callback attribute, which converts through
+        //    fromV8LegacyCallbackAttribute instead - "throw a TypeError."
+        if (!v8.v8_Value_IsFunction(value)) return ConversionError.TypeError;
+        // 2. "Return the IDL callback function type value that represents a
+        //    reference to the same object that V represents, with the
+        //    incumbent settings object as the callback context."
+        return borrowedCallbackFunction(value);
+    }
+
+    // WebIDL 3.2.16, converting V to a callback interface type:
+    if (T == runtime.BorrowedCallbackInterface) {
+        // 1. "If V is not an Object, then throw a TypeError." A function is an
+        //    object; the operation is looked up only when the callback is
+        //    called ("call a user object's operation" step 10), so nothing is
+        //    read here. Chrome, Firefox and Safari throw too for
+        //    addEventListener(type, 5).
+        if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+        // 2. "Return the IDL callback interface type value that represents a
+        //    reference to V, with the incumbent settings object as the
+        //    callback context": the binding's Global, BORROWED for the call
+        //    (freed with the value; engine.keepCallbackInterface records the
+        //    context when an impl keeps it).
+        return .{ .object = .{ .handle = .{ .ptr = @ptrCast(value) } } };
+    }
+
     // Handle unions (for constructor overloading and type unions)
     if (type_info == .@"union") {
         // Union types require runtime type discrimination per WebIDL specification.
@@ -2280,18 +2380,33 @@ fn convertValueAs(
                 if (field_info == .pointer and field_info.pointer.size == .slice) {
                     // Skip []const u8 which is handled as string above
                     if (field_info.pointer.child == u8) continue;
+                    // A record (its entry marked `webidl_record_entry`) is
+                    // no sequence: step 11.5, below.
+                    if (interface_mod.isRecordEntryType(field_info.pointer.child)) continue;
                     break :blk i;
                 }
             }
             break :blk null;
         };
 
-        const dict_idx: ?usize = comptime blk: {
+        // A record<K, V> arm (codegen's `[]const Entry`, the entry marked
+        // `webidl_record_entry`): WebIDL 3.2.25 step 11.5.
+        const record_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
                 const field_info = @typeInfo(field.type);
-                if (field_info == .@"struct" and !@hasDecl(field.type, "Meta")) {
-                    break :blk i;
-                }
+                if (field_info == .pointer and field_info.pointer.size == .slice and interface_mod.isRecordEntryType(field_info.pointer.child)) break :blk i;
+            }
+            break :blk null;
+        };
+
+        const dict_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                // A dictionary arm is a struct that SAYS it is one
+                // (interface.isDictionaryType): a callback value
+                // (runtime.Borrowed*) is a struct too, and an Object that is
+                // not callable goes on to the string step (3.2.25 step 15),
+                // so setTimeout({ toString() { ... } }) runs its string.
+                if (interface_mod.isDictionaryType(field.type)) break :blk i;
             }
             break :blk null;
         };
@@ -2338,23 +2453,12 @@ fn convertValueAs(
             break :blk null;
         };
 
-        // Callback function types: *anyopaque (for unions like TimerHandler)
-        // The "Function" callback is generated as *anyopaque to hold V8 GlobalHandle pointers.
-        // These match JavaScript functions that need to be stored for later invocation.
+        // A callback function arm (runtime.BorrowedCallbackFunction): a
+        // callable goes to it (WebIDL 3.2.25 step 10), and is held there by
+        // its own Global.
         const function_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                // Check for *anyopaque (used for callback.Function)
-                if (field.type == *anyopaque) {
-                    break :blk i;
-                }
-                // Also check for *const fn(...) for backwards compatibility with other callbacks
-                const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .one) {
-                    const child_info = @typeInfo(field_info.pointer.child);
-                    if (child_info == .@"fn") {
-                        break :blk i;
-                    }
-                }
+                if (field.type == runtime.BorrowedCallbackFunction) break :blk i;
             }
             break :blk null;
         };
@@ -2462,21 +2566,10 @@ fn convertValueAs(
         // string it stringifies to.
         if (function_idx != null and v8.v8_Value_IsFunction(value)) {
             if (function_idx) |idx| {
-                // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
-                // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
-                // Handle the different callback pointer types
-                const FieldType = fields[idx].type;
-                if (FieldType == *anyopaque) {
-                    // For *anyopaque (callbacks.Function), tag so we can identify it later as GlobalHandle
-                    const tagged = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
-                    return @unionInit(T, fields[idx].name, @constCast(tagged));
-                } else {
-                    // For typed function pointer fields (*const fn(...)), do NOT tag the pointer.
-                    // Tagged pointers have low bits set which violates Zig's alignment requirements
-                    // for function pointers. The union variant type already tells us what it is.
-                    const ptr_value: usize = @intFromPtr(value);
-                    return @unionInit(T, fields[idx].name, @ptrFromInt(ptr_value));
-                }
+                // 3.2.19: the callable's own Global (the binding's argument
+                // Global, or the member's Get handle), BORROWED for the call
+                // and freed with the union (interface.freeConvertedArg).
+                return @unionInit(T, fields[idx].name, borrowedCallbackFunction(value));
             }
         } else if (v8.v8_Value_IsString(value)) {
             if (string_idx) |idx| {
@@ -2584,6 +2677,14 @@ fn convertValueAs(
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
                 return @unionInit(T, fields[idx].name, converted);
+            }
+            // Step 11.5: "If types includes a record type, then return the
+            // result of converting V to that record type" (3.2.23). A record
+            // and a dictionary are not distinguishable, so a union has at
+            // most one of the two.
+            if (record_idx) |idx| {
+                const Entry = @typeInfo(fields[idx].type).pointer.child;
+                return @unionInit(T, fields[idx].name, try recordFrom(Entry, null, allocator, isolate, context, value));
             }
         }
 
@@ -2719,55 +2820,6 @@ fn convertValueAs(
         return convertToInterface(I, value);
     }
 
-    // Handle function pointers (callbacks)
-    //
-    // CRITICAL: V8 callback persistence fix
-    //
-    // When JavaScript passes a callback function (e.g., `new WritableStream({ start: fn })`),
-    // the V8 value is a Local<Function> that's only valid within the current HandleScope.
-    // If we just store the Local handle pointer, it becomes invalid when the HandleScope ends
-    // (typically when the constructor returns).
-    //
-    // The fix: Create a V8 Global handle immediately during dictionary extraction.
-    // Global handles persist until explicitly disposed, surviving HandleScope destruction.
-    //
-    // A callback function type is a Zig function-pointer type until codegen
-    // types callback parameters as engine.CallbackFunction (the protocol's
-    // TRANSITIONAL note on takeCallbackFunction): the value holds the
-    // function's Global<Value>* and is never called. It is BORROWED for the
-    // call, as every converted value is: the binding frees the Global with
-    // the value (interface.freeConvertedArg), and a consumer that keeps the
-    // callback takes a hold of its own (takeCallbackFunction, which moves the
-    // function out of this Global).
-    if (type_info == .pointer) {
-        const child_info = @typeInfo(type_info.pointer.child);
-        if (child_info == .@"fn") {
-            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a
-            // Global<Value>* of the binding's (the C++ side made it from the
-            // argument's Local), so it is the value as it is - still the
-            // binding's to free.
-            if (!v8.v8_Value_IsFunction(value)) {
-                return ConversionError.TypeError;
-            }
-
-            // UNTAGGED. A value of a pointer type must be aligned for it - a
-            // function is 4-aligned on aarch64 - and it once carried
-            // `.global_handle` in its low bits. That is illegal behaviour, and
-            // an optimized build acted on it: with the impl's untag inlined
-            // after a parameter of this type, LLVM took the low bits as zero
-            // and dropped the untag, so a ReleaseSafe runner disposed and
-            // cloned Global* + 1 (the alignment trap in v8_Global_Clone, under
-            // EventTarget.innerInvoke, on every event handler it ran). The
-            // Global from `new` is 16-aligned, so the plain address is a value
-            // the type may hold; the union path below already stored its
-            // function-pointer arms this way.
-            //
-            // A byte copy, since no pointer cast turns a Value* into a function
-            // pointer; both are one machine word.
-            return callbackFunctionValue(T, value);
-        }
-    }
-
     // Handle webidl.Opt (Optional wrapper type)
     // This must come before generic struct handling since Opt is a struct
     if (type_info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
@@ -2799,15 +2851,11 @@ fn convertValueAs(
         return T.passed(inner_value);
     }
 
-    // Handle structs (dictionaries vs interfaces)
+    // A dictionary (WebIDL 3.2.18): a struct that SAYS it is one
+    // (interface.isDictionaryType). Any other struct reaching here is a type
+    // the binding has no conversion for, and a compile error says which.
     if (type_info == .@"struct") {
-        // Check if this is a WebIDL interface (has Meta subtype)
-        if (@hasDecl(T, "Meta")) {
-            // This is a WebIDL interface, not a dictionary
-            // TODO: Extract *runtime.Instance from V8 object's internal field
-            // For now, interfaces in constructor parameters are not fully supported
-            return error.TypeError;
-        }
+        if (comptime !interface_mod.isDictionaryType(T)) @compileError("not a WebIDL dictionary (no `pub const webidl_dictionary`), and no other conversion takes it: " ++ @typeName(T));
 
         // WebIDL 3.2.18 steps 1-3: "If jsDict is not undefined, null or an
         // Object, throw a TypeError"; undefined and null are a dictionary
@@ -3143,37 +3191,6 @@ fn convertValueAs(
         return TaggedPointer.init(@ptrCast(@constCast(value)), .local_value).toConstPtr();
     }
 
-    // Callback interface types (EventListener, NodeFilter, XPathNSResolver):
-    // the argument as this adapter's CallbackWrapper, which the engine-neutral
-    // `*runtime.CallbackWrapper` names opaquely. BORROWED by the impl for the
-    // call: the binding releases it when the call returns
-    // (`releaseCallbackWrapper`), and an impl that keeps the callback takes a
-    // CallbackInterface of its own (takeCallbackInterface).
-    if (T == *runtime.CallbackWrapper) {
-        const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator.get(),
-            isolate,
-            context,
-            value,
-            "handleEvent", // Default method name for callback interfaces
-        ) catch return ConversionError.TypeError;
-        return @ptrCast(wrapper orelse return ConversionError.TypeError);
-    }
-    if (T == ?*runtime.CallbackWrapper) {
-        // Optional callback - null/undefined is valid
-        if (v8.v8_Value_IsNullOrUndefined(value)) {
-            return null;
-        }
-        const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator.get(),
-            isolate,
-            context,
-            value,
-            "handleEvent",
-        ) catch return ConversionError.TypeError;
-        return if (wrapper) |w| @ptrCast(w) else null;
-    }
-
     // Handle pointer types that might be generated by codegen for buffer sources
     // This catches things like *ArrayBuffer, *TypedArray, etc.
     if (type_info == .pointer and type_info.pointer.size == .one) {
@@ -3404,14 +3421,16 @@ pub fn toV8Record(
     return object;
 }
 
-/// ALLOWLIST: the raw function-pointer conversion's value IS its input Global
-/// on success (freed with the value, interface.freeConvertedArg), and holds
-/// nothing when it fails. Unknown pointer and aggregate types remain false;
-/// nullable callbacks have the same rule.
+/// ALLOWLIST: a callback value's conversion (runtime.BorrowedCallbackFunction,
+/// BorrowedCallbackInterface) IS its input Global on success (freed with the
+/// value, interface.freeConvertedArg), and holds nothing when it fails.
+/// Unknown pointer and aggregate types remain false; nullable callbacks have
+/// the same rule.
 pub fn callbackConversionAdoptsInput(comptime T: type) bool {
+    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) return true;
     const info = @typeInfo(T);
     if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
-    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
+    return false;
 }
 
 /// Whether `T` is a dictionary as toV8Value converts one: a struct that is
@@ -3419,13 +3438,12 @@ pub fn callbackConversionAdoptsInput(comptime T: type) bool {
 /// ArrayBufferView) - its conversion is an object made for the call.
 fn isDictionaryValue(comptime T: type) bool {
     @setEvalBranchQuota(100_000);
-    if (@typeInfo(T) != .@"struct") return false;
-    if (@hasDecl(T, "Meta")) return false;
-    if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return false;
-    if (T == typedefs.ArrayBufferView) return false;
-    if (T == JSValue or T == OptionalJSValue or T == runtime.OptionalJSValue) return false;
-    if (@hasDecl(T, "ResultType") and @hasField(T, "handle")) return false;
-    return true;
+    if (interface_mod.isDictionaryType(T)) return true;
+    // A [Default] toJSON result (codegen's `XToJSON`, marked
+    // `default_to_json`) is made into an object the same way.
+    // hasdecl: codegen writes `pub const default_to_json` into every ToJSON
+    // struct (writer.zig, the [Default] toJSON result).
+    return @typeInfo(T) == .@"struct" and @hasDecl(T, "default_to_json");
 }
 
 /// Whether toV8Value(T, ...) of EVERY value of type `T` is a Global made for
@@ -3872,6 +3890,16 @@ pub fn toV8Value(
         return @ptrCast(@alignCast(js));
     }
 
+    // A callback function or interface value converts to "a reference to the
+    // same object" (WebIDL 3.2.19, 3.2.16): BORROWED, its holder's handle.
+    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) {
+        const held = if (T == runtime.BorrowedCallbackFunction) value.function else value.object;
+        return switch (held) {
+            .handle => |h| @ptrCast(@alignCast(h.ptr)),
+            else => toV8Undefined(isolate),
+        };
+    }
+
     // Handle engine-agnostic JSValue (from runtime/js_value.zig)
     // This is used by WebIDL impls that want to remain engine-agnostic
     if (T == runtime.JSValue) {
@@ -3982,10 +4010,8 @@ pub fn toV8Value(
         // Convert to JavaScript object where key becomes property name
         const elem_type_info = @typeInfo(ElemType);
         if (elem_type_info == .@"struct") {
-            const has_key = @hasField(ElemType, "key");
-            const has_value = @hasField(ElemType, "value");
-            const field_count = std.meta.fieldNames(ElemType).len;
-            if (has_key and has_value and field_count == 2) {
+            // A record's entry SAYS it is one (`webidl_record_entry`).
+            if (comptime interface_mod.isRecordEntryType(ElemType)) {
                 // This is a record-like type - convert to object. WebIDL
                 // 3.2.20: "Let result be OrdinaryObjectCreate(%Object.prototype%)"
                 // (of `context`'s realm) and for each entry "Perform
@@ -4052,8 +4078,10 @@ pub fn toV8Value(
         return enumToV8String(T, isolate, value);
     }
 
-    // Structs: a dictionary (WebIDL 3.2.18), or a [Default] toJSON result.
+    // Structs: a dictionary (WebIDL 3.2.18), or a [Default] toJSON result -
+    // each a struct that says so (`isDictionaryValue`).
     if (type_info == .@"struct") {
+        if (comptime !isDictionaryValue(T)) @compileError("not a WebIDL dictionary or a [Default] toJSON result, and no other conversion takes it: " ++ @typeName(T));
         // "Let O be OrdinaryObjectCreate(%Object.prototype%)" - of `context`'s
         // realm (default-toJSON-cross-realm.html). The object is the caller's
         // (`dictionaryValueIsOwned`); every key and member value made for it
@@ -4673,11 +4701,29 @@ pub fn throwWebIDLErrorFromContext(
     context: *v8.Context,
     error_name: []const u8,
 ) void {
+    throwWebIDLErrorFromContextFor(isolate, context, error_name, null);
+}
+
+/// `throwWebIDLErrorFromContext` for the error of the binding member
+/// `member`: a DOMException's message is the text the impl recorded with the
+/// error (runtime.exception_text: taken here, and the record cleared whatever
+/// the error), in Chrome's shape for the member ("Failed to execute 'op' on
+/// 'Interface': <text>"; exception_text.message says why Chrome's), or the
+/// text alone with no member; with no text, the error's name, as before.
+pub fn throwWebIDLErrorFromContextFor(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    error_name: []const u8,
+    member: ?runtime.exception_text.Member,
+) void {
+    const text = runtime.exception_text.take(error_name);
     if (isDOMExceptionName(error_name)) {
+        var buf: [512]u8 = undefined;
+        const message = if (text) |t| (if (member) |m| runtime.exception_text.message(&buf, m, t) else t) else error_name;
         // Use the specified context's DOMException constructor
         // This is critical for cross-origin errors: throwing in the caller's
         // context allows the caller's try/catch to catch the exception.
-        throwDOMExceptionFromContext(isolate, context, error_name, error_name);
+        throwDOMExceptionFromContext(isolate, context, error_name, message);
     } else if (std.mem.eql(u8, error_name, "TypeError")) {
         throwTypeErrorFromContext(isolate, context, "TypeError");
     } else if (std.mem.eql(u8, error_name, "NotEnoughArguments")) {

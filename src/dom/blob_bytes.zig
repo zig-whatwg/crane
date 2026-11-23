@@ -15,7 +15,12 @@
 //!
 //! Spec: https://w3c.github.io/FileAPI/#blob-section
 //!
-//! lint-impls: hook for Blob
+//! A File's webkitRelativePath has its own slot here, File's step: the HTML
+//! file upload sets it on a File it makes for a file of a chosen directory
+//! (html/file_selection.zig; Blink's File::CreateWithRelativePath), which no
+//! IDL member can.
+//!
+//! lint-impls: hook for Blob, File
 const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
 
@@ -48,6 +53,27 @@ var steps: Hook(?Steps) = .init(null);
 /// Called by Blob's installHooks, once, at process start (process_start.zig).
 pub fn install(s: Steps) void {
     steps.install(s);
+}
+
+/// File's steps (see the file comment).
+pub const FileSteps = struct {
+    /// Set `file`'s webkitRelativePath to a copy of `path`. `file` is a new
+    /// File, made by its constructor and not yet given to script.
+    set_relative_path: *const fn (file: *runtime.Instance, path: []const u8) anyerror!void,
+};
+
+var file_steps: Hook(?FileSteps) = .init(null);
+
+/// Called by File's installHooks, once, at process start.
+pub fn installFile(s: FileSteps) void {
+    file_steps.install(s);
+}
+
+/// Give `file` - new, from File's constructor - the relative path `path`
+/// (File and Directory Entries API, webkitRelativePath).
+pub fn setRelativePath(file_instance: *runtime.Instance, path: []const u8) !void {
+    const s = file_steps.get() orelse return error.NotSupported;
+    try s.set_relative_path(file_instance, path);
 }
 
 /// `blob`'s bytes, borrowed: copy what you keep. Null when Blob has

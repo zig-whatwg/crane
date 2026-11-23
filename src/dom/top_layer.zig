@@ -11,6 +11,7 @@ const TaskHold = @import("node_holds.zig").TaskHold;
 const controls = @import("form_controls.zig");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
 const Hook = @import("hook.zig").Hook;
+const inspector_probes = @import("inspector_probes.zig");
 
 pub const Mode = enum { auto, hint, manual };
 
@@ -191,7 +192,17 @@ pub const State = struct {
         entry.modal = true;
         self.last_modal = entry;
         self.revision +%= 1;
+        self.membersChanged();
         return entry;
+    }
+
+    /// The top layer gained or lost a member - a showing popover or picker,
+    /// a modal dialog, a fullscreen element: CDP's DOM agents hear it
+    /// (dom.inspector_probes; one load while none is enabled), as Blink's
+    /// Document::AddToTopLayer and RemoveFromTopLayerImmediately call
+    /// probe::TopLayerElementsChanged. Pins alone are no membership.
+    pub fn membersChanged(self: *State) void {
+        if (inspector_probes.active()) inspector_probes.topLayerElementsChanged(self.owner);
     }
 
     /// Keep a node for a synchronous algorithm. Promoting this entry to
@@ -218,6 +229,8 @@ pub const State = struct {
             if (entry.id != id) continue;
             _ = self.entries.orderedRemove(index);
             self.revision +%= 1;
+            const was_member = entry.showing or entry.modal or entry.fullscreen;
+            defer if (was_member) self.membersChanged();
             if (self.last_modal == entry) {
                 self.last_modal = null;
                 var remaining = self.entries.items.len;
@@ -310,6 +323,7 @@ pub const State = struct {
         if (self.fullscreenEntry(node)) |entry| self.remove(entry.id);
         const entry = try self.pin(node);
         entry.fullscreen = true;
+        self.membersChanged();
         return entry;
     }
 

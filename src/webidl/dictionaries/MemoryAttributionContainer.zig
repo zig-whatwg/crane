@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const MemoryAttributionContainer = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     id: ?runtime.DOMString = null,
     src: ?runtime.USVString = null,
 };

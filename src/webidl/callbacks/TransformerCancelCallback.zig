@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const TransformerCancelCallback = *const fn (reason: runtime.JSValue) runtime.JSValue;
+/// callback TransformerCancelCallback = Promise<undefined> (any reason)
+pub const TransformerCancelCallback = runtime.BorrowedCallbackFunction;

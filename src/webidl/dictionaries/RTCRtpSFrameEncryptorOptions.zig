@@ -7,6 +7,8 @@ const enums = @import("enums");
 const SFrameTransformOptions = @import("SFrameTransformOptions.zig").SFrameTransformOptions;
 
 pub const RTCRtpSFrameEncryptorOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from SFrameTransformOptions
     base: SFrameTransformOptions,
 

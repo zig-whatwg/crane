@@ -10,10 +10,18 @@
 //! through their interfaces; the navigables through their Browser's list of
 //! browsing contexts (dom.browser_state).
 //!
+//! A top-level traversable's system focus (6.6.2) is its tab's
+//! (runtime.TabScope.system_focus): every tab has it unless its Browser's
+//! host narrows focus to its active tab (the user's ruling, 2026-11-19:
+//! "Host decides, headless default"). A tab without it has no currently
+//! focused area, so nothing in it matches :focus and hasFocus() is false;
+//! the browsers still let script move the focus there - the focusing steps
+//! designate the new area, firing nothing - and fire the events when the
+//! tab gains or loses system focus (`SystemFocusTask`).
+//!
 //! Stated deviations:
 //!   * "Being rendered" has no layout to answer it: computed display and
 //!     flat-tree membership answer whether rendering exists or is delegated.
-//!   * Every top-level traversable is taken to have system focus.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/interaction.html#focus
 
@@ -330,7 +338,7 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
     if (designatedAreaOf(document)) |element| {
         if (isFocusableArea(element)) return element;
         const generation = runtime.SlabAllocator.generationOf(document);
-        focusUpdateSteps(focusChain(element), focusChain(document), document);
+        focusUpdateSteps(focusChain(element), focusChain(document), document, hasSystemFocus(document));
         // A blur listener can navigate or choose a new focus target. The
         // existing update steps preserve that target; do not clear it here.
         if (runtime.SlabAllocator.generationOf(document) != generation) return null;
@@ -354,10 +362,36 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
     return null;
 }
 
+/// Whether the top-level traversable `document` is in has system focus
+/// (HTML 6.6.2) - its tab's answer, or a DevTools session's focus emulation
+/// (runtime.TabScope.hasSystemFocus). A document of no tab - a realm no
+/// Browser tab made - answers true, as every tab did before the host could
+/// narrow it.
+pub fn hasSystemFocus(document: *Instance) bool {
+    const tab = dom.browser_state.tabOf(document.ctx) orelse return true;
+    return tab.hasSystemFocus();
+}
+
 /// HTML "currently focused area of a top-level traversable", for the one
-/// `document` is in: an element, or a Document standing for its viewport.
-pub fn currentlyFocusedArea(document: *Instance) *Instance {
-    // Step 1: every traversable has system focus (stated deviation).
+/// `document` is in: an element, or a Document standing for its viewport -
+/// null when the traversable has no system focus (step 1).
+pub fn currentlyFocusedArea(document: *Instance) ?*Instance {
+    // Step 1: "If traversable does not have system focus, then return null."
+    if (!hasSystemFocus(document)) return null;
+    return designatedFocusedArea(document);
+}
+
+/// The currently focused area steps 2-5 for the top-level traversable
+/// `document` is in, whether or not it has system focus: the area its
+/// documents designate - what it focuses when it has system focus, and what
+/// the browsers move while it has none (the focusing steps designate without
+/// firing events: Blink Document::SetFocusedElement dispatches blur and focus
+/// only while its page's FocusController IsFocused(), WebKit
+/// Document::setFocusedElement only while focusController().isFocused(), and
+/// Gecko nsFocusManager::SetFocusInner only "if the element is in the active
+/// window" - golden rule 2, all three; the input a host sends to the tab is
+/// routed to it too, user_input.keyTarget).
+pub fn designatedFocusedArea(document: *Instance) *Instance {
     // Step 2: "Let candidate be traversable's active document."
     var candidate = topLevelDocumentOf(document);
     // Step 3: while its focused area is a navigable container with a content
@@ -371,8 +405,125 @@ pub fn currentlyFocusedArea(document: *Instance) *Instance {
     return designatedAreaOf(candidate) orelse candidate;
 }
 
+/// HTML 6.6.2: the user agent decided that `traversable` - a top-level
+/// traversable, its tab's record - gains (`focused`) or loses system focus:
+/// its Browser's host narrowed focus to its active tab (Browser.activateTab;
+/// the user's ruling, 2026-11-19). The tab answers from now on (hasFocus(),
+/// :focus); its pages hear the change from a task (`systemFocusMayHaveChanged`).
+pub fn setSystemFocus(traversable: *dom.browser_state.BrowsingContext, focused: bool) void {
+    const tab = traversable.tabScope() orelse return;
+    tab.system_focus = focused;
+    systemFocusMayHaveChanged(traversable, tab);
+}
+
+/// A DevTools session emulates focus for `traversable`'s tab (`enabled`), or
+/// stops (CDP Emulation.setFocusEmulationEnabled): while one does, the tab
+/// answers as focused whatever its system focus - Blink's
+/// FocusController::IsFocused() is `is_focused_ || is_emulating_focus_`, and
+/// SetFocusEmulationEnabled fires the change it makes (FocusHasChanged).
+/// Nothing changes for a tab that has system focus: every tab, until a host
+/// narrows it.
+pub fn setFocusEmulation(traversable: *dom.browser_state.BrowsingContext, enabled: bool) void {
+    const tab = traversable.tabScope() orelse return;
+    if (enabled) tab.focus_emulation +|= 1 else tab.focus_emulation -|= 1;
+    systemFocusMayHaveChanged(traversable, tab);
+}
+
+/// The tab's answer may have moved: its styles read :focus afresh at once,
+/// and, when its pages have not heard of the answer it gives now, one task
+/// tells them (`SystemFocusTask`) - a change undone before the task runs is
+/// never heard.
+fn systemFocusMayHaveChanged(traversable: *dom.browser_state.BrowsingContext, tab: *dom.browser_state.TabScope) void {
+    const document: *Instance = @ptrCast(@alignCast(traversable.getActiveDocument() orelse return));
+    // :focus and :focus-within read the currently focused area, which the
+    // answer decides: every cached style of the tab is stale.
+    focusVisibleInputsChanged(document);
+    if (tab.hasSystemFocus() == tab.focus_reported or tab.focus_task_queued) return;
+    const loop = document.ctx.getOptionalEventLoop() orelse {
+        tab.focus_reported = tab.hasSystemFocus();
+        return;
+    };
+    const task = document.ctx.allocator.create(SystemFocusTask) catch return;
+    task.* = .{ .allocator = document.ctx.allocator, .tab = tab.retain(), .document = document, .generation = runtime.SlabAllocator.generationOf(document) };
+    tab.focus_task_queued = true;
+    // The user interaction task source, as the platform's focus change is
+    // input (Blink's FocusController::SetFocused runs from the browser's
+    // SetFocus IPC, a task of its own).
+    loop.queueTask(.{ .callback = SystemFocusTask.run, .context = task, .drop = SystemFocusTask.drop, .document = @ptrCast(document), .document_generation = task.generation });
+}
+
+/// The task that tells a tab's pages its system focus changed: the browsers'
+/// events for a page that gains or loses the focus (Blink and WebKit
+/// FocusController DispatchEventsOnWindowAndFocusedElement, Gecko
+/// nsFocusManager WindowRaised / WindowLowered), at the document of the area
+/// the tab designates - its focused frame's. Losing it: blur (and focusout)
+/// at the focused element, then blur at its Window. Gaining it: focus at the
+/// Window, then focus (and focusin) at the element.
+const SystemFocusTask = struct {
+    allocator: std.mem.Allocator,
+    /// COUNTED: the tab outlives the task.
+    tab: *dom.browser_state.TabScope,
+    document: *Instance,
+    generation: u64,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *SystemFocusTask = @ptrCast(@alignCast(context orelse return));
+        defer self.end();
+        const tab = self.tab;
+        const focused = tab.hasSystemFocus();
+        if (focused == tab.focus_reported) return;
+        tab.focus_reported = focused;
+        // A document gone meanwhile hears nothing; the next one started with
+        // the answer.
+        if (runtime.SlabAllocator.generationOf(self.document) != self.generation) return;
+        const area = designatedFocusedArea(self.document);
+        const document = if (isDocument(area)) area else nodeDocument(area) orelse return;
+        const window = windowOf(document);
+        if (!focused) {
+            if (isElement(area)) fireFocusEvent(area, "blur", null);
+            if (window) |w| fireWindowFocusEvent(w, "blur");
+        } else {
+            if (window) |w| fireWindowFocusEvent(w, "focus");
+            if (isElement(area) and designatedFocusedArea(self.document) == area) fireFocusEvent(area, "focus", null);
+        }
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *SystemFocusTask = @ptrCast(@alignCast(context orelse return));
+        self.end();
+    }
+
+    fn end(self: *SystemFocusTask) void {
+        self.tab.focus_task_queued = false;
+        self.tab.release();
+        self.allocator.destroy(self);
+    }
+};
+
+/// A plain Event named `event_type` at `window`, not bubbling: what Blink and
+/// WebKit fire at a window whose page gains or loses the focus
+/// (Event::Create(kFocus / kBlur) in FocusController's
+/// DispatchEventsOnWindowAndFocusedElement); Gecko fires a FocusEvent -
+/// golden rule 2, the majority's.
+fn fireWindowFocusEvent(window: *Instance, comptime event_type: []const u8) void {
+    const event = interfaces.Event.call_constructor(
+        window.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
+    ) catch |err| {
+        log.debug("{s} not fired at the window: {}", .{ event_type, err });
+        return;
+    };
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = dom.fire_event.dispatchTrusted(window, event) catch {};
+}
+
 /// HTML "has focus steps" for `document`.
 pub fn hasFocus(document: *Instance) bool {
+    // Step 2: "If target's node navigable's top-level traversable does not
+    // have system focus, then return false."
+    if (!hasSystemFocus(document)) return false;
     var candidate = topLevelDocumentOf(document);
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {
@@ -497,9 +648,12 @@ fn firstDocument(chain: Chain) ?*Instance {
     return null;
 }
 
-/// HTML "focus update steps".
-fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: ?*Instance) void {
-    reportFocusedDocuments(old_chain_in, new_chain_in);
+/// HTML "focus update steps". `fire_events`: the top-level traversable has
+/// system focus - without it the steps designate, and fire nothing (no blur,
+/// no focus, no change, no client focus time): the browsers'
+/// (`designatedFocusedArea`).
+fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: ?*Instance, fire_events: bool) void {
+    if (fire_events) reportFocusedDocuments(old_chain_in, new_chain_in);
     var old_chain = old_chain_in;
     var new_chain = new_chain_in;
     // Step 1: "If the last entry in old chain and the last entry in new chain
@@ -523,7 +677,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         const entry = old_chain.items[i];
         // Step 2.1: a user edit not committed while the control was focused
         // fires change first.
-        if (isElement(entry)) commitUserEdit(entry);
+        if (fire_events and isElement(entry)) commitUserEdit(entry);
         if (!old_chain.isLive(i)) continue;
         const document = nodeDocument(entry);
         const document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0;
@@ -542,7 +696,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 2.3: the related blur target.
         const related: ?*Instance = if (i == old_chain.len - 1 and isElement(entry) and new_last != null and isElement(new_last.?)) new_last else null;
         // Step 2.4.
-        if (blur_target) |target| fireFocusEvent(target, "blur", related);
+        if (fire_events) if (blur_target) |target| fireFocusEvent(target, "blur", related);
         if (document) |d| {
             if (runtime.SlabAllocator.generationOf(d) == document_generation and designatedAreaOf(d) != null) return;
         }
@@ -578,7 +732,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 4.3: the related focus target.
         const related: ?*Instance = if (i == new_chain.len - 1 and isElement(entry) and old_last != null and isElement(old_last.?)) old_last else null;
         // Step 4.4.
-        if (focus_target) |target| fireFocusEvent(target, "focus", related);
+        if (fire_events) if (focus_target) |target| fireFocusEvent(target, "focus", related);
     }
     // The viewport of a document whose chain entry step 1 popped (the
     // unfocusing steps focus the top document's viewport, which is always
@@ -672,7 +826,7 @@ pub fn getFocusableArea(focus_target: *Instance, trigger: Trigger) ?*Instance {
     // Read the existing designation; do not run rendering-time fixup here.
     if (delegatingShadowRoot(focus_target) != null) {
         if (nodeDocument(focus_target)) |document| {
-            const focused = currentlyFocusedArea(document);
+            const focused = designatedFocusedArea(document);
             if (isShadowIncludingInclusiveAncestor(focus_target, focused)) return focused;
         }
         // Step 3.
@@ -752,15 +906,19 @@ pub fn focusingSteps(new_focus_target_in: *Instance, fallback_target: ?*Instance
     // inert, then return."
     if (isElement(resolved) and isInert(resolved)) return;
     const document = nodeDocument(resolved) orelse return;
+    // Steps 5-6 read the area the traversable focuses - or, without system
+    // focus, the one it designates, which the browsers move all the same
+    // (`designatedFocusedArea`).
+    const focused = designatedFocusedArea(document);
     // Step 5: already the currently focused area.
-    if (currentlyFocusedArea(document) == resolved) return;
+    if (focused == resolved) return;
     // Step 6: "Let old chain be the current focus chain of the top-level
     // traversable in which new focus target finds itself."
-    const old_chain = focusChain(currentlyFocusedArea(document));
+    const old_chain = focusChain(focused);
     // Step 7: "Let new chain be the focus chain of new focus target."
     const new_chain = focusChain(resolved);
     // Step 8.
-    focusUpdateSteps(old_chain, new_chain, resolved);
+    focusUpdateSteps(old_chain, new_chain, resolved, hasSystemFocus(document));
 }
 
 /// HTML "unfocusing steps" for `old_focus_target`.
@@ -769,8 +927,12 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
     const document = nodeDocument(old_focus_target) orelse return;
     // Step 1: a delegating host unfocuses the currently focused area only
     // when its shadow root is that area's shadow-including ancestor.
+    // Steps 1 and 4 read the area the traversable focuses - or, without
+    // system focus, the one it designates: blur() then clears that
+    // designation, firing nothing (Blink Element::blur ->
+    // Document::ClearFocusedElement, `designatedFocusedArea`).
+    const focused = designatedFocusedArea(document);
     if (delegatingShadowRoot(old_focus_target)) |root| {
-        const focused = currentlyFocusedArea(document);
         if (isShadowIncludingInclusiveAncestor(root, focused)) old_focus_target = focused;
     }
     // Step 2: "If old focus target is inert, then return."
@@ -778,7 +940,7 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
     // Step 3: area shapes and scrollable regions need layout-backed areas.
     // Step 4: "Let old chain be the current focus chain of the top-level
     // traversable in which old focus target finds itself."
-    const old_chain = focusChain(currentlyFocusedArea(document));
+    const old_chain = focusChain(focused);
     // Step 5: "If old focus target is not one of the entries in old chain,
     // then return."
     const in_chain = for (old_chain.items[0..old_chain.len]) |entry| {
@@ -791,10 +953,14 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
     // Blink Element::blur (8d5ba1795f0c50b90072399d0403389df6eebbd6) checks
     // AdjustedFocusedElementInTreeScope, without checking IsFocusable.
     // Step 5 above already established membership in the current chain.
-    // Steps 7-8: the top document has system focus: run the focusing steps
-    // for its viewport.
+    // Step 7: "Let topDocument be old chain's last entry."
     const top_document = old_chain.last() orelse return;
-    focusingSteps(top_document, null, .other);
+    // Step 8: "If topDocument's node navigable has system focus, then run the
+    // focusing steps for topDocument's viewport. Otherwise, ... run the focus
+    // update steps given old chain, an empty list, and null" - which fire
+    // nothing in a traversable without system focus.
+    if (hasSystemFocus(top_document)) return focusingSteps(top_document, null, .other);
+    focusUpdateSteps(old_chain, .{}, null, false);
 }
 
 /// Selection's editing-host focus side effect uses the supplied boundary
@@ -808,6 +974,21 @@ pub fn focusMethod(element: *Instance, focus_visible: ?bool) void {
     // false, then return."
     const document = nodeDocument(element) orelse return;
     if (!allowFocusSteps(document)) return;
+    focusMethodSteps(element, document, focus_visible);
+}
+
+/// The focus() method steps for a user's gesture - CDP's DOM.focus: Blink's
+/// InspectorDOMAgent::focus calls Element::Focus with
+/// FocusTrigger::kUserGesture, which only exempts it from the
+/// focus-without-user-activation check (Document::IsFocusAllowed) - so every
+/// step but "allow focus steps", with no focusVisible option.
+pub fn focusForUserGesture(element: *Instance) void {
+    const document = nodeDocument(element) orelse return;
+    focusMethodSteps(element, document, null);
+}
+
+/// The focus() method steps after step 1.
+fn focusMethodSteps(element: *Instance, document: *Instance, focus_visible: ?bool) void {
     // The browsers' selection side of focus(), BEFORE the focus events: a
     // root editable element about to take the focus gets the caret at its
     // start unless the selection is already in it, so its focus listeners
@@ -968,7 +1149,8 @@ fn shadowIncludingParent(node: *Instance) ?*Instance {
 pub fn matchesFocus(element: *Instance) bool {
     if (!isElement(element) or isNavigableContainer(element)) return false;
     const document = nodeDocument(element) orelse return false;
-    const chain = focusChain(currentlyFocusedArea(document));
+    // No system focus: no current focus chain (an empty list).
+    const chain = focusChain(currentlyFocusedArea(document) orelse return false);
     for (chain.items[0..chain.len]) |entry| {
         if (!isElement(entry)) continue;
         if (entry == element) return true;
@@ -992,7 +1174,7 @@ pub fn matchesFocus(element: *Instance) bool {
 pub fn matchesFocusWithin(element: *Instance) bool {
     if (!isElement(element)) return false;
     const document = nodeDocument(element) orelse return false;
-    const chain = focusChain(currentlyFocusedArea(document));
+    const chain = focusChain(currentlyFocusedArea(document) orelse return false);
     for (chain.items[0..chain.len]) |entry| {
         if (!isElement(entry)) continue;
         // A focus chain crosses documents; take each entry's owner once
@@ -1238,8 +1420,10 @@ fn parentElementOf(node: *dom.NodeBase) ?*Instance {
 /// (forward) or previous (backward) control from the currently focused area
 /// of the top-level traversable `document` is in.
 pub fn navigateSequentially(document: *Instance, direction: Direction) void {
-    // Step 1: the starting point - the focused area, or the document.
-    var starting_point = currentlyFocusedArea(document);
+    // Step 1: the starting point - the focused area, or the document. The
+    // host sends the key press to this tab: its designated area, with or
+    // without system focus (`designatedFocusedArea`).
+    var starting_point = designatedFocusedArea(document);
     if (starting_point.stateAs(interfaces.HTMLOptionElement.State) != null) {
         const picker = @import("forms/select_picker.zig");
         if (picker.ownerSelect(starting_point)) |select| {

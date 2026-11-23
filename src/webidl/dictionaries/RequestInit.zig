@@ -9,6 +9,8 @@ const enums = @import("enums");
 const PrivateToken = @import("PrivateToken.zig").PrivateToken;
 
 pub const RequestInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     method: ?runtime.ByteString = null,
     headers: ?typedefs.HeadersInit = null,
     body: ?typedefs.BodyInit = null,

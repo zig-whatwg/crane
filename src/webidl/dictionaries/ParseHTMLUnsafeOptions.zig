@@ -7,6 +7,8 @@ const enums = @import("enums");
 const SanitizerConfig = @import("SanitizerConfig.zig").SanitizerConfig;
 
 pub const ParseHTMLUnsafeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     sanitizer: ?runtime.JSValue = null,
 
     /// Inline union members typed runtime.JSValue: one present with the

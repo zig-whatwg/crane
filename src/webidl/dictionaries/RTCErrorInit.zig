@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const RTCErrorInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     errorDetail: enums.RTCErrorDetailType,
     sdpLineNumber: ?i32 = null,
     sctpCauseCode: ?i32 = null,

@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const XRGPULayerInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     colorFormat: enums.GPUTextureFormat,
     depthStencilFormat: ?enums.GPUTextureFormat = null,
     textureUsage: ?typedefs.GPUTextureUsageFlags = null,

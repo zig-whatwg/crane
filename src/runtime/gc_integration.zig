@@ -410,6 +410,13 @@ pub const DeferredTeardown = struct {
     /// The adapter's steps for `Owed.report`, and their data.
     pub const ReportSteps = struct {
         run: *const fn (data: ?*anyopaque) void,
+        /// The report at a binding's return into the innermost callback's
+        /// own script (lane mem1): told, and NOTHING drained after it - what
+        /// a collection it runs queued is the fresh steps' at the next
+        /// return. False when it could not be made there (a finalizer on the
+        /// stack, the binding's exception pending): still owed. Null: an
+        /// adapter that reports at depth zero only.
+        run_in_callback: ?*const fn (data: ?*anyopaque) bool = null,
         data: ?*anyopaque,
     };
 
@@ -720,6 +727,9 @@ pub const DeferredTeardown = struct {
         } else if (self.algorithm_depth == self.callback.depth) {
             if (self.owed.fresh) self.runFresh();
             if (self.owed.relief) self.runFreshTrees();
+            // After the frees: the figure the engine is told is what they
+            // left.
+            if (self.owed.report) self.runReportInCallback();
         }
     }
 
@@ -863,6 +873,22 @@ pub const DeferredTeardown = struct {
         // Not here (as `runFinalizers`): nothing was looked at, and the next
         // exit of this callback looks again.
         if (result.done) self.callback.waiting = result.waiting else self.owed.fresh = true;
+    }
+
+    /// THE REPORT INSIDE A CALLBACK (lane mem1): a binding returned into the
+    /// innermost callback's own script and the agent's DOM memory moved a
+    /// report step since the engine was last told. Told here - the engine
+    /// may collect, as an allocation here could make it - and nothing else
+    /// runs for it: the adapter's step drains nothing (ReportSteps.
+    /// run_in_callback), and what a collection found dead is the fresh
+    /// steps' at the next return. Owed still when the step could not report.
+    fn runReportInCallback(self: *DeferredTeardown) void {
+        std.debug.assert(self.algorithm_depth != 0 and self.algorithm_depth == self.callback.depth);
+        const steps = self.report_steps orelse return;
+        const run = steps.run_in_callback orelse return;
+        // Reported (the figure's `markReported` also ends what was owed), or
+        // nothing due any more: not owed. Refused here: owed still.
+        if (run(steps.data)) self.owed.report = false;
     }
 
     /// Past a memory bound: `high_water` queued nodes, or the byte bound.

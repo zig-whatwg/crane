@@ -38,17 +38,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     const writable_strategy = if (writableStrategy.was_passed) writableStrategy.value else dictionaries.QueuingStrategy{};
     const readable_strategy = if (readableStrategy.was_passed) readableStrategy.value else dictionaries.QueuingStrategy{};
-    // Each strategy's `size` callback is this constructor's from here: the
-    // binding hands a callback member over (it adopts the handle Get made
-    // for it), and only ExtractSizeAlgorithm takes it - step 6 the
-    // readable's, step 8 the writable's. Every return before those releases
-    // what is still here - steps 1-4 throwing, step 5's or step 7's
-    // RangeError - or its Global stays for the agent's life (as
-    // ReadableStream's did: lane leaks4, c12bba6177d).
-    var readable_size_callback = readable_strategy.size;
-    errdefer if (readable_size_callback) |size| engine.takeCallbackFunction(@ptrCast(size)).release();
-    var writable_size_callback = writable_strategy.size;
-    errdefer if (writable_size_callback) |size| engine.takeCallbackFunction(@ptrCast(size)).release();
+    // Each strategy's `size` callback is BORROWED for the call, as every
+    // converted value is: the binding releases it when the constructor
+    // returns, and only ExtractSizeAlgorithm keeps it - step 6 the
+    // readable's, step 8 the writable's.
     const realm = try js.Realm.ofContext(ctx);
 
     // Step 1: If transformer is missing, set it to null. It is typed
@@ -84,14 +77,12 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     const start_callback = dict.takeStart();
     defer if (start_callback) |f| js.dispose(f);
 
-    // Steps 5-8: the two strategies. ExtractSizeAlgorithm takes its
+    // Steps 5-8: the two strategies. ExtractSizeAlgorithm keeps its
     // callback, and releases it itself if it fails.
     const readable_hwm = try sw.extractHighWaterMark(readable_strategy, 0);
-    readable_size_callback = null;
     var readable_size = try sw.extractSizeAlgorithm(readable_strategy);
     errdefer if (readable_size == .callback) js.dispose(readable_size.callback);
     const writable_hwm = try sw.extractHighWaterMark(writable_strategy, 1);
-    writable_size_callback = null;
     var writable_size = try sw.extractSizeAlgorithm(writable_strategy);
     errdefer if (writable_size == .callback) js.dispose(writable_size.callback);
 

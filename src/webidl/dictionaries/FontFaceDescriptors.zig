@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const FontFaceDescriptors = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     style: ?typedefs.CSSOMString = null,
     weight: ?typedefs.CSSOMString = null,
     stretch: ?typedefs.CSSOMString = null,

@@ -178,6 +178,7 @@ pub const XRRay = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(origin, direction)
         DOMPointInit_XRRayDirectionInit: struct {
+            pub const webidl_arguments = true;
             origin: webidl.Opt(DOMPointInit),
             direction: webidl.Opt(XRRayDirectionInit),
         },

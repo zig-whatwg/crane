@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const AudioWorkletProcessorConstructor = *const fn (options: runtime.JSValue) *runtime.Instance;
+/// callback AudioWorkletProcessorConstructor = AudioWorkletProcessor (object options)
+pub const AudioWorkletProcessorConstructor = runtime.BorrowedCallbackFunction;

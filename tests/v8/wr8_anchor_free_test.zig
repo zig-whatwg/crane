@@ -438,7 +438,19 @@ test "wr11: V8 is told of the pointer-table entry each dropped wrapper leaves, a
 }
 
 test "wr11: wrapper churn alone makes V8 run a full collection - the entries dropped wrappers leave are counted toward its limit" {
-    var queue = DeferredTeardown.init(testing.allocator);
+    // The teardown queue on a churn test's allocator (tests/AGENTS.md): up
+    // to 3,000,000 dropped elements' teardowns go through it, and
+    // std.testing.allocator's per-allocation stack capture was 46% of this
+    // test's main thread on aarch64 macOS (`sample`, chat2, lane flk4 item
+    // 8, 2026-11-23: 62 s alone there, 123 s in a loaded gate, 27 s on
+    // server1). Its deinit, after the queue's, is the leak check.
+    var churn = @import("root").poisoning.ChurnAllocator.init("wr8_anchor_free_test: wr11 wrapper churn");
+    try wrapperChurnMakesAFullCollection(churn.allocator());
+    try churn.deinit();
+}
+
+fn wrapperChurnMakesAFullCollection(allocator: std.mem.Allocator) !void {
+    var queue = DeferredTeardown.init(allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();

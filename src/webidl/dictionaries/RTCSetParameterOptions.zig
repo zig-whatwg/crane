@@ -4,4 +4,7 @@
 
 const runtime = @import("runtime");
 
-pub const RTCSetParameterOptions = struct {};
+pub const RTCSetParameterOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
+};

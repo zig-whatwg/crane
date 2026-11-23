@@ -102,6 +102,7 @@ test "a nullable, optional or sequence ByteString is checked through" {
 /// A dictionary as codegen emits one with a ByteString member (RequestInit's
 /// `method`): listed in `byte_string_members`.
 const Init = struct {
+    pub const webidl_dictionary = true;
     body: ?runtime.DOMString = null,
     method: ?[]const u8 = null,
     referrer: ?[]const u8 = null,

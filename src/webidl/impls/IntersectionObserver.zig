@@ -218,7 +218,7 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     // Set this's internal [[callback]] slot to callback: the binding hands
     // the converted function over, and the observer keeps it (OWNED) with
     // its callback context.
-    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+    internal.callback = callback.keep();
 
     // Parse options
     const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};

@@ -307,9 +307,16 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
         if (config.type_registry) |reg| {
             if (reg.lookup(type_str)) |kind| {
                 switch (kind) {
-                    .interface, .callback_interface => {
+                    .interface => {
                         // Interfaces use runtime.Instance pointer
                         try writer.writeAll("*runtime.Instance");
+                        return;
+                    },
+                    .callback_interface => {
+                        // A callback interface type's value (WebIDL
+                        // 3.2.16): the engine protocol's borrowed callback
+                        // interface, never a platform object.
+                        try writer.writeAll("runtime.BorrowedCallbackInterface");
                         return;
                     },
                     .typedef => {

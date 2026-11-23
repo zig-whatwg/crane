@@ -27,6 +27,10 @@ pub const Instance = @import("instance.zig").Instance;
 /// ...)`, which needs only the agent. The HTML owner installs the steps once
 /// at process start; the runtime tier only carries their agent-owned scope.
 pub const CEReactions = @import("ce_reactions.zig");
+/// The text an impl gives the exception its failing binding call throws
+/// (exception_text.zig): recorded with the error, taken by the engine
+/// adapter's conversion of it.
+pub const exception_text = @import("exception_text.zig");
 pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;
@@ -61,10 +65,6 @@ pub const EnvironmentSettingsObject = environment_settings.EnvironmentSettingsOb
 pub const Origin = environment_settings.Origin;
 pub const PolicyContainer = environment_settings.PolicyContainer;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
-
-// Engine-agnostic callback wrapper for callback interfaces
-// (EventListener, NodeFilter, XPathNSResolver)
-pub const CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
 
 // Engine-agnostic JavaScript value type
 // Use this in impl files instead of v8.JSValue
@@ -201,6 +201,8 @@ pub const RealmSteps = @import("engine_types.zig").RealmSteps;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
 pub const CallbackThis = @import("engine_types.zig").CallbackThis;
+pub const BorrowedCallbackFunction = @import("engine_types.zig").BorrowedCallbackFunction;
+pub const BorrowedCallbackInterface = @import("engine_types.zig").BorrowedCallbackInterface;
 pub const WindowTimerHandler = @import("engine_types.zig").WindowTimerHandler;
 pub const WindowOperations = @import("engine_types.zig").WindowOperations;
 // ---- end lane: page-realm ----
@@ -302,6 +304,10 @@ pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
 /// The span engine every State block and Instance slot of a Browser lives in
 /// (src/runtime/heap/: allocator-hardening batch A).
 pub const heap = @import("heap/root.zig");
+/// A tab's state, reached through the realm (ContextData.tab_scope;
+/// docs/instances.md rule 2): made and closed by its top-level browsing
+/// context's record.
+pub const TabScope = @import("tab_scope.zig").TabScope;
 /// An impl's internal state per instance, in the instance's Browser's side
 /// table (instances B1) - for the types enumerated while their Browser runs.
 pub const InstanceRegistry = @import("instance_registry.zig").InstanceRegistry;

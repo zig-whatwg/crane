@@ -1000,6 +1000,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
+        // Its realm lets its tab go (`carryTab`).
+        dropTab(instance);
+
         // The browsing context it shows and does not own: held until now
         // (BrowsingContext.window_holds), released below, once nothing of
         // the Window reads it any more.
@@ -1150,6 +1153,8 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
     existing_bc.holdForWindow();
+    // Its realm is of the tab this browsing context is of, from now on.
+    carryTab(instance, existing_bc);
 
     // Mark that we DON'T own this browsing context - iframe cleanup will free it
     // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
@@ -1175,7 +1180,35 @@ fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
     // Still read by this Window until its end: held, as any Window holds the
     // context it shows and does not own (BrowsingContext.window_holds).
     internal.browsing_context.holdForWindow();
+    // Its realm is of the tab this top-level context is the record of.
+    carryTab(instance, internal.browsing_context);
     return @ptrCast(internal.browsing_context);
+}
+
+/// The Window's realm carries the tab of `bc`, the browsing context the
+/// Window shows from now on (runtime.ContextData.tab_scope; docs/instances.md
+/// rule 2: "a realm will carry its Browser's scope and its Tab's scope") - a
+/// counted reference, given back at the Window's end (`dropTab`). Called
+/// where a Window's browsing context becomes final: a frame's and a popup's
+/// as they replace the one Window.init made, a page's as its host takes it.
+fn carryTab(instance: *runtime.Instance, bc: *BrowsingContext) void {
+    const realm = instance.ctx;
+    const tab = bc.tabScope() orelse return;
+    if (realm.tab_scope) |held| {
+        if (held == tab) return;
+        held.release();
+    }
+    realm.tab_scope = tab.retain();
+}
+
+/// The Window ends: its realm is of no tab from here on - the engine keeps a
+/// realm's record past its end (an inert one), which must name no tab that
+/// may be freed.
+fn dropTab(instance: *runtime.Instance) void {
+    const realm = instance.ctx;
+    const held = realm.tab_scope orelse return;
+    realm.tab_scope = null;
+    held.release();
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the
@@ -2082,24 +2115,24 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // origin framed under another top-level site does not. A popup's
     // traversable starts with a copy of its opener's shed
     // (`newTopLevelTraversable`).
-    const context_id = internal.browsing_context.getTop().id;
     // "Obtain a session storage bottle map" step 1: "obtain a storage key"
     // with the environment - failure, a SecurityError, for an opaque origin;
     // a file: document's key is the browsers' (dom.global_settings
     // storageKeyOf).
     const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
-    // The traversable's shed is one of its Browser's navigables' (Storage
-    // 4.3: "A traversable navigable holds a storage shed"): a realm no
-    // Browser made has none - "the user agent is configured to not allow"
+    // The traversable's shed is its tab's (Storage 4.3: "A traversable
+    // navigable holds a storage shed"; runtime.TabScope), which the
+    // Window's realm carries: a realm of no tab - no Browser made it, or its
+    // tab closed - has none: "the user agent is configured to not allow"
     // storage.
-    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.SecurityError;
+    const shed = @import("dom").browser_state.sessionStorageShedOf(instance.ctx) orelse return error.SecurityError;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, &navigables.traversable_storage, context_id, key) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, shed, key) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -2744,8 +2777,17 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
 
 /// Operation: showDirectoryPicker
 pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    // File System Access 3.5, steps 1-4: everything before the prompt (a
+    // throw rejects the promise). The prompt has no UI here: NotImplemented.
+    // 1. Let environment be this's relevant settings object.
+    const given: dictionaries.DirectoryPickerOptions = if (options.was_passed) options.value else .{};
+    // 2. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment - its argument checks (validateStartingDirectoryId).
+    if (given.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 3. Let global be environment's global object.
+    // 4. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
     return error.NotImplemented;
 }
 
@@ -2847,11 +2889,156 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
     moveOrResize(instance, internal, rect);
 }
 
-/// Operation: showSaveFilePicker
+/// Operation: showSaveFilePicker(options) - File System Access 3.4 (specs/w3c/
+/// file-system-access.md), steps 1-5: everything before the prompt. A throw
+/// rejects the promise (a promise-returning operation). The prompt itself
+/// (step 7) needs a UI the headless engine does not have: NotImplemented.
 pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.SaveFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
+}
+
+/// showOpenFilePicker() and showSaveFilePicker() steps 1-5 (File System
+/// Access 3.3 and 3.4, the same steps): what Chromium's global_file_system_
+/// access.cc checks before it asks the browser for a picker - ConvertAccepts
+/// with VerifyIsValidExtension (2), VerifyIsValidId (3),
+/// VerifyIsAllowedToShowFilePicker (5). Only Chrome ships these pickers.
+fn filePickerArgumentSteps(instance: *runtime.Instance, options: dictionaries.FilePickerOptions) anyerror!void {
+    // 1. Let environment be this's relevant settings object.
+    // 2. Let accepts options be the result of processing accept types given
+    //    options.
+    try processAcceptTypes(instance.ctx, options);
+    // 3. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment. Its first two steps are the argument checks; the
+    //    rest chooses a path for the prompt, which there is none of.
+    if (options.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 4. Let global be environment's global object.
+    // 5. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
+}
+
+/// File System Access 3.2.1 "process accept types" given options - the
+/// validation it performs (the accepts options list itself is only the
+/// prompt's): every type string a MIME type without parameters, every suffix
+/// valid. Chromium: ConvertAccepts.
+fn processAcceptTypes(realm: runtime.Context, options: dictionaries.FilePickerOptions) anyerror!void {
+    const allocator = realm.allocator;
+    // 1. Let accepts options be an empty list of tuples.
+    var accepts_options: usize = 0;
+    // 2. For each type of options["types"]:
+    for (options.types orelse &.{}) |picker_type| {
+        //  1. For each typeString -> suffixes of type["accept"]:
+        for (picker_type.accept orelse &.{}) |entry| {
+            //  1. Let parsedType be the result of parse a MIME type with
+            //     typeString.
+            //  2. If parsedType is failure, then throw a TypeError.
+            //  3. If parsedType's parameters are not empty, then throw a
+            //     TypeError.
+            try requireMimeTypeWithoutParameters(allocator, entry.key);
+            //  4. If suffixes is a string: validate a suffix given suffixes.
+            //  5. Otherwise, for each suffix of suffixes: validate a suffix
+            //     given suffix. (suffixes is `(USVString or
+            //     sequence<USVString>)`: an Object with @@iterator is the
+            //     sequence, anything else its string, WebIDL 3.2.25.)
+            if (engine.typeOf(realm, entry.value) == .object) {
+                if (try engine.convertToSequenceOfDOMStrings(realm, entry.value, allocator)) |suffixes| {
+                    defer {
+                        for (suffixes) |suffix| allocator.free(suffix);
+                        allocator.free(suffixes);
+                    }
+                    for (suffixes) |suffix| try validateSuffix(suffix);
+                    continue;
+                }
+            }
+            const suffix = try engine.convertToUSVString(realm, entry.value, allocator);
+            defer allocator.free(suffix);
+            try validateSuffix(suffix);
+        }
+        //  2-5. The filter, the description, and append (description,
+        //       filter) to accepts options.
+        accepts_options += 1;
+    }
+    // 3. If either accepts options is empty, or
+    //    options["excludeAcceptAllOption"] is false: append the "all files"
+    //    option.
+    // 4. If accepts options is empty, then throw a TypeError.
+    // Deviation, stated (golden rule 2): as written, step 3 appends "all
+    // files" to an empty list whatever excludeAcceptAllOption says, so step
+    // 4 can never throw. Chrome - the only browser that ships the pickers -
+    // throws a TypeError when the list is empty and excludeAcceptAllOption
+    // is true ("Need at least one accepted type": global_file_system_access.cc,
+    // showOpenFilePicker / showSaveFilePicker after ConvertAccepts), and so
+    // does WPT file-system-access/showPicker-errors.https.window.js ("File
+    // picker requires at least one accepted type"). So "all files" is
+    // appended only when excludeAcceptAllOption is false.
+    const exclude_accept_all = options.excludeAcceptAllOption orelse false;
+    if (accepts_options == 0 and exclude_accept_all) return error.TypeError;
+    if (!exclude_accept_all) accepts_options += 1;
+}
+
+/// "Parse a MIME type" (MIME Sniffing 4.4) of `type_string` - failure, or
+/// parameters, is a TypeError (process accept types 2.1.1-2.1.3).
+fn requireMimeTypeWithoutParameters(allocator: std.mem.Allocator, type_string: []const u8) anyerror!void {
+    const mime_type = @import("mimesniff").mime_type;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const code_units = std.unicode.utf8ToUtf16LeAlloc(arena.allocator(), type_string) catch return error.TypeError;
+    var parsed = (try mime_type.parseMimeTypeFromString(allocator, arena.allocator(), code_units)) orelse return error.TypeError;
+    defer parsed.deinit();
+    if (!parsed.parameters.isEmpty()) return error.TypeError;
+}
+
+/// File System Access "validate a suffix" (3.2.1). Chromium:
+/// VerifyIsValidExtension, IsValidSuffixCodePoint.
+fn validateSuffix(suffix: []const u8) anyerror!void {
+    // 1. If suffix does not start with ".", then throw a TypeError.
+    if (!std.mem.startsWith(u8, suffix, ".")) return error.TypeError;
+    // 2. If suffix contains any code points that are not valid suffix code
+    //    points - ASCII alphanumeric, U+002B (+), U+002E (.) - then throw a
+    //    TypeError. (A non-ASCII code point's UTF-8 bytes are none of them.)
+    for (suffix) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '+' or byte == '.')) return error.TypeError;
+    }
+    // 3. If suffix ends with ".", then throw a TypeError.
+    if (std.mem.endsWith(u8, suffix, ".")) return error.TypeError;
+    // 4. If suffix's length is more than 16, then throw a TypeError. (All
+    //    ASCII by step 2: a byte is a code point.)
+    if (suffix.len > 16) return error.TypeError;
+}
+
+/// "Determine the directory the picker will start in" steps 1-2 (File
+/// System Access 3.2.2, wicg.github.io/file-system-access - the algorithm the
+/// fetched markdown lost): an id that is not a valid path id (ASCII
+/// alphanumeric, "_", "-"), or longer than 32, is a TypeError. Chromium:
+/// VerifyIsValidId, IsValidIdCodePoint.
+fn validateStartingDirectoryId(id: []const u8) anyerror!void {
+    // 1. If id given, and is not a valid path id, then throw a TypeError.
+    for (id) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '-')) return error.TypeError;
+    }
+    // 2. If id's length is more than 32, then throw a TypeError.
+    if (id.len > 32) return error.TypeError;
+}
+
+/// File System Access 3.2 "is allowed to show a file picker". Chromium:
+/// VerifyIsAllowedToShowFilePicker.
+fn verifyAllowedToShowFilePicker(instance: *runtime.Instance) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const origin = effectiveOrigin(instance, internal);
+    // 1. If environment's origin is an opaque origin, return a promise
+    //    rejected with a "SecurityError" DOMException.
+    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return error.SecurityError;
+    // 2. If environment's origin is not same origin with environment's
+    //    top-level origin, return a promise rejected with a "SecurityError".
+    const top_level = (try settingsTopLevelOrigin(instance)) orelse return error.SecurityError;
+    defer instance.ctx.allocator.free(top_level);
+    if (!std.mem.eql(u8, top_level, origin)) return error.SecurityError;
+    // 3. Let global be environment's global object.
+    // 4. If global does not have transient activation, then throw a
+    //    "SecurityError" DOMException.
+    if (!@import("html").user_activation.hasTransientActivation(instance)) return error.SecurityError;
 }
 
 /// Operation: blur
@@ -2868,10 +3055,12 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     // This would notify the platform to remove focus from the window
 }
 
-/// Operation: showOpenFilePicker
+/// Operation: showOpenFilePicker(options) - File System Access 3.3, steps
+/// 1-5 (filePickerArgumentSteps); the prompt (step 7) has no UI here:
+/// NotImplemented.
 pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.OpenFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
 }
 
@@ -2959,8 +3148,8 @@ pub fn call_focus(instance: *runtime.Instance) anyerror!void {
 /// Operation: requestIdleCallback
 /// Spec: https://w3c.github.io/requestidlecallback/#the-requestidlecallback-method
 pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: webidl.Opt(dictionaries.IdleRequestOptions)) anyerror!u32 {
-    // The binding hands the callback over: take it before anything can fail.
-    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const function = callback.keep();
     // 1. "Let window be this Window object."
     const internal = getInternal(instance) orelse {
         function.release();
@@ -3857,11 +4046,17 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The owner list holds the integration before storage is published, so
     // an append failure cannot leave an unreachable tab's copied shelves.
     if (!noopener) if (integration.browsing_context) |created_bc| {
-        // The traversables' sheds are their Browser's navigables' (Storage
-        // 4.3: each traversable navigable holds its own).
-        if (@import("dom").browser_state.navigablesOf(window.ctx)) |navigables| {
-            web_storage.web_storage.cloneSessionStorage(&navigables.traversable_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
-        }
+        // The traversables' sheds are their tabs' (Storage 4.3: each
+        // traversable navigable holds its own): the opener's tab's, when it
+        // has one, copied into the new tab's.
+        const browser_state = @import("dom").browser_state;
+        if (internal.browsing_context.tabScope()) |opener_tab| if (opener_tab.get(.session_storage, web_storage.TraversableStorageShed)) |source| {
+            if (created_bc.tabScope()) |new_tab| if (new_tab != opener_tab) {
+                if (browser_state.sessionStorageShedIn(new_tab)) |copy| {
+                    web_storage.web_storage.cloneSessionStorage(source, copy) catch {};
+                }
+            };
+        };
     };
     // Steps 8.5-8.6: a named target names the new navigable.
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
