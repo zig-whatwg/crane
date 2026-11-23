@@ -31,12 +31,15 @@ const interfaces = @import("interfaces");
 /// `ChurnAllocator`), not std.testing.allocator - 2,500 random trees and
 /// 30,000 dispatches make and free millions of blocks, and the per-allocation
 /// stack capture std.testing.allocator does made this test 164 s on chat2
-/// against 5.0 s on server1 (lane flk4 item 8, 2026-11-23). Its deinit, at
-/// the test's end, is the leak check std.testing.allocator's was.
-var churn: @import("root").poisoning.ChurnAllocator = .{ .name = "ev1_event_path_differential_test" };
+/// against 5.0 s on server1 (lane flk4 item 8, 2026-11-23). One per run of
+/// the test, made and deinit'd by it (its deinit, at the test's end, is the
+/// leak check std.testing.allocator's was): a run of the test reads it here,
+/// and the next run in the same process (verify mode runs it ten times in
+/// one) gets a fresh one.
+var churn_of_this_run: ?*@import("root").poisoning.ChurnAllocator = null;
 
 fn allocator() std.mem.Allocator {
-    return churn.allocator();
+    return churn_of_this_run.?.allocator();
 }
 const Instance = runtime.Instance;
 
@@ -448,6 +451,9 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
 }
 
 test "the event path across shadow trees matches DOM 2.9 steps 4-6.11, read literally, on random trees" {
+    var churn = @import("root").poisoning.ChurnAllocator.init("ev1_event_path_differential_test");
+    churn_of_this_run = &churn;
+    defer churn_of_this_run = null;
     try differential();
     // The leak check: everything the trees, the dispatches and the runtime
     // made is freed (the runtime's own end ran in `differential`).
