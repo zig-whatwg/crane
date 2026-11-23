@@ -56,11 +56,11 @@ test "a tab's scope closes with the tab, and its last holder frees it" {
     const fixture = try Fixture.start(testing.allocator);
     defer fixture.stop();
     const host = try fixture.hostTab();
-    const live_before = TabScope.liveCount();
     const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
     const id = popup.id;
     const tab = (try realmTab(popup)).retain();
-    try testing.expect(TabScope.liveCount() > live_before);
+    // The record, the popup's realm and this test.
+    try testing.expect(tab.refs >= 3);
 
     // The opener lets its WindowProxy go too: a Window script still reaches
     // holds its browsing context (BrowsingContext.window_holds).
@@ -69,24 +69,29 @@ test "a tab's scope closes with the tab, and its last holder frees it" {
     // The record ended: the tab closed, and only this test holds it now.
     try testing.expect(tab.closed);
     try testing.expectEqual(@as(u32, 1), tab.refs);
+    // The last holder frees it (std.testing.allocator, the Browser's, says
+    // whether it was).
     tab.release();
-    try testing.expectEqual(live_before, TabScope.liveCount());
 }
 
 test "tabs opened and closed leave no tab scope behind" {
     const fixture = try Fixture.start(testing.allocator);
     defer fixture.stop();
     _ = try fixture.hostTab();
-    const live_before = TabScope.liveCount();
     var round: usize = 0;
     while (round < 40) : (round += 1) {
         const id = try fixture.browser.createTab(.{});
         const opened = fixture.tab(id) orelse return error.NoSuchTab;
-        _ = try realmTab(opened);
+        // Held by the test: once the tab is gone, nothing else holds it -
+        // not its record, not a realm - and the test's release frees it
+        // (std.testing.allocator, the Browser's, says whether it did).
+        const tab = (try realmTab(opened)).retain();
+        defer tab.release();
         try fixture.browser.closeTab(id, .{});
         try fixture.waitUntilGone(id);
+        try testing.expect(tab.closed);
+        try testing.expectEqual(@as(u32, 1), tab.refs);
     }
-    try testing.expectEqual(live_before, TabScope.liveCount());
 }
 
 const SessionShed = @import("html_core").web_storage.TraversableStorageShed;

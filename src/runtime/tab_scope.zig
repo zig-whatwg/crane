@@ -32,11 +32,6 @@ const Allocator = std.mem.Allocator;
 const engine = @import("engine");
 const ContextData = @import("context.zig").ContextData;
 
-/// How many tab scopes are alive - made and not yet freed - for diagnostics
-/// (`liveCount`).
-// process-wide: a diagnostics count over every Browser's tabs in the process (as BrowserScope's live_scopes counts scopes); every write is an atomic add or sub (std.atomic.Value), so tabs of Browsers on many threads never race it; tests read it to find a tab scope a tab's end left behind
-var live_tabs: std.atomic.Value(usize) = .init(0);
-
 pub const TabScope = struct {
     /// Its record's allocator: every slot's state is made and freed with it.
     allocator: Allocator,
@@ -96,7 +91,6 @@ pub const TabScope = struct {
     pub fn create(allocator: Allocator, id: u64) Allocator.Error!*TabScope {
         const self = try allocator.create(TabScope);
         self.* = .{ .allocator = allocator, .id = id };
-        _ = live_tabs.fetchAdd(1, .monotonic);
         return self;
     }
 
@@ -117,7 +111,6 @@ pub const TabScope = struct {
         const allocator = self.allocator;
         self.* = undefined;
         allocator.destroy(self);
-        _ = live_tabs.fetchSub(1, .monotonic);
     }
 
     /// The tab's end - its record's: every slot's state ends, in `Slot`
@@ -174,11 +167,6 @@ pub const TabScope = struct {
         const main = engine.mainRealmOf(realm);
         if (main == realm) return null;
         return main.tab_scope;
-    }
-
-    /// How many tab scopes are alive in the process. Diagnostics only.
-    pub fn liveCount() usize {
-        return live_tabs.load(.monotonic);
     }
 
     fn Destroy(comptime T: type) type {

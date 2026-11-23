@@ -22,11 +22,10 @@ fn probe(scope: *TabScope, ended: *std.ArrayListUnmanaged(u8), tag: u8) !*Probe 
 }
 
 test "a tab's close ends its slots in Slot order, and its last holder frees it" {
-    const before = TabScope.liveCount();
+    // std.testing.allocator says whether the last holder freed it.
     var ended: std.ArrayListUnmanaged(u8) = .empty;
     defer ended.deinit(testing.allocator);
     const scope = try TabScope.create(testing.allocator, 7);
-    try testing.expectEqual(before + 1, TabScope.liveCount());
     // Put in another order than they end.
     try testing.expect(scope.put(.session_storage, Probe, try probe(scope, &ended, 's')));
     try testing.expect(scope.put(.session_history, Probe, try probe(scope, &ended, 'h')));
@@ -41,12 +40,11 @@ test "a tab's close ends its slots in Slot order, and its last holder frees it" 
     try testing.expect(scope.closed);
     try testing.expect(scope.get(.session_history, Probe) == null);
     scope.release();
-    try testing.expectEqual(before + 1, TabScope.liveCount());
+    try testing.expectEqual(@as(u32, 1), scope.refs);
     // A closed tab takes nothing more: what is handed over ends at once.
     try testing.expect(!scope.put(.frames, Probe, try probe(scope, &ended, 'f')));
     try testing.expectEqualStrings("qhsf", ended.items);
     scope.release();
-    try testing.expectEqual(before, TabScope.liveCount());
 }
 
 test "a tab scope freed unclosed ends its slots" {
