@@ -41,14 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// `new ReadableStream(underlyingSource, strategy)` - § 4.2.4.
 pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     const strat = if (strategy.was_passed) strategy.value else dictionaries.QueuingStrategy{};
-    // The strategy's `size` callback is this constructor's from here: the
-    // binding hands a callback member over (it adopts the handle Get made
-    // for it), and only step 5.2's ExtractSizeAlgorithm takes it. Every
-    // return before that releases it - a byte stream's step 4.1 RangeError,
-    // and steps 1 and 2 throwing - or its Global stays for the agent's life
-    // (lane leaks2: 3 roots under leaks --atExit over streams/).
-    var size_callback = strat.size;
-    errdefer if (size_callback) |size| engine.takeCallbackFunction(@ptrCast(size)).release();
+    // The strategy's `size` callback is BORROWED for the call, as every
+    // converted value is: the binding releases it when the constructor
+    // returns, and only step 5.2's ExtractSizeAlgorithm keeps it.
     const realm = try js.Realm.ofContext(ctx);
 
     // Step 1: If underlyingSource is missing, set it to null. It is typed
@@ -104,8 +99,7 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
     }
 
     // Step 5.2: Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy). It
-    // takes the callback, and releases it itself if it fails.
-    size_callback = null;
+    // keeps the callback, and releases it itself if it fails.
     var size = try sw.extractSizeAlgorithm(strat);
     errdefer if (size == .callback) js.dispose(size.callback);
     // Step 5.3: Let highWaterMark be ? ExtractHighWaterMark(strategy, 1).
@@ -135,6 +129,17 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
 /// `ReadableStream.from(asyncIterable)` - § 4.2.4:
 /// Return ? ReadableStreamFromIterable(asyncIterable).
 pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
+    // The argument is an async_sequence<any> (streams.idl), which the binding
+    // hands over unconverted, as `any`. WebIDL 3.2.22 "converted to an IDL
+    // async_sequence<T>", step 1: "If V is not an Object, then throw a
+    // TypeError" - so a string, iterable as it is, is refused (steps 2-4,
+    // the async then sync @@iterator lookup, are GetIterator's in
+    // fromIterable). Streams moved from(any) to async_sequence<any>
+    // (whatwg/streams, with WebIDL's async sequence type); Safari 27.2 ships
+    // it, Firefox 160 still takes a string, Chrome 157 has no from() - golden
+    // rule 2: the newer spec, which one browser ships
+    // (streams/readable-streams/from.any.js "specifically a string").
+    if (engine.typeOf(instance.ctx, asyncIterable) != .object) return error.TypeError;
     return @import("dom").streams_from.fromIterable(try js.Realm.of(instance), instance.ctx, asyncIterable);
 }
 

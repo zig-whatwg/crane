@@ -154,7 +154,20 @@ test "attachSignalStack maps a thread's stack between two guard pages, and detac
 }
 
 fn keepsALargeEnoughStack() anyerror!void {
-    // std's, attached by std.Thread.spawn in this executable: 256 KB.
+    // A stack someone else installed, at least as large as the platform's.
+    // (It was std's, which std.Thread.spawn attached in this executable
+    // until the test runner took production's thread-local layout -
+    // `signal_stack_size = null`, lane tpf: a test executable spawns no
+    // thread with a signal stack of std's any more.)
+    const large = try testing.allocator.alloc(u8, stack_bytes);
+    defer testing.allocator.free(large);
+    var install: posix.stack_t = undefined;
+    install.sp = large.ptr;
+    install.flags = 0;
+    install.size = @intCast(stack_bytes);
+    try posix.sigaltstack(&install, null);
+    defer disableStack();
+
     const before = currentStack() orelse return error.TestExpectedAlternateStack;
     try testing.expect(before.size >= stack_bytes);
     const attached = platform.attachSignalStack();

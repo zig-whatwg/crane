@@ -54,7 +54,7 @@ const nested_reports =
 ;
 
 fn ninthNestedGlobalIsGuarded() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const url = "http://gs3-report.test/page.html";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

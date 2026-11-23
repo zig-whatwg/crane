@@ -11,6 +11,8 @@ const PublicKeyCredentialRequestOptions = @import("PublicKeyCredentialRequestOpt
 const IdentityCredentialRequestOptions = @import("IdentityCredentialRequestOptions.zig").IdentityCredentialRequestOptions;
 
 pub const CredentialRequestOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     mediation: ?enums.CredentialMediationRequirement = null,
     uiMode: ?runtime.DOMString = null,
     signal: ?*runtime.Instance = null,

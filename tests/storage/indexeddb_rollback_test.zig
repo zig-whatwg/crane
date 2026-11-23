@@ -78,7 +78,12 @@ fn rollbackWithAllocationFailures(allocator: std.mem.Allocator) !void {
     const changed = try store.put("after", idb.IDBKey.string("key"));
     defer allocator.destroy(changed);
     try write.abort();
-    const restored = database.schema().get("records").?.record_data.records.items[0].value;
+    // The records are in the backing store: a new transaction reads what
+    // the abort left.
+    const check = try database.transaction(&.{"records"}, .readonly, .{});
+    defer allocator.destroy(check);
+    defer check.deinit();
+    const restored = (try (try check.objectStore("records")).recordAt(0)).?.value;
     try std.testing.expectEqualStrings("before", restored);
 }
 
@@ -116,6 +121,9 @@ test "IndexedDB abort preserves a disjoint transaction's committed records" {
     defer allocator.destroy(committed);
     try second.commit();
     try first.abort();
-    try std.testing.expectEqualStrings("initial", database.schema().get("a").?.record_data.records.items[0].value);
-    try std.testing.expectEqualStrings("committed", database.schema().get("b").?.record_data.records.items[0].value);
+    const check = try database.transaction(&.{ "a", "b" }, .readonly, .{});
+    defer allocator.destroy(check);
+    defer check.deinit();
+    try std.testing.expectEqualStrings("initial", (try (try check.objectStore("a")).recordAt(0)).?.value);
+    try std.testing.expectEqualStrings("committed", (try (try check.objectStore("b")).recordAt(0)).?.value);
 }

@@ -84,6 +84,10 @@ statement, the workload says so: that is its browser equivalent.
 | `events.dispatch` | `dispatchEvent` to a target 10 deep, a capture and a bubble listener per level | |
 | `events.add-remove-listener` | `addEventListener` + `removeEventListener` | |
 | `events.custom-event` | `new CustomEvent` with a detail, dispatched to one listener | |
+| `observers.mutation-construct` | `new MutationObserver(fn)`, `observe` and `disconnect`: a callback converted and kept per op (from lane bind1, 2026-11-23) | |
+| `observers.mutation-deliver` | 20,000 MutationObserver deliveries one after another, each callback making the next mutation | |
+| `observers.resize-construct` | `new ResizeObserver(fn)`, `observe` and `disconnect` (observations are the rendering steps', so none is delivered) | |
+| `observers.intersection-construct` | `new IntersectionObserver(fn)`, `observe` and `disconnect`, as above | |
 | `parser.inner-html-large` | a 300 KB document body through `innerHTML` | |
 | `parser.dom-parser` | the same document through `DOMParser` | |
 | `parser.document-write` | the same document in 400 `document.write` calls into a document a script opened | |
@@ -281,7 +285,7 @@ zig build repl-exe -j2 -Dwpt-runner-release-fast -Dcpu=apple_m1 # the ReleaseFas
 # Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
 # and `target_cpu` are the build's own repl.modes lines. For the ReleaseFast build:
 # name=crane_fast, <fast>/. `v8` is the LINKED archive's version - the directory -Dv8 selects,
-# jsengines/v8/15.7.112.43/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
+# jsengines/v8/15.7.112.43-icu/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
 # linked by nothing) - checked in the console's own bytes before the pin is written:
 LC_ALL=C grep -a -q -F 15.7.112.43 <safe>/repl
 cat > crane.pin <<PIN

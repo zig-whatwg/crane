@@ -88,13 +88,9 @@ fn create(realm: runtime.Context, event: *runtime.Instance) anyerror!*runtime.In
 /// addHandler(handler): steps 2-4 are the navigation's (see the file
 /// comment); step 1 is an assertion.
 pub fn call_addHandler(instance: *runtime.Instance, handler: callbacks.NavigationInterceptHandler) anyerror!void {
-    // The binding hands `handler` over: the navigation's steps take it on
-    // every path, and a throw before them releases it.
-    const event = eventOf(instance) orelse {
-        engine.takeCallbackFunction(@ptrCast(handler)).release();
-        return error.InvalidStateError;
-    };
-    try dom.navigation_api.addHandler(event, @ptrCast(handler));
+    // `handler` is BORROWED for the call: the navigation's steps keep it.
+    const event = eventOf(instance) orelse return error.InvalidStateError;
+    try dom.navigation_api.addHandler(event, handler);
 }
 
 /// The NavigateEvent this controller was made for, while it has one.

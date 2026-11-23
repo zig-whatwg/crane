@@ -5,11 +5,14 @@
 //! ## Architecture
 //!
 //! ```
-//! StorageBackend (interface)
-//!     ├── MemoryBackend (testing)
-//!     ├── SQLiteBackend (iOS/Android, planned)
-//!     └── LevelDBBackend (desktop, planned)
+//! StorageBackend (legacy interface)
+//!     └── MemoryBackend (testing)
 //! ```
+//!
+//! A Browser's stores - IndexedDB (indexeddb/backing_store.zig), localStorage
+//! (profile.zig), and those of other modules - go through the platform
+//! protocol's storage engine (docs/platform-protocol.md 6.6): kit/memory_store,
+//! or kit/sqlite under a profile directory.
 //!
 //! ## Usage
 //!
@@ -98,9 +101,16 @@ pub const getBucketFileSystem = standard.getBucketFileSystem;
 /// The user agent's storage shed and bucket file systems: one per Browser, a
 /// supplement of its scope (docs/instances.md).
 pub const UserAgentStorage = standard.UserAgentStorage;
-/// The storage sheds of a Browser's traversable navigables (session
-/// storage): its navigables', on its window thread.
-pub const TraversableStorageSheds = standard.TraversableStorageSheds;
+/// A traversable navigable's storage shed (session storage), which its tab
+/// holds: on its Browser's window thread.
+pub const initTraversableStorageShed = standard.initTraversableStorageShed;
+/// A Browser's profile directory, as its local storage persists there
+/// (the user's ruling D6, 2026-11-21).
+pub const profile = @import("profile.zig");
+/// A Browser's storage sequence: the thread that writes its profile's
+/// stores, made only for a Browser with a profile directory (lane prof2).
+pub const sequence = @import("sequence.zig");
+pub const StorageSequence = sequence.StorageSequence;
 
 // StorageManager interface (Phase 3.10)
 pub const storage_manager = @import("storage_manager.zig");
@@ -138,4 +148,6 @@ test {
     _ = quota;
     _ = persistence;
     _ = indexeddb;
+    _ = profile;
+    _ = sequence;
 }

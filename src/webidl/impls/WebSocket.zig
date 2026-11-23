@@ -187,9 +187,14 @@ pub const InternalState = struct {
     /// tells the pump to stop re-arming.
     pump_done: bool = false,
 
-    /// Receive scratch, allocated on first use and reused for the socket's
-    /// life. Not a stack array: `pump` runs as a timer callback, and a 64 KB
-    /// frame there is a stack overflow waiting for the right call depth.
+    /// Receive scratch, allocated on first use and reused until the
+    /// connection is CLOSED, when nothing can read it any more and it goes
+    /// back (`releaseRecvBuffer`) - not at teardown, which waits for script
+    /// to let go of the socket and a collection to end it: 64 KiB held for
+    /// every closed socket in between (lane net3: 260 closed sockets awaiting
+    /// a GC held 16.6 MB). Not a stack array: `pump` runs as a timer
+    /// callback, and a 64 KB frame there is a stack overflow waiting for the
+    /// right call depth.
     recv_buffer: ?[]u8 = null,
 
     /// What `bufferedAmount` returns (WebSockets § 3.1): the application data
@@ -233,12 +238,18 @@ pub const InternalState = struct {
             self.allocator.free(protos);
             self.requested_protocols = null;
         }
+        self.releaseRecvBuffer();
+        if (self.url_string.len > 0) {
+            self.allocator.free(self.url_string);
+        }
+    }
+
+    /// Give the receive scratch back: the connection is CLOSED (or the socket
+    /// is ending). The pump never receives again once the close task ran.
+    fn releaseRecvBuffer(self: *InternalState) void {
         if (self.recv_buffer) |b| {
             self.allocator.free(b);
             self.recv_buffer = null;
-        }
-        if (self.url_string.len > 0) {
-            self.allocator.free(self.url_string);
         }
     }
 
@@ -397,6 +408,7 @@ const BfcacheClose = struct {
         const failed = connection.failed;
         // 1. The ready state is CLOSED.
         connection.state = .CLOSED;
+        internal.releaseRecvBuffer();
         syncState(socket);
         // 2. If it was failed (`failForBfcache`), error.
         if (failed) {
@@ -679,8 +691,9 @@ fn finishClose(token: *PollToken, instance: *runtime.Instance, internal: *Intern
     };
     const failed = connection.failed;
 
-    // 1.
+    // 1. The receive scratch goes with it: the pump is done receiving.
     connection.state = .CLOSED;
+    internal.releaseRecvBuffer();
     syncState(instance);
 
     // 2.

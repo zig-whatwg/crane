@@ -44,7 +44,7 @@ test "the browser's reload fires no navigate event at the page; location.reload(
     const url = try site.url(testing.allocator, "/reload.html");
     defer testing.allocator.free(url);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateInPlace(url);
     try expectTitle(browser, "loads 1", "loads 1 navigates []");

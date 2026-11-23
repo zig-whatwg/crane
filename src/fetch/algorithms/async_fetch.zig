@@ -90,6 +90,17 @@ pub const AsyncFetch = struct {
     /// nobody reads it.
     relay: ?*BodyRelay = null,
     relay_source: ?*PipeSource = null,
+    /// HTTP fetch step 3.2's tee of a stream request body for the service
+    /// worker that handles it: this fetch writes its branch to the relay the
+    /// worker's realm reads, each turn (`pumpUpload`), until the body ends or
+    /// the worker stops reading. The fetch is not over while it does.
+    upload: ?service_worker_fetch.Upload = null,
+    /// The `.request_body` step: HTTP fetch step 4 waits for the request's
+    /// stream body to arrive whole (`pump` asks each turn).
+    awaiting_request_body: bool = false,
+    /// The `.document_resource` step: main fetch step 12 waits for its
+    /// preloaded response candidate (`pump` asks each turn).
+    awaiting_document_resource: bool = false,
     /// Handle Fetch 13.3.4's race, while the call races the network (and,
     /// when the network's response won, until its body has arrived).
     race: Race = .{},
@@ -120,6 +131,33 @@ pub const AsyncFetch = struct {
     outcome: ?(FetchError!FetchResult) = null,
     /// `done` has run.
     delivered: bool = false,
+    /// The Browser's fetch observer holds this fetch (network/observer.zig):
+    /// at the REQUEST stage (the request HTTP-network fetch was about to
+    /// send), the RESPONSE stage (the network's answer: `held_head` and
+    /// `held_pipe`, or `held_error`) or the AUTH stage (the job's `.auth`
+    /// prompt). The fetch waits for the decision (`resumeIntercepted`).
+    held: ?network.observer.Stage = null,
+    /// How many holders let it go at this stage already (each continue asks
+    /// the next: chained sessions).
+    hold_chain: u32 = 0,
+    /// The response stage's answer until the decision: its head and the pipe
+    /// its body arrives through (the transfer goes on into it), or no
+    /// response at all. OWNED.
+    held_head: ?NetworkResponse = null,
+    held_pipe: ?*body_pipe.BodyPipe = null,
+    held_error: ?NetworkError = null,
+    /// The auth stage was asked as the challenge arrived (`held_head` is its
+    /// response, nothing having read it), with this challenge - Chrome's
+    /// order: authRequired before the response stage. OWNED.
+    head_challenge: ?FetchJob.OwnedChallenge = null,
+    /// Interception.readBody: a second reader of the held body (`tee`), what
+    /// it read, and who waits for its end. The held pipe keeps every byte
+    /// for the fetch, whatever the decision.
+    body_tee: ?*body_pipe.BodyPipe = null,
+    body_read: std.ArrayListUnmanaged(u8) = .empty,
+    body_readers: std.ArrayListUnmanaged(network.observer.BodyReader) = .empty,
+    body_read_failed: bool = false,
+    body_read_done: bool = false,
     /// When its client went and it was kept (`keep`, the agent's monotonic
     /// clock in milliseconds); null while it has a client.
     kept_since_ms: ?i64 = null,
@@ -251,6 +289,9 @@ pub const AsyncFetch = struct {
         };
         fetches.live.append(fetches.allocator, self) catch return FetchError.OutOfMemory;
 
+        // A client that takes the whole body: its response may be kept for
+        // its document (FetchJob.keepForDocument).
+        job.keeps_whole_body = collect;
         self.advance(job.start());
         return self;
     }
@@ -286,6 +327,21 @@ pub const AsyncFetch = struct {
             if (failure.release_reason) |release| release(reason);
         }
         self.destroy();
+    }
+
+    /// Whether this fetch fills an entry its document keeps
+    /// (FetchJob.keepForDocument) and has not handed its response over: a
+    /// client that lets go of it may leave it running for the document
+    /// (`rebind`) rather than terminate it.
+    pub fn keepsForDocument(self: *const AsyncFetch) bool {
+        return !self.delivered and self.job.document_registration != null;
+    }
+
+    /// The fetch goes on for a new client - one that only drops its response
+    /// (a style sheet fetch its element left, for its document's entry). The
+    /// old client hears nothing more.
+    pub fn rebind(self: *AsyncFetch, client: Client) void {
+        self.client = client;
     }
 
     /// Whether this fetch goes on without its client once the client is
@@ -330,6 +386,7 @@ pub const AsyncFetch = struct {
         request.integrity_violation_reporter = null;
         request.coep_violation_reporter = null;
         if (request.traversable_for_user_prompts == .traversable) request.traversable_for_user_prompts = .no_traversable;
+        request.user_agent_client = null;
     }
 
     /// A kept fetch's client: no one. A response is dropped as it comes.
@@ -360,7 +417,25 @@ pub const AsyncFetch = struct {
         if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         if (self.source) |source| source.fail(.{ .kind = .network });
         if (self.relay_source) |source| source.fail(.{ .kind = .network });
+        // A request its observer still holds: the hold is dead (the fetch
+        // is dropped as one waiting for its transfer is), and a held
+        // response goes with it.
+        if (self.held != null) {
+            self.held = null;
+            if (network.observer.of(self.job.request)) |o| if (o.interception_dropped) |dropped| dropped(o.context, self.job.request.request_id);
+        }
+        self.endBodyRead();
+        if (self.held_pipe) |pipe| pipe.release();
+        self.held_pipe = null;
+        if (self.held_head) |*head| head.deinit();
+        self.held_head = null;
+        if (self.head_challenge) |c| c.deinit(self.allocator);
+        self.head_challenge = null;
         self.letRelayGo();
+        // A stream request body's branch still written to a worker: its body
+        // fails there.
+        if (self.upload) |*u| u.abandon();
+        self.upload = null;
         // The job abandons a service worker call still unanswered.
         self.service_worker_call = null;
         if (self.outcome) |outcome| {
@@ -423,7 +498,7 @@ pub const AsyncFetch = struct {
     /// navigation's redirect: the fetch goes on when the client asks).
     fn over(self: *const AsyncFetch) bool {
         return self.delivered and self.source == null and self.transfer == null and self.relay == null and
-            self.race.network == null and !self.job.hasNextManualRedirect();
+            self.race.network == null and self.upload == null and !self.job.hasNextManualRedirect();
     }
 
     /// Whether the response delivered is a navigation's redirect whose next
@@ -485,7 +560,30 @@ pub const AsyncFetch = struct {
                     self.track_body_end = arriving and (self.job.awaitsBodyEnd() or self.race_owner != null);
                     return;
                 },
+                .document_resource => {
+                    // Asked again at every turn of the loop (`pump`).
+                    if (self.job.documentResourceReady()) {
+                        next = self.job.resumeDocumentResource();
+                        continue;
+                    }
+                    self.awaiting_document_resource = true;
+                    return;
+                },
+                .request_body => {
+                    // The body's end resumes it (`awaitRequestBody`).
+                    if (!self.job.requestBodyArriving() or self.requestBodyEnded()) {
+                        next = self.job.resumeRequestBody();
+                        continue;
+                    }
+                    self.awaiting_request_body = true;
+                    return;
+                },
                 .service_worker => |call| {
+                    // A stream body's tee for the worker: written from here.
+                    if (call.takeUpload()) |upload| {
+                        if (self.upload) |*old| old.abandon();
+                        self.upload = upload;
+                    }
                     // Asked again at every turn of the loop (`pump`).
                     self.service_worker_call = call;
                     // 13.3.4.5: the network races the worker.
@@ -493,21 +591,296 @@ pub const AsyncFetch = struct {
                     return;
                 },
                 .network => |needed| {
-                    self.awaiting_head = true;
-                    self.transfer = self.fetches.scheduler.startStreaming(
-                        self.allocator,
-                        needed.request,
-                        .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd, .encoded = networkEncoded },
-                    ) catch |err| {
+                    // Where Chrome's DevToolsURLLoaderInterceptor sits: the
+                    // request is final, the transfer not started. The
+                    // Browser's fetch observer may hold it (the request
+                    // stage).
+                    self.hold_chain = 0;
+                    if (self.holdRequest(needed.request)) return;
+                    self.startTransfer(needed.request) catch |err| {
                         // Not sent at all: that is the network's answer.
-                        self.awaiting_head = false;
                         next = self.job.resumeNetwork(err);
                         continue;
                     };
                     return;
                 },
+                .auth => |*auth_step| {
+                    // HTTP-network-or-cache fetch's prompt: the observer may
+                    // answer it (Fetch.authRequired); with nobody to, the
+                    // default - there is no prompting UI.
+                    if (self.holdAuth(&auth_step.challenge)) return;
+                    next = self.job.resumeAuth(.default);
+                    continue;
+                },
             }
         }
+    }
+
+    /// Hand the waiting request to the network now: the observer hears
+    /// what is sent (Network.requestWillBeSentExtraInfo), and the transfer
+    /// starts.
+    fn startTransfer(self: *AsyncFetch, request: *const network.NetworkRequest) NetworkError!void {
+        self.job.observeRequestSent();
+        self.awaiting_head = true;
+        self.transfer = self.fetches.scheduler.startStreaming(
+            self.allocator,
+            request,
+            .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd, .encoded = networkEncoded },
+        ) catch |err| {
+            self.awaiting_head = false;
+            return err;
+        };
+    }
+
+    /// The handle the observer answers a hold of this fetch through.
+    fn interceptionAt(self: *AsyncFetch, stage: network.observer.Stage) network.observer.Interception {
+        return .{
+            .context = self,
+            .resume_fn = resumeIntercepted,
+            .request_id = self.job.request.request_id,
+            .stage = stage,
+            .chain = self.hold_chain,
+            .read_body_fn = if (stage == .response) readHeldBody else null,
+        };
+    }
+
+    /// The request stage: whether the observer holds `request`. A
+    /// CORS-preflight request is no request of the page's: never held.
+    fn holdRequest(self: *AsyncFetch, request: *const network.NetworkRequest) bool {
+        if (self.job.isPreflight() or self.job.isRetry()) return false;
+        const o = network.observer.of(self.job.request) orelse return false;
+        const intercept = o.intercept_request orelse return false;
+        self.held = .request;
+        if (intercept(o.context, self.job.request, request, self.interceptionAt(.request))) return true;
+        self.held = null;
+        return false;
+    }
+
+    /// The response stage: whether the observer holds the network's answer.
+    fn holdResponse(self: *AsyncFetch, answer: network.observer.NetworkAnswer) bool {
+        if (self.job.isPreflight()) return false;
+        const request = self.job.pendingNetworkRequest() orelse return false;
+        const o = network.observer.of(self.job.request) orelse return false;
+        const intercept = o.intercept_response orelse return false;
+        self.held = .response;
+        if (intercept(o.context, self.job.request, request, answer, self.interceptionAt(.response))) return true;
+        self.held = null;
+        return false;
+    }
+
+    /// The auth stage asked as the challenge arrives (`FetchJob.promptFor`):
+    /// whether the observer answers it.
+    fn holdAuthAtHead(self: *AsyncFetch, head: *const NetworkResponse) bool {
+        const o = network.observer.of(self.job.request) orelse return false;
+        const intercept = o.intercept_auth orelse return false;
+        const owned = (self.job.promptFor(head) catch null) orelse return false;
+        self.head_challenge = owned;
+        const challenge = owned.challenge();
+        self.held = .auth;
+        if (intercept(o.context, self.job.request, &challenge, self.interceptionAt(.auth))) return true;
+        self.held = null;
+        self.head_challenge = null;
+        owned.deinit(self.allocator);
+        return false;
+    }
+
+    /// The answer to a challenge asked as it arrived: Fetch takes it when it
+    /// prompts. With credentials, the challenge's response goes to Fetch now
+    /// (it prompts, is answered, and sends the request again); without, the
+    /// response goes on - through the response stage first, Chrome's order.
+    fn resumeAuthAtHead(self: *AsyncFetch, answer: network.observer.AuthAnswer) void {
+        if (self.head_challenge) |c| c.deinit(self.allocator);
+        self.head_challenge = null;
+        self.job.answerPromptEarly(answer) catch {};
+        if (answer != .provide) if (self.holdResponse(.{ .response = &self.held_head.? })) return;
+        const head = self.held_head.?;
+        const pipe = self.held_pipe.?;
+        self.held_head = null;
+        self.held_pipe = null;
+        const ended = self.source == null;
+        // A challenge answered with credentials is no response of the
+        // page's: its body is nobody's.
+        if (answer != .provide) self.job.observeData(pipe.buffered.items);
+        self.advance(self.job.resumeNetworkHead(head, pipe));
+        if (ended and self.reporting and self.job.awaitsBodyEnd()) self.job.bodyEnded(.{ .encoded = self.encoded_bytes, .decoded = self.body_bytes });
+    }
+
+    /// The auth stage: whether the observer answers the prompt.
+    fn holdAuth(self: *AsyncFetch, challenge: *const network.observer.AuthChallenge) bool {
+        const o = network.observer.of(self.job.request) orelse return false;
+        const intercept = o.intercept_auth orelse return false;
+        self.held = .auth;
+        if (intercept(o.context, self.job.request, challenge, self.interceptionAt(.auth))) return true;
+        self.held = null;
+        return false;
+    }
+
+    /// The observer's decision for the fetch it held (observer.zig
+    /// `Interception.decide`), on this fetch's thread.
+    fn resumeIntercepted(context: *anyopaque, decision: *const network.observer.Decision) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        const stage = self.held orelse return;
+        self.held = null;
+        switch (stage) {
+            .request => self.resumeRequestStage(decision.*),
+            .response => self.resumeResponseStage(decision.*),
+            .auth => {
+                const answer: network.observer.AuthAnswer = switch (decision.*) {
+                    .auth => |a| a,
+                    else => .default,
+                };
+                if (self.head_challenge != null) return self.resumeAuthAtHead(answer);
+                self.advance(self.job.resumeAuth(answer));
+            },
+        }
+    }
+
+    /// Request stage: send it (changed as asked - and the next holder may
+    /// hold it again), answer it, or fail it.
+    fn resumeRequestStage(self: *AsyncFetch, decision: network.observer.Decision) void {
+        switch (decision) {
+            .@"continue", .auth => {
+                if (decision == .@"continue") self.job.overrideNetworkRequest(decision.@"continue") catch {
+                    return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+                };
+                const request = self.job.pendingNetworkRequest() orelse return;
+                self.hold_chain += 1;
+                if (self.holdRequest(request)) return;
+                self.startTransfer(request) catch |err| return self.advance(self.job.resumeNetwork(err));
+            },
+            .fulfill => |fulfillment| {
+                const response = network.observer.fulfilledResponse(self.allocator, self.job.request.currentUrl(), fulfillment) catch {
+                    return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+                };
+                self.advance(self.job.resumeNetwork(response));
+            },
+            .fail => |reason| self.advance(self.job.resumeNetwork(reason.networkError())),
+        }
+    }
+
+    /// Response stage (Chrome's InterceptionJob at kResponseReceived): hand
+    /// the answer on as it came; give it a head of the holder's and keep
+    /// its body (fulfill without a body: continueResponse's new head);
+    /// replace it whole (fulfill with a body); or fail it.
+    fn resumeResponseStage(self: *AsyncFetch, decision: network.observer.Decision) void {
+        const head = self.held_head;
+        const pipe = self.held_pipe;
+        const failed = self.held_error;
+        self.held_head = null;
+        self.held_pipe = null;
+        self.held_error = null;
+        self.endBodyRead();
+        const keeps_body = switch (decision) {
+            .@"continue", .auth => true,
+            .fulfill => |f| f.body == null and head != null,
+            .fail => false,
+        };
+        if (keeps_body) {
+            if (failed) |err| return self.advance(self.job.resumeNetwork(err));
+            var h = head.?;
+            if (decision == .fulfill) network.observer.replaceHead(&h, decision.fulfill) catch {
+                h.deinit();
+                pipe.?.release();
+                return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+            };
+            // What arrived while it was held, for the observer; the rest as
+            // it comes (`networkData`).
+            self.job.observeData(pipe.?.buffered.items);
+            // A body that ended while it was held ended unreported (its
+            // response was nobody's yet): its sizes go to the job now, for
+            // the report timing steps of the response it hands over.
+            const ended = self.source == null;
+            self.advance(self.job.resumeNetworkHead(h, pipe.?));
+            if (ended and self.reporting and self.job.awaitsBodyEnd()) self.job.bodyEnded(.{ .encoded = self.encoded_bytes, .decoded = self.body_bytes });
+            return;
+        }
+        // The answer goes: its pipe lets the transfer stop.
+        if (pipe) |p| p.release();
+        if (head) |h| {
+            var dropped = h;
+            dropped.deinit();
+        }
+        switch (decision) {
+            .fulfill => |fulfillment| {
+                const response = network.observer.fulfilledResponse(self.allocator, self.job.request.currentUrl(), fulfillment) catch {
+                    return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
+                };
+                self.advance(self.job.resumeNetwork(response));
+            },
+            .fail => |reason| self.advance(self.job.resumeNetwork(reason.networkError())),
+            .@"continue", .auth => unreachable, // kept the body above
+        }
+    }
+
+    /// Interception.readBody at the response stage: the held body read to
+    /// its end by a second reader (Chrome's InterceptionJob BodyReader),
+    /// the held pipe keeping every byte for the fetch.
+    fn readHeldBody(context: *anyopaque, reader: network.observer.BodyReader) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        if (self.held != .response or self.held_pipe == null) return reader.done(reader.context, null);
+        if (self.body_read_done) return reader.done(reader.context, if (self.body_read_failed) null else self.body_read.items);
+        self.body_readers.append(self.allocator, reader) catch return reader.done(reader.context, null);
+        if (self.body_tee == null) {
+            const tee = self.held_pipe.?.tee() catch {
+                self.body_read_failed = true;
+                return self.finishBodyRead();
+            };
+            tee.consumer = .{ .context = self, .notify = bodyReadProgress };
+            self.body_tee = tee;
+        }
+        bodyReadProgress(self);
+    }
+
+    fn bodyReadProgress(context: *anyopaque) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        const tee = self.body_tee orelse return;
+        if (tee.hasBytes()) {
+            const bytes = tee.take() catch {
+                self.body_read_failed = true;
+                return self.finishBodyRead();
+            };
+            defer self.allocator.free(bytes);
+            self.body_read.appendSlice(self.allocator, bytes) catch {
+                self.body_read_failed = true;
+                return self.finishBodyRead();
+            };
+        }
+        switch (tee.state) {
+            .open => {},
+            .closed => self.finishBodyRead(),
+            .errored => {
+                self.body_read_failed = true;
+                self.finishBodyRead();
+            },
+        }
+    }
+
+    /// The held body is read (or failed): every reader hears it, and the
+    /// second reader goes.
+    fn finishBodyRead(self: *AsyncFetch) void {
+        self.body_read_done = true;
+        if (self.body_tee) |tee| tee.release();
+        self.body_tee = null;
+        var readers = self.body_readers;
+        self.body_readers = .empty;
+        defer readers.deinit(self.allocator);
+        for (readers.items) |reader| reader.done(reader.context, if (self.body_read_failed) null else self.body_read.items);
+    }
+
+    /// The hold ends: a read not finished fails, and what was read goes.
+    fn endBodyRead(self: *AsyncFetch) void {
+        if (self.body_readers.items.len > 0) {
+            self.body_read_failed = true;
+            self.finishBodyRead();
+        }
+        if (self.body_tee) |tee| tee.release();
+        self.body_tee = null;
+        self.body_readers.deinit(self.allocator);
+        self.body_readers = .empty;
+        self.body_read.deinit(self.allocator);
+        self.body_read = .empty;
+        self.body_read_done = false;
+        self.body_read_failed = false;
     }
 
     /// The response's headers are in: fetch carries on from here, and its
@@ -539,6 +912,24 @@ pub const AsyncFetch = struct {
             self.cancelTransfer();
             return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
         };
+        // The head as it came, for the observer
+        // (Network.responseReceivedExtraInfo) - before anything holds it.
+        self.job.observeResponseHead(&head);
+        // A challenge HTTP-network-or-cache fetch will prompt for: whoever
+        // answers prompts is asked first (Chrome: OnAuthRequired before the
+        // response reaches the interceptor's response stage).
+        if (self.holdAuthAtHead(&head)) {
+            self.held_head = head;
+            self.held_pipe = pipe;
+            return;
+        }
+        // The response stage: the observer may hold it; the body goes on
+        // arriving into the held pipe meanwhile.
+        if (self.holdResponse(.{ .response = &head })) {
+            self.held_head = head;
+            self.held_pipe = pipe;
+            return;
+        }
         // If fetch does not keep this response - a redirect it follows, a
         // network error - its pipe goes, and with no reader left the source
         // stops this transfer (`stopProducing`) before the next step begins.
@@ -549,6 +940,10 @@ pub const AsyncFetch = struct {
         const self: *AsyncFetch = @ptrCast(@alignCast(context.?));
         if (self.source) |source| {
             self.body_bytes += bytes.len;
+            // The observer sees the body as it comes - not while a holder
+            // has the response (what came meanwhile is reported when it is
+            // handed on, `resumeResponseStage`).
+            if (self.held == null) self.job.observeData(bytes);
             source.push(bytes);
         }
     }
@@ -562,14 +957,30 @@ pub const AsyncFetch = struct {
         const self: *AsyncFetch = @ptrCast(@alignCast(context.?));
         self.transfer = null;
         if (self.awaiting_head) {
-            // No response at all: that is the network's answer.
+            // No response at all: that is the network's answer - which the
+            // observer may hold too (the response stage with an error,
+            // requestPaused's responseErrorReason).
             self.awaiting_head = false;
-            result catch |err| return self.advance(self.job.resumeNetwork(err));
-            return self.advance(self.job.resumeNetwork(NetworkError.ProtocolError));
+            const err = if (result) |_| NetworkError.ProtocolError else |e| e;
+            if (self.holdResponse(.{ .failed = err })) {
+                self.held_error = err;
+                return;
+            }
+            return self.advance(self.job.resumeNetwork(err));
         }
         const source = self.source orelse return;
         self.source = null;
         if (result) |_| source.finish() else |_| source.fail(.{ .kind = .network });
+        // The body of the response handed over: its observer hears its end
+        // (Network.loadingFinished / loadingFailed) - the job knows whether
+        // it handed one over. It asked `self.job.response != null`, which is
+        // null exactly when the response was handed over streaming (the
+        // client took it): a navigation's document, a fetch() read as it
+        // arrives. Their end went unreported, and the job's destroy then
+        // reported them canceled - Playwright's page.goto failed with
+        // net::ERR_ABORTED on every navigation (lane tpf, htmx's and Vue's
+        // runners).
+        self.job.observeBodyEnd(self.encoded_bytes, if (result) |_| null else |err| internal_response.NetError.fromNetwork(err));
         // Received, or failed: the job's report timing steps run now.
         self.endBody();
         if (self.awaiting_body) {
@@ -626,6 +1037,43 @@ pub const AsyncFetch = struct {
         if (self.race.network != null or self.race.kept != null) return self.raceWorkerAnswered(answer);
         self.service_worker_call = null;
         self.advance(self.job.resumeServiceWorker(self.attachRelay(answer)));
+        return true;
+    }
+
+    /// `pump`: the stream request body's branch for the service worker,
+    /// written to its relay. Whether it ended (the body's end written, or the
+    /// worker stopped reading it).
+    fn pumpUpload(self: *AsyncFetch) bool {
+        const upload = if (self.upload) |*u| u else return false;
+        if (upload.pump()) return false;
+        self.upload = null;
+        return true;
+    }
+
+    /// Whether the request body's pipe has ended (finished or failed).
+    fn requestBodyEnded(self: *const AsyncFetch) bool {
+        const b = self.job.request.body orelse return true;
+        return switch (b) {
+            .bytes => true,
+            .body => |body| if (body.pipe) |pipe| pipe.state != .open else true,
+        };
+    }
+
+    /// `pump`: the `.document_resource` step's wait, over once the
+    /// candidate's fetch has its response (or failed).
+    fn awaitDocumentResource(self: *AsyncFetch) bool {
+        if (!self.awaiting_document_resource or !self.job.documentResourceReady()) return false;
+        self.awaiting_document_resource = false;
+        self.advance(self.job.resumeDocumentResource());
+        return true;
+    }
+
+    /// `pump`: the `.request_body` step's wait, over once the body has
+    /// arrived whole or failed.
+    fn awaitRequestBody(self: *AsyncFetch) bool {
+        if (!self.awaiting_request_body or !self.requestBodyEnded()) return false;
+        self.awaiting_request_body = false;
+        self.advance(self.job.resumeRequestBody());
         return true;
     }
 
@@ -809,9 +1257,25 @@ pub const AsyncFetch = struct {
                 r.response.body = body;
                 self.relay = relay;
                 self.relay_source = source;
+                // The observer sees the worker's body as it is drained
+                // (Network.dataReceived for a response fromServiceWorker).
+                // A worker's response is never the HTTP cache's to store,
+                // so the source's observer slot is free.
+                if (network.observer.of(self.job.request)) |o| if (o.data_received != null) {
+                    source.observer = .{ .context = self, .data = relayData, .end = relayEnd };
+                };
                 break :blk .{ .response = r.response };
             },
         };
+    }
+
+    fn relayData(context: *anyopaque, bytes: []const u8) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        self.job.observeData(bytes);
+    }
+
+    fn relayEnd(context: *anyopaque, complete: bool) void {
+        _ = .{ context, complete };
     }
 
     /// `pump`: what the service worker wrote since the last turn, into the
@@ -823,6 +1287,8 @@ pub const AsyncFetch = struct {
         self.body_bytes = relay.drained;
         self.encoded_bytes = relay.drained;
         if (end == .open) return true;
+        // A service worker's body handed over: its end, as networkEnd's.
+        self.job.observeBodyEnd(relay.drained, if (end == .errored) .failed else null);
         self.relay_source = null;
         relay.release();
         self.relay = null;
@@ -912,6 +1378,31 @@ pub const AgentFetches = struct {
     /// 5a78f4525f caps only their number, dom.fetchKeepalive.*_limit). A
     /// field, not a constant, so that a test can shorten it.
     kept_limit_ms: i64 = 30 * std.time.ms_per_s,
+    /// Request bodies another thread writes for this agent's realms - a
+    /// stream body a page's fetch hands to a service worker of this agent
+    /// (`readRelay`) - each drained into the pipe its realm reads, every
+    /// turn (`drainRelayReaders`).
+    relay_readers: std.ArrayListUnmanaged(*RelayReader) = .empty,
+
+    /// A body arriving through a relay another thread writes: what this
+    /// agent's loop drains into its source each turn. The source's producer:
+    /// when its last reader goes - the realm's body stream cancelled or
+    /// collected - the relay is cancelled, which the writer sees
+    /// (service_worker_fetch.Upload), and this reader is dropped at the next
+    /// turn.
+    pub const RelayReader = struct {
+        relay: *BodyRelay,
+        /// Null once its producer was cancelled: the source may be gone.
+        source: ?*PipeSource,
+
+        fn cancel(context: *anyopaque) void {
+            const self: *RelayReader = @ptrCast(@alignCast(context));
+            // Called inside a delivery to the source, or from a reader's
+            // release: only marked here, and dropped by the next turn.
+            self.source = null;
+            self.relay.cancel();
+        }
+    };
 
     pub fn init(allocator: Allocator) AgentFetches {
         return .{ .allocator = allocator, .scheduler = NetworkScheduler.init(allocator) };
@@ -943,7 +1434,76 @@ pub const AgentFetches = struct {
         }
         if (self.live.items.len != 0) log.warn("{d} fetches outlived their agent", .{self.live.items.len});
         self.live.deinit(self.allocator);
+        // A relayed body nobody read to its end: the writer stops, and its
+        // readers' body fails.
+        for (self.relay_readers.items) |reader| {
+            if (reader.source) |source| {
+                source.producer = null;
+                source.fail(.{ .kind = .network });
+            }
+            reader.relay.cancel();
+            reader.relay.release();
+            self.allocator.destroy(reader);
+        }
+        self.relay_readers.deinit(self.allocator);
         self.scheduler.deinit();
+    }
+
+    /// A pipe of this agent fed from `relay` - a request body another thread
+    /// writes (service_worker_fetch.Upload) - as this agent's loop drains it
+    /// (`pump`). It takes the reader's reference to `relay`; on failure that
+    /// stays the caller's.
+    pub fn readRelay(self: *AgentFetches, relay: *BodyRelay) Allocator.Error!*body_pipe.BodyPipe {
+        const reader = try self.allocator.create(RelayReader);
+        errdefer self.allocator.destroy(reader);
+        const source = try PipeSource.create(self.allocator);
+        // No pause: the writer keeps no backpressure (BodyRelay).
+        source.producer = .{ .context = reader, .cancel = RelayReader.cancel };
+        const pipe = source.branch() catch |err| {
+            source.producer = null;
+            source.fail(.{ .kind = .network });
+            return err;
+        };
+        reader.* = .{ .relay = relay, .source = source };
+        self.relay_readers.append(self.allocator, reader) catch |err| {
+            // The pipe's release would cancel the relay through the
+            // producer: the relay is still the caller's.
+            source.producer = null;
+            pipe.release();
+            return err;
+        };
+        return pipe;
+    }
+
+    /// `pump`: what each relay's writer wrote since the last turn, into its
+    /// pipe; its end once it has ended. A reader whose source's last reader
+    /// went, or whose relay ended, goes.
+    fn drainRelayReaders(self: *AgentFetches) bool {
+        var progressed = false;
+        var i: usize = 0;
+        while (i < self.relay_readers.items.len) {
+            const reader = self.relay_readers.items[i];
+            const ended = if (reader.source) |source| blk: {
+                const before = reader.relay.drained;
+                const end = reader.relay.drainInto(source);
+                if (reader.relay.drained != before) progressed = true;
+                // The delivery may have cancelled it (`RelayReader.cancel`).
+                break :blk end != .open or reader.source == null;
+            } else true;
+            if (!ended) {
+                i += 1;
+                continue;
+            }
+            // drainInto finished or failed the source, which let its
+            // producer go - and may have freed it, once its last reader went
+            // in that delivery; a cancelled one's producer went first. The
+            // source is not touched again.
+            _ = self.relay_readers.orderedRemove(i);
+            reader.relay.release();
+            self.allocator.destroy(reader);
+            progressed = true;
+        }
+        return progressed;
     }
 
     /// The event loop's network step: one turn's progress for every fetch of
@@ -968,7 +1528,13 @@ pub const AgentFetches = struct {
             const f = self.live.items[i];
             if (f.askServiceWorker()) progressed = true;
             if (f.drainRelay()) progressed = true;
+            if (f.pumpUpload()) progressed = true;
+            if (f.awaitRequestBody()) progressed = true;
+            if (f.awaitDocumentResource()) progressed = true;
         }
+        // Request bodies other threads write for this agent's service
+        // worker realms (`readRelay`).
+        if (self.drainRelayReaders()) progressed = true;
 
         // One at a time, from the front afresh: a client may start or
         // terminate fetches from its callbacks.
@@ -977,6 +1543,8 @@ pub const AgentFetches = struct {
                 var outcome = f.outcome.?;
                 f.outcome = null;
                 if (f.collect) outcome = AsyncFetch.settleCollected(outcome);
+                // The whole response, for the document that keeps it.
+                f.job.keepForDocument(&outcome);
                 f.delivered = true;
                 // If it is over already, the next round tells the client so.
                 f.client.done(f.client.context, outcome);
@@ -1126,6 +1694,6 @@ pub const AgentFetches = struct {
     /// The agent's fetches that have not ended. While there are any, its
     /// event loop has work: it must keep turning, and not sleep through them.
     pub fn inFlight(self: *const AgentFetches) usize {
-        return self.live.items.len;
+        return self.live.items.len + self.relay_readers.items.len;
     }
 };

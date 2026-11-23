@@ -70,6 +70,7 @@ const Page = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -152,11 +153,13 @@ test "the pattern is compiled with the v flag (UnicodeSets)" {
     try std.testing.expect(!try page.matches("[[a-z]&&[aeiou]]+", "abc"));
     try std.testing.expect(try page.matches("[\\q{abc|d}]", "abc"));
     try std.testing.expect(!try page.matches("[\\q{abc|d}]", "ab"));
-    // Crane's V8 is built without i18n support (build.zig,
-    // v8_enable_i18n_support = false), so a Unicode property escape is a
-    // SyntaxError in every realm - `/\p{L}/v` in the page's own script too -
-    // and the attribute imposes no constraint, as for any invalid pattern.
-    try std.testing.expectError(error.InvalidPattern, page.matches("\\p{L}", "A"));
+    // A Unicode property escape: Crane's V8 is built with ICU since lane
+    // icu1 (scripts/build-v8-15.7.sh, "ICU"), as Chrome's is. Chrome 157:
+    // <input pattern="\p{L}"> with "A" matches, with "1" it does not
+    // (tmp/probes/icu1/chrome-157-3.json). Without ICU it was a SyntaxError
+    // and the attribute imposed no constraint, which this test pinned.
+    try std.testing.expect(try page.matches("\\p{L}", "A"));
+    try std.testing.expect(!try page.matches("\\p{L}", "1"));
     // `[(]` is fine with "u" and a SyntaxError with "v": ( is a
     // ClassSetSyntaxCharacter that must be escaped in a v-mode class.
     try std.testing.expectError(error.InvalidPattern, page.matches("[(]", "("));

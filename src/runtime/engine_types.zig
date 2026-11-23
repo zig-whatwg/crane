@@ -116,6 +116,12 @@ pub const ErrorInfo = struct {
     colno: u32,
     /// The thrown value itself, BORROWED: the engine keeps it.
     error_value: ?JSValue,
+    /// The realm whose script threw, when the reporter knows it - an
+    /// isolated world's realm for a world's script (engine section 4.2a):
+    /// its error event is that world's only (Blink's ErrorEvent keeps the
+    /// world of the script that threw, ErrorEvent::CanBeDispatchedInWorld).
+    /// Null: the reported global's own realm.
+    realm: ?Context = null,
 };
 
 /// HTML "report an exception", as the host supplies it to an operation that
@@ -139,6 +145,54 @@ pub const CallbackThis = union(enum) {
     global_this,
     /// This value, BORROWED for the call.
     value: JSValue,
+};
+
+/// WebIDL: a callback function type's value (3.2.19) as the binding hands it
+/// to an impl - an argument, a dictionary member, a union arm, a sequence
+/// element, an attribute's value. BORROWED for the call, like every value the
+/// binding converts: the binding releases it when the call returns. So it is
+/// never stored; an impl that keeps the callback past its call keeps a
+/// CallbackFunction of its own, during the call (`keep`). Its type is not
+/// CallbackFunction's, so storing it where a kept one belongs does not
+/// compile.
+///
+/// WebIDL's value is "a reference to the same object that V represents, with
+/// the incumbent settings object as the callback context" (3.2.19 step 2). The
+/// callback context is not a field: the value lives only for its call, and
+/// the incumbent realm while the call runs is the conversion's, so `keep`
+/// records it then. A value never kept (a removeEventListener comparison)
+/// asks for no realm at all.
+pub const BorrowedCallbackFunction = struct {
+    /// The function - any object, for an attribute whose type is a nullable
+    /// [LegacyTreatNonObjectAsNull] callback (WebIDL 3.2.19 step 1).
+    /// BORROWED: compare it or read it during the call; never keep it.
+    function: JSValue,
+
+    /// A CallbackFunction of the caller's own (OWNED: released exactly once)
+    /// - engine.keepCallbackFunction. Keep at most once, during the call: an
+    /// adapter may move the binding's hold into it, after which this value
+    /// refers to nothing.
+    pub fn keep(self: BorrowedCallbackFunction) @import("engine").CallbackFunction {
+        return @import("engine").keepCallbackFunction(self);
+    }
+};
+
+/// WebIDL: a callback interface type's value (3.2.16) - an object, a function
+/// included - as the binding hands it to an impl. BORROWED for the call, as
+/// BorrowedCallbackFunction is; an impl that keeps it keeps a
+/// CallbackInterface of its own (`keep`), and one that only compares it
+/// (removeEventListener) reads `object`. Its callback context, as
+/// BorrowedCallbackFunction's, is recorded when it is kept.
+pub const BorrowedCallbackInterface = struct {
+    /// The object. BORROWED.
+    object: JSValue,
+
+    /// A CallbackInterface of the caller's own (OWNED) -
+    /// engine.keepCallbackInterface. Keep at most once, during the call, as
+    /// BorrowedCallbackFunction.keep.
+    pub fn keep(self: BorrowedCallbackInterface) @import("engine").CallbackInterface {
+        return @import("engine").keepCallbackInterface(self);
+    }
 };
 
 /// setTimeout's and setInterval's `TimerHandler` - `(TrustedScript or
@@ -325,6 +379,15 @@ pub const WorkerRealmOptions = struct {
     /// exposes no [SecureContext] interface object or member (WebIDL
     /// 3.3.13). True, the default, keeps every construct exposed, as before.
     secure_context: bool = true,
+    /// HTML "create a new realm" step 5 (engine.WindowRealmOptions has the
+    /// same field): whether the worker agent's agent cluster has a
+    /// cross-origin isolation mode other than "none" as the realm is made -
+    /// a dedicated worker's cluster is its owner's ("obtain a worker/worklet
+    /// agent" step 3); a shared or service worker's is its own, as the host
+    /// decides it (html.worker_host). False: the engine deletes the global's
+    /// SharedArrayBuffer property once the global object exists. No default:
+    /// every caller decides.
+    agent_cluster_cross_origin_isolated: bool,
 };
 
 /// A worker realm and its global object.
@@ -372,6 +435,13 @@ pub const WorkletRealmOptions = struct {
     on_realm: ?*const fn (data: ?*anyopaque, realm: Context) void = null,
     /// Passed to `on_realm`.
     data: ?*anyopaque = null,
+    /// HTML "create a new realm" step 5 (engine.WindowRealmOptions has the
+    /// same field): whether the worklet agent's agent cluster - its owner's
+    /// ("obtain a worker/worklet agent" step 3) - has a cross-origin
+    /// isolation mode other than "none". False: the engine deletes the
+    /// global's SharedArrayBuffer property once the global object exists. No
+    /// default: every caller decides.
+    agent_cluster_cross_origin_isolated: bool,
 };
 
 /// A worklet realm and its global object.

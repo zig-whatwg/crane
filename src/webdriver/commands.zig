@@ -72,6 +72,22 @@ pub fn handleCommand(ctx: CommandContext) !CommandResult {
             return handleDeleteSession(ctx, session_id);
         }
 
+        // /session/{sessionId}/alert/... - the user prompt commands (W3C
+        // WebDriver 16.3-16.6), which work on an open prompt.
+        if (parts.len == 4 and std.mem.eql(u8, parts[2], "alert")) {
+            return handleAlert(ctx, session, parts[3]);
+        }
+
+        // Every other session command but the timeouts first "handles any
+        // user prompts" (W3C WebDriver 16.2): an open prompt is dismissed and
+        // the command fails with "unexpected alert open" (the default
+        // unhandled prompt behaviour, "dismiss and notify").
+        if (!(parts.len == 3 and std.mem.eql(u8, parts[2], "timeouts"))) {
+            session.handleUserPrompts() catch |err| switch (err) {
+                error.UnexpectedAlertOpen => return errorResponse(ctx.allocator, .unexpected_alert_open, "A user prompt was open: it was dismissed"),
+            };
+        }
+
         // /session/{sessionId}/url
         if (parts.len == 3 and std.mem.eql(u8, parts[2], "url")) {
             if (ctx.method == .POST) {
@@ -86,6 +102,26 @@ pub fn handleCommand(ctx: CommandContext) !CommandResult {
         // GET /session/{sessionId}/title
         if (parts.len == 3 and std.mem.eql(u8, parts[2], "title") and ctx.method == .GET) {
             return handleGetTitle(ctx.allocator, session);
+        }
+
+        // POST /session/{sessionId}/back, /forward, /refresh (W3C WebDriver
+        // 10.3-10.5)
+        if (parts.len == 3 and ctx.method == .POST) {
+            if (std.mem.eql(u8, parts[2], "back")) return handleHistory(ctx.allocator, session, .back);
+            if (std.mem.eql(u8, parts[2], "forward")) return handleHistory(ctx.allocator, session, .forward);
+            if (std.mem.eql(u8, parts[2], "refresh")) return handleHistory(ctx.allocator, session, .refresh);
+        }
+
+        // /session/{sessionId}/window (W3C WebDriver 11.1-11.5)
+        if (parts.len >= 3 and std.mem.eql(u8, parts[2], "window")) {
+            if (parts.len == 3) switch (ctx.method) {
+                .GET => return handleGetWindowHandle(ctx.allocator, session),
+                .POST => return handleSwitchToWindow(ctx, session),
+                .DELETE => return handleCloseWindow(ctx, session, session_id),
+                else => return errorResponse(ctx.allocator, .unknown_method, "Method not allowed"),
+            };
+            if (parts.len == 4 and std.mem.eql(u8, parts[3], "handles") and ctx.method == .GET) return handleGetWindowHandles(ctx.allocator, session);
+            if (parts.len == 4 and std.mem.eql(u8, parts[3], "new") and ctx.method == .POST) return handleNewWindow(ctx.allocator, session);
         }
 
         // /session/{sessionId}/timeouts
@@ -142,9 +178,47 @@ fn handleNewSession(ctx: CommandContext) !CommandResult {
         return errorResponse(ctx.allocator, .session_not_created, "Failed to create browser session");
     };
 
-    const info = protocol.SessionInfo{
+    // se:cdp (Selenium 4) and goog:chromeOptions.debuggerAddress
+    // (chromedriver): the session's Browser over the Chrome DevTools
+    // Protocol, as Playwright's SELENIUM_REMOTE_URL route takes it
+    // (devtools_endpoint.zig). A build without CDP answers neither.
+    session.cdp.start(ctx.allocator, session.host) catch |err| {
+        const any: anyerror = err;
+        if (any != error.CdpNotBuilt) std.log.warn("WebDriver: the session's CDP endpoint did not start: {}", .{err});
+    };
+    var url_buffer: [160]u8 = undefined;
+    var address_buffer: [32]u8 = undefined;
+    const cdp_url = session.cdp.url(&url_buffer);
+    const debugger_address = session.cdp.debuggerAddress(&address_buffer);
+
+    const Capabilities = struct {
+        base: protocol.SessionInfo.SessionCapabilities = .{},
+        @"se:cdp": ?[]const u8 = null,
+        @"goog:chromeOptions": ?struct { debuggerAddress: []const u8 } = null,
+
+        pub fn jsonStringify(self: @This(), jws: anytype) !void {
+            try jws.beginObject();
+            inline for (@typeInfo(protocol.SessionInfo.SessionCapabilities).@"struct".field_names) |name| {
+                try jws.objectField(name);
+                try jws.write(@field(self.base, name));
+            }
+            if (self.@"se:cdp") |v| {
+                try jws.objectField("se:cdp");
+                try jws.write(v);
+            }
+            if (self.@"goog:chromeOptions") |v| {
+                try jws.objectField("goog:chromeOptions");
+                try jws.write(v);
+            }
+            try jws.endObject();
+        }
+    };
+    const info = .{
         .sessionId = session.id,
-        .capabilities = .{},
+        .capabilities = Capabilities{
+            .@"se:cdp" = cdp_url,
+            .@"goog:chromeOptions" = if (debugger_address) |a| .{ .debuggerAddress = a } else null,
+        },
     };
 
     return .{
@@ -172,7 +246,12 @@ fn handleNavigate(ctx: CommandContext, session: *Session) !CommandResult {
 
     session.navigate(req.url) catch |err| {
         std.log.err("Navigation failed: {}", .{err});
-        return errorResponse(ctx.allocator, .unknown_error, "Navigation failed");
+        return switch (err) {
+            error.NoSuchWindow => errorResponse(ctx.allocator, .no_such_window, "No window"),
+            error.Timeout => errorResponse(ctx.allocator, .timeout, "The page load timed out"),
+            error.InvalidUrl => errorResponse(ctx.allocator, .invalid_argument, "Invalid URL"),
+            else => errorResponse(ctx.allocator, .unknown_error, "Navigation failed"),
+        };
     };
 
     return .{
@@ -181,12 +260,103 @@ fn handleNavigate(ctx: CommandContext, session: *Session) !CommandResult {
     };
 }
 
+/// /session/{sessionId}/alert/dismiss, /accept (POST), /text (GET, POST).
+fn handleAlert(ctx: CommandContext, session: *Session, action: []const u8) !CommandResult {
+    const allocator = ctx.allocator;
+    const result: anyerror!?[]u8 = if (std.mem.eql(u8, action, "dismiss") and ctx.method == .POST)
+        if (session.dismissAlert()) null else |err| err
+    else if (std.mem.eql(u8, action, "accept") and ctx.method == .POST)
+        if (session.acceptAlert()) null else |err| err
+    else if (std.mem.eql(u8, action, "text") and ctx.method == .GET)
+        if (session.alertText(allocator)) |text| text else |err| err
+    else if (std.mem.eql(u8, action, "text") and ctx.method == .POST) blk: {
+        const parsed = std.json.parseFromSlice(struct { text: []const u8 }, allocator, ctx.body, .{ .ignore_unknown_fields = true }) catch
+            return errorResponse(allocator, .invalid_argument, "Send Alert Text needs a string 'text'");
+        defer parsed.deinit();
+        break :blk if (session.sendAlertText(parsed.value.text)) null else |err| err;
+    } else return errorResponse(allocator, .unknown_command, "Unknown alert command");
+    const text = result catch |err| return switch (err) {
+        error.NoSuchAlert => errorResponse(allocator, .no_such_alert, "No user prompt is open"),
+        error.ElementNotInteractable => errorResponse(allocator, .element_not_interactable, "The open prompt takes no text"),
+        else => errorResponse(allocator, .unknown_error, "The user prompt could not be handled"),
+    };
+    if (text) |t| {
+        defer allocator.free(t);
+        return .{ .status = .ok, .body = try protocol.Response.success(allocator, t) };
+    }
+    return .{ .status = .ok, .body = try protocol.Response.successNull(allocator) };
+}
+
+/// POST /session/{sessionId}/back, /forward, /refresh: the browser's own
+/// back, forward and reload (HTML traverse the history by a delta, reload),
+/// then the wait for the navigation to complete.
+fn handleHistory(allocator: Allocator, session: *Session, action: enum { back, forward, refresh }) !CommandResult {
+    const result = switch (action) {
+        .back => session.back(),
+        .forward => session.forward(),
+        .refresh => session.refresh(),
+    };
+    result catch |err| return switch (err) {
+        error.NoSuchWindow => errorResponse(allocator, .no_such_window, "No window"),
+        error.Timeout => errorResponse(allocator, .timeout, "The page load timed out"),
+        else => errorResponse(allocator, .unknown_error, "Navigation failed"),
+    };
+    return .{ .status = .ok, .body = try protocol.Response.successNull(allocator) };
+}
+
+/// GET /session/{sessionId}/window
+fn handleGetWindowHandle(allocator: Allocator, session: *Session) !CommandResult {
+    const handle = session.windowHandle(allocator) catch return errorResponse(allocator, .no_such_window, "No window");
+    defer allocator.free(handle);
+    return .{ .status = .ok, .body = try protocol.Response.success(allocator, handle) };
+}
+
+/// GET /session/{sessionId}/window/handles
+fn handleGetWindowHandles(allocator: Allocator, session: *Session) !CommandResult {
+    const handles = session.windowHandles(allocator) catch return errorResponse(allocator, .unknown_error, "No handles");
+    defer {
+        for (handles) |h| allocator.free(h);
+        allocator.free(handles);
+    }
+    return .{ .status = .ok, .body = try protocol.Response.success(allocator, handles) };
+}
+
+/// POST /session/{sessionId}/window {handle}
+fn handleSwitchToWindow(ctx: CommandContext, session: *Session) !CommandResult {
+    const parsed = std.json.parseFromSlice(struct { handle: []const u8 }, ctx.allocator, ctx.body, .{ .ignore_unknown_fields = true }) catch
+        return errorResponse(ctx.allocator, .invalid_argument, "Invalid handle");
+    defer parsed.deinit();
+    session.switchToWindow(parsed.value.handle) catch return errorResponse(ctx.allocator, .no_such_window, "No such window");
+    return .{ .status = .ok, .body = try protocol.Response.successNull(ctx.allocator) };
+}
+
+/// DELETE /session/{sessionId}/window: the remaining handles; with none
+/// left the session ends (W3C WebDriver 11.2 step 5).
+fn handleCloseWindow(ctx: CommandContext, session: *Session, session_id: []const u8) !CommandResult {
+    const closed = session.closeWindow(ctx.allocator) catch return errorResponse(ctx.allocator, .no_such_window, "No window");
+    defer {
+        for (closed.handles) |h| ctx.allocator.free(h);
+        ctx.allocator.free(closed.handles);
+    }
+    const body = try protocol.Response.success(ctx.allocator, closed.handles);
+    if (closed.ended) _ = ctx.sessions.deleteSession(session_id);
+    return .{ .status = .ok, .body = body };
+}
+
+/// POST /session/{sessionId}/window/new
+fn handleNewWindow(allocator: Allocator, session: *Session) !CommandResult {
+    const handle = session.newWindow(allocator) catch return errorResponse(allocator, .unknown_error, "No new window");
+    defer allocator.free(handle);
+    return .{ .status = .ok, .body = try protocol.Response.success(allocator, .{ .handle = handle, .type = "tab" }) };
+}
+
 /// GET /session/{sessionId}/url
 fn handleGetUrl(allocator: Allocator, session: *Session) !CommandResult {
-    const url = session.getUrl() catch |err| {
+    const url = session.getUrl(allocator) catch |err| {
         std.log.err("Get URL failed: {}", .{err});
         return errorResponse(allocator, .no_such_window, "No window");
     };
+    defer allocator.free(url);
 
     return .{
         .status = .ok,

@@ -4,6 +4,14 @@ const std = @import("std");
 const h = @import("bx1_helpers.zig");
 const testing = std.testing;
 
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
+
 // Exact 24 Chrome records ruled by Q57, including four finite controls.
 const probe_cases = .{
     .{ "scale(2) translateX(1px)", "matrix(2, 0, 0, 2, 2, 0)" },
@@ -75,7 +83,7 @@ test "specialized transform operations retain finite mixed order composition" {
 }
 
 test "transform operation composition releases every allocation failure" {
-    try testing.checkAllAllocationFailures(testing.allocator, allocationFailure, .{});
+    try sweep("bx1_transform_composition_test", allocationFailure, .{});
 }
 
 fn allocationFailure(allocator: h.Allocator) !void {

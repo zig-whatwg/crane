@@ -53,7 +53,7 @@ const Pages = struct {
 };
 
 fn startBrowser(allocator: std.mem.Allocator) !*browser_mod.Browser {
-    return browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
 }
 
 fn openPage(browser: *browser_mod.Browser) !void {

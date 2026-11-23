@@ -58,6 +58,170 @@ pub const ResourceSource = struct {
     }
 };
 
+/// CSS Values 5 §4.1.1: the <request-url-modifier>s of a url() or src()
+/// whose argument is a string -
+///   <request-url-modifier> = <cross-origin-modifier> | <integrity-modifier>
+///                          | <referrer-policy-modifier>
+/// - each at most once (a <url-modifier>* of the same modifier twice is no
+/// valid request; Chrome rejects it, css/css-values/urls/url-request-
+/// modifiers-invalid.sub.html), serialized in that order. Their URL request
+/// modifier steps change the resource's request (`apply...` in the fetchers).
+pub const RequestModifiers = struct {
+    cross_origin: ?CrossOrigin = null,
+    /// The <string>'s value. Borrowed in a ResourceUrl descriptor, owned by
+    /// a cloned ResourceUrl (`ResourceUrl.clone`/`deinit`).
+    integrity: ?[]const u8 = null,
+    referrer_policy: ?ReferrerPolicy = null,
+
+    /// cross-origin(anonymous | use-credentials).
+    pub const CrossOrigin = enum {
+        anonymous,
+        use_credentials,
+
+        pub fn name(self: CrossOrigin) []const u8 {
+            return switch (self) {
+                .anonymous => "anonymous",
+                .use_credentials => "use-credentials",
+            };
+        }
+    };
+
+    /// referrer-policy(...): the ReferrerPolicy enumeration's values bar the
+    /// empty string (Referrer Policy §3).
+    pub const ReferrerPolicy = enum {
+        no_referrer,
+        no_referrer_when_downgrade,
+        same_origin,
+        origin,
+        strict_origin,
+        origin_when_cross_origin,
+        strict_origin_when_cross_origin,
+        unsafe_url,
+
+        pub fn name(self: ReferrerPolicy) []const u8 {
+            return switch (self) {
+                .no_referrer => "no-referrer",
+                .no_referrer_when_downgrade => "no-referrer-when-downgrade",
+                .same_origin => "same-origin",
+                .origin => "origin",
+                .strict_origin => "strict-origin",
+                .origin_when_cross_origin => "origin-when-cross-origin",
+                .strict_origin_when_cross_origin => "strict-origin-when-cross-origin",
+                .unsafe_url => "unsafe-url",
+            };
+        }
+    };
+
+    pub fn isEmpty(self: RequestModifiers) bool {
+        return self.cross_origin == null and self.integrity == null and self.referrer_policy == null;
+    }
+
+    pub fn eql(a: RequestModifiers, b: RequestModifiers) bool {
+        if (a.cross_origin != b.cross_origin or a.referrer_policy != b.referrer_policy) return false;
+        if (a.integrity) |x| return if (b.integrity) |y| std.mem.eql(u8, x, y) else false;
+        return b.integrity == null;
+    }
+
+    /// The modifiers after a url()'s string, in the grammar's order, each
+    /// after a space (CSSOM serializes a url() as the function and its
+    /// argument; Chrome and Safari write the modifiers so, css/css-values/
+    /// urls/url-request-modifiers-serialize.sub.html).
+    pub fn serialize(self: RequestModifiers, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        if (self.cross_origin) |value| {
+            try out.appendSlice(allocator, " cross-origin(");
+            try out.appendSlice(allocator, value.name());
+            try out.append(allocator, ')');
+        }
+        if (self.integrity) |value| {
+            try out.appendSlice(allocator, " integrity(");
+            try @import("style_values.zig").appendString(value, out, allocator);
+            try out.append(allocator, ')');
+        }
+        if (self.referrer_policy) |value| {
+            try out.appendSlice(allocator, " referrer-policy(");
+            try out.appendSlice(allocator, value.name());
+            try out.append(allocator, ')');
+        }
+    }
+
+    /// Consumes the modifiers after a url() or src() function's string,
+    /// through the function's ")" (CSS Syntax 3 §5.5.10: EOF closes it), from
+    /// `stream` - anything whose next() skips whitespace and comments. Null
+    /// when anything else stands there: an unknown function or ident, a
+    /// malformed or repeated modifier. `integrity`'s value is decoded into
+    /// `allocator`; the caller frees it (`deinitOwned`).
+    pub fn consume(allocator: Allocator, stream: anytype) Allocator.Error!?RequestModifiers {
+        var result: RequestModifiers = .{};
+        if (try result.consumeInto(allocator, stream)) return result;
+        result.deinitOwned(allocator);
+        return null;
+    }
+
+    fn consumeInto(self: *RequestModifiers, allocator: Allocator, stream: anytype) Allocator.Error!bool {
+        while (true) {
+            const token = stream.next();
+            switch (token.token_type) {
+                .right_paren, .eof => return true,
+                .function => {},
+                else => return false,
+            }
+            if (tokenizer.nameEql(token.value, "cross-origin")) {
+                if (self.cross_origin != null) return false;
+                self.cross_origin = keyword(CrossOrigin, stream) orelse return false;
+            } else if (tokenizer.nameEql(token.value, "referrer-policy")) {
+                if (self.referrer_policy != null) return false;
+                self.referrer_policy = keyword(ReferrerPolicy, stream) orelse return false;
+            } else if (tokenizer.nameEql(token.value, "integrity")) {
+                if (self.integrity != null) return false;
+                if (stream.next().token_type != .left_paren) return false;
+                const string = stream.next();
+                if (string.token_type != .string) return false;
+                const close = stream.next().token_type;
+                if (close != .right_paren and close != .eof) return false;
+                self.integrity = try tokenizer.decode(allocator, string.stringContents());
+            } else return false;
+        }
+    }
+
+    /// `( <keyword> )` after a modifier's function token: one of `E`'s
+    /// names, ASCII case-insensitively.
+    fn keyword(comptime E: type, stream: anytype) ?E {
+        if (stream.next().token_type != .left_paren) return null;
+        const token = stream.next();
+        if (token.token_type != .ident) return null;
+        const close = stream.next().token_type;
+        if (close != .right_paren and close != .eof) return null;
+        inline for (@typeInfo(E).@"enum".field_names) |field| {
+            const value = @field(E, field);
+            if (tokenizer.nameEql(token.value, value.name())) return value;
+        }
+        return null;
+    }
+
+    /// Frees a value `consume` or `clone` made.
+    pub fn deinitOwned(self: *RequestModifiers, allocator: Allocator) void {
+        if (self.integrity) |value| allocator.free(value);
+        self.integrity = null;
+    }
+
+    pub fn clone(self: RequestModifiers, allocator: Allocator) Allocator.Error!RequestModifiers {
+        var result = self;
+        if (self.integrity) |value| result.integrity = try allocator.dupe(u8, value);
+        return result;
+    }
+};
+
+/// A tokenizer read the way a property's stream reads it: whitespace and
+/// comments skipped before each token.
+pub const SkippingTokenizer = struct {
+    tok: *tokenizer.Tokenizer,
+
+    pub fn next(self: SkippingTokenizer) tokenizer.Token {
+        self.tok.skipWhitespace();
+        return self.tok.next();
+    }
+};
+
 pub const ResourceUrl = struct {
     /// Resolved when a resolver was supplied; decoded input otherwise.
     /// Empty input stays empty even if the resolver returns the base URL.
@@ -73,6 +237,9 @@ pub const ResourceUrl = struct {
     /// A quoted URL argument or image-set string, including its quotes.
     /// Replacing only this span preserves URL modifiers and the wrapper.
     argument_range: ?Range = null,
+    /// Values 5 §4.1.1: the url()'s request modifiers, applied to the
+    /// resource's request by its fetcher (Values 4 §4.5.4 step 5).
+    modifiers: RequestModifiers = .{},
 
     pub const Range = struct { start: usize, end: usize };
 
@@ -90,6 +257,8 @@ pub const ResourceUrl = struct {
     pub fn clone(self: ResourceUrl, allocator: Allocator, offset: usize) Allocator.Error!ResourceUrl {
         var result = self;
         result.url = try allocator.dupe(u8, self.url);
+        errdefer allocator.free(result.url);
+        result.modifiers = try self.modifiers.clone(allocator);
         if (self.source) |s| s.ref();
         result.range.start += offset;
         result.range.end += offset;
@@ -103,6 +272,7 @@ pub const ResourceUrl = struct {
     pub fn deinit(self: ResourceUrl, allocator: Allocator) void {
         if (self.source) |s| s.unref();
         allocator.free(self.url);
+        if (self.modifiers.integrity) |value| allocator.free(value);
     }
 
     pub fn eql(a: ResourceUrl, b: ResourceUrl) bool {
@@ -110,6 +280,7 @@ pub const ResourceUrl = struct {
             a.range.start != b.range.start or a.range.end != b.range.end or
             !std.mem.eql(u8, a.url, b.url)) return false;
         if (!std.meta.eql(a.argument_range, b.argument_range)) return false;
+        if (!a.modifiers.eql(b.modifiers)) return false;
         if (a.source) |s| return if (b.source) |other| s.eql(other) else false;
         return b.source == null;
     }
@@ -205,7 +376,7 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
         }
         switch (token.token_type) {
             .eof => break,
-            .url => try appendToken(&out, token.value, .{ .start = begin, .end = tok.pos }, null, resolver, source),
+            .url => try appendToken(&out, token.value, .{ .start = begin, .end = tok.pos }, null, resolver, source, .{}),
             .function => {
                 pending = if (tokenizer.nameEql(token.value, "image-set") or tokenizer.nameEql(token.value, "-webkit-image-set")) .image_set else if (tokenizer.nameEql(token.value, "image")) .image else null;
                 if (tokenizer.nameEql(token.value, "url") or tokenizer.nameEql(token.value, "src")) {
@@ -216,18 +387,27 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
                     const string = url_tokens.next();
                     if (string.token_type != .string) continue;
                     const argument_end = url_tokens.pos;
-                    // Values 4 §4.5.3 permits URL modifiers after the string.
-                    // Preserve their spelling and include them in the range.
-                    var nesting: usize = 1;
-                    while (nesting > 0) {
-                        switch (url_tokens.next().token_type) {
-                            .eof => break,
-                            .left_paren => nesting += 1,
-                            .right_paren => nesting -= 1,
-                            else => {},
+                    // Values 4 §4.5.3 permits URL modifiers after the string:
+                    // Values 5 §4.1.1's request modifiers are read for the
+                    // fetch. Any other spelling (a grammar that keeps its
+                    // text unparsed) is preserved and changes no request.
+                    // Either way the range covers them.
+                    const after_string = url_tokens;
+                    var modifiers = (try RequestModifiers.consume(allocator, SkippingTokenizer{ .tok = &url_tokens })) orelse blk: {
+                        url_tokens = after_string;
+                        var nesting: usize = 1;
+                        while (nesting > 0) {
+                            switch (url_tokens.next().token_type) {
+                                .eof => break,
+                                .left_paren => nesting += 1,
+                                .right_paren => nesting -= 1,
+                                else => {},
+                            }
                         }
-                    }
-                    try appendToken(&out, string.stringContents(), .{ .start = begin, .end = url_tokens.pos }, .{ .start = argument_start, .end = argument_end }, resolver, source);
+                        break :blk RequestModifiers{};
+                    };
+                    defer modifiers.deinitOwned(allocator);
+                    try appendToken(&out, string.stringContents(), .{ .start = begin, .end = url_tokens.pos }, .{ .start = argument_start, .end = argument_end }, resolver, source, modifiers);
                     tok = url_tokens;
                 }
             },
@@ -247,7 +427,7 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
                 string_sources.items[string_sources.items.len - 1].kind == .image_set))
             {
                 const range: ResourceUrl.Range = .{ .start = begin, .end = tok.pos };
-                try appendToken(&out, token.stringContents(), range, range, resolver, source);
+                try appendToken(&out, token.stringContents(), range, range, resolver, source, .{});
             },
             else => {},
         }
@@ -255,12 +435,14 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
     return out.take();
 }
 
-fn appendToken(out: *Builder, encoded: []const u8, range: ResourceUrl.Range, argument_range: ?ResourceUrl.Range, resolver: ?UrlResolver, source: ?*ResourceSource) Allocator.Error!void {
+fn appendToken(out: *Builder, encoded: []const u8, range: ResourceUrl.Range, argument_range: ?ResourceUrl.Range, resolver: ?UrlResolver, source: ?*ResourceSource, modifiers: RequestModifiers) Allocator.Error!void {
     const raw = try tokenizer.decode(out.allocator, encoded);
     defer out.allocator.free(raw);
     const resolved = if (resolver) |r| r.resolve(r.context, out.allocator, raw) else null;
     defer if (resolved) |r| out.allocator.free(r);
     var url = ResourceUrl.describe(raw, resolved, resolver != null, source, range);
     url.argument_range = argument_range;
+    // Borrowed, as the descriptor's URL is: the Builder's clone owns them.
+    url.modifiers = modifiers;
     try out.append(&.{url}, 0);
 }

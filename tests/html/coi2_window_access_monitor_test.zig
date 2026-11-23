@@ -35,7 +35,7 @@ fn onFreshThread(comptime body: fn () anyerror!void) !void {
 }
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 fn runUntil(browser: *browser_mod.Browser, page: *browser_mod.Context, condition: []const u8) !void {

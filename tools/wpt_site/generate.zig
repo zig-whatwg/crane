@@ -2359,6 +2359,45 @@ test "site: a follows-majority exemption is its own group, with the browsers Cra
     try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
 }
 
+test "site: a follows-majority entry with matches = none says the spec, and lists its renderer subtests" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // c.any.js (NONE-PASSED): Crane's result is the spec's; b.html (TIMEOUT): one subtest needs a renderer.
+    const text = "[dom/nodes/c.any.js]\n" ++
+        \\kind = follows-majority
+        \\why = Crane follows the spec, and the three browsers each fail differently
+        \\chrome.result = wpt.fyi run 4786307730243584: 0/2
+        \\firefox.result = wpt.fyi run 4877168468033536: 0/2
+        \\safari.result = wpt.fyi run 6479119966273536: 1/2
+        \\matches = none
+        \\ruling = golden rule 2, the spec where all three differ
+        \\revisit = when Chrome, Firefox or Safari changes its result
+        \\
+        \\[dom/b.html]
+        \\kind = follows-majority
+        \\why = subtest 1 fails as in Chrome and Firefox; subtest 2 clicks a laid-out link
+        \\chrome.result = wpt.fyi run 4786307730243584: 1/2
+        \\firefox.result = wpt.fyi run 4877168468033536: 1/2
+        \\safari.result = wpt.fyi run 6479119966273536: 2/2
+        \\matches = chrome, firefox
+        \\renderer-subtests = the second subtest :: its click lands on an absolutely positioned link
+        \\revisit = when Chrome or Firefox changes its result
+        \\
+    ;
+    _ = try runFixtureExempt(gpa, &f, "majority-forms", text, &diag);
+    const index = try readOut(gpa, &f, "majority-forms/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-follows-majority\"").?;
+    const group = index[at..std.mem.indexOf(u8, index, "id=\"contents\"").?];
+    try expectHas(group, "<dt>Crane matches</dt><dd>none - the spec (see the ruling)</dd>");
+    try expectHas(group, "<dt>Ruling</dt><dd>golden rule 2, the spec where all three differ</dd>");
+    try expectHas(group, "<dt>Crane matches</dt><dd>Chrome, Firefox</dd>");
+    try expectHas(group, "<dt>Needs a renderer</dt><dd>the second subtest &mdash; its click lands on an absolutely positioned link</dd>");
+}
+
 test "site: follows-majority exemptions alone write only their own group; no ruling, no Ruling row" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
@@ -2470,6 +2509,72 @@ test "site: an invalid needs-decoder exemption stops the site" {
     };
     try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-decoder", no_media, &diag));
     try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"media\"") != null);
+}
+
+fn fixtureSingleShipper(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\kind = single-shipper
+        \\why = only Chrome ships the feature, and the one key Crane fails needs a mechanism only Chrome has
+        \\shipper = chrome
+        \\chrome.result = wpt.fyi run 4786307730243584: 1/1
+        \\firefox.result = wpt.fyi run 4877168468033536: 0/1
+        \\safari.result = wpt.fyi run 6479119966273536: 0/1
+        \\mechanism = Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do
+        \\spec = https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing
+        \\revisit = when Firefox or Safari ships the feature
+        \\
+    ;
+}
+
+test "site: a single-shipper exemption is its own group, with the shipper, the mechanism Crane follows and its spec, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // b.html (TIMEOUT) tests a feature only Chrome ships, c.any.js (NONE-PASSED) follows the majority: neither blocks.
+    const text = comptime fixtureSingleShipper("dom/b.html") ++ fixtureFollowsMajority("dom/nodes/c.any.js");
+    _ = try runFixtureExempt(gpa, &f, "shipper", text, &diag);
+
+    const index = try readOut(gpa, &f, "shipper/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
+    // Its own group, after the follows-majority group.
+    try expectBefore(index, "id=\"exempt-follows-majority\"", "id=\"exempt-single-shipper\"");
+    try expectHas(index, "<h2 id=\"exempt-single-shipper-h\">Exempt: only one browser ships the feature</h2>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-single-shipper\"").?;
+    const group = index[at..];
+    try expectHas(group, "<a href=\"dom/#b.html\"><code>dom/b.html</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(group, "<dt>Ships the feature</dt><dd>Chrome</dd>");
+    try expectHas(group, "<dt>Crane follows</dt><dd>Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do</dd>");
+    try expectHas(group, "<dt>Spec</dt><dd><a href=\"https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing\">");
+    try expectHas(group, "<dt>Firefox</dt><dd>wpt.fyi run 4877168468033536: 0/1</dd>");
+    try expectHas(group, "<dt>Revisit</dt><dd>when Firefox or Safari ships the feature</dd>");
+    try testing.expect(std.mem.indexOf(u8, group[0..std.mem.indexOf(u8, group, "</section>").?], "c.any.js") == null);
+    // The status counts it on its own; the legend names it.
+    try expectHas(index, " Nor is 1 file that would block, <a href=\"#exempt-single-shipper\">exempt because only one browser ships the feature</a>: its remaining failures hinge on a mechanism where Crane does what the other two browsers and the specification do.");
+    try expectHas(index, "<dd>would block, but Crane&rsquo;s result is the browser majority&rsquo;s, or it tests a feature only one browser ships</dd>");
+
+    // The file's own section says which kind.
+    const dir = try readOut(gpa, &f, "shipper/dom/index.html");
+    defer gpa.free(dir);
+    try expectHas(dir, "<p class=\"note-label\">Exempt from the 0.1 gate: only one browser ships the feature</p>");
+    try expectHas(dir, "<dt>Ships the feature</dt><dd>Chrome</dd>");
+}
+
+test "site: an invalid single-shipper exemption stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const no_mechanism = comptime blk: {
+        const full = fixtureSingleShipper("dom/b.html");
+        const m = std.mem.indexOf(u8, full, "mechanism =").?;
+        const end = m + std.mem.indexOfScalar(u8, full[m..], '\n').? + 1;
+        break :blk full[0..m] ++ full[end..];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-shipper", no_mechanism, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"mechanism\"") != null);
 }
 
 // Generations whose results came from runs named in the history: generation 3's

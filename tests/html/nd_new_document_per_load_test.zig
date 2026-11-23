@@ -37,7 +37,7 @@ fn onFreshThread(comptime body: fn () anyerror!void) !void {
 
 fn startBrowser() !*browser_mod.Browser {
     // No snapshot: the startup path JavaScriptCore runs on.
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// `expression`'s value in the page's current realm, held across loads.

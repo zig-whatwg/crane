@@ -154,9 +154,28 @@ pub fn removingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
 /// document" (section 2), for the document whose Window `environment`'s
 /// global is - registered with dom.unloading_cleanup by Document.
 pub fn unloadingCleanup(environment: runtime.Context) void {
+    // A request whose steps 8-15 are still queued, given an element of
+    // this document: the document goes, so those steps never run, and its
+    // promise is rejected with a TypeError of the element's realm now,
+    // while that realm still runs. Step 9 would find this's node document
+    // no longer pendingDoc, or the ready check false, and reject; the task,
+    // queued given a document that will never be fully active again, would
+    // be dropped instead and the promise left pending. Golden rule 2:
+    // Firefox 160 and Safari 27.2 reject it (Gecko rejects a pending
+    // FullscreenRequest when its document goes; fullscreen/api/
+    // element-request-fullscreen-and-remove-iframe.html 1/1 at 2358bd4835),
+    // Chrome 157 leaves it pending (0/1). No fullscreenerror is queued: the
+    // document that would fire it is gone.
+    RequestTask.cancelEachIn(environment, {}, rejectUnloadedRequest);
     const window = user_activation.windowOfRealm(environment) orelse return;
     const document = (interfaces.Window.get_document(window) catch null) orelse return;
     fullyExitFullscreen(document);
+}
+
+fn rejectUnloadedRequest(_: void, payload: *RequestPayload, held: []const dom.node_holds.TaskHold) void {
+    const this = held[0].get() orelse return;
+    if (!this.ctx.hasEngine()) return;
+    rejectWithTypeError(this.ctx, &payload.capability, "The document is no longer active.");
 }
 
 /// "Run the fullscreen steps" for `document`: "update the rendering" step

@@ -25,6 +25,8 @@ const MLGruSupportLimits = @import("MLGruSupportLimits.zig").MLGruSupportLimits;
 const MLConv2dSupportLimits = @import("MLConv2dSupportLimits.zig").MLConv2dSupportLimits;
 
 pub const MLOpSupportLimits = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     preferredInputLayout: ?enums.MLInputOperandLayout = null,
     maxTensorByteLength: ?u64 = null,
     input: ?MLTensorLimits = null,

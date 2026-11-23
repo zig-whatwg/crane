@@ -77,6 +77,46 @@ as its session history does - not with the Browser. The registries tabs share (B
 shared workers, Web Locks, service worker registrations and clients, permissions, cookies, storage,
 blob URLs) are each a BrowserScope supplement; tests/html/inst2_tabs_sharing_test.zig shows the
 tabs of one Browser sharing them, and inst2_instances_registries_test.zig two Browsers sharing none.
+The host API (2026-11-21, lane cdph; roadmap item "Host API"): a host opens tabs of its own
+beside its Browser's first page (`Browser.createTab`: a top-level traversable in a new browsing
+context group, its realms entered per call - `engine.WindowRealmOptions.entered_for_life` - so
+tabs close in any order), closes them with HTML "close a top-level traversable" (pagehide and
+unload; beforeunload only when prompting - `closeTab`), lists them (`listTabs`, `navigableTree`),
+activates, navigates, reloads, traverses and evaluates in them (`evaluateInTab`: BiDi's
+RemoteValue as JSON), holds a tab's first navigation until `releaseTab` (CDP's
+waitForDebuggerOnStart), and hears tabs come and go (`host_events`: one listener list per
+Browser, on its thread). `BrowserHost` runs a Browser on a thread of its own for its whole life
+and takes commands from other threads through its loop's TaskSink (`post`, `call`); the
+WebDriver server's sessions and CDP's browser contexts are BrowserHosts. The listeners hear
+page-made tabs and frames too, every navigation milestone (life1's navigation observer), each
+new document's start, the simple dialogs (`dialog_opening` with its `DialogAnswer`, which any
+thread may call; `BrowserHost.answerUserPrompt`) and a page asking for a window
+(`window_open`). The C ABI is `include/crane.h` (src/browser/capi.zig, emitted by
+src/lib_exports.zig): the same events (`crane_event_t`, grown behind `struct_size`) and
+`crane_tab_answer_dialog`.
+Tab scope (2026-11-23, lane tab1; roadmap item "Tab state"): what a tab holds lives in its scope,
+`runtime.TabScope` (src/runtime/tab_scope.zig), which every Window realm of the tab carries as it carries
+its Browser's scope (`ContextData.tab_scope`; `TabScope.ofRealm` reads an isolated world's through its
+main realm, a ShadowRealm's through its principal; a worker realm has none). The top-level browsing
+context's record - the tab's record, ending after the last Window that showed it - makes it on first use
+(`BrowsingContext.tabScope`) and closes it in its deinit; a frame's context takes its parent's tab at
+initChild, so an orphaned frame still names its tab. The scope is counted (the record, each frame
+context, each Window realm - set where a Window's browsing context becomes final, released at the
+Window's end) and freed by its last holder, so a realm record the engine keeps past its end names no
+freed scope. It holds the tab's id (the TabId the host and the platform use), its system visibility
+(HTML 6.2) and system focus (HTML 6.6.2), and SLOTS for what a lower layer cannot name, ended in order
+when the tab closes: the session history's traversal queue, the session history (the record keeps
+borrowed aliases), the frame clock with its documents' animation frame bookkeeping (one frame timer per
+tab on the Browser's loop, its display's refresh interval), and the session storage shed (Storage 4.3).
+A tab's end touches only its own state: its Context's end no longer empties the loop's frames or the
+agent's pending mutation observers (`mutation_observer_algorithms.resetPage`). Each window's timer ids
+are its own, from 1 (HTML 8.6 step 2, all three browsers). System focus: every tab has it (headless
+Chrome) unless the host narrows it (`BrowserConfig.focus = .active_tab`, crane.h `focus_mode`: then only
+the active tab has it - `activateTab` and a foreground `createTab` move it, the active tab's end gives it
+to the first open tab); a tab without it answers `hasFocus()` false, matches no `:focus`, and moves
+the focus silently (Blink, WebKit and Gecko alike), and its pages hear a change as blur/focus at the
+focused element and its Window; CDP's Emulation.setFocusEmulationEnabled makes a background tab answer as
+focused. The C ABI takes `profile_dir` (CRANE_ERR_PROFILE_IN_USE for a second live Browser on it).
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
@@ -87,14 +127,44 @@ the part every lane needs to know before it adds state.
 |---|---|---|
 | **Process** (`crane.Process`) | everything that is the same for every instance and never changes after start-up | the V8 platform and snapshot, curl's global init, immutable tables, every src/dom hook (installed once by `Process.init`, before any instance) |
 | **Browser** | one Crane instance: one thread for its window agent (isolate) and event loop, plus one thread per worker - a WebDriver BiDi "user context" | the web's shared state a browser profile holds: the storage shed (localStorage, IndexedDB, Cache API, buckets), the cookie jar, the HTTP cache and network, the blob URL store, BroadcastChannel delivery, SharedWorker instances, Web Locks, service worker registrations and clients, permissions, the browsing context groups and the tabs; and its runtime allocators and engine registries |
-| **Tab** | one top-level traversable - its top-level BrowsingContext's record, which ends after the last Window that showed it | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener, ended with the record), the frame clock, visibility and system focus, its frames |
+| **Tab** | one top-level traversable - its top-level BrowsingContext's record, which ends after the last Window that showed it; its state is a `runtime.TabScope` every Window realm of it carries | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener, ended with the record), the frame clock with its documents' animation frame bookkeeping, visibility and system focus, its frames |
 | **Agent** (event loop) | the window agent, or a worker's - each worker agent on its own thread | the custom element reactions stack, mutation observer state, the timer nesting level, the execution context stack, the nesting of its script-queue drains (`AgentHost.script_drain`), the [[HostDefined]] records of its classic scripts (`AgentHost.classic_scripts`) |
-| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers, animation frame callbacks, module map, fetch group |
+| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers and their ids (each global counts its own from 1), module map, fetch group |
 
 A tab the host creates starts a new browsing context group; a popup joins its opener's group,
 unless it was opened with noopener. Two Browsers in one process share nothing mutable. In memory by
 default; an optional profile directory persists the Browser's stores, one live Browser per
 directory.
+
+The profile directory (lane life1; the user's ruling D6, 2026-11-21: Puppeteer's `--user-data-dir`
+fully supported) is `BrowserConfig.profile_dir`, which the console's `--user-data-dir` / `--profile`
+set and the platform receives as `BrowserOptions.profile_dir`. The Browser holds `<dir>/LOCK` under
+an exclusive advisory lock for its life (kit/posix `ProfileLock`: flock, released by the kernel if the
+process dies, so a crash leaves no stale lock); a second live Browser on the directory fails to start
+with `error.ProfileInUse`. Its stores open through the platform's storage engine (platform protocol
+6.6) under the directory - SQLite on every platform with a profile directory (the user's ruling,
+2026-11-21) - and kit/memory_store stays the engine of a Browser with none. What persists (lane prof1,
+D6 steps 2-5): localStorage (Chromium's batched commits), persistent cookies, IndexedDB (which runs on
+the store in both modes), the HTTP cache (a disk level under the memory cache) and Cache Storage;
+each writes what is pending at the Browser's end (src/browser/profile_stores.zig). Session state stays
+in memory either way, as in every browser across restarts: sessionStorage, session cookies, the tabs.
+
+Those stores are written on the Browser's STORAGE SEQUENCE (lane prof2; `storage.StorageSequence`,
+src/storage/sequence.zig), never on the thread that changed them - as Chromium writes DOM storage,
+cookies, the disk cache and IndexedDB on sequences of their own. It is a thread the Browser owns (a
+BrowserScope supplement started through the platform's `spawnThread` by profile_stores.attach), made
+only for a Browser with a profile directory: one with none has no sequence and no thread, and
+kit/memory_store is written inline as before. Jobs run one at a time in the order posted, each owning
+copies of what it writes: localStorage's and the cookie store's batches, the HTTP cache's (in flight,
+and readable, until written), IndexedDB's commits - a transaction's `complete` fires only once its
+commit was written, a failed write aborts it - and database deletions (deleteDatabase succeeds once
+the records are gone), and every Cache Storage operation, reads included, whose promise settles from
+a task posted back to its realm (its pending call released at the realm's end, a worker's included). `profile_stores.flush` stops it at the Browser's end, after every store
+handed over its last batch: the stop runs what is queued, then joins the thread, before the event
+loop and the platform state end. Only three waits are ever made on it: a localStorage area's first read
+(Chrome's renderer blocks on a synchronous GetAll), a service worker router's cache source (Handle
+Fetch needs the answer at once), and an agent that ends with its IndexedDB commit in flight (it waits
+for that commit, then finishes as the write says).
 
 ## Rules for new state
 
@@ -104,9 +174,12 @@ directory.
    lessons/architecture-a-threadlocal-is-per-thread-not-per-instance-or-tab.md). A process global
    is shared by every instance.
 2. **Reach state through the realm you run in**: a platform object's relevant realm is `instance.ctx`;
-   a realm will carry its Browser's scope and its Tab's scope. Per-Browser and per-Tab state of a
-   subsystem is a supplement of that scope (Blink's `Supplementable`), made on first use and
-   destroyed with the scope.
+   a realm carries its Browser's scope (`ContextData.browser_scope`) and its Tab's scope
+   (`ContextData.tab_scope`, `runtime.TabScope.ofRealm`). Per-Browser and per-Tab state of a
+   subsystem is a supplement of that scope (Blink's `Supplementable`; a tab's, a `TabScope` slot),
+   made on first use and destroyed with the scope. A page's end takes only its own entries out of
+   what its agent or event loop keeps for every tab (lesson
+   architecture-a-pages-end-must-not-reset-what-its-tabs-share.md).
 3. **A hook is process-wide and written once**, at process start - never installed lazily by the
    first owner, never per instance.
 4. `zig build lint-global-state` (part of `zig build test`; tools/lint_global_state.zig) counts
@@ -162,6 +235,10 @@ impl fills so code that may not name the impl can reach a step. Since B0:
   and header-less `whatwg_browser_*` go.
 - **Every popup is a tab**, `noopener` included, as WebDriver BiDi reports them.
 - **Background tabs are visible by default** (headless Chrome's behaviour); the host can mark a tab hidden.
-- **Proxies**: explicit configurations only; PAC files and auto-detection are NotSupported in 0.1.
+- **System focus: the host decides, headless by default** (the user, 2026-11-19): every tab has it, as
+  headless Chrome; a host that renders narrows it to its active tab (`BrowserConfig.focus =
+  .active_tab`), and `activateTab` moves it.
+- **Proxies**: explicit configurations only; PAC files and auto-detection are NotSupported in 0.1
+  (the user, 2026-11-23: "put in 0.2" - tmp/plans/queue-0.2.md).
 - **The WPT runner gives each test file a fresh tab** from B5, once a sweep shows no file's status changes.
 - **One live Browser per profile directory**: a second is refused (ProfileInUse), as Chrome's profile lock does.

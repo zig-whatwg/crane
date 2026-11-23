@@ -381,9 +381,16 @@ test "requestAnimationFrame takes a callable; cancelAnimationFrame a handle in r
     try std.testing.expect(seen.realm.? == ctx);
     try std.testing.expectEqual(@as(i32, 9), try scriptInt("globalThis.handle"));
 
-    _ = try run("globalThis.none = requestAnimationFrame(3);");
+    // WebIDL: `FrameRequestCallback callback` is required and not nullable -
+    // no argument, null, a number, a plain object: a TypeError, and nothing
+    // is registered (Chrome, Firefox and Safari throw for each; zone.js's
+    // own suite asserts it: "should be tolerant of invalid arguments").
+    for ([_][]const u8{ "requestAnimationFrame();", "requestAnimationFrame(null);", "requestAnimationFrame(3);", "requestAnimationFrame({});" }) |source| {
+        const reports = try run(source);
+        try std.testing.expectEqual(@as(usize, 1), reports.count);
+        try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "TypeError") != null);
+    }
     try std.testing.expectEqual(@as(usize, 1), seen.frames);
-    try std.testing.expectEqual(@as(i32, 0), try scriptInt("globalThis.none"));
 
     _ = try run("cancelAnimationFrame(0); cancelAnimationFrame(NaN); cancelAnimationFrame('9');");
     try std.testing.expectEqual(@as(?u32, null), seen.cancelled);
@@ -869,6 +876,7 @@ fn windowRealm(host: *WindowHost, from_snapshot: bool, global_this: protocol.Glo
     _ = try realm();
     ensurePools();
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = @ptrCast(test_isolate.?),
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,
@@ -1229,6 +1237,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = @ptrCast(test_isolate.?),
             .allocator = self.allocator,
             .from_snapshot = false,
@@ -1444,6 +1453,7 @@ test "protocol: the V8 adapter reuses a WindowProxy, and a realm is no popup's u
     // The default: a realm made with a parent is a frame's, destroyed with
     // its parent's document, never adopted by a later realm.
     const options: protocol.WindowRealmOptions = .{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = undefined,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -1519,6 +1529,7 @@ test "protocol: a top-level realm a navigation replaced is collected once nothin
 fn windowRealmIn(agent: *protocol.Agent, host: *WindowHost, global_this: protocol.GlobalThis) !runtime.Context {
     ensurePools();
     return protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -1719,6 +1730,80 @@ test "protocol: a removed frame's realm does not take the popup it opened with i
     try expectEval(popup, "self === globalThis", "true");
     protocol.destroyWindowRealm(popup, .navigable_destroyed);
     protocol.destroyWindowRealm(popup, .global_detached);
+}
+
+test "protocol: detachWindowRealm - a frame's realm whose navigable is destroyed twice over keeps its Window while script holds its WindowProxy, and is collected once script lets it go" {
+    // engine.detachWindowRealm (lane flk4, 2026-11-22): HTML "destroy a
+    // child navigable" for a realm whose navigable can be destroyed twice
+    // over - its parent's document destroyed by a navigation, and then its
+    // own <iframe> element, which stays in that destroyed document, freed by
+    // the collector (HTMLIFrameElement iframeContextCleanup). That second
+    // end called destroyWindowRealm, which on a detached realm is its
+    // owner's END: it freed the Window while script still held the frame's
+    // WindowProxy, and the next member call threw "Illegal invocation"
+    // (html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+    // event-listeners.window.js, 1 run in 11). detachWindowRealm detaches an
+    // attached realm and leaves a detached or ended one alone.
+    defer test_agent.close();
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var parent_ended = false;
+    defer if (!parent_ended) protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    const with_parent = agentRealmCount();
+    var middle_realm: FrameRealm = .{ .parent = parent };
+    const middle = try middle_realm.make();
+    var inner_realm: FrameRealm = .{ .parent = middle };
+    const inner = try inner_realm.make();
+    const window = Watched.of(try platformObjectIn(inner, "globalThis"));
+    {
+        const inner_global = try evalOwned(inner, "globalThis.kept = new Headers([['a', '1']]); globalThis");
+        defer inner_global.release();
+        try setGlobal(parent, "innerWindow", inner_global.value);
+    }
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+    try protocol.runTaskInRealm(inner, NoSteps.steps, null);
+
+    // The middle frame's navigable is destroyed: its realm detaches - its
+    // tasks are not run any more - and so does the inner one, which its
+    // detach takes with it. Neither ends: the agent still has both.
+    protocol.detachWindowRealm(middle);
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(middle, NoSteps.steps, null));
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(inner, NoSteps.steps, null));
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+
+    // And then destroyed again - the inner frame's element freed, the
+    // middle one's navigation task run late: nothing changes.
+    protocol.detachWindowRealm(inner);
+    protocol.detachWindowRealm(inner);
+    protocol.detachWindowRealm(middle);
+    collectTwice();
+    try std.testing.expectEqual(with_parent + 2, agentRealmCount());
+    try std.testing.expect(inner.engine_ctx != null);
+    try std.testing.expect(window.alive());
+    // The Window is the one it was, with what its realm's script kept on it.
+    try expectEval(parent, "innerWindow.self === innerWindow && innerWindow.kept.get('a')", "1");
+
+    // Crane holds nothing of either context: once script lets the WindowProxy
+    // go, the collector takes both.
+    try expectEval(parent, "delete globalThis.innerWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frames, {d} after both were detached and the WindowProxy dropped\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+    try std.testing.expect(inner.engine_ctx == null);
+    try std.testing.expect(middle.engine_ctx == null);
+
+    // This test's realms have no event loop to end a collected realm from a
+    // task: its page's end ends both, and the agent's count is back where it
+    // was before the parent. An ended realm is left alone too.
+    parent_ended = true;
+    protocol.destroyWindowRealm(parent, .global_detached);
+    try std.testing.expectEqual(with_parent - 1, agentRealmCount());
+    protocol.detachWindowRealm(inner);
+    try std.testing.expectEqual(with_parent - 1, agentRealmCount());
 }
 
 test "protocol: a page's navigation, a frame's navigation and a browsing context group switch leave a popup they did not open alone - and the ones they opened too" {
@@ -4271,17 +4356,15 @@ test "constructing a DOMException leaves no handle behind, as constructing an Ev
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
 
-test "protocol: listeners added and removed in a loop leave no callback wrapper behind" {
+test "protocol: listeners added and removed in a loop: each removal finds its listener" {
     defer test_agent.close();
-    // WebIDL: a callback interface argument (EventListener) is the call's; a
-    // listener the target keeps is its own callback interface value. Every
-    // wrapper the binding makes for the argument must be gone once the call
-    // returns - std.testing.allocator fails the test on any that outlives it.
+    // WebIDL: a callback interface argument (EventListener) is the call's,
+    // BORROWED; a listener the target keeps is its own callback interface
+    // value, and removeEventListener compares the borrowed object with it.
+    // (The handles each call leaves are callback_argument_borrowed_test's.)
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const override = v8.conversions.callback_allocator.overrideForTest(std.testing.allocator);
-    defer override.restore();
     try expectEval(w,
         \\const f = () => {};
         \\const o = { handleEvent() {} };

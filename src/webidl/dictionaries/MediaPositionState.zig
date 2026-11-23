@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const MediaPositionState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     duration: ?f64 = null,
     playbackRate: ?f64 = null,
     position: ?f64 = null,

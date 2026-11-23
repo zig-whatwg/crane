@@ -14,7 +14,7 @@ fn setSize(set: *runtime.Instance) !u32 {
 }
 
 fn exercise() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -89,7 +89,7 @@ fn untilFontsReady(browser: *browser_mod.Browser) !void {
 }
 
 fn loadingEnvironment() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -123,7 +123,7 @@ test "font ready waits while the document loads and readiness schedules a resour
 }
 
 fn readyAfterRendering() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -151,7 +151,7 @@ test "an empty completed document resolves fonts ready at its next resource turn
 }
 
 fn usedTextSelection() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -188,7 +188,7 @@ test "rendering starts the font used by visible text without loading other weigh
 }
 
 fn settledReadyFlushesFontsOnly() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -229,7 +229,7 @@ test "reading a settled ready after text insertion selects fonts without startin
 }
 
 fn automaticFacePromiseIsLazy() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -296,7 +296,7 @@ test "automatic CSS face loading creates no unseen JS promise and a late loaded 
 }
 
 fn usedCompositeAndGeneratedText() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -332,7 +332,7 @@ test "used fonts fold family names and select reverse composite ranges and gener
 }
 
 fn namedEmojiAndFangsong() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -369,7 +369,7 @@ test "emoji and fangsong used families follow the shared row119 named-family cor
 }
 
 fn pendingStylesheet() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -404,7 +404,7 @@ test "font ready waits for stylesheet load events and the subsequent resource tu
 }
 
 fn absentFontSet() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -431,7 +431,7 @@ test "document readiness without a font set allocates no font or resource state"
 }
 
 fn cssConnectedFaces() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -476,7 +476,7 @@ test "CSS-connected font descriptors reflect both ways and reconnection creates 
 }
 
 fn replacingCssSource() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -511,7 +511,7 @@ test "a CSS src edit creates a new face and leaves the disconnected face's descr
 }
 
 fn readoptedFontSheet() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -568,7 +568,7 @@ test "unadopting and readopting a font sheet creates a new face without severing
 fn connectedDescriptorAllocations() !void {
     const fonts = dom.style.engine.resource_loading.font_loading;
     if (comptime !@hasDecl(fonts.Face, "connect")) return error.MissingFontConnection;
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -630,7 +630,7 @@ test "connected descriptor edits are atomic for every allocation failure and rel
 }
 
 fn trustedSetEvents() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -724,7 +724,7 @@ test "font set dispatches trusted loading done and error events in task order" {
 }
 
 fn controlFontText() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -763,7 +763,7 @@ test "a textarea uses its current value and first available font, never stale ch
 }
 
 fn controlUserEdits() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -808,7 +808,7 @@ test "input and textarea native user edits defer newly used font requests to ren
 
 fn neverStyledControlsAfterReady() !void {
     for ([_][]const u8{ "input", "textarea" }) |tag| {
-        const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;
@@ -877,7 +877,7 @@ fn controlStyleLifetimes() !void {
     for ([_][]const u8{ "input", "textarea" }) |tag| {
         for (std.enums.values(Case)) |case| {
             if (case == .retyped and std.mem.eql(u8, tag, "textarea")) continue;
-            const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.NoPage;

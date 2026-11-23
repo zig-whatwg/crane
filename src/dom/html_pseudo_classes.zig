@@ -38,7 +38,7 @@ pub const Kind = union(enum) {
     volume_locked,
     dir_ltr,
     dir_rtl,
-    heading: u6,
+    heading: u9,
     /// HTML 4.16.3 :hover and :active, through the states a Document keeps
     /// for them (dom.pointer_states).
     hover,

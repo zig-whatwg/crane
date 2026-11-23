@@ -49,14 +49,44 @@ pub fn fetch(
     var step = try job.start();
     while (true) switch (step) {
         .body => step = try job.resumeBody(),
+        // A stream body still arriving: nothing here can wait for it (a
+        // blocking fetch's request has a byte body), so it is a network
+        // error.
+        .request_body => step = try job.resumeRequestBody(),
+        // A preloaded response candidate still pending: nothing here can wait
+        // for it, so the request is fetched.
+        .document_resource => step = try job.abandonDocumentResource(),
         .done => return job.takeResult(),
-        .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
-        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(call.wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
+        .network => |needed| step = try job.resumeNetwork(sendObserved(allocator, job, needed)),
+        // HTTP-network-or-cache fetch's prompt: the Browser's fetch observer
+        // may answer it (CDP's Fetch.authRequired, from another thread while
+        // this one waits); with nobody to, the default.
+        .auth => |auth| {
+            var hold: BlockingHold = .{ .allocator = allocator };
+            defer hold.deinit();
+            const answer: network.observer.AuthAnswer = if (hold.ask(.auth, job, null, .{ .challenge = &auth.challenge }, 0)) switch (hold.decision.?) {
+                .auth => |a| a,
+                else => .default,
+            } else .default;
+            step = try job.resumeAuth(answer);
+        },
+        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(abandonUpload(call).wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
             // No answer within the limit: given up on, a network error.
             call.abandon();
             break :blk .network_error;
         })),
     };
+}
+
+/// A stream body's relay writer, which a blocking fetch cannot pump (its
+/// request's body is bytes, so none is made for it): let go, should there be
+/// one. Returns `call`, for the wait.
+fn abandonUpload(call: *service_worker_fetch.Call) *service_worker_fetch.Call {
+    if (call.takeUpload()) |upload| {
+        var u = upload;
+        u.abandon();
+    }
+    return call;
 }
 
 /// A service worker's answer, waited for: a response's body is its relay's
@@ -92,6 +122,154 @@ fn settleBlocking(answer: service_worker_fetch.Call.Answer) FetchError!FetchJob.
             break :blk .{ .response = response };
         },
     };
+}
+
+/// HTTP-network fetch's request, with the Browser's fetch observer: it may
+/// hold the request before it is sent (the request stage - every holder in
+/// turn, each continue asking the next) and the network's answer before
+/// fetch reads it (the response stage), and it hears what is sent and what
+/// came (network/observer.zig). Where Chrome's DevToolsURLLoaderInterceptor
+/// holds a synchronous XMLHttpRequest's loader while the renderer waits
+/// (content/browser/devtools/devtools_url_loader_interceptor.cc): this
+/// thread waits, and the holder answers from its own thread.
+fn sendObserved(allocator: Allocator, job: *FetchJob, needed: FetchJob.NetworkStep) NetworkError!NetworkResponse {
+    _ = needed;
+    var chain: u32 = 0;
+    while (true) {
+        const request = job.pendingNetworkRequest() orelse return NetworkError.Unknown;
+        if (job.isPreflight() or job.isRetry()) break;
+        var hold: BlockingHold = .{ .allocator = allocator };
+        defer hold.deinit();
+        if (!hold.ask(.request, job, request, .none, chain)) break;
+        switch (hold.decision.?) {
+            .@"continue" => |overrides| job.overrideNetworkRequest(overrides) catch return NetworkError.OutOfMemory,
+            .auth => {},
+            .fulfill => |f| return network.observer.fulfilledResponse(allocator, job.request.currentUrl(), f) catch NetworkError.OutOfMemory,
+            .fail => |reason| return reason.networkError(),
+        }
+        chain += 1;
+    }
+    const request = job.pendingNetworkRequest() orelse return NetworkError.Unknown;
+    job.observeRequestSent();
+    var answer = sendBlocking(allocator, .{ .request = request });
+    if (answer) |*response| job.observeResponseHead(response) else |_| {}
+    if (job.isPreflight()) return answer;
+    // A challenge HTTP-network-or-cache fetch will prompt for: whoever
+    // answers prompts is asked first (Chrome: OnAuthRequired before the
+    // response reaches the interceptor's response stage), and Fetch's
+    // prompt takes the answer. With credentials the challenge's response
+    // goes straight to Fetch, which sends the request again.
+    if (answer) |*response| {
+        if (job.promptFor(response) catch null) |owned| {
+            defer owned.deinit(allocator);
+            const challenge = owned.challenge();
+            var auth_hold: BlockingHold = .{ .allocator = allocator };
+            defer auth_hold.deinit();
+            if (auth_hold.ask(.auth, job, null, .{ .challenge = &challenge }, 0)) {
+                const given: network.observer.AuthAnswer = switch (auth_hold.decision.?) {
+                    .auth => |a| a,
+                    else => .default,
+                };
+                job.answerPromptEarly(given) catch {};
+                if (given == .provide) return answer;
+            }
+        }
+    } else |_| {}
+    var hold: BlockingHold = .{ .allocator = allocator };
+    defer hold.deinit();
+    const net_answer: network.observer.NetworkAnswer = if (answer) |*response| .{ .response = response } else |err| .{ .failed = err };
+    if (answer) |*response| hold.response = response else |_| {}
+    if (!hold.ask(.response, job, request, .{ .answer = net_answer }, 0)) return answer;
+    switch (hold.decision.?) {
+        .@"continue", .auth => return answer,
+        .fulfill => |f| {
+            // A new head, the body as it came (continueResponse).
+            if (f.body == null) if (answer) |*response| {
+                network.observer.replaceHead(response, f) catch {
+                    response.deinit();
+                    return NetworkError.OutOfMemory;
+                };
+                return response.*;
+            } else |_| {};
+            if (answer) |*response| response.deinit() else |_| {}
+            return network.observer.fulfilledResponse(allocator, job.request.currentUrl(), f) catch NetworkError.OutOfMemory;
+        },
+        .fail => |reason| {
+            if (answer) |*response| response.deinit() else |_| {}
+            return reason.networkError();
+        },
+    }
+}
+
+/// One hold of a blocking fetch by its observer: this thread waits until
+/// the holder decides - on whatever thread it decides (`any_thread`) - and
+/// the decision is copied into the hold's arena before `decide` returns.
+const BlockingHold = struct {
+    allocator: Allocator,
+    /// 1 once decided: the futex word the wait sleeps on.
+    decided: std.atomic.Value(u32) = .init(0),
+    arena: ?std.heap.ArenaAllocator = null,
+    decision: ?network.observer.Decision = null,
+    /// The response stage's answer, whole (this driver's network answers
+    /// with the body): what readBody reads.
+    response: ?*const NetworkResponse = null,
+
+    const Asked = union(enum) {
+        none,
+        answer: network.observer.NetworkAnswer,
+        challenge: *const network.observer.AuthChallenge,
+    };
+
+    /// Whether the observer holds the fetch at `stage`; when it does, this
+    /// returns once it has decided (`decision`).
+    fn ask(self: *BlockingHold, stage: network.observer.Stage, job: *FetchJob, request: ?*const network.NetworkRequest, asked: Asked, chain: u32) bool {
+        const o = network.observer.of(job.request) orelse return false;
+        const interception: network.observer.Interception = .{
+            .context = self,
+            .resume_fn = resumed,
+            .request_id = job.request.request_id,
+            .stage = stage,
+            .any_thread = true,
+            .chain = chain,
+            .read_body_fn = if (stage == .response) readBody else null,
+        };
+        const held = switch (stage) {
+            .request => if (o.intercept_request) |intercept| intercept(o.context, job.request, request.?, interception) else false,
+            .response => if (o.intercept_response) |intercept| intercept(o.context, job.request, request.?, asked.answer, interception) else false,
+            .auth => if (o.intercept_auth) |intercept| intercept(o.context, job.request, asked.challenge, interception) else false,
+        };
+        if (!held) return false;
+        while (self.decided.load(.acquire) == 0) {
+            futexIo().futexWaitTimeout(u32, &self.decided.raw, 0, .none) catch {};
+        }
+        return true;
+    }
+
+    /// Interception.decide, from the holder's thread.
+    fn resumed(context: *anyopaque, decision: *const network.observer.Decision) void {
+        const self: *BlockingHold = @ptrCast(@alignCast(context));
+        if (self.decided.load(.acquire) != 0) return;
+        self.arena = std.heap.ArenaAllocator.init(self.allocator);
+        // Out of memory, the request goes on as it was.
+        self.decision = network.observer.copyDecision(self.arena.?.allocator(), decision.*) catch .{ .@"continue" = .{} };
+        self.decided.store(1, .release);
+        futexIo().futexWake(u32, &self.decided.raw, 1);
+    }
+
+    /// Interception.readBody: the whole body is here already.
+    fn readBody(context: *anyopaque, reader: network.observer.BodyReader) void {
+        const self: *BlockingHold = @ptrCast(@alignCast(context));
+        const response = self.response orelse return reader.done(reader.context, null);
+        reader.done(reader.context, response.body orelse "");
+    }
+
+    fn deinit(self: *BlockingHold) void {
+        if (self.arena) |*arena| arena.deinit();
+    }
+};
+
+fn futexIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
 }
 
 /// Perform HTTP-network fetch's request now, blocking until it is answered.

@@ -13,6 +13,7 @@
 //! 5. If CORS flag and response is not a network error, run CORS check
 
 const std = @import("std");
+const Hook = @import("process").Hook;
 const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
@@ -70,6 +71,23 @@ pub const HttpFetchOptions = struct {
     /// 17's retry of a 421, sent on a new connection (HTTP-network fetch's
     /// forceNewConnection) and never retried again.
     is_new_connection_fetch: bool = false,
+    /// The username and password the end user gave at step 15.3.2's prompt
+    /// (a host answering it: CDP's Fetch.continueWithAuth
+    /// ProvideCredentials), which the authentication fetch sends - where
+    /// the spec sets them on the request's current URL (15.3.3-4), kept
+    /// beside it so the URL the page sees carries none, as in every
+    /// browser. Borrowed from the FetchJob.
+    prompted: ?Credentials = null,
+    /// Step 16.4's proxy-authentication entry, for step 8.22 ("if there's a
+    /// proxy-authentication entry, use it as appropriate"): sent as
+    /// `Proxy-Authorization`. Borrowed from the FetchJob.
+    proxy_credentials: ?Credentials = null,
+};
+
+/// A username and password (borrowed).
+pub const Credentials = struct {
+    username: []const u8,
+    password: []const u8,
 };
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
@@ -479,9 +497,10 @@ pub fn httpRedirectFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    // Step 7: If request's redirect count is 20, return a network error.
+    // Step 7: If request's redirect count is 20, return a network error
+    // (Chromium's ERR_TOO_MANY_REDIRECTS).
     if (request.redirect_count >= 20) {
-        return .{ .response = try internal_response.networkError(allocator) };
+        return .{ .response = try internal_response.networkErrorWith(allocator, .too_many_redirects) };
     }
 
     // Step 8: Increase request's redirect count by 1.
@@ -761,7 +780,12 @@ pub fn httpNetworkOrCacheFetchStart(
     defer added.deinit(allocator);
     errdefer for (added.items) |header| allocator.free(header.value);
     httpRequestHeaders(allocator, request, &added) catch return HttpFetchError.OutOfMemory;
-    try appendAuthorization(allocator, request, options.is_authentication_fetch, &added);
+    try appendAuthorization(allocator, request, options.is_authentication_fetch, options.prompted, &added);
+    // 8.22: a proxy-authentication entry (step 16.4's), as appropriate - a
+    // request the author gave none.
+    if (options.proxy_credentials) |credentials| if (!request.header_list.contains("Proxy-Authorization")) {
+        try appendBasicNamed(allocator, &added, "Proxy-Authorization", credentials.username, credentials.password);
+    };
 
     // 24-26: the HTTP cache partition, and in it a stored response - the
     // response, or the validators the request carries to the network.
@@ -831,17 +855,133 @@ pub const HttpNetworkFinish = union(enum) {
     response: *InternalResponse,
     /// Owns the Basic challenge's realm. The driver schedules Start again.
     authentication_retry: []u8,
+    /// Step 15.3.2 / 16.4: "prompt the end user" - a username and password
+    /// for this challenge are asked of whoever can answer (the FetchJob's
+    /// `.auth` step); `promptAnswered` goes on with the answer.
+    prompt: Prompt,
     /// Step 17: a 421 on a connection that was not new. The driver schedules
     /// Start again with isNewConnectionFetch true (the response is gone).
     new_connection_retry,
 };
 
-/// HTTP-network-or-cache fetch 15 (formerly 14): a 401 challenge. Consumes
-/// the response on every path; never starts I/O or runs a callback itself.
+/// A challenge waiting for its prompt's answer (`HttpNetworkFinish.prompt`).
+/// OWNS `response` (the 401 or 407) and `realm`, until `promptAnswered`.
+pub const Prompt = struct {
+    response: *InternalResponse,
+    /// The Basic challenge's realm (OWNED).
+    realm: []u8,
+    source: enum { server, proxy },
+
+    pub fn deinit(self: Prompt, allocator: Allocator) void {
+        allocator.free(self.realm);
+        self.response.deinit();
+    }
+};
+
+/// What the prompt was answered with.
+pub const PromptAnswer = union(enum) {
+    /// Nobody answered: there is no prompting UI (a host that defers - CDP's
+    /// continueWithAuth Default - is the same).
+    none,
+    /// The end user declined (CDP's CancelAuth).
+    cancel,
+    /// A username and password (BORROWED for the call; kept by the caller
+    /// for the retry, `HttpFetchOptions.prompted`).
+    credentials: Credentials,
+};
+
+/// Steps 15.3.2-15.4 and 16.4-16.5 once the prompt is answered: the
+/// challenge's response is handed on (no answer, or declined), or the
+/// request goes again - `.authentication_retry` with the realm for a 401
+/// (step 15.4: HTTP-network-or-cache fetch given fetchParams and true), the
+/// same for a 407 (16.5: given fetchParams; the caller keeps the
+/// proxy-authentication entry). Consumes `prompt`.
+pub fn promptAnswered(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, prompt: Prompt, answer: PromptAnswer) HttpFetchError!HttpNetworkFinish {
+    const request = params.request;
+    switch (answer) {
+        .none, .cancel => {
+            allocator.free(prompt.realm);
+            // An authentication fetch's second 401 with no new answer: the
+            // URL's credentials were wrong, and the entry they made goes
+            // (Chromium's HttpAuthController InvalidateRejectedAuthFromCache).
+            if (prompt.source == .server and options.is_authentication_fetch and options.prompted == null) {
+                if (try urlCredentials(allocator, request.currentUrl())) |credentials| {
+                    defer credentials.deinit(allocator);
+                    if (!request.header_list.contains("Authorization")) if (options.authentication_realm) |realm| {
+                        if (request.network) |context| if (request.network_partition_key) |partition| {
+                            const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
+                                error.OutOfMemory => return error.OutOfMemory,
+                                else => return error.NetworkError,
+                            };
+                            defer allocator.free(origin);
+                            context.auth_entries.removeMatching(partition, origin, realm, credentials.username, credentials.password);
+                        };
+                    };
+                }
+            }
+            return .{ .response = prompt.response };
+        },
+        .credentials => |credentials| {
+            // 15.3.1 / 16.3: canceled while the user was asked.
+            if (params.isCanceled()) {
+                const failed = if (params.controller.isAborted()) try internal_response.abortedNetworkError(allocator) else try internal_response.networkError(allocator);
+                prompt.deinit(allocator);
+                return .{ .response = failed };
+            }
+            if (prompt.source == .server) {
+                // The credentials for this realm, kept as a browser's auth
+                // cache keeps them (Chromium's HttpAuthCache: later
+                // requests in its protection space send them at once).
+                if (!request.header_list.contains("Authorization")) if (request.network) |context| if (request.network_partition_key) |partition| {
+                    const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
+                        error.OutOfMemory => return error.OutOfMemory,
+                        else => return error.NetworkError,
+                    };
+                    defer allocator.free(origin);
+                    context.auth_entries.put(partition, origin, prompt.realm, urlPath(request.currentUrl()), credentials.username, credentials.password) catch {};
+                };
+            }
+            prompt.response.deinit(); // a streaming challenge's body goes before the retry
+            return .{ .authentication_retry = prompt.realm };
+        },
+    }
+}
+
+/// Whether HTTP-network-or-cache fetch will prompt the end user (step
+/// 15.3.2 for a 401, 16.4 for a 407) for a network answer of `status` and
+/// `headers` - asked as the answer arrives, before Fetch reads it, so a host
+/// that answers prompts hears the challenge before anything holds the
+/// response (Chrome's URLLoader raises OnAuthRequired before
+/// OnReceiveResponse, and DevTools' authRequired comes before the
+/// response stage). The same conditions as `httpNetworkOrCacheFetchFinish`
+/// (step 17's 421 and every other status: no). The challenge's Basic realm,
+/// OWNED.
+pub fn wouldPrompt(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, status: u16, headers: []const NetworkResponse.Header) Allocator.Error!?struct { source: enum { server, proxy }, realm: []u8 } {
+    const request = params.request;
+    if (params.isCanceled()) return null;
+    if (status == 407) {
+        if (request.traversable_for_user_prompts != .traversable) return null;
+        const realm = (try basicChallengeRealmIn(allocator, headers, "Proxy-Authenticate")) orelse return null;
+        return .{ .source = .proxy, .realm = realm };
+    }
+    if (status != 401) return null;
+    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request) or
+        request.traversable_for_user_prompts != .traversable) return null;
+    // 15.2: a stream body with no source is a network error, never a prompt.
+    if (request.body) |body| if (body == .body and body.body.source == .none) return null;
+    if (request.use_url_credentials and !options.is_authentication_fetch) return null;
+    const realm = (try basicChallengeRealmIn(allocator, headers, "WWW-Authenticate")) orelse return null;
+    return .{ .source = .server, .realm = realm };
+}
+
+/// HTTP-network-or-cache fetch 15 (formerly 14): a 401 challenge, and 16, a
+/// 407. Consumes the response on every path; never starts I/O or runs a
+/// callback itself.
 pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
     errdefer response.deinit();
     const request = params.request;
     if (response.status == 421) return misdirectedRequest(allocator, params, options, response);
+    if (response.status == 407) return proxyAuthenticationRequired(allocator, params, response);
     if (response.status != 401) return .{ .response = response };
     // Step 15.2.1's replay restriction also applies to a worker's actionable
     // challenge. Chromium URLLoader::OnAuthRequired rejects a Fetch stream
@@ -874,24 +1014,18 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams,
         response.deinit();
         return .{ .response = failed };
     };
-    // There is no prompting UI. Only use-URL-credentials can supply a
-    // first retry, and a second 401 is returned, never recursively retried.
-    if (!request.use_url_credentials) return .{ .response = response };
+    // 15.3: "If request's use-URL-credentials flag is unset or
+    // isAuthenticationFetch is true": prompt the end user (15.3.2) -
+    // whoever can answer for one (`.prompt`: a host's handler, CDP's
+    // Fetch.authRequired; with nobody, `promptAnswered(.none)` hands the 401
+    // on, there being no prompting UI). Only a Basic challenge can be
+    // answered: another scheme's 401 is handed on as it is.
+    if (!request.use_url_credentials or options.is_authentication_fetch) {
+        const challenge_realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
+        return .{ .prompt = .{ .response = response, .realm = challenge_realm, .source = .server } };
+    }
     const credentials = (try urlCredentials(allocator, request.currentUrl())) orelse return .{ .response = response };
     defer credentials.deinit(allocator);
-    if (options.is_authentication_fetch) {
-        if (!request.header_list.contains("Authorization")) if (options.authentication_realm) |realm| {
-            if (request.network) |context| if (request.network_partition_key) |partition| {
-                const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
-                    error.OutOfMemory => return error.OutOfMemory,
-                    else => return error.NetworkError,
-                };
-                defer allocator.free(origin);
-                context.auth_entries.removeMatching(partition, origin, realm, credentials.username, credentials.password);
-            };
-        };
-        return .{ .response = response };
-    }
     const realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
     errdefer allocator.free(realm);
     // 15.2.2: the body safely extracted again from its source.
@@ -908,6 +1042,35 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams,
     };
     response.deinit(); // Drops a streaming 401 body before the retry.
     return .{ .authentication_retry = realm };
+}
+
+/// HTTP-network-or-cache fetch step 16, a 407 (Proxy Authentication
+/// Required): "1. If request's traversable for user prompts is
+/// "no-traversable", then return a network error. ... 3. If fetchParams is
+/// canceled, then return the appropriate network error for fetchParams. 4.
+/// Prompt the end user as appropriate in request's traversable for user
+/// prompts and store the result as a proxy-authentication entry. 5. Set
+/// response to the result of running HTTP-network-or-cache fetch given
+/// fetchParams." The prompt is `.prompt` (source proxy): a Basic
+/// `Proxy-Authenticate` challenge is asked of whoever can answer, and with
+/// nobody - there is no prompting UI - the 407 is handed on. Consumes
+/// `response`.
+fn proxyAuthenticationRequired(allocator: Allocator, params: *FetchParams, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
+    const request = params.request;
+    // 16.1.
+    if (request.traversable_for_user_prompts != .traversable) {
+        const failed = try internal_response.networkError(allocator);
+        response.deinit();
+        return .{ .response = failed };
+    }
+    // 16.3.
+    if (params.isCanceled()) {
+        const failed = if (params.controller.isAborted()) try internal_response.abortedNetworkError(allocator) else try internal_response.networkError(allocator);
+        response.deinit();
+        return .{ .response = failed };
+    }
+    const realm = (try basicChallengeRealmOf(allocator, &response.header_list, "Proxy-Authenticate")) orelse return .{ .response = response };
+    return .{ .prompt = .{ .response = response, .realm = realm, .source = .proxy } };
 }
 
 /// HTTP-network-or-cache fetch step 15.2.2's "set request's body to the body
@@ -985,10 +1148,13 @@ fn urlPath(url: []const u8) []const u8 {
     return if (path.len == 0) "/" else path;
 }
 
-/// Fetch HTTP-network-or-cache 8.21.2. Author headers take precedence.
-fn appendAuthorization(allocator: Allocator, request: *InternalRequest, authentication_fetch: bool, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) HttpFetchError!void {
+/// Fetch HTTP-network-or-cache 8.21.2. Author headers take precedence. An
+/// authentication fetch sends the prompt's answer (`prompted`), else the
+/// URL's credentials.
+fn appendAuthorization(allocator: Allocator, request: *InternalRequest, authentication_fetch: bool, prompted: ?Credentials, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) HttpFetchError!void {
     if (!httpNetworkFetchUsesCookies(request) or request.header_list.contains("Authorization")) return;
     if (authentication_fetch) {
+        if (prompted) |given| return appendBasic(allocator, added, given.username, given.password);
         const credentials = (try urlCredentials(allocator, request.currentUrl())) orelse return;
         defer credentials.deinit(allocator);
         return appendBasic(allocator, added, credentials.username, credentials.password);
@@ -1011,6 +1177,12 @@ fn appendAuthorization(allocator: Allocator, request: *InternalRequest, authenti
 }
 
 fn appendBasic(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), username: []const u8, password: []const u8) !void {
+    return appendBasicNamed(allocator, added, "Authorization", username, password);
+}
+
+/// `name: Basic base64(username:password)` (RFC 7617), its value OWNED by
+/// `added`'s list (freed with it).
+fn appendBasicNamed(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), name: []const u8, username: []const u8, password: []const u8) !void {
     const plain = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ username, password });
     defer allocator.free(plain);
     const encoder = std.base64.standard.Encoder;
@@ -1018,108 +1190,130 @@ fn appendBasic(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkReque
     errdefer allocator.free(value);
     @memcpy(value[0..6], "Basic ");
     _ = encoder.encode(value[6..], plain);
-    try added.append(allocator, .{ .name = "Authorization", .value = value });
+    try added.append(allocator, .{ .name = name, .value = value });
 }
 
 /// RFC 9110 challenge lists: commas inside quoted strings are not separators.
 /// Only Basic with a valid realm is supported; other schemes never prompt.
 fn basicChallengeRealm(allocator: Allocator, headers: *const @import("../internal/header_list.zig").HeaderList) !?[]u8 {
+    return basicChallengeRealmOf(allocator, headers, "WWW-Authenticate");
+}
+
+/// The realm of the first Basic challenge of the `header_name` headers
+/// (`WWW-Authenticate`, or a proxy's `Proxy-Authenticate`).
+fn basicChallengeRealmOf(allocator: Allocator, headers: *const @import("../internal/header_list.zig").HeaderList, header_name: []const u8) !?[]u8 {
     for (headers.iterator()) |header| {
-        if (!std.ascii.eqlIgnoreCase(header.name, "WWW-Authenticate")) continue;
-        var is_basic = false;
-        var realm: ?[]u8 = null;
-        defer if (realm) |r| allocator.free(r);
-        var start: usize = 0;
-        while (start < header.value.len) {
-            var end = start;
-            var quoted = false;
-            while (end < header.value.len) : (end += 1) {
-                const c = header.value[end];
-                if (quoted and c == '\\' and end + 1 < header.value.len) {
-                    end += 1;
-                    continue;
-                }
-                if (c == '"') quoted = !quoted;
-                if (!quoted and c == ',') break;
-            }
-            var item = std.mem.trim(u8, header.value[start..end], " \t");
-            start = end + 1;
-            var token_end: usize = 0;
-            while (token_end < item.len and validation.isValidHeaderName(item[token_end .. token_end + 1])) : (token_end += 1) {}
-            if (token_end == 0) {
-                is_basic = false;
+        if (!std.ascii.eqlIgnoreCase(header.name, header_name)) continue;
+        if (try basicRealmOfValue(allocator, header.value)) |realm| return realm;
+    }
+    return null;
+}
+
+/// basicChallengeRealmOf over a network answer's headers, as they came.
+fn basicChallengeRealmIn(allocator: Allocator, headers: []const NetworkResponse.Header, header_name: []const u8) !?[]u8 {
+    for (headers) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, header_name)) continue;
+        if (try basicRealmOfValue(allocator, header.value)) |realm| return realm;
+    }
+    return null;
+}
+
+/// The realm of a Basic challenge in one challenge-list header value
+/// (OWNED), or null.
+fn basicRealmOfValue(allocator: Allocator, header_value: []const u8) !?[]u8 {
+    var is_basic = false;
+    var realm: ?[]u8 = null;
+    defer if (realm) |r| allocator.free(r);
+    var start: usize = 0;
+    while (start < header_value.len) {
+        var end = start;
+        var quoted = false;
+        while (end < header_value.len) : (end += 1) {
+            const c = header_value[end];
+            if (quoted and c == '\\' and end + 1 < header_value.len) {
+                end += 1;
                 continue;
             }
-            const rest = std.mem.trimStart(u8, item[token_end..], " \t");
-            if (rest.len == 0 or rest[0] != '=') {
-                if (is_basic and realm != null) {
-                    const result = realm;
-                    realm = null;
-                    return result;
-                }
-                if (realm) |r| allocator.free(r);
+            if (c == '"') quoted = !quoted;
+            if (!quoted and c == ',') break;
+        }
+        var item = std.mem.trim(u8, header_value[start..end], " \t");
+        start = end + 1;
+        var token_end: usize = 0;
+        while (token_end < item.len and validation.isValidHeaderName(item[token_end .. token_end + 1])) : (token_end += 1) {}
+        if (token_end == 0) {
+            is_basic = false;
+            continue;
+        }
+        const rest = std.mem.trimStart(u8, item[token_end..], " \t");
+        if (rest.len == 0 or rest[0] != '=') {
+            if (is_basic and realm != null) {
+                const result = realm;
                 realm = null;
-                is_basic = std.ascii.eqlIgnoreCase(item[0..token_end], "Basic");
-                item = rest;
+                return result;
             }
-            if (!is_basic) continue;
-            const equals = std.mem.indexOfScalar(u8, item, '=') orelse {
-                is_basic = false;
-                continue;
-            };
-            const name = std.mem.trim(u8, item[0..equals], " \t");
-            const value = std.mem.trim(u8, item[equals + 1 ..], " \t");
-            if (!validation.isValidHeaderName(name)) {
-                is_basic = false;
-                continue;
-            }
-            var parsed: std.ArrayListUnmanaged(u8) = .empty;
-            defer parsed.deinit(allocator);
-            if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
-                var i: usize = 1;
-                var valid = true;
-                while (i < value.len - 1) : (i += 1) {
-                    var c = value[i];
-                    if (c == '\\') {
-                        i += 1;
-                        if (i >= value.len - 1) {
-                            valid = false;
-                            break;
-                        }
-                        c = value[i];
-                    } else if (c == '"') {
-                        valid = false;
-                        break;
-                    }
-                    if ((c < 0x20 and c != '\t') or c == 0x7f) {
-                        valid = false;
-                        break;
-                    }
-                    try parsed.append(allocator, c);
-                }
-                if (!valid) {
-                    is_basic = false;
-                    continue;
-                }
-            } else if (validation.isValidHeaderName(value)) {
-                try parsed.appendSlice(allocator, value);
-            } else {
-                is_basic = false;
-                continue;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "realm")) {
-                if (realm != null) {
-                    is_basic = false;
-                    continue;
-                }
-                realm = try parsed.toOwnedSlice(allocator);
-            }
-        }
-        if (is_basic and realm != null) {
-            const result = realm;
+            if (realm) |r| allocator.free(r);
             realm = null;
-            return result;
+            is_basic = std.ascii.eqlIgnoreCase(item[0..token_end], "Basic");
+            item = rest;
         }
+        if (!is_basic) continue;
+        const equals = std.mem.indexOfScalar(u8, item, '=') orelse {
+            is_basic = false;
+            continue;
+        };
+        const name = std.mem.trim(u8, item[0..equals], " \t");
+        const value = std.mem.trim(u8, item[equals + 1 ..], " \t");
+        if (!validation.isValidHeaderName(name)) {
+            is_basic = false;
+            continue;
+        }
+        var parsed: std.ArrayListUnmanaged(u8) = .empty;
+        defer parsed.deinit(allocator);
+        if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+            var i: usize = 1;
+            var valid = true;
+            while (i < value.len - 1) : (i += 1) {
+                var c = value[i];
+                if (c == '\\') {
+                    i += 1;
+                    if (i >= value.len - 1) {
+                        valid = false;
+                        break;
+                    }
+                    c = value[i];
+                } else if (c == '"') {
+                    valid = false;
+                    break;
+                }
+                if ((c < 0x20 and c != '\t') or c == 0x7f) {
+                    valid = false;
+                    break;
+                }
+                try parsed.append(allocator, c);
+            }
+            if (!valid) {
+                is_basic = false;
+                continue;
+            }
+        } else if (validation.isValidHeaderName(value)) {
+            try parsed.appendSlice(allocator, value);
+        } else {
+            is_basic = false;
+            continue;
+        }
+        if (std.ascii.eqlIgnoreCase(name, "realm")) {
+            if (realm != null) {
+                is_basic = false;
+                continue;
+            }
+            realm = try parsed.toOwnedSlice(allocator);
+        }
+    }
+    if (is_basic and realm != null) {
+        const result = realm;
+        realm = null;
+        return result;
     }
     return null;
 }
@@ -1232,8 +1426,53 @@ pub const default_user_agent = @import("../internal/user_agent.zig").default_use
 /// Browser's (its network context's), or the default for a request no
 /// Browser made. BORROWED for the Browser's life.
 fn userAgentOf(request: *const InternalRequest) []const u8 {
+    if (userAgentOverrideOf(request).user_agent) |ua| return ua;
     const context = request.network orelse return default_user_agent;
     return context.userAgent();
+}
+
+/// A tab's user agent override - a host's emulation of another browser
+/// (CDP's Emulation.setUserAgentOverride and Network.setUserAgentOverride;
+/// WebDriver BiDi's emulation.setUserAgentOverride): the `User-Agent` and
+/// `Accept-Language` its requests send instead of the Browser's. Chrome
+/// applies it to every request the tab makes, its workers' included where
+/// the request carries the client (content/browser/devtools/protocol/
+/// emulation_handler.cc ApplyOverrides; the network service's request
+/// headers). Null fields: no override.
+pub const UserAgentOverride = struct {
+    user_agent: ?[]const u8 = null,
+    accept_language: ?[]const u8 = null,
+};
+
+/// Reads the override of the tab a Window client (`traversable`: the
+/// request's traversable for user prompts, a Window standing for its
+/// navigable's traversable) is in - or, given a worker client's global (the
+/// request's user agent client), the copy of its tab's override the worker
+/// took when it was made (Chrome's dedicated worker creation params). The tab's state is HTML's - its
+/// top-level traversable's - which fetch does not import, so its owner
+/// installs the reader once, at process start. BORROWED strings, valid for
+/// the request's step.
+pub const UserAgentOverrideReader = *const fn (traversable: *anyopaque) UserAgentOverride;
+
+/// The same for every Browser: installed once, while the process starts (a
+/// Hook slot: the process module - fetch sits below html).
+var user_agent_override_reader: Hook(?UserAgentOverrideReader) = .init(null);
+
+/// Install the reader at process start. Idempotent.
+pub fn installUserAgentOverrideReader(reader: UserAgentOverrideReader) void {
+    user_agent_override_reader.install(reader);
+}
+
+/// `request`'s tab's override, if it has one.
+pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
+    const reader = user_agent_override_reader.get() orelse return .{};
+    return switch (request.traversable_for_user_prompts) {
+        .traversable => |traversable| reader(traversable),
+        // A worker client's request has no traversable (no-traversable, by
+        // spec): it carries its global instead, whose copy of its tab's
+        // override the reader answers (RequestClient.user_agent_client).
+        else => if (request.user_agent_client) |global| reader(global) else .{},
+    };
 }
 
 /// The proxy `request` goes through: its Browser's for its URL (null: the
@@ -1375,6 +1614,8 @@ pub fn httpNetworkFetchFinish(
     // Set status code, and the status message: the status line's
     // reason-phrase (HTTP/1.x; none after).
     response.status = network_response.status;
+    // The version it came over (observers: DevTools' Response.protocol).
+    response.http_version = network_response.http_version;
     if (network_response.status_message.len > 0) response.setStatusMessage(network_response.status_message) catch {
         return HttpFetchError.OutOfMemory;
     };
@@ -1459,6 +1700,15 @@ pub fn httpNetworkFetchFinish(
     params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, transfer_start, params.timing_info.post_redirect_start_time);
     params.timing_info.final_network_request_start_time = transfer_start + network_response.pretransfer_time_ms;
     params.timing_info.final_network_response_start_time = transfer_start + network_response.time_to_first_byte_ms;
+    // HTTP-network fetch's response loop ("While true" steps 1 and 5.1): the
+    // first 1xx interim response's arrival is the first interim
+    // network-response start time (Resource Timing's
+    // firstInterimResponseStart, which Chrome, Firefox and Safari report:
+    // resource-timing/interim-response-times.html at wpt.fyi 2358bd4835);
+    // 0 when none came.
+    if (network_response.first_interim_response_us != 0) {
+        params.timing_info.first_interim_network_response_start_time = transfer_start + @as(f64, @floatFromInt(network_response.first_interim_response_us)) / std.time.us_per_ms;
+    }
     params.timing_info.end_time = end_time;
 
     return response;

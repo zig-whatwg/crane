@@ -8,10 +8,16 @@
 //! HTMLConstructionSite and WebKit's HTMLElementStack do, and wraps only the
 //! root of a tree script detaches from under it.
 //!
-//! The counts are the engine's own diagnostics (`wrapper_cache_entries`, every
-//! realm's wrapper cache on this thread) and its heap statistics, read through
-//! the protocol. These files share tests/html's process; each test runs its
-//! Browser on a thread of its own.
+//! The counts are the engine's own diagnostics and its heap statistics, read
+//! through the protocol: every live wrapper on this thread, the wrapper
+//! caches' entries (`wrapper_cache_entries`, non-node platform objects) AND
+//! the node wrappers (`node_wrappers`). A node's main-world wrapper lives in the node's
+//! own slot since the wrapper redesign and never enters a cache
+//! (node_wrappers.zig), so the cache's count alone could not see a wrapper
+//! per parsed node: on it, C1 and C3 passed whatever the parser wrapped (lane
+//! mem1's audit, 2026-11-22). The last test checks that the count these
+//! tests read sees node wrappers. These files share tests/html's process;
+//! each test runs its Browser on a thread of its own.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -43,13 +49,18 @@ fn collect(browser: *browser_mod.Browser) !void {
     try engine.runInRealm(realm, Collect.steps, agent);
 }
 
-fn wrapperEntries() !i64 {
+/// Every live wrapper on this thread: the wrapper caches' entries and the
+/// node wrappers.
+fn liveWrappers() !i64 {
     const counters = try engine.diagnosticCounters(testing.allocator);
     defer testing.allocator.free(counters);
+    var cache_entries: ?i64 = null;
+    var node_wrappers: ?i64 = null;
     for (counters) |counter| {
-        if (std.mem.eql(u8, counter.name, "wrapper_cache_entries")) return counter.value;
+        if (std.mem.eql(u8, counter.name, "wrapper_cache_entries")) cache_entries = counter.value;
+        if (std.mem.eql(u8, counter.name, "node_wrappers")) node_wrappers = counter.value;
     }
-    return error.NoWrapperCounter;
+    return (cache_entries orelse return error.NoWrapperCounter) + (node_wrappers orelse return error.NoNodeWrapperCounter);
 }
 
 /// A page of `count` paragraphs, each an element and a text node, and a
@@ -74,7 +85,7 @@ const Sample = struct { wrappers: i64, used_heap: usize };
 fn measure(browser: *browser_mod.Browser) !Sample {
     try collect(browser);
     const agent = browser.getAgent() orelse return error.NoAgent;
-    return .{ .wrappers = try wrapperEntries(), .used_heap = engine.heapStatistics(agent).used };
+    return .{ .wrappers = try liveWrappers(), .used_heap = engine.heapStatistics(agent).used };
 }
 
 /// The page's parse of `count` paragraphs, checked to have reached its end:
@@ -89,7 +100,7 @@ fn expectParsed(context: *browser_mod.Context, count: usize, comptime query: []c
 /// A navigation parse into a fresh Browser's fresh document (one Browser per
 /// sample, so both start from the same objects).
 fn navigationSample(count: usize) !Sample {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
@@ -128,7 +139,7 @@ test "C1: a navigation parse with scripting on makes no wrapper per parsed node"
 }
 
 fn noWrapperPerWrittenNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
@@ -190,7 +201,7 @@ fn frameParse(browser: *browser_mod.Browser, count: usize) !Sample {
 }
 
 fn noWrapperPerFrameNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
@@ -206,4 +217,30 @@ fn noWrapperPerFrameNode() !void {
 
 test "C3: a frame document's parse makes no wrapper per parsed node" {
     try onFreshThread(noWrapperPerFrameNode);
+}
+
+/// The count C1 and C3 read sees node wrappers: script that wraps every
+/// paragraph of a parsed page raises it by one a paragraph. Without this, a
+/// count that cannot see a node's wrapper - the cache's alone, since the
+/// wrapper redesign - would let those tests pass whatever the parser wraps.
+fn countSeesNodeWrappers() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const context = browser.current_context orelse return error.NoPage;
+    const markup = try page(testing.allocator, small);
+    defer testing.allocator.free(markup);
+    try context.loadHTML(markup, .{ .base_url = "about:blank" });
+    try expectParsed(context, small, "document.getElementsByTagName('p').length + ' ' + window.parsed");
+    const before = try measure(browser);
+    try context.runScript("globalThis.all = Array.from(document.getElementsByTagName('p'));");
+    const after = try measure(browser);
+    if (after.wrappers - before.wrappers < small) {
+        std.debug.print("{d} paragraphs wrapped by script: the count went {d} -> {d}\n", .{ small, before.wrappers, after.wrappers });
+        return error.CountMissesNodeWrappers;
+    }
+}
+
+test "the wrapper count C1 and C3 read sees a node's wrapper: wrapping 1,000 parsed paragraphs raises it by 1,000" {
+    try onFreshThread(countSeesNodeWrappers);
 }

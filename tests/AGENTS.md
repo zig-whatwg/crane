@@ -18,7 +18,7 @@ Where that is awkward, do it anyway but adapt the form:
 WPT is the bar: `zig build wpt -- <path>`. Unit tests use
 `std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
 edge cases.
-One exception: a churn test (100k+ allocations in a loop) checks memory on `@import("root").poisoning.ChurnAllocator` (the poisoning DebugAllocator, `stack_trace_frames = 0`, a leak naming its test): std.testing.allocator's 7-frame capture at every alloc and free was 95% of such a test's time on aarch64 macOS (`sample`, chat2, 2026-11-11: 148 s vs 27 s on server1; [lesson](../docs/lessons/testing-a-test-near-its-timeout-is-a-bug-profile-it-before-blaming-the-product.md)).
+One exception: a churn test (100k+ allocations in a loop) checks memory on `@import("root").poisoning.ChurnAllocator` (the poisoning DebugAllocator, `stack_trace_frames = 0`, a leak naming its test): std.testing.allocator's 7-frame capture at every alloc and free was 95% of such a test's time on aarch64 macOS (`sample`, chat2, 2026-11-11: 148 s vs 27 s on server1; [lesson](../docs/lessons/testing-a-test-near-its-timeout-is-a-bug-profile-it-before-blaming-the-product.md)). So does an allocation-failure sweep, which repeats its function once per allocation: `@import("root").poisoning.checkAllAllocationFailures(name, fn, args)` is std.testing's sweep on a churn allocator (every injected failure still required to be released, its own self-tests in tests/test_runner/poisoning.zig) - on std.testing.allocator bx1's transform sweep took 45 s on chat2 alone against 1.8 s on it, and over 300 s in a loaded gate (lane flk4 item 8, 2026-11-23).
 
 **A test directory is one executable, and the launcher runs it.** `zig build test`
 compiles each `tests/<dir>/` as ONE test binary, from a root build.zig generates
@@ -153,6 +153,16 @@ tests/infra/test_log_level_test.zig pins the defaults.
   the test executables alone, without the lints and checks `test` adds.
   Results: `tmp/test-launch/<suite>.jsonl` (+ `.log`, the output of each
   non-pass); they also order the next run, longest batches first.
+
+**Wait for asynchronous work, never for wall time** (lane mem1, 2026-11-22;
+main's approval). A native test that asserts what a fetch, an import(), a
+force-async script or a queued task did waits for the event loop to go idle
+(`tests/html/loop_settle.zig` `settle`) or for the condition it asserts (a
+`runUntil` loop), never for a short `runEventLoopBlocking(ms)`: that is wall
+time, which a loaded or starved host need not give the work at all, and
+test-verify on a quiet host never shows it. Prove such a fix red and green
+by starving the test ([lesson](../docs/lessons/testing-starve-a-test-of-cpu-to-reproduce-a-flake-that-needs-a-stalled-host.md);
+[lesson](../docs/lessons/testing-a-test-that-waits-one-turn-races-a-step-that-went-parallel.md)).
 
 One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.

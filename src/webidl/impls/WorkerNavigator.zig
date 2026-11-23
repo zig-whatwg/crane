@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -160,6 +161,7 @@ pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return a string representing the platform on which the browser is executing."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    if (userAgentOverrideOf(instance)) |snapshot| if (snapshot.platform) |platform| return try runtime.DOMString.initDupe(instance.ctx.allocator, platform);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getPlatform());
@@ -190,12 +192,23 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
+/// The user agent override of the worker this navigator is of (a
+/// dedicated worker's copy of its tab's), or null.
+fn userAgentOverrideOf(instance: *runtime.Instance) ?*const @import("html").window.host_overrides.UserAgentSnapshot {
+    return @import("html").worker_host.userAgentOverrideOfRealm(instance.ctx);
+}
+
 /// Getter for userAgent
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the default User-Agent value."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // A dedicated worker's copy of its tab's user agent override, taken as
+    // it was made: Chrome's WorkerNavigator answers the global scope's user
+    // agent, which DedicatedWorker::CreateGlobalScopeCreationParams copied
+    // from its owner with the override applied (html.worker_host).
+    if (userAgentOverrideOf(instance)) |snapshot| if (snapshot.user_agent) |ua| return try runtime.DOMString.initDupe(instance.ctx.allocator, ua);
     // HTML NavigatorID: the worker's settings object's environment default
     // `User-Agent` value - its Browser's (a worker realm carries its
     // creator's Browser scope).
@@ -242,25 +255,44 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return a valid BCP 47 language tag representing the user's preferred language."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getLanguage());
-    }
-    return try runtime.DOMString.initDupe(instance.ctx.allocator, "en-US");
+    var list = try currentLanguages(instance);
+    defer list.deinit(instance.ctx.allocator);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, list.first());
 }
 
-/// Getter for languages
-///
-/// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
-/// "Must return a frozen array of valid BCP 47 language tags."
+const host_overrides = @import("html").window.host_overrides;
+
+/// The languages the worker's navigator reports (OWNED): a dedicated
+/// worker's copy of its tab's Accept-Language override, taken as it was
+/// made (as userAgent's above) - Chrome's NavigatorLanguage::
+/// EnsureUpdatedLanguage answers the override in a worker too - else the
+/// platform's list; each through Blink's ParseAndSanitize
+/// (html.window.host_overrides). Neither changes in the worker's life, so
+/// the languages array made from it stays right.
+fn currentLanguages(instance: *runtime.Instance) !host_overrides.Languages {
+    if (userAgentOverrideOf(instance)) |snapshot| if (try snapshot.languages(instance.ctx.allocator)) |list| return list;
+    return host_overrides.platformLanguages(instance.ctx.allocator);
+}
+
+/// The member a worker navigator keeps its languages array in.
+const languages_slot: engine.TracedSlot = .{ .name = "languages" };
+
+/// Getter for languages (HTML 8.9.1.4): a frozen array of BCP 47 language
+/// tags, the most preferred - navigator.language - first: the whole list
+/// (`currentLanguages`); "the same object must be returned until the user
+/// agent needs to return different values": made on the first read, kept by
+/// an edge from the navigator.
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    if (state.own._internal) |_| {
-        // TODO: Return proper frozen array of strings when V8 array creation is available
-        // For now, return undefined - the spec requires returning a frozen array of strings
-        return runtime.JSValue.jsUndefined;
-    }
-    return error.NotImplemented;
+    if (engine.tracedValue(instance, languages_slot)) |kept| return kept.take();
+    const allocator = instance.ctx.allocator;
+    var list = try currentLanguages(instance);
+    defer list.deinit(allocator);
+    const values = try allocator.alloc(runtime.JSValue, list.tags.len);
+    defer allocator.free(values);
+    for (list.tags, values) |tag, *value| value.* = .{ .string = .{ .data = tag, .owned = false } };
+    const array = try engine.createFrozenArray(instance.ctx, values);
+    engine.traceValue(instance, array.value, languages_slot);
+    return array.take();
 }
 
 /// Getter for onLine

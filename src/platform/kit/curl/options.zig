@@ -34,6 +34,13 @@ const CURLOPT_FORBID_REUSE: c_uint = 75;
 /// them against curl.h).
 pub const CURLOPT_SSL_CTX_FUNCTION: c_uint = 20108;
 pub const CURLOPT_SSL_CTX_DATA: c_uint = 10109;
+/// CURLOPTTYPE_LONG + 329: the zig-whatwg/curl fork's CURLOPT_HTTP_LENIENT,
+/// with both of its bits, CURLHTTPLENIENT_NOCOLON (1 << 0) and
+/// CURLHTTPLENIENT_BADCLEN (1 << 1) - tests/fetch/net3_lenient_response_test
+/// checks them against curl.h. Only the bundled libcurl is the fork: a
+/// system libcurl may give 329 to another option, so it is never set there.
+pub const CURLOPT_HTTP_LENIENT: c_uint = 329;
+pub const http_lenient_all: c_long = (1 << 0) | (1 << 1);
 
 /// A proxy for one transfer.
 pub const Proxy = struct {
@@ -66,6 +73,16 @@ pub const HandleOptions = struct {
 
 /// Apply `options` to the curl easy handle `handle`.
 pub fn apply(handle: *anyopaque, allocator: Allocator, options: HandleOptions) Allocator.Error!void {
+    // An HTTP/1 response is read the way the browsers read it: a header
+    // line with no colon is skipped (Chrome net/http/http_util.cc
+    // HttpUtil::HeadersIterator::GetNext; Firefox nsHttpHeaderArray::
+    // ParseHeaderLine), and a Content-Length that is not a number is absent
+    // (Fetch's "extract a length"; Chrome HttpResponseHeaders::
+    // GetInt64HeaderValue; Firefox nsHttpResponseHead::
+    // ParseResponseContentLength). libcurl's default fails both transfers
+    // with CURLE_WEIRD_SERVER_REPLY. The bundled libcurl is the fork that has
+    // the option (build.zig.zon); `trust_store.enabled` is "bundled".
+    if (trust_store.enabled) _ = curl_easy_setopt(handle, CURLOPT_HTTP_LENIENT, http_lenient_all);
     _ = curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, @as(c_long, if (options.verify_peer) 1 else 0));
     _ = curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, @as(c_long, if (options.verify_host) 2 else 0));
     if (trust_store.enabled) {

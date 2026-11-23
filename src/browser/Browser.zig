@@ -56,15 +56,17 @@ const html_mod = @import("html");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
-const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
 const clock = @import("clock");
 const host = @import("host");
-const Storage = storage_mod.Storage;
 /// The page agent's event loop - the host's (HTML 8.1.7).
 const EventLoop = @import("event_loop.zig").EventLoop;
 const Process = @import("process.zig").Process;
 const platform = @import("platform");
+/// What the Browser tells its host as it happens: tabs and frames.
+pub const host_events = @import("host_events.zig");
+/// A script value as the host API hands it out (BiDi's RemoteValue, JSON).
+pub const remote_value = @import("remote_value.zig");
 
 /// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
 /// and "notify about rejected promises" (html/rejected_promises.zig), and
@@ -81,7 +83,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.ensureCanCompileStrings = html.code_generation.hooks.ensureCanCompileStrings;
     hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
     hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
-    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.construct;
+    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.hooks;
     hooks.agentClusterOf = html.agent_clusters.agentClusterOf;
     hooks.crossOriginIsolatedCapability = html.agent_clusters.crossOriginIsolatedCapability;
     if (html.webassembly_streaming.supported) hooks.compilePotentialWebAssemblyResponse = html.webassembly_streaming.compilePotentialWebAssemblyResponse;
@@ -90,19 +92,13 @@ const window_agent_hooks: engine.HostHooks = blk: {
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
-    /// Root directory of the legacy storage manager (storage/Storage.zig),
-    /// with `persist_storage`; null: ~/.whatwg/.
-    storage_root: ?[]const u8 = null,
-    /// Whether the legacy storage manager makes its directories under
-    /// `storage_root`. False by default: a Browser is in memory and writes
-    /// nothing to disk (docs/instances.md: "In memory by default; an
-    /// optional profile directory persists the Browser's stores"). It was
-    /// true, and every Browser left at the defaults made empty directories
-    /// in ~/.whatwg/ that nothing ever read: localStorage, cookies,
-    /// IndexedDB, the Cache API and the HTTP cache are all in memory today,
-    /// and persisting them under a profile directory is its own work
-    /// (STORAGE PERSISTENCE, tmp/plans/lane-console-handoff.md).
-    persist_storage: bool = false,
+    /// The Browser's profile directory (docs/instances.md): its stores
+    /// persist under it, and it is the Browser's alone while it lives - a
+    /// second live Browser given the same directory fails to start with
+    /// error.ProfileInUse, as Chrome's profile lock refuses one. Null (the
+    /// default): in memory, nothing written to disk. The console's
+    /// --user-data-dir / --profile set it. BORROWED for `init`.
+    profile_dir: ?[]const u8 = null,
     /// Initial URL to navigate to (optional)
     initial_url: ?[]const u8 = null,
     /// Enable debug logging
@@ -126,6 +122,12 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// Which tabs have system focus (HTML 6.6.2; the user's ruling
+    /// 2026-11-19, "Host decides, headless default"): every one, as headless
+    /// Chrome's (the default), or only the tab the host activates - a host
+    /// that renders narrows focus to the tab it shows, through
+    /// `activateTab`.
+    focus: FocusModel = .every_tab,
     /// Whether a platform object's freed state - its State block, and a
     /// node's NodeBase released at its teardown - is overwritten with the
     /// poison byte (runtime.ArenaAllocator.poison_freed), so a read after the
@@ -158,6 +160,9 @@ pub const BrowserConfig = struct {
 
     pub const HttpCacheConfig = @import("fetch").network.NetworkContext.HttpCacheConfig;
 
+    /// `focus`: every tab has system focus, or only the active one.
+    pub const FocusModel = enum { every_tab, active_tab };
+
     pub const Proxy = union(enum) {
         /// The process's proxy settings (curl reads http_proxy, https_proxy
         /// and no_proxy from the environment). The default.
@@ -166,6 +171,11 @@ pub const BrowserConfig = struct {
         direct,
         /// A proxy per scheme and the hosts that bypass it.
         manual: @import("fetch").network.NetworkContext.Proxy.Manual,
+        /// Chrome's proxy rules - `--proxy-server` / `--proxy-bypass-list`,
+        /// CDP Target.createBrowserContext {proxyServer, proxyBypassList}
+        /// (fetch/network/proxy_rules.zig). BORROWED until Browser.init
+        /// returns: the network context keeps a copy.
+        rules: *const @import("fetch").network.NetworkContext.ProxyRules,
         /// A proxy auto-config file's URL: not supported.
         pac: []const u8,
         /// Proxy auto-detection (WPAD): not supported.
@@ -186,8 +196,6 @@ pub const Browser = struct {
     agent_host: *@import("html").agent_host.AgentHost,
     /// Current browsing context (V8 context + DOM)
     current_context: ?*Context,
-    /// Persistent storage subsystem
-    storage: *Storage,
     /// Browser configuration
     config: BrowserConfig,
     /// Whether the browser has been initialized
@@ -213,6 +221,45 @@ pub const Browser = struct {
     /// platform object of it comes from. Ends after every realm and every
     /// worker thread.
     scope: *runtime.BrowserScope,
+    /// The tabs the host opened beside its first page (`createTab`), in the
+    /// order they were made: each a page of its own (a Context) in a new
+    /// browsing context group, whose realms are entered per call
+    /// (engine.WindowRealmOptions.entered_for_life false) so that tabs end in
+    /// any order. The first page stays `current_context`.
+    tabs: std.ArrayListUnmanaged(*Context) = .empty,
+    /// The tab the host last activated (`activateTab`), or the first page's.
+    /// Every tab is focused and visible unless the host narrowed focus to its
+    /// active tab (the tab-focus ruling, 2026-11-19; BrowserConfig.focus):
+    /// then this tab alone has system focus.
+    active_tab: ?TabId = null,
+    /// The host's listeners: what the Browser tells its host as it happens
+    /// (host_events).
+    listeners: host_events.Listeners = .{},
+    /// Tabs whose navigations wait before their fetch until the host
+    /// releases them (`createTab`'s hold_first_navigation, CDP's
+    /// waitForDebuggerOnStart): the navigation observer's hold point
+    /// (html.navigation.observer, N3), released by `releaseTab`.
+    paused_tabs: std.ArrayListUnmanaged(TabId) = .empty,
+    /// The open tabs the host has been told of (`tab_created`), so that
+    /// each is told gone (`tab_destroyed`) exactly once.
+    known_tabs: std.ArrayListUnmanaged(TabId) = .empty,
+    /// Every tab a page opens from now on starts paused
+    /// (`holdTabsOpenedByPages`; CDP Target.setAutoAttach
+    /// {waitForDebuggerOnStart}).
+    hold_page_tabs: bool = false,
+    /// The agent's inspector client (installed at init when the engine has
+    /// inspector_protocol), BORROWED by the engine for the agent's life.
+    inspector_client: engine.InspectorClient = .{},
+    /// The debugger asked its paused message loop to end
+    /// (quitMessageLoopOnPause).
+    debugger_quit: bool = false,
+    /// Host evaluations awaiting a promise (`evaluateInTab` with
+    /// await_promise): each is told its result when the promise settles, or
+    /// that the Browser ended first.
+    pending_evaluations: std.ArrayListUnmanaged(*PendingEvaluation) = .empty,
+
+    /// A tab: its top-level traversable's browsing context id.
+    pub const TabId = host_events.TabId;
 
     /// Initialize a new Browser instance
     ///
@@ -277,7 +324,14 @@ pub const Browser = struct {
         // ends, so it is the scope's earlier supplement and ends after it.
         // It has no loop to post to until `attach`, below.
         const platform_events = try @import("platform_events.zig").make(scope);
-        const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform }, platform_events.eventSink());
+        const browser_platform = @import("html").platform_state.createWith(scope, &.{
+            .platform = config.platform,
+            .profile_dir = if (config.profile_dir) |dir| platform.Str.from(dir) else null,
+        }, platform_events.eventSink()) catch |err| return switch (err) {
+            // Another live Browser holds the profile directory.
+            error.Busy => error.ProfileInUse,
+            else => err,
+        };
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;
         const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
@@ -294,11 +348,11 @@ pub const Browser = struct {
             agent_host.deinit();
             allocator.destroy(agent_host);
         }
-        const agent = engine.createAgent(.{
+        // The agent's host and host state: the Browser's AgentHost.
+        const agent = engine.createAgent(@import("dom").agent_hosts.agentOptions(agent_host, .{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &window_agent_hooks,
-            .host = agent_host,
             .allocator = allocator,
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
@@ -310,7 +364,7 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
-        }) catch return error.V8InitFailed;
+        })) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without
         // it while the process's live isolates were made without it (V8 keeps
@@ -331,10 +385,6 @@ pub const Browser = struct {
         browser_clock: platform.BrowserClock,
     ) !*Browser {
         errdefer engine.destroyAgent(agent);
-
-        // Create storage subsystem
-        const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
-        errdefer storage.deinit();
 
         // The agent's event loop, with its timers (the host's).
         const event_loop = try allocator.create(EventLoop);
@@ -364,6 +414,7 @@ pub const Browser = struct {
                 .system => .system,
                 .direct => .direct,
                 .manual => |manual| .{ .manual = manual },
+                .rules => |rules| .{ .rules = rules },
                 .pac, .autodetect => unreachable, // refused by init
             },
             .accept_insecure_certs = config.accept_insecure_certs,
@@ -372,6 +423,19 @@ pub const Browser = struct {
         // What a response's Clear-Site-Data header clears: this Browser's
         // state, never another's (src/browser/clear_site_data.zig).
         (try scope.of(@import("fetch").network.NetworkContext)).site_data = @import("clear_site_data.zig").clearerFor(scope);
+
+        // The profile's stores (D6, the user's ruling 2026-11-21): a Browser
+        // given a profile directory persists its web state there, its
+        // platform state's stores (profile_stores.zig); one with none keeps
+        // it in memory, as before.
+        if (scope.existing(@import("html").platform_state.PlatformState)) |state| {
+            if (state.browser) |browser_platform| {
+                // IndexedDB keeps its databases in the platform's stores in
+                // both modes (approved 8:44 PM ET).
+                try @import("profile_stores.zig").attachPlatform(scope, browser_platform);
+                if (config.profile_dir) |profile_dir| try @import("profile_stores.zig").attach(scope, browser_platform, event_loop, profile_dir);
+            }
+        }
 
         // The back/forward cache, on the Browser's loop, as configured.
         (try scope.of(@import("back_forward_cache.zig").BackForwardCache)).configure(event_loop, config.back_forward_cache_size, config.back_forward_cache_ttl_seconds);
@@ -385,7 +449,6 @@ pub const Browser = struct {
             .agent = agent,
             .agent_host = agent_host,
             .current_context = null,
-            .storage = storage,
             .config = config,
             .initialized = true,
             .event_loop = event_loop,
@@ -393,6 +456,40 @@ pub const Browser = struct {
             .cookie_jar = cookie_jar,
             .scope = scope,
         };
+
+        // The Browser's navigation observer (html.navigation.observer): its
+        // one slot, set once to the Browser's own dispatcher, which fans each
+        // milestone out to the host's listeners (host_events) and answers
+        // the hold point for paused tabs.
+        const navigables = try scope.table(.navigables, html_mod.Navigables);
+        navigables.observer = .{ .context = browser, .notify = notifyMilestone, .hold_first_navigation = holdsNavigation };
+        // And its document-start hook (html.navigation.document_start): the
+        // host's scripts for each new document, fanned out the same way.
+        navigables.document_start = .{ .context = browser, .run = runDocumentStart };
+        // And its user prompt hook (html.navigation.user_prompts): each
+        // simple dialog's opening and closing.
+        navigables.user_prompts = .{ .context = browser, .opening = dialogOpening, .closed = dialogClosed };
+        // And its new-window hook (html.navigation.window_open).
+        navigables.window_open = .{ .context = browser, .opened = windowOpened };
+        // And its first-touch hook for frames on their initial about:blank.
+        navigables.frame_touched = .{ .context = browser, .touched = frameTouched };
+        // The agent's inspector client (the engine protocol's
+        // inspector_protocol): Runtime.runIfWaitingForDebugger releases the
+        // tab's start hold, a debugger pause runs the Browser's nested
+        // message loop (runtime.BrowserPause, policy .debugger), and the DOM's
+        // objects get Blink's RemoteObject subtypes and descriptions
+        // (inspector_values.zig: a node is subtype "node").
+        if (comptime engine.capabilities.inspector_protocol != .unsupported) {
+            browser.inspector_client = .{
+                .host = browser,
+                .runIfWaitingForDebugger = inspectorRunIfWaiting,
+                .runMessageLoopOnPause = inspectorRunMessageLoopOnPause,
+                .quitMessageLoopOnPause = inspectorQuitMessageLoopOnPause,
+                .valueSubtype = @import("inspector_values.zig").valueSubtype,
+                .descriptionForValueSubtype = @import("inspector_values.zig").description,
+            };
+            engine.installInspectorClient(agent, &browser.inspector_client);
+        }
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -405,7 +502,8 @@ pub const Browser = struct {
     /// Deinitialize the browser and release all resources
     ///
     /// This destroys the V8 isolate and all associated contexts.
-    /// All storage is flushed to disk before cleanup.
+    /// What the profile's stores have pending is written first
+    /// (profile_stores.flush).
     pub fn deinit(self: *Browser) void {
         // Every worker thread of this Browser ends first - terminated, then
         // joined - before the page's teardown and before the runtime's
@@ -425,6 +523,25 @@ pub const Browser = struct {
         // the Browser's, no realm's child, so the page's end would leave its
         // realm alive for the agent's end (dom.auxiliary_navigables.Popups).
         @import("dom").auxiliary_navigables.closeAll(self.scope);
+        // The host evaluations still awaiting a promise are told the Browser
+        // ended first, while the agent lives (their reactions are dropped
+        // with it).
+        self.failPendingEvaluations();
+        // The tabs the host opened, the last made first: "destroy a
+        // top-level traversable" for each, as for the first page below - no
+        // unload, as at every Browser's end (BiDi's removeUserContext closes
+        // without prompting). Each realm is entered per call, so they end in
+        // any order before the first page's, which is entered for its life.
+        while (self.tabs.pop()) |ctx| {
+            if (ctx.browsing_context) |bc| @import("dom").navigables.destroyDocumentsAtBrowserEnd(bc);
+            ctx.deinit();
+            self.allocator.destroy(ctx);
+        }
+        self.tabs.deinit(self.allocator);
+        self.paused_tabs.deinit(self.allocator);
+        // What the pages' end tells the host from here on reaches nobody.
+        self.listeners.deinit(self.allocator);
+        self.listeners = .{};
         // Destroy current context if any
         if (self.current_context) |ctx| {
             // HTML "destroy a top-level traversable" step 2: "destroy a
@@ -440,10 +557,11 @@ pub const Browser = struct {
         // promise, and through it the realm - while the isolate lives.
         _ = self.agent_host.fetches.sweep();
 
-        // Flush and cleanup storage
-        self.storage.flush() catch {};
-        self.storage.deinit();
-        self.allocator.destroy(self.storage);
+        // What the profile's stores still have pending is written now
+        // (profile_stores.zig; Chromium LocalStorageImpl::ShutDown), while
+        // the event loop and the platform state live; nothing without a
+        // profile directory.
+        @import("profile_stores.zig").flush(self.scope);
 
         // Cleanup event loop. Platform events stop becoming its tasks first:
         // the platform's observers post until the platform state ends,
@@ -482,6 +600,9 @@ pub const Browser = struct {
             // (dom.teardown_sweeps) - never another Browser's.
             @import("dom").teardown_sweeps.runAll(self.scope);
 
+            // The agent's inspector client points at this Browser: gone
+            // before the agent ends.
+            if (comptime engine.capabilities.inspector_protocol != .unsupported) engine.installInspectorClient(agent, null);
             // Release the rejection tracker's promise handles - this agent's,
             // on its host, and no other Browser's - while the agent that
             // owns them still exists.
@@ -513,6 +634,7 @@ pub const Browser = struct {
         self.scope.deinit();
         self.allocator.destroy(self.scope);
 
+        self.known_tabs.deinit(self.allocator);
         self.initialized = false;
         self.allocator.destroy(self);
     }
@@ -549,11 +671,21 @@ pub const Browser = struct {
         const agent = self.agent orelse return error.NotInitialized;
 
         // Destroy current context if any
+        var replaced_tab: ?TabId = null;
         if (self.current_context) |old_ctx| {
             // The pages the back/forward cache keeps were opened from this
             // page: they leave while its realm - their realms' parent - and
             // the loop still live.
             @import("back_forward_cache.zig").evictAllIn(self.scope);
+            // HTML "close a top-level traversable" for the page the fresh one
+            // replaces - its tab closes - before it is destroyed: beforeunload
+            // (checking if unloading is canceled), then pagehide and unload,
+            // children first ("definitely close" step 3; life1's audit N7).
+            // It was destroyed without them, which no browser does to a tab
+            // it closes. A shown prompt the user answered "stay" leaves the
+            // page as it is.
+            if (unloadHostPage(old_ctx, .prompt) == .canceled) return error.CloseCanceled;
+            replaced_tab = if (old_ctx.browsing_context) |bc| bc.id else null;
             old_ctx.deinit();
             self.allocator.destroy(old_ctx);
             self.current_context = null;
@@ -590,11 +722,15 @@ pub const Browser = struct {
         defer if (serialized) |s| self.allocator.free(s);
 
         // Create new context
-        // Pass used_snapshot flag so Context knows whether to skip initializeBindings
-        const ctx = try Context.init(
+        // Pass used_snapshot flag so Context knows whether to skip
+        // initializeBindings. Under narrowed focus the fresh page has system
+        // focus when it becomes the active tab - the Browser's first page, or
+        // the one replacing it (`newTabsFocused`).
+        const becomes_active = self.active_tab == null or self.active_tab == replaced_tab;
+        self.newTabsFocused(becomes_active);
+        const made = Context.init(
             self.allocator,
             agent,
-            self.storage,
             self.cookie_jar,
             serialized orelse url,
             self.event_loop,
@@ -602,11 +738,21 @@ pub const Browser = struct {
             self.used_snapshot,
             self.scope,
         );
+        // Only the page made now: a popup its load opens starts without.
+        self.newTabsFocused(false);
+        const ctx = try made;
         // The new traversable is the Browser's page from here, whatever its
         // first navigation does: one that fails leaves it on that
         // navigation's error page, as a browser's tab does, and the error
         // says so (CDP's Page.navigate errorText).
         self.current_context = ctx;
+        // The host heard the fresh tab come from the navigation observer
+        // (navigable_created) as it was made; the old one is told gone now
+        // if its destruction did not say so.
+        if (replaced_tab) |id| self.tabGone(id);
+        if (ctx.browsing_context) |bc| {
+            if (self.active_tab == null or self.active_tab == replaced_tab) self.active_tab = bc.id;
+        }
         if (!options.skip_load) try ctx.loadPage();
     }
 
@@ -743,10 +889,11 @@ pub const Browser = struct {
     // (null, or error.NoSuchTraversable). On the Browser's window thread, from
     // outside script (a task of the loop, or between its turns).
     //
-    // Opening a tab - a host-made top-level traversable in a new browsing
-    // context group - is not here: the host page's Window realm is entered for
-    // its life (the engine's createWindowRealm), so a second one cannot end
-    // before a later one (tmp/plans/lane-console-handoff.md, HOST-OPENED TABS).
+    // The host opens tabs of its own beside its first page (`createTab`):
+    // each a host-made top-level traversable in a new browsing context
+    // group, whose realms are entered per call - only the first page's is
+    // entered for its life - so that tabs close in any order (lane console's
+    // HOST-OPENED TABS design; lane cdph).
 
     /// One top-level traversable, as `traversables` lists it.
     pub const TraversableInfo = struct {
@@ -755,9 +902,9 @@ pub const Browser = struct {
         /// Its active document's URL and title. OWNED (`freeTraversables`).
         url: []u8,
         title: []u8,
-        /// Who made it: the host (the Browser's page), or a page's script
-        /// (a popup).
-        made_by: enum { host, page },
+        /// Who made it: the host (the Browser's first page, or a tab it
+        /// opened), or a page's script (a popup).
+        made_by: host_events.MadeBy,
         /// The traversable whose page opened it, while it lives and the popup
         /// was not opened with noopener; null otherwise.
         opener: ?u64,
@@ -804,7 +951,7 @@ pub const Browser = struct {
                 .id = bc.id,
                 .url = url,
                 .title = title,
-                .made_by = if (host_id != null and bc.id == host_id.?) .host else .page,
+                .made_by = if (self.isHostTraversable(bc)) .host else .page,
                 .opener = opener,
             });
         }
@@ -943,11 +1090,48 @@ pub const Browser = struct {
         const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
         const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
         defer self.allocator.free(serialized);
-        if (self.isHostTraversable(bc)) return self.navigateInPlace(serialized);
+        if (self.hostContextOf(bc)) |ctx| return ctx.navigate(serialized);
         const integration = integrationOf(bc) orelse return error.NoSuchTraversable;
         // A "browser UI" navigation: no sourceDocument, the user's own
         // (navigate step 5) - as the host page's address bar navigates.
         integration.navigate(serialized, .{ .browser_ui = true });
+    }
+
+    /// What `navigateNavigable` carries besides its URL (N5: CDP
+    /// Page.navigate's `referrer` and `referrerPolicy`).
+    pub const NavigateNavigableOptions = struct {
+        /// The request's referrer, a URL. BORROWED for the call.
+        referrer: ?[]const u8 = null,
+        referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    };
+
+    /// HTML "navigate" navigable `id` - a tab, or a frame in one - to `url`
+    /// as the browser's UI does (user involvement "browser UI", no
+    /// sourceDocument), with `options`' referrer: CDP Page.navigate,
+    /// whatever frame it names (Chrome: NavigationController::LoadURL on
+    /// that frame's FrameTreeNode). The navigation runs as tasks; returns
+    /// the id of the cross-document navigation it started (the navigation
+    /// observer's navigation_id, CDP's loaderId), or 0 when none started (a
+    /// fragment navigation, one refused). error.NoSuchTab for an id that
+    /// names no live navigable of this Browser; error.InvalidUrl.
+    pub fn navigateNavigable(self: *Browser, id: u64, url: []const u8, options: NavigateNavigableOptions) !u64 {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return error.NoSuchTab;
+        const bc = navigables.byId(id) orelse return error.NoSuchTab;
+        if (bc.is_closed or bc.active_window == null) return error.NoSuchTab;
+        const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
+        defer self.allocator.free(serialized);
+        if (bc.parent == null) if (self.hostContextOf(bc)) |ctx| {
+            return ctx.navigateWithOptions(serialized, .{ .referrer = options.referrer, .referrer_policy = options.referrer_policy });
+        };
+        const integration = integrationOf(bc) orelse return error.NoSuchTab;
+        var started: u64 = 0;
+        integration.navigate(serialized, .{
+            .browser_ui = true,
+            .referrer_url = options.referrer,
+            .referrer_policy = options.referrer_policy,
+            .started_navigation_id = &started,
+        });
+        return started;
     }
 
     /// HTML "reload" traversable `id`'s navigable, as the browser's reload
@@ -980,16 +1164,19 @@ pub const Browser = struct {
         return true;
     }
 
-    /// HTML "close a top-level traversable" for popup `id`: its documents
-    /// are asked about unloading (beforeunload), unloaded and destroyed, and
-    /// its browsing context closed (dom.auxiliary_navigables.definitelyClose).
-    /// The host's own page closes only with the Browser:
-    /// error.HostTraversable.
+    /// HTML "close a top-level traversable" for `id` as a page's
+    /// window.close() would - prompting to unload: its documents are asked
+    /// about unloading (beforeunload), unloaded and destroyed, and its
+    /// browsing context closed - a popup, or a tab the host opened
+    /// (`closeTab`). The Browser's first page closes only with the Browser
+    /// (or `closeTab`): error.HostTraversable.
     pub fn closeTraversable(self: *Browser, id: u64) !void {
         const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
-        if (self.isHostTraversable(bc)) return error.HostTraversable;
-        const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return error.NoSuchTraversable));
-        if (!@import("dom").auxiliary_navigables.definitelyClose(window)) return error.NoSuchTraversable;
+        if (self.isFirstPage(bc)) return error.HostTraversable;
+        self.closeTab(id, .{ .prompt_unload = true }) catch |err| switch (err) {
+            error.NoSuchTab => return error.NoSuchTraversable,
+            else => return err,
+        };
     }
 
     /// How many top-level traversables are open.
@@ -1041,9 +1228,26 @@ pub const Browser = struct {
         return if (isOpenTopLevel(bc)) bc else null;
     }
 
+    /// Whether `bc` is a traversable the host made: its first page, or a tab
+    /// it opened.
     fn isHostTraversable(self: *Browser, bc: *const html_mod.BrowsingContext) bool {
+        return self.hostContextOf(bc) != null;
+    }
+
+    /// Whether `bc` is the Browser's first page's (`current_context`).
+    fn isFirstPage(self: *Browser, bc: *const html_mod.BrowsingContext) bool {
         const host_id = self.hostTraversableId() orelse return false;
         return bc.id == host_id;
+    }
+
+    /// The page (Context) the host made for `bc`: its first page, or a tab
+    /// it opened. Null for a popup.
+    fn hostContextOf(self: *Browser, bc: *const html_mod.BrowsingContext) ?*Context {
+        if (self.current_context) |ctx| if (ctx.browsing_context) |own| if (own == bc) return ctx;
+        for (self.tabs.items) |ctx| {
+            if (ctx.browsing_context) |own| if (own == bc) return ctx;
+        }
+        return null;
     }
 
     /// A top-level browsing context still shown: not a frame's, not closed,
@@ -1092,6 +1296,663 @@ pub const Browser = struct {
     }
 
     // ========================================================================
+    // Tabs: the host API (instances design 5.1, roadmap `instances` item
+    // "Host API"; lane cdph). On the Browser's thread, from outside script;
+    // BrowserHost runs them there for a host on another thread.
+    // ========================================================================
+
+    /// One tab, as `listTabs` lists it.
+    pub const TabInfo = TraversableInfo;
+
+    pub const CreateTabOptions = struct {
+        /// Where its first navigation goes; null or "about:blank": it stays
+        /// on its initial about:blank document, as a new tab opened at
+        /// about:blank does. Parsed with the basic URL parser
+        /// (error.InvalidUrl when it is no absolute URL).
+        url: ?[]const u8 = null,
+        /// Not made the active tab (WebDriver BiDi browsingContext.create
+        /// `background`, CDP Target.createTarget `background`).
+        background: bool = false,
+        /// Its first navigation waits until the host releases it
+        /// (`releaseTab`): CDP's Target.setAutoAttach waitForDebuggerOnStart,
+        /// Chrome's TargetHandler throttle - the runner attaches before the
+        /// page runs anything.
+        hold_first_navigation: bool = false,
+    };
+
+    /// Open a tab: HTML "create a fresh top-level traversable" - "create a
+    /// new top-level traversable" with a null opener, so a browsing context
+    /// and its initial about:blank document of a new opaque origin in a new
+    /// browsing context group (a top-level browsing context's own: the tab
+    /// shares no group with the Browser's other tabs), in a realm of its own
+    /// entered per call - then HTML "navigate" it to `options.url` with user
+    /// involvement "browser UI" (the navigation runs as tasks of the loop).
+    /// The host hears `tab_created` before the navigation starts. Its id is
+    /// its top-level browsing context's, for its life.
+    pub fn createTab(self: *Browser, options: CreateTabOptions) !TabId {
+        const agent = self.agent orelse return error.NotInitialized;
+        const requested = options.url orelse "about:blank";
+        const serialized = serializedUrl(self.allocator, requested) orelse return error.InvalidUrl;
+        defer self.allocator.free(serialized);
+        try self.tabs.ensureUnusedCapacity(self.allocator, 1);
+        // Under narrowed focus a tab opened in the foreground starts with the
+        // system focus, which the active tab loses (below); one in the
+        // background starts without it.
+        const foreground = !options.background or self.active_tab == null;
+        self.newTabsFocused(foreground);
+        const made = Context.initWithOptions(
+            self.allocator,
+            agent,
+            self.cookie_jar,
+            "about:blank",
+            self.event_loop,
+            .window,
+            self.used_snapshot,
+            self.scope,
+            .{ .entered_for_life = false },
+        );
+        self.newTabsFocused(false);
+        const ctx = try made;
+        const bc = ctx.browsing_context orelse {
+            ctx.deinit();
+            self.allocator.destroy(ctx);
+            return error.ContextCreateFailed;
+        };
+        const id = bc.id;
+        self.tabs.appendAssumeCapacity(ctx);
+        // The tab that was active loses the system focus to it (as a
+        // browser window's tab strip moves it), its pages hearing so.
+        if (foreground and self.narrowsFocus()) if (self.activeTab()) |previous| if (previous != id) {
+            if (self.openTraversable(previous)) |previous_bc| html_mod.focus.setSystemFocus(previous_bc, false);
+        };
+        if (foreground) self.active_tab = id;
+        // The host heard `tab_created` as the traversable was made (the
+        // navigation observer's navigable_created). A held tab's navigation
+        // parks at the observer's hold point, after beforeunload and before
+        // its fetch (N3), until `releaseTab`.
+        if (options.hold_first_navigation) try self.paused_tabs.append(self.allocator, id);
+        if (std.mem.eql(u8, serialized, "about:blank")) return id;
+        try ctx.navigate(serialized);
+        return id;
+    }
+
+    pub const CloseTabOptions = struct {
+        /// Prompt to unload first: the beforeunload event at each of its
+        /// documents (HTML "definitely close" step 2) - BiDi
+        /// browsingContext.close {promptUnload: true}, CDP Page.close. False
+        /// (CDP Target.closeTarget, BiDi's default): unload runs, beforeunload
+        /// does not, as Chrome's WebContentsImpl::ClosePage.
+        prompt_unload: bool = false,
+    };
+
+    /// HTML "close a top-level traversable" for tab `tab` - one the host
+    /// opened, its first page, or a popup a page made - then it is
+    /// destroyed: its documents unloaded (pagehide, unload) and destroyed,
+    /// its browsing context closed, and a host-made tab's realm ended. The
+    /// host hears `tab_destroyed` after. error.NoSuchTab when no open tab
+    /// has that id; error.CloseCanceled when a shown beforeunload prompt was
+    /// answered "stay" (nothing changed).
+    pub fn closeTab(self: *Browser, tab: TabId, options: CloseTabOptions) !void {
+        const bc = self.openTraversable(tab) orelse return error.NoSuchTab;
+        const prompt: @import("dom").auxiliary_navigables.Prompt = if (options.prompt_unload) .prompt else .skip;
+        if (self.hostContextOf(bc)) |ctx| {
+            if (unloadHostPage(ctx, prompt) == .canceled) return error.CloseCanceled;
+            self.endHostPage(ctx);
+        } else {
+            const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return error.NoSuchTab));
+            switch (@import("dom").auxiliary_navigables.definitelyClose(window, prompt)) {
+                .not_top_level => return error.NoSuchTab,
+                .canceled => return error.CloseCanceled,
+                .closed => {},
+            }
+        }
+        self.tabGone(tab);
+    }
+
+    /// Release tab `tab`'s navigations held before their fetch (CDP
+    /// Runtime.runIfWaitingForDebugger): it is no longer paused, and a
+    /// navigation parked at the hold point goes on from a task
+    /// (html.navigation.observer.release). Nothing for a tab not paused.
+    pub fn releaseTab(self: *Browser, tab: TabId) void {
+        const index = self.pausedIndex(tab) orelse return;
+        _ = self.paused_tabs.orderedRemove(index);
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return;
+        html_mod.navigation.observer.release(navigables, tab);
+    }
+
+    /// Whether tab `tab` is paused (its navigations wait for `releaseTab`).
+    pub fn isTabHeld(self: *Browser, tab: TabId) bool {
+        return self.pausedIndex(tab) != null;
+    }
+
+    /// Every tab a page opens from now on (window.open, a link's or form's
+    /// target) starts paused until `releaseTab` - CDP's
+    /// Target.setAutoAttach {waitForDebuggerOnStart: true} - or, with
+    /// false, starts as usual.
+    pub fn holdTabsOpenedByPages(self: *Browser, hold: bool) void {
+        self.hold_page_tabs = hold;
+    }
+
+    /// Make tab `tab` the active one (BiDi browsingContext.activate, CDP
+    /// Target.activateTarget, WebDriver Switch To Window, crane_tab_activate).
+    /// The tab-focus ruling (the user, 2026-11-19: "Host decides, headless
+    /// default"): with every tab focused - headless Chrome's, the default -
+    /// this changes what `activeTab` answers, and nothing a page can observe;
+    /// a host that narrows focus to its active tab (BrowserConfig.focus =
+    /// .active_tab) moves the system focus with it (HTML 6.6.2): the tab
+    /// that had it loses it, then `tab` gains it, each heard by its pages
+    /// (html.focus.setSystemFocus).
+    pub fn activateTab(self: *Browser, tab: TabId) !void {
+        const bc = self.openTraversable(tab) orelse return error.NoSuchTab;
+        if (self.narrowsFocus()) {
+            if (self.activeTab()) |previous| if (previous != tab) if (self.openTraversable(previous)) |previous_bc| {
+                html_mod.focus.setSystemFocus(previous_bc, false);
+            };
+            html_mod.focus.setSystemFocus(bc, true);
+        }
+        self.active_tab = tab;
+    }
+
+    /// Whether the host narrowed system focus to its active tab
+    /// (BrowserConfig.focus).
+    fn narrowsFocus(self: *const Browser) bool {
+        return self.config.focus == .active_tab;
+    }
+
+    /// Whether a tab made from now on starts with system focus
+    /// (html.Navigables.tab_system_focus): always, unless the host narrowed
+    /// focus - then only the tab about to become the active one (`focused`).
+    fn newTabsFocused(self: *Browser, focused: bool) void {
+        const navigables = self.scope.table(.navigables, @import("dom").browser_state.Navigables) catch return;
+        navigables.tab_system_focus = focused or !self.narrowsFocus();
+    }
+
+    /// Under narrowed focus, after the active tab went: the tab `activeTab`
+    /// answers now - the first open one - is the active tab and has the
+    /// system focus, as a browser activates a neighbour of a closed tab.
+    fn focusNextActiveTab(self: *Browser) void {
+        if (!self.narrowsFocus()) return;
+        const id = self.activeTab() orelse return;
+        const bc = self.openTraversable(id) orelse return;
+        self.active_tab = id;
+        html_mod.focus.setSystemFocus(bc, true);
+    }
+
+    /// The tab the host last activated, while it is open; else the first
+    /// open one; null with none.
+    pub fn activeTab(self: *Browser) ?TabId {
+        if (self.active_tab) |id| if (self.openTraversable(id) != null) return id;
+        var first: [1]u64 = undefined;
+        return if (self.traversableIds(&first) > 0) first[0] else null;
+    }
+
+    /// Every open tab: the first page's, then the others in the order they
+    /// were made. OWNED: `freeTabs`.
+    pub fn listTabs(self: *Browser, allocator: std.mem.Allocator) ![]TabInfo {
+        return self.traversables(allocator);
+    }
+
+    pub fn freeTabs(allocator: std.mem.Allocator, tabs: []TabInfo) void {
+        freeTraversables(allocator, tabs);
+    }
+
+    /// The realm of tab `tab`'s active Window, or null.
+    pub fn tabRealm(self: *Browser, tab: TabId) ?runtime.Context {
+        return self.traversableRealm(tab);
+    }
+
+    /// `listener` hears the Browser's events from now on (host_events), on
+    /// this thread, until `removeListener`.
+    pub fn addListener(self: *Browser, listener: host_events.Listener) !void {
+        try self.listeners.add(self.allocator, listener);
+    }
+
+    pub fn removeListener(self: *Browser, listener: host_events.Listener) void {
+        self.listeners.remove(listener);
+    }
+
+    /// One navigable and its descendants, as `navigableTree` gives them
+    /// (WebDriver BiDi browsingContext.Info).
+    pub const NavigableInfo = struct {
+        id: u64,
+        /// Its parent navigable; null for a tab.
+        parent: ?u64,
+        /// The traversable whose page opened it (a tab only).
+        opener: ?u64,
+        /// Its active document's URL. OWNED.
+        url: []u8,
+        /// Its child navigables, to the depth asked for. OWNED.
+        children: []NavigableInfo,
+    };
+
+    /// BiDi browsingContext.getTree: every open tab with its frames, or the
+    /// navigable `root` (a tab or a frame) and its descendants, each to
+    /// `max_depth` levels below it (null: all). OWNED: `freeNavigableTree`.
+    /// error.NoSuchTab for a `root` that names no open navigable.
+    pub fn navigableTree(self: *Browser, allocator: std.mem.Allocator, root: ?u64, max_depth: ?u32) ![]NavigableInfo {
+        var list: std.ArrayListUnmanaged(NavigableInfo) = .empty;
+        errdefer {
+            for (list.items) |*info| freeNavigableInfo(allocator, info);
+            list.deinit(allocator);
+        }
+        if (root) |id| {
+            const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return error.NoSuchTab;
+            const bc = navigables.byId(id) orelse return error.NoSuchTab;
+            if (bc.is_closed or bc.active_window == null) return error.NoSuchTab;
+            try list.append(allocator, try navigableInfoOf(allocator, bc, max_depth));
+        } else {
+            var ids: [256]u64 = undefined;
+            const count = @min(self.traversableIds(&ids), ids.len);
+            for (ids[0..count]) |id| {
+                const bc = self.openTraversable(id) orelse continue;
+                try list.append(allocator, try navigableInfoOf(allocator, bc, max_depth));
+            }
+        }
+        return list.toOwnedSlice(allocator);
+    }
+
+    pub fn freeNavigableTree(allocator: std.mem.Allocator, tree: []NavigableInfo) void {
+        for (tree) |*info| freeNavigableInfo(allocator, info);
+        allocator.free(tree);
+    }
+
+    fn freeNavigableInfo(allocator: std.mem.Allocator, info: *NavigableInfo) void {
+        for (info.children) |*child| freeNavigableInfo(allocator, child);
+        allocator.free(info.children);
+        allocator.free(info.url);
+    }
+
+    fn navigableInfoOf(allocator: std.mem.Allocator, bc: *html_mod.BrowsingContext, depth_left: ?u32) !NavigableInfo {
+        const document: ?*runtime.Instance = if (bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
+        const url = try documentUrl(allocator, document);
+        errdefer allocator.free(url);
+        var children: std.ArrayListUnmanaged(NavigableInfo) = .empty;
+        errdefer {
+            for (children.items) |*child| freeNavigableInfo(allocator, child);
+            children.deinit(allocator);
+        }
+        const descend = if (depth_left) |left| left > 0 else true;
+        if (descend) {
+            for (bc.children.items) |child| {
+                if (child.is_closed or child.active_window == null) continue;
+                try children.append(allocator, try navigableInfoOf(allocator, child, if (depth_left) |left| left - 1 else null));
+            }
+        }
+        const opener: ?u64 = if (bc.parent == null) (if (bc.opener) |o| (if (!bc.disowned and isOpenTopLevel(o)) o.id else null) else null) else null;
+        return .{
+            .id = bc.id,
+            .parent = if (bc.parent) |p| p.id else null,
+            .opener = opener,
+            .url = url,
+            .children = try children.toOwnedSlice(allocator),
+        };
+    }
+
+    /// What `evaluateInTab` evaluates with.
+    pub const EvaluateOptions = struct {
+        /// When the completion value is a promise, wait for it to settle and
+        /// answer its value or its reason (BiDi script.evaluate awaitPromise).
+        await_promise: bool = false,
+        /// The tab's document gets an activation notification first, as a
+        /// user's input would give it (BiDi script.evaluate userActivation;
+        /// HTML 6.4.3 "activation notification").
+        user_activation: bool = false,
+        /// How deep arrays and objects are serialized (remote_value).
+        max_depth: u32 = 1,
+    };
+
+    /// An evaluation's answer: a BiDi script.RemoteValue (`success`), or an
+    /// exception's details (`exception`: {"text", "url", "lineNumber",
+    /// "columnNumber", "exception": RemoteValue}). `json` is BORROWED for
+    /// the callback.
+    pub const EvaluateResult = struct {
+        kind: enum { success, exception },
+        json: []const u8,
+    };
+
+    /// Who hears an evaluation's answer, on the Browser's thread - at once,
+    /// or when its promise settles. error.NoSuchTab, error.BrowserEnded (the
+    /// Browser ended first), error.RealmEnded (the tab's document went
+    /// first), or an engine error.
+    pub const EvaluateCallback = struct {
+        context: *anyopaque,
+        done: *const fn (context: *anyopaque, result: anyerror!EvaluateResult) void,
+    };
+
+    /// Evaluate `source` as a classic script in tab `tab`'s active document's
+    /// realm (BiDi script.evaluate, the host API's `evaluate`): its
+    /// completion value, or what it threw - the host's script, never
+    /// reported to the page's Window. `callback` hears the answer exactly
+    /// once.
+    pub fn evaluateInTab(self: *Browser, tab: TabId, source: []const u8, options: EvaluateOptions, callback: EvaluateCallback) void {
+        const realm = self.tabRealm(tab) orelse return callback.done(callback.context, error.NoSuchTab);
+        if (options.user_activation) {
+            if (self.traversableWindow(tab)) |window| {
+                if (interfaces.Window.get_document(window)) |document| html_mod.user_activation.notifyActivation(document) else |_| {}
+            }
+        }
+        var capture: ExceptionCapture = .{ .allocator = self.allocator, .realm = realm, .max_depth = options.max_depth };
+        defer capture.deinit();
+        const completion = engine.evaluateClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = ExceptionCapture.report, .host = &capture }) catch |err| {
+            if (capture.json) |details| return callback.done(callback.context, .{ .kind = .exception, .json = details });
+            return callback.done(callback.context, err);
+        };
+        defer completion.release();
+        if (options.await_promise) {
+            // BiDi script.evaluate: "If awaitPromise is true and
+            // evaluationStatus.[[Value]] is a Promise" - PromiseResolve
+            // answers the same object for a promise of %Promise%, so the
+            // two are the same value exactly then.
+            if (engine.promiseResolve(realm, completion.borrow())) |resolved| switch (resolved) {
+                .normal => |promise| {
+                    defer promise.release();
+                    if (engine.sameValue(realm, promise.borrow(), completion.borrow())) {
+                        return self.awaitEvaluation(realm, promise.borrow(), options, callback);
+                    }
+                },
+                .throw => |thrown| thrown.release(),
+            } else |_| {}
+        }
+        const json = remote_value.serialize(self.allocator, realm, completion.borrow(), .{ .max_depth = options.max_depth }) catch |err| return callback.done(callback.context, err);
+        defer self.allocator.free(json);
+        callback.done(callback.context, .{ .kind = .success, .json = json });
+    }
+
+    fn awaitEvaluation(self: *Browser, realm: runtime.Context, promise: runtime.JSValue, options: EvaluateOptions, callback: EvaluateCallback) void {
+        const pending = self.allocator.create(PendingEvaluation) catch return callback.done(callback.context, error.OutOfMemory);
+        pending.* = .{ .browser = self, .allocator = self.allocator, .realm = realm, .callback = callback, .max_depth = options.max_depth };
+        self.pending_evaluations.append(self.allocator, pending) catch {
+            self.allocator.destroy(pending);
+            return callback.done(callback.context, error.OutOfMemory);
+        };
+        engine.reactToPromise(realm, promise, &PendingEvaluation.steps, pending) catch |err| {
+            _ = self.pending_evaluations.pop();
+            self.allocator.destroy(pending);
+            return callback.done(callback.context, err);
+        };
+    }
+
+    /// Every host evaluation still awaiting a promise hears that the Browser
+    /// ended; its reaction, which the engine drops with the agent, then only
+    /// frees it.
+    fn failPendingEvaluations(self: *Browser) void {
+        while (self.pending_evaluations.pop()) |pending| {
+            pending.browser = null;
+            const callback = pending.callback;
+            pending.answered = true;
+            callback.done(callback.context, error.BrowserEnded);
+        }
+        self.pending_evaluations.deinit(self.allocator);
+    }
+
+    /// One host evaluation awaiting its promise.
+    const PendingEvaluation = struct {
+        /// Null once the Browser ended (it answered the callback then).
+        browser: ?*Browser,
+        allocator: std.mem.Allocator,
+        realm: runtime.Context,
+        callback: EvaluateCallback,
+        max_depth: u32,
+        answered: bool = false,
+
+        const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = dropped };
+
+        fn fulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
+            const self: *PendingEvaluation = @ptrCast(@alignCast(data.?));
+            self.answer(.success, value);
+        }
+
+        fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+            const self: *PendingEvaluation = @ptrCast(@alignCast(data.?));
+            self.answer(.exception, reason);
+        }
+
+        /// The reaction ended unrun: the tab's realm ended, or the agent.
+        fn dropped(data: ?*anyopaque) void {
+            const self: *PendingEvaluation = @ptrCast(@alignCast(data.?));
+            if (!self.answered) {
+                self.answered = true;
+                self.forget();
+                self.callback.done(self.callback.context, error.RealmEnded);
+            }
+            self.allocator.destroy(self);
+        }
+
+        fn answer(self: *PendingEvaluation, kind: @FieldType(EvaluateResult, "kind"), value: runtime.JSValue) void {
+            defer self.allocator.destroy(self);
+            if (self.answered) return;
+            self.answered = true;
+            self.forget();
+            const json = switch (kind) {
+                .success => remote_value.serialize(self.allocator, self.realm, value, .{ .max_depth = self.max_depth }),
+                .exception => exceptionDetailsJson(self.allocator, self.realm, "Uncaught (in promise)", "", 0, 0, value, self.max_depth),
+            } catch |err| return self.callback.done(self.callback.context, err);
+            defer self.allocator.free(json);
+            self.callback.done(self.callback.context, .{ .kind = kind, .json = json });
+        }
+
+        fn forget(self: *PendingEvaluation) void {
+            const browser = self.browser orelse return;
+            for (browser.pending_evaluations.items, 0..) |item, i| {
+                if (item != self) continue;
+                _ = browser.pending_evaluations.swapRemove(i);
+                return;
+            }
+        }
+    };
+
+    /// What a host evaluation threw, as exception details JSON.
+    const ExceptionCapture = struct {
+        allocator: std.mem.Allocator,
+        realm: runtime.Context,
+        max_depth: u32,
+        json: ?[]u8 = null,
+
+        fn report(capture: ?*anyopaque, info: *const engine.ErrorInfo) void {
+            const self: *ExceptionCapture = @ptrCast(@alignCast(capture.?));
+            if (self.json != null) return;
+            self.json = exceptionDetailsJson(self.allocator, info.realm orelse self.realm, info.message, info.filename, info.lineno, info.colno, info.error_value, self.max_depth) catch null;
+        }
+
+        fn deinit(self: *ExceptionCapture) void {
+            if (self.json) |json| self.allocator.free(json);
+        }
+    };
+
+    fn exceptionDetailsJson(allocator: std.mem.Allocator, realm: runtime.Context, text: []const u8, url: []const u8, line: u32, column: u32, exception: runtime.JSValue, max_depth: u32) ![]u8 {
+        const value = try remote_value.serialize(allocator, realm, exception, .{ .max_depth = max_depth });
+        defer allocator.free(value);
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try out.writer.writeAll("{\"text\":");
+        try std.json.Stringify.encodeJsonString(text, .{}, &out.writer);
+        try out.writer.writeAll(",\"url\":");
+        try std.json.Stringify.encodeJsonString(url, .{}, &out.writer);
+        try out.writer.print(",\"lineNumber\":{d},\"columnNumber\":{d},\"exception\":{s}}}", .{ line, column, value });
+        return out.toOwnedSlice();
+    }
+
+    /// HTML "close a top-level traversable" for a page the host made, up to
+    /// its destruction, which is the host's (`endHostPage`): beforeunload
+    /// when `prompt` asks for it, then pagehide and unload, children first,
+    /// and its documents destroyed (dom.auxiliary_navigables.definitelyClose,
+    /// whose host-page branch leaves the page to its host).
+    fn unloadHostPage(ctx: *Context, prompt: @import("dom").auxiliary_navigables.Prompt) @import("dom").auxiliary_navigables.CloseOutcome {
+        const bc = ctx.browsing_context orelse return .closed;
+        const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return .closed));
+        return @import("dom").auxiliary_navigables.definitelyClose(window, prompt);
+    }
+
+    /// "Destroy a top-level traversable" for a page the host made, once it
+    /// is unloaded: its realm ended (Context.deinit), its fetches let go.
+    fn endHostPage(self: *Browser, ctx: *Context) void {
+        // The pages the back/forward cache keeps leave first, while their
+        // realms' parents and the loop live - the Browser's, all of them, as
+        // Browser.navigate does (a cached page's realm may be a child of the
+        // page that ends).
+        @import("back_forward_cache.zig").evictAllIn(self.scope);
+        if (self.current_context == ctx) {
+            self.current_context = null;
+        } else for (self.tabs.items, 0..) |tab, i| {
+            if (tab != ctx) continue;
+            _ = self.tabs.orderedRemove(i);
+            break;
+        }
+        ctx.deinit();
+        self.allocator.destroy(ctx);
+        // Fetch's "terminate a fetch group" for the page that ended, now.
+        _ = self.agent_host.fetches.sweep();
+        if (self.event_loop) |event_loop| _ = event_loop.drainCloseCallbacks();
+    }
+
+    /// Tab `tab` is gone: no longer paused, another tab active if it was,
+    /// and the host told (`tab_destroyed`, after the close steps) unless the
+    /// navigation observer told it already.
+    fn tabGone(self: *Browser, tab: TabId) void {
+        if (self.pausedIndex(tab)) |index| _ = self.paused_tabs.orderedRemove(index);
+        const was_active = self.active_tab == tab;
+        if (was_active) self.active_tab = null;
+        if (self.forgetKnownTab(tab)) self.listeners.emit(.{ .tab_destroyed = .{ .tab = tab } });
+        if (was_active) self.focusNextActiveTab();
+    }
+
+    fn pausedIndex(self: *Browser, tab: TabId) ?usize {
+        return std.mem.indexOfScalar(TabId, self.paused_tabs.items, tab);
+    }
+
+    /// Whether `tab` was known (and now is not).
+    fn forgetKnownTab(self: *Browser, tab: TabId) bool {
+        const index = std.mem.indexOfScalar(TabId, self.known_tabs.items, tab) orelse return false;
+        _ = self.known_tabs.swapRemove(index);
+        return true;
+    }
+
+    // ------------------------------------------------------------------------
+    // The navigation observer's dispatcher
+    // ------------------------------------------------------------------------
+
+    /// html.navigation.observer: one milestone of one of the Browser's
+    /// navigables, at its spec step. A navigable made or destroyed is told
+    /// to the host as a tab or a frame first; then every milestone is passed
+    /// on as it is. Records and fans out only: no script runs here.
+    fn notifyMilestone(context: *anyopaque, milestone: *const html_mod.navigation.observer.Milestone) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        const id = milestone.navigable_id;
+        switch (milestone.event) {
+            .navigable_created => |created| if (created.parent_id) |parent| {
+                self.listeners.emit(.{ .frame_created = .{ .navigable = id, .parent = parent } });
+            } else {
+                self.known_tabs.append(self.allocator, id) catch {};
+                // CDP's waitForDebuggerOnStart: a popup starts paused.
+                if (created.created_by == .page and self.hold_page_tabs and self.pausedIndex(id) == null) {
+                    self.paused_tabs.append(self.allocator, id) catch {};
+                }
+                self.listeners.emit(.{ .tab_created = .{
+                    .tab = id,
+                    .opener = created.opener_id,
+                    .made_by = switch (created.created_by) {
+                        .host => .host,
+                        .page => .page,
+                    },
+                } });
+            },
+            .navigable_destroyed => if (self.forgetKnownTab(id)) {
+                if (self.pausedIndex(id)) |index| _ = self.paused_tabs.orderedRemove(index);
+                self.listeners.emit(.{ .tab_destroyed = .{ .tab = id } });
+                // A tab its page closed (window.close()) that was the active
+                // one: the next has the focus.
+                if (self.active_tab == id) {
+                    self.active_tab = null;
+                    self.focusNextActiveTab();
+                }
+            } else {
+                self.listeners.emit(.{ .frame_destroyed = .{ .navigable = id } });
+            },
+            else => {},
+        }
+        self.listeners.emit(.{ .navigation = milestone });
+    }
+
+    /// html.navigation.document_start: a new document of one of the
+    /// Browser's navigables is ready for host scripts, before its own run -
+    /// passed to the listeners, which may run script for it.
+    fn runDocumentStart(context: *anyopaque, start: *const html_mod.navigation.document_start.Start) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .document_start = start });
+    }
+
+    /// html.navigation.user_prompts: a simple dialog opens - told to the
+    /// listeners (host_events' dialog_opening), before this thread pauses.
+    fn dialogOpening(context: *anyopaque, opening: *const html_mod.navigation.user_prompts.Opening) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .dialog_opening = opening });
+    }
+
+    /// html.navigation.user_prompts: the dialog closed.
+    fn dialogClosed(context: *anyopaque, closed: *const html_mod.navigation.user_prompts.Closed) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .dialog_closed = closed });
+    }
+
+    /// html_core BrowsingContext.touchedByScript: script reached a frame's
+    /// initial about:blank Window for the first time.
+    fn frameTouched(context: *anyopaque, navigable: u64) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .frame_touched = .{ .navigable = navigable } });
+    }
+
+    /// html.navigation.window_open: a page asks for a new window, before it
+    /// is made.
+    fn windowOpened(context: *anyopaque, opened: *const html_mod.navigation.window_open.Opened) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .window_open = opened });
+    }
+
+    /// The inspector client's runIfWaitingForDebugger: group `group` is a
+    /// tab (devtools contexts.groupOf), whose start hold goes.
+    fn inspectorRunIfWaiting(client_host: ?*anyopaque, group: engine.InspectorGroup) void {
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        self.releaseTab(group);
+    }
+
+    /// The inspector client's runMessageLoopOnPause: the debugger paused
+    /// script of tab `group`. This thread blocks in a nested loop that runs
+    /// only the session messages posted to it (BrowserHost.postSessionMessage
+    /// - the inspector's, which resume or step) until quitMessageLoopOnPause:
+    /// no task, timer or rendering runs meanwhile. Blink's
+    /// MainThreadDebugger::runMessageLoopOnPause -> ClientMessageLoop::Run
+    /// (third_party/blink/renderer/core/inspector/main_thread_debugger.cc;
+    /// BSD-3, reproduced, not copied).
+    fn inspectorRunMessageLoopOnPause(client_host: ?*anyopaque, group: engine.InspectorGroup) void {
+        _ = group;
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        const pause = self.scope.of(runtime.BrowserPause) catch return;
+        self.debugger_quit = false;
+        const Quit = struct {
+            fn met(context: *anyopaque) bool {
+                const browser: *Browser = @ptrCast(@alignCast(context));
+                return browser.debugger_quit;
+            }
+        };
+        pause.pauseUntil(.{ .context = self, .met = Quit.met }, .debugger);
+    }
+
+    /// The inspector client's quitMessageLoopOnPause (Debugger.resume, a
+    /// step): the nested loop ends after the message that asked.
+    fn inspectorQuitMessageLoopOnPause(client_host: ?*anyopaque) void {
+        const self: *Browser = @ptrCast(@alignCast(client_host orelse return));
+        self.debugger_quit = true;
+        if (self.scope.existing(runtime.BrowserPause)) |pause| pause.notify();
+    }
+
+    /// html.navigation.observer: whether navigable `navigable_id`'s
+    /// navigation waits before its fetch - while its tab is paused.
+    fn holdsNavigation(context: *anyopaque, navigable_id: u64) bool {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        return self.pausedIndex(navigable_id) != null;
+    }
+
+    // ========================================================================
     // The developer console
     // ========================================================================
 
@@ -1134,11 +1995,6 @@ pub const Browser = struct {
         return ctx.realm;
     }
 
-    /// Get the storage subsystem
-    pub fn getStorage(self: *Browser) *Storage {
-        return self.storage;
-    }
-
     /// Check if the browser was initialized from a V8 snapshot
     ///
     /// Returns true if the browser's isolate was created from a snapshot,
@@ -1155,9 +2011,7 @@ test "Browser - basic lifecycle" {
 
     // Note: This test requires V8 to be initialized, which may not be available
     // in all test environments. Skip if V8 is not available.
-    var browser = Browser.init(allocator, .{
-        .persist_storage = false, // Use memory-only storage for tests
-    }) catch |err| {
+    var browser = Browser.init(allocator, .{}) catch |err| {
         // V8 not available in test environment
         if (err == error.V8InitFailed) return;
         return err;

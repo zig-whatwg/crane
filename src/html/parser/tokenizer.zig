@@ -3123,6 +3123,12 @@ pub const Tokenizer = struct {
                 // Advance input position past the batch
                 self.input.position = end_pos;
                 self.input.column += @intCast(batch_len);
+                // HTML 13.2.3.5: the batch consumed characters that are no
+                // LF, so a CR before them pairs with no LF after them - as
+                // `consume` forgets it for each. The current character may
+                // be the LF a CR became: `before\rABCDEF\nafter` lost its
+                // second newline (newline-normalization-cr-then-lf.html).
+                self.input.last_was_cr = false;
             }
         }
 

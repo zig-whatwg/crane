@@ -362,6 +362,6 @@ test "IndexedDB an execution context's end closes its connections, once their tr
     try unfinished.abort();
     try std.testing.expectEqual(@as(usize, 1), signal.notes);
     try std.testing.expect(server.awaitCloses(database, queued.id));
-    try std.testing.expectEqual(@as(u64, 1), server.deleteDatabase(database));
+    try std.testing.expectEqual(@as(u64, 1), server.deleteDatabase(database, null).old_version);
     server.dequeue(database, queued.id);
 }

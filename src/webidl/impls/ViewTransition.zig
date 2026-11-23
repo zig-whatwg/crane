@@ -29,7 +29,11 @@ fn modelOf(instance: *runtime.Instance) !*InternalState {
 }
 
 pub fn installHooks() void {
-    dom.style.hooks.install(.{ .view_transition_of = &transitionOf, .view_transition_classes = &view_transitions.viewTransitionClasses });
+    dom.style.hooks.install(.{
+        .view_transition_of = &transitionOf,
+        .view_transition_classes = &view_transitions.viewTransitionClasses,
+        .view_transition_only_child = &view_transitions.viewTransitionOnlyChild,
+    });
     dom.update_the_rendering.installStep(.view_transitions, &view_transitions.performPendingTransitionOperations);
 }
 

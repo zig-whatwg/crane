@@ -16,8 +16,7 @@
 //! ├── browsing_context.zig   # BrowsingContext, BrowsingContextGroup
 //! ├── window_proxy.zig       # a navigable's WindowProxy record (no access checks)
 //! ├── iframe_integration.zig # IFrame ↔ BrowsingContext lifecycle
-//! ├── ui_backend.zig         # Pluggable UI (alert, confirm, prompt, print)
-//! ├── animation_frame.zig    # requestAnimationFrame scheduling
+//! ├── host_overrides.zig     # a host's per-tab overrides (CDP Emulation, BiDi emulation)
 //! └── root.zig               # Module exports (this file)
 //! ```
 //!
@@ -31,23 +30,19 @@
 //! defer navigables.deinit();
 //! const ctx = try window.BrowsingContext.initTopLevel(allocator, &navigables);
 //! defer ctx.deinit();
-//!
-//! // Create UI backend for prompts
-//! var ui = window.StubUIBackend.init(.{});
-//! ui.backend().showAlert("Hello!");
-//!
-//! // Animation frame scheduling
-//! var timing = window.StubFrameTimingBackend.init();
-//! var scheduler = try window.AnimationFrameScheduler.init(allocator, timing.backend());
-//! defer scheduler.deinit();
-//!
-//! const handle = try scheduler.requestAnimationFrame(callback, context);
 //! ```
+//!
+//! Simple dialogs (alert, confirm, prompt) and print are html.simple_dialogs'.
+//!
+//! requestAnimationFrame is the Browser's frame clock (src/browser/rendering.zig).
 
 const std = @import("std");
 
 // Browsing Context (§7.1)
 pub const browsing_context = @import("browsing_context.zig");
+/// A host's overrides of the platform's answers for a tab (CDP Emulation,
+/// WebDriver BiDi emulation).
+pub const host_overrides = @import("host_overrides.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
 pub const Navigables = browsing_context.Navigables;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;
@@ -64,23 +59,6 @@ pub const iframe_integration = @import("iframe_integration.zig");
 pub const IFrameIntegration = iframe_integration.IFrameIntegration;
 pub const IFrameState = iframe_integration.IFrameState;
 pub const IFrameError = iframe_integration.IFrameError;
-
-// UI Backend (§8.8 - Simple dialogs)
-pub const ui_backend = @import("ui_backend.zig");
-pub const UIBackend = ui_backend.UIBackend;
-pub const StubUIBackend = ui_backend.StubUIBackend;
-pub const StubUIBackendConfig = ui_backend.StubUIBackendConfig;
-pub const ConsoleUIBackend = ui_backend.ConsoleUIBackend;
-pub const CallbackUIBackend = ui_backend.CallbackUIBackend;
-
-// Animation Frame (§8.14.2)
-pub const animation_frame = @import("animation_frame.zig");
-pub const AnimationFrameScheduler = animation_frame.AnimationFrameScheduler;
-pub const FrameTimingBackend = animation_frame.FrameTimingBackend;
-pub const StubFrameTimingBackend = animation_frame.StubFrameTimingBackend;
-pub const MockFrameTimingBackend = animation_frame.MockFrameTimingBackend;
-pub const FrameRequestCallback = animation_frame.FrameRequestCallback;
-pub const DOMHighResTimeStamp = animation_frame.DOMHighResTimeStamp;
 
 test {
     std.testing.refAllDecls(@This());

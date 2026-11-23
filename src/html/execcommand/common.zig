@@ -23,6 +23,8 @@ const dom = @import("dom");
 const engine = @import("engine");
 const webidl = @import("webidl");
 const ComputedStyle = @import("css").computed_style.ComputedStyle;
+const undo = @import("undo.zig");
+const history = @import("html_core").editing.history;
 
 pub const Instance = runtime.Instance;
 const DOMString = runtime.DOMString;
@@ -53,11 +55,28 @@ pub const Edit = struct {
     /// collapsed selection (their steps after step 1): the browser rules for
     /// a user's range (delete.zig rangeKeepsChildBlock) do not apply.
     range_from_caret: bool = false,
+    /// The delete or forwardDelete command is running: after a join the
+    /// caret goes into the start line's inline content (delete.zig, before
+    /// step 41). Commands that replace the selection with content
+    /// (insertImage, insertHTML, insertText) keep the spec's caret at the
+    /// join: all three browsers insert `<p><b>foo[bar</b><p>baz]quz` +
+    /// insertImage outside the b (editing/run/insertimage.html, PPP at
+    /// wpt.fyi 2358bd4835; Blink ReplaceSelectionCommand's
+    /// PositionAvoidingPrecedingNodes).
+    caret_into_joined_line: bool = false,
+    /// insertText is applying the overrides to the text it just typed
+    /// (insert_text.zig step 15): a <font> the chain makes for one override
+    /// is not a wrapper the next background colour goes onto
+    /// (inline.zig valueOntoWrapper).
+    applying_typing_style: bool = false,
     /// An arena for the values one command produces - effective and
     /// specified command values, recorded overrides and recorded values -
     /// set by root.zig for exactly the command, query or key action and
     /// freed at its end, so the algorithms that hold them need no frees.
     scratch: ?std.mem.Allocator = null,
+    /// The undo step this command's primitives record into (undo.zig), or
+    /// null: set by root.zig for the commands that record.
+    step: ?*history.Step = null,
 
     /// The scratch arena, or the edit's allocator when none was set (a
     /// caller that sets none frees what it asks for).
@@ -105,37 +124,225 @@ pub const Edit = struct {
     }
 
     // ---- DOM mutation primitives: every change goes through one of these,
-    // so `modified` is exact.
+    // so `modified` is exact, and each records itself into the command's
+    // undo step (undo.zig) - Blink's SimpleEditCommands.
 
-    /// Remove `node` from its parent (no-op without one).
+    /// Remove `node` from its parent (no-op without one): RemoveNodeCommand.
     pub fn removeNode(self: *Edit, node: *Instance) !void {
         const p = (try parent(node)) orelse return;
+        const next = try nextSibling(node);
         _ = try interfaces.Node.call_removeChild(p, node);
         self.modified = true;
+        if (self.step) |step| try undo.recordChild(self.allocator, step, .remove, p, node, next);
     }
 
-    /// Insert `node` into `new_parent` before `reference` (null: append).
-    pub fn insertBefore(self: *Edit, new_parent: *Instance, node: *Instance, reference: ?*Instance) !void {
-        _ = try interfaces.Node.call_insertBefore(new_parent, node, reference);
-        self.modified = true;
+    /// Insert `node` into `new_parent` before `reference` (null: append):
+    /// InsertNodeBeforeCommand / AppendNodeCommand. A node that has a parent
+    /// is removed from it first, and a DocumentFragment inserts its
+    /// children, as the DOM's insert does; each is recorded so.
+    pub fn insertBefore(self: *Edit, new_parent: *Instance, node: *Instance, reference_in: ?*Instance) !void {
+        // DOM pre-insert step 3: a reference that is the node itself means
+        // the node's next sibling.
+        const reference = if (reference_in != null and reference_in.? == node) try nextSibling(node) else reference_in;
+        const step = self.step orelse {
+            _ = try interfaces.Node.call_insertBefore(new_parent, node, reference);
+            self.modified = true;
+            return;
+        };
+        if (isDocumentFragment(node)) {
+            var children: std.ArrayList(*Instance) = .empty;
+            defer children.deinit(self.allocator);
+            var child = try firstChild(node);
+            while (child) |c| : (child = try nextSibling(c)) try children.append(self.allocator, c);
+            _ = try interfaces.Node.call_insertBefore(new_parent, node, reference);
+            self.modified = true;
+            for (children.items) |c| try undo.recordChild(self.allocator, step, .insert, new_parent, c, reference);
+            return;
+        }
+        if (try parent(node)) |old_parent| {
+            const old_next = try nextSibling(node);
+            _ = try interfaces.Node.call_insertBefore(new_parent, node, reference);
+            self.modified = true;
+            try undo.recordChild(self.allocator, step, .remove, old_parent, node, old_next);
+        } else {
+            _ = try interfaces.Node.call_insertBefore(new_parent, node, reference);
+            self.modified = true;
+        }
+        try undo.recordChild(self.allocator, step, .insert, new_parent, node, reference);
     }
 
     pub fn appendChild(self: *Edit, new_parent: *Instance, node: *Instance) !void {
-        _ = try interfaces.Node.call_appendChild(new_parent, node);
-        self.modified = true;
+        try self.insertBefore(new_parent, node, null);
     }
 
-    /// CharacterData.deleteData(offset, count).
+    /// CharacterData.deleteData(offset, count): DeleteFromTextNodeCommand.
     pub fn deleteData(self: *Edit, node: *Instance, offset: u32, count: u32) !void {
         if (count == 0) return;
+        const step = self.step orelse {
+            try interfaces.CharacterData.call_deleteData(node, offset, count);
+            self.modified = true;
+            return;
+        };
+        var deleted = try interfaces.CharacterData.call_substringData(node, offset, count);
+        defer deleted.deinit(node.ctx.allocator);
         try interfaces.CharacterData.call_deleteData(node, offset, count);
         self.modified = true;
+        try undo.recordText(self.allocator, step, .delete, node, offset, deleted.asSlice());
     }
 
-    /// CharacterData.insertData(offset, data).
+    /// CharacterData.insertData(offset, data): InsertIntoTextNodeCommand.
     pub fn insertData(self: *Edit, node: *Instance, offset: u32, data: []const u8) !void {
         try interfaces.CharacterData.call_insertData(node, offset, DOMString.initInterned(data));
         self.modified = true;
+        if (self.step) |step| try undo.recordText(self.allocator, step, .insert, node, offset, data);
+    }
+
+    /// Text.splitText(offset) (DOM "split a Text node"): the new node goes
+    /// in after `text` and the data from `offset` on leaves it - recorded as
+    /// that insertion and that deletion, in the DOM's order. The new node.
+    pub fn splitText(self: *Edit, text: *Instance, offset: u32) !*Instance {
+        const p = try parent(text);
+        const next = try nextSibling(text);
+        const length = try nodeLength(text);
+        const count = length -| offset;
+        var tail_data: ?DOMString = if (self.step != null and count > 0) try interfaces.CharacterData.call_substringData(text, offset, count) else null;
+        defer if (tail_data) |*d| d.deinit(text.ctx.allocator);
+        const new_node = try interfaces.Text.call_splitText(text, offset);
+        self.modified = true;
+        if (self.step) |step| {
+            if (p) |parent_node| try undo.recordChild(self.allocator, step, .insert, parent_node, new_node, next);
+            if (tail_data) |d| try undo.recordText(self.allocator, step, .delete, text, offset, d.asSlice());
+        }
+        return new_node;
+    }
+
+    /// Range.insertNode(node) on `range` (DOM "insert" into a range), by
+    /// the DOM's own steps over this Edit's primitives, so the split and the
+    /// insertion are recorded. Callers insert into editable content, where
+    /// the steps' validity checks hold (a failing insertBefore still throws).
+    pub fn insertNode(self: *Edit, range: *Instance, node: *Instance) !void {
+        const start_node = try interfaces.AbstractRange.get_startContainer(range);
+        const start_offset = try interfaces.AbstractRange.get_startOffset(range);
+        // Step 1: a ProcessingInstruction or Comment start, a parentless Text
+        // start, or the node itself.
+        if (isCommentOrProcessingInstruction(start_node) or start_node == node or (isText(start_node) and (try parent(start_node)) == null)) return error.HierarchyRequestError;
+        // Steps 2-5: the reference node and the parent.
+        var reference: ?*Instance = if (isText(start_node)) start_node else try childAt(start_node, start_offset);
+        const insert_parent = if (reference) |r| (try parent(r)).? else start_node;
+        // Step 7: a Text start is split at the start offset.
+        if (isText(start_node)) reference = try self.splitText(start_node, start_offset);
+        // Step 8.
+        if (reference != null and reference.? == node) reference = try nextSibling(node);
+        // Step 9: node leaves its parent.
+        const collapsed = try interfaces.AbstractRange.get_collapsed(range);
+        if ((try parent(node)) != null) try self.removeNode(node);
+        // Steps 10-11: the new offset.
+        var new_offset: u32 = if (reference) |r| try indexOf(r) else try childCount(insert_parent);
+        new_offset += if (isDocumentFragment(node)) try childCount(node) else 1;
+        // Step 12.
+        try self.insertBefore(insert_parent, node, reference);
+        // Step 13.
+        if (collapsed) try interfaces.Range.call_setEnd(range, insert_parent, new_offset);
+    }
+
+    /// DOM "extract" a live range (start, end), by the DOM's own steps
+    /// over this Edit's primitives (specs/whatwg/dom.md "To extract a live
+    /// range"), so every change - the partially selected texts' replaced
+    /// data, each contained node's move into the fragment or into a clone of
+    /// its partially contained ancestor - is recorded for undo, the moves
+    /// into the detached fragment and clones too (redo puts the nodes back
+    /// there before the fragment goes into the document). The live ranges
+    /// move with the same mutations as Range.extractContents makes; the
+    /// caller's own range is not updated (step 15): the editing callers
+    /// discard it. The new DocumentFragment.
+    pub fn extractContents(self: *Edit, start: Point, end: Point) !*Instance {
+        const document = (try interfaces.Node.get_ownerDocument(start.node)) orelse self.document;
+        // Step 1.
+        const fragment = try interfaces.Document.call_createDocumentFragment(document);
+        // Step 2.
+        if (start.node == end.node and start.offset == end.offset) return fragment;
+        try self.extractInto(fragment, start, end);
+        return fragment;
+    }
+
+    /// Steps 3-20 of "extract" for (start, end), appending to `fragment`.
+    fn extractInto(self: *Edit, fragment: *Instance, start: Point, end: Point) anyerror!void {
+        if (start.node == end.node and start.offset == end.offset) return;
+        // Step 4: one CharacterData node.
+        if (start.node == end.node and isCharacterData(start.node)) {
+            const clone = try clonePartOfCharacterData(start.node, start.offset, end.offset - start.offset);
+            try self.appendChild(fragment, clone);
+            try self.deleteData(start.node, start.offset, end.offset - start.offset);
+            return;
+        }
+        // Step 5.
+        const common_ancestor = try commonAncestorOf(start.node, end.node);
+        // Steps 6-9: the first and last partially contained children.
+        var first_partial: ?*Instance = null;
+        var last_partial: ?*Instance = null;
+        var contained: std.ArrayList(*Instance) = .empty;
+        defer contained.deinit(self.allocator);
+        var child = try firstChild(common_ancestor);
+        while (child) |c| : (child = try nextSibling(c)) {
+            const holds_start = isInclusiveDescendantOf(start.node, c);
+            const holds_end = isInclusiveDescendantOf(end.node, c);
+            if (holds_start != holds_end) {
+                if (holds_start) first_partial = c;
+                if (holds_end and last_partial == null) last_partial = c;
+                continue;
+            }
+            // Step 10: contained children.
+            if (holds_start) continue;
+            if (!try pointIsAfter(.{ .node = c, .offset = 0 }, start)) continue;
+            if (!try pointIsBefore(.{ .node = c, .offset = try nodeLength(c) }, end)) continue;
+            try contained.append(self.allocator, c);
+        }
+        if (isInclusiveDescendantOf(end.node, start.node)) first_partial = null;
+        if (isInclusiveDescendantOf(start.node, end.node)) last_partial = null;
+        // Step 11.
+        for (contained.items) |c| if (isDocumentType(c)) return error.HierarchyRequestError;
+        // Steps 12-15 set the caller's range; see extractContents.
+        // Step 16.
+        if (first_partial) |partial| {
+            if (isCharacterData(partial)) {
+                const length = try nodeLength(start.node);
+                const clone = try clonePartOfCharacterData(start.node, start.offset, length - start.offset);
+                try self.appendChild(fragment, clone);
+                try self.deleteData(start.node, start.offset, length - start.offset);
+            } else {
+                // Step 17.
+                const clone = try cloneNode(partial, false);
+                try self.appendChild(fragment, clone);
+                const subfragment = try interfaces.Document.call_createDocumentFragment((try interfaces.Node.get_ownerDocument(partial)).?);
+                // The creator's reference ends here; an undo step that names
+                // the emptied fragment holds its own.
+                const subfragment_generation = runtime.SlabAllocator.generationOf(subfragment);
+                defer dom.node_creation.releaseIfUnwrapped(subfragment, subfragment_generation);
+                try self.extractInto(subfragment, start, .{ .node = partial, .offset = try nodeLength(partial) });
+                try self.appendChild(clone, subfragment);
+            }
+        }
+        // Step 18.
+        for (contained.items) |c| try self.appendChild(fragment, c);
+        // Step 19.
+        if (last_partial) |partial| {
+            if (isCharacterData(partial)) {
+                const clone = try clonePartOfCharacterData(end.node, 0, end.offset);
+                try self.appendChild(fragment, clone);
+                try self.deleteData(end.node, 0, end.offset);
+            } else {
+                // Step 20.
+                const clone = try cloneNode(partial, false);
+                try self.appendChild(fragment, clone);
+                const subfragment = try interfaces.Document.call_createDocumentFragment((try interfaces.Node.get_ownerDocument(partial)).?);
+                // The creator's reference ends here; an undo step that names
+                // the emptied fragment holds its own.
+                const subfragment_generation = runtime.SlabAllocator.generationOf(subfragment);
+                defer dom.node_creation.releaseIfUnwrapped(subfragment, subfragment_generation);
+                try self.extractInto(subfragment, .{ .node = partial, .offset = 0 }, end);
+                try self.appendChild(clone, subfragment);
+            }
+        }
     }
 
     /// createElement(name) on the document.
@@ -180,6 +387,10 @@ pub const Edit = struct {
         const ranges = dom.document_internals.liveRanges(self.document);
         const live = dom.range_boundaries.liveRange();
         if (ranges != null and live != null) {
+            // Room for every range at once: grown from empty it rehashed
+            // as walk 1 filled it, on every move (lane tpc's delete-join
+            // profile). Out of memory, the puts below grow it as before.
+            adjusted.ensureTotalCapacity(self.allocator, std.math.cast(u32, ranges.?.count()) orelse std.math.maxInt(u32)) catch {};
             var walk: dom.document_internals.LiveObjects.Walk = undefined;
             ranges.?.beginWalk(&walk);
             defer ranges.?.endWalk(&walk);
@@ -309,14 +520,21 @@ pub const Edit = struct {
     }
 };
 
-/// Element.setAttribute(name, value).
+/// Element.setAttribute(name, value), recorded into the running editing
+/// command's undo step if any (SetNodeAttributeCommand; undo.zig).
 pub fn setAttribute(element: *Instance, name: []const u8, value: []const u8) !void {
+    var write = try undo.AttributeWrite.begin(element, name);
+    errdefer write.abandon();
     try interfaces.Element.call_setAttribute(element, DOMString.initInterned(name), .{ .domstring = DOMString.initInterned(value) });
+    try write.end();
 }
 
-/// Element.removeAttribute(name).
+/// Element.removeAttribute(name), recorded as setAttribute is.
 pub fn removeAttribute(element: *Instance, name: []const u8) !void {
+    var write = try undo.AttributeWrite.begin(element, name);
+    errdefer write.abandon();
     try interfaces.Element.call_removeAttribute(element, DOMString.initInterned(name));
+    try write.end();
 }
 
 /// Node.cloneNode(deep).
@@ -343,6 +561,30 @@ pub fn isElement(node: *Instance) bool {
 
 pub fn isDocument(node: *Instance) bool {
     return (nodeType(node) catch return false) == interfaces.Node.get_DOCUMENT_NODE();
+}
+
+/// Whether `node` is a Comment or a ProcessingInstruction.
+fn isCommentOrProcessingInstruction(node: *Instance) bool {
+    const t = nodeType(node) catch return false;
+    return t == interfaces.Node.get_COMMENT_NODE() or t == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE();
+}
+
+/// DOM "clone part of a CharacterData node" given `node`, `offset` and
+/// `count`: a clone holding that substring of its data.
+fn clonePartOfCharacterData(node: *Instance, offset: u32, count: u32) !*Instance {
+    const clone = try cloneNode(node, false);
+    var data = try interfaces.CharacterData.call_substringData(node, offset, count);
+    defer data.deinit(node.ctx.allocator);
+    try interfaces.CharacterData.set_data(clone, DOMString.initInterned(data.asSlice()));
+    return clone;
+}
+
+/// DOM "get the common ancestor": the nearest inclusive ancestor of `a`
+/// that is an inclusive ancestor of `b`.
+fn commonAncestorOf(a: *Instance, b: *Instance) !*Instance {
+    var current = a;
+    while (!isInclusiveDescendantOf(b, current)) current = (try parent(current)) orelse return current;
+    return current;
 }
 
 pub fn isDocumentFragment(node: *Instance) bool {
@@ -596,6 +838,14 @@ pub fn localNameInto(node: *Instance, buffer: []u8) !?[]const u8 {
     return buffer[0..name.len];
 }
 
+/// Element.getAttribute(name), copied into `allocator`; null when absent.
+pub fn getAttribute(allocator: std.mem.Allocator, element: *Instance, name: []const u8) !?[]const u8 {
+    if (!isElement(element)) return null;
+    var value = (try interfaces.Element.call_getAttribute(element, DOMString.initInterned(name))) orelse return null;
+    defer value.deinit(element.ctx.allocator);
+    return try allocator.dupe(u8, value.asSlice());
+}
+
 pub fn hasAttribute(element: *Instance, name: []const u8) !bool {
     if (!isElement(element)) return false;
     return try interfaces.Element.call_hasAttribute(element, DOMString.initInterned(name));
@@ -671,6 +921,52 @@ pub fn isEditingHost(node: *Instance) !bool {
     var mode = try interfaces.Document.get_designMode(p);
     defer mode.deinit(p.ctx.allocator);
     return std.mem.eql(u8, mode.asSlice(), "on");
+}
+
+/// Whether `node` is an editing host in the true state nested in richly
+/// editable content: Chrome, Firefox and Safari all edit such an element as
+/// content of the outer host where removeFormat meets it (editing/other/
+/// shadow_root_iteration_in_block_style.html's `<div contenteditable>hello
+/// <span contenteditable style="color:red">[world]</span></div>`: Chrome
+/// leaves style="", Safari drops the attribute, Firefox unwraps the span -
+/// all three change it; wpt.fyi 2358bd4835), where the spec, taking it for
+/// a host, leaves it alone. Only removeFormat asks (inline.zig): the block
+/// commands keep such an element as the root of what they change (all three
+/// keep `<div contenteditable=true>` when insertOrderedList wraps a table in
+/// it, editing/run/insert-list-items-in-table-cell.html).
+pub fn isNestedRichEditingHost(node: *Instance) !bool {
+    if (!try isHtmlElement(node)) return false;
+    var state = try interfaces.HTMLElement.get_contentEditable(node);
+    defer state.deinit(node.ctx.allocator);
+    if (!std.mem.eql(u8, state.asSlice(), "true")) return false;
+    return try insideRichlyEditableContent(node);
+}
+
+/// Whether `node`'s parent is richly editable content: the nearest ancestor
+/// element whose contenteditable is not inherit is in the true state, or -
+/// none is - the root element is a design-mode document's child. A
+/// plaintext-only or false ancestor first, or no editable ancestor at all,
+/// is not (see isNestedRichEditingHost).
+fn insideRichlyEditableContent(node: *Instance) !bool {
+    var current = (try parent(node)) orelse return false;
+    if (isDocument(current)) return false;
+    while (true) {
+        if (try isHtmlElement(current)) {
+            var state = try interfaces.HTMLElement.get_contentEditable(current);
+            defer state.deinit(current.ctx.allocator);
+            const value = state.asSlice();
+            if (std.mem.eql(u8, value, "true")) return true;
+            if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "plaintext-only")) return false;
+        }
+        const next = (try parent(current)) orelse return false;
+        if (isDocument(next)) {
+            if (!try isHtmlElement(current)) return false;
+            var mode = try interfaces.Document.get_designMode(next);
+            defer mode.deinit(next.ctx.allocator);
+            return std.mem.eql(u8, mode.asSlice(), "on");
+        }
+        current = next;
+    }
 }
 
 /// Whether an element's contenteditable attribute is in the false state.
@@ -831,8 +1127,11 @@ pub fn whiteSpaceStylesAround(node: *Instance) !?WhiteSpaceStyles {
 /// other declarations stay. HTML elements only; false for any other.
 pub fn setInlineStyleProperty(element: *Instance, name: []const u8, value: []const u8) !bool {
     if (!try isHtmlElement(element)) return false;
+    var write = try undo.AttributeWrite.begin(element, "style");
+    errdefer write.abandon();
     const declaration = try interfaces.HTMLElement.get_style(element);
     try interfaces.CSSStyleDeclaration.call_setProperty(declaration, DOMString.initInterned(name), DOMString.initInterned(value), webidl.Opt(DOMString).notPassed());
+    try write.end();
     return true;
 }
 
@@ -878,6 +1177,23 @@ pub fn isBlockNode(node: *Instance) bool {
 
 pub fn isInlineNode(node: *Instance) bool {
     return !isBlockNode(node);
+}
+
+/// Whether `node` is an element laid out as a flex or grid item: a rendered
+/// child of an element whose computed display is (inline-)flex or
+/// (inline-)grid (CSS Flexbox 4, CSS Grid 6). The browsers' editing treats
+/// such an item as a paragraph's block of its own (Blink's
+/// EnclosingBlock: the item is blockified, a LayoutBlockFlow).
+pub fn isFlexOrGridItem(node: *Instance) !bool {
+    if (!isElement(node)) return false;
+    const own = computedStyleOf(node) orelse return false;
+    if (own.display().box != .normal) return false;
+    const p = (try parent(node)) orelse return false;
+    if (!isElement(p)) return false;
+    const style = computedStyleOf(p) orelse return false;
+    const display = style.display();
+    if (display.box != .normal) return false;
+    return display.inner == .flex or display.inner == .grid;
 }
 
 /// Whether `node` or an ancestor element has display: none.

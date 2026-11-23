@@ -8,6 +8,8 @@ const enums = @import("enums");
 const GPUCanvasToneMapping = @import("GPUCanvasToneMapping.zig").GPUCanvasToneMapping;
 
 pub const GPUCanvasConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     device: *runtime.Instance,
     format: enums.GPUTextureFormat,
     usage: ?typedefs.GPUTextureUsageFlags = null,

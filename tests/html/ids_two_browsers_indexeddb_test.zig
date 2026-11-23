@@ -37,7 +37,7 @@ fn runInPage(browser: *Browser, body: []const u8) ![]u8 {
 }
 
 fn startBrowser(allocator: std.mem.Allocator) !*Browser {
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

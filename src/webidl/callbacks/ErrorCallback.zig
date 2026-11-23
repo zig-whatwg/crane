@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ErrorCallback = *const fn (err: *runtime.Instance) void;
+/// callback ErrorCallback = undefined (DOMException err)
+pub const ErrorCallback = runtime.BorrowedCallbackFunction;

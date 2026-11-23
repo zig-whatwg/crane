@@ -29,12 +29,22 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const Hook = @import("hook.zig").Hook;
 
+/// An event handler IDL attribute's value (EventHandler, OnErrorEventHandler,
+/// OnBeforeUnloadEventHandler: nullable callback function types), as the
+/// binding converts it and as the getter returns it - BORROWED: a value the
+/// setter is given is the binding's for the call (EventTarget keeps a hold of
+/// its own), and one the getter returns is the map's own hold.
+pub const HandlerValue = ?runtime.BorrowedCallbackFunction;
+
 pub const Implementation = struct {
-    get: *const fn (*runtime.Instance, []const u8) ?usize,
-    set: *const fn (*runtime.Instance, []const u8, ?usize) anyerror!void,
+    get: *const fn (*runtime.Instance, []const u8) HandlerValue,
+    set: *const fn (*runtime.Instance, []const u8, HandlerValue) anyerror!void,
     /// Make the handler for the event type an internal raw uncompiled
     /// handler, and activate it.
     set_raw: ?*const fn (*runtime.Instance, []const u8, RawSource) anyerror!void = null,
+    /// The event handler content attribute was removed: deactivate the
+    /// handler it set - the main world's (`deactivateForContentAttribute`).
+    deactivate_content_attribute: ?*const fn (*runtime.Instance, []const u8) void = null,
     erase: *const fn (*runtime.Instance) void,
     /// Whether the target's event listener list holds a listener that is not
     /// removed - an activated event handler's included.
@@ -125,6 +135,18 @@ pub fn setRaw(target: *runtime.Instance, event_type: []const u8, source: RawSour
     return set_raw(target, event_type, source);
 }
 
+/// The event handler content attribute change steps' "If value is null,
+/// deactivate an event handler given eventTarget and name", for an element
+/// whose attribute `event_type`'s content attribute was removed: the main
+/// world's handler - the one the content attribute sets - whatever world's
+/// script removed it (engine section 4.2a; EventTarget keeps a handler per
+/// isolated world).
+pub fn deactivateForContentAttribute(target: *runtime.Instance, event_type: []const u8) void {
+    const steps = implementation.get() orelse return;
+    const deactivate = steps.deactivate_content_attribute orelse return;
+    deactivate(target, event_type);
+}
+
 /// Compile `target`'s raw uncompiled handler for `event_type`
 /// (EventTarget's "getting the current value"). With no compiler installed
 /// the handler stays raw: nothing can compile it.
@@ -146,8 +168,8 @@ pub fn eventTypeOf(name: []const u8) []const u8 {
 }
 
 /// The event handler IDL attribute getter steps, for the attribute `name`
-/// ("onload") read on `this`: the handler's value in the binding's
-/// representation (BORROWED from the map), or null.
+/// ("onload") read on `this`: the handler's value (BORROWED from the map), or
+/// null.
 pub inline fn value(comptime Handler: type, this: *runtime.Instance, comptime name: []const u8) Handler {
     // 1. Let eventTarget be the result of determining the target of an event
     //    handler given this object and name.
@@ -160,7 +182,7 @@ pub inline fn value(comptime Handler: type, this: *runtime.Instance, comptime na
 }
 
 /// The event handler IDL attribute setter steps, for the attribute `name` set
-/// on `this` to `handler` (the binding's representation, handed over).
+/// on `this` to `handler` (BORROWED for the call).
 pub inline fn setValue(comptime Handler: type, this: *runtime.Instance, comptime name: []const u8, handler: Handler) !void {
     // 1. Let eventTarget be the result of determining the target of an event
     //    handler given this object and name.
@@ -249,16 +271,18 @@ pub fn determineTarget(this: *runtime.Instance, name: []const u8) ?*runtime.Inst
     return window;
 }
 
-/// Borrow the handler in the binding's representation.
+/// Borrow the handler: the map's own hold, or null.
 pub inline fn get(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (implementation.get() orelse return null).get(target, event_type) orelse return null;
-    return fromAddress(Handler, address);
+    comptime std.debug.assert(Handler == HandlerValue);
+    return (implementation.get() orelse return null).get(target, event_type);
 }
 
-/// Hand the binding's handler value to EventTarget, or deactivate it.
+/// Give the binding's handler value to EventTarget, which keeps a hold of
+/// its own, or deactivate it.
 pub inline fn set(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, handler: Handler) !void {
+    comptime std.debug.assert(Handler == HandlerValue);
     const steps = implementation.get() orelse return error.NotSupported;
-    return steps.set(target, event_type, toAddress(Handler, handler));
+    return steps.set(target, event_type, handler);
 }
 
 /// Whether `target` has an event listener registered: one in its event
@@ -275,23 +299,6 @@ pub fn hasListeners(target: *runtime.Instance) bool {
 pub fn eraseAll(target: *runtime.Instance) void {
     const steps = implementation.get() orelse return;
     steps.erase(target);
-}
-
-fn fromAddress(comptime Handler: type, address: usize) Handler {
-    const Callable = @typeInfo(Handler).optional.child;
-    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
-    var handler: Callable = undefined;
-    @memcpy(std.mem.asBytes(&handler), std.mem.asBytes(&address));
-    return handler;
-}
-
-fn toAddress(comptime Handler: type, maybe: Handler) ?usize {
-    const Callable = @typeInfo(Handler).optional.child;
-    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
-    const handler = maybe orelse return null;
-    var address: usize = undefined;
-    @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
-    return address;
 }
 
 test "the window-reflecting set is WindowEventHandlers plus six, and orientationchange" {
@@ -334,12 +341,11 @@ test "legacy WebKit handler attributes use mixed-case event types" {
     try std.testing.expectEqualStrings("webkitTransitionEnd", eventType("onwebkittransitionend"));
 }
 
-test "event handler representation - null and callable round trip" {
-    const Handler = ?*const fn () void;
-    const function = struct {
-        fn callback() void {}
-    }.callback;
-    const handler: Handler = &function;
-    try std.testing.expect(toAddress(Handler, null) == null);
-    try std.testing.expect(fromAddress(Handler, toAddress(Handler, handler).?) == handler);
+test "without an installed implementation a handler reads null and cannot be set" {
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
+    // Never dereferenced: nothing is installed to read it.
+    var target: runtime.Instance = undefined;
+    try std.testing.expect(get(HandlerValue, &target, "click") == null);
+    try std.testing.expectError(error.NotSupported, set(HandlerValue, &target, "click", null));
 }

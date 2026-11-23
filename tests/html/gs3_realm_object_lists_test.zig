@@ -30,7 +30,7 @@ fn onThread(comptime body: fn () anyerror!void) !void {
 }
 
 fn openBrowser(url: []const u8) !*Browser {
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

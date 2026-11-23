@@ -125,7 +125,9 @@ pub fn handlerFor(resource_type: ?[]const u8) Handler {
 /// mimesniff's "rules for distinguishing if a resource is text or binary":
 /// whether `header` is text/plain.
 fn isText(header: []const u8) bool {
-    const result = mimesniff.sniffing.distinguishTextOrBinary(std.heap.page_allocator, header) catch return true;
+    // The sniffer allocates nothing here (its answers are constants), and
+    // no allocator is in reach: c_allocator, never a page per call.
+    const result = mimesniff.sniffing.distinguishTextOrBinary(std.heap.c_allocator, header) catch return true;
     const mt = result orelse return true;
     return asciiEql(mt.subtype, "plain");
 }

@@ -125,23 +125,17 @@ pub fn setRequestHeader(
     try state.author_request_headers.combine(name, normalized_value);
 }
 
-/// Normalize a header value by trimming HTTP whitespace
+/// Normalize a header value: "remove any leading and trailing HTTP
+/// whitespace bytes" - HTTP whitespace being an HTTP newline byte (0x0A LF,
+/// 0x0D CR) or an HTTP tab or space byte (0x09, 0x20). It trimmed tab and
+/// space alone, so `setRequestHeader("a", "x\n")` threw a SyntaxError where
+/// Fetch's Headers and the three browsers send "x"
+/// (fetch/api/headers/header-values-normalize.any.html "XMLHttpRequest with
+/// value %0A" and "%0D"; Chrome 157, Firefox 160 and Safari 27.2 pass).
 ///
 /// Spec: https://fetch.spec.whatwg.org/#concept-header-value-normalize
 fn normalizeHeaderValue(value: []const u8) []const u8 {
-    // Trim leading HTTP tab or space
-    var start: usize = 0;
-    while (start < value.len and (value[start] == ' ' or value[start] == '\t')) {
-        start += 1;
-    }
-
-    // Trim trailing HTTP tab or space
-    var end: usize = value.len;
-    while (end > start and (value[end - 1] == ' ' or value[end - 1] == '\t')) {
-        end -= 1;
-    }
-
-    return value[start..end];
+    return std.mem.trim(u8, value, "\n\r\t ");
 }
 
 /// Get a single response header
@@ -351,6 +345,26 @@ test "setRequestHeader - adds header" {
 
     // Uses Fetch's HeaderList - check with contains
     try std.testing.expect(state.author_request_headers.contains("Content-Type"));
+}
+
+test "setRequestHeader - normalizes leading and trailing HTTP whitespace, newlines included" {
+    const allocator = std.testing.allocator;
+
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    state.ready_state = .OPENED;
+
+    try setRequestHeader(&state, "val1", "\n");
+    try setRequestHeader(&state, "val2", "x\r");
+    try setRequestHeader(&state, "val3", "\n\t x \r\n");
+    for ([_][2][]const u8{ .{ "val1", "" }, .{ "val2", "x" }, .{ "val3", "x" } }) |pair| {
+        const value = try state.author_request_headers.get(allocator, pair[0]);
+        defer if (value) |v| allocator.free(v);
+        try std.testing.expectEqualStrings(pair[1], value.?);
+    }
+    // Inside the value, a newline is still no header value.
+    try std.testing.expectError(HeaderError.SyntaxError, setRequestHeader(&state, "val4", "x\ny"));
 }
 
 test "setRequestHeader - combines duplicate headers" {

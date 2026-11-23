@@ -129,7 +129,7 @@ pub const IDBFactory = struct {
         request.* = IDBOpenDBRequest.init(self.allocator);
         const database = try self.server().uniqueDatabase(storage_key, name);
         defer self.server().release(database);
-        request.old_version = self.server().deleteDatabase(database);
+        request.old_version = self.server().deleteDatabase(database, null).old_version;
         request.new_version = null; // null indicates deletion
         request.base.setResult(.{ .undefined = {} });
         return request;

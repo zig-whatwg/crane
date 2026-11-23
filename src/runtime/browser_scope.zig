@@ -74,6 +74,21 @@ pub const BrowserScope = struct {
     /// (startMonitoring) when a navigation gives a top-level context a new
     /// virtual browsing context group ID, and never cleared.
     window_access_monitored: std.atomic.Value(bool) = .init(false),
+    /// Whether one of this Browser's realms has an isolated world realm (the
+    /// engine's createWorldRealm; CDP's Page.createIsolatedWorld): until
+    /// then a conversion of a platform object asks no world - two loads, no
+    /// lookup - as `window_access_monitored` gates its path. Set by the
+    /// engine adapter when it makes the Browser's first world realm, never
+    /// cleared. Read by every thread of the Browser (a worker's conversions
+    /// read their realm's), hence atomic.
+    isolated_worlds_active: std.atomic.Value(bool) = .init(false),
+    /// The Browser's performance monitor (dom.performance_monitor.Monitor)
+    /// while a host is subscribed to a violation, else null: the hot paths
+    /// - listener invoke, timer fire - load it and branch, reading no clock
+    /// when it is null, as Blink's PerformanceMonitor::enabled_. Set and
+    /// cleared on the window thread; read by any thread of the Browser (a
+    /// worker's dispatch tests it too), hence atomic.
+    performance_monitor: std.atomic.Value(?*anyopaque) = .init(null),
     /// Protects `supplements` and the making of tables. Never held across a
     /// supplement's own steps beyond its `init`.
     mutex: std.Io.Mutex = .init,
@@ -129,17 +144,23 @@ pub const BrowserScope = struct {
         html_select_element,
         html_source_element,
         html_track_element,
+        html_video_element,
         canvas_rendering_context_2d,
         css_style_declaration,
         dom_string_map,
         svg_image_element,
         svg_use_element,
+        // dom.smil.document_animations (lane dnd1): an animation element's
+        // timing state, an outermost svg element's timeline.
+        svg_animation_element,
+        svg_svg_element,
         font_face,
         font_face_set,
         /// dom.browser_object_lists: the Browser's IntersectionObservers
-        /// that observe something, its Navigation objects, and its
-        /// ProcessingInstructions not yet deinit'd.
+        /// and ResizeObservers that observe something, its Navigation
+        /// objects, and its ProcessingInstructions not yet deinit'd.
         intersection_observers,
+        resize_observers,
         navigations,
         processing_instructions,
         /// dom.element_name.Table: the Browser's interned element names -
@@ -158,6 +179,10 @@ pub const BrowserScope = struct {
         /// dense u32 id (lane nd2 batch 2, A1: Blink's and WebKit's
         /// AtomString values). Weak, like `element_names`.
         attribute_values,
+        /// dom.inspector_probes.Sink: the Browser's CDP DOM agents, which a
+        /// probe reaches in one load while any agent is enabled (lane
+        /// cdpd1; Blink's per-local-root CoreProbeSink).
+        inspector_probes,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 

@@ -4,9 +4,27 @@
 //!
 //!     [<id>]
 //!     kind      = rendering | needs-server | needs-node-build | node-runner-only
+//!                 | follows-majority | follows-spec | jsdom-only | needs-node
 //!     why       = <why it is not run>
 //!     assertion = <the assertion that needs layout>   (rendering: required)
+//!     ruling    = <the ruling or issue that decides it>  (follows-*: required)
+//!     browsers  = <what Chrome, Firefox and Safari do>  (jsdom-only: required)
 //!     source    = <file:line of the test's definition>
+//!
+//! `follows-majority` and `follows-spec` name a test that fails although
+//! Crane's result is the one golden rule 2 picks (AGENTS.md): the browser
+//! majority's, by a recorded ruling, or the newer spec a shipping browser
+//! follows - the WPT gate's follows-majority exemption, for a framework's
+//! test. Like rendering, such a test counts in neither column.
+//!
+//! `jsdom-only` names a test of a suite that runs on jsdom (React's Jest
+//! suite) that asserts behaviour jsdom has and all three browsers do not -
+//! the integrator's criterion, 2026-11-22: where the browsers split it is not
+//! jsdom-only, it gets golden rule 2 like any other. Its `browsers` says what
+//! Chrome, Firefox and Safari do, with the probe or run that showed it.
+//! `needs-node` names a test of such a suite that uses a Node API no browser
+//! has (Node's AsyncLocalStorage carrying a request across an await): jsdom
+//! has nothing to do with it, Node does (the integrator, 2026-11-22).
 //!
 //! `<id>` is the name the framework's own filter matches: QUnit
 //! "<module>: <test name>" (QUnit's `fullName` in Test.valid), Mocha the
@@ -31,6 +49,10 @@ pub const Kind = enum {
     needs_server,
     needs_node_build,
     node_runner_only,
+    follows_majority,
+    follows_spec,
+    jsdom_only,
+    needs_node,
 
     pub fn notRun(k: Kind) journal.NotRun {
         return switch (k) {
@@ -38,7 +60,16 @@ pub const Kind = enum {
             .needs_server => .needs_server,
             .needs_node_build => .needs_node_build,
             .node_runner_only => .node_runner_only,
+            .follows_majority => .follows_majority,
+            .follows_spec => .follows_spec,
+            .jsdom_only => .jsdom_only,
+            .needs_node => .needs_node,
         };
+    }
+
+    /// A ruling kind: its entry names its evidence (`ruling`).
+    pub fn isRuling(k: Kind) bool {
+        return k == .follows_majority or k == .follows_spec;
     }
 
     fn parse(s: []const u8) ?Kind {
@@ -47,6 +78,10 @@ pub const Kind = enum {
             .{ "needs-server", .needs_server },
             .{ "needs-node-build", .needs_node_build },
             .{ "node-runner-only", .node_runner_only },
+            .{ "follows-majority", .follows_majority },
+            .{ "follows-spec", .follows_spec },
+            .{ "jsdom-only", .jsdom_only },
+            .{ "needs-node", .needs_node },
         };
         for (names) |n| if (std.mem.eql(u8, s, n[0])) return n[1];
         return null;
@@ -61,11 +96,15 @@ pub const Entry = struct {
     why: []const u8,
     assertion: ?[]const u8 = null,
     source: ?[]const u8 = null,
+    /// A ruling kind's evidence: the ruling, or the issue that decides it.
+    ruling: ?[]const u8 = null,
+    /// A jsdom-only entry's evidence: what Chrome, Firefox and Safari do.
+    browsers: ?[]const u8 = null,
     /// 1-based line of the `[...]` header, for messages.
     line: usize,
 };
 
-pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
+pub const ParseError = error{ OutOfMemory, EntryOutsideBlock, UnknownKey, UnknownKind, MissingKind, MissingWhy, MissingAssertion, MissingRuling, MissingBrowsers, BrowsersOutsideJsdomOnly, DuplicateEntry, BadLine, FileEntryNotNodeRunnerOnly };
 
 pub const ParseFailure = struct {
     line: usize = 0,
@@ -106,6 +145,10 @@ pub fn parse(arena: Allocator, text: []const u8, failure: *ParseFailure) ParseEr
             c.assertion = value;
         } else if (std.mem.eql(u8, key, "source")) {
             c.source = value;
+        } else if (std.mem.eql(u8, key, "ruling")) {
+            c.ruling = value;
+        } else if (std.mem.eql(u8, key, "browsers")) {
+            c.browsers = value;
         } else return error.UnknownKey;
     }
     if (current) |c| try finish(arena, &entries, c, kind_seen, failure);
@@ -117,6 +160,9 @@ fn finish(arena: Allocator, entries: *std.ArrayList(Entry), e: Entry, kind_seen:
     if (!kind_seen) return error.MissingKind;
     if (e.why.len == 0) return error.MissingWhy;
     if (e.kind == .rendering and (e.assertion == null or e.assertion.?.len == 0)) return error.MissingAssertion;
+    if (e.kind.isRuling() and (e.ruling == null or e.ruling.?.len == 0)) return error.MissingRuling;
+    if (e.kind == .jsdom_only and (e.browsers == null or e.browsers.?.len == 0)) return error.MissingBrowsers;
+    if (e.kind != .jsdom_only and e.browsers != null) return error.BrowsersOutsideJsdomOnly;
     if (e.file != (e.kind == .node_runner_only)) return error.FileEntryNotNodeRunnerOnly;
     for (entries.items) |o| if (o.file == e.file and std.mem.eql(u8, o.id, e.id)) return error.DuplicateEntry;
     try entries.append(arena, e);
@@ -182,16 +228,21 @@ pub fn percentEncode(w: *std.Io.Writer, s: []const u8) !void {
 
 /// How a page's result is read: QUnit's and Mocha's HTML reports, or the
 /// console output of Jasmine's console reporter (web-test-runner's manual
-/// mode, Angular), which names only the failed specs.
-pub const Reader = enum { qunit, mocha, jasmine_console };
+/// mode, Angular), which names only the failed specs. `runner_report`: a
+/// suite whose results come only from the project's own runner driving the
+/// browser (Playwright, Puppeteer, Vitest over CDP), read by `fw_matrix
+/// import` from that runner's report; `fw_matrix run` has no page of it to
+/// open, and its exclusion list is applied at import.
+pub const Reader = enum { qunit, mocha, jasmine_console, runner_report };
 
 /// The query parameters that make the framework skip `entries` itself
 /// (empty when there are none): QUnit `filter=!/^(?:...)$/`, Mocha
 /// `grep=^(?:...)$&invert=true`.
 pub fn filterQuery(arena: Allocator, reader: Reader, entries: []const Entry) ![]const u8 {
     if (entries.len == 0) return "";
-    // web-test-runner's page takes no filter: such a suite lists none.
-    if (reader == .jasmine_console) return error.NoFilterForReader;
+    // web-test-runner's page takes no filter: such a suite lists none. A
+    // runner_report suite's list is applied when its report is imported.
+    if (reader == .jasmine_console or reader == .runner_report) return error.NoFilterForReader;
     const re = try alternation(arena, entries);
     var out: std.Io.Writer.Allocating = .init(arena);
     switch (reader) {
@@ -205,7 +256,7 @@ pub fn filterQuery(arena: Allocator, reader: Reader, entries: []const Entry) ![]
             try percentEncode(&out.writer, re);
             try out.writer.writeAll("&invert=true");
         },
-        .jasmine_console => unreachable,
+        .jasmine_console, .runner_report => unreachable,
     }
     return out.written();
 }
@@ -261,6 +312,74 @@ test "parse: entries, kinds, file entries; comments skipped" {
     try testing.expect(entries[2].file);
     try testing.expectEqualStrings("test/tests/unit/logger.js", entries[2].id);
     try testing.expectEqual(@as(usize, 13), entries[2].line);
+}
+
+test "parse: a test Crane's result follows a ruling for - the browser majority or the newer spec - names its evidence" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[smoke.test.js > smoke test]
+        \\kind   = follows-majority
+        \\why    = fetch() cancelled with a TypeError at a navigation's start, as Firefox and Safari do
+        \\ruling = integrator ruling 2026-11-14 8:53 PM ET
+        \\
+        \\[Zone should surface]
+        \\kind   = follows-spec
+        \\why    = PromiseRejectionEventInit.promise is `object` (whatwg/html#9897), as Firefox ships it
+        \\ruling = angular/angular#72159
+        \\
+    , &f);
+    try testing.expectEqual(@as(usize, 2), entries.len);
+    try testing.expectEqual(Kind.follows_majority, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.follows_majority, entries[0].kind.notRun());
+    try testing.expectEqualStrings("integrator ruling 2026-11-14 8:53 PM ET", entries[0].ruling.?);
+    try testing.expectEqual(journal.NotRun.follows_spec, entries[1].kind.notRun());
+    // A ruling kind with no evidence is refused.
+    try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-spec\nwhy = w\n", &f));
+    try testing.expectError(error.MissingRuling, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\n", &f));
+}
+
+test "parse: a test that asserts jsdom's behaviour, which all three browsers differ from, names what each browser does" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[ReactDOMActivity > hides new portals added to an already hidden tree]
+        \\kind     = jsdom-only
+        \\why      = expects style="display: none;" where React set display none !important: jsdom's CSSOM drops the priority
+        \\browsers = Chrome 157, Firefox 159 and Safari 27 serialize "display: none !important;" (probe style-priority)
+        \\source   = packages/react-dom/src/__tests__/ReactDOMActivity-test.js:173
+        \\
+    , &f);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqual(Kind.jsdom_only, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.jsdom_only, entries[0].kind.notRun());
+    try testing.expectEqualStrings("Chrome 157, Firefox 159 and Safari 27 serialize \"display: none !important;\" (probe style-priority)", entries[0].browsers.?);
+    // Without what the three browsers do, it is refused: the kind's whole claim is that evidence.
+    try testing.expectError(error.MissingBrowsers, parse(a, "[m: t]\nkind = jsdom-only\nwhy = w\n", &f));
+    // `browsers` belongs to jsdom-only alone.
+    try testing.expectError(error.BrowsersOutsideJsdomOnly, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\nruling = r\nbrowsers = b\n", &f));
+}
+
+test "parse: a test that uses a Node API no browser has is needs-node" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[ReactFlightDOM > should support float methods when rendering in Fiber]
+        \\kind   = needs-node
+        \\why    = Flight's hints after an await need Node's AsyncLocalStorage to carry the request across it; no browser propagates async context
+        \\source = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:1697
+        \\
+    , &f);
+    try testing.expectEqual(Kind.needs_node, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.needs_node, entries[0].kind.notRun());
+    // Not a ruling kind and no browsers line: the API it needs is its reason.
+    try testing.expectError(error.BrowsersOutsideJsdomOnly, parse(a, "[m: t]\nkind = needs-node\nwhy = w\nbrowsers = b\n", &f));
 }
 
 test "parse refuses what would exclude without a reason" {

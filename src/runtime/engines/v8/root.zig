@@ -88,9 +88,6 @@ pub const cross_origin = @import("cross_origin.zig");
 // pub const bindings = @import("v8/bindings.zig");
 pub const interface_bindings = @import("interface_bindings.zig");
 
-/// Intl binding for V8 Intl object registration
-pub const intl_binding = @import("intl_binding.zig");
-
 /// External references registry for V8 snapshots
 pub const external_references = @import("external_references.zig");
 
@@ -118,12 +115,6 @@ pub const helpers = @import("helpers.zig");
 /// has any - a platform object's instance is behind v8::Object::Wrap
 /// (interface.zig GLOBAL_INTERNAL_FIELD_COUNT; platform_anchor.zig).
 pub const GLOBAL_INTERNAL_FIELD_COUNT = interface_mod.GLOBAL_INTERNAL_FIELD_COUNT;
-
-/// V8 Callback Wrapper for callback interfaces (EventListener, NodeFilter, etc.)
-pub const callback_wrapper_mod = @import("callback_wrapper.zig");
-pub const CallbackWrapper = callback_wrapper_mod.CallbackWrapper;
-pub const EventListenerCallback = callback_wrapper_mod.EventListenerCallback;
-pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 
 /// V8 Wrapper Identity Cache - Maintains 1:1 mapping between instances and V8 wrappers
 pub const wrapper_cache_mod = @import("wrapper_cache.zig");
@@ -283,7 +274,6 @@ pub const value_construction = @import("value_construction.zig");
 pub const value_operations = @import("value_operations.zig");
 pub const current_realm = @import("current_realm.zig");
 pub const array_buffer_views = @import("array_buffer_views.zig");
-pub const callback_interfaces = @import("callback_interfaces.zig");
 pub const observable_array = @import("observable_array.zig");
 pub const webidl_conversions = @import("webidl_conversions.zig");
 pub const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");

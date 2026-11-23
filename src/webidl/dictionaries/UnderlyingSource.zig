@@ -7,6 +7,8 @@ const enums = @import("enums");
 const callbacks = @import("callbacks");
 
 pub const UnderlyingSource = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     start: ?callbacks.UnderlyingSourceStartCallback = null,
     pull: ?callbacks.UnderlyingSourcePullCallback = null,
     cancel: ?callbacks.UnderlyingSourceCancelCallback = null,

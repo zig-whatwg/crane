@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUOrigin2DDict = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     x: ?typedefs.GPUIntegerCoordinate = null,
     y: ?typedefs.GPUIntegerCoordinate = null,
 

@@ -166,6 +166,7 @@ const Side = struct {
         // isolate, with a warning, when the snapshot does not restore).
         if (self.from_snapshot and !ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = self.from_snapshot,

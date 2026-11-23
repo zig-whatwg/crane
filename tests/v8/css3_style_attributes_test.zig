@@ -125,6 +125,7 @@ test "CSSStyleProperties' CSS property attributes are accessors on its prototype
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -162,6 +163,7 @@ const SnapshotPage = struct {
         errdefer protocol.destroyAgent(agent);
         if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,
@@ -198,6 +200,7 @@ const SnapshotFrame = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *SnapshotFrame = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = true,
@@ -238,7 +241,9 @@ test "an isolate makes CSSStyleProperties' template only when a realm first need
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
     const template_registry = @import("v8").template_registry;
 
-    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleDeclaration", isolate) != null);
+    // Every template is made on first use (lane tmpl1): neither
+    // CSSStyleDeclaration's nor CSSStyleProperties' exists yet.
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleDeclaration", isolate) == null);
     try testing.expect(template_registry.getTemplateForIsolate("CSSStyleProperties", isolate) == null);
 
     // A realm that touches no style declaration makes none.

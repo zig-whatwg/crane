@@ -217,4 +217,13 @@ pub const ViewTransition = struct {
     pub fn call_waitUntil(instance: *runtime.Instance, promise: runtime.JSValue) anyerror!void {
         return try ViewTransitionImpl.call_waitUntil(instance, promise);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    /// So does a promise-typed attribute's getter.
+    pub const promise_returning = .{
+        "get_updateCallbackDone",
+        "get_ready",
+        "get_finished",
+    };
 };

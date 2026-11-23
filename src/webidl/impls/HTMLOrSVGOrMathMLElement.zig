@@ -282,9 +282,11 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
 /// Operation: focus: the focusing steps (src/html/focus.zig).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-focus
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
-    // preventScroll and focusVisible: nothing is rendered or scrolled.
-    _ = options;
-    @import("html").focus.focusMethod(instance);
+    // preventScroll: nothing is scrolled. focusVisible decides whether focus
+    // is indicated (:focus-visible) - "does not exist" leaves it to the user
+    // agent's heuristic.
+    const focus_visible: ?bool = if (options.was_passed) options.value.focusVisible else null;
+    @import("html").focus.focusMethod(instance, focus_visible);
 }
 
 /// Operation: blur: the unfocusing steps (src/html/focus.zig).

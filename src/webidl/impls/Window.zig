@@ -13,8 +13,9 @@
 //!
 //! The Window implementation uses pluggable backends:
 //! - BrowsingContext: Manages window relationships (parent, opener, etc.)
-//! - UIBackend: Handles alert/confirm/prompt dialogs
-//! - AnimationFrameScheduler: Manages requestAnimationFrame callbacks
+//! - Simple dialogs (alert/confirm/prompt) and print: html.simple_dialogs
+//! - requestAnimationFrame: the Browser's frame clock (src/browser/rendering.zig),
+//!   bound on every Window realm through the engine's window operations
 //! - TimerManager: Handles setTimeout/setInterval (from event_loop)
 
 const std = @import("std");
@@ -38,10 +39,6 @@ const Window = interfaces.Window;
 // HTML Window infrastructure modules (html_core - interface-free)
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
-const UIBackend = html_core.window.UIBackend;
-const StubUIBackend = html_core.window.StubUIBackend;
-const AnimationFrameScheduler = html_core.window.AnimationFrameScheduler;
-const StubFrameTimingBackend = html_core.window.StubFrameTimingBackend;
 
 // requestIdleCallback's idle periods: the event loop's and IdleDeadline's
 // halves (src/dom/idle_periods.zig).
@@ -100,18 +97,6 @@ pub const InternalState = struct {
 
     /// The status bar text
     status: []const u8 = "",
-
-    /// UI backend for alert/confirm/prompt
-    ui_backend: UIBackend,
-
-    /// Stub UI backend instance (default, can be replaced)
-    stub_ui_backend: StubUIBackend,
-
-    /// Animation frame scheduler
-    animation_scheduler: ?*AnimationFrameScheduler = null,
-
-    /// Stub frame timing backend (default, can be replaced)
-    stub_timing_backend: StubFrameTimingBackend,
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
@@ -255,13 +240,15 @@ pub const InternalState = struct {
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
     inner_height: i32 = 768,
+    /// CSSOM View "run the resize steps": the viewport size the last run saw
+    /// for this window's document, null before its first.
+    resize_seen: ?[2]i32 = null,
     outer_width: i32 = 1024,
     outer_height: i32 = 768,
     screen_x: i32 = 0,
     screen_y: i32 = 0,
     scroll_x: f64 = 0.0,
     scroll_y: f64 = 0.0,
-    device_pixel_ratio: f64 = 1.0,
 
     /// V8 global object that this Window IS bound to (for cross-realm support)
     /// When this is set, `instanceToV8` returns this global directly instead of
@@ -288,9 +275,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
-            .stub_ui_backend = StubUIBackend.init(.{}),
-            .stub_timing_backend = StubFrameTimingBackend.init(),
-            .ui_backend = undefined, // Set by caller after init
             .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
             .close_watcher_manager = @import("dom").close_watcher_manager.Manager.init(allocator),
         };
@@ -321,11 +305,6 @@ pub const InternalState = struct {
         }
 
         // Clean up event handlers
-
-        // Clean up animation scheduler if created
-        if (self.animation_scheduler) |scheduler| {
-            scheduler.deinit();
-        }
 
         // The idle callbacks normally ended with the window's document
         // (endIdleCallbacks, an unloading document cleanup step, which also
@@ -403,6 +382,9 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // HTML update the rendering step 8: CSSOM View's resize steps, the
+    // window's (it keeps the size they last saw).
+    @import("dom").update_the_rendering.installStep(.resize, &resizeStep);
     // "Destroy a document" and "unload a document" end the window's idle
     // callbacks and their timeouts (an unloading document cleanup step).
     @import("dom").unloading_cleanup.install(&endIdleCallbacks);
@@ -439,6 +421,7 @@ pub fn installHooks() void {
         .origin = &settingsOrigin,
         .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
+        .associated_document = &settingsAssociatedDocument,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
@@ -471,7 +454,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // navigable it is shown in replaces it (replaceBrowsingContext).
     const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.NoBrowserScope;
     internal.* = try InternalState.init(allocator, navigables);
-    internal.ui_backend = internal.stub_ui_backend.backend();
     // Its Browser's clock (html.platform_state.clockOf), which its idle
     // callbacks read, as the event loop's idle periods do. A Browser with a
     // clock of its own (the testing platform's opt-in virtual clock) has
@@ -590,6 +572,13 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
     const internal = getInternal(instance) orelse return null;
     return &internal.reporting;
+}
+
+/// The settings object's associated Document (HTML 7.2.2.1), for Fetch step
+/// 11's map of preloaded resources.
+fn settingsAssociatedDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.document;
 }
 
 fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fetches.FetchGroup {
@@ -1011,6 +1000,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
+        // Its realm lets its tab go (`carryTab`).
+        dropTab(instance);
+
         // The browsing context it shows and does not own: held until now
         // (BrowsingContext.window_holds), released below, once nothing of
         // the Window reads it any more.
@@ -1131,7 +1123,7 @@ pub fn getBoundV8Global(instance: *runtime.Instance) ?*anyopaque {
 /// This is used when creating a Window for an iframe that already has a browsing context.
 ///
 /// The iframe's browsing context was created when the iframe was inserted into the DOM
-/// (via IFrameIntegration.onInsertedIntoDocument). When contentWindow is accessed,
+/// (IFrameIntegration.ensureBrowsingContext). When contentWindow is accessed,
 /// a Window is created but it needs to use the iframe's EXISTING browsing context,
 /// not create a new one.
 ///
@@ -1161,6 +1153,8 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
     existing_bc.holdForWindow();
+    // Its realm is of the tab this browsing context is of, from now on.
+    carryTab(instance, existing_bc);
 
     // Mark that we DON'T own this browsing context - iframe cleanup will free it
     // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
@@ -1186,7 +1180,35 @@ fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
     // Still read by this Window until its end: held, as any Window holds the
     // context it shows and does not own (BrowsingContext.window_holds).
     internal.browsing_context.holdForWindow();
+    // Its realm is of the tab this top-level context is the record of.
+    carryTab(instance, internal.browsing_context);
     return @ptrCast(internal.browsing_context);
+}
+
+/// The Window's realm carries the tab of `bc`, the browsing context the
+/// Window shows from now on (runtime.ContextData.tab_scope; docs/instances.md
+/// rule 2: "a realm will carry its Browser's scope and its Tab's scope") - a
+/// counted reference, given back at the Window's end (`dropTab`). Called
+/// where a Window's browsing context becomes final: a frame's and a popup's
+/// as they replace the one Window.init made, a page's as its host takes it.
+fn carryTab(instance: *runtime.Instance, bc: *BrowsingContext) void {
+    const realm = instance.ctx;
+    const tab = bc.tabScope() orelse return;
+    if (realm.tab_scope) |held| {
+        if (held == tab) return;
+        held.release();
+    }
+    realm.tab_scope = tab.retain();
+}
+
+/// The Window ends: its realm is of no tab from here on - the engine keeps a
+/// realm's record past its end (an inert one), which must name no tab that
+/// may be freed.
+fn dropTab(instance: *runtime.Instance) void {
+    const realm = instance.ctx;
+    const held = realm.tab_scope orelse return;
+    realm.tab_scope = null;
+    held.release();
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the
@@ -1224,6 +1246,9 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         // the new document's.
         if (!internal.idle.ended) internal.idle.replaced_pending_end = true;
         internal.idle.ended = false;
+        // The resize steps' "since the last time these steps were run" is
+        // per document: the new one starts with no run.
+        internal.resize_seen = null;
     };
     internal.document = document;
     // The Window holds its document counted from here (refcount step 5i),
@@ -1600,6 +1625,8 @@ pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtim
     // Get the child browsing context's Window
     const child_ctx = children.items[index].browsing_context;
     const child_window = child_ctx.getActiveWindow() orelse return null;
+    // window[i] reaches the child's Window: a host announces its context now.
+    child_ctx.touchedByScript();
 
     // Cast the InstancePtr (anyopaque) to runtime.Instance
     return @ptrCast(@alignCast(child_window));
@@ -1901,13 +1928,45 @@ pub fn get_visualViewport(instance: *runtime.Instance) anyerror!?*runtime.Instan
 /// Per spec: Returns the viewport width in CSS pixels.
 pub fn get_innerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.width;
     return internal.inner_width;
+}
+
+/// HTML "update the rendering" step 8, CSSOM View "run the resize steps" for
+/// `document`: "If doc's viewport has had its width or height changed (e.g.
+/// as a result of the user resizing the browser window ...) since the last
+/// time these steps were run, fire an event named resize at the Window object
+/// associated with doc." The viewport is innerWidth x innerHeight: a
+/// top-level traversable's window as the platform (window_rect_changed) or a
+/// host's override reports it (src/browser/viewport.zig, which asks for the
+/// frame). The first run for a document records its size, firing nothing.
+fn resizeStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const internal = getInternal(window) orelse return;
+    const size: [2]i32 = .{ get_innerWidth(window) catch return, get_innerHeight(window) catch return };
+    const seen = internal.resize_seen;
+    internal.resize_seen = size;
+    const last = seen orelse return;
+    if (last[0] == size[0] and last[1] == size[1]) return;
+    // "Fire an event named resize": an Event, not bubbling, not cancelable.
+    @import("dom").navigables.fireSimpleEvent(window, "resize");
+}
+
+/// The viewport of a top-level traversable's Window, as the host's override
+/// or the platform's window reports it (BrowsingContext.traversableViewport);
+/// null for a child navigable's Window - its viewport is its container's box
+/// - and while neither is known.
+fn topLevelViewport(internal: *InternalState) ?html_core.window.browsing_context.ViewportSize {
+    if (internal.browsing_context.parent != null) return null;
+    return internal.browsing_context.traversableViewport();
 }
 
 /// Getter for innerHeight
 /// Per spec: Returns the viewport height in CSS pixels.
 pub fn get_innerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (topLevelViewport(internal)) |viewport| return viewport.height;
     return internal.inner_height;
 }
 
@@ -1941,7 +2000,41 @@ pub fn get_pageYOffset(instance: *runtime.Instance) anyerror!f64 {
 /// Per spec: Returns the X position of the window on the screen.
 pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // The window's (its tab's window rect: the platform's, a host's - CDP
+    // Browser.setWindowBounds -, or moveTo's), else this Window's own.
+    if (tabWindowRect(internal)) |rect| return rect.x;
     return internal.screen_x;
+}
+
+/// The rect of the window this Window's tab is shown in, once one is known
+/// (html BrowsingContext.window_rect); null for a Window with no browsing
+/// context or a tab with no rect yet.
+fn tabWindowRect(internal: *InternalState) ?html_core.window.browsing_context.WindowRect {
+    if (internal.closed) return null;
+    return internal.browsing_context.windowRect();
+}
+
+/// moveTo/moveBy/resizeTo/resizeBy: the tab's window takes `rect` when it
+/// has one (BrowsingContext.requestWindowRect), its resize steps at the next
+/// rendering opportunity; else this Window's own fields do.
+fn moveOrResize(instance: *runtime.Instance, internal: *InternalState, rect: html_core.window.browsing_context.WindowRect) void {
+    _ = instance;
+    if (internal.browsing_context.requestWindowRect(rect)) {
+        // A headless window's size is its viewport: the resize steps run at
+        // the next rendering opportunity.
+        const document = internal.document orelse return;
+        @import("dom").update_the_rendering.requestFrame(document);
+        return;
+    }
+    internal.screen_x = rect.x;
+    internal.screen_y = rect.y;
+    internal.outer_width = rect.width;
+    internal.outer_height = rect.height;
+}
+
+/// The window's rect as this Window reports it now.
+fn currentWindowRect(internal: *InternalState) html_core.window.browsing_context.WindowRect {
+    return tabWindowRect(internal) orelse .{ .x = internal.screen_x, .y = internal.screen_y, .width = internal.outer_width, .height = internal.outer_height };
 }
 
 /// Getter for screenLeft - Same as screenX
@@ -1954,6 +2047,7 @@ pub fn get_screenLeft(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the Y position of the window on the screen.
 pub fn get_screenY(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.y;
     return internal.screen_y;
 }
 
@@ -1967,6 +2061,7 @@ pub fn get_screenTop(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the width of the window including chrome.
 pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.width;
     return internal.outer_width;
 }
 
@@ -1974,14 +2069,18 @@ pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
 /// Per spec: Returns the height of the window including chrome.
 pub fn get_outerHeight(instance: *runtime.Instance) anyerror!i32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (tabWindowRect(internal)) |rect| return rect.height;
     return internal.outer_height;
 }
 
 /// Getter for devicePixelRatio
 /// Per spec: Returns the ratio of CSS pixels to physical pixels.
 pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.device_pixel_ratio;
+    // CSSOM View: the output device's pixel ratio - the tab's screen, an
+    // emulated device's scale first (html.screen_info; CDP
+    // Emulation.setDeviceMetricsOverride's deviceScaleFactor).
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    return @import("html").screen_info.ofWindow(instance).device_pixel_ratio;
 }
 
 /// Getter for launchQueue
@@ -2016,20 +2115,24 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // origin framed under another top-level site does not. A popup's
     // traversable starts with a copy of its opener's shed
     // (`newTopLevelTraversable`).
-    const context_id = internal.browsing_context.getTop().id;
-    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
+    // "Obtain a session storage bottle map" step 1: "obtain a storage key"
+    // with the environment - failure, a SecurityError, for an opaque origin;
+    // a file: document's key is the browsers' (dom.global_settings
+    // storageKeyOf).
+    const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
-    // The traversable's shed is one of its Browser's navigables' (Storage
-    // 4.3: "A traversable navigable holds a storage shed"): a realm no
-    // Browser made has none - "the user agent is configured to not allow"
+    // The traversable's shed is its tab's (Storage 4.3: "A traversable
+    // navigable holds a storage shed"; runtime.TabScope), which the
+    // Window's realm carries: a realm of no tab - no Browser made it, or its
+    // tab closed - has none: "the user agent is configured to not allow"
     // storage.
-    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.SecurityError;
+    const shed = @import("dom").browser_state.sessionStorageShedOf(instance.ctx) orelse return error.SecurityError;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, &navigables.traversable_storage, context_id, key) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, shed, key) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -2076,7 +2179,11 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
     // Its shelf is the storage key's (`settingsStorageKey`): one origin
     // framed under two top-level sites has two areas, as in every browser.
-    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
+    // "Obtain a local storage bottle map" step 1: "obtain a storage key" with
+    // the environment - failure, a SecurityError, for an opaque origin; a
+    // file: document's key is the browsers' (dom.global_settings
+    // storageKeyOf).
+    const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
     // Create the backend storage for this storage key
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
@@ -2178,22 +2285,15 @@ pub fn call_print(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // The printing steps, step 1: "If the active sandboxing flag set of
-    // this's associated Document has the sandboxed modals flag set, then
-    // return."
-    if (sandboxedModals(internal)) return;
-
-    // Use the UI backend to show print dialog
-    internal.ui_backend.showPrint();
-}
-
-/// HTML "cannot show simple dialogs" step 1 (and the printing steps' step
-/// 1): the window's associated Document's active sandboxing flag set has the
-/// sandboxed modals flag set.
-/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#cannot-show-simple-dialogs
-fn sandboxedModals(internal: *InternalState) bool {
-    const document = internal.document orelse return false;
-    return @import("dom").document_scripts.activeSandboxingFlags(document).modals;
+    // HTML 8.9.2 print() steps: 1. the associated Document; 2. not fully
+    // active: return; 3. its unload counter is above zero: return; 4. ready
+    // for post-load tasks: the printing steps (html.simple_dialogs); 5.
+    // otherwise its "print when loaded" flag, which "the end" step 12 reads.
+    const document = internal.document orelse return;
+    if (!@import("dom").document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return;
+    if (@import("dom").document_lifecycle.isUnloading(document)) return;
+    if (@import("dom").document_lifecycle.isReadyForPostLoadTasks(document)) return @import("html").simple_dialogs.printingSteps(document);
+    @import("dom").document_lifecycle.setPrintWhenLoaded(document);
 }
 
 /// Operation: confirm
@@ -2206,14 +2306,10 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
         return false; // Return false if window is closed
     }
 
-    // Step 1: "If we cannot show simple dialogs for this, then return false."
-    if (sandboxedModals(internal)) return false;
-
-    // Get message string (default to empty)
+    // HTML 8.9.1 confirm(message) steps 1-10 (html.simple_dialogs): the
+    // message defaults to the empty string (the IDL's default).
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
-
-    // Use the UI backend to show confirm dialog
-    return internal.ui_backend.showConfirm(msg);
+    return @import("html").simple_dialogs.confirm(instance, msg);
 }
 
 /// Operation: postMessage
@@ -2681,8 +2777,17 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
 
 /// Operation: showDirectoryPicker
 pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    // File System Access 3.5, steps 1-4: everything before the prompt (a
+    // throw rejects the promise). The prompt has no UI here: NotImplemented.
+    // 1. Let environment be this's relevant settings object.
+    const given: dictionaries.DirectoryPickerOptions = if (options.was_passed) options.value else .{};
+    // 2. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment - its argument checks (validateStartingDirectoryId).
+    if (given.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 3. Let global be environment's global object.
+    // 4. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
     return error.NotImplemented;
 }
 
@@ -2777,18 +2882,163 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
         return;
     }
 
-    // Update outer dimensions
-    internal.outer_width = width;
-    internal.outer_height = height;
-
-    // TODO: Notify platform to actually resize the window
+    // Update outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width = width;
+    rect.height = height;
+    moveOrResize(instance, internal, rect);
 }
 
-/// Operation: showSaveFilePicker
+/// Operation: showSaveFilePicker(options) - File System Access 3.4 (specs/w3c/
+/// file-system-access.md), steps 1-5: everything before the prompt. A throw
+/// rejects the promise (a promise-returning operation). The prompt itself
+/// (step 7) needs a UI the headless engine does not have: NotImplemented.
 pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.SaveFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
+}
+
+/// showOpenFilePicker() and showSaveFilePicker() steps 1-5 (File System
+/// Access 3.3 and 3.4, the same steps): what Chromium's global_file_system_
+/// access.cc checks before it asks the browser for a picker - ConvertAccepts
+/// with VerifyIsValidExtension (2), VerifyIsValidId (3),
+/// VerifyIsAllowedToShowFilePicker (5). Only Chrome ships these pickers.
+fn filePickerArgumentSteps(instance: *runtime.Instance, options: dictionaries.FilePickerOptions) anyerror!void {
+    // 1. Let environment be this's relevant settings object.
+    // 2. Let accepts options be the result of processing accept types given
+    //    options.
+    try processAcceptTypes(instance.ctx, options);
+    // 3. Let starting directory be the result of determining the directory
+    //    the picker will start in given options["id"], options["startIn"]
+    //    and environment. Its first two steps are the argument checks; the
+    //    rest chooses a path for the prompt, which there is none of.
+    if (options.id) |id| try validateStartingDirectoryId(id.asSlice());
+    // 4. Let global be environment's global object.
+    // 5. Verify that environment is allowed to show a file picker.
+    try verifyAllowedToShowFilePicker(instance);
+}
+
+/// File System Access 3.2.1 "process accept types" given options - the
+/// validation it performs (the accepts options list itself is only the
+/// prompt's): every type string a MIME type without parameters, every suffix
+/// valid. Chromium: ConvertAccepts.
+fn processAcceptTypes(realm: runtime.Context, options: dictionaries.FilePickerOptions) anyerror!void {
+    const allocator = realm.allocator;
+    // 1. Let accepts options be an empty list of tuples.
+    var accepts_options: usize = 0;
+    // 2. For each type of options["types"]:
+    for (options.types orelse &.{}) |picker_type| {
+        //  1. For each typeString -> suffixes of type["accept"]:
+        for (picker_type.accept orelse &.{}) |entry| {
+            //  1. Let parsedType be the result of parse a MIME type with
+            //     typeString.
+            //  2. If parsedType is failure, then throw a TypeError.
+            //  3. If parsedType's parameters are not empty, then throw a
+            //     TypeError.
+            try requireMimeTypeWithoutParameters(allocator, entry.key);
+            //  4. If suffixes is a string: validate a suffix given suffixes.
+            //  5. Otherwise, for each suffix of suffixes: validate a suffix
+            //     given suffix. (suffixes is `(USVString or
+            //     sequence<USVString>)`: an Object with @@iterator is the
+            //     sequence, anything else its string, WebIDL 3.2.25.)
+            if (engine.typeOf(realm, entry.value) == .object) {
+                if (try engine.convertToSequenceOfDOMStrings(realm, entry.value, allocator)) |suffixes| {
+                    defer {
+                        for (suffixes) |suffix| allocator.free(suffix);
+                        allocator.free(suffixes);
+                    }
+                    for (suffixes) |suffix| try validateSuffix(suffix);
+                    continue;
+                }
+            }
+            const suffix = try engine.convertToUSVString(realm, entry.value, allocator);
+            defer allocator.free(suffix);
+            try validateSuffix(suffix);
+        }
+        //  2-5. The filter, the description, and append (description,
+        //       filter) to accepts options.
+        accepts_options += 1;
+    }
+    // 3. If either accepts options is empty, or
+    //    options["excludeAcceptAllOption"] is false: append the "all files"
+    //    option.
+    // 4. If accepts options is empty, then throw a TypeError.
+    // Deviation, stated (golden rule 2): as written, step 3 appends "all
+    // files" to an empty list whatever excludeAcceptAllOption says, so step
+    // 4 can never throw. Chrome - the only browser that ships the pickers -
+    // throws a TypeError when the list is empty and excludeAcceptAllOption
+    // is true ("Need at least one accepted type": global_file_system_access.cc,
+    // showOpenFilePicker / showSaveFilePicker after ConvertAccepts), and so
+    // does WPT file-system-access/showPicker-errors.https.window.js ("File
+    // picker requires at least one accepted type"). So "all files" is
+    // appended only when excludeAcceptAllOption is false.
+    const exclude_accept_all = options.excludeAcceptAllOption orelse false;
+    if (accepts_options == 0 and exclude_accept_all) return error.TypeError;
+    if (!exclude_accept_all) accepts_options += 1;
+}
+
+/// "Parse a MIME type" (MIME Sniffing 4.4) of `type_string` - failure, or
+/// parameters, is a TypeError (process accept types 2.1.1-2.1.3).
+fn requireMimeTypeWithoutParameters(allocator: std.mem.Allocator, type_string: []const u8) anyerror!void {
+    const mime_type = @import("mimesniff").mime_type;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const code_units = std.unicode.utf8ToUtf16LeAlloc(arena.allocator(), type_string) catch return error.TypeError;
+    var parsed = (try mime_type.parseMimeTypeFromString(allocator, arena.allocator(), code_units)) orelse return error.TypeError;
+    defer parsed.deinit();
+    if (!parsed.parameters.isEmpty()) return error.TypeError;
+}
+
+/// File System Access "validate a suffix" (3.2.1). Chromium:
+/// VerifyIsValidExtension, IsValidSuffixCodePoint.
+fn validateSuffix(suffix: []const u8) anyerror!void {
+    // 1. If suffix does not start with ".", then throw a TypeError.
+    if (!std.mem.startsWith(u8, suffix, ".")) return error.TypeError;
+    // 2. If suffix contains any code points that are not valid suffix code
+    //    points - ASCII alphanumeric, U+002B (+), U+002E (.) - then throw a
+    //    TypeError. (A non-ASCII code point's UTF-8 bytes are none of them.)
+    for (suffix) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '+' or byte == '.')) return error.TypeError;
+    }
+    // 3. If suffix ends with ".", then throw a TypeError.
+    if (std.mem.endsWith(u8, suffix, ".")) return error.TypeError;
+    // 4. If suffix's length is more than 16, then throw a TypeError. (All
+    //    ASCII by step 2: a byte is a code point.)
+    if (suffix.len > 16) return error.TypeError;
+}
+
+/// "Determine the directory the picker will start in" steps 1-2 (File
+/// System Access 3.2.2, wicg.github.io/file-system-access - the algorithm the
+/// fetched markdown lost): an id that is not a valid path id (ASCII
+/// alphanumeric, "_", "-"), or longer than 32, is a TypeError. Chromium:
+/// VerifyIsValidId, IsValidIdCodePoint.
+fn validateStartingDirectoryId(id: []const u8) anyerror!void {
+    // 1. If id given, and is not a valid path id, then throw a TypeError.
+    for (id) |byte| {
+        if (!(std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '-')) return error.TypeError;
+    }
+    // 2. If id's length is more than 32, then throw a TypeError.
+    if (id.len > 32) return error.TypeError;
+}
+
+/// File System Access 3.2 "is allowed to show a file picker". Chromium:
+/// VerifyIsAllowedToShowFilePicker.
+fn verifyAllowedToShowFilePicker(instance: *runtime.Instance) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const origin = effectiveOrigin(instance, internal);
+    // 1. If environment's origin is an opaque origin, return a promise
+    //    rejected with a "SecurityError" DOMException.
+    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return error.SecurityError;
+    // 2. If environment's origin is not same origin with environment's
+    //    top-level origin, return a promise rejected with a "SecurityError".
+    const top_level = (try settingsTopLevelOrigin(instance)) orelse return error.SecurityError;
+    defer instance.ctx.allocator.free(top_level);
+    if (!std.mem.eql(u8, top_level, origin)) return error.SecurityError;
+    // 3. Let global be environment's global object.
+    // 4. If global does not have transient activation, then throw a
+    //    "SecurityError" DOMException.
+    if (!@import("html").user_activation.hasTransientActivation(instance)) return error.SecurityError;
 }
 
 /// Operation: blur
@@ -2805,10 +3055,12 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     // This would notify the platform to remove focus from the window
 }
 
-/// Operation: showOpenFilePicker
+/// Operation: showOpenFilePicker(options) - File System Access 3.3, steps
+/// 1-5 (filePickerArgumentSteps); the prompt (step 7) has no UI here:
+/// NotImplemented.
 pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
+    const given: dictionaries.OpenFilePickerOptions = if (options.was_passed) options.value else .{ .base = .{} };
+    try filePickerArgumentSteps(instance, given.base);
     return error.NotImplemented;
 }
 
@@ -2851,17 +3103,19 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
 /// Note: The IDL has an overload with message parameter; this is the no-argument version.
 pub fn call_alert(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.closed) return;
+    // alert(): step 2's message is the empty string; the steps are
+    // html.simple_dialogs' (cannot show, normalize, WebDriver BiDi user
+    // prompt opened, the pause, user prompt closed).
+    @import("html").simple_dialogs.alert(instance, "");
+}
 
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // Step 1: "If we cannot show simple dialogs for this, then return."
-    if (sandboxedModals(internal)) return;
-
-    // Show alert with empty message
-    internal.ui_backend.showAlert("");
+/// Operation: alert(message) - HTML 8.9.1, the overload with an argument
+/// (`alert(undefined)` is "undefined", `alert()` the empty string).
+pub fn call_alert__1(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.closed) return;
+    @import("html").simple_dialogs.alert(instance, message.asSlice());
 }
 
 /// Operation: focus
@@ -2894,8 +3148,8 @@ pub fn call_focus(instance: *runtime.Instance) anyerror!void {
 /// Operation: requestIdleCallback
 /// Spec: https://w3c.github.io/requestidlecallback/#the-requestidlecallback-method
 pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: webidl.Opt(dictionaries.IdleRequestOptions)) anyerror!u32 {
-    // The binding hands the callback over: take it before anything can fail.
-    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const function = callback.keep();
     // 1. "Let window be this Window object."
     const internal = getInternal(instance) orelse {
         function.release();
@@ -3238,6 +3492,12 @@ const IdleTimeout = struct {
 /// WebIDL "invoke" an IdleRequestCallback with a new IdleDeadline in
 /// `realm`, reporting what it throws. `callback` stays the caller's.
 fn invokeIdleCallback(realm: runtime.Context, callback: engine.CallbackFunction, deadline: idle_periods.Deadline) void {
+    // Timed for a host's handler violation (Blink's ScriptedIdleTaskController
+    // probe::UserCallback "requestIdleCallback", recurring) - one load while
+    // none listens.
+    const monitor = @import("dom").performance_monitor.active(realm);
+    const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
+    defer if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(realm, "requestIdleCallback", true, duration);
     const deadline_arg = idle_periods.createDeadline(realm, deadline) catch |err| {
         log.debug("an idle callback was not invoked: {}", .{err});
         return;
@@ -3365,7 +3625,8 @@ const CloseTask = struct {
         // installed when the first iframe element is made: make one if no
         // page has yet. Nothing sees it.
         const auxiliary_navigables = @import("dom").auxiliary_navigables;
-        _ = auxiliary_navigables.definitelyClose(window);
+        // window.close(): "close" prompts to unload (HTML 7.2.2.1 step 6.2).
+        _ = auxiliary_navigables.definitelyClose(window, .prompt);
     }
 };
 
@@ -3422,11 +3683,11 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Apply delta to screen position
-    internal.screen_x += x;
-    internal.screen_y += y;
-
-    // TODO: Notify platform to actually move the window
+    // Apply delta to screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x +%= x;
+    rect.y +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: getSelection
@@ -3477,11 +3738,11 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
         return;
     }
 
-    // Apply delta to outer dimensions
-    internal.outer_width += x;
-    internal.outer_height += y;
-
-    // TODO: Notify platform to actually resize the window
+    // Apply delta to outer dimensions: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.width +%= x;
+    rect.height +%= y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: open
@@ -3508,6 +3769,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // Step 2: "Let sourceDocument be the entry global object's associated
     // Document".
     const source_document = try get_document(instance);
+    // Its transient activation now, before step 13's choosing a navigable
+    // consumes it: the new popup's navigation request carries it as its
+    // user-activation (Sec-Fetch-User), as Chrome's and Firefox's do.
+    const source_activated = @import("html").user_activation.hasTransientActivation(instance);
 
     // Steps 3-4: "Set urlRecord to the result of encoding-parsing a URL given
     // url, relative to sourceDocument"; failure throws a "SyntaxError".
@@ -3619,6 +3884,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // entry global. Step 8: with its sandboxed auxiliary navigation browsing
     // context flag set no new top-level traversable is made, and (step 14)
     // "if targetNavigable is null, then return null".
+    // Step 8.4's opener policy check (below) decides the new window's name
+    // and noopener, which a host is told first.
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
+    // A host hears that a new window is asked for (CDP's Page.windowOpen,
+    // html_core.navigation.window_open) before the sandbox's check and
+    // before the window exists: Blink's probe::WindowOpen in
+    // CreateNewWindow (core/page/create_window.cc) runs there, after the
+    // target name found no frame. Its user gesture is the activation before
+    // step 13 consumes it.
+    notifyWindowOpen(this, url_record orelse "", if (coop_noopener) "_blank" else target_str, window_features.geometry, window_features.popup and !(noopener or coop_noopener), noopener or coop_noopener, source_activated);
     const current_flags = sandboxingFlagsOfWindow(this);
     if (current_flags.auxiliary_navigation) return null;
 
@@ -3628,8 +3903,18 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // stated, matching Chrome and Safari (window-open-popup-behavior passes
     // 51/51 in both; Firefox follows the text): a window opened with noopener
     // or noreferrer is never a popup, whatever its features.
-    const is_popup = window_features.popup and !noopener;
-    const created = try newTopLevelTraversable(instance, target_str, noopener, is_popup, this) orelse return null;
+    // "The rules for choosing a navigable" step 8.4: "If currentDocument's
+    // opener policy's value is "same-origin" or "same-origin-plus-COEP", and
+    // currentDocument's origin is not same origin with currentDocument's
+    // relevant settings object's top-level origin": noopener is true, the
+    // name "_blank", windowType "new with no opener" - "nested documents
+    // that are cross-origin with their top-level browsing context's active
+    // document always set noopener to true" (currentDocument: this's
+    // navigable's active document).
+    const new_noopener = noopener or coop_noopener;
+    const new_target = if (coop_noopener) "_blank" else target_str;
+    const is_popup = window_features.popup and !new_noopener;
+    const created = try newTopLevelTraversable(instance, new_target, new_noopener, is_popup, this) orelse return null;
     const integration = created.integration;
     // Step 15.2: "Set up browsing context features for targetNavigable's
     // active browsing context given tokenizedFeatures" - the window's
@@ -3654,12 +3939,32 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
                 if (!@import("dom").history_traversal.isInstalled()) _ = get_history(created.window) catch {};
                 @import("dom").history_traversal.urlAndHistoryUpdate(created.window, u, null, .replace);
             }
-        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
+        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy, .has_transient_activation = source_activated });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no
     // opener", then return null. Return targetNavigable's active WindowProxy."
-    return if (noopener) null else created.window;
+    return if (new_noopener) null else created.window;
+}
+
+/// The rules for choosing a navigable step 8.4's condition for `window`'s
+/// associated Document (currentDocument): its opener policy's value is
+/// "same-origin" or "same-origin-plus-COEP", and its origin is not same
+/// origin with its relevant settings object's top-level origin.
+fn crossOriginUnderSameOriginOpenerPolicy(window: *runtime.Instance) bool {
+    const container = settingsPolicyContainer(window) orelse return false;
+    switch (container.openerPolicy().value) {
+        .same_origin, .same_origin_plus_coep => {},
+        .unsafe_none, .same_origin_allow_popups, .noopener_allow_popups => return false,
+    }
+    const internal = getInternal(window) orelse return false;
+    const own = effectiveOrigin(window, internal);
+    const top = (settingsTopLevelOrigin(window) catch return false) orelse return true;
+    defer window.ctx.allocator.free(top);
+    // An opaque origin is same origin with nothing but itself, and no
+    // serialization tells two apart: "null" is never same origin here.
+    if (std.mem.eql(u8, own, "null")) return true;
+    return !std.mem.eql(u8, own, top);
 }
 
 const NamedPopup = struct {
@@ -3719,8 +4024,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The popup's initial about:blank takes its creator's origin - the
     // opener's active DOCUMENT's ("create a new browsing context and
     // document" step 5.1), which the machinery reads from the document's
-    // origin record, not from this Window.
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags) orelse return null;
+    // origin record, not from this Window. A noopener popup's has no
+    // creator (step 8.7: "given null"): a new policy container - but its
+    // opener's origin still (HTMLIFrameElement.createAuxiliaryNavigable says
+    // why).
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags, noopener) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     const scope = window.ctx.browserScope() orelse {
         integration.deinit();
@@ -3738,11 +4046,17 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The owner list holds the integration before storage is published, so
     // an append failure cannot leave an unreachable tab's copied shelves.
     if (!noopener) if (integration.browsing_context) |created_bc| {
-        // The traversables' sheds are their Browser's navigables' (Storage
-        // 4.3: each traversable navigable holds its own).
-        if (@import("dom").browser_state.navigablesOf(window.ctx)) |navigables| {
-            web_storage.web_storage.cloneSessionStorage(&navigables.traversable_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
-        }
+        // The traversables' sheds are their tabs' (Storage 4.3: each
+        // traversable navigable holds its own): the opener's tab's, when it
+        // has one, copied into the new tab's.
+        const browser_state = @import("dom").browser_state;
+        if (internal.browsing_context.tabScope()) |opener_tab| if (opener_tab.get(.session_storage, web_storage.TraversableStorageShed)) |source| {
+            if (created_bc.tabScope()) |new_tab| if (new_tab != opener_tab) {
+                if (browser_state.sessionStorageShedIn(new_tab)) |copy| {
+                    web_storage.web_storage.cloneSessionStorage(source, copy) catch {};
+                }
+            };
+        };
     };
     // Steps 8.5-8.6: a named target names the new navigable.
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
@@ -3755,10 +4069,22 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     if (getInternal(created.window)) |created_internal| created_internal.creator_is_secure_context = secureContext(window, 0);
     // Steps 8.7-8.8: its opener is this window, unless noopener - which makes
     // it a new top-level traversable "given null" opener, in a browsing
-    // context group of its own.
+    // context group of its own (made so by the machinery, before its initial
+    // about:blank document's realm).
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
-        if (integration.browsing_context) |bc| bc.startOwnGroup();
+        if (integration.browsing_context) |bc| {
+            // Deviation, stated (golden rule 2): step 8.8.2's one permitted
+            // sandboxed navigator is set in the opener branch only, so a
+            // sandboxed document's noopener popup could not be navigated by
+            // the window open steps' own navigation; Chrome 157, Firefox 160
+            // and Safari 27.2 all load it (html/cross-origin-opener-policy/
+            // coop-sandbox.https.html and coop-coep-sandbox.https.html,
+            // "allow-popups allow-scripts allow-popups-to-escape-sandbox":
+            // a sandboxed srcdoc frame under COOP same-origin opens with
+            // noopener by step 8.4, and its popup loads).
+            if (current_flags.navigation) bc.one_permitted_sandboxed_navigator = internal.browsing_context;
+        }
     } else {
         setOpener(created.window, window) catch {};
         // Step 8.8.2: "If sandboxingFlagSet's sandboxed navigation browsing
@@ -3778,6 +4104,26 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     return .{ .integration = integration, .window = created.window };
 }
 
+/// Tell the opener's Browser that a page asks for a new window
+/// (html_core.navigation.window_open; CDP's Page.windowOpen): `opener`'s
+/// tab and navigable, the URL (empty: none), the name the window gets, and
+/// the features Blink's InspectorPageAgent lists.
+fn notifyWindowOpen(opener: *runtime.Instance, url: []const u8, name: []const u8, geometry: html_core.window.browsing_context.WindowGeometry, is_popup: bool, noopener: bool, user_gesture: bool) void {
+    const bc = @import("dom").browser_state.browsingContextOf(opener) orelse return;
+    const window_open = html_core.navigation.window_open;
+    if (bc.navigables == null or bc.navigables.?.window_open == null) return;
+    var features: window_open.FeatureList = .{};
+    features.fill(geometry, is_popup, noopener);
+    window_open.opened(bc.navigables, &.{
+        .tab = bc.getTop().id,
+        .navigable = bc.id,
+        .url = url,
+        .name = name,
+        .features = features.slice(),
+        .user_gesture = user_gesture,
+    });
+}
+
 /// `window`'s associated Document's active sandboxing flag set: what "the
 /// rules for choosing a navigable" read as sandboxingFlagSet for the
 /// navigable whose active window `window` is. Empty with no document.
@@ -3791,7 +4137,7 @@ fn sandboxingFlagsOfWindow(window: *runtime.Instance) @import("dom").sandboxing.
 /// for a hyperlink or a form whose target names no frame of its page - an
 /// open popup of that name in the page's group (step 7), else a new
 /// top-level traversable (step 8).
-fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?@import("dom").auxiliary_navigables.Chosen {
+fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool, url: []const u8) ?@import("dom").auxiliary_navigables.Chosen {
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (popupByName(current_window, target)) |found| return .{
             .integration = if (found.integration) |integration| @ptrCast(integration) else null,
@@ -3801,8 +4147,15 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     // Step 8: no new top-level traversable for a document whose active
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
     // context flag set.
+    // Step 8.4: a nested document cross-origin with its top-level origin
+    // under "same-origin" opens with noopener, named "_blank".
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(current_window);
+    // A host hears the new window asked for, before the sandbox's check
+    // (Blink's probe::WindowOpen, as in open() above). A link or form names
+    // no features; its user gesture is the window's transient activation.
+    notifyWindowOpen(current_window, url, if (coop_noopener) "_blank" else target, .{}, false, noopener or coop_noopener, @import("html").user_activation.hasTransientActivation(current_window));
     if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
-    const created = (newTopLevelTraversable(current_window, target, noopener, false, current_window) catch null) orelse return null;
+    const created = (newTopLevelTraversable(current_window, if (coop_noopener) "_blank" else target, noopener or coop_noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
 
@@ -3812,8 +4165,9 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, current: *html_core.B
     const internal = getInternal(window) orelse return null;
     const document = internal.document orelse return null;
     const navigables = @import("dom").navigables;
-    var documents = navigables.inclusiveDescendantDocuments(document, std.heap.page_allocator);
-    defer documents.deinit(std.heap.page_allocator);
+    const allocator = runtime.allocatorOf(document);
+    var documents = navigables.inclusiveDescendantDocuments(document, allocator);
+    defer documents.deinit(allocator);
     const group = current.getTop().virtual_group_id;
     for (documents.items) |entry| {
         const bc = entry.browsing_context orelse internal.browsing_context;
@@ -4129,11 +4483,11 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return;
     }
 
-    // Update screen position
-    internal.screen_x = x;
-    internal.screen_y = y;
-
-    // TODO: Notify platform to actually move the window
+    // Update screen position: the tab's window when it has a rect.
+    var rect = currentWindowRect(internal);
+    rect.x = x;
+    rect.y = y;
+    moveOrResize(instance, internal, rect);
 }
 
 /// Operation: prompt
@@ -4146,19 +4500,12 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
         return null; // Return null if window is closed
     }
 
-    // Step 1: "If we cannot show simple dialogs for this, then return null."
-    if (sandboxedModals(internal)) return null;
-
-    // Get message and default strings
+    // HTML 8.9.1 prompt(message, default) steps 1-11 (html.simple_dialogs):
+    // both default to the empty string (the IDL's defaults).
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
     const default_value = if (default.wasPassed()) default.getValue().asSlice() else "";
-
-    // Use the UI backend to show prompt dialog
-    const result = internal.ui_backend.showPrompt(msg, default_value);
-    if (result) |str| {
-        return runtime.DOMString.initInterned(str);
-    }
-    return null;
+    const result = @import("html").simple_dialogs.prompt(instance, msg, default_value) orelse return null;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Operation: getComputedStyle (CSSOM 7.2)
@@ -4228,17 +4575,10 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
 /// Operation: cancelAnimationFrame
 /// Per spec §8.14.2: Cancels a previously scheduled animation frame callback.
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // Cancel the animation frame if scheduler exists
-    if (internal.animation_scheduler) |scheduler| {
-        scheduler.cancelAnimationFrame(handle);
-    }
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // Bound natively, as requestAnimationFrame is (see there): nothing is
+    // registered through this entry.
+    _ = handle;
 }
 
 /// Fetch §5.6, fetchLater() method steps.
@@ -4321,39 +4661,19 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
     return interfaces.FetchLaterResult.initWith(allocator, instance.ctx, .{ .deferred_activation = activated });
 }
 
-/// Operation: requestAnimationFrame
-/// Per spec §8.14.2: Schedules a callback to be invoked before the next repaint.
-///
-/// TODO: When fully implementing, the callback MUST be stored as a V8 Global handle
-/// to survive past the caller's HandleScope. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. Create Global handle for the FrameRequestCallback
-/// 2. Store in animation frame registry with Global handle
-/// 3. Dispose Global handle when callback fires or is canceled
+/// Operation: requestAnimationFrame (HTML 8.12). Every Window realm binds it,
+/// and cancelAnimationFrame, natively through the engine's window operations
+/// (engine.installWindowOperations -> src/browser/rendering.zig: the
+/// Browser's frame clock, the documents' maps of animation frame callbacks),
+/// which take the callback as the owned value this generated signature cannot
+/// carry (its FrameRequestCallback is not a JS callback). This entry is
+/// reached by no Window a Browser makes: it registers nothing. (Lane life1
+/// removed the timer-driven AnimationFrameScheduler it used to make here, the
+/// "requestAnimationFrame timer" the frame clock replaced.)
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return 0; // Return 0 handle if window is closed
-    }
-
-    // Create animation scheduler lazily if not exists
-    if (internal.animation_scheduler == null) {
-        internal.animation_scheduler = try AnimationFrameScheduler.init(
-            internal.allocator,
-            internal.stub_timing_backend.backend(),
-        );
-    }
-
-    // Schedule the callback
-    // The callback needs to be wrapped to match our internal signature
-    // TODO: Proper callback wrapping - for now return placeholder
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     _ = callback;
-    return 0; // Placeholder
+    return 0;
 }
 
 /// Operation: cancelIdleCallback
@@ -4426,7 +4746,10 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
     } else return null;
     var children = documentTreeChildNavigables(window, internal, internal.allocator);
     defer children.deinit(internal.allocator);
-    return childNavigableNamedIn(window, internal, children.items, name);
+    const found = childNavigableNamedIn(window, internal, children.items, name);
+    // A named frame reaches the child's Window: a host announces its context.
+    if (found) |child| if (@import("dom").browser_state.browsingContextOf(child)) |bc| bc.touchedByScript();
+    return found;
 }
 
 /// The first same-named child decides visibility, even when its origin

@@ -141,12 +141,13 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
     values.width = @floatFromInt(interfaces.Window.get_innerWidth(window) catch 1024);
     values.height = @floatFromInt(interfaces.Window.get_innerHeight(window) catch 768);
     values.scripting = if (@import("dom").document_scripts.scriptingEnabled(instance)) .enabled else .none;
+    // The tab's screen - an emulated device's first (html.screen_info).
+    const screen = @import("html").screen_info.ofWindow(window);
+    values.device_width = @floatFromInt(screen.width);
+    values.device_height = @floatFromInt(screen.height);
+    values.resolution = screen.device_pixel_ratio;
+    values.color_bits = screen.color_depth / 3;
     if (@import("html").platform_state.of(instance.ctx)) |browser| {
-        const screen = platform.screenInfo(browser);
-        values.device_width = @floatFromInt(screen.width);
-        values.device_height = @floatFromInt(screen.height);
-        values.resolution = screen.device_pixel_ratio;
-        values.color_bits = screen.color_depth / 3;
         const preferences = platform.userPreferences(browser);
         values.prefers_color_scheme = if (preferences.color_scheme == .dark) .dark else .light;
         values.prefers_reduced_motion = if (preferences.reduced_motion == .reduce) .reduce else .no_preference;
@@ -158,6 +159,31 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
         };
         values.forced_colors = preferences.forced_colors;
     }
+    // A host's overrides for the tab win over the platform's answers
+    // (html.window.host_overrides: CDP Emulation.setEmulatedMedia, as
+    // Blink's InspectorEmulationAgent overrides the page's media type and
+    // features).
+    if (@import("dom").browser_state.browsingContextOf(window)) |bc| if (bc.getTop().host_overrides.media) |media| {
+        if (media.media_type) |media_type| values.media_type = switch (media_type) {
+            .screen => .screen,
+            .print => .print,
+        };
+        if (media.color_scheme) |scheme| values.prefers_color_scheme = switch (scheme) {
+            .light => .light,
+            .dark => .dark,
+        };
+        if (media.reduced_motion) |motion| values.prefers_reduced_motion = switch (motion) {
+            .no_preference => .no_preference,
+            .reduce => .reduce,
+        };
+        if (media.contrast) |contrast| values.prefers_contrast = switch (contrast) {
+            .no_preference => .no_preference,
+            .more => .more,
+            .less => .less,
+            .custom => .custom,
+        };
+        if (media.forced_colors) |forced| values.forced_colors = forced;
+    };
     return values;
 }
 
@@ -243,6 +269,7 @@ pub fn installHooks() void {
         .script_delivery_discarded = &lifecycleScriptDeliveryDiscarded,
         .delays_load_event = &lifecycleDelaysLoadEvent,
         .is_ready_for_post_load_tasks = &lifecycleIsReadyForPostLoadTasks,
+        .set_print_when_loaded = &lifecycleSetPrintWhenLoaded,
         .mark_ready_for_post_load_tasks = &lifecycleMarkReadyForPostLoadTasks,
         .is_completely_loaded = &lifecycleIsCompletelyLoaded,
         .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
@@ -293,7 +320,7 @@ pub fn installHooks() void {
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
     // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .get_start = &sequentialStart, .set_start = &setSequentialStart });
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .start_range = &sequentialStartRange, .select_start = &selectSequentialStart, .clear_start = &clearSequentialStart });
     // HTML removing steps step 2: a removed focused area becomes the
     // viewport at the removal (html.focus.removingSteps).
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
@@ -306,7 +333,7 @@ pub fn installHooks() void {
     @import("dom").update_the_rendering.installStep(.fullscreen, &fullscreenStep);
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").fullscreen.removingSteps) catch @panic("fullscreen removing steps allocation");
     @import("dom").unloading_cleanup.installDocumentOnly(&@import("html").fullscreen.unloadingCleanup);
-    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook, .set_initial = &setInitialVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
     // applies the focus fixup rule as activeElement does).
@@ -315,6 +342,7 @@ pub fn installHooks() void {
         .matches_focus = &focus.matchesFocus,
         .matches_focus_within = &focus.matchesFocusWithin,
         .matches_focus_visible = &focus.matchesFocusVisible,
+        .focus_visible_revision = &focus.focusVisibleRevision,
     });
     // html's script processing model reaches a document's script state.
     installScriptHooks();
@@ -640,27 +668,50 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
 }
 
 /// dom.focused_area: `document`'s sequential focus navigation starting point
-/// kept apart from its focused area, or null.
-fn sequentialStart(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
+/// (HTML 6.6.5) - the live Range `selectSequentialStart` keeps - or null.
+fn sequentialStartRange(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;
-    const link = rare.sequential_start orelse return null;
-    return .{ .element = link.instance, .generation = link.generation };
+    if (rare.sequential_start_unset) return null;
+    return rare.sequential_start.get();
 }
 
-/// dom.focused_area: keep (null: drop) `document`'s starting point - rare
-/// data, which few Documents ever need: every change of the focused area
-/// drops it, and dropping none where none was kept makes nothing.
-fn setSequentialStart(document: *runtime.Instance, start: ?@import("dom").focused_area.Designation) void {
+/// dom.focused_area: unset `document`'s sequential focus navigation
+/// starting point (HTML 6.6.5 "sequential navigation" step 7). The range
+/// stays the document's; it reads as no point until the next select.
+fn clearSequentialStart(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    if (start == null) {
-        const rare = internal.rareData() orelse return;
-        rare.sequential_start = null;
-        return;
-    }
+    const rare = internal.rareData() orelse return;
+    rare.sequential_start_unset = true;
+}
+
+/// dom.focused_area: `element` was focused (or an algorithm moved the point
+/// to it), and is `document`'s sequential focus navigation starting point
+/// from now on: the document's one live Range for it, made on first use,
+/// selects the element's contents -
+/// so the DOM's removal steps move it to where the element was when the
+/// element, or an ancestor, is removed (Blink: Document::
+/// SetSequentialFocusNavigationStartingPoint, which keeps a Range and calls
+/// selectNodeContents). Rare data: only a document something was focused
+/// in keeps one. It is the document's for its whole life (`KeptChild`): its
+/// wrapper keeps the range's, and the document's teardown releases it.
+fn selectSequentialStart(document: *runtime.Instance, element: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // Only a document with a browsing context navigates sequentially.
+    if (internal.destroyed or internal.default_view == null) return;
+    // An element of another document is no point in this one (Blink: the
+    // starting point is cleared for it).
+    if ((interfaces.Node.get_ownerDocument(element) catch null) != document) return;
     // Out of memory no starting point is kept, as for a document with none.
     const rare = internal.ensureRareData(document) catch return;
-    rare.sequential_start = .{ .instance = start.?.element, .generation = start.?.generation };
+    const range = rare.sequential_start.get() orelse blk: {
+        const made = interfaces.Document.call_createRange(document) catch return;
+        rare.sequential_start.made(made);
+        break :blk made;
+    };
+    rare.sequential_start.handOut(document, range, .{ .name = "sequentialFocusStart" });
+    interfaces.Range.call_selectNodeContents(range, element) catch {};
+    rare.sequential_start_unset = false;
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.
@@ -670,6 +721,20 @@ fn updateVisibilityStateFromHook(document: *runtime.Instance, state: @import("do
         .visible => ._visible_,
         .hidden => ._hidden_,
     });
+}
+
+/// dom.visibility_state: HTML 6.2 "set the initial visibility state" of
+/// `document`: "Set document's visibility state to visibilityState" - no
+/// event. Step 2's VisibilityStateEntry (timestamp 0) is not queued: Crane
+/// has no visibility-state performance entries yet (Chrome alone ships the
+/// interface), and "update the visibility state" queues none either.
+fn setInitialVisibilityStateFromHook(document: *runtime.Instance, state: @import("dom").visibility_state.State) void {
+    const internal = getInternal(document) orelse return;
+    internal.visibility_state = switch (state) {
+        .visible => ._visible_,
+        .hidden => ._hidden_,
+    };
+    internal.hidden = state == .hidden;
 }
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
@@ -701,6 +766,11 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     // DOM clone step 3.1 also copies "allow declarative shadow roots"
     // (dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots).
     target.allow_declarative_shadow_roots = source.allow_declarative_shadow_roots or source.default_view != null;
+    // Step 2: "Set copy's base URL override to the result of running node's
+    // get the base URL" - HTML's document base URL (Node.baseURI's).
+    const base = try interfaces.Node.get_baseURI(node);
+    defer node.ctx.allocator.free(base);
+    try @import("dom").document_internals.setBaseURLOverride(copy, base);
 }
 
 /// Get Document's internal state from the registry
@@ -2112,6 +2182,7 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const val_slice = value.asSlice();
 
+    const was_on = std.mem.eql(u8, internal.design_mode.asSlice(), "on");
     // Only "on" and "off" are valid values (case-insensitive)
     if (std.ascii.eqlIgnoreCase(val_slice, "on")) {
         internal.design_mode.deinit(internal.allocator);
@@ -2121,6 +2192,10 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
         internal.design_mode = runtime.DOMString.initInterned("off");
     }
     // Invalid values are ignored per spec
+    // A switch makes the document an editing host or not, which
+    // :focus-visible (a focused element that takes text input) and
+    // :read-write read with no tree mutation: cached styles are stale.
+    if (was_on != std.mem.eql(u8, internal.design_mode.asSlice(), "on")) @import("html").focus.focusVisibleInputsChanged(instance);
 }
 
 /// Setter for fgColor
@@ -2233,20 +2308,31 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// HTML 8.5.2 parseHTML, steps 1–6: an inactive HTML document, with the
-/// relevant origin and declarative shadow roots, followed by safe filtering.
+/// relevant origin and declarative shadow roots, parsed by a parser that
+/// sanitizes with the safe configuration as it parses.
 pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
+    const sanitizer = @import("html").sanitizer;
+    var converted = try sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
     defer converted.deinit();
     const allocator = instance.ctx.allocator;
     const realm = engine.currentRealm() orelse instance.ctx;
+    // Steps 3-4: "Let sanitizerConfig be the result of getting a sanitizer
+    // config from options given options and true" - remove unsafe applied.
+    var config = try sanitizer.documentConfig(instance.ctx, &converted, true);
+    defer config.deinit();
+    const filter: sanitizer.ParseFilter = .{ .data = &config.data, .allocator = allocator };
     const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, html.asSlice(), .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+    // Step 5: "Parse HTML from a string given document, html, and
+    // sanitizerConfig".
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, html.asSlice(), .{ .allow_declarative_shadow_roots = true, .origin = origin, .parser_sanitizer = filter.parserSanitizer() }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try @import("dom").document_internals.setContentType(document, "text/html");
-    try @import("html").sanitizer.filterDocument(document, &converted, true);
+    // What the parser could not decide (an allocation failure in an
+    // attribute's URL check keeps it) is filtered after the parse.
+    try sanitizer.sanitize(document, &config, false);
     // To script: its first wrapper takes its born reference (refcount7).
     @import("dom").refcount.offerDocument(document);
     return document;
@@ -2276,16 +2362,23 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     defer if (config) |*held| held.deinit();
     // Step 5: "Parse HTML from a string given document, compliantHTML, and
     // sanitizerConfig" - whose parser takes the document's allow
-    // declarative shadow roots. The configuration filters the parsed
-    // document (row 41 review M2/S2: none filters nothing).
+    // declarative shadow roots and sanitizes with the configuration as it
+    // parses (row 41 review M2/S2: none filters nothing).
     const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant.html, .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+    const filter: ?@import("html").sanitizer.ParseFilter = if (config) |*held| .{ .data = &held.data, .allocator = allocator } else null;
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant.html, .{
+        .allow_declarative_shadow_roots = true,
+        .origin = origin,
+        .parser_sanitizer = if (filter) |*parse_filter| parse_filter.parserSanitizer() else null,
+    }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     const document_internals = @import("dom").document_internals;
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try document_internals.setContentType(document, "text/html");
+    // What the parser could not decide (an allocation failure in an
+    // attribute's URL check keeps it) is filtered after the parse.
     if (config) |*held| try @import("html").sanitizer.sanitize(document, held, false);
     // Step 6. To script: its first wrapper takes its born reference
     // (refcount7).
@@ -2306,7 +2399,7 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.J
 }
 
 /// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     // DOM XPath: compile once; namespace callbacks run during construction.
     return interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
         .expression = expression,
@@ -2640,6 +2733,21 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 18: update readiness after erasing the old listeners.
     updateReadiness(instance, ._loading_);
 
+    // A host hears the document was opened (html_core.navigation.observer
+    // document_opened: CDP Page.documentOpened), once its steps are done -
+    // Blink's Document::open ends in FrameLoader::DidExplicitOpen ->
+    // probe::DidOpenDocument. A document no navigable shows tells no one.
+    if (internal.default_view) |window| if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
+        if (interfaces.Document.get_URL(instance)) |url| {
+            defer instance.ctx.allocator.free(url);
+            const observer = html_core.navigation.observer;
+            observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .document_opened = .{
+                .url = url,
+                .document = .{ .document = instance, .generation = runtime.SlabAllocator.generationOf(instance) },
+            } } });
+        } else |_| {}
+    };
+
     // Return the document
     return instance;
 }
@@ -2806,6 +2914,15 @@ pub fn call_write(instance: *runtime.Instance, text: []const typedefs.TrustedHTM
     return documentWriteSteps(instance, text, false, "Document write");
 }
 
+/// A host's discouragedAPIUse violation for a write that reaches a parser
+/// (dom.performance_monitor; Blink's Document::write reports it there, before
+/// parser_->insert).
+fn reportDocumentWrite(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const view = internal.default_view orelse return;
+    @import("dom").performance_monitor.reportUntimed(view.ctx, .discouraged_api_use, "Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write");
+}
+
 /// The document write steps, given `instance`, `text`, `line_feed` and
 /// `sink`.
 ///
@@ -2851,6 +2968,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // Step 8: "If document's active parser was aborted is true, then return."
     if (internal.active_parser_was_aborted) return;
 
+    // In document.write() (Blink's IsInDocumentWrite) while it inserts and
+    // parses: a parser-blocking script prepared meanwhile was written.
+    const write_lists = @import("dom").document_scripts.of(instance);
+    if (write_lists) |lists| lists.document_write_depth += 1;
+    defer if (write_lists) |lists| {
+        lists.document_write_depth -|= 1;
+    };
+
     // Keep document.open()'s parser alive through nested script and through
     // processInserted restoring the stream's limits. Reentrant open/close
     // can detach it before the outer write has returned.
@@ -2866,6 +2991,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // that script's write() inserted.
     if (internal.input_stream_manager) |stream| {
         if (stream.hasInsertionPoint()) {
+            reportDocumentWrite(instance);
             // Step 10: "Insert string into the input stream just before the
             // insertion point."
             try stream.insert(string.items);
@@ -2903,6 +3029,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         if (kept_parser) |parser| parser_call = try parser.protect();
     }
     const stream = internal.input_stream_manager orelse return;
+    reportDocumentWrite(instance);
     // Steps 10-11 apply to the newly created parser as to an existing one.
     try stream.insert(string.items);
     if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();
@@ -3193,7 +3320,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     // DOM Level 3 XPath §1.4: compile, evaluate and convert to the requested type.
     const compiled = try interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
         .expression = expression,
@@ -3435,10 +3562,10 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 4. Set walker's whatToShow to whatToShow
 /// 5. Set walker's filter to filter
 /// 6. Return walker
-pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The filter argument, borrowed for the call: the walker takes its own.
-    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
+    // The filter argument, BORROWED for the call: the walker keeps its own.
+    const filter_value: ?runtime.BorrowedCallbackInterface = if (filter.was_passed) filter.value else null;
 
     // Step 1: Create TreeWalker
     // Use interface instead of impl (per Golden Rule #13)
@@ -3447,7 +3574,7 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
 
     // Steps 2-5: the walker's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpTreeWalker(walker, root, what_to_show, filter_wrapper);
+    try traversal.setUpTreeWalker(walker, root, what_to_show, filter_value);
 
     // Step 6: Return walker
     return walker;
@@ -3899,6 +4026,18 @@ fn lifecycleStopLoad(document: *runtime.Instance) void {
     if (internal.ready_for_post_load_tasks) return;
     internal.load_aborted = true;
     internal.ready_for_post_load_tasks = true;
+    // - and it counts as completely loaded from now on, as Chrome's stopped
+    //   load does: Blink's CancelParsing sets load_event_progress_ to
+    //   kLoadEventCompleted, and the checks HTML words as "not completely
+    //   loaded" read Document::LoadEventFinished, so a location navigation
+    //   the stopped page makes later is no longer made a replace (HTML
+    //   "Location-object navigate" step 3) and its unload events fire. Chrome
+    //   157 passes performance-timeline/not-restored-reasons/
+    //   abort-block-bfcache.window.js this way (wpt.fyi 4786307730243584):
+    //   its window.stop() page navigates away with a push, and history.back()
+    //   returns to it; Firefox 160 and Safari 27.2 ship no notRestoredReasons.
+    internal.completely_loaded = true;
+    if (@import("dom").document_resources.of(document)) |resources| resources.pruneLoaded();
     const generation = runtime.SlabAllocator.generationOf(document);
     // readystatechange listeners run here, and may take the frame away.
     engine.runInRealm(document.ctx, becomeComplete, document) catch {};
@@ -4196,6 +4335,7 @@ fn domContentLoadedSteps(data: ?*anyopaque) void {
     if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_start);
     fireEvent(document, document, "DOMContentLoaded", true);
     if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_end);
+    if (get_defaultView(document) catch null) |window| reportLifecycle(document, window, .dom_content_loaded);
     // Step 6.4: enable the client message queue of the
     // ServiceWorkerContainer whose client is the document's relevant
     // settings object.
@@ -4256,8 +4396,10 @@ fn completeLoadUnlessDelayed(document: *runtime.Instance) void {
     // and replace-before-load/form-submit.html's iframe fired load at its
     // first document.
     if (@import("dom").navigables.navigationPlanned(document)) return queueLoadUnlessDelayed(document);
-    // Step 11, "ready for post-load tasks", as queueLoadUnlessDelayed sets it
+    // Step 12, the printing steps when print() asked before the load; step
+    // 13, "ready for post-load tasks", as queueLoadUnlessDelayed sets it
     // before step 9's task runs.
+    printWhenLoaded(internal, document);
     internal.ready_for_post_load_tasks = true;
     if (!isShownByItsWindow(document)) return;
     engine.runInRealm(document.ctx, completeLoadingSteps, document) catch |err| {
@@ -4288,9 +4430,11 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
         return;
     }
     internal.load_waiting_on_delay = false;
-    // "The end" step 11 follows queueing step 9, without waiting for that
-    // task to fire load. Set this before the native no-loop fallback can
-    // synchronously run the queued task and its callbacks.
+    // "The end" steps 12 (the printing steps print() asked for) and 13
+    // follow queueing step 9, without waiting for that task to fire load.
+    // Set this before the native no-loop fallback can synchronously run the
+    // queued task and its callbacks.
+    printWhenLoaded(internal, document);
     internal.ready_for_post_load_tasks = true;
     const token = nextSerial(internal);
     internal.pending_load_token = token;
@@ -4312,6 +4456,20 @@ fn lifecycleDelaysLoadEvent(document: *runtime.Instance) bool {
 fn lifecycleIsReadyForPostLoadTasks(document: *runtime.Instance) bool {
     const internal = getInternal(document) orelse return true;
     return internal.ready_for_post_load_tasks;
+}
+
+fn lifecycleSetPrintWhenLoaded(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.print_when_loaded = true;
+}
+
+/// "The end" step 12: "If the Document's print when loaded flag is set, then
+/// run the printing steps" - just before step 13 makes it ready for
+/// post-load tasks (html.simple_dialogs.printingSteps).
+fn printWhenLoaded(internal: *InternalState, document: *runtime.Instance) void {
+    if (!internal.print_when_loaded) return;
+    internal.print_when_loaded = false;
+    @import("html").simple_dialogs.printingSteps(document);
 }
 
 fn lifecycleMarkReadyForPostLoadTasks(document: *runtime.Instance) void {
@@ -4533,13 +4691,12 @@ fn lifecycleIsUnloading(document: *runtime.Instance) bool {
 /// `document` (HTML §7.4.2.4), from a task on the navigation and traversal
 /// task source - so it opens the scope an event needs.
 ///
-/// Step 6's prompt needs sticky activation, which nothing in this engine
-/// grants, so no prompt is shown and nothing is cancelled: a handler that
-/// cancels the event or sets its returnValue is recorded in the result's
-/// `prompt_requested` and changes nothing else, as in a browser whose user
-/// never interacted with the page.
-fn lifecycleFireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
-    var call: BeforeUnloadCall = .{ .document = document };
+/// Step 6's prompt - for a document with sticky activation whose handler
+/// asked for it - is html.simple_dialogs' beforeunload prompt: WebDriver
+/// BiDi's user prompt opened and closed, the pause until the user (a host
+/// that claimed it, or the platform) answers.
+fn lifecycleFireBeforeUnload(document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult {
+    var call: BeforeUnloadCall = .{ .document = document, .unload_prompt_shown = unload_prompt_shown };
     engine.runInRealm(document.ctx, BeforeUnloadCall.steps, &call) catch return .{};
     return call.result;
 }
@@ -4549,15 +4706,16 @@ const BeforeUnloadResult = @import("dom").document_lifecycle.BeforeUnloadResult;
 /// The steps to fire beforeunload, run in the document's realm.
 const BeforeUnloadCall = struct {
     document: *runtime.Instance,
+    unload_prompt_shown: bool = false,
     result: BeforeUnloadResult = .{},
 
     fn steps(data: ?*anyopaque) void {
         const call: *BeforeUnloadCall = @ptrCast(@alignCast(data.?));
-        call.result = fireBeforeUnload(call.document);
+        call.result = fireBeforeUnload(call.document, call.unload_prompt_shown);
     }
 };
 
-fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
+fn fireBeforeUnload(document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult {
     const internal = getInternal(document) orelse return .{};
     const window = (get_defaultView(document) catch null) orelse return .{};
 
@@ -4571,7 +4729,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const termination_nesting = @import("html_core").navigation.termination_nesting;
     const event_loop = @import("dom").agent_hosts.of(document.ctx);
     termination_nesting.enter(event_loop);
-    defer termination_nesting.leave(event_loop);
+    var terminating = true;
+    defer if (terminating) termination_nesting.leave(event_loop);
 
     // Step 4: "Let eventFiringResult be the result of firing an event named
     // beforeunload at document's relevant global object, using
@@ -4581,10 +4740,29 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
     const not_canceled = @import("dom").fire_event.dispatchTrusted(window, event) catch true;
-    // Step 6's condition, less sticky activation: "eventFiringResult is
-    // false, or the returnValue attribute of event is not the empty string".
+    // Step 5: the termination nesting level goes down before the prompt.
+    termination_nesting.leave(event_loop);
+    terminating = false;
+    // Step 6's handler condition: "eventFiringResult is false, or the
+    // returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
-    return .{ .prompt_requested = !not_canceled or return_value.asSlice().len > 0 };
+    const prompt_requested = !not_canceled or return_value.asSlice().len > 0;
+    var result: BeforeUnloadResult = .{ .prompt_requested = prompt_requested, .prompt_shown = unload_prompt_shown };
+    // Step 6: no prompt shown yet in this check, no sandboxed modals flag,
+    // sticky activation, the handler asked - and the prompt not annoying,
+    // deceptive or pointless (Crane shows every one these allow).
+    if (prompt_requested and !unload_prompt_shown and
+        !@import("dom").document_scripts.activeSandboxingFlags(document).modals and
+        @import("html").user_activation.hasStickyActivation(window))
+    {
+        // 6.1-6.5: shown; WebDriver BiDi user prompt opened with
+        // "beforeunload", the pause for the user's answer, user prompt
+        // closed (html.simple_dialogs).
+        result.prompt_shown = true;
+        result.canceled = @import("html").simple_dialogs.promptToUnload(window);
+    }
+    // Step 7 (the unload counter, deferred above) and step 8.
+    return result;
 }
 
 /// dom.document_lifecycle: "unload" `document` (HTML §7.5.9) with no new
@@ -4600,8 +4778,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 /// whose descendants unload after it); steps 18-19 (cleanup steps, not
 /// restored reasons) are the navigable's: navigation clears the window's
 /// timers once this returns - or, for a kept document, suspends them.
-fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy) void {
-    var call: UnloadCall = .{ .document = document, .destroy = destroy };
+fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy, timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo) void {
+    var call: UnloadCall = .{ .document = document, .destroy = destroy, .timing = timing };
     engine.runInRealm(document.ctx, unloadSteps, &call) catch |err| {
         log.debug("unload not run: {}", .{err});
     };
@@ -4611,6 +4789,8 @@ fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document
 const UnloadCall = struct {
     document: *runtime.Instance,
     destroy: @import("dom").document_lifecycle.UnloadDestroy,
+    /// HTML's unloadTimingInfo, or null.
+    timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo = null,
 };
 
 fn unloadSteps(data: ?*anyopaque) void {
@@ -4650,16 +4830,39 @@ fn unloadSteps(data: ?*anyopaque) void {
     // Step 9: "If intendToKeepInBfcache is false, then set oldDocument's
     // salvageable state to false."
     if (!intend_to_keep) internal.salvageable = false;
-    // Step 10: pagehide and hidden, if the page was showing.
-    if (internal.page_showing) {
+    // Step 10: pagehide and hidden, if the page was showing - or, golden
+    // rule 2, if its window's load event is under way (pageshow has not
+    // fired yet: page showing becomes true after the load listeners, "the
+    // end" step 9.10). HTML gates on page showing alone, so a document its
+    // own load listeners unload (they remove its frame) would hear neither;
+    // all three browsers fire them: page-visibility/onvisibilitychange.html
+    // and iframe-unload.html, which remove the frame from inside its load
+    // event, pass in Chrome 158, Firefox 160 and Safari 27.2 (wpt.fyi
+    // a3830cd8f7). Blink's Document::DispatchUnloadEvents
+    // (core/dom/document.cc; algorithm reproduced, not copied) skips them
+    // only while load_event_progress_ is kLoadEventNotRun, then fires
+    // pagehide and, if the page was visible, visibilitychange; WebKit's
+    // FrameLoader::dispatchUnloadEvents gates on m_didCallImplicitClose, set
+    // just before the load event.
+    if (internal.page_showing or internal.in_load_event) {
         internal.page_showing = false;
+        internal.in_load_event = false;
         firePageTransition(document, window, "pagehide", internal.salvageable);
         updateVisibilityState(document, ._hidden_);
     }
+    // Step 11: "If unloadTimingInfo is not null, then set unloadTimingInfo's
+    // unload event start time to the current high resolution time given
+    // newDocument's relevant global object" - the caller's clock, made
+    // relative to the new document's time origin when its navigation timing
+    // entry is.
+    if (call.timing) |info| info.unload_event_start = info.now();
     // Step 12: "If oldDocument's salvageable state is false, then fire an
     // event named unload at oldDocument's relevant global object, with legacy
     // target override flag set."
     if (!internal.salvageable) fireAtWindow(document, window, "unload");
+    // Step 13: "If unloadTimingInfo is not null, then set unloadTimingInfo's
+    // unload event end time" likewise.
+    if (call.timing) |info| info.unload_event_end = info.now();
     // Step 14.
     termination_nesting.leave(event_loop);
     terminating = false;
@@ -4710,6 +4913,9 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.script_delivery_continuation_suppressed = true;
     internal.render_blocking_elements.clear();
+    // Its resources serve no later fetch (the entries live on while a fetch
+    // fills or waits on one).
+    if (@import("dom").document_resources.of(document)) |resources| resources.clear();
     internal.salvageable = false;
     internal.destroyed = true;
     internal.kept_in_bfcache = false;
@@ -4721,13 +4927,17 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
 
 /// dom.document_lifecycle: a destroyed document nothing outside its own work
 /// holds lets go of its own state's references on its nodes (refcount step
-/// 7b): its autofocus candidates and its top layer, as its own teardown
+/// 7b): its autofocus candidates, its editing undo history and its top
+/// layer, as its own teardown
 /// (`deinitOwn`) lets them go - a destroyed document runs no script, so no
 /// event fires. Nothing for a document that was not destroyed.
 fn lifecycleReleaseOwnReferences(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (!internal.destroyed) return;
     if (autofocusState(document, false)) |state| state.clear();
+    // Its editing undo history lets go of the nodes its steps hold
+    // (dom.editor_states): a destroyed document is never edited again.
+    if (internal.editor_state) |editor_state| @import("dom").editor_states.releaseNodes(editor_state);
     // Its dialogs still open or modal let go of the nodes their own state
     // keeps (dom.dialog.releaseSavedNodes) before the top layer that lists
     // them empties.
@@ -4957,7 +5167,11 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // Step 2: set it.
     internal.visibility_state = state;
     internal.hidden = state == ._hidden_;
-    // Step 6: "Fire an event named visibilitychange at document, with its
+    // Step 4: "Run the screen orientation change steps with document"
+    // (html.screen_orientation: a document that is visible again hears the
+    // orientation it missed).
+    @import("html").screen_orientation.changeSteps(document);
+    // Step 7: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);
     // A hidden document has no rendering opportunity (update the rendering
@@ -5236,10 +5450,15 @@ fn completeLoading(document: *runtime.Instance) void {
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_start);
     // Step 9.5: "Fire an event named load at window, with legacy target
     // override flag set" - the event's target is this document (DOM
-    // dispatch step 5).
+    // dispatch step 5). The load event is under way until page showing
+    // (step 9.10): a load listener that unloads this document (it removes
+    // the document's frame) gets pagehide and visibilitychange
+    // (`unloadSteps` step 10).
+    if (getInternal(document)) |loading| loading.in_load_event = true;
     fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
+    reportLifecycle(document, window, .load);
     // "Restore persisted state" step 2 at the latest: right after the
     // window's load event, before pageshow (Blink
     // LocalDOMWindow::DispatchLoadAndPageshowEvents -> RestoreImmediately).
@@ -5270,6 +5489,7 @@ fn completeLoading(document: *runtime.Instance) void {
     const container = @import("dom").navigable_container.of(window);
     const was_showing = internal.page_showing;
     internal.page_showing = true;
+    internal.in_load_event = false;
     if (container) |element| runContainerLoadEventSteps(element);
     // Step 9.11: pageshow, persisted false - unless the document was showing
     // already, or the container's listeners left it not fully active (they
@@ -5286,6 +5506,16 @@ fn completeLoading(document: *runtime.Instance) void {
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
     internal.completely_loaded = true;
+    // Its navigable is done loading, unless a navigation of it is under way
+    // (one its load or pageshow listeners started).
+    if (!@import("dom").content_navigables.isNavigating(document)) reportLifecycle(document, window, .stopped_loading);
+    // The SVG document fragments' timelines begin once the load event has
+    // fired (SVG Animations 2 4.1, timelinebegin "loadend"; Blink
+    // Document::DispatchLoadAndPageshowEvents -> SVGDocumentExtensions::
+    // StartAnimations, after pageshow).
+    @import("dom").smil.document_animations.startAnimations(document);
+    // What the document kept for its load's reuse goes (dom.document_resources).
+    if (@import("dom").document_resources.of(document)) |resources| resources.pruneLoaded();
     // This frame no longer delays its container document: the parent's own
     // load completes now if nothing else delays it (completeLoadingWithChild),
     // after this document's pageshow.
@@ -5296,6 +5526,21 @@ fn completeLoading(document: *runtime.Instance) void {
     // loaded time. Its wait starts in a task queued behind the container's
     // load event, so a refresh of no time never overtakes that event.
     if (internal.declarative_refresh != null) queueLifecycleTask(document, .declarative_refresh);
+}
+
+/// html_core.navigation.observer: a lifecycle milestone of `document`, its
+/// `window`'s, told to the Browser's navigation observer (CDP lifecycleEvent
+/// DOMContentLoaded / load, domContentEventFired, loadEventFired,
+/// frameStoppedLoading). Runs no script.
+fn reportLifecycle(document: *runtime.Instance, window: *runtime.Instance, comptime kind: enum { dom_content_loaded, load, stopped_loading }) void {
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    const observer = html_core.navigation.observer;
+    const ref: observer.DocumentRef = .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) };
+    observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = switch (kind) {
+        .dom_content_loaded => .{ .dom_content_loaded = .{ .document = ref } },
+        .load => .{ .load = .{ .document = ref } },
+        .stopped_loading => .stopped_loading,
+    } });
 }
 
 /// "Completely finish loading" steps 4-5 for `container`, run in the
@@ -5480,7 +5725,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 5. Set iterator's whatToShow to whatToShow
 /// 6. Set iterator's filter to filter
 /// 7. Return iterator
-pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Removal runs pre-removing steps for iterators whose root's node
     // document is the removed node's document, even across factory documents.
@@ -5488,8 +5733,8 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
         root
     else
         (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
-    // The filter argument, borrowed for the call: the iterator takes its own.
-    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
+    // The filter argument, BORROWED for the call: the iterator keeps its own.
+    const filter_value: ?runtime.BorrowedCallbackInterface = if (filter.was_passed) filter.value else null;
 
     // Step 1: Create NodeIterator
     // Use interface instead of impl (per Golden Rule #13)
@@ -5498,7 +5743,7 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
 
     // Steps 2-6: the iterator's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_value, root_document);
 
     // Register in the same document recorded for generation-safe teardown.
     try @import("dom").document_internals.registerNodeIterator(root_document, iterator);

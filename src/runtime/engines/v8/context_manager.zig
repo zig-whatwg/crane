@@ -123,33 +123,67 @@ pub const ContextEntry = struct {
     /// so the flag stays readable for the manager's lifetime.
     destroying: bool = false,
 
-    /// Whether a wrap in this realm must build its interface's interface
-    /// object first, and which it has (`InterfaceObjects`).
+    /// The interface objects a wrap in this realm has built, or found built
+    /// (`InterfaceObjects`).
     interface_objects: InterfaceObjects = .{},
+
+    /// The realm's world (engine.WorldId; protocol_worlds.zig): 0 for every
+    /// realm but a world realm, whose global wraps ANOTHER realm's Window -
+    /// its main realm's, which frees it. A world realm's end takes the
+    /// Window's entry out of its cache and leaves the Window alone
+    /// (`removeContextByKey`). Set once, when the world realm is recorded.
+    world: u32 = 0,
 };
 
 /// [interface_prototypes] A wrapper's [[Prototype]] is the realm's interface
 /// prototype object as V8 instantiates the interface's template in the
 /// realm's context (v8_wrapper.cpp v8_FunctionTemplate_NewWrapper) - the same
-/// object as the realm's interface object's `prototype`. In a realm that
-/// built every interface object when it was made, that object already has
-/// everything WebIDL puts on it. A realm that builds them when script first
-/// reads them (`lazy`: interface_bindings.registerAllTemplatesOnly's
-/// .lazy_follows - a frame's realm, a hydrated worker's) builds one for a
-/// wrap too, the first time it wraps an object of the interface: script that
-/// never read the global - or replaced it before reading it - still gets the
-/// whole prototype. Blink's per-context constructor map is the same record
-/// (V8PerContextData::constructor_map_, ConstructorForType, Chromium
-/// 157.0.8103.51: an interface object is built on the first wrap or the
-/// first read, whichever comes first). Written and read on the agent's
-/// thread, as the entry is.
+/// object as the realm's interface object's `prototype`, which has everything
+/// WebIDL puts on it only once the realm has built that interface object. A
+/// realm builds its interface objects when script first reads them (every
+/// Window realm's exposed constructs are lazy data properties -
+/// interface_bindings.installExposedConstructs; a ShadowRealm's restored
+/// global has the same) - and for a wrap too, the first time it wraps an
+/// object of the interface: script that never read the global - or replaced
+/// it before reading it - still gets the whole prototype. A realm that built
+/// it already (a worker's, eagerly) finds it marked. Blink's per-context
+/// constructor map is the same record (V8PerContextData::constructor_map_,
+/// ConstructorForType, Chromium 157.0.8103.51: an interface object is built on
+/// the first wrap or the first read, whichever comes first). Written and read
+/// on the agent's thread, as the entry is.
+///
+/// One bit per interface the isolate registered, at its registration index
+/// (isolate_templates.Registered.index), which the wrap reads with the
+/// template it looks up anyway: the question is asked on every wrapper a
+/// realm makes, and a hash of the template there cost dom.create-element
+/// 3.2% (the cost window of 2026-11-20). Blink asks its per-context
+/// wrapper boilerplate map instead (V8PerContextData::CreateWrapperFromCache,
+/// a hash keyed by WrapperTypeInfo) - Crane's wrap makes the instance from
+/// the template, so a bit is all it needs.
 pub const InterfaceObjects = struct {
-    /// The realm builds its interface objects on first read.
-    lazy: bool = false,
-    /// In a lazy realm: the templates whose interface object a wrap has
-    /// built, or found built. From the entry's allocator; freed when the
-    /// entry is retired (`deinit`).
-    built: std.AutoHashMapUnmanaged(*v8.FunctionTemplate, void) = .empty,
+    /// Set for each registration index whose interface object a wrap has
+    /// built, or found built. Grown to the highest index marked, from the
+    /// entry's allocator; freed when the entry is retired (`deinit`).
+    built: std.DynamicBitSetUnmanaged = .{},
+
+    /// Whether the interface at `index` has its interface object built in
+    /// this realm. An index past the set was never marked.
+    pub inline fn isBuilt(self: *const InterfaceObjects, index: u16) bool {
+        return index < self.built.bit_length and self.built.isSet(index);
+    }
+
+    /// Record the interface at `index` as built. Out of memory to grow the
+    /// set, nothing is recorded: the next wrap builds it again - finds it
+    /// built - and tries again.
+    pub fn markBuilt(self: *InterfaceObjects, allocator: std.mem.Allocator, index: u16) void {
+        if (index >= self.built.bit_length) {
+            // Room for the interfaces a realm commonly wraps at the first
+            // growth, then to the index asked for.
+            const len = @max(@as(usize, index) + 1, 256);
+            self.built.resize(allocator, len, false) catch return;
+        }
+        self.built.set(index);
+    }
 
     pub fn deinit(self: *InterfaceObjects, allocator: std.mem.Allocator) void {
         self.built.deinit(allocator);
@@ -253,6 +287,9 @@ pub fn useAllocator(isolate: *v8.Isolate, allocator: std.mem.Allocator) !void {
 /// race conditions between context teardown and GC-driven cleanup.
 pub fn endAgentRealms(isolate: *v8.Isolate) void {
     const state = protocol_agents.realmsOf(isolate) orelse return;
+    // Its world realms first: each one's global wraps a main realm's Window,
+    // which that realm's end frees (protocol_worlds.zig).
+    @import("protocol_worlds.zig").endAllOfAgent(isolate);
     endRealms(state, protocol_agents.deferredTeardownOf(isolate));
 }
 
@@ -422,6 +459,12 @@ pub fn getOrCreateWithExternalEventLoop(
     // the current one. Operations that enter the realm from outside it enter
     // this (engine.enterRealm) - a worker's is never the page's.
     ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
+    // And its agent's host state, for the realm to answer with one load
+    // (runtime.ContextData.host_state): the context was made in the current
+    // isolate, so its record is the one load protocol_agents.callbackRecordOf
+    // finds - null for an isolate createAgent did not make, or once its end
+    // began.
+    ctx_data.host_state = agentHostStateOf(ctx_data.agent);
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
     const entry = try state.alloc().create(ContextEntry);
@@ -528,6 +571,12 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     // the current one. Operations that enter the realm from outside it enter
     // this (engine.enterRealm) - a worker's is never the page's.
     ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
+    // And its agent's host state, for the realm to answer with one load
+    // (runtime.ContextData.host_state): the context was made in the current
+    // isolate, so its record is the one load protocol_agents.callbackRecordOf
+    // finds - null for an isolate createAgent did not make, or once its end
+    // began.
+    ctx_data.host_state = agentHostStateOf(ctx_data.agent);
 
     // Create realm for cross-realm support (only if we have an isolate)
     // Per WebIDL, every context has an associated realm with intrinsics
@@ -618,50 +667,6 @@ pub fn isContextAddressAlive(raw_addr: usize) bool {
     return state.contexts.contains(raw_addr);
 }
 
-/// Hydrate a V8 context restored from snapshot with the appropriate interfaces for the given scope
-///
-/// This function installs only the interfaces that are exposed in the given scope,
-/// using the exposure metadata from WebIDL [Exposed] attributes.
-///
-/// On the agent's own thread (the current isolate's realms).
-///
-/// Arguments:
-/// - isolate: V8 isolate pointer
-/// - v8_ctx: V8 context pointer (restored from snapshot)
-/// - scope: The global scope kind to install interfaces for
-pub fn hydrateContextFromSnapshot(
-    isolate: *v8.Isolate,
-    v8_ctx: *v8.Context,
-    scope: helpers.GlobalScope,
-) void {
-    log.debug("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
-
-    // Use inline for to convert runtime scope to comptime for installForScope
-    inline for (comptime std.meta.fieldNames(helpers.GlobalScope)) |field_name| {
-        if (scope == @field(helpers.GlobalScope, field_name)) {
-            // NOTE: Do NOT call installLazyConstructorsOnGlobal here!
-            // The snapshot already contains all WebIDL constructors registered via initializeBindings().
-            // Installing lazy getters would OVERWRITE the snapshot's constructors with fresh ones,
-            // breaking prototype chain identity (instanceof checks would fail because the prototype
-            // objects would be different from those in the snapshot).
-
-            // Register legacy interface aliases (e.g., webkitURL = URL)
-            // V8 snapshots don't preserve object property sets on the global,
-            // so we must re-register these aliases at runtime after loading from snapshot.
-            const interface_bindings = @import("interface_bindings.zig");
-            interface_bindings.registerLegacyInterfaceAliases(isolate, v8_ctx);
-
-            // NOTE: Do NOT call setupConstructorInheritance here!
-            // The snapshot already contains properly configured prototype chains set up during
-            // snapshot creation via FunctionTemplate::Inherit(). Re-calling this would create
-            // new templates and potentially break the prototype chain identity.
-
-            log.debug("[HYDRATE-SNAPSHOT] Context hydrated with legacy aliases, scope={s}\n", .{@tagName(scope)});
-            return;
-        }
-    }
-}
-
 /// Remove a runtime context for a V8 context
 ///
 /// If the context manager owns the runtime context, it will be deinitialized.
@@ -703,7 +708,6 @@ fn deinitWindow(window: *runtime.Instance) void {
 /// entry knows its Window and its global's anchor.
 pub fn removeContextByKey(key: usize) void {
     const state = currentRealms() orelse return;
-    const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
     // The garbage this realm's trees left - trees whose counts reached zero
     // (refcount step 7, dom.refcount_teardown; a collected wrapper's
@@ -736,10 +740,6 @@ pub fn removeContextByKey(key: usize) void {
         // reactions that have not run and the asynchronous iterators still
         // alive end, and their host data with them (realm_finalizers.zig).
         if (@import("realm_finalizers.zig").listOf(&entry.runtime_ctx)) |finalizers| finalizers.drain();
-        // The callbacks this context's script registered hold handles into it
-        // - one listener is enough to keep the whole page alive - and nothing
-        // else releases them, since its EventTargets are never torn down.
-        @import("callback_registry.zig").cleanupForContext(raw_addr);
         if (entry.owns_context) {
             // A pointer, not a copy - `clearV8WrapperCacheStorage` below has to
             // land on the entry's own ContextData, which is what every Instance
@@ -797,12 +797,20 @@ pub fn removeContextByKey(key: usize) void {
             // context's Global(), which a navigation's reused proxy points at
             // the NEXT realm's Window.
             const window_instance_dom = entry.window_instance;
-            if (window_instance_dom) |wi| {
+            if (window_instance_dom) |wi| teardown_window: {
                 // Remove Window from wrapper cache FIRST to prevent double-free
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     _ = cache_ptr.remove(wi);
                 }
+
+                // A world realm's global wraps its main realm's Window, which
+                // that realm's end frees (protocol_worlds.zig: a world realm
+                // always ends first) - Blink's isolated world contexts share
+                // the frame's LocalDOMWindow and dispose only their own
+                // per-context data (LocalWindowProxy::DisposeContext). Only the
+                // wrapper went, above.
+                if (entry.world != 0) break :teardown_window;
 
                 // Now call Window.deinit which will clean up Location, Document, and DOM tree.
                 //
@@ -1084,10 +1092,14 @@ pub fn windowIndexedPropertyQuery(
     // Check if this index is valid
     const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
     if (index < length) {
-        // Valid index - return property attributes (ReadOnly | DontEnum)
-        // Per spec, indexed properties on Window are configurable but not writable
+        // HTML 7.2.3.5 WindowProxy [[GetOwnProperty]] step 2.5: "Return
+        // PropertyDescriptor{ [[Value]]: value, [[Writable]]: false,
+        // [[Enumerable]]: true, [[Configurable]]: true }" - ReadOnly alone.
+        // It answered DontEnum too (window-indexed-properties.html's
+        // "Ensure indexed properties have the correct configuration";
+        // Chrome 157, Firefox 160 and Safari 27.2 pass).
         const isolate = info.getIsolate();
-        const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        const attrs = v8.v8_Integer_New(isolate, 1); // 1 = ReadOnly
         // SetReturnValue copies; the Global is ours.
         defer v8.v8_Value_Dispose(@ptrCast(attrs));
         info.setReturnValue(@ptrCast(attrs));
@@ -1125,6 +1137,59 @@ pub fn windowIndexedPropertyDeleter(
     // 2.1.3.
     info.setReturnValueBool(false);
     if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot delete a WindowProxy's indexed property");
+    return .kYes;
+}
+
+/// HTML 7.2.3.7 WindowProxy [[DefineOwnProperty]] (P, Desc), step 1.1, for
+/// an array index P on a same-origin WindowProxy (a cross-origin one throws,
+/// in cross_origin.zig): "If P is an array index property name, return
+/// false" - whether a child navigable is there or not. A false is a
+/// TypeError from Object.defineProperty and in strict code, and
+/// Reflect.defineProperty's false (as the binding's refuseDefine). Without
+/// it, V8 defined an own property at an index with no child, and replaced
+/// none at one with a child without saying so
+/// (html/browsers/the-window-object/window-indexed-properties{,-strict}.html;
+/// Chrome 157, Firefox 160 and Safari 27.2 pass).
+pub fn windowIndexedPropertyDefiner(
+    index: u32,
+    desc: *const v8.PropertyDescriptor,
+    info: *const v8.PropertyCallbackInfoBoolean,
+) callconv(.c) v8.Intercepted {
+    _ = index;
+    _ = desc;
+    // THE Window-receiver rule, as the getter's.
+    const this_obj = info.getHolder() orelse return .kNo;
+    defer v8.v8_Object_Dispose(this_obj);
+    _ = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
+    info.setFalse();
+    if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot define an indexed property on a WindowProxy");
+    return .kYes;
+}
+
+/// WindowProxy [[Set]] for an array index P on a same-origin WindowProxy:
+/// OrdinarySet, which ends in [[DefineOwnProperty]] on the WindowProxy -
+/// false for an array index (above) whether a child navigable is there
+/// ([[GetOwnProperty]]'s non-writable descriptor) or not (CreateDataProperty
+/// on the receiver) - so the assignment does nothing, and is a TypeError in
+/// strict code. V8's setter interceptor cannot answer false without throwing
+/// (its PropertyCallbackInfo<void> has no return value), so Reflect.set
+/// still answers true where the spec says false - Chrome 157's answer on the
+/// same V8 (it fails window-indexed-properties*.html's "Borderline numeric
+/// key: 2 ** 32 - 2 is an index" cases; Firefox 160 and Safari 27.2 pass).
+/// Without it, `window[1] = "foo"` with no second child defined an own
+/// property.
+pub fn windowIndexedPropertySetter(
+    index: u32,
+    value: *v8.Value,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    _ = index;
+    _ = value;
+    // THE Window-receiver rule, as the getter's.
+    const this_obj = info.getHolder() orelse return .kNo;
+    defer v8.v8_Object_Dispose(this_obj);
+    _ = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
+    if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot set an indexed property of a WindowProxy");
     return .kYes;
 }
 
@@ -1274,9 +1339,19 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
 ///
 /// On the agent's own thread (the current isolate's realms).
 pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
-    const state = currentRealms() orelse return null;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
-    const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return null;
+    return getWindowForContextId(isolate, @intFromPtr(raw_addr));
+}
+
+/// `getWindowForContext` for the context whose Crane id is `id`
+/// (v8_Context_GetRawAddress's number, as
+/// v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal answers it), in
+/// `isolate`'s agent: no context handle (binding_plumbing.answerWindowGetter,
+/// on every read of Window's window, self and frames).
+pub fn getWindowForContextId(isolate: *v8.Isolate, id: usize) ?*runtime.Instance {
+    const state = protocol_agents.realmsOf(isolate) orelse return null;
+    const entry = state.contexts.get(id) orelse return null;
     return entry.window_instance;
 }
 
@@ -1432,7 +1507,13 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
 pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
     // A node's wrapper is its agent's, in its own slot: severed and ended
     // now, its reference with it (node_wrappers.nodeDestroyed).
-    if (instance.vtable.counted != null) return @import("node_wrappers.zig").nodeDestroyed(instance);
+    if (instance.vtable.counted != null) {
+        // And each world's wrapper of it (protocol_worlds.zig), once its
+        // Browser has a world.
+        const protocol_worlds = @import("protocol_worlds.zig");
+        if (protocol_worlds.mayConvertInWorld(instance)) protocol_worlds.nodeDestroyed(instance);
+        return @import("node_wrappers.zig").nodeDestroyed(instance);
+    }
     // Get the context from the instance
     const ctx_data = instance.ctx;
 
@@ -1461,6 +1542,8 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyDeleter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertySetter));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyDefiner));
     // No named handler on the global: a Window's named properties are its
     // WindowProperties object's (window_properties.zig, HTML 7.3.3). The
     // global named getter and query that were registered here were installed
@@ -1477,113 +1560,6 @@ pub fn registerExternalReferences() void {
 //
 // This eliminates duplication between Context.zig and worker_v8_context.zig.
 // ============================================================================
-
-/// Context type for hydration
-pub const HydrationContextType = enum {
-    /// Window context (for HTML pages) - gets document, location, navigator
-    window,
-    /// Worker context - gets self, postMessage (NO document, location)
-    worker,
-};
-
-/// Options for hydrating a context
-pub const HydrationOptions = struct {
-    /// V8 isolate
-    isolate: *v8.Isolate,
-    /// V8 context to hydrate
-    context: *v8.Context,
-    /// Allocator for runtime objects
-    allocator: std.mem.Allocator,
-    /// Timer interface for setTimeout/setInterval
-    timer_interface: ?runtime.TimerInterface = null,
-    /// Event loop interface (streams EventLoop interface)
-    event_loop_interface: ?@import("event_loop").EventLoop = null,
-    /// Network manager for async fetch (Window only)
-    network_manager: ?*anyopaque = null,
-};
-
-/// Hydration result for worker contexts
-pub const WorkerHydrationResult = struct {
-    /// Runtime context for the V8 context
-    runtime_ctx: runtime.Context,
-    /// Whether hydration succeeded
-    success: bool = true,
-};
-
-/// Hydrate a V8 context as a Worker context (from snapshot)
-///
-/// This function performs all post-snapshot hydration steps for Worker contexts:
-/// 1. Populates Zig-side template registry (wrapInstanceAsV8Object support)
-/// 2. Reinstalls accessor callbacks on prototypes (stale after snapshot load)
-/// 3. Sets up basic worker globals (self, globalThis)
-/// 4. Registers context with context manager
-///
-/// ## Worker-specific behavior
-///
-/// Workers do NOT get:
-/// - document, location, navigator (DOM-specific)
-/// - Window instance (workers use DedicatedWorkerGlobalScope)
-///
-/// Workers DO get:
-/// - self (reference to global)
-/// - postMessage (registered separately by worker setup)
-/// - console (registered separately)
-///
-/// ## Usage
-///
-/// ```zig
-/// const result = try context_manager.hydrateWorkerContext(.{
-///     .isolate = isolate,
-///     .context = v8_ctx,
-///     .allocator = allocator,
-/// });
-/// ```
-pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
-    const interface_bindings = @import("interface_bindings.zig");
-
-    const isolate = options.isolate;
-    const v8_ctx = options.context;
-    const allocator = options.allocator;
-
-    log.debug("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
-
-    // 1. The context manager is the current agent's: nothing to make.
-
-    // 2. Register context with context manager
-    const runtime_ctx = try getOrCreate(v8_ctx, allocator);
-
-    // 3. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
-    log.debug("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
-    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx, .lazy_follows);
-
-    // NOTE: Accessor callback reinstallation is NO LONGER NEEDED after whatwg-41la6.
-    // The Chromium pattern fix (calling GetFunction before NewInstance) ensures
-    // prototype chains are materialized correctly during snapshot creation.
-
-    log.debug("[HYDRATE-WORKER] hydrateWorkerContext complete\n", .{});
-
-    // 6. Set up basic worker globals
-    const global_obj = v8.v8_Context_Global(v8_ctx) orelse {
-        return error.NoGlobal;
-    };
-
-    // 'self' = globalThis (reference to global object)
-    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse {
-        return error.StringCreationFailed;
-    };
-    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(self_key), @ptrCast(global_obj));
-
-    // 'globalThis' = global object
-    const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse {
-        return error.StringCreationFailed;
-    };
-    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(global_this_key), @ptrCast(global_obj));
-
-    return WorkerHydrationResult{
-        .runtime_ctx = runtime_ctx,
-        .success = true,
-    };
-}
 
 /// Check if a context has Window-specific globals
 ///
@@ -1611,4 +1587,13 @@ pub fn isWorkerContext(isolate: *v8.Isolate, context: *v8.Context) bool {
     const has_doc = v8.v8_Object_Has(global, context, @ptrCast(doc_key));
 
     return has_self and !has_doc;
+}
+
+/// The host state of the agent whose isolate `agent` is
+/// (AgentOptions.host_state), for a realm made in it to cache
+/// (runtime.ContextData.host_state); null for none.
+fn agentHostStateOf(agent: ?*runtime.Agent) ?*anyopaque {
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(agent orelse return null));
+    const record = @import("protocol_agents.zig").callbackRecordOf(isolate) orelse return null;
+    return @ptrCast(record.host_state orelse return null);
 }

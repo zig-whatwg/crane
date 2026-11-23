@@ -1448,9 +1448,12 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
 /// navigation-traverseTo-in-iframe-same-document-preventDefault.html 1/1
 /// each; Firefox 158 times out, as the spec text does).
 fn abortTraversalsCanceledAt(s: navigation_entries.Scope, top_target: *const joint_history.Entry) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = s.navigable.allocator;
     var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    s.navigable.collectDescendants(std.heap.page_allocator, &tree) catch return;
+    defer tree.deinit(allocator);
+    s.navigable.collectDescendants(allocator, &tree) catch return;
     for (tree.items) |bc| {
         if (bc == s.navigable) continue;
         const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
@@ -2245,8 +2248,11 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
         (interfaces.Document.get_documentElement(scope.document) catch null) orelse scope.document;
     // 11: the viewport is the fallback even when the body is not focusable.
     html.focus.focusingSteps(target, scope.document, .other);
-    // 12: the sequential focus navigation starting point is not modelled;
-    // adding its Document-owned node requires the separate holder work.
+    // 12. "Move the sequential focus navigation starting point to
+    // focusTarget": Tab after the reset starts from it, not from the
+    // element focused before the navigation (the point the viewport's focus
+    // left where it was).
+    dom.focused_area.moveStartPoint(scope.document, target);
 }
 
 /// dom.navigation_api: `window`'s navigation API's "suppress normal scroll
@@ -2530,12 +2536,11 @@ fn ownerOf(event: *runtime.Instance) ?EventOwner {
 
 /// dom.navigation_api: intercept(options) steps 4.2-9.
 fn interceptHook(event: *runtime.Instance, options: dom.navigation_api.InterceptOptions) anyerror!void {
-    // The handlers are the binding's hand-over (OWNED by this call, whatever
-    // happens): taken now, so that every throw below releases them - a
-    // throw before they were taken kept both Globals (lane leaks6).
-    var precommit: ?engine.CallbackFunction = if (options.precommit_handler) |h| engine.takeCallbackFunction(h) else null;
+    // The handlers are BORROWED for the intercept() call: kept now, so that
+    // every throw below releases the navigation's own holds.
+    var precommit: ?engine.CallbackFunction = if (options.precommit_handler) |h| h.keep() else null;
     errdefer if (precommit) |p| p.release();
-    var handler: ?engine.CallbackFunction = if (options.handler) |h| engine.takeCallbackFunction(h) else null;
+    var handler: ?engine.CallbackFunction = if (options.handler) |h| h.keep() else null;
     errdefer if (handler) |h| h.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     const record = owner.record;
@@ -2620,10 +2625,10 @@ fn redirectHook(event: *runtime.Instance, args: *const dom.navigation_api.Redire
 
 /// dom.navigation_api: NavigationPrecommitController's addHandler() steps
 /// 2-4.
-fn addHandlerHook(event: *runtime.Instance, handler: *const anyopaque) anyerror!void {
-    // The binding's hand-over, OWNED by this call: taken first, so that a
-    // throw releases it (each one kept the argument's Global - lane leaks6).
-    const callback = engine.takeCallbackFunction(handler);
+fn addHandlerHook(event: *runtime.Instance, handler: runtime.BorrowedCallbackFunction) anyerror!void {
+    // BORROWED for the addHandler() call: kept first, so that a throw
+    // releases the navigation's own hold.
+    const callback = handler.keep();
     errdefer callback.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     try sharedChecksOf(owner);

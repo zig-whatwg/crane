@@ -21,7 +21,7 @@ const helpers = @import("edges_node_holders_helpers.zig");
 const onFreshThread = helpers.onFreshThread;
 
 fn holderOutlivesItsFramesTeardown() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -58,7 +58,7 @@ test "a static list in a parent realm outlives the nodes of a removed frame and 
 }
 
 fn holderOutlivesItsRealmsTeardown() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -117,7 +117,7 @@ const SweptProbe = struct {
 };
 
 fn holdsReadANodeTheFinalSweepReleasedAsGone() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     var browser_alive = true;
     defer if (browser_alive) browser.deinit();
     // The holds keep their node past every realm end on purpose: the final sweep is what this tests.

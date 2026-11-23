@@ -5,7 +5,7 @@ const browser_mod = @import("browser");
 const Scenario = enum { head_load, head_progress, data_load, data_loadend, network_error };
 
 fn exercise(scenario: Scenario) !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.TestUnexpectedResult;

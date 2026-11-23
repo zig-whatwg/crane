@@ -6,6 +6,14 @@ const interfaces = @import("interfaces");
 const selector = @import("selector");
 const a = std.testing.allocator;
 
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
+
 fn keyframeRuns(allocator: std.mem.Allocator) !void {
     const record = try dom.style.SheetRecord.create(allocator, "@keyframes k { from { color: red; @x; width: 1px; :invalid { height: 9px } height: 2px; @y {} color: blue !important; animation-name: ignored; opacity: 0.5 } }", .{});
     defer record.unref();
@@ -18,7 +26,7 @@ fn keyframeRuns(allocator: std.mem.Allocator) !void {
 
 test "keyframes keep declarations after discarded rules in keyframe context" {
     try keyframeRuns(a);
-    try std.testing.checkAllAllocationFailures(a, keyframeRuns, .{});
+    try sweep("cp1_css_rule_tree_test", keyframeRuns, .{});
 }
 
 test "nested rule payloads fit the existing font-rule payload budget" {
@@ -105,12 +113,18 @@ fn containers(allocator: std.mem.Allocator) !void {
     try std.testing.expectEqual(@as(usize, 1), rule.children().?.items.len);
     try std.testing.expectEqualStrings("Name (width >= 10px), style(--flag)", rule.prelude);
     const compiled = try record.contentsOf(.{ .allocator = allocator });
-    // Preservation pin: no layout-backed container evaluator is installed.
-    // Parsing the rule must not make its conditional children unconditional.
-    try std.testing.expectEqual(@as(usize, 0), compiled.rules.items.len);
+    // CSS Conditional 5 5.4 (lane maj3): the rule's children compile under
+    // the @container condition, never unconditionally - each element's query
+    // container answers it when its rules are matched
+    // (Contents.conditionHoldsFor) - and the condition list is compiled once,
+    // both <container-condition>s of it.
+    try std.testing.expectEqual(@as(usize, 1), compiled.rules.items.len);
+    const condition = compiled.rules.items[0].condition orelse return error.TestUnexpectedResult;
+    const container = compiled.conditions.items[condition].container orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 2), container.conditions.len);
 }
 
-test "container rules preserve conditions and keep unevaluated children inert" {
+test "container rules preserve conditions and compile their children under them" {
     try containers(a);
 }
 
@@ -146,10 +160,10 @@ test "scope rules retain their CSSOM and compile their children with their scope
 
 test "rule tree parsing compilation and detached ownership unwind every allocation failure" {
     if (comptime @hasDecl(selector, "nesting")) {
-        try std.testing.checkAllAllocationFailures(a, ordered, .{});
-        try std.testing.checkAllAllocationFailures(a, retained, .{});
-        try std.testing.checkAllAllocationFailures(a, containers, .{});
-        try std.testing.checkAllAllocationFailures(a, scopes, .{});
+        try sweep("cp1_css_rule_tree_test", ordered, .{});
+        try sweep("cp1_css_rule_tree_test", retained, .{});
+        try sweep("cp1_css_rule_tree_test", containers, .{});
+        try sweep("cp1_css_rule_tree_test", scopes, .{});
     } else return error.MissingNesting;
 }
 
@@ -237,7 +251,7 @@ fn mutationFailure(allocator: std.mem.Allocator) !void {
 test "parent selector rebuilding is atomic across every allocation failure" {
     if (comptime @hasDecl(selector, "nesting")) {
         try mutationFailure(a);
-        try std.testing.checkAllAllocationFailures(a, mutationFailure, .{});
+        try sweep("cp1_css_rule_tree_test", mutationFailure, .{});
     } else return error.MissingNesting;
 }
 
@@ -264,7 +278,7 @@ fn hierarchy(allocator: std.mem.Allocator) !void {
 test "global rules are rejected through nested scope but retained in top-level scope" {
     if (comptime @hasDecl(selector, "nesting")) {
         try hierarchy(a);
-        try std.testing.checkAllAllocationFailures(a, hierarchy, .{});
+        try sweep("cp1_css_rule_tree_test", hierarchy, .{});
     } else return error.MissingNesting;
 }
 
@@ -494,7 +508,7 @@ fn scopeSerialization(allocator: std.mem.Allocator) !void {
 test "scope boundary serialization follows the three-browser implicit anchor probe" {
     if (comptime @hasDecl(selector, "nesting")) {
         try scopeSerialization(a);
-        try std.testing.checkAllAllocationFailures(a, scopeSerialization, .{});
+        try sweep("cp1_css_rule_tree_test", scopeSerialization, .{});
     } else return error.MissingNesting;
 }
 
@@ -563,5 +577,5 @@ test "empty group serialization follows browsers and nonempty indentation stays 
 }
 
 test "empty group serialization unwinds every OOM" {
-    try std.testing.checkAllAllocationFailures(a, groups, .{});
+    try sweep("cp1_css_rule_tree_test", groups, .{});
 }

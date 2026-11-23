@@ -19,7 +19,7 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering
 //!
-//! lint-impls: hook for Context, Document, ViewTransition
+//! lint-impls: hook for Context, Document, IntersectionObserver, ViewTransition, Window
 const std = @import("std");
 const refcount = @import("refcount.zig");
 const runtime = @import("runtime");
@@ -257,10 +257,17 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 ///    (dom.animations.commitPendingAnimations; Blink
 ///    PendingAnimations::Update after the style and layout update).
 ///
-/// 16.2.2-16.2.4 (content-visibility proximity) and 16.2.5-16.3
-/// (ResizeObserver) join this sequence in the spec's order when Crane has
-/// them. The steps may run script (a ready promise's `then` getter): the
-/// list checks every document again before the next one.
+/// 4. 16.2.5-16.3, Resize Observer: gather the active resize observations
+///    at depth 0, broadcast them while there are any (the observers'
+///    callbacks), then report the loop error for any skipped
+///    (dom.resize_observations, which ResizeObserver installs). Blink runs
+///    them after its style and layout update and the pending animations
+///    (LocalFrameView::RunResizeObserverSteps).
+///
+/// 16.2.2-16.2.4 (content-visibility proximity) join this sequence in the
+/// spec's order when Crane has them. The steps may run script (a ready
+/// promise's `then` getter, an observer's callback): the list checks every
+/// document again before the next one.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering
 pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
@@ -271,10 +278,17 @@ pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
         // Its next mutation asks for the next frame again.
         refcount.watchRendering(document, true);
     }
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's lifecycle update recalculates slot assignment and
+    // pseudo-elements here, and its agents report what changed.
+    const inspector_probes = @import("inspector_probes.zig");
+    if (inspector_probes.active()) inspector_probes.renderingUpdated(document);
     // 2.
     @import("style/resource_loading.zig").updateRendering(document);
     // 3.
     animations.commitPendingAnimations(document);
+    // 4.
+    @import("resize_observations.zig").run(document);
 }
 
 fn recalculateStyles(context: ?*anyopaque) void {

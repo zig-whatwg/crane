@@ -12,6 +12,10 @@ Moved verbatim from AGENTS.md (2026-11-03), section "Before every commit". The c
 
 `zig build test` also includes `crane-check` (crane compiled without linking); the integrator's merge check runs `zig build check-linux -j2` and the full `zig build crane -j2`.
 
+**CDP is a compile flag** (`-Dcdp`, default on; the user, 2026-11-21): `zig build check-cdp-off -j2` compiles crane (src/webdriver) and the console with `-Dcdp=false` in a sub-build (nothing runs), and `zig build check-devtools -j2` compiles src/devtools, its unit tests and tests/devtools. A batch that touches src/devtools, the devtools_transport capability or a `build_options.cdp` site runs both before it merges (src/devtools/README.md).
+
+**`zig build check-tests -j2` compiles every test executable and runs none** (lane cdpr, the integrator 2026-11-21): every tests/ directory's executable and every src in-file test root - whatever the launcher would run (build.zig `addSuiteRunWith` adds each). `crane-check` compiles no test executable, so a test file is otherwise compiled only by `zig build test`; run `check-tests` on the pool before handing over a batch that adds or changes tests while test runs are paused. It is heavy (each directory is a root compile): `-j2`, through crane-remote.
+
 **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
 deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
 cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on
@@ -45,12 +49,19 @@ mid-run. Both are gone; but on a shared machine prefer the binary directly:
 0.17.x branch at 77c319a0f00a (`zig version`: `0.17.1-dev+77c319a0f0`), because
 0.17.0 cannot build aarch64-ios (ziglang/zig#37061, fixed for 0.17.1). It lives
 at `~/crane-toolchains/zig-0.17.1-dev+77c319a0f0/` on the Mac and every pool
-host; `build.zig.zon`'s `minimum_zig_version` says 0.17, and the pool's zig shim
-picks the toolchain from it. Switch to 0.17.1 when it ships.
+host, and the pool's zig shim (`~/crane-bin/zig`) runs it for every command.
+Switch to 0.17.1 when it ships.
 
+- **Zig 0.16 is retired** (lane z17f, 2026-11-21): no host or script runs it.
+  `build.zig.zon`'s `minimum_zig_version` (0.17.0) is not enforced, so
+  `build.zig` refuses any other Zig at configure time, by name
+  (`tools/zig_toolchain.zig`, pinned by `zig build test`): anything older than
+  0.17, and 0.17.0 itself (#37061; #37142, checkAllAllocationFailures lets
+  resizes through). Its message names the pinned build; the errors printed
+  beside it are the old Zig failing on 0.17 code.
 - **`zig build` takes no `--global-cache-dir`.** The global cache is set only
-  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`, a
-  cache 0.16 never shared); `--cache-dir` works as before.
+  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`);
+  `--cache-dir` works as before.
 - **The configuration is cached, and stays cacheable** (lane cfg1, 2026-11-17).
   `build.zig` runs in a configure process whose result Zig 0.17 caches, keyed
   by build.zig and what it imports, the command line, and the paths the

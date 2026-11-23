@@ -37,7 +37,9 @@ const main_fetch = @import("main_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
+const document_resources = @import("../internal/document_resources.zig");
 const cache_transaction = @import("../cache/transaction.zig");
+const origins = @import("../internal/origins.zig");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -108,9 +110,31 @@ pub const FetchJob = struct {
     /// it was handed over.
     network_request: ?NetworkRequest = null,
     network_start_time: f64 = 0,
+    /// The Browser's fetch observer heard this fetch begin, and heard it end
+    /// (loading_finished or loading_failed): a job destroyed between the two
+    /// was canceled, and says so.
+    observed_start: bool = false,
+    observed_end: bool = false,
+    /// The observer heard the response handed over (response_received) with
+    /// its body still arriving: the driver reports that body's end
+    /// (`observeBodyEnd`) whoever holds the response by then - a streamed
+    /// response is the client's once handed over (`takeResult`), so the job
+    /// no longer has it when its body ends.
+    observed_handover: bool = false,
+    /// The driver reported body bytes to the observer (`observeData`): a
+    /// body whole at its handover is not reported again.
+    observed_data: bool = false,
     /// Whether `network_request` is a CORS-preflight fetch's: its answer
     /// decides whether the request itself goes out.
     network_request_is_preflight: bool = false,
+    /// Whether `network_request` is HTTP-network-or-cache fetch's own retry
+    /// of the request it sent - with credentials (steps 15.4, 16.5) or on a
+    /// new connection (17.2): the same request to its observer, which held
+    /// it once already (Chrome's net stack restarts such a transaction
+    /// under the URLLoader the interceptor sees once).
+    network_request_is_retry: bool = false,
+    /// The next HTTP-network-or-cache fetch run is such a retry.
+    retrying: bool = false,
     /// HTTP-network-or-cache fetch's use of the HTTP cache while the network
     /// answers `network_request` (steps 11.3-11.5 run on the answer).
     cache_transaction: ?cache_transaction.Transaction = null,
@@ -123,6 +147,20 @@ pub const FetchJob = struct {
     /// progress: true once a 421 sent it again on a new connection (step 17).
     is_new_connection_fetch: bool = false,
     authentication_realm: ?[]u8 = null,
+    /// A challenge whose prompt is asked (the `.auth` step) until
+    /// `resumeAuth` - its response and realm, and the challenger's origin
+    /// the step names. OWNED.
+    pending_prompt: ?http_fetch.Prompt = null,
+    prompt_origin: ?[]u8 = null,
+    /// What a prompt answered (Fetch.continueWithAuth ProvideCredentials):
+    /// the authentication fetch's credentials, and step 16.4's
+    /// proxy-authentication entry. OWNED.
+    prompted: ?OwnedCredentials = null,
+    proxy_credentials: ?OwnedCredentials = null,
+    /// The answer to the next prompt, given before Fetch reached it: the
+    /// driver asked as the challenge arrived (`promptFor`,
+    /// `answerPromptEarly`), and the prompt takes it at once. OWNED.
+    early_answer: ?EarlyAnswer = null,
     /// HTTP fetch step 3's call to a service worker, while its answer is
     /// awaited (the job's reference), with step 3.3's serviceWorkerStartTime
     /// and whether step 4 would make a CORS-preflight request.
@@ -136,6 +174,28 @@ pub const FetchJob = struct {
     /// (fetch.zig) does not race - it waits for the fetch event's answer
     /// alone, as for a "fetch-event" source.
     service_worker_race: bool = false,
+    /// HTTP fetch step 4's makeCORSPreflight, while the `.request_body` step
+    /// waits for a stream body's bytes (`resumeRequestBody`).
+    request_body_preflight: bool = false,
+    /// Fetch step 11's preloaded response candidate: the document resource
+    /// whose response answers this fetch at main fetch step 12 (the job's
+    /// reference), until it is served. Its makeCORSPreflight, should the
+    /// blocking driver give up on it (`abandonDocumentResource`).
+    document_entry: ?*document_resources.Entry = null,
+    document_preflight: bool = false,
+    /// The fetch was answered from its document's resources: it reports no
+    /// Resource Timing entry of its own (document_resources.zig).
+    served_from_document: bool = false,
+    /// The entry this fetch's response fills for its document - a preload's,
+    /// or a loaded resource's (the job's reference), until the response is
+    /// handed over whole (`keepForDocument`).
+    document_registration: ?*document_resources.Entry = null,
+    /// The client takes the response with its whole body (AsyncFetch.start):
+    /// only such a response is kept for the document.
+    keeps_whole_body: bool = false,
+    /// The entry this fetch filled was upgraded to render-blocking before it
+    /// was let go (`upgradesRenderBlocking`).
+    render_blocking_upgraded: bool = false,
     /// Fetch response handover step 4's report timing steps, waiting for the
     /// end of the body of the response handed over (`handOverTiming`).
     deferred_timing: ?DeferredTiming = null,
@@ -170,6 +230,22 @@ pub const FetchJob = struct {
         /// Main fetch step 23 needs the whole response body. Resume with
         /// resumeBody once its pipe has ended (finished or failed).
         body,
+        /// HTTP fetch step 4 sends a request whose stream body is still
+        /// arriving through its pipe (fetch()'s body handed on as it came,
+        /// for a service worker that then fell back - or never handled it).
+        /// The network layer sends a body of bytes, so they are all read
+        /// first, as fetch() reads a stream body it sends straight to the
+        /// network: resume with resumeRequestBody once the pipe has ended.
+        request_body,
+        /// Main fetch step 12: the preloaded response candidate is
+        /// "pending" - its document resource's fetch is under way. Resume
+        /// with resumeDocumentResource once it is not
+        /// (`documentResourceReady`).
+        document_resource,
+        /// HTTP-network-or-cache fetch prompts the end user for a username
+        /// and password (a 401's or a 407's challenge): resume with
+        /// `resumeAuth` and the answer - `.default` when nobody answers.
+        auth: AuthStep,
         /// Fetch has its response; `takeResult` hands it over.
         done,
     };
@@ -179,6 +255,74 @@ pub const FetchJob = struct {
     /// answer's (algorithms/cookies.zig).
     pub const NetworkStep = struct {
         request: *const NetworkRequest,
+    };
+
+    /// A username and password a prompt gave, OWNED by the job.
+    pub const OwnedCredentials = struct {
+        username: []u8,
+        password: []u8,
+
+        fn of(allocator: Allocator, username: []const u8, password: []const u8) Allocator.Error!OwnedCredentials {
+            const user = try allocator.dupe(u8, username);
+            errdefer allocator.free(user);
+            return .{ .username = user, .password = try allocator.dupe(u8, password) };
+        }
+
+        fn deinit(self: OwnedCredentials, allocator: Allocator) void {
+            allocator.free(self.username);
+            allocator.free(self.password);
+        }
+
+        fn borrowed(self: OwnedCredentials) http_fetch.Credentials {
+            return .{ .username = self.username, .password = self.password };
+        }
+    };
+
+    /// A prompt's answer given early (`answerPromptEarly`), OWNED.
+    const EarlyAnswer = union(enum) {
+        default,
+        cancel,
+        provide: OwnedCredentials,
+
+        fn deinit(self: EarlyAnswer, allocator: Allocator) void {
+            switch (self) {
+                .provide => |c| c.deinit(allocator),
+                else => {},
+            }
+        }
+
+        fn borrowed(self: *const EarlyAnswer) network.observer.AuthAnswer {
+            return switch (self.*) {
+                .default => .default,
+                .cancel => .cancel,
+                .provide => |c| .{ .provide = .{ .username = c.username, .password = c.password } },
+            };
+        }
+    };
+
+    /// A challenge a network answer carries that HTTP-network-or-cache
+    /// fetch will prompt for (`promptFor`). OWNED.
+    pub const OwnedChallenge = struct {
+        source: @FieldType(network.observer.AuthChallenge, "source"),
+        origin: []u8,
+        realm: []u8,
+
+        pub fn challenge(self: *const OwnedChallenge) network.observer.AuthChallenge {
+            return .{ .source = self.source, .origin = self.origin, .scheme = "basic", .realm = self.realm };
+        }
+
+        pub fn deinit(self: OwnedChallenge, allocator: Allocator) void {
+            allocator.free(self.origin);
+            allocator.free(self.realm);
+        }
+    };
+
+    /// HTTP-network-or-cache fetch's prompt (steps 15.3.2, 16.4): ask for
+    /// a username and password for `challenge` - a host's handler
+    /// (network/observer.zig `intercept_auth`), or nobody - and hand the
+    /// answer to `resumeAuth`. Borrowed from the job until then.
+    pub const AuthStep = struct {
+        challenge: network.observer.AuthChallenge,
     };
 
     /// A service worker's answer, as `resumeServiceWorker` takes it: a
@@ -219,7 +363,18 @@ pub const FetchJob = struct {
 
     pub fn destroy(self: *FetchJob) void {
         const allocator = self.allocator;
+        // A fetch its observer saw begin and never saw end: canceled (its
+        // client went, or it was aborted).
+        if (self.observed_start and !self.observed_end) {
+            self.observed_end = true;
+            if (self.observer()) |o| if (o.loading_failed) |failed| failed(o.context, self.request, "net::ERR_ABORTED", true);
+        }
         if (self.authentication_realm) |realm| allocator.free(realm);
+        if (self.pending_prompt) |prompt| prompt.deinit(allocator);
+        if (self.prompt_origin) |origin| allocator.free(origin);
+        if (self.prompted) |c| c.deinit(allocator);
+        if (self.proxy_credentials) |c| c.deinit(allocator);
+        if (self.early_answer) |a| a.deinit(allocator);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
         if (self.cache_transaction) |*transaction| transaction.deinit();
         // A service worker still answering: its answer is freed when it comes.
@@ -230,6 +385,13 @@ pub const FetchJob = struct {
         if (self.response) |response| response.deinit();
         if (self.pending_response) |response| response.deinit();
         self.dropManualRedirect();
+        // A document resource not served, or never filled: its entry is
+        // let go - one this fetch was to fill has no response.
+        if (self.document_entry) |entry| entry.release();
+        if (self.document_registration) |entry| {
+            entry.abandon();
+            entry.release();
+        }
         // A body that never ended: nothing is reported.
         self.dropDeferredTiming();
         self.params.deinit();
@@ -279,8 +441,21 @@ pub const FetchJob = struct {
 
         // TODO(step 13: WebDriver BiDi emulated language).
         // Step 14: supply a default only when the caller supplied none,
-        // including an explicitly empty value. Use the most preferred tag
-        // alone, without disclosing the rest of the platform's language list.
+        // including an explicitly empty value: "an appropriate header
+        // value". A tab's Accept-Language override (a host's emulation,
+        // http_fetch.userAgentOverrideOf) stands for the platform's list,
+        // with q-values as Chrome gives it (EmulationHandler::ApplyOverrides
+        // and InspectorEmulationAgent::PrepareRequest send
+        // GenerateAcceptLanguageHeader of the override as given).
+        if (!self.request.header_list.contains("Accept-Language")) if (http_fetch.userAgentOverrideOf(self.request).accept_language) |language| {
+            const value = generateAcceptLanguageHeader(self.allocator, language) catch return FetchError.OutOfMemory;
+            defer self.allocator.free(value);
+            if (value.len > 0) self.request.header_list.append("Accept-Language", value) catch return FetchError.OutOfMemory;
+        };
+        // Otherwise the platform's whole list with q-values, as the
+        // browsers' majority sends it: Chrome "en-US,en;q=0.9" and Safari
+        // "en-US,en;q=0.9" (Firefox "en-US,en;q=0.5") for an en-US user -
+        // the same list navigator.languages reports.
         if (!self.request.header_list.contains("Accept-Language")) {
             const languages: ?[]platform.Str = platform.preferredLanguages(self.allocator) catch |err| switch (err) {
                 error.OutOfMemory => return FetchError.OutOfMemory,
@@ -289,11 +464,26 @@ pub const FetchJob = struct {
             if (languages) |preferred| {
                 defer self.allocator.free(preferred);
                 defer for (preferred) |language| self.allocator.free(language.slice());
-                if (preferred.len > 0) {
-                    self.request.header_list.append("Accept-Language", preferred[0].slice()) catch return FetchError.OutOfMemory;
+                var list: std.ArrayList(u8) = .empty;
+                defer list.deinit(self.allocator);
+                for (preferred, 0..) |language, i| {
+                    if (i > 0) list.append(self.allocator, ',') catch return FetchError.OutOfMemory;
+                    list.appendSlice(self.allocator, language.slice()) catch return FetchError.OutOfMemory;
                 }
+                const value = generateAcceptLanguageHeader(self.allocator, list.items) catch return FetchError.OutOfMemory;
+                defer self.allocator.free(value);
+                if (value.len > 0) self.request.header_list.append("Accept-Language", value) catch return FetchError.OutOfMemory;
             }
         }
+
+        // Step 11: a preloaded response candidate from the Window client's
+        // document - or, the document keeping nothing that answers it, the
+        // entry this fetch fills for the document.
+        self.consumeDocumentResource();
+
+        // The Browser's fetch observer hears the fetch begin (Blink's
+        // probe::WillSendRequest), and names it.
+        self.observeWillSend();
 
         // Step 17: main fetch - for every scheme. Its step 12 decides
         // between scheme fetch (data:, about:, blob:, with the tainting and
@@ -304,10 +494,199 @@ pub const FetchJob = struct {
         return self.mainFetch();
     }
 
+    /// The request the last `.network` step asked for, while it waits.
+    pub fn pendingNetworkRequest(self: *const FetchJob) ?*const NetworkRequest {
+        return if (self.network_request) |*r| r else null;
+    }
+
+    /// Change the waiting network request as its observer asked
+    /// (Fetch.continueRequest's url, method, headers, postData): what the
+    /// network is sent, not what the page sees. The new strings are the
+    /// request's own (`owned_values`, freed with it).
+    pub fn overrideNetworkRequest(self: *FetchJob, overrides: network.observer.Overrides) Allocator.Error!void {
+        const request = &(self.network_request orelse return);
+        const allocator = self.allocator;
+        var owned: std.ArrayList([]const u8) = .empty;
+        defer owned.deinit(allocator);
+        errdefer for (owned.items) |v| allocator.free(v);
+        if (overrides.url) |url| {
+            const copy = try allocator.dupe(u8, url);
+            try owned.append(allocator, copy);
+            request.url = copy;
+        }
+        if (overrides.method) |method| {
+            const copy = try allocator.dupe(u8, method);
+            try owned.append(allocator, copy);
+            request.method = copy;
+        }
+        if (overrides.body) |body| {
+            const copy = try allocator.dupe(u8, body);
+            try owned.append(allocator, copy);
+            request.body = copy;
+        }
+        var new_headers: ?[]NetworkRequest.Header = null;
+        if (overrides.headers) |headers| {
+            const list = try allocator.alloc(NetworkRequest.Header, headers.len);
+            errdefer allocator.free(list);
+            for (headers, 0..) |h, i| {
+                const name = try allocator.dupe(u8, h.name);
+                try owned.append(allocator, name);
+                const value = try allocator.dupe(u8, h.value);
+                try owned.append(allocator, value);
+                list[i] = .{ .name = name, .value = value };
+            }
+            new_headers = list;
+        }
+        errdefer if (new_headers) |list| allocator.free(list);
+        // Every new string joins the request's owned values.
+        const values = try allocator.alloc([]const u8, request.owned_values.len + owned.items.len);
+        @memcpy(values[0..request.owned_values.len], request.owned_values);
+        @memcpy(values[request.owned_values.len..], owned.items);
+        allocator.free(request.owned_values);
+        request.owned_values = values;
+        owned.clearRetainingCapacity();
+        if (new_headers) |list| {
+            allocator.free(request.headers);
+            request.headers = list;
+        }
+    }
+
+    /// The Browser's fetch observer (network/observer.zig), if any.
+    fn observer(self: *const FetchJob) ?*const network.observer.Observer {
+        return network.observer.of(self.request);
+    }
+
+    fn observeWillSend(self: *FetchJob) void {
+        const o = self.observer() orelse return;
+        if (self.depth == 0) if (o.bypass_cache) |bypass| {
+            if (bypass(o.context, self.request)) self.request.cache_mode = .no_store;
+        };
+        const will_send = o.will_send_request orelse return;
+        const id = will_send(o.context, self.request);
+        if (self.request.request_id == 0) self.request.request_id = id;
+        self.observed_start = true;
+    }
+
+    /// A response handed over: response_received, and loading_finished when
+    /// its body is all there already - else the driver reports the body's
+    /// end (`observeBodyEnd`). A network error: loading_failed.
+    fn observeHandover(self: *FetchJob, response: *const InternalResponse) void {
+        const o = self.observer() orelse return;
+        if (response.response_type == .@"error") {
+            self.observed_end = true;
+            if (o.loading_failed) |failed| failed(o.context, self.request, response.net_error.text(), response.aborted);
+            return;
+        }
+        if (o.response_received) |received| received(o.context, self.request, response);
+        self.observed_handover = true;
+        if (!bodyArriving(response)) {
+            // A body whole at its handover (scheme fetch's, the HTTP cache's,
+            // the blocking driver's, a fulfilled one): its bytes, unless the
+            // driver reported them as they came.
+            if (!self.observed_data) if (o.data_received) |data| {
+                const internal = response.internal orelse response;
+                if (internal.body orelse response.body) |b| if (b.pipe == null and b.getBytes().len > 0) data(o.context, self.request, b.getBytes());
+            };
+            self.observed_end = true;
+            if (o.loading_finished) |finished| finished(o.context, self.request, if (response.body) |b| b.length orelse 0 else 0);
+        }
+    }
+
+    /// Whether the request the last `.network` step asked for is a
+    /// CORS-preflight request's (its observer hears nothing of it: Chrome
+    /// reports a preflight as no request of the page's).
+    pub fn isPreflight(self: *const FetchJob) bool {
+        return self.network_request_is_preflight;
+    }
+
+    /// Whether the waiting request is HTTP-network-or-cache fetch's retry
+    /// of one it sent already (`network_request_is_retry`).
+    pub fn isRetry(self: *const FetchJob) bool {
+        return self.network_request_is_retry;
+    }
+
+    /// The challenge HTTP-network-or-cache fetch will prompt for when it
+    /// reads `head` - the network's answer to the waiting request, asked
+    /// as it arrives (http_fetch.wouldPrompt) - so the driver can ask whoever
+    /// answers prompts BEFORE anything holds the response: Chrome raises
+    /// OnAuthRequired (DevTools' Fetch.authRequired) before the response
+    /// reaches its interceptor's response stage. Null: no prompt. OWNED by
+    /// the job's allocator.
+    pub fn promptFor(self: *FetchJob, head: *const NetworkResponse) Allocator.Error!?OwnedChallenge {
+        if (self.network_request_is_preflight) return null;
+        const found = (try http_fetch.wouldPrompt(self.allocator, self.params, self.networkOrCacheOptions(), head.status, head.headers)) orelse return null;
+        const origin = origins.serializedOriginOf(self.allocator, self.request.currentUrl()) catch |err| {
+            self.allocator.free(found.realm);
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => null,
+            };
+        };
+        return .{ .source = if (found.source == .proxy) .proxy else .server, .origin = origin, .realm = found.realm };
+    }
+
+    /// The answer to the prompt `promptFor` foresaw, given now: the prompt
+    /// takes it when Fetch reaches it (no `.auth` step then).
+    pub fn answerPromptEarly(self: *FetchJob, answer: network.observer.AuthAnswer) Allocator.Error!void {
+        const early: EarlyAnswer = switch (answer) {
+            .default => .default,
+            .cancel => .cancel,
+            .provide => |given| .{ .provide = try OwnedCredentials.of(self.allocator, given.username, given.password) },
+        };
+        if (self.early_answer) |old| old.deinit(self.allocator);
+        self.early_answer = early;
+    }
+
+    /// The driver hands the waiting network request to the network now:
+    /// its observer hears the headers it goes with (request_sent).
+    pub fn observeRequestSent(self: *FetchJob) void {
+        if (self.network_request_is_preflight) return;
+        const request = if (self.network_request) |*r| r else return;
+        const o = self.observer() orelse return;
+        if (o.request_sent) |sent| sent(o.context, self.request, request);
+    }
+
+    /// The network answered the waiting request with `head`, as it came:
+    /// its observer hears it (response_head_received).
+    pub fn observeResponseHead(self: *FetchJob, head: *const NetworkResponse) void {
+        if (self.network_request_is_preflight) return;
+        const o = self.observer() orelse return;
+        if (o.response_head_received) |received| received(o.context, self.request, head);
+    }
+
+    /// More of the response's body, as the driver delivers it (the
+    /// network's, a service worker's): its observer hears the bytes
+    /// (data_received).
+    pub fn observeData(self: *FetchJob, bytes: []const u8) void {
+        if (self.network_request_is_preflight or bytes.len == 0) return;
+        const o = self.observer() orelse return;
+        const received = o.data_received orelse return;
+        self.observed_data = true;
+        received(o.context, self.request, bytes);
+    }
+
+    /// The driver's word that the handed-over response's body ended, with
+    /// `encoded_length` bytes as they came over the network, or failed for
+    /// `failure` (its reason: DevTools' errorText).
+    /// Nothing before the handover: a body main fetch waits for whole (step
+    /// 23) is reported at its handover (`observeHandover`), after
+    /// response_received, as Chrome orders them.
+    pub fn observeBodyEnd(self: *FetchJob, encoded_length: u64, failure: ?internal_response.NetError) void {
+        if (self.observed_end or !self.observed_handover) return;
+        self.observed_end = true;
+        const o = self.observer() orelse return;
+        if (failure) |reason| {
+            if (o.loading_failed) |f| f(o.context, self.request, reason.text(), false);
+        } else if (o.loading_finished) |finished| finished(o.context, self.request, encoded_length);
+    }
+
     /// Carry on from the network's answer to the request the last `.network`
     /// step asked for.
     pub fn resumeNetwork(self: *FetchJob, result: NetworkError!NetworkResponse) FetchError!Step {
         const allocator = self.allocator;
+        // A proxy that could not be reached: the same request again through
+        // the next proxy of its URL's list (fallBackToNextProxy).
+        if (result) |_| {} else |err| if (self.fallBackToNextProxy(err)) return .{ .network = .{ .request = &self.network_request.? } };
         const request = self.network_request orelse unreachable; // no request was asked for
         self.network_request = null;
         // Kept until the cache has read its headers (the Vary data).
@@ -318,7 +697,7 @@ pub const FetchJob = struct {
 
         var network_response = result catch |err| switch (err) {
             NetworkError.OutOfMemory => return FetchError.OutOfMemory,
-            else => return self.transportFailed(),
+            else => return self.transportFailed(err),
         };
         defer network_response.deinit();
         if (self.network_request_is_preflight) return self.corsPreflightAnswered(&network_response);
@@ -415,6 +794,9 @@ pub const FetchJob = struct {
         const next = self.next_manual_redirect orelse return FetchError.NetworkError;
         self.next_manual_redirect = null;
         if (next.location) |location| self.allocator.free(location);
+        // The observer sees the redirect a navigation follows by hand, as
+        // one fetch follows itself (redirect_received, then will_send).
+        if (self.observer()) |o| if (o.redirect_received) |on_redirect| on_redirect(o.context, self.request, next.response);
         const redirected = http_fetch.httpRedirectFetchStart(self.allocator, self.params, next.response) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -424,6 +806,7 @@ pub const FetchJob = struct {
             .response => |r| return self.mainFetchFetched(r),
             .recursive_main_fetch => {
                 self.depth += 1;
+                self.observeWillSend();
                 return self.mainFetch();
             },
             .manual_redirect => |r| return self.manualRedirect(r),
@@ -499,7 +882,18 @@ pub const FetchJob = struct {
             .http_fetch => false,
             .http_fetch_with_cors_preflight => true,
         };
+        // Step 12's first statement: the preloaded response candidate, not
+        // the network (nor a service worker).
+        if (self.document_entry != null) {
+            self.document_preflight = make_cors_preflight;
+            return self.serveDocumentResource();
+        }
+        return self.httpFetchStep(make_cors_preflight);
+    }
 
+    /// Main fetch step 12's HTTP fetch, from step 3 - a service worker -
+    /// then step 4, the network.
+    fn httpFetchStep(self: *FetchJob, make_cors_preflight: bool) FetchError!Step {
         // HTTP fetch step 3: a service worker, before any request goes out
         // (a preflight is the network's, step 4.1).
         const handled = http_fetch.handleFetchStart(self.params) catch |err| return self.httpFetchFailed(err);
@@ -513,6 +907,124 @@ pub const FetchJob = struct {
         return self.httpFetchFromNetwork(make_cors_preflight);
     }
 
+    /// Fetch step 11, at the fetch's start, while its client is alive: the
+    /// document's preload with this request's preload key - or a resource of
+    /// the loading document that answers it - becomes the preloaded
+    /// response candidate (`document_entry`). Otherwise a request the
+    /// document keeps (a preload's, a loading document's subresource whose
+    /// whole body its client reads) gets the entry it fills
+    /// (`document_registration`). The route is read here alone.
+    fn consumeDocumentResource(self: *FetchJob) void {
+        const route = self.request.document_resources orelse return;
+        self.request.document_resources = null;
+        if (!document_resources.step11Applies(self.request)) return;
+        if (route.consume(route.context, self.request)) |entry| {
+            self.document_entry = entry;
+            return;
+        }
+        if (!self.keeps_whole_body) return;
+        self.document_registration = route.register(route.context, self.request);
+    }
+
+    /// Main fetch step 12, "preloaded response candidate is non-null":
+    /// "wait until it is not pending" (`.document_resource`), then its
+    /// response is main fetch's.
+    fn serveDocumentResource(self: *FetchJob) FetchError!Step {
+        const entry = self.document_entry orelse return self.httpFetchStep(self.document_preflight);
+        if (entry.state == .pending) return .document_resource;
+        self.document_entry = null;
+        defer entry.release();
+        // Its fetch went with no response: this one fetches the resource.
+        if (entry.state == .abandoned) return self.httpFetchStep(self.document_preflight);
+        const response = entry.responseFor(self.allocator) catch return FetchError.OutOfMemory;
+        self.served_from_document = true;
+        return self.mainFetchFetched(response);
+    }
+
+    /// Whether the preloaded response candidate is no longer pending.
+    pub fn documentResourceReady(self: *const FetchJob) bool {
+        const entry = self.document_entry orelse return true;
+        return entry.state != .pending;
+    }
+
+    /// Carry on from the `.document_resource` step.
+    pub fn resumeDocumentResource(self: *FetchJob) FetchError!Step {
+        return self.serveDocumentResource();
+    }
+
+    /// The `.document_resource` step, for a driver that cannot wait (the
+    /// blocking fetch): the candidate is let go, and the request is fetched.
+    pub fn abandonDocumentResource(self: *FetchJob) FetchError!Step {
+        if (self.document_entry) |entry| {
+            if (entry.state != .pending) return self.serveDocumentResource();
+            entry.release();
+            self.document_entry = null;
+        }
+        return self.httpFetchStep(self.document_preflight);
+    }
+
+    /// The response handed over, with its whole body (a collected fetch's,
+    /// `result`): the entry this fetch fills for its document takes a copy -
+    /// HTML "preload" step 11.5 ("set entry's response to response"), or the
+    /// document's reuse of what it loaded. A failed fetch fails it.
+    pub fn keepForDocument(self: *FetchJob, result: *const (FetchError!FetchResult)) void {
+        const entry = self.document_registration orelse return;
+        self.document_registration = null;
+        self.render_blocking_upgraded = entry.upgrade_render_blocking;
+        defer entry.release();
+        const fetched = result.* catch return entry.abandon();
+        const copy = fetched.response.clone() catch return entry.abandon();
+        entry.fulfill(copy);
+    }
+
+    /// Whether the request's body is a stream whose bytes are still
+    /// arriving through its pipe (`.request_body`).
+    pub fn requestBodyArriving(self: *const FetchJob) bool {
+        const b = self.request.body orelse return false;
+        return switch (b) {
+            .bytes => false,
+            .body => |body| body.pipe != null,
+        };
+    }
+
+    /// Carry on from the `.request_body` step: the request body's pipe has
+    /// ended. A body that arrived whole is sent as its bytes - still a body
+    /// with no source, a stream's, which HTTP-network fetch sends only on
+    /// HTTP/2 (step 8.3) - and one that failed is a network error: the
+    /// network never gets a body that ended in error. A pipe still open (a
+    /// driver that cannot wait, fetch.zig's) is a network error too.
+    pub fn resumeRequestBody(self: *FetchJob) FetchError!Step {
+        const b = self.request.body orelse return self.httpFetchFromNetwork(self.request_body_preflight);
+        const body = switch (b) {
+            .bytes => return self.httpFetchFromNetwork(self.request_body_preflight),
+            .body => |body| body,
+        };
+        const pipe = body.pipe orelse return self.httpFetchFromNetwork(self.request_body_preflight);
+        if (pipe.state != .closed) {
+            body.pipe = null;
+            pipe.release();
+            return self.mainFetchFetched(try networkError(self.allocator));
+        }
+        body.settlePipe() catch return FetchError.OutOfMemory;
+        return self.httpFetchFromNetwork(self.request_body_preflight);
+    }
+
+    /// HTTP fetch step 3.5.4: "If request's body is non-null, then cancel
+    /// request's body with undefined" - the service worker answered, and the
+    /// request's own branch of a stream body (the worker read its tee's other
+    /// branch, service_worker_fetch.Upload) goes. A byte body has nothing to
+    /// cancel.
+    fn cancelRequestBody(self: *FetchJob) void {
+        const b = self.request.body orelse return;
+        const body = switch (b) {
+            .bytes => return,
+            .body => |body| body,
+        };
+        const pipe = body.pipe orelse return;
+        body.pipe = null;
+        pipe.release();
+    }
+
     /// Carry on from a service worker's answer to the `.service_worker`
     /// step: HTTP fetch step 3.5 - or 3.6, nothing: step 4, the network.
     pub fn resumeServiceWorker(self: *FetchJob, answer: ServiceWorkerAnswer) FetchError!Step {
@@ -520,6 +1032,9 @@ pub const FetchJob = struct {
         self.service_worker_call = null;
         self.service_worker_race = false;
         call.release();
+        // 3.5.4: a response (a network error is one) ends the request's
+        // body; nothing (step 4) sends it to the network.
+        if (answer != .fallback) self.cancelRequestBody();
         switch (answer) {
             .fallback => return self.httpFetchFromNetwork(self.service_worker_preflight),
             .network_error => return self.mainFetchFetched(try networkError(self.allocator)),
@@ -575,6 +1090,12 @@ pub const FetchJob = struct {
     /// fetch.
     fn httpFetchFromNetwork(self: *FetchJob, make_cors_preflight: bool) FetchError!Step {
         const allocator = self.allocator;
+        // A stream body whose bytes are still arriving: wait for them all
+        // (`.request_body`).
+        if (self.requestBodyArriving()) {
+            self.request_body_preflight = make_cors_preflight;
+            return .request_body;
+        }
         // 4.2. "If request's redirect mode is "follow", then set request's
         // service-workers mode to "none"": redirects from the network are
         // not exposed to a service worker - the recursive main fetch of one
@@ -612,19 +1133,32 @@ pub const FetchJob = struct {
 
     /// HTTP fetch step 4.3: HTTP-network-or-cache fetch, as far as it can go.
     /// Main fetch passes HTTP fetch no options.
-    fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
-        const allocator = self.allocator;
-        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{
+    /// HTTP-network-or-cache fetch's options for the run in progress.
+    fn networkOrCacheOptions(self: *const FetchJob) http_fetch.HttpFetchOptions {
+        return .{
             .is_authentication_fetch = self.is_authentication_fetch,
             .authentication_realm = self.authentication_realm,
             .is_new_connection_fetch = self.is_new_connection_fetch,
-        }) catch |err| {
+            .prompted = if (self.prompted) |c| c.borrowed() else null,
+            .proxy_credentials = if (self.proxy_credentials) |c| c.borrowed() else null,
+        };
+    }
+
+    fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
+        const allocator = self.allocator;
+        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, self.networkOrCacheOptions()) catch |err| {
             return self.httpFetchFailed(err);
         };
         switch (network_start) {
-            .response => |response| return self.httpNetworkOrCacheFetchReturned(response),
+            .response => |response| {
+                // Answered without the network: from the HTTP cache.
+                if (response.response_type != .@"error") if (self.observer()) |o| if (o.served_from_cache) |served| served(o.context, self.request);
+                return self.httpNetworkOrCacheFetchReturned(response);
+            },
             .network => |needed| {
                 self.network_request = needed.request;
+                self.network_request_is_retry = self.retrying;
+                self.retrying = false;
                 self.cache_transaction = needed.cache;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
                 return .{ .network = .{ .request = &self.network_request.? } };
@@ -634,16 +1168,85 @@ pub const FetchJob = struct {
 
     /// HTTP fetch, once HTTP-network-or-cache fetch has returned `response`.
     fn httpNetworkOrCacheFetchReturned(self: *FetchJob, network_response: *InternalResponse) FetchError!Step {
-        // The rest of HTTP-network-or-cache fetch (step 14, a 401).
-        const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, .{
-            .is_authentication_fetch = self.is_authentication_fetch,
-            .authentication_realm = self.authentication_realm,
-            .is_new_connection_fetch = self.is_new_connection_fetch,
-        }, network_response) catch |err| {
+        // The rest of HTTP-network-or-cache fetch (steps 15-17: a 401, a
+        // 407, a 421).
+        const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, self.networkOrCacheOptions(), network_response) catch |err| {
             return self.httpFetchFailed(err);
         };
+        return self.networkOrCacheFinished(finished);
+    }
+
+    /// Steps 15.3.2-15.4 and 16.4-16.5 with the prompt's answer: the
+    /// challenge's response handed on (`.default`, `.cancel`), or the
+    /// request sent again with the credentials given (`.provide`: an
+    /// authentication fetch for a 401, the proxy-authentication entry for a
+    /// 407).
+    pub fn resumeAuth(self: *FetchJob, answer: network.observer.AuthAnswer) FetchError!Step {
+        const allocator = self.allocator;
+        const prompt = self.pending_prompt orelse return FetchError.NetworkError; // no prompt was asked
+        self.pending_prompt = null;
+        if (self.prompt_origin) |origin| allocator.free(origin);
+        self.prompt_origin = null;
+        const http_answer: http_fetch.PromptAnswer = switch (answer) {
+            .default => .none,
+            .cancel => .cancel,
+            .provide => |given| blk: {
+                const owned = OwnedCredentials.of(allocator, given.username, given.password) catch {
+                    prompt.deinit(allocator);
+                    return FetchError.OutOfMemory;
+                };
+                const slot = if (prompt.source == .proxy) &self.proxy_credentials else &self.prompted;
+                if (slot.*) |old| old.deinit(allocator);
+                slot.* = owned;
+                break :blk .{ .credentials = owned.borrowed() };
+            },
+        };
+        const source = prompt.source;
+        const finished = http_fetch.promptAnswered(allocator, self.params, self.networkOrCacheOptions(), prompt, http_answer) catch |err| {
+            return self.httpFetchFailed(err);
+        };
+        // 16.5: a 407's retry is "HTTP-network-or-cache fetch given
+        // fetchParams" - no authentication fetch; its entry goes as
+        // Proxy-Authorization (step 8.22).
+        if (source == .proxy) switch (finished) {
+            .authentication_retry => |realm| {
+                allocator.free(realm);
+                self.retrying = true;
+                return self.httpNetworkOrCacheFetch();
+            },
+            else => {},
+        };
+        return self.networkOrCacheFinished(finished);
+    }
+
+    /// HTTP fetch, from what the end of HTTP-network-or-cache fetch decided.
+    fn networkOrCacheFinished(self: *FetchJob, finished: http_fetch.HttpNetworkFinish) FetchError!Step {
         const response = switch (finished) {
             .response => |r| r,
+            .prompt => |prompt| {
+                // Steps 15.3.2 / 16.4: the prompt - whoever can answer is
+                // asked (the driver's `.auth` step), nobody: `.default`.
+                const origin = origins.serializedOriginOf(self.allocator, self.request.currentUrl()) catch {
+                    prompt.deinit(self.allocator);
+                    return FetchError.OutOfMemory;
+                };
+                if (self.pending_prompt) |old| old.deinit(self.allocator);
+                if (self.prompt_origin) |old| self.allocator.free(old);
+                self.pending_prompt = prompt;
+                self.prompt_origin = origin;
+                // Answered already, as the challenge arrived.
+                if (self.early_answer) |early| {
+                    self.early_answer = null;
+                    defer early.deinit(self.allocator);
+                    return self.resumeAuth(early.borrowed());
+                }
+                return .{ .auth = .{ .challenge = .{
+                    .source = if (prompt.source == .proxy) .proxy else .server,
+                    .origin = origin,
+                    .scheme = "basic",
+                    .realm = prompt.realm,
+                } } };
+            },
             .authentication_retry => |realm| {
                 if (self.authentication_realm) |old| self.allocator.free(old);
                 self.authentication_realm = realm;
@@ -651,6 +1254,7 @@ pub const FetchJob = struct {
                 // Step 15.4's run is given fetchParams and true: its
                 // isNewConnectionFetch is the default, false.
                 self.is_new_connection_fetch = false;
+                self.retrying = true;
                 // The normal network step: both drivers schedule it in the
                 // same way as the first request, never inside a curl callback.
                 return self.httpNetworkOrCacheFetch();
@@ -660,9 +1264,15 @@ pub const FetchJob = struct {
                 // fetchParams, isAuthenticationFetch, and true - on a new
                 // connection, scheduled as the first request was.
                 self.is_new_connection_fetch = true;
+                self.retrying = true;
                 return self.httpNetworkOrCacheFetch();
             },
         };
+        // The observer sees a redirect before HTTP-redirect fetch lets the
+        // response go (Network.requestWillBeSent's redirectResponse).
+        if (isRedirectStatus(response.status) and self.request.redirect_mode == .follow) {
+            if (self.observer()) |o| if (o.redirect_received) |on_redirect| on_redirect(o.context, self.request, response);
+        }
         const next = http_fetch.httpFetchFinish(self.allocator, self.params, .{}, response) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -674,8 +1284,13 @@ pub const FetchJob = struct {
                 self.is_new_connection_fetch = false;
                 if (self.authentication_realm) |realm| self.allocator.free(realm);
                 self.authentication_realm = null;
+                // A prompt's answer was for that URL's challenge.
+                if (self.prompted) |c| c.deinit(self.allocator);
+                self.prompted = null;
                 // HTTP-redirect fetch steps 20-22: main fetch again, one deeper.
                 self.depth += 1;
+                // The same fetch goes on to the new URL.
+                self.observeWillSend();
                 return self.mainFetch();
             },
         }
@@ -684,9 +1299,39 @@ pub const FetchJob = struct {
     /// Preserve the known transport failure for HTML 9.2.2 step 15.2's
     /// retry decision. Policy, scheme and CORS errors keep the default;
     /// a failed preflight is not a retryable event-stream connection either.
-    fn transportFailed(self: *FetchJob) FetchError!Step {
+    /// Chrome's proxy fallback (net/proxy_resolution/
+    /// configured_proxy_resolution_service.cc ReconsiderProxyAfterError ->
+    /// ProxyList::Fallback, for the connection errors net::
+    /// CanFalloverToNextProxy names - a response, a 407 included, is none):
+    /// the proxy the request went through is marked bad for its retry delay
+    /// (ProxyRetryInfo, NetworkContext.proxyFailed) and the request takes the
+    /// next proxy of its URL's list - direct:// when listed. False: it went
+    /// direct, the error is no such failure, or no proxy is left.
+    fn fallBackToNextProxy(self: *FetchJob, err: NetworkError) bool {
+        switch (err) {
+            NetworkError.DnsResolutionFailed,
+            NetworkError.ConnectionRefused,
+            NetworkError.ConnectionTimeout,
+            NetworkError.ConnectionReset,
+            NetworkError.EmptyResponse,
+            NetworkError.NetworkUnreachable,
+            NetworkError.HostUnreachable,
+            => {},
+            else => return false,
+        }
+        const request = if (self.network_request) |*r| r else return false;
+        const proxy = request.proxy orelse return false;
+        if (proxy.url.len == 0) return false;
+        const context = request.network orelse return false;
+        const next = context.proxyFailed(request.url, proxy.url) orelse return false;
+        request.proxy = .{ .url = next, .no_proxy = proxy.no_proxy };
+        return true;
+    }
+
+    fn transportFailed(self: *FetchJob, err: NetworkError) FetchError!Step {
         const response = try networkError(self.allocator);
         if (!self.network_request_is_preflight) response.network_error_cause = .transport;
+        response.net_error = internal_response.NetError.fromNetwork(err);
         return self.mainFetchFetched(response);
     }
 
@@ -794,8 +1439,17 @@ pub const FetchJob = struct {
             callback(response);
         }
 
+        self.observeHandover(response);
         self.response = response;
         return .done;
+    }
+
+    /// Fetch's redirect statuses (HTTP fetch step 6: 301, 302, 303, 307, 308).
+    fn isRedirectStatus(status: u16) bool {
+        return switch (status) {
+            301, 302, 303, 307, 308 => true,
+            else => false,
+        };
     }
 
     /// Fetch "fetch response handover" step 4 for `response`, the response
@@ -856,10 +1510,23 @@ pub const FetchJob = struct {
         self.deferred_timing = null;
     }
 
+    /// Whether this fetch's entry - a preload's - was consumed by a
+    /// render-blocking fetch while it was in flight. The entry is let go once
+    /// the response is handed over, so a preload whose report comes after
+    /// its body's end keeps its answer in `render_blocking_upgraded`.
+    fn upgradesRenderBlocking(self: *const FetchJob) bool {
+        if (self.render_blocking_upgraded) return true;
+        const entry = self.document_registration orelse return false;
+        return entry.upgrade_render_blocking;
+    }
+
     /// 4.2.1 and 4.3: a request whose report timing steps run - one with an
     /// initiator type, whose client's global hears it, and an HTTP(S) URL.
     fn reportsTiming(self: *const FetchJob) bool {
         const request = self.request;
+        // A fetch its document's resources answered: the resource has its
+        // entry, its first fetch's (document_resources.zig).
+        if (self.served_from_document) return false;
         if (request.initiator_type == null or request.timing_reporter == null) return false;
         const url = request.getUrl();
         return std.mem.startsWith(u8, url, "http:") or std.mem.startsWith(u8, url, "https:");
@@ -953,7 +1620,16 @@ pub const FetchJob = struct {
             // for iframes having cross origin redirects" Crane lost once a
             // streamed response had its content encoding (lane loadpath1).
             if (!navigation_status_visible) facts.body_info.content_encoding = "";
-            if (!opaque_response) {
+            // 4.2.7.2-4.2.7.3: the minimized content type - hidden with the
+            // status, as Chromium hides it (allow_response_details, above):
+            // resource-timing/content-type.html's cross-origin iframe and
+            // "... iframes having cross origin redirects" / "... any
+            // non-same-origin redirect": Chrome 157 and Firefox 160 pass,
+            // Safari 27.2 does not (wpt.fyi 2358bd4835) - golden rule 2, the
+            // majority; Fetch's own condition is the redirect taint, which
+            // Crane's response does not carry (response.redirect_taint,
+            // above).
+            if (!opaque_response and navigation_status_visible) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
                     defer parsed.deinit();
@@ -979,8 +1655,19 @@ pub const FetchJob = struct {
         var opaque_timing: ?FetchTimingInfo = null;
         defer if (opaque_timing) |*o| o.deinit();
         var reported: *const FetchTimingInfo = timing_info;
+        // A preload a render-blocking fetch consumed while it was in flight
+        // reports "blocking" (document_resources.Entry.
+        // upgrade_render_blocking, Chrome's
+        // MakePreloadedResourceBlockIfNeeded) - a shallow copy, borrowed for
+        // the report.
+        var upgraded: FetchTimingInfo = undefined;
+        if (self.upgradesRenderBlocking() and !timing_info.render_blocking) {
+            upgraded = timing_info.*;
+            upgraded.render_blocking = true;
+            reported = &upgraded;
+        }
         if (!facts.timing_allow_passed) {
-            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, timing_info);
+            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, reported);
             reported = &opaque_timing.?;
         }
         // 4.2.8. Mark resource timing (the reporter's global does).
@@ -1082,6 +1769,45 @@ fn networkError(allocator: Allocator) FetchError!*InternalResponse {
     return internal_response.networkError(allocator) catch FetchError.OutOfMemory;
 }
 
+/// The `Accept-Language` value for a comma-separated language list, OWNED:
+/// Chrome's net::HttpUtil::GenerateAcceptLanguageHeader (net/http/
+/// http_util.cc, BSD; reproduced, not copied) - the list's non-empty items
+/// in order, the first as it is (q=1.0 implied), each later one with
+/// ";q=0.N", N starting at 9 and going down by one to 1, where it stays
+/// ("it does not make sense to have 'q=0'"). Items are taken as given (no
+/// white space trimmed: the function assumes a list from preferences).
+fn generateAcceptLanguageHeader(allocator: std.mem.Allocator, list: []const u8) std.mem.Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var qvalue10: u32 = 10;
+    var items = std.mem.tokenizeScalar(u8, list, ',');
+    while (items.next()) |language| {
+        if (qvalue10 == 10) {
+            try out.appendSlice(allocator, language);
+        } else {
+            try out.print(allocator, ",{s};q=0.{d}", .{ language, qvalue10 });
+        }
+        if (qvalue10 > 1) qvalue10 -= 1;
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+test "Accept-Language from a language list: Chrome's GenerateAcceptLanguageHeader q-values" {
+    const allocator = std.testing.allocator;
+    const cases = [_][2][]const u8{
+        .{ "en-US,en", "en-US,en;q=0.9" },
+        .{ "de-DE", "de-DE" },
+        .{ "de-DE,,de", "de-DE,de;q=0.9" },
+        .{ "a,b,c,d,e,f,g,h,i,j,k,l", "a,b;q=0.9,c;q=0.8,d;q=0.7,e;q=0.6,f;q=0.5,g;q=0.4,h;q=0.3,i;q=0.2,j;q=0.1,k;q=0.1,l;q=0.1" },
+        .{ "", "" },
+    };
+    for (cases) |case| {
+        const value = try generateAcceptLanguageHeader(allocator, case[0]);
+        defer allocator.free(value);
+        try std.testing.expectEqualStrings(case[1], value);
+    }
+}
+
 /// Fetch: the document `Accept` header value.
 const document_accept_value = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
@@ -1116,10 +1842,12 @@ const TestTimingReports = struct {
     initiator: ?internal_request.InitiatorType = null,
     status: u16 = 0,
     start_time: f64 = 0,
+    render_blocking: bool = false,
 
     fn report(context: *anyopaque, timing: *const internal_request.TimingReport) void {
         const self: *TestTimingReports = @ptrCast(@alignCast(context));
         self.count += 1;
+        self.render_blocking = timing.timing_info.render_blocking;
         @memcpy(self.url[0..timing.url.len], timing.url);
         self.url_len = timing.url.len;
         self.initiator = timing.initiator_type;
@@ -1142,6 +1870,129 @@ fn testAnswer(status: u16) NetworkResponse {
         .remote_ip = null,
         .remote_port = null,
     };
+}
+
+/// A Window client's document as Fetch step 11 reaches it: one entry, which
+/// a request consumes or the next request fills.
+const TestDocument = struct {
+    entry: ?*document_resources.Entry = null,
+    preload: bool = false,
+
+    fn route(self: *TestDocument) internal_request.DocumentResourcesRoute {
+        return .{ .context = self, .consume = consume, .register = register };
+    }
+
+    fn consume(context: *anyopaque, request: *const InternalRequest) ?*document_resources.Entry {
+        const self: *TestDocument = @ptrCast(@alignCast(context));
+        const entry = self.entry orelse return null;
+        if (request.render_blocking and entry.state == .pending) entry.upgrade_render_blocking = true;
+        return entry.retain();
+    }
+
+    fn register(context: *anyopaque, request: *const InternalRequest) ?*document_resources.Entry {
+        const self: *TestDocument = @ptrCast(@alignCast(context));
+        _ = request;
+        if (self.entry != null) return null;
+        self.entry = document_resources.Entry.create(std.testing.allocator, self.preload) catch return null;
+        return self.entry.?.retain();
+    }
+
+    fn deinit(self: *TestDocument) void {
+        if (self.entry) |entry| entry.release();
+    }
+};
+
+fn documentRequest(document: *TestDocument, reports: *TestTimingReports) !*InternalRequest {
+    const request = try InternalRequest.init(std.testing.allocator, "https://a.test/s.css");
+    try request.setOrigin("https://a.test");
+    request.mode = .no_cors;
+    request.destination = .style;
+    request.initiator_type = .link;
+    request.timing_reporter = .{ .context = reports, .report = &TestTimingReports.report };
+    request.document_resources = document.route();
+    return request;
+}
+
+test "Fetch step 11: a preload's response answers a later request of its key, with no network step and no timing report of its own" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{ .preload = true };
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    // The preload: its whole response, handed over, fills the entry.
+    const preload = try documentRequest(&document, &reports);
+    defer preload.deinit();
+    preload.link_preload = true;
+    const producer = try FetchJob.create(allocator, preload, false, .{});
+    defer producer.destroy();
+    producer.keeps_whole_body = true;
+    try std.testing.expect(try producer.start() == .network);
+    // A render-blocking request consumes it while it is in flight: its
+    // pending entry, which then waits.
+    const sheet = try documentRequest(&document, &reports);
+    defer sheet.deinit();
+    sheet.render_blocking = true;
+    const consumer = try FetchJob.create(allocator, sheet, false, .{});
+    defer consumer.destroy();
+    try std.testing.expect(try consumer.start() == .document_resource);
+    try std.testing.expect(!consumer.documentResourceReady());
+
+    try std.testing.expect(try producer.resumeNetwork(testAnswer(200)) == .done);
+    var produced: FetchError!FetchResult = producer.takeResult();
+    producer.keepForDocument(&produced);
+    if (produced) |*r| r.deinit() else |_| {}
+    // The preload's report: once, and "blocking" (Chrome's upgrade).
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    try std.testing.expect(reports.render_blocking);
+
+    try std.testing.expect(consumer.documentResourceReady());
+    try std.testing.expect(try consumer.resumeDocumentResource() == .done);
+    var result = consumer.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 200), result.response.status);
+    // The consumer reported nothing.
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    // The route is read at the start alone.
+    try std.testing.expect(sheet.document_resources == null);
+}
+
+test "a request whose candidate's fetch went with no response fetches the resource itself" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{};
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    const first = try documentRequest(&document, &reports);
+    defer first.deinit();
+    const producer = try FetchJob.create(allocator, first, false, .{});
+    producer.keeps_whole_body = true;
+    try std.testing.expect(try producer.start() == .network);
+    const second = try documentRequest(&document, &reports);
+    defer second.deinit();
+    const consumer = try FetchJob.create(allocator, second, false, .{});
+    defer consumer.destroy();
+    try std.testing.expect(try consumer.start() == .document_resource);
+    // The first fetch is terminated (its element removed): no response.
+    producer.destroy();
+    try std.testing.expectEqual(document_resources.Entry.State.abandoned, document.entry.?.state);
+    try std.testing.expect(try consumer.resumeDocumentResource() == .network);
+    try std.testing.expect(try consumer.resumeNetwork(testAnswer(200)) == .done);
+    var result = consumer.takeResult();
+    defer result.deinit();
+    // It fetched, so it reports.
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+}
+
+test "the blocking driver does not wait for a pending candidate: it fetches" {
+    const allocator = std.testing.allocator;
+    var document: TestDocument = .{};
+    defer document.deinit();
+    var reports: TestTimingReports = .{};
+    document.entry = try document_resources.Entry.create(allocator, false);
+    const request = try documentRequest(&document, &reports);
+    defer request.deinit();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .document_resource);
+    try std.testing.expect(try job.abandonDocumentResource() == .network);
 }
 
 test "fetch response handover: a request with an initiator type reports its timing to its client's global, once" {
@@ -1385,6 +2236,116 @@ test "HTTP fetch step 3: a fallback answer goes to the network; a network error 
         var result = job.takeResult();
         defer result.deinit();
         try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+    }
+}
+
+/// A stream body's producer that counts its cancels (fetch()'s UploadPump in
+/// production): the request's body still arriving through a pipe.
+const StreamBody = struct {
+    cancels: u32 = 0,
+    source: *@import("../internal/body_pipe.zig").PipeSource = undefined,
+
+    fn cancel(context: *anyopaque) void {
+        const self: *StreamBody = @ptrCast(@alignCast(context));
+        self.cancels += 1;
+    }
+
+    /// Give `request` a POST body of no source whose bytes arrive through a
+    /// pipe of this source.
+    fn attach(self: *StreamBody, request: *InternalRequest) !void {
+        const allocator = std.testing.allocator;
+        self.source = try @import("../internal/body_pipe.zig").PipeSource.create(allocator);
+        self.source.producer = .{ .context = self, .cancel = cancel };
+        const pipe = try self.source.branch();
+        const body = try @import("../internal/body.zig").Body.fromPipe(allocator, pipe);
+        try request.setMethod("POST");
+        request.body = .{ .body = body };
+    }
+};
+
+test "HTTP fetch step 4 waits for a stream request body still arriving, then sends its bytes" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    var stream: StreamBody = .{};
+    try stream.attach(request);
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .request_body);
+    try std.testing.expect(job.requestBodyArriving());
+    stream.source.push("ab");
+    stream.source.push("cd");
+    stream.source.finish();
+    const step = try job.resumeRequestBody();
+    try std.testing.expect(step == .network);
+    try std.testing.expectEqualStrings("abcd", step.network.request.body.?);
+    // Still a stream's body: no source (HTTP-network fetch step 8.3).
+    try std.testing.expect(request.body.?.body.source == .none);
+    try std.testing.expectEqual(@as(u32, 0), stream.cancels);
+}
+
+test "a stream request body that fails before it has arrived is a network error" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    var stream: StreamBody = .{};
+    try stream.attach(request);
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .request_body);
+    stream.source.push("a");
+    stream.source.fail(.{ .kind = .network });
+    try std.testing.expect(try job.resumeRequestBody() == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+}
+
+test "HTTP fetch step 3.5.4: a service worker's response cancels the request's stream body; a fallback keeps it for the network" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    {
+        const request = try InternalRequest.init(allocator, "https://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("https://a.test");
+        request.service_worker = workers.route();
+        var stream: StreamBody = .{};
+        try stream.attach(request);
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        try std.testing.expect(step == .service_worker);
+        workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
+        const answer = step.service_worker.take().?;
+        try std.testing.expect(try job.resumeServiceWorker(.{ .response = answer.response.response }) == .done);
+        // The request's branch went, its last reader: the stream's producer
+        // is cancelled.
+        try std.testing.expectEqual(@as(u32, 1), stream.cancels);
+        try std.testing.expect(!job.requestBodyArriving());
+        var result = job.takeResult();
+        result.deinit();
+    }
+    {
+        const request = try InternalRequest.init(allocator, "https://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("https://a.test");
+        request.service_worker = workers.route();
+        var stream: StreamBody = .{};
+        try stream.attach(request);
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        workers.answer(.fallback);
+        _ = step.service_worker.take().?;
+        // Step 4: the network, once the body has arrived.
+        try std.testing.expect(try job.resumeServiceWorker(.fallback) == .request_body);
+        try std.testing.expectEqual(@as(u32, 0), stream.cancels);
+        stream.source.push("z");
+        stream.source.finish();
+        const sent = try job.resumeRequestBody();
+        try std.testing.expectEqualStrings("z", sent.network.request.body.?);
     }
 }
 

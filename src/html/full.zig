@@ -106,6 +106,9 @@ pub const documentClose = core.documentClose;
 /// one another.
 pub const autofill = @import("autofill.zig");
 pub const form_associated = @import("form_associated.zig");
+/// The File Upload state's selection for files a host chooses by path
+/// (DOM.setFileInputFiles; Blink's FileInputType::SetFilesFromPaths).
+pub const file_selection = @import("file_selection.zig");
 pub const form_past_names = @import("form_past_names.zig");
 pub const forms = @import("forms/root.zig");
 pub const custom_elements = @import("custom_elements.zig");
@@ -138,13 +141,6 @@ pub const WindowProxyError = core.WindowProxyError;
 pub const IFrameIntegration = core.IFrameIntegration;
 pub const IFrameState = core.IFrameState;
 pub const IFrameError = core.IFrameError;
-pub const UIBackend = core.UIBackend;
-pub const StubUIBackend = core.StubUIBackend;
-pub const AnimationFrameScheduler = core.AnimationFrameScheduler;
-pub const FrameTimingBackend = core.FrameTimingBackend;
-pub const StubFrameTimingBackend = core.StubFrameTimingBackend;
-pub const MockFrameTimingBackend = core.MockFrameTimingBackend;
-pub const DOMHighResTimeStamp = core.DOMHighResTimeStamp;
 
 // Web Workers (§10)
 pub const workers = core.workers;
@@ -260,8 +256,20 @@ pub const document_abort = @import("document_abort.zig");
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");
+/// HTML 13.2.8 "Speculative HTML parsing": the scanner a waiting parser runs
+/// over the rest of its input, and its look into style elements' @imports.
+pub const speculative_parser = @import("speculative_parser.zig");
+pub const speculative_css = @import("speculative_css.zig");
+/// A waiting parser's speculative HTML parser and its speculative fetches.
+pub const speculative_fetch = @import("speculative_fetch.zig");
 /// HTML "encoding-parse a URL" relative to a Document.
 pub const encoding_parse = @import("dom").encoding_parse;
+/// HTML 4.8.4.3.10-12: srcset/sizes parsing and image source selection
+/// (the img element's and the speculative HTML parser's).
+pub const image_source_selection = @import("image_source_selection.zig");
+/// A link element's link types and `as`/`type` rules (HTML 4.6.7), the
+/// link element's and the speculative HTML parser's.
+pub const link_types = @import("link_types.zig");
 
 /// Parser script execution callback and context for V8 integration.
 /// Provides the bridge between tree builder's script callback and V8 execution.
@@ -305,6 +313,12 @@ pub const web_locks = @import("web_locks/root.zig");
 pub const embedder_scripts = @import("embedder_scripts.zig");
 /// HTML 6.4 user activation.
 pub const user_activation = @import("user_activation.zig");
+/// HTML 8.9.1 simple dialogs and 8.9.2's printing steps: the checks, the
+/// host's user prompt hook, the pause until the answer.
+pub const simple_dialogs = @import("simple_dialogs.zig");
+pub const screen_info = @import("screen_info.zig");
+pub const screen_orientation = @import("screen_orientation.zig");
+pub const user_agent_override = @import("user_agent_override.zig");
 pub const close_watchers = @import("close_watchers.zig");
 
 // "same origin-domain" between the entry settings object and a Window (the

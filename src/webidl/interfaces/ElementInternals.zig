@@ -111,6 +111,18 @@ pub const ElementInternals = struct {
             "states",
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "ariaControlsElements",
+            "ariaDescribedByElements",
+            "ariaDetailsElements",
+            "ariaErrorMessageElements",
+            "ariaFlowToElements",
+            "ariaLabelledByElements",
+            "ariaOwnsElements",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setFormValue", "call_setFormValue", 1 },

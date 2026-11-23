@@ -9,6 +9,8 @@ const PaymentItem = @import("PaymentItem.zig").PaymentItem;
 const PaymentDetailsBase = @import("PaymentDetailsBase.zig").PaymentDetailsBase;
 
 pub const PaymentDetailsUpdate = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from PaymentDetailsBase
     base: PaymentDetailsBase,
 

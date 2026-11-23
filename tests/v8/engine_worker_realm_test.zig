@@ -22,6 +22,7 @@ fn setup() void {
 
 fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
@@ -31,6 +32,7 @@ fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
 
 fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/workers/shared.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
@@ -41,6 +43,7 @@ fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
 
 fn serviceWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, .{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "https://web-platform.test:8443/service-workers/sw.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),

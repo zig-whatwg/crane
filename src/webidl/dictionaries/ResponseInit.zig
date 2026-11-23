@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const ResponseInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     status: ?u16 = null,
     statusText: ?runtime.ByteString = null,
     headers: ?typedefs.HeadersInit = null,

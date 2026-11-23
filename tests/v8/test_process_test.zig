@@ -46,9 +46,11 @@ test "a test's agent is the current isolate while its test runs, and nothing is 
         const isolate = try test_agent.open(.{});
         try std.testing.expectEqual(@as(?*ffi.Isolate, isolate), ffi.v8_Isolate_GetCurrent());
         // Opening it again in the same test is the same agent, and adds no
-        // entry to undo.
+        // entry to undo - nor did the first open: the agent is its thread's,
+        // its isolate entered by createAgent for its life and exited by
+        // destroyAgent (docs/engine-protocol.md section 2).
         try std.testing.expectEqual(isolate, try test_agent.open(.{}));
-        try std.testing.expectEqual(@as(u32, 1), test_agent.entries);
+        try std.testing.expectEqual(@as(u32, 0), test_agent.entries);
         try std.testing.expect(test_agent.context != null);
     }
     try std.testing.expectEqual(@as(?*ffi.Isolate, null), ffi.v8_Isolate_GetCurrent());
@@ -97,6 +99,7 @@ test "a test's agent ends its Window realms before itself, then runs the file's 
         defer test_agent.close();
         _ = try test_agent.open(.{ .context = false });
         _ = try test_agent.windowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = test_agent.agent(),
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

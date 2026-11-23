@@ -139,7 +139,7 @@ test "a UTF-8 sequence split between two chunks decodes as one character" {
     try testing.expect(parserOf(document) == null);
 }
 
-test "a meta charset past the prescan window changes the encoding of a streamed body" {
+test "a meta charset in the head past the first 1024 bytes decides the encoding of a streamed body" {
     var realm: Realm = undefined;
     try realm.init();
     defer realm.deinit();
@@ -149,7 +149,8 @@ test "a meta charset past the prescan window changes the encoding of a streamed 
     const document, const parser = try streamingDocument(&realm, pipe, "text/html");
     defer interfaces.Document.deinit(document);
 
-    // 1,100 bytes of comment: the prescan's 1,024 bytes find no meta.
+    // 1,100 bytes of comment: the head section has not ended, so the meta
+    // scan waits past its first 1,024 bytes (Blink's HTMLMetaCharsetParser).
     var padding: [1100]u8 = undefined;
     @memset(&padding, 'x');
     network.source.push("<!doctype html><!--");

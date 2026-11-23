@@ -36,6 +36,12 @@ pub const BluetoothLEScan = struct {
             .{ "active", "get_active", null },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "filters",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "stop", "call_stop", 0 },

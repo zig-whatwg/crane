@@ -21,9 +21,7 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
 
-const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
-const Storage = storage_mod.Storage;
 const EventLoop = @import("event_loop.zig").EventLoop;
 const rendering = @import("rendering.zig");
 
@@ -82,12 +80,36 @@ const TimerMap = struct {
         }
     };
 
+    /// The map of the Window whose method `realm`'s function is: an isolated
+    /// world's realm (engine section 4.2a) keeps no map of its own - its
+    /// global wraps its main realm's Window, whose one map holds every
+    /// world's timers (Blink's DOMTimerCoordinator is the window's, and
+    /// clearTimeout from any world clears any of its ids). A timer still
+    /// runs in the realm that set it (`WindowTimerData.realm`).
     fn of(realm: runtime.Context) TimerMap {
-        return .{ .realm = realm };
+        return .{ .realm = engine.mainRealmOf(realm) };
     }
 
     fn ids(self: TimerMap) *Ids {
         return &self.realm.active_timers;
+    }
+
+    /// The timer initialization steps' step 2: "an implementation-defined
+    /// integer that is greater than zero and does not already exist in
+    /// global's map of active timers" - the window's own count from 1
+    /// (`runtime.ContextData.next_timer_id`), wrapping past the greatest
+    /// `long` and skipping an id still in the map. Each global counts its
+    /// own, as Blink's DOMTimerCoordinator, Gecko's TimeoutManager and
+    /// WebKit's ScriptExecutionContext do, and a worker's global here does
+    /// (html.worker_host takeTimerId): two windows' first timers are both 1.
+    /// The timer's native wait has an id of the loop's timer manager's
+    /// (`WindowTimerData.current_timer_id`), never seen by script.
+    fn takeId(self: TimerMap) TimerId {
+        while (true) {
+            const id = self.realm.next_timer_id;
+            self.realm.next_timer_id = if (id >= std.math.maxInt(i32)) 1 else id + 1;
+            if (id > 0 and self.get(@intCast(id)) == null) return @intCast(id);
+        }
     }
 
     fn put(self: TimerMap, id: TimerId, wrapper: *WindowTimerCallback) !void {
@@ -252,6 +274,49 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     try std.testing.expectEqual(@as(usize, 1), TimerMap.of(&realm).count());
 }
 
+test "each window's timer ids are its own, from 1 (HTML 8.6 step 2; Blink, Gecko and WebKit count per global)" {
+    // Lane tab1 (the instances design's 6.3.1: "ids may coincide across
+    // tabs and clearTimeout(id) in one tab never clears the other's"). Two
+    // windows on one agent's loop - its one timer manager - each give out 1,
+    // 2, ... for setTimeout and setInterval alike, as Blink's
+    // DOMTimerCoordinator, Gecko's TimeoutManager and WebKit's
+    // ScriptExecutionContext each count per global; the manager's own ids
+    // stay behind them.
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    var other = try runtime.ContextData.init(allocator, .{});
+    defer other.deinit();
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    realm.timer = manager.timerInterface();
+    other.timer = manager.timerInterface();
+    const first = try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false);
+    const second = try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true);
+    const elsewhere = try initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 1), first);
+    try std.testing.expectEqual(@as(i32, 2), second);
+    try std.testing.expectEqual(@as(i32, 1), elsewhere);
+    // The same id names each window's own timer: clearing one leaves the
+    // other armed.
+    clearTimer(&realm, 1);
+    try std.testing.expect(TimerMap.of(&realm).get(1) == null);
+    try std.testing.expect(TimerMap.of(&other).get(1) != null);
+    // Past the greatest `long` the count wraps to 1, skipping ids still in
+    // the map (step 2: "does not already exist in global's map").
+    realm.next_timer_id = std.math.maxInt(i32);
+    const last = try initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, std.math.maxInt(i32)), last);
+    const wrapped = try initializeTimer(&realm, .{ .function = .{ .number = 5 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 1), wrapped);
+    const skipped = try initializeTimer(&realm, .{ .function = .{ .number = 6 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 3), skipped);
+    for ([_]i32{ 2, last, wrapped, skipped }) |id| clearTimer(&realm, id);
+    clearTimer(&other, 1);
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&realm).count());
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&other).count());
+}
+
 test "a queued timer's task owns its record: suspension skips it, clearing releases its handles, its task or drop frees it" {
     // The ownership rule at WindowTimerData, state .queued, without a Window:
     // what timerFired does on a Window's event loop - the native timer has
@@ -410,8 +475,7 @@ fn resetNestingMicrotask(data: ?*anyopaque) void {
 /// Null for a realm with no agent or an agent with no host (a unit test's
 /// realm), whose level is always 0.
 fn timerNestingLevel(realm: runtime.Context) ?*u32 {
-    const agent = realm.agent orelse return null;
-    const host: *html_mod.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *html_mod.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.timer_nesting_level;
 }
 
@@ -446,6 +510,9 @@ fn reportToWindow(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The realm that threw (an isolated world's: its error event is that
+        // world's only - report_exception).
+        .realm = info.realm,
     };
     _ = html_mod.report_exception.reportErrorInfo(window, &extracted, .{});
 }
@@ -576,7 +643,33 @@ fn isTrustedScript(instance: *runtime.Instance) bool {
 /// The engine's end of a window realm: the window goes with its last
 /// document (`clearWindowState`).
 fn clearDiscardedWindowState(realm: runtime.Context) void {
+    // An isolated world realm's end (engine.destroyWorldRealms; the engine
+    // ends every world realm before its main realm): only what that world
+    // set goes - its timers, from its Window's map, and its animation frame
+    // callbacks. The Window, its document and its unloading cleanup steps
+    // are the main realm's, which a world's end must not run (Blink disposes
+    // an isolated world's context and leaves the frame's DOMWindow alone).
+    if (engine.worldOf(realm) != engine.main_world) return clearWorldState(realm);
     clearWindowState(realm, .discarded);
+}
+
+/// `clearDiscardedWindowState` for an isolated world realm: the timers it
+/// set (its records in its Window's map name it as their realm) and its
+/// animation frame callbacks (rendering keeps them by realm).
+fn clearWorldState(world_realm: runtime.Context) void {
+    const map = TimerMap.of(world_realm);
+    if (map.count() != 0) {
+        var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
+        defer doomed.deinit(world_realm.allocator);
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            if (entry.wrapper.getData().realm != world_realm) continue;
+            doomed.append(world_realm.allocator, entry.id) catch break;
+        }
+        for (doomed.items) |id| unregisterTimerContext(world_realm, id);
+    }
+    map.releaseIfEmpty();
+    rendering.windowDestroyed(world_realm);
 }
 
 /// The hooks the browser layer owns (src/dom), installed once, at process
@@ -719,17 +812,20 @@ fn resumeWindowTimers(realm: runtime.Context) void {
 /// nothing and the interval ran until the page went away.
 fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms: u64) ?TimerId {
     const map = TimerMap.of(wrapper.getData().realm);
-    const id = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
-    if (id == 0) {
+    const native = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+    if (native == 0) {
         destroyTimer(wrapper);
         return null;
     }
+    // Step 2: the window's own id (`TimerMap.takeId`), the key script holds;
+    // the manager's id names the pending run.
+    const id = map.takeId();
     wrapper.getData().id = id;
-    wrapper.getData().current_timer_id = id;
+    wrapper.getData().current_timer_id = native;
     map.put(id, wrapper) catch {
         // Untracked, it could never be cleared or cleaned up. Cancel before
         // freeing: a scheduled timer holds the wrapper.
-        _ = timer.clearTimeout(id);
+        _ = timer.clearTimeout(native);
         destroyTimer(wrapper);
         return null;
     };
@@ -1001,7 +1097,15 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
     switch (data.handler) {
         // Step 8.4: invoke handler given arguments and "report", with callback
         // this value set to thisArg (the WindowProxy).
-        .function => |function| invokeReporting(data.realm, function, data.arguments),
+        // Timed for a host's handler violation (dom.performance_monitor:
+        // Blink's DOMTimer::Fired probe::UserCallback "setTimeout" /
+        // "setInterval", recurring) - one load while none listens.
+        .function => |function| {
+            const monitor = dom_mod.performance_monitor.active(data.realm);
+            const started: ?i64 = if (monitor) |m| m.willCallback(true) else null;
+            invokeReporting(data.realm, function, data.arguments);
+            if (monitor) |m| if (m.didCallback(true, started)) |duration| m.reportHandler(data.realm, if (data.is_interval) "setInterval" else "setTimeout", true, duration);
+        },
         // Step 8.5: create a classic script from the string - with the
         // settings object's API base URL, for a Window its document's base
         // URL, which is also where its errors are reported from - and run it.
@@ -1130,18 +1234,17 @@ fn queueTimerTask(wrapper: *WindowTimerCallback) bool {
 /// (`timerFired`). Step 4.2's order holds: every zero-timeout timer set
 /// before this one was queued at its own call.
 ///
-/// The id is reserved from the agent's timer manager (TimerInterface
-/// .reserveId), the counter armed timers take theirs from, so the window's
-/// map never has one id twice. The id, entered in the map; 0 when the map
-/// could not take it (the wrapper is freed); null when this realm cannot
-/// queue it now (no Window, no event loop, no id to reserve) - the caller
-/// arms it.
-fn queueAtCall(timer: TimerInterface, wrapper: *WindowTimerCallback) ?TimerId {
+/// The id is the window's own (`TimerMap.takeId`), as an armed timer's is.
+/// The id, entered in the map; 0 when the map could not take it (the wrapper
+/// is freed); null when this realm cannot queue it now (no Window, no event
+/// loop) - the caller arms it.
+fn queueAtCall(wrapper: *WindowTimerCallback) ?TimerId {
     const data = wrapper.getData();
     if (realmWindow(data.realm) == null or data.realm.getOptionalEventLoop() == null) return null;
-    const id = timer.reserveId() orelse return null;
+    const map = TimerMap.of(data.realm);
+    const id = map.takeId();
     data.id = id;
-    TimerMap.of(data.realm).put(id, wrapper) catch {
+    map.put(id, wrapper) catch {
         destroyTimer(wrapper);
         return 0;
     };
@@ -1264,7 +1367,38 @@ fn initializeTimer(realm: runtime.Context, converted: runtime.WindowTimerHandler
     // once, as the engines do.
     switch (handler) {
         .function => {},
-        .trusted_script, .string => |value| if (realmWindow(realm)) |window| {
+        .trusted_script, .string => |value| if (html_mod.code_generation.WorldPolicy.of(realm)) |world_policy| {
+            // An isolated world with a Content Security Policy of its own
+            // (engine section 4.2a; Blink's IsolatedWorldCSP): steps 1.4-1.5
+            // against that policy instead of the page's. A world has no
+            // default Trusted Types policy of the page's, so a string where
+            // the world's policy requires TrustedScript is the TypeError, and
+            // its violations are reported to no one
+            // (html.code_generation.WorldPolicy). A world with none - every
+            // DevTools world - takes the page's steps below.
+            var policy = world_policy;
+            defer policy.deinit();
+            const allocator = realm.allocator;
+            const text: []u8 = switch (handler) {
+                .string => engine.convertToDOMString(realm, value, allocator) catch return 0,
+                else => blk: {
+                    const object = engine.convertToPlatformObject(realm, value) orelse return 0;
+                    const data = dom_mod.trusted_types.dataOf(object, .script) orelse return 0;
+                    break :blk allocator.dupe(u8, data) catch return 0;
+                },
+            };
+            const trusted = handler == .trusted_script;
+            if (!trusted and policy.requiresTrustedScript()) {
+                allocator.free(text);
+                return error.TypeError;
+            }
+            if (policy.compileStrings(text, true) != .allowed) {
+                allocator.free(text);
+                return 0;
+            }
+            releaseTimerHandler(handler, allocator);
+            handler = .{ .string = .{ .string = .{ .data = text, .owned = true } } };
+        } else if (realmWindow(realm)) |window| {
             const allocator = realm.allocator;
             // 1.1-1.3: "Window setTimeout" or "Window setInterval".
             const sink: []const u8 = if (repeat) "Window setInterval" else "Window setTimeout";
@@ -1340,10 +1474,11 @@ fn initializeTimer(realm: runtime.Context, converted: runtime.WindowTimerHandler
     // return the id - a zero timeout's task queued now (`queueAtCall`).
     const delay: u64 = @intCast(clampTimeout(timeout_ms, nesting));
     if (delay == 0) {
-        if (queueAtCall(timer, wrapper)) |queued| return @intCast(@as(u32, @truncate(queued)));
+        if (queueAtCall(wrapper)) |queued| return @intCast(queued);
     }
     const id = scheduleTimer(timer, wrapper, delay) orelse return 0;
-    return @intCast(@as(u32, @truncate(id)));
+    // takeId's ids are `long`s greater than zero.
+    return @intCast(id);
 }
 
 /// clearTimeout(id) and clearInterval(id): one algorithm, "clear the timer
@@ -1413,8 +1548,6 @@ pub const Context = struct {
     agent: *engine.Agent,
     /// The page's realm, a Window's; null only while it is being made.
     realm: ?runtime.Context = null,
-    /// Storage subsystem (shared across navigations)
-    storage: *Storage,
     /// The Browser's cookie jar (BORROWED): the page's top-level browsing
     /// context gets it as its Window is made.
     cookie_jar: ?*cookiestore.CookieJar,
@@ -1457,6 +1590,18 @@ pub const Context = struct {
     /// history and WindowProxy record across every Window its loads make.
     /// OWNED; null for a worker page, or when no record could be made.
     traversable: ?*anyopaque = null,
+    /// Whether the page's realms stay the agent's entered realm for their
+    /// life (engine.WindowRealmOptions.entered_for_life): true for the
+    /// Browser's first page, false for a tab the host opened beside it
+    /// (Browser.createTab), whose every realm - this one and each later
+    /// document's - is entered per call, so that tabs end in any order.
+    entered_for_life: bool = true,
+
+    /// What `initWithOptions` takes beyond `init`'s arguments.
+    pub const InitOptions = struct {
+        /// `entered_for_life`.
+        entered_for_life: bool = true,
+    };
 
     /// Make the page's realm in `agent` and give it what a page's Window has.
     ///
@@ -1467,13 +1612,28 @@ pub const Context = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         agent: anytype,
-        storage: *Storage,
         cookie_jar: ?*cookiestore.CookieJar,
         url: []const u8,
         event_loop: anytype,
         context_type: ContextType,
         from_snapshot: bool,
         browser_scope: ?*runtime.BrowserScope,
+    ) !*Context {
+        return initWithOptions(allocator, agent, cookie_jar, url, event_loop, context_type, from_snapshot, browser_scope, .{});
+    }
+
+    /// `init` with `options`: a tab the host opens beside its first page
+    /// passes `.entered_for_life = false` (Browser.createTab).
+    pub fn initWithOptions(
+        allocator: std.mem.Allocator,
+        agent: anytype,
+        cookie_jar: ?*cookiestore.CookieJar,
+        url: []const u8,
+        event_loop: anytype,
+        context_type: ContextType,
+        from_snapshot: bool,
+        browser_scope: ?*runtime.BrowserScope,
+        options: InitOptions,
     ) !*Context {
         log.debug("[Context.init] {s}", .{url});
 
@@ -1485,7 +1645,6 @@ pub const Context = struct {
         ctx.* = Context{
             .allocator = allocator,
             .agent = @ptrCast(agent),
-            .storage = storage,
             .cookie_jar = cookie_jar,
             .url = url_copy,
             .context_type = context_type,
@@ -1495,6 +1654,7 @@ pub const Context = struct {
             .from_snapshot = from_snapshot,
             .browser_scope = browser_scope,
             .task_sink = if (event_loop) |ev| ev.taskSink() else null,
+            .entered_for_life = options.entered_for_life,
         };
 
         // A realm, or a traversable, made before a later step failed ends
@@ -1564,6 +1724,17 @@ pub const Context = struct {
             // keeps this creation answer; the Window's isSecureContext asks
             // its document each time.
             .secure_context = html_mod.secure_context.ofDocument(self.allocator, .{ .url = document_url, .parent = null, .creator = null }) catch false,
+            // HTML "create a new realm" step 5: the agent cluster's
+            // cross-origin isolation mode, its browsing context group's
+            // ("obtain a similar-origin window agent" step 6.2). The page's
+            // first realm is its new group's: "none" (HTML "create a new
+            // browsing context group"). A later one's is the group its
+            // navigation committed in - a switch to a "same-origin-plus-COEP"
+            // response sets the mode before this realm is made.
+            .agent_cluster_cross_origin_isolated = if (self.browsing_context) |bc| bc.groupIsCrossOriginIsolated() else false,
+            // Every realm of a tab the host opened beside its first page is
+            // entered per call, its later documents' too.
+            .entered_for_life = self.entered_for_life,
         };
     }
 
@@ -1834,10 +2005,33 @@ pub const Context = struct {
     /// document of the same origin (create and initialize a Document object
     /// steps 6-7). error.NoTraversable for a page with no record.
     pub fn navigate(self: *Context, url: []const u8) !void {
+        _ = try self.navigateWithOptions(url, .{});
+    }
+
+    /// What a host's navigation of the page may say beyond its URL (the
+    /// CDP design's N5: Page.navigate's `referrer` and `referrerPolicy`).
+    pub const NavigateOptions = struct {
+        /// The request's referrer, a URL (main fetch strips it and applies
+        /// the policy, as for any URL referrer). BORROWED for the call.
+        referrer: ?[]const u8 = null,
+        referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    };
+
+    /// `navigate` with `options`: the id of the cross-document navigation it
+    /// started (navigate step 7's navigation ID - the navigation observer's
+    /// `navigation_id`, CDP's loaderId), or 0 when none started (a
+    /// same-document navigation, or one refused or ignored).
+    pub fn navigateWithOptions(self: *Context, url: []const u8, options: NavigateOptions) !u64 {
         const record = self.traversable orelse return error.NoTraversable;
         const serialized = serializedUrlOf(self.allocator, url);
         defer if (serialized) |s| self.allocator.free(s);
-        dom_mod.top_level_traversables.navigate(record, serialized orelse url, .{});
+        var started: u64 = 0;
+        dom_mod.top_level_traversables.navigate(record, serialized orelse url, .{
+            .referrer = options.referrer,
+            .referrer_policy = options.referrer_policy,
+            .started_navigation_id = &started,
+        });
+        return started;
     }
 
     /// `url` parsed and serialized; null when it does not parse.
@@ -2153,12 +2347,12 @@ pub const Context = struct {
     pub fn deinit(self: *Context) void {
         log.debug("[Context.deinit] {s}", .{self.url});
 
-        // The page's agent's pending mutation observers and signal slots go
-        // while their nodes live - the page is every window of the Browser's
-        // agent - so that nothing accumulates across navigations. The agent's
-        // only (AgentHost.mutation_observers): another Browser's on the thread
-        // is its own.
-        if (self.realm) |realm| mutation_observer_algorithms.resetAgent(realm);
+        // The page's pending mutation observers and signal slots leave its
+        // agent's sets while their nodes live, so that nothing accumulates
+        // across navigations - the page's tab's only: the Browser's other
+        // tabs share the agent (AgentHost.mutation_observers), and theirs are
+        // still notified.
+        if (self.realm) |realm| mutation_observer_algorithms.resetPage(realm);
 
         // (Instance lifecycle flags live in each instance's slab slot and go
         // with it: nothing of the page's to clear here.)
@@ -2219,7 +2413,7 @@ test "a browser started without a snapshot builds its realm afresh and runs a pa
     // session starts its browser this way too.
     const allocator = std.testing.allocator;
     const Browser = @import("Browser.zig").Browser;
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try std.testing.expect(!browser.isUsingSnapshot());
 

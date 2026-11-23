@@ -46,9 +46,9 @@ fn capturedWrite(allocator: std.mem.Allocator, from_index: bool, deleting: bool)
     defer allocator.destroy(request);
     defer request.deinit();
     if (deleting) {
-        try std.testing.expectEqual(@as(usize, 0), source.store.recordsList().items.len);
+        try std.testing.expectEqual(@as(usize, 0), (try source.store.recordCount(null)));
     } else {
-        try std.testing.expectEqualStrings("after", source.store.recordsList().items[0].value);
+        try std.testing.expectEqualStrings("after", (try source.store.recordAt(0)).?.value);
     }
 }
 

@@ -127,8 +127,7 @@ pub const SignalSlot = struct {
 /// still reach their observers' record queues there (takeRecords), and no
 /// notify is queued.
 pub fn agentOf(realm: runtime.Context) ?*MutationObserverAgent {
-    const agent = realm.agent orelse return null;
-    const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *AgentHost = @import("agent_hosts.zig").ofOwnAgent(realm) orelse return null;
     return &host.mutation_observers;
 }
 
@@ -221,23 +220,61 @@ fn fireSlotChange(slot: *runtime.Instance) void {
     _ = @import("fire_event.zig").dispatchTrusted(slot, event) catch {};
 }
 
-/// The page of `realm`'s agent ends (browser Context.deinit, a Browser's page
-/// - every window of its agent): the agent's pending mutation observers and
-/// signal slots go, while their nodes are still alive, and the microtask
-/// queued flag with them - this agent's only, never another's.
-pub fn resetAgent(realm: runtime.Context) void {
+/// The page of `realm` ends (browser Context.deinit: a host-opened tab's end,
+/// or a host page a fresh traversable replaces): the pending mutation
+/// observers and signal slots of ITS tab go from its agent's sets, while
+/// their nodes are still alive. Every tab of a Browser shares the agent
+/// (DOM 4.3: the similar-origin window agent's), so another tab's stay, and
+/// are notified by the agent's microtask as before: it is an agent
+/// microtask, which no realm's end drops (`mutationMicrotask`), so the
+/// queued flag stays as it is. It reset the whole agent - another tab's
+/// observer with a record not yet delivered was never notified (lane tab1).
+/// An object is the ending page's when its relevant realm is of the page's
+/// tab (runtime.TabScope.ofRealm: the page's Windows and frames), or is the
+/// page's realm itself when that has no tab.
+pub fn resetPage(realm: runtime.Context) void {
     const agent = agentOf(realm) orelse return;
-    const allocator = agent.allocator;
-    // The counter is the agent's, not the page's: an observer that outlives
-    // the page still sorts before every observer made after it.
-    const counter = agent.observer_counter;
-    // Each pending membership's keep ends with it (every observer listed is
-    // alive: a teardown takes its observer off, `forgetObserver`).
-    for (agent.pending_observers.items()) |observer| engine.releasePlatformObject(observer);
-    agent.deinit();
-    agent.* = MutationObserverAgent.init(allocator);
-    agent.observer_counter = counter;
+    const page = PageOf{ .realm = realm, .tab = runtime.TabScope.ofRealm(realm) };
+    var i: usize = 0;
+    while (i < agent.pending_observers.len) {
+        const observer = agent.pending_observers.get(i) orelse break;
+        if (page.holds(observer)) {
+            _ = agent.pending_observers.remove(i) catch break;
+            // The membership's keep goes with it (refcount step 8: every
+            // observer listed is alive - a teardown takes its observer off,
+            // `forgetObserver` - and holds one keep per membership). Out of
+            // the list first, so a teardown the release runs finds nothing.
+            engine.releasePlatformObject(observer);
+            continue;
+        }
+        i += 1;
+    }
+    var at: usize = 0;
+    while (at < agent.signal_slots.items.len) {
+        var entry = agent.signal_slots.items[at];
+        // A slot freed meanwhile is the page's to drop too: its realm ended.
+        const live = runtime.SlabAllocator.generationOf(entry.slot) == entry.generation;
+        if (live and !page.holds(entry.slot)) {
+            at += 1;
+            continue;
+        }
+        _ = agent.signal_slots.orderedRemove(at);
+        _ = agent.signal_slot_set.remove(entry.slot);
+        entry.ref.release(entry.slot);
+    }
 }
+
+/// The objects of one page (`resetPage`).
+const PageOf = struct {
+    realm: runtime.Context,
+    tab: ?*runtime.TabScope,
+
+    fn holds(self: PageOf, object: *runtime.Instance) bool {
+        if (object.ctx == self.realm) return true;
+        const tab = self.tab orelse return false;
+        return runtime.TabScope.ofRealm(object.ctx) == tab;
+    }
+};
 
 /// DOM §7.3 - Queue a tree mutation record
 ///
@@ -381,7 +418,7 @@ pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, na
         // createIfNeeded ask before walking (Document::
         // HasMutationObserversOfType / hasMutationObserversOfType). Asked
         // only past `walk_before_asking` ancestors: finding the agent takes
-        // the engine's agent-registry lock (engine.agentHost), which costs
+        // the engine's agent-registry lock (engine.hostStateOf), which costs
         // what a walk of about 33 ancestors does (measured below).
         visited += 1;
         if (visited == walk_before_asking and !anyObserverMade(target)) return false;
@@ -392,7 +429,7 @@ pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, na
 /// How many ancestors a walk for registered observers visits before it asks
 /// the agent whether any observer exists (`anyObserverMade`). Measured (lane
 /// crash1 batch 3, server1 x86-64, ReleaseSafe, a Browser's page, medians of
-/// 5 x 2,000,000 calls): `anyObserverMade` - engine.agentHost's registry lock
+/// 5 x 2,000,000 calls): `anyObserverMade` - the agent registry's lock (then engine.agentHost, now engine.hostStateOf)
 /// and lookup - 127 ns; walking 64 ancestors' registered observer lists 245
 /// ns, 3.8 ns an ancestor. So the lookup is worth about 33 ancestors: a tree
 /// up to 32 deep pays only its walk, a deeper one 32 ancestors and one
@@ -606,6 +643,32 @@ fn queueMutationRecordInternal(
     const agent = agentOf(target.ctx) orelse return;
     std.log.debug("[MutationObserver] queueMutationRecordInternal complete, pending_observers: {}", .{agent.pending_observers.len});
     try queueMutationObserverMicrotask(agent, target.ctx);
+}
+
+/// DOM "add transient registered observers" steps 7-8, for `observer`, which
+/// a transient registered observer was just added for: "Append observer to
+/// the surrounding agent's pending mutation observers" - the agent of
+/// `realm` - and "queue a mutation observer microtask", so its transient
+/// registered observers are removed at the next notify even if no record is
+/// queued for it.
+///
+/// Spec: https://dom.spec.whatwg.org/#add-transient-registered-observers
+pub fn transientObserverAdded(observer: *runtime.Instance, realm: runtime.Context) !void {
+    const agent = agentOf(realm) orelse return;
+    var already_pending = false;
+    for (agent.pending_observers.items()) |pending| {
+        if (pending == observer) {
+            already_pending = true;
+            break;
+        }
+    }
+    if (!already_pending) {
+        try agent.pending_observers.append(observer);
+        // A membership holds one keep of its observer (`pending_observers`),
+        // which "notify mutation observers" releases once it is notified.
+        engine.keepPlatformObjectAlive(observer);
+    }
+    try queueMutationObserverMicrotask(agent, realm);
 }
 
 /// DOM §7.1 - Queue a mutation observer microtask

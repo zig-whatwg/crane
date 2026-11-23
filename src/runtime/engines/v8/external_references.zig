@@ -284,10 +284,6 @@ pub fn registerAllExternalReferences() void {
     const zig_callbacks = @import("zig_callbacks.zig");
     registerCallbackRuntime(zig_callbacks.genericZigCallback);
 
-    // Register Intl callbacks
-    const intl_binding = @import("intl_binding.zig");
-    intl_binding.registerExternalReferences();
-
     // Register window properties callbacks
     const window_properties = @import("window_properties.zig");
     window_properties.registerExternalReferences();
@@ -301,6 +297,9 @@ pub fn registerAllExternalReferences() void {
 
     // Register the legacy factory functions (Image, Audio, Option)
     @import("legacy_factory_functions.zig").registerExternalReferences();
+    // The exposed constructs' lazy getter: the snapshot's Window template
+    // carries one lazy data property per construct (lane tmpl1).
+    @import("global_constructor_handler.zig").registerExternalReferences();
 
     // Register all interface callbacks in deterministic order
     registerAllInterfaceCallbacks();

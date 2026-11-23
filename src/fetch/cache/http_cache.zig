@@ -47,6 +47,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StoredResponse = @import("stored_response.zig").StoredResponse;
+const platform = @import("platform");
+const storage = @import("storage");
+const Persistence = @import("persistence.zig").Persistence;
 
 pub const Config = struct {
     /// The cap on everything stored, in bytes. 0: no HTTP cache at all.
@@ -85,6 +88,11 @@ pub const HttpCache = struct {
     /// How many responses are stored: read without the lock, so a lookup in
     /// an empty cache takes none.
     count: std.atomic.Value(usize) = .init(0),
+    /// The second level under this one in the Browser's profile directory,
+    /// when it has one (`attachProfile`; persistence.zig). Set once at
+    /// Browser.init, before any request; called after `mutex` is released,
+    /// never under it. Null: the cache is in memory alone.
+    persistence: ?*Persistence = null,
 
     const Key = struct {
         partition: []const u8,
@@ -136,8 +144,28 @@ pub const HttpCache = struct {
         self.allocator.destroy(self);
     }
 
+    /// The Browser has a profile directory (D6, the user's ruling
+    /// 2026-11-21): its HTTP cache keeps a disk level in `browser`'s store
+    /// "http_cache" (persistence.zig), capped from `available`, the free
+    /// bytes of the profile's volume (null: unknown), committing on `timer`
+    /// and writing on `sequence`, the Browser's storage sequence (lane
+    /// prof2). Browser.init's (src/browser/profile_stores.zig), before any
+    /// request.
+    pub fn attachProfile(self: *HttpCache, browser: *platform.BrowserPlatform, timer: ?storage.profile.CommitTimer, sequence: *storage.StorageSequence, available: ?u64) Allocator.Error!void {
+        std.debug.assert(self.persistence == null);
+        self.persistence = try Persistence.create(self.allocator, browser, timer, sequence, available);
+    }
+
+    /// Hand what the disk level has queued to the storage sequence now: the
+    /// Browser's end, before the sequence stops and its loop and its
+    /// platform state end.
+    pub fn flushProfile(self: *HttpCache) void {
+        if (self.persistence) |persistence| persistence.flush();
+    }
+
     /// The owner's end: every stored response goes, nothing is stored from
-    /// here, and the owner's reference is dropped.
+    /// here, and the owner's reference is dropped. The disk level keeps what
+    /// it wrote (the Browser flushed it first) and writes nothing here.
     pub fn close(self: *HttpCache) void {
         var gone: ?*Node = null;
         {
@@ -153,6 +181,8 @@ pub const HttpCache = struct {
             self.count.store(0, .release);
         }
         freeNodes(self.allocator, gone);
+        if (self.persistence) |persistence| persistence.destroy();
+        self.persistence = null;
         self.release();
     }
 
@@ -175,6 +205,20 @@ pub const HttpCache = struct {
     /// includeCredentials - with a reference the caller releases; null when
     /// there is none. Marks it most recently used. Allocates nothing.
     pub fn lookup(self: *HttpCache, partition: []const u8, url: []const u8, credentialed: bool) ?*StoredResponse {
+        if (self.lookupMemory(partition, url, credentialed)) |entry| {
+            if (self.persistence) |persistence| persistence.recordUse(partition, url, credentialed);
+            return entry;
+        }
+        // A miss here: the disk level's, if the Browser has a profile - the
+        // response read from it is kept in memory from now on.
+        const persistence = self.persistence orelse return null;
+        const loaded = persistence.load(self.allocator, partition, url, credentialed) orelse return null;
+        loaded.retain();
+        _ = self.insert(loaded, null);
+        return loaded;
+    }
+
+    fn lookupMemory(self: *HttpCache, partition: []const u8, url: []const u8, credentialed: bool) ?*StoredResponse {
         if (self.entryCount() == 0) return null;
         lock(self);
         defer unlock(self);
@@ -188,19 +232,40 @@ pub const HttpCache = struct {
     /// then evict the least recently used responses past the cap. A response
     /// over the entry cap, or a cache closed, keeps nothing.
     pub fn publish(self: *HttpCache, entry: *StoredResponse) void {
-        self.insert(entry, null);
+        self.insertAndPersist(entry, null);
     }
 
     /// RFC 9111 4.3.4: `updated`, a 304's freshening of `old`, takes `old`'s
     /// place - if `old` is still the response its key has. Another stored
     /// since is newer, and is kept. (`updated`'s reference is taken.)
     pub fn replace(self: *HttpCache, old: *const StoredResponse, updated: *StoredResponse) void {
-        self.insert(updated, old);
+        self.insertAndPersist(updated, old);
     }
 
-    fn insert(self: *HttpCache, entry: *StoredResponse, only_if: ?*const StoredResponse) void {
-        if (entry.size > self.maxEntryBytes() or entry.size > self.config.max_bytes) return entry.release();
-        const node = self.allocator.create(Node) catch return entry.release();
+    /// `insert`, and what it stored queued for the disk level.
+    fn insertAndPersist(self: *HttpCache, entry: *StoredResponse, only_if: ?*const StoredResponse) void {
+        const persistence = self.persistence orelse {
+            _ = self.insert(entry, only_if);
+            return;
+        };
+        // A reference for the disk level, taken while the entry is surely
+        // alive: once stored, another thread may evict and release it.
+        entry.retain();
+        if (self.insert(entry, only_if)) {
+            persistence.recordPut(entry);
+        } else entry.release();
+    }
+
+    /// Store `entry`, taking its reference: whether it was stored.
+    fn insert(self: *HttpCache, entry: *StoredResponse, only_if: ?*const StoredResponse) bool {
+        if (entry.size > self.maxEntryBytes() or entry.size > self.config.max_bytes) {
+            entry.release();
+            return false;
+        }
+        const node = self.allocator.create(Node) catch {
+            entry.release();
+            return false;
+        };
         node.* = .{ .entry = entry };
         var replaced: ?*StoredResponse = null;
         var evicted: ?*Node = null;
@@ -212,13 +277,15 @@ pub const HttpCache = struct {
         defer unlock(self);
         if (self.closed) {
             self.allocator.destroy(node);
-            return entry.release();
+            entry.release();
+            return false;
         }
         const key = Key.of(entry);
         if (self.map.get(key)) |existing| {
             if (only_if) |old| if (existing.entry != old) {
                 self.allocator.destroy(node);
-                return entry.release();
+                entry.release();
+                return false;
             };
             // The node stays; its entry - and the key's strings - are the
             // new one's.
@@ -233,19 +300,26 @@ pub const HttpCache = struct {
             self.guard.beforeInsert(&self.map);
             self.map.put(self.allocator, key, node) catch {
                 self.allocator.destroy(node);
-                return entry.release();
+                entry.release();
+                return false;
             };
             self.pushFront(node);
             self.bytes += entry.size;
             _ = self.count.fetchAdd(1, .release);
         }
         if (self.bytes > self.config.max_bytes) evicted = self.evictTo(self.config.max_bytes - self.config.max_bytes / 10);
+        return true;
     }
 
     /// RFC 9111 4.4: remove what the partition stores for `url` - "the
     /// target URI", so the responses of credentialed and uncredentialed
     /// requests both.
     pub fn invalidate(self: *HttpCache, partition: []const u8, url: []const u8) void {
+        // The disk level's copies go too (after the lock, as every call to it).
+        defer if (self.persistence) |persistence| {
+            persistence.recordDelete(partition, url, true);
+            persistence.recordDelete(partition, url, false);
+        };
         if (self.entryCount() == 0) return;
         var gone: ?*Node = null;
         {
@@ -267,6 +341,11 @@ pub const HttpCache = struct {
     /// serialized `origin` (Clear Site Data's "cache" type; its caller says
     /// whose rule).
     pub fn clearOrigin(self: *HttpCache, origin: []const u8) void {
+        defer if (self.persistence) |persistence| persistence.deleteMatching(origin, struct {
+            fn matches(serialized_origin: []const u8, url: []const u8) bool {
+                return sameOrigin(url, serialized_origin);
+            }
+        }.matches);
         if (self.entryCount() == 0) return;
         var gone: ?*Node = null;
         {

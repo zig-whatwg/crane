@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
@@ -46,7 +47,36 @@ pub const ReportOptions = struct {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
 /// Returns notHandled: false when an error handler canceled the event.
 pub fn reportErrorInfo(global: *runtime.Instance, info: *const runtime.ErrorInfo, options: ReportOptions) bool {
-    return reportExtracted(global, info.message, info.filename, info.lineno, info.colno, info.error_value, options);
+    // The realm whose script threw: an isolated world's for a world's script
+    // (engine section 4.2a), else the global's own.
+    const realm = info.realm orelse global.ctx;
+    const world = @import("dom").fire_event.reportWorldOf(realm);
+    const not_handled = reportExtracted(global, info.message, info.filename, info.lineno, info.colno, info.error_value, options, world);
+    // Step 7's other consumer: an exception no handler canceled reaches the
+    // agent's inspector too, in the realm that threw.
+    if (not_handled) reportToInspector(realm, info, options);
+    return not_handled;
+}
+
+/// An exception step 7 reports, to the agent's inspector (engine section
+/// 4.2b [inspector_protocol]): Runtime.exceptionThrown to the sessions of
+/// the realm's group - Blink's LocalDOMWindow::ExceptionThrown ->
+/// MainThreadDebugger::ExceptionThrown, which ExecutionContext::
+/// DispatchErrorEvent calls when no handler canceled the error event
+/// (third_party/blink/renderer/core/execution_context/execution_context.cc).
+/// A muted error is its sanitized message alone, as the error event's. Nothing
+/// where the engine has no inspector protocol (-Dcdp=false) or the realm is
+/// registered with no inspector.
+fn reportToInspector(realm: runtime.Context, info: *const runtime.ErrorInfo, options: ReportOptions) void {
+    if (engine.capabilities.inspector_protocol != .unsupported) {
+        const hide = options.muted or options.omit_error;
+        const value: runtime.JSValue = if (hide) runtime.JSValue.jsUndefined else info.error_value orelse runtime.JSValue.jsUndefined;
+        const details: engine.InspectorExceptionDetails = if (options.muted)
+            .{ .message = "Script error." }
+        else
+            .{ .message = info.message, .url = info.filename, .line = info.lineno, .column = info.colno };
+        _ = engine.inspectorExceptionThrown(realm, value, &details);
+    }
 }
 
 /// Steps 1 and 4-7, given step 2's error information.
@@ -58,6 +88,7 @@ fn reportExtracted(
     extracted_colno: u32,
     exception: ?runtime.JSValue,
     options: ReportOptions,
+    world: u32,
 ) bool {
     // Step 1: Let notHandled be true.
     var not_handled = true;
@@ -105,7 +136,7 @@ fn reportExtracted(
 
         // 6.2: Set notHandled to the result of firing an event named error
         // at global, using ErrorEvent, cancelable, with errorInfo.
-        not_handled = fireErrorEvent(global, message, filename, lineno, colno, error_value);
+        not_handled = fireErrorEvent(global, message, filename, lineno, colno, error_value, world);
     }
 
     // Step 7: If notHandled is true, the user agent may report exception to a
@@ -148,6 +179,7 @@ fn fireErrorEvent(
     lineno: u32,
     colno: u32,
     error_value: ?runtime.JSValue,
+    world: u32,
 ) bool {
     const ctx = global.ctx;
     const init = dictionaries.ErrorEventInit{
@@ -170,8 +202,16 @@ fn fireErrorEvent(
     };
 
     const generation = runtime.SlabAllocator.generationOf(event);
-    // Fired by the user agent, so trusted (DOM 2.10).
-    const not_canceled = @import("dom").fire_event.dispatchTrusted(global, event) catch true;
+    // Fired by the user agent, so trusted (DOM 2.10) - and for the listeners
+    // of the world whose script threw only: Blink's ErrorEvent records the
+    // world it was created for and EventTarget skips a listener of another
+    // world (ErrorEvent::CanBeDispatchedInWorld, JSBasedEventListener::
+    // Invoke; third_party/blink/renderer/core/events/error_event.h, BSD-3 -
+    // reproduced, not copied), so a page's onerror never sees an isolated
+    // world's error, nor a world's listener the page's. Without worlds
+    // `world` is every listener's (fire_event.reportWorldOf): the dispatch
+    // checks nothing.
+    const not_canceled = @import("dom").fire_event.dispatchTrustedInWorld(global, event, world) catch true;
 
     // An event no listener ever saw was never wrapped, so V8 holds no
     // reference to it and nothing else will ever free it - including the

@@ -34,9 +34,9 @@ fn check() !void {
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
     defer engine.destroyAgent(agent);
     var host: Host = .{};
-    const page = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://one.test", .host = &host, .create_global_object = createGlobal, .is_platform_object_same_origin = Host.allowed });
+    const page = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://one.test", .host = &host, .create_global_object = createGlobal, .is_platform_object_same_origin = Host.allowed });
     defer engine.destroyWindowRealm(page, .global_detached);
-    const frame = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://two.test", .parent = page, .host = &host, .create_global_object = createGlobal, .is_platform_object_same_origin = Host.allowed });
+    const frame = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://two.test", .parent = page, .host = &host, .create_global_object = createGlobal, .is_platform_object_same_origin = Host.allowed });
     defer engine.destroyWindowRealm(frame, .navigable_destroyed);
     const window = try engine.evaluateClassicScript(frame, .{ .utf8 = "globalThis" }, "", null, reporter);
     defer window.release();

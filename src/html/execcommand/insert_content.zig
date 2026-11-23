@@ -13,6 +13,7 @@ const common = @import("common.zig");
 const delete = @import("delete.zig");
 const overrides = @import("overrides.zig");
 const block_formatting = @import("block.zig");
+const style_values = @import("style_values.zig");
 const dom_parser = @import("../dom_parser.zig");
 
 const Edit = common.Edit;
@@ -58,6 +59,8 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Steps 5-6: "Let last child be the lastChild of frag. If last child is
     // null, return true."
     const last_child = (try common.lastChild(fragment)) orelse return true;
+    // A list inserted into an empty list item gives the list its items.
+    if (try insertListItems(edit, fragment)) return true;
     // Step 7: "Let descendants be all descendants of frag."
     var descendants: std.ArrayList(*Instance) = .empty;
     {
@@ -74,12 +77,25 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     if (common.isBlockNode(point.node)) {
         var props: std.ArrayList(*Instance) = .empty;
         var index: u32 = 0;
+        // A block whose only child is that prop: it goes even before the
+        // caret - `<p><br>{}</p>` + insertHTML "abc" gives `<p>abc</p>` in
+        // Chrome 157 and Firefox 160 (editing/run/inserthtml.html, PPF at
+        // wpt.fyi 2358bd4835; lane edit4, A27), as insertText's step 14.1
+        // removes a sole collapsed line break; a caret after the empty
+        // line's placeholder is at the line's start (Blink's
+        // ReplaceSelectionCommand removes the placeholder). Golden rule 2.
+        // Only the line break itself: an inline element holding one stays
+        // where it is - `<p><span><!--foo--><br><!--bar--></span>{}</p>` +
+        // "<!--abc-->" keeps the span and its br (Firefox 160; Crane at
+        // generation 235; Chrome 157 and Safari 27.2 put the comment
+        // before the span, which the data does not accept).
+        const sole = (try common.childCount(point.node)) == 1;
         var child = try common.firstChild(point.node);
         while (child) |c| : ({
             child = try common.nextSibling(c);
             index += 1;
         }) {
-            if (index < point.offset) continue;
+            if (index < point.offset and !(sole and try common.isCollapsedLineBreak(c))) continue;
             if ((try common.isEditable(c)) and try common.isCollapsedBlockProp(c)) try props.append(edit.scratchAllocator(), c);
         }
         for (props.items) |prop| try edit.removeNode(prop);
@@ -104,8 +120,7 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     if (phrasing) try avoidStyledInlineAncestors(edit);
     // Step 9: "Call insertNode(frag) on the active range."
     const range = (try edit.activeRange()) orelse return true;
-    try interfaces.Range.call_insertNode(range, fragment);
-    edit.modified = true;
+    try edit.insertNode(range, fragment);
     // Step 10: a block start node left with nothing visible gets a br.
     if (try edit.rangeStart()) |after| {
         if (common.isBlockNode(after.node) and !try hasVisibleChild(after.node)) {
@@ -132,6 +147,48 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Step 12: "Fix disallowed ancestors of each member of descendants."
     for (descendants.items) |descendant| try block_formatting.fixDisallowedAncestors(edit, descendant);
     // Step 13.
+    return true;
+}
+
+/// insertHTML of a single ol or ul at a caret in an empty list item (one
+/// holding nothing visible but a br): the inserted list's items take the
+/// empty item's place in its list, and the caret goes to the end of the
+/// last one - all three browsers give `<ul id=old><li id=li0>{}<br></ul>`
+/// + `<ul id=new><li id=li1>abc</li><li id=li2>def</li></ul>` -> `<ul
+/// id="old"><li id="li1">abc</li><li id="li2">def</li></ul>`, and the same
+/// with an ol either way (editing/run/inserthtml.html, PPP at wpt.fyi
+/// 2358bd4835), where the spec nests the new list in the item. Mechanism:
+/// Blink ReplaceSelectionCommand::InsertAsListItems; Gecko
+/// HTMLWithContextInserter's list item handling. Golden rule 2, no newer
+/// spec. Whether it did.
+fn insertListItems(edit: *Edit, fragment: *Instance) !bool {
+    const list = (try common.firstChild(fragment)) orelse return false;
+    if ((try common.lastChild(fragment)) != list) return false;
+    if (!try common.isHtmlElementIn(list, &.{ "ol", "ul" })) return false;
+    var item_check = try common.firstChild(list);
+    var any_item = false;
+    while (item_check) |c| : (item_check = try common.nextSibling(c)) {
+        if (!try common.isHtmlElementNamed(c, "li")) return false;
+        any_item = true;
+    }
+    if (!any_item) return false;
+    if (!try edit.rangeCollapsed()) return false;
+    const point = (try edit.rangeStart()) orelse return false;
+    const item = if (try common.isHtmlElementNamed(point.node, "li")) point.node else return false;
+    if (!try common.isEditable(item)) return false;
+    // Empty: nothing but one br.
+    const only = try common.firstChild(item);
+    if (only != null and ((try common.lastChild(item)) != only or !try common.isHtmlElementNamed(only.?, "br"))) return false;
+    const target = (try common.parent(item)) orelse return false;
+    if (!try common.isHtmlElementIn(target, &.{ "ol", "ul" })) return false;
+    var last: ?*Instance = null;
+    while (try common.firstChild(list)) |li| {
+        try edit.insertBefore(target, li, item);
+        last = li;
+    }
+    try edit.removeNode(item);
+    const end = try lastPositionIn(last.?);
+    try edit.collapse(end.node, end.offset);
     return true;
 }
 
@@ -176,7 +233,7 @@ fn avoidStyledInlineAncestors(edit: *Edit) !void {
         // A point inside a Text node splits it: the insertion point is the
         // start of its second part.
         if (common.isText(point.node) and point.offset > 0 and point.offset < try common.nodeLength(point.node)) {
-            const tail = try interfaces.Text.call_splitText(point.node, point.offset);
+            const tail = try edit.splitText(point.node, point.offset);
             point = .{ .node = tail, .offset = 0 };
         }
         if (point.node != stop) {
@@ -266,13 +323,10 @@ fn styleHasOnlyEditingProperties(element: *Instance) !bool {
         "caret-color",            "-webkit-text-fill-color", "-webkit-text-stroke-color", "-webkit-text-stroke-width",
         "background-color",       "text-decoration-line",
     };
-    const style = try interfaces.HTMLElement.get_style(element);
-    const length = try interfaces.CSSStyleDeclaration.get_length(style);
-    var index: u32 = 0;
-    while (index < length) : (index += 1) {
-        var property = try interfaces.CSSStyleDeclaration.call_item(style, index);
-        defer property.deinit(element.ctx.allocator);
-        if (!common.nameIn(property.asSlice(), &editing)) return false;
+    // Read natively (style_values.inlineItem), never through element.style.
+    var index: usize = 0;
+    while (try style_values.inlineItem(element, index)) |property| : (index += 1) {
+        if (!common.nameIn(property, &editing)) return false;
     }
     return true;
 }
@@ -495,6 +549,65 @@ fn replaceWithText(edit: *Edit, fragment: *Instance, start_node: *Instance) !voi
     }
 }
 
+/// Before insertImage inserts its img: the editable inline elements around
+/// the collapsed active range are split at it, emptied ones removed, and
+/// the range moved between the halves up to the nearest block or editing
+/// host, so the img is inserted beside them - all three browsers give
+/// `foo<b>[bar]</b>baz` -> `foo<img>baz`, `<div><b>A[]B</b></div>` ->
+/// `<div><b>A</b><img><b>B</b></div>` and `<b>foo[bar</b><i>baz]quz</i>`
+/// -> `<b>foo</b><img><i>quz</i>` (editing/run/insertimage.html: 15
+/// subtests PPP or PFP at wpt.fyi 2358bd4835), where the spec's insertNode
+/// puts the img inside the (possibly emptied) element. Mechanism: Blink's
+/// ReplaceSelectionCommand inserts the fragment at the position it moves
+/// out of the inline ancestors (PositionAvoidingPrecedingNodes) and
+/// splits the tree to it (SplitTreeToNode); Gecko's
+/// HTMLEditor::InsertElementAtSelectionAsAction splits the inline
+/// ancestors at the point (InsertNodeIntoProperAncestorWithTransaction).
+/// Golden rule 2, no newer spec.
+fn splitInlinesForInsertion(edit: *Edit) !void {
+    if (!try edit.rangeCollapsed()) return;
+    var point = (try edit.rangeStart()) orelse return;
+    // A Text node splits at the point; the point then lies between its
+    // halves in the parent.
+    if (common.isText(point.node)) {
+        const p = (try common.parent(point.node)) orelse return;
+        const index = try common.indexOf(point.node);
+        const length = try common.nodeLength(point.node);
+        if (point.offset == 0) {
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset == length) {
+            point = .{ .node = p, .offset = index + 1 };
+        } else {
+            _ = try edit.splitText(point.node, point.offset);
+            point = .{ .node = p, .offset = index + 1 };
+        }
+    }
+    while (common.isElement(point.node) and common.isInlineNode(point.node) and (try common.isEditable(point.node)) and !try common.isEditingHost(point.node)) {
+        const element = point.node;
+        const p = (try common.parent(element)) orelse break;
+        if (!try common.isEditableOrEditingHost(p)) break;
+        const index = try common.indexOf(element);
+        const count = try common.childCount(element);
+        if (count == 0) {
+            try edit.removeNode(element);
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset == 0) {
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset >= count) {
+            point = .{ .node = p, .offset = index + 1 };
+        } else {
+            const after = try common.cloneNode(element, false);
+            if (try common.hasAttribute(after, "id")) try common.removeAttribute(after, "id");
+            try edit.insertBefore(p, after, try common.nextSibling(element));
+            while (try common.childAt(element, point.offset)) |child| {
+                try edit.movePreservingRanges(child, after, try common.childCount(after));
+            }
+            point = .{ .node = p, .offset = index + 1 };
+        }
+    }
+    try edit.collapse(point.node, point.offset);
+}
+
 /// The insertImage action.
 pub fn insertImage(edit: *Edit, value: []const u8) !bool {
     // Step 1: "If value is the empty string, return false."
@@ -505,6 +618,12 @@ pub fn insertImage(edit: *Edit, value: []const u8) !bool {
 fn insertImageSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Step 2: "Delete the selection, with strip wrappers false."
     try delete.deleteTheSelection(edit, true, false, .forward);
+    // The img goes between the inline elements around the insertion point,
+    // not into them (see splitInlinesForInsertion) - before step 3 takes
+    // the active range.
+    if (try edit.rangeStart()) |point| {
+        if (try common.isEditableOrEditingHost(point.node)) try splitInlinesForInsertion(edit);
+    }
     // Step 3: "Let range be the active range."
     const range = (try edit.activeRange()) orelse return true;
     // Step 4: "If the active range's start node is neither editable nor an
@@ -521,8 +640,7 @@ fn insertImageSteps(edit: *Edit, value: []const u8) anyerror!bool {
     const img = try edit.createElement("img");
     try common.setAttribute(img, "src", value);
     // Step 8: "Run insertNode(img) on range."
-    try interfaces.Range.call_insertNode(range, img);
-    edit.modified = true;
+    try edit.insertNode(range, img);
     // Steps 9-10: the caret just after img.
     if (try common.parent(img)) |p| {
         const index = try common.indexOf(img);

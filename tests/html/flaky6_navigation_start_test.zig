@@ -23,7 +23,7 @@ const fetch = @import("fetch");
 const browser_mod = @import("browser");
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 fn evaluateNumber(browser: *browser_mod.Browser, source: []const u8) !f64 {

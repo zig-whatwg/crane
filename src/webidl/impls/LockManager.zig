@@ -34,8 +34,9 @@
 //!   it); a thenable or another object settles the waiting promise two
 //!   microtask ticks sooner than the spec. Primitives and abrupt completions
 //!   are converted exactly.
-//! - The clientId is a random UUID made for this environment: no environment
-//!   settings object id exists elsewhere yet (the Clients API would share it).
+//! - The clientId is the environment's id, which the service worker
+//!   registry keeps (its Client's `id`); an environment that is no service
+//!   worker client - an opaque origin's - has a random UUID of its own.
 //! - Termination is per environment, as Blink's ContextDestroyed (see
 //!   html/web_locks/registry.zig).
 //!
@@ -169,7 +170,11 @@ fn lockManagerOf(realm: runtime.Context) anyerror!*runtime.Instance {
     // while the back/forward cache keeps its page, or the pages that keep
     // the worker suspended (Target.contention).
     target.watch(realm, scope);
-    internal.client = try registry.register(realm, instance, storage_key, target.delivery());
+    // The clientId is the environment's id: the one its service worker
+    // Client reports (Web Locks 4.3: "the same value returned by Client's id
+    // attribute"), through the service worker owner's hook.
+    const client_id = @import("dom").service_worker_clients.clientId(realm);
+    internal.client = try registry.register(realm, instance, storage_key, client_id, target.delivery());
     internal.registry = registry;
     // The settings object's one LockManager: kept for its realm's life, with
     // the promises of the requests it makes.
@@ -240,18 +245,18 @@ fn endEnvironment(realm: runtime.Context) void {
 
 /// request(name, callback)
 pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callback: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
-    return request(instance, name.asSlice(), .{}, @ptrCast(callback));
+    return request(instance, name.asSlice(), .{}, callback);
 }
 
 /// request(name, options, callback)
 pub fn call_request__1(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.LockOptions, callback: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
-    return request(instance, name.asSlice(), options, @ptrCast(callback));
+    return request(instance, name.asSlice(), options, callback);
 }
 
 /// Section 3.2.1, the request() method steps.
-fn request(instance: *runtime.Instance, name: []const u8, options: dictionaries.LockOptions, callback_argument: *const anyopaque) anyerror!runtime.JSValue {
-    // The callback, converted: this function's until a request keeps it.
-    var callback: ?engine.CallbackFunction = engine.takeCallbackFunction(callback_argument);
+fn request(instance: *runtime.Instance, name: []const u8, options: dictionaries.LockOptions, callback_argument: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
+    // The callback, kept: this function's until a request keeps it.
+    var callback: ?engine.CallbackFunction = callback_argument.keep();
     defer if (callback) |c| c.release();
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 

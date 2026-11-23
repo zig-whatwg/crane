@@ -40,40 +40,43 @@ test "localStorage: one origin under two top-level sites has two areas" {
 test "localStorage and sessionStorage: a key obtain-a-storage-key refuses is a SecurityError" {
     var store = web_storage.UserAgentStorage.init(testing.allocator);
     defer store.deinit();
-    var sheds = web_storage.TraversableStorageSheds.init(testing.allocator);
-    defer sheds.deinit();
+    var shed = web_storage.initTraversableStorageShed(testing.allocator);
+    defer shed.deinit();
     try testing.expectError(error.SecurityError, web_storage.getLocalStorage(testing.allocator, &store, StorageKey.initBorrowed("null", "http://web-platform.test", true)));
     try testing.expectError(error.SecurityError, web_storage.getLocalStorage(testing.allocator, &store, StorageKey.initBorrowed(origin, "null", true)));
-    try testing.expectError(error.SecurityError, web_storage.getSessionStorage(testing.allocator, &sheds, 1, StorageKey.initBorrowed(origin, "null", true)));
+    try testing.expectError(error.SecurityError, web_storage.getSessionStorage(testing.allocator, &shed, StorageKey.initBorrowed(origin, "null", true)));
 }
 
 test "sessionStorage: a popup's copy keeps each shelf's key, so only an equal key reads it" {
-    var store = web_storage.TraversableStorageSheds.init(testing.allocator);
-    defer store.deinit();
+    // Each tab's shed (runtime.TabScope's session_storage slot).
+    var opener = web_storage.initTraversableStorageShed(testing.allocator);
+    defer opener.deinit();
+    var popup = web_storage.initTraversableStorageShed(testing.allocator);
+    defer popup.deinit();
 
     // The opener's tab: its own first-party area, and a third-party frame of
     // the same origin under another page (an earlier page of the tab).
-    var opener_first = try web_storage.getSessionStorage(testing.allocator, &store, 1, first_party);
+    var opener_first = try web_storage.getSessionStorage(testing.allocator, &opener, first_party);
     defer opener_first.deinit();
     try opener_first.setItem("userID", "first");
-    var opener_third = try web_storage.getSessionStorage(testing.allocator, &store, 1, third_party);
+    var opener_third = try web_storage.getSessionStorage(testing.allocator, &opener, third_party);
     defer opener_third.deinit();
     try opener_third.setItem("userID", "third");
 
-    try web_storage.web_storage.cloneSessionStorage(&store, 1, 2);
+    try web_storage.web_storage.cloneSessionStorage(&opener, &popup);
 
     // A same-site popup reads its copy of the first-party shelf.
-    var popup_first = try web_storage.getSessionStorage(testing.allocator, &store, 2, first_party);
+    var popup_first = try web_storage.getSessionStorage(testing.allocator, &popup, first_party);
     defer popup_first.deinit();
     try testing.expectEqualStrings("first", popup_first.getItem("userID").?);
 
     // The origin framed under the popup's other top-level site gets the copy
     // of the shelf with ITS key - here the opener's third-party one - and a
     // key the opener never used starts empty.
-    var popup_third = try web_storage.getSessionStorage(testing.allocator, &store, 2, third_party);
+    var popup_third = try web_storage.getSessionStorage(testing.allocator, &popup, third_party);
     defer popup_third.deinit();
     try testing.expectEqualStrings("third", popup_third.getItem("userID").?);
-    var popup_other = try web_storage.getSessionStorage(testing.allocator, &store, 2, StorageKey.initBorrowed(origin, "http://third-site.test", true));
+    var popup_other = try web_storage.getSessionStorage(testing.allocator, &popup, StorageKey.initBorrowed(origin, "http://third-site.test", true));
     defer popup_other.deinit();
     try testing.expect(popup_other.getItem("userID") == null);
 

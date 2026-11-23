@@ -97,16 +97,24 @@ pub const style_sheet_owners = @import("style_sheet_owners.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");
 pub const adopting_steps = @import("adopting_steps.zig");
 pub const document_rendering = @import("document_rendering.zig");
+pub const document_resources = @import("document_resources.zig");
 pub const update_the_rendering = @import("update_the_rendering.zig");
 /// Web Animations: the timing model, its objects' models, and update animations and send events (lane rendering2).
 pub const animations = @import("animations/root.zig");
+/// SVG animation elements' timing model (SVG Animations 2, SMIL Animation; lane dnd1).
+pub const smil = @import("smil/root.zig");
 pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
+/// An element's own step for an event before its listeners (Blink's HandleLocalEvents).
+pub const local_event_steps = @import("local_event_steps.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const saved_form_state = @import("saved_form_state.zig");
 pub const selected_content = @import("selected_content.zig");
 pub const top_layer = @import("top_layer.zig");
+/// The CDP DOM agents' probes: one process-wide gate, then the node's
+/// Browser's sink (lane cdpd1; Blink's core probes).
+pub const inspector_probes = @import("inspector_probes.zig");
 /// HTML 2.5.7: a Document's lazy load intersection observer.
 pub const lazy_load_observer = @import("lazy_load_observer.zig");
 pub const dialog = @import("dialog.zig");
@@ -138,6 +146,7 @@ pub const navigation_api = @import("navigation_api.zig");
 pub const navigation_objects = @import("navigation_objects.zig");
 pub const top_level_traversables = @import("top_level_traversables.zig");
 pub const intersection_targets = @import("intersection_targets.zig");
+pub const resize_observations = @import("resize_observations.zig");
 pub const navigation_history_entries = @import("navigation_history_entries.zig");
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
@@ -232,7 +241,11 @@ pub const same_object_cache = @import("same_object_cache.zig");
 /// KeptChild). A shared helper, so not in src/webidl/impls/ (AGENTS.md, the
 /// impls boundary rule 3).
 pub const same_object = @import("same_object.zig");
+pub const performance_monitor = @import("performance_monitor.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
+/// The realm a callback's sequence or dictionary argument is made in (WebIDL
+/// invoke steps 5 and 10: F's associated realm, and its world).
+pub const callback_sequences = @import("callback_sequences.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");
 pub const live_collections = @import("live_collections.zig");
@@ -259,6 +272,7 @@ pub const cookie_change_event = @import("cookie_change_event.zig");
 pub const document_state = @import("document_state.zig");
 /// What few Documents set, made on first use (lane perf2 batch 7).
 pub const document_rare_data = @import("document_rare_data.zig");
+pub const heading_offsets = @import("heading_offsets.zig");
 /// DocumentOrShadowRoot's fullscreen, pointer lock and Picture-in-Picture
 /// elements: the document's, retargeted against each scope (lane perf2 batch 8).
 pub const designated_elements = @import("designated_elements.zig");
@@ -381,6 +395,10 @@ pub const indexeddb_keys = @import("indexeddb_keys.zig");
 /// HTML media owner algorithms without an IDL member.
 pub const media_elements = @import("media_elements.zig");
 pub const image_sources = @import("image_sources.zig");
+/// HTML 8.11.2 / 4.12.5.3: ImageBitmap and OffscreenCanvas bitmaps and their transfer steps.
+pub const image_bitmaps = @import("image_bitmaps.zig");
+/// HTML 4.12.5.1 / 4.12.5.3.1: a 2D rendering context's state, shared by its mixins.
+pub const canvas_2d = @import("canvas_2d.zig");
 /// HTML 4.12.5.5: a bitmap serialized as a file, and its data: URL.
 pub const bitmap_serialization = @import("bitmap_serialization.zig");
 

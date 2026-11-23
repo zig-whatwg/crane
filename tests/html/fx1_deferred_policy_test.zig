@@ -448,7 +448,7 @@ fn onBrowserThread(comptime body: fn () anyerror!void) !void {
 /// A fully active top-level https document whose policy pair is replaced by
 /// one parsed from `headers`, as a response carrying them would give it.
 fn deniedPage(allocator: std.mem.Allocator, headers: policy.Headers) !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.TestUnexpectedResult;

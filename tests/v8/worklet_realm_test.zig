@@ -56,6 +56,7 @@ const Page = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -73,6 +74,7 @@ const Page = struct {
 
     fn worklet(self: Page, global: runtime.WorkletRealmOptions.WorkletGlobal) !runtime.WorkletRealm {
         return protocol.createWorkletRealm(self.agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .global = global,
             .owner = self.realm,
             .api_base_url = "https://example.test/page.html",

@@ -150,6 +150,21 @@ pub const FunctionCallbackInfo = opaque {
     /// handle.
     pub extern fn v8_FunctionCallbackInfo_ThisNodeSlot(self: *const FunctionCallbackInfo) ?*anyopaque;
 
+    /// Window's window, self and frames on the getter's own global: when
+    /// `this` is the current context's global, it is set as the return value
+    /// and the context's Crane id (v8_Context_GetRawAddress's number, the key
+    /// of context_manager's realm registry) is answered; 0 for any other
+    /// receiver. An id, NOT an allocation - nothing to free (the exception to
+    /// "every v8_* call returning a pointer allocates", hence a usize). No
+    /// handle: Locals in the callback's own HandleScope.
+    pub extern fn v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(self: *const FunctionCallbackInfo) usize;
+
+    /// When `this` is the current context's global, the context's Crane id
+    /// (context_manager.getByKey's key); 0 for any other receiver. An id, NOT
+    /// an allocation - nothing to free. No handle: Locals in the callback's
+    /// own HandleScope.
+    pub extern fn v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(self: *const FunctionCallbackInfo) usize;
+
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;
@@ -805,12 +820,25 @@ pub const PlatformStart = enum(c_int) {
     started_now = 1,
 };
 
-/// Start V8 - `flags` (null: none), then its platform - unless it has
-/// started: exactly once per process, from any thread, by whichever caller
-/// is first. A caller that comes while the start is under way waits for it,
-/// so every caller returns with V8 started. V8 itself FATALs on a second or
-/// concurrent start (13.1.203 src/init/v8.cc AdvanceStartupState).
-pub extern fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart;
+/// Start V8 - `flags` (null: none), ICU's default locale (the platform's
+/// preferred language: snapshot_loader.icuDefaultLocale), then its platform
+/// - unless it has started: exactly once per process, from any thread, by
+/// whichever caller is first. A caller that comes while the start is under
+/// way waits for it, so every caller returns with V8 started. V8 itself
+/// FATALs on a second or concurrent start (13.1.203 src/init/v8.cc
+/// AdvanceStartupState). The locale is a fact of every start, never a
+/// caller's choice: ICU's default is the process's (v8_wrapper.cpp
+/// setIcuDefaultLocale). The platform is asked only while V8 has not
+/// started: once it has, the C side only compares the flags and ignores the
+/// locale (and every v8_Isolate_New comes here).
+pub fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart {
+    if (v8_Platform_IsInitialized()) return v8_Platform_StartWithDefaultLocale(flags, null);
+    var tag: snapshot_loader.LocaleTag = undefined;
+    return v8_Platform_StartWithDefaultLocale(flags, snapshot_loader.icuDefaultLocale(&tag));
+}
+/// v8_Platform_Start's C side: `default_locale` is a BCP 47 tag, null for
+/// ICU's own default.
+extern fn v8_Platform_StartWithDefaultLocale(flags: ?[*:0]const u8, default_locale: ?[*:0]const u8) PlatformStart;
 /// The engine protocol's initializeBeforeThreadCreation: V8's platform -
 /// and the memory protection key of its thread isolation - made on the
 /// calling thread, first in a process's main, before it creates any thread;
@@ -840,6 +868,9 @@ pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
 /// How many times v8_SetFlagsFromString has set flags in this process (a
 /// start's own flags are not counted). Diagnostics only.
 pub extern fn v8_Platform_FlagWrites() i64;
+/// v8::V8::GetVersion: the linked V8's version ("13.1.203.24"), a static
+/// string V8 owns - never freed.
+pub extern fn v8_V8_GetVersion() [*:0]const u8;
 
 // Isolate management
 
@@ -941,6 +972,12 @@ pub fn readOnlyHeapOrigin(blob: ?[]const u8) ReadOnlyHeapOrigin {
 pub extern fn v8_Process_LiveIsolates() usize;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
+/// Isolate::GetDataFromSnapshotOnce<FunctionTemplate>(index): the template
+/// the snapshot generator attached at `index`
+/// (`v8_SnapshotCreator_AddFunctionTemplate`), OWNED - or null when the blob
+/// has none there, or it was taken already (V8 forgets it once taken). On
+/// the isolate's thread; enters the isolate itself.
+pub extern fn v8_Isolate_TakeFunctionTemplateFromSnapshot(isolate: *Isolate, index: usize) ?*FunctionTemplate;
 /// The bytes V8 restores `isolate` from (its StartupData's data) and their
 /// size; null, size 0, for an isolate made afresh. For tests.
 pub extern fn v8_Isolate_SnapshotBlob(isolate: *Isolate, out_size: *usize) ?[*]const u8;
@@ -1125,6 +1162,16 @@ pub extern fn v8_ExternalMemoryAccounter_New() ?*ExternalMemoryAccounter;
 /// marking, or collect, before it returns (V8 15.7 Heap::UpdateExternalMemory);
 /// a fall never does. On the isolate's thread, with it entered.
 pub extern fn v8_ExternalMemoryAccounter_Update(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// `v8_ExternalMemoryAccounter_Update` with NO drain of the agent's
+/// finalizer queue after it: the report inside a callback (lane mem1;
+/// external_memory.zig `reportInCallback`). What a collection it starts or
+/// finishes queues runs by the fresh rule at the next binding return. On the
+/// isolate's thread, with it entered; ask `v8_Isolate_InCallbackReportOpen`
+/// first.
+pub extern fn v8_ExternalMemoryAccounter_UpdateNoDrain(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// Whether the report inside a callback may be made at this binding's
+/// return: no finalizer running, no exception pending.
+pub extern fn v8_Isolate_InCallbackReportOpen(isolate: *Isolate) bool;
 /// ExternalMemoryAccounter::Decrease of `bytes` and nothing else: it starts
 /// no collection and runs no finalizer, so it may be called inside a
 /// collection's pause (external_memory.zig `endOfMarking`).
@@ -1748,6 +1795,40 @@ pub extern fn v8_Object_SetLazyDataProperty(
     data: ?*Value,
 ) void;
 
+/// `name` (UTF-8, internalized) as a lazy data property of every object V8
+/// makes from `template` - a context's global, made from Window's instance
+/// template: its first read calls `getter`, whose result replaces it as an
+/// ordinary data property; writable, configurable, not enumerable (WebIDL
+/// 3.7's interface object property). `index` is the property's data, read
+/// back with `v8_PropertyCallbackInfo_DataInt32`. Blink installs every
+/// exposed construct of a global this way, once per isolate
+/// (IDLMemberInstaller::InstallExposedConstructs, Chromium
+/// platform/bindings/idl_member_installer.cc). On the isolate's thread, the
+/// isolate entered.
+pub extern fn v8_ObjectTemplate_SetLazyDataPropertyIndexed(
+    template: *ObjectTemplate,
+    name: [*]const u8,
+    name_len: c_int,
+    getter: AccessorNameGetterCallback,
+    index: i32,
+) void;
+
+/// The same on one object - a global made already (the per-realm
+/// overload: a construct only some realms expose). False when V8 refused it.
+pub extern fn v8_Object_SetLazyDataPropertyIndexed(
+    object: *Object,
+    context: *Context,
+    name: [*]const u8,
+    name_len: c_int,
+    getter: AccessorNameGetterCallback,
+    index: i32,
+) bool;
+
+/// The int32 a lazy data property's getter was given as its data
+/// (`v8_ObjectTemplate_SetLazyDataPropertyIndexed`), or `fallback` when its
+/// data is not one. No handle is made.
+pub extern fn v8_PropertyCallbackInfo_DataInt32(info: *const PropertyCallbackInfo, fallback: i32) i32;
+
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
 pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;
@@ -2007,7 +2088,8 @@ pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 
 /// The value `global` holds, MOVED into a Global of the caller's own: no V8
 /// handle is made, and `global` is left empty, still its owner's to dispose.
-/// Null for null/empty. engine.takeCallbackFunction's move.
+/// Null for null/empty. engine.keepCallbackFunction's (and
+/// keepCallbackInterface's) move.
 pub extern fn v8_Global_TakeOver(global: ?*Value) ?*Value;
 
 /// The binding's Global for a callback-function value, when its call is over:
@@ -3410,6 +3492,15 @@ pub extern fn v8_SnapshotCreator_CreateAndAddContext(creator: *SnapshotCreator) 
 /// @return The index at which the context was added (0-based), or maxInt on error
 pub extern fn v8_SnapshotCreator_AddContext(creator: *SnapshotCreator, context: *Context) usize;
 
+/// SnapshotCreator::AddData(template): the isolate snapshot keeps
+/// `template`, and an isolate restored from the blob takes it back - the same
+/// TemplateInfo, which the snapshot's contexts were made from - with
+/// `v8_Isolate_TakeFunctionTemplateFromSnapshot(index)` (Blink:
+/// V8ContextSnapshotImpl's TakeSnapshotForWorld AddData and
+/// InstallInterfaceTemplates GetDataFromSnapshotOnce,
+/// bindings/modules/v8/v8_context_snapshot_impl.cc). The index, or maxInt.
+pub extern fn v8_SnapshotCreator_AddFunctionTemplate(creator: *SnapshotCreator, template: *FunctionTemplate) usize;
+
 /// FunctionCodeHandling for snapshot creation
 pub const FunctionCodeHandling = enum(c_int) {
     /// Clear compiled function code (smaller snapshot, slower first execution)
@@ -4221,7 +4312,7 @@ pub const CrossOriginMember = extern struct {
 /// v8_wrapper.cpp's CrossOriginDispatch declares it.
 pub const CrossOriginDispatch = extern struct {
     same_origin: *const fn (isolate: *Isolate, current_realm: ?*anyopaque, object: ?*anyopaque) callconv(.c) bool,
-    throw_security_error: *const fn (isolate: *Isolate) callconv(.c) void,
+    throw_security_error: *const fn (isolate: *Isolate, kind: i32, access: i32, name: [*]const u8, name_len: usize) callconv(.c) void,
     child_at: *const fn (index: u32, info: *const PropertyCallbackInfo) callconv(.c) Intercepted,
     child_count: *const fn (window: ?*anyopaque) callconv(.c) u32,
     child_named: *const fn (isolate: *Isolate, window: ?*anyopaque, name: [*]const u8, name_len: usize) callconv(.c) ?*Value,
@@ -4312,28 +4403,88 @@ pub extern fn v8_WasmResponseCompilation_Append(compilation: *WasmResponseCompil
 pub extern fn v8_WasmResponseCompilation_Finish(compilation: *WasmResponseCompilation, url: [*]const u8, url_length: usize) void;
 /// WasmStreaming::Abort with `reason` (borrowed) or none; deletes `compilation`.
 pub extern fn v8_WasmResponseCompilation_Abort(compilation: *WasmResponseCompilation, reason: ?*Value) void;
+// ---- lane: cdpw (the agent's inspector: engine section 4.2b) ----
+/// THE agent's inspector (v8_wrapper.cpp, CraneInspector): its V8Inspector -
+/// one per isolate - and the client V8 asks. Owned by
+/// protocol_inspector.Inspector, on the agent's record; deleted at the agent's
+/// end, after its last microtask checkpoint and before its isolate is
+/// disposed. Used only on the agent's own thread, with its isolate entered.
+pub const Inspector = opaque {};
+/// One host session of the agent's inspector (CraneInspectorSession).
+pub const InspectorSession = opaque {};
+/// A UTF-8 message out of the inspector, BORROWED for the call.
+pub const InspectorSend = *const fn (host: ?*anyopaque, utf8: [*]const u8, length: usize) callconv(.c) void;
+/// CraneInspectorHooks, field for field.
+pub const InspectorHooks = extern struct {
+    host: ?*anyopaque,
+    run_if_waiting: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) void,
+    run_message_loop_on_pause: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) void,
+    quit_message_loop_on_pause: ?*const fn (host: ?*anyopaque) callconv(.c) void,
+    /// BORROWED: the realm record's own context handle.
+    default_context: ?*const fn (host: ?*anyopaque, group: c_int) callconv(.c) ?*Context,
+    /// valueSubtype for a platform object's instance: STATIC NUL-terminated
+    /// UTF-8, or null.
+    value_subtype: ?*const fn (host: ?*anyopaque, instance: *anyopaque) callconv(.c) ?[*:0]const u8,
+    /// descriptionForValueSubtype: UTF-8 written into `buffer` (at most
+    /// `capacity` bytes); its length, 0 for none.
+    description: ?*const fn (host: ?*anyopaque, instance: *anyopaque, buffer: [*]u8, capacity: usize) callconv(.c) usize,
+};
+pub extern fn v8_Inspector_New(isolate: *Isolate) ?*Inspector;
+pub extern fn v8_Inspector_Delete(inspector: ?*Inspector) void;
+pub extern fn v8_Inspector_SetHooks(inspector: *Inspector, hooks: ?*const InspectorHooks) void;
+/// contextCreated for `context` (BORROWED) in `group`; its execution context
+/// id, 0 on failure. `name`, `origin` and `aux` UTF-8, BORROWED.
+pub extern fn v8_Inspector_ContextCreated(inspector: *Inspector, context: *Context, group: c_int, name: [*]const u8, name_length: usize, origin: [*]const u8, origin_length: usize, aux: [*]const u8, aux_length: usize) c_int;
+pub extern fn v8_Inspector_ContextDestroyed(inspector: *Inspector, context_id: c_int) void;
+pub extern fn v8_Inspector_ResetGroup(inspector: *Inspector, group: c_int) void;
+pub extern fn v8_Inspector_DetachContexts(inspector: *Inspector) void;
+pub extern fn v8_Inspector_GroupOf(inspector: *Inspector, context_id: c_int) c_int;
+pub extern fn v8_Inspector_CanDispatch(method: [*]const u8, length: usize) bool;
+/// Runtime.exceptionThrown for `exception` (BORROWED; null: undefined) in
+/// `context`. Its stack: an object exception's own, else `stack`'s (a copy;
+/// BORROWED) - whose top frame then gives the URL, line, column and script
+/// when `url` is empty - else the current one.
+pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint, stack: ?*const InspectorStack) c_uint;
+/// A captured JavaScript stack (v8_inspector::V8StackTrace).
+pub const InspectorStack = opaque {};
+/// The current stack as the inspector captures one; OWNED (null outside
+/// script or on failure) - free with v8_InspectorStack_Delete.
+pub extern fn v8_Inspector_CaptureStack(inspector: *Inspector) ?*InspectorStack;
+pub extern fn v8_InspectorStack_Delete(stack: ?*InspectorStack) void;
+pub extern fn v8_Inspector_ExceptionRevoked(inspector: *Inspector, context: *Context, exception_id: c_uint, message: [*]const u8, length: usize) void;
+/// The current stack as CDP's Runtime.StackTrace JSON, to `sink`; false outside script.
+pub extern fn v8_Inspector_StackTrace(inspector: *Inspector, max_frames: c_uint, sink: InspectorSend, sink_host: ?*anyopaque) bool;
+pub extern fn v8_InspectorSession_New(inspector: *Inspector, group: c_int, send: InspectorSend, host: ?*anyopaque) ?*InspectorSession;
+pub extern fn v8_InspectorSession_Delete(session: ?*InspectorSession) void;
+pub extern fn v8_InspectorSession_Dispatch(session: *InspectorSession, json: [*]const u8, length: usize) void;
+/// `value` (BORROWED) of context `context_id` as the session's RemoteObject:
+/// the Runtime.evaluate response's JSON to `sink`.
+pub extern fn v8_InspectorSession_Wrap(session: *InspectorSession, context_id: c_int, value: *Value, group: [*]const u8, group_length: usize, sink: InspectorSend, sink_host: ?*anyopaque) bool;
+/// The value the object id names (a new Global the caller owns), and its
+/// context's Crane id in `context_key`; null when it names nothing.
+pub extern fn v8_InspectorSession_Unwrap(session: *InspectorSession, object_id: [*]const u8, length: usize, context_key: *?*anyopaque) ?*Value;
+pub extern fn v8_InspectorSession_ReleaseObjectGroup(session: *InspectorSession, group: [*]const u8, length: usize) void;
+/// Keep V8's own console object of `context` (BORROWED) before the Console
+/// Standard's namespace replaces it (engine.inspectorConsoleMessage).
+pub extern fn v8_Context_KeepEngineConsole(context: *Context) void;
+/// V8's own console[method](...args) in `context`; every handle BORROWED.
+pub extern fn v8_Context_EngineConsoleCall(context: *Context, method: [*]const u8, method_length: usize, args: [*]const *Value, count: usize) void;
+// ---- end lane: cdpw ----
 // ---- lane: console1 (engine.evaluateReplScript) ----
-/// An agent's console session (v8_wrapper.cpp, CraneReplSession): an
-/// inspector of the agent's isolate and one session of it, through which
+/// An agent's console session (v8_wrapper.cpp, CraneReplSession): one session
+/// of the agent's inspector per context group it evaluates in, through which
 /// console input is evaluated in REPL mode. Owned by the agent's AgentRecord
-/// (protocol_repl.Session); deleted at the agent's end, after its last
-/// microtask checkpoint and before its isolate is disposed. Used only on the
-/// agent's own thread, with its isolate entered.
+/// (protocol_repl.Session); deleted at the agent's end, before the agent's
+/// inspector. Used only on the agent's own thread, with its isolate entered.
 pub const ReplSession = opaque {};
 /// What a response of the session came to: `kind` 0 completed (`value` the
 /// completion value), 1 threw (`value` the exception; `incomplete` when it is
 /// the SyntaxError of input that ended too soon), 2 failed (`value` null).
 /// `value` is a new Global the callee owns.
 pub const ReplOutcome = *const fn (host: ?*anyopaque, call_id: c_int, kind: c_int, value: ?*Value, incomplete: bool) callconv(.c) void;
-pub extern fn v8_ReplSession_New(isolate: *Isolate, outcome: ReplOutcome, host: ?*anyopaque) ?*ReplSession;
+pub extern fn v8_ReplSession_New(inspector: *Inspector, outcome: ReplOutcome, host: ?*anyopaque) ?*ReplSession;
 pub extern fn v8_ReplSession_Delete(session: ?*ReplSession) void;
-/// The inspector's execution context id for `context`, made known to it on
-/// first use; 0 on failure.
-pub extern fn v8_ReplSession_Register(session: *ReplSession, context: *Context) c_int;
-/// Dispatch one DevTools protocol message (ASCII JSON).
-pub extern fn v8_ReplSession_Dispatch(session: *ReplSession, json: [*]const u8, length: usize) void;
-/// The realm whose context the inspector knows as `context_id` ended.
-pub extern fn v8_ReplSession_ContextEnded(session: *ReplSession, context_id: c_int) void;
-/// Every context the session made known, forgotten.
-pub extern fn v8_ReplSession_DetachContexts(session: *ReplSession) void;
+/// Dispatch one DevTools protocol message (ASCII JSON) to the session's V8
+/// session of `group`.
+pub extern fn v8_ReplSession_Dispatch(session: *ReplSession, group: c_int, json: [*]const u8, length: usize) void;
 // ---- end lane: console1 ----

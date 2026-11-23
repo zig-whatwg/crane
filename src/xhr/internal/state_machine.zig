@@ -289,6 +289,7 @@ pub const XMLHttpRequestState = struct {
             .referrer_source = referrer_source,
             .top_level_site = top_level_site,
             .traversable = client.traversable,
+            .user_agent_client = client.user_agent_client,
             .cookie_jar = client.cookie_jar,
             // Borrowed, as the jar: the client's Browser's blob URL store.
             .blob_url_store = client.blob_url_store,

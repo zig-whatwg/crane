@@ -10,11 +10,11 @@
 //!
 //! - The argument: `argHandleIsCopied` walks a dictionary's members, and its
 //!   member rule had no case for a callback function. QueuingStrategy's `size`
-//!   is `?callbacks.QueuingStrategySize`, a function pointer, so the rule
-//!   answered "kept" for the whole dictionary - although a dictionary reads
-//!   every member through a Get of its own, and a callback member adopts THAT
-//!   handle (conv.fromV8Value's function-pointer branch), never the
-//!   dictionary's.
+//!   is `?callbacks.QueuingStrategySize` (a function pointer then, a
+//!   runtime.BorrowedCallbackFunction since lane bind1), so the rule answered
+//!   "kept" for the whole dictionary - although a dictionary reads every
+//!   member through a Get of its own, and a callback member adopts THAT handle
+//!   (conv.fromV8Value), never the dictionary's.
 //! - The member: a member whose type is neither copied nor kept in its value
 //!   kept its Get handle whatever it converted to. An absent `size` converts
 //!   to null in the optional branch, before anything is made from the handle.
@@ -43,10 +43,11 @@ const interfaces = @import("interfaces");
 const copied = v8.interface_mod.argHandleIsCopied;
 
 /// dictionaries.QueuingStrategy's shape: callbacks.QueuingStrategySize is a
-/// function pointer (codegen's type for a callback function).
+/// runtime.BorrowedCallbackFunction (codegen's type for a callback function).
 const StrategyShaped = struct {
+    pub const webidl_dictionary = true;
     highWaterMark: ?f64 = null,
-    size: ?*const fn (chunk: runtime.JSValue) f64 = null,
+    size: ?runtime.BorrowedCallbackFunction = null,
 };
 
 fn ConstructorParam(comptime I: type, comptime index: usize) type {
@@ -65,30 +66,45 @@ test "a dictionary whose member is a callback function is copied: the callback a
 
 test "a callback argument still adopts its handle, and an unknown member keeps the dictionary's" {
     // The default stays the safe answer.
-    try testing.expect(!copied(*const fn (chunk: runtime.JSValue) f64));
-    try testing.expect(!copied(?*const fn (chunk: runtime.JSValue) f64));
-    try testing.expect(!copied(struct { a: ?f64 = null, b: ?*anyopaque = null }));
-    try testing.expect(!copied(struct { a: ?f64 = null, b: ?*const fn () void = null, c: *anyopaque }));
+    try testing.expect(!copied(runtime.BorrowedCallbackFunction));
+    try testing.expect(!copied(?runtime.BorrowedCallbackFunction));
+    try testing.expect(!copied(runtime.BorrowedCallbackInterface));
+    try testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        a: ?f64 = null,
+        b: ?*anyopaque = null,
+    }));
+    try testing.expect(!copied(struct {
+        pub const webidl_dictionary = true;
+        a: ?f64 = null,
+        b: ?*const fn () void = null,
+        c: *anyopaque,
+    }));
 }
 
 const leaves = v8.interface_mod.conversionLeavesHandle;
-const Callback = ?*const fn (chunk: runtime.JSValue) f64;
+const Callback = ?runtime.BorrowedCallbackFunction;
+
+/// A borrowed callback over `global`, as the conversion makes one.
+fn over(global: *anyopaque) runtime.BorrowedCallbackFunction {
+    return .{ .function = .{ .handle = .{ .ptr = global } } };
+}
 
 test "conversionLeavesHandle - a null optional callback made nothing from its handle; a function is the handle" {
     try testing.expect(leaves(Callback, null));
     var dummy: u64 align(16) = 0;
-    const function: Callback = @ptrCast(@alignCast(&dummy));
+    const function: Callback = over(&dummy);
     try testing.expect(!leaves(Callback, function));
     // EventTarget's `EventListener? callback`: a callback interface, whose
-    // wrapper takes the handle over.
-    try testing.expect(leaves(??*runtime.CallbackWrapper, null));
-    const wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(&dummy));
-    try testing.expect(!leaves(??*runtime.CallbackWrapper, wrapper));
+    // value is the handle.
+    try testing.expect(leaves(?runtime.BorrowedCallbackInterface, null));
+    const listener: runtime.BorrowedCallbackInterface = .{ .object = .{ .handle = .{ .ptr = &dummy } } };
+    try testing.expect(!leaves(?runtime.BorrowedCallbackInterface, listener));
 }
 
 test "conversionLeavesHandle - an optional argument not passed, or passed as null, made nothing" {
     var dummy: u64 align(16) = 0;
-    const function: Callback = @ptrCast(@alignCast(&dummy));
+    const function: Callback = over(&dummy);
     const Optional = webidl.Opt(Callback);
     try testing.expect(leaves(Optional, Optional.notPassed()));
     try testing.expect(leaves(Optional, Optional.passed(null)));
@@ -158,6 +174,7 @@ const Page = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

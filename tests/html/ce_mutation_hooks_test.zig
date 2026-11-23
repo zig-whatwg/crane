@@ -38,17 +38,17 @@ fn exercise() !void {
     try engine.initializeEngine(.{});
     var host = AgentHost.init(testing.allocator);
     defer host.deinit();
-    const agent = try engine.createAgent(.{
+    const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&host, .{
         .can_block = false,
         .from_snapshot = false,
         .allocator = testing.allocator,
-        .host = &host,
         .hooks = &.{},
-    });
+    }));
     defer engine.destroyAgent(agent);
     defer host.custom_elements.releasePending();
     var capture = Capture{};
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,

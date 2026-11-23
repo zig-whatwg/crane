@@ -131,6 +131,8 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
         .steps = &garbage_tree_steps,
         .weight = measure.nodes,
         .dying = .{ .memory = &runtime.BrowserScope.ofInstance(instance).dom_memory, .bytes = measure.bytes },
+        // The fresh rule's evidence (DeferredTeardown.isFresh; 0 = OLD).
+        .min_generation = measure.min_generation,
     })) {
         // The agent is ending (its queue closed): the old model frees it.
         root.rc_flags.garbage = false;
@@ -306,10 +308,12 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
 /// Whether `internal`, a document's state, keeps references on its own nodes:
 /// its top layer (its popovers, modal dialogs and fullscreen elements, the
 /// fullscreen events still pending, its pointer and hint targets, its open
-/// dialogs) or its autofocus candidates. Each is a counted hold on a node of
+/// dialogs), its autofocus candidates or its editor state (its editing undo
+/// history's steps, dom.editor_states). Each is a counted hold on a node of
 /// the document's tree, or of a subtree removed from it (a foreign hold,
 /// decision D6) - so the document keeps itself alive through them.
 fn holdsOwnReferences(internal: *const @import("document_state.zig").InternalState) bool {
+    if (internal.editor_state) |editor_state| if (@import("editor_states.zig").holdsNodes(editor_state)) return true;
     const shared = internal.interaction_state orelse return false;
     return shared.top_layer != null or shared.autofocus != null;
 }

@@ -524,6 +524,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // a node its tree's teardown frees, or at the realm's end - and the
         // shadow root must go on working as a DocumentFragment. Its `host`
         // then answers InvalidStateError (ShadowRoot.get_host).
+        //
+        // Every hand-out's owner ends its edge (rare_data.keptEndHandOut,
+        // lane mem1). Today this finds nothing: attachShadow's second edge,
+        // the shadow root's to its host, wraps a host script never wrapped
+        // (a declarative shadow root's), which draws the waiting edge at
+        // once (tests/html/mem1_kept_edge_teardown_test.zig pins that the
+        // shadow root goes with such a host).
+        rare_data.keptEndHandOut(internal.rareHolder().*, .shadow_root, instance);
         rare_data.keptRelease(internal.rareHolder(), .shadow_root, forgetHost);
         if (rare_data.get(internal.rareHolder().*, .references) != null) dom.element_references.State.releaseUnwrapped(instance);
         // The NamedNodeMap's edge (`get_attributes`), here and not in
@@ -1083,6 +1091,9 @@ fn lookupName(instance: *runtime.Instance, internal: *const InternalState, name:
 fn handleAttributeChanges(
     instance: *runtime.Instance,
     namespace: ?[]const u8,
+    /// The attribute's namespace prefix: only CDP's attribute events read it
+    /// (the qualified name Blink reports).
+    prefix: ?[]const u8,
     local_name: []const u8,
     old_value: ?[]const u8,
     new_value: ?[]const u8,
@@ -1123,6 +1134,25 @@ fn handleAttributeChanges(
     if (namespace == null and (std.mem.eql(u8, local_name, "form") or std.mem.eql(u8, local_name, "id") or std.mem.eql(u8, local_name, "disabled"))) {
         dom.custom_elements.formAttributeChanged(instance, local_name, old_value, new_value);
     }
+
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::DidModifyDOMAttr / DidRemoveDOMAttr after
+    // Element::AttributeChanged, and for a styled element's style attribute
+    // its DidInvalidateStyleAttr (StyleAttributeChanged).
+    if (dom.inspector_probes.active()) {
+        const styled = if (getInternal(instance)) |internal| isStyledNamespace(internal.data.name.namespace_uri) else false;
+        const cssom_update = styled and namespace == null and std.mem.eql(u8, local_name, "style") and dom.style.inline_style.updatingStyleAttribute(instance);
+        dom.inspector_probes.attributeChanged(instance, namespace, prefix, local_name, old_value, new_value, styled, cssom_update);
+    }
+}
+
+/// Blink's IsStyledElement: an HTML, SVG or MathML element - the elements
+/// whose style attribute is their inline style.
+fn isStyledNamespace(namespace: ?[]const u8) bool {
+    const ns = namespace orelse return false;
+    return std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") or
+        std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") or
+        std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML");
 }
 
 /// The attribute change steps this engine defines, in one place.
@@ -1203,6 +1233,12 @@ fn attributeChangeSteps(
     const own_name = internal.data.name;
     const element_namespace = own_name.namespace_uri orelse return;
     dom.attribute_change_steps.runForAttribute(instance, element_namespace, local_name, old_value, value, namespace);
+    if (own_name.namespace == .svg) {
+        // An SVG element type's own steps (the animation elements' timing
+        // attributes: dom.smil.document_animations).
+        dom.attribute_change_steps.runSvg(instance, own_name.local_name, local_name, old_value, value, namespace);
+        return;
+    }
     if (!own_name.isHtml()) return;
     dom.attribute_change_steps.run(instance, own_name.local_name, local_name, old_value, value, namespace);
 }
@@ -1243,7 +1279,7 @@ fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index:
 
     // Step 3: "Handle attribute changes for attribute with attribute's
     // element, oldValue, and value."
-    handleAttributeChanges(instance, name.namespace_uri, name.local_name, tables.value(old_value), tables.value(new_value));
+    handleAttributeChanges(instance, name.namespace_uri, name.prefix, name.local_name, tables.value(old_value), tables.value(new_value));
 }
 
 fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
@@ -1273,6 +1309,10 @@ fn appendAttribute(
     errdefer dom.attribute_values.release(scope, id);
     const entry: AttributeEntryIds = .{ .name = name, .value = id };
 
+    // dom.heading_offsets: the node document has seen a headingoffset or
+    // headingreset attribute (one static-id compare).
+    if (dom.heading_offsets.names(name)) noteHeadingOffset(instance);
+
     // Step 1: "Append attribute to element's attribute list." The list may
     // move: it holds ids, and a view's bytes are its records'.
     try internal.data.appendAttribute(scope, entry);
@@ -1289,7 +1329,7 @@ fn appendAttribute(
 
     // Step 4: "Handle attribute changes for attribute with element, null, and
     // attribute's value."
-    handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(id));
+    handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, null, tables.value(id));
 }
 
 /// DOM "remove an attribute" - the one at `index`.
@@ -1314,7 +1354,7 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
-    handleAttributeChanges(instance, name.namespace_uri, name.local_name, value, null);
+    handleAttributeChanges(instance, name.namespace_uri, name.prefix, name.local_name, value, null);
 }
 
 /// DOM "set an attribute value": the setter steps of every reflected string
@@ -1411,7 +1451,7 @@ fn handleSetAttributes(instance: *runtime.Instance, internal: *InternalState, sc
         // styleAttributeChangeSteps).
         internal.bits().appending_clone = by_cloning and record.namespace_uri == null and std.mem.eql(u8, record.local_name, "style");
         defer internal.bits().appending_clone = false;
-        handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(entry.value));
+        handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, null, tables.value(entry.value));
     }
 }
 
@@ -1454,6 +1494,7 @@ fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.e
     defer if (on_heap) scope.allocator.free(entries);
     var made: usize = 0;
     errdefer for (entries[0..made]) |entry| ElementData.releaseEntry(scope, entry);
+    var heading_offset = false;
     for (attributes, entries) |attribute, *entry| {
         const name = try dom.attribute_names.intern(scope, attribute.namespace, attribute.prefix, attribute.local_name);
         const value = dom.attribute_values.intern(scope, attribute.value) catch |err| {
@@ -1462,7 +1503,9 @@ fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.e
         };
         entry.* = .{ .name = name, .value = value };
         made += 1;
+        heading_offset = heading_offset or dom.heading_offsets.names(name);
     }
+    if (heading_offset) noteHeadingOffset(element);
     try internal.data.adoptEntries(scope, entries, cache);
     made = 0;
     handleSetAttributes(element, internal, scope, entries, false);
@@ -1485,8 +1528,24 @@ fn cloneAttributesHook(copy: *runtime.Instance, node: *runtime.Instance) dom.ele
     const on_heap = count > stack.len;
     const entries = if (on_heap) try scope.allocator.alloc(AttributeEntryIds, count) else stack[0..count];
     defer if (on_heap) scope.allocator.free(entries);
-    for (entries, 0..) |*entry, i| entry.* = internal.data.storedAt(i).?;
+    var heading_offset = false;
+    for (entries, 0..) |*entry, i| {
+        entry.* = internal.data.storedAt(i).?;
+        heading_offset = heading_offset or dom.heading_offsets.names(entry.name);
+    }
+    // dom.heading_offsets: the copy's node document - another document's,
+    // for importNode - has seen the attribute now.
+    if (heading_offset) noteHeadingOffset(copy);
     handleSetAttributes(copy, internal, scope, entries, true);
+}
+
+/// dom.heading_offsets.note for `element`'s node document (its NodeBase): it
+/// has an element with a headingoffset or headingreset attribute: a bit set in
+/// place, which cannot fail.
+fn noteHeadingOffset(element: *runtime.Instance) void {
+    const base = dom.instance_bridge.getNodeBase(element) orelse return;
+    const document = base.documentBase() orelse return;
+    dom.heading_offsets.note(document);
 }
 
 /// `dom.element_attributes.count`.
@@ -2212,7 +2271,7 @@ fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, ind
 
     // Step 6: "Handle attribute changes for oldAttribute with element,
     // oldAttribute's value, and newAttribute's value."
-    handleAttributeChanges(instance, record.namespace_uri, record.local_name, tables.value(old_value), tables.value(new_value));
+    handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, tables.value(old_value), tables.value(new_value));
 }
 
 /// Operation: scrollTo
@@ -2734,7 +2793,16 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     // Step 1: the caller has checked the null attribute namespace.
     if (!std.mem.startsWith(u8, local_name, "on") or local_name.len <= 2) return;
     const internal = getInternal(instance) orelse return;
-    if (!internal.data.name.isHtml()) return;
+    // Step 1, "the name of an event handler content attribute on element":
+    // HTML elements have them (HTML 8.1.8.2), and so do MathML elements
+    // (MathML Core 2.1.4: "All MathML elements support event handler content
+    // attributes, as described in [...] HTML") and SVG elements (SVG 2 15.8,
+    // event attributes, "the same requirements as for event handler content
+    // attributes"). Chrome, Firefox and Safari compile them on all three
+    // (wpt.fyi 2358bd4835: mathml/relations/html5-tree/
+    // math-global-event-handlers.html passes in all three). An element of any
+    // other namespace has none.
+    if (!eventHandlerContentAttributeNamespace(internal.data.name.namespace)) return;
     const window_reflecting = (instance.stateAs(interfaces.HTMLBodyElement.State) != null or
         instance.stateAs(interfaces.HTMLFrameSetElement.State) != null) and
         dom.event_handlers.isWindowReflecting(local_name);
@@ -2745,7 +2813,9 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const target = dom.event_handlers.determineTarget(instance, local_name) orelse return;
     const event_type = dom.event_handlers.eventTypeOf(local_name);
     const body = value orelse {
-        dom.event_handlers.set(typedefs.EventHandler, target, event_type, null) catch {};
+        // The main world's handler, the one the attribute set
+        // (dom.event_handlers.deactivateForContentAttribute).
+        dom.event_handlers.deactivateForContentAttribute(target, event_type);
         return;
     };
     // Step 5.1: a CSP-blocked replacement leaves the OLD handler value.
@@ -2755,6 +2825,21 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     defer document.ctx.allocator.free(url);
     // Steps 5.2-5.6: the map copies body/location and activates the listener.
     dom.event_handlers.setRaw(target, event_type, .{ .body = body, .url = url }) catch {};
+}
+
+fn isSvgElement(target: *runtime.Instance) bool {
+    const internal = getInternal(target) orelse return false;
+    return internal.data.name.namespace == .svg;
+}
+
+/// Whether an element of `namespace` has event handler content attributes:
+/// its interface includes GlobalEventHandlers (HTMLElement, SVGElement,
+/// MathMLElement).
+fn eventHandlerContentAttributeNamespace(namespace: dom.element_name.Namespace) bool {
+    return switch (namespace) {
+        .html, .svg, .mathml => true,
+        else => false,
+    };
 }
 
 /// Check content-attribute names natively, without wrapping the element or
@@ -2805,7 +2890,16 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw
         .name = local_name,
         .url = raw.url,
         .lineno = raw.lineno,
-        .parameters = if (is_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
+        // Step 3.6's parameter list. An SVG element's handler names its one
+        // parameter `evt` (SVG 2 15.8, "evt as an alias to event"): Blink's
+        // EventParameterName, Gecko's nsContentUtils::GetEventArgNames and
+        // WebKit's JSLazyEventListener all take `evt` for an SVG element.
+        .parameters = if (is_window and std.mem.eql(u8, local_name, "onerror"))
+            .onerror
+        else if (!is_window and isSvgElement(target))
+            .evt
+        else
+            .event,
         .document = if (is_window) null else document,
         .form_owner = if (!is_window and
             (@import("html").form_associated.isListed(target) or target.stateAs(interfaces.HTMLImageElement.State) != null))
@@ -3118,7 +3212,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Here, in the step itself, so every attach - scripted and declarative -
     // runs it.
     dom.shadow_hosts.attached(instance, shadow_root);
-    rare_data.keptHandOut(internal.rareHolder(), .shadow_root, instance, shadow_root, .{ .name = "shadowRoot" });
+    rare_data.keptHandOut(internal.rareHolder(), .shadow_root, instance, shadow_root);
     // And the shadow root keeps its host, whose `host` it answers for its
     // whole life: script routinely holds only the shadow root
     // (`document.createElement("div").attachShadow(...)`). Blink traces it

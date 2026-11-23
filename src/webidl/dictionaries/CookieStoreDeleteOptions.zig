@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const CookieStoreDeleteOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     name: runtime.USVString,
     domain: ?runtime.USVString = null,
     path: ?runtime.USVString = null,

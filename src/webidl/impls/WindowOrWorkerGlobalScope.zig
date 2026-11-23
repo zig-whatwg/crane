@@ -8,6 +8,7 @@ const message_ports = @import("dom").message_ports;
 /// The one transfer step every carrier of a transfer list runs.
 const transferables = @import("dom").transferables;
 const streams_js = @import("dom").streams_js;
+const dom = @import("dom");
 const same_object = @import("dom").same_object;
 const fetch_body = @import("fetch_body");
 const engine = @import("engine");
@@ -130,17 +131,23 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
         allocator.free(i.message);
         allocator.free(i.filename);
     };
+    // The realm of the script that called reportError(): an isolated world's
+    // report is that world's only (Blink's WindowOrWorkerGlobalScope::
+    // reportError makes the ErrorEvent for the caller's ScriptState's world).
+    const reporting_realm = engine.currentRealm();
     const extracted: runtime.ErrorInfo = if (info) |i| .{
         .message = i.message,
         .filename = i.filename,
         .lineno = i.lineno,
         .colno = i.colno,
         .error_value = i.error_value,
+        .realm = reporting_realm,
     } else .{
         .message = "",
         .filename = "",
         .lineno = 0,
         .colno = 0,
+        .realm = reporting_realm,
         .error_value = e,
     };
     // Steps 4–7: the host reporter applies the reporting-mode guard, fires
@@ -151,22 +158,11 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
 /// Operation: setInterval
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
 ///
-/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
-/// if handler.function is a JavaScript callback. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. For handler.function variant, create Global handle
-/// 2. Store in interval registry with Global handle
-/// 3. Dispose Global handle when interval is cleared via clearInterval
-/// 4. Handle repeating invocation pattern
+/// "The setInterval(handler, timeout, ...arguments) method steps are to
+/// return the result of running the timer initialization steps given this,
+/// handler, timeout, arguments, and true." (`setTimer`)
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return setTimer(instance, handler, timeout, arguments, true);
 }
 
 /// Operation: atob
@@ -185,19 +181,237 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
     return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
-/// Operation: createImageBitmap
+/// Operation: createImageBitmap(image, options) - HTML 8.11.2.
 pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = image;
-    _ = options;
-    return error.NotImplemented;
+    return createImageBitmap(instance, image, null, options.getOrDefault(.{}));
 }
 
+/// Operation: createImageBitmap(image, sx, sy, sw, sh, options) - HTML
+/// 8.11.2.
+pub fn call_createImageBitmap__1(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, sx: i32, sy: i32, sw: i32, sh: i32, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
+    return createImageBitmap(instance, image, .{ .sx = sx, .sy = sy, .sw = sw, .sh = sh }, options.getOrDefault(.{}));
+}
+
+/// HTML 8.11.2, the createImageBitmap() method steps, for `global` (this).
+/// The binding turns what they throw into a rejected promise ("return a
+/// promise rejected with": the method returns a Promise, WebIDL 3.7.6).
+///
+/// The Blob arm's steps 1-4 run "in parallel" in the spec; here the read
+/// and the decode run on the agent's thread before the call returns, as the
+/// canvas element's toBlob encodes (stated there). The promise is still
+/// settled by a task queued on the bitmap task source, so script sees the
+/// same order.
+fn createImageBitmap(global: *runtime.Instance, image: typedefs.ImageBitmapSource, crop: ?dom.image_bitmaps.Crop, options: dictionaries.ImageBitmapOptions) anyerror!runtime.JSValue {
+    // 1. "If either sw or sh is given and is 0, then return a promise
+    //    rejected with a RangeError."
+    if (crop) |given| if (given.sw == 0 or given.sh == 0) return error.RangeError;
+    // 2. "If either options's resizeWidth or options's resizeHeight is
+    //    present and is 0, then return a promise rejected with an
+    //    "InvalidStateError" DOMException."
+    if (options.resizeWidth) |width| if (width == 0) return error.InvalidStateError;
+    if (options.resizeHeight) |height| if (height == 0) return error.InvalidStateError;
+    const formatting: dom.image_bitmaps.Formatting = .{
+        .flip_y = (options.imageOrientation orelse ._from_image_) == ._flipY_,
+        .premultiply_alpha = switch (options.premultiplyAlpha orelse ._default_) {
+            ._default_ => .default,
+            ._premultiply_ => .premultiply,
+            ._none_ => .none,
+        },
+        .resize_width = options.resizeWidth,
+        .resize_height = options.resizeHeight,
+        .resize_quality = switch (options.resizeQuality orelse ._low_) {
+            ._pixelated_ => .pixelated,
+            ._low_ => .low,
+            ._medium_ => .medium,
+            ._high_ => .high,
+        },
+    };
+    const allocator = global.ctx.allocator;
+    // 3, 6: the bitmap data, cropped to the source rectangle with
+    //    formatting, by kind of image; an InvalidStateError when no bitmap
+    //    can be made from it. (Steps 4-5's promise and ImageBitmap follow:
+    //    nothing in between is observable.)
+    const bitmap: *dom.image_bitmaps.Bitmap = switch (image) {
+        .canvas_image_source => |source| blk: {
+            // 3. "Check the usability of the image argument. If this throws
+            //    an exception or returns bad, then return a promise rejected
+            //    with an "InvalidStateError" DOMException."
+            const usability: dom.image_sources.Usability = switch (source) {
+                .htmlor_svgimage_element => |element| switch (element) {
+                    .htmlimage_element => |img| dom.image_sources.imageUsability(img),
+                    // An SVG image element's image is not loaded here: it
+                    // has no image to give (bad).
+                    .svgimage_element => .bad,
+                },
+                // A video's readyState is not modelled past HAVE_NOTHING
+                // (no media decoding): bad.
+                .htmlvideo_element => .bad,
+                .htmlcanvas_element => |canvas| dom.image_sources.canvasUsability(canvas),
+                .image_bitmap => |source_bitmap| dom.image_sources.imageBitmapUsability(source_bitmap),
+                .offscreen_canvas => |canvas| dom.image_sources.offscreenCanvasUsability(canvas),
+                // VideoFrame is not implemented: no frame has pixels.
+                .video_frame => .bad,
+            };
+            const good = switch (usability) {
+                .good => |good| good,
+                .bad, .invalid_state => return error.InvalidStateError,
+            };
+            // 6, img / canvas / ImageBitmap / OffscreenCanvas: "a copy of
+            //    image's media data (bitmap data), cropped to the source
+            //    rectangle with formatting", origin-clean as image is.
+            break :blk try formatted(allocator, good, crop, formatting);
+        },
+        .image_data => |image_data| blk: {
+            // 6, ImageData: 1-2. If its data's [[ViewedArrayBuffer]] is
+            //    detached, an InvalidStateError.
+            const realm = engine.currentRealm() orelse global.ctx;
+            const data = switch (try interfaces.ImageData.get_data(image_data)) {
+                .uint8clamped_array => |array| array,
+                .float16array => return error.InvalidStateError,
+            };
+            const description = engine.describeArrayBufferView(realm, data) orelse return error.InvalidStateError;
+            if (description.detached) return error.InvalidStateError;
+            const buffer = try engine.getViewedArrayBuffer(realm, data);
+            defer buffer.release();
+            const bytes = engine.borrowArrayBufferBytes(realm, buffer.value) orelse return error.InvalidStateError;
+            // 3. "image's image data" - straight alpha, origin-clean.
+            const width = try interfaces.ImageData.get_width(image_data);
+            const height = try interfaces.ImageData.get_height(image_data);
+            break :blk try formatted(allocator, .{
+                .width = width,
+                .height = height,
+                .pixels = bytes[description.byte_offset..][0..description.byte_length],
+                .alpha = .straight,
+                .origin_clean = true,
+            }, crop, formatting);
+        },
+        .blob => |blob| blk: {
+            // 6, Blob: 1. read image's data; 2. sniff it with its type as
+            //    the official type; 3. not a supported image, or no
+            //    dimensions: an InvalidStateError - in a task.
+            const bytes = dom.blob_bytes.bytesOf(blob) orelse &.{};
+            var blob_type = try interfaces.Blob.get_type(blob);
+            defer blob_type.deinit(allocator);
+            var decoded = dom.image_bitmaps.decodeBlob(allocator, bytes, blob_type.asSlice()) orelse
+                return settleInTask(global, null);
+            defer decoded.deinit();
+            // 4. "Set imageBitmap's bitmap data to imageData, cropped to the
+            //    source rectangle with formatting."
+            break :blk formatted(allocator, decoded.source(), crop, formatting) catch |err| switch (err) {
+                error.InvalidStateError => return settleInTask(global, null),
+                else => return err,
+            };
+        },
+    };
+    return settleInTask(global, bitmap);
+}
+
+/// "Crop bitmap data to the source rectangle with formatting", an
+/// InvalidStateError for a bitmap too large to make.
+fn formatted(allocator: std.mem.Allocator, source: dom.image_sources.ImageSource, crop: ?dom.image_bitmaps.Crop, formatting: dom.image_bitmaps.Formatting) !*dom.image_bitmaps.Bitmap {
+    return dom.image_bitmaps.cropWithFormatting(allocator, source, crop, formatting) catch |err| switch (err) {
+        error.TooLarge => error.InvalidStateError,
+        error.OutOfMemory => error.OutOfMemory,
+    };
+}
+
+/// createImageBitmap steps 4-5 and 7, then 6's last step: "Let promise be a
+/// new promise"; "Let imageBitmap be a new ImageBitmap object" with
+/// `bitmap` (taken); "Queue a global task, using the bitmap task source, to
+/// resolve promise with imageBitmap"; return promise. A null `bitmap` is the
+/// Blob arm's failure: the task rejects promise with an "InvalidStateError"
+/// DOMException instead.
+fn settleInTask(global: *runtime.Instance, bitmap: ?*dom.image_bitmaps.Bitmap) !runtime.JSValue {
+    const realm = global.ctx;
+    const allocator = realm.allocator;
+    // `bitmap` is ours until the ImageBitmap takes it (step 5).
+    var bitmap_owned = bitmap != null;
+    errdefer if (bitmap_owned) bitmap.?.destroy();
+    // 4.
+    var promise = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&promise);
+    const result = try engine.retainValue(realm, promise.promise);
+    errdefer result.release();
+    // 5. The ImageBitmap, made now: unwrapped until the task resolves the
+    //    promise with it (its wrapper is made then, in this realm).
+    const image_bitmap: ?*runtime.Instance = if (bitmap) |b| try interfaces.ImageBitmap.initWith(allocator, realm, .{ .bitmap = b }) else null;
+    bitmap_owned = false;
+    errdefer if (image_bitmap) |made| made.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(made));
+    const task = try allocator.create(BitmapTask);
+    task.* = .{
+        .allocator = allocator,
+        .realm = realm,
+        .capability = promise,
+        .image_bitmap = image_bitmap,
+        .generation = if (image_bitmap) |made| runtime.SlabAllocator.generationOf(made) else 0,
+    };
+    const loop = realm.getOptionalEventLoop() orelse {
+        BitmapTask.run(task);
+        return result.take();
+    };
+    var queued: runtime.EventLoopTask = .{ .callback = BitmapTask.run, .context = task, .drop = BitmapTask.drop };
+    // "Queue a global task": a Window's runs only while its Document is
+    // fully active.
+    if (realm.isWindow()) {
+        if (realm.getRealm()) |record| if (record.global_object) |object| {
+            const window: *runtime.Instance = @ptrCast(@alignCast(object));
+            queued.document = window;
+            queued.document_generation = runtime.SlabAllocator.generationOf(window);
+        };
+    }
+    loop.queueTask(queued);
+    // 7.
+    return result.take();
+}
+
+/// createImageBitmap's global task on the bitmap task source.
+const BitmapTask = struct {
+    allocator: std.mem.Allocator,
+    realm: runtime.Context,
+    capability: engine.PromiseCapability,
+    /// The ImageBitmap to resolve with, unwrapped until then; null rejects.
+    image_bitmap: ?*runtime.Instance,
+    generation: u64,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        defer self.deinit();
+        engine.runTaskInRealm(self.realm, steps, self) catch {};
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        const made = self.image_bitmap orelse {
+            const exception = engine.createDOMException(self.realm, "InvalidStateError", "The source image could not be decoded.") catch return;
+            defer exception.release();
+            engine.rejectPromise(&self.capability, exception.value) catch {};
+            return;
+        };
+        // Resolving wraps it: it is the wrapper's from then on.
+        engine.resolvePromise(&self.capability, .{ .instance = made }) catch {};
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        self.deinit();
+    }
+
+    fn deinit(self: *BitmapTask) void {
+        engine.releasePromiseCapability(&self.capability);
+        // Never wrapped (the task was dropped, or the resolution failed
+        // before wrapping it): ours to let go.
+        if (self.image_bitmap) |made| made.releaseIfUnwrapped(self.generation);
+        self.allocator.destroy(self);
+    }
+};
+
 /// Operation: clearInterval
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval
+///
+/// "The clearTimeout(id) and clearInterval(id) method steps are to remove
+/// this's map of setTimeout and setInterval IDs[id]." (`clearTimer`)
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return clearTimer(instance, id);
 }
 
 /// Operation: queueMicrotask
@@ -205,8 +419,8 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 ///
 /// "Queue a microtask to invoke callback with « » and "report"."
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    // The binding hands the callback over: take it before anything can fail.
-    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const function = callback.keep();
     const task = instance.ctx.allocator.create(Microtask) catch {
         function.release();
         return error.OutOfMemory;
@@ -268,6 +482,9 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .lineno = info.lineno,
         .colno = info.colno,
         .error_value = if (info.error_value == .undefined) null else info.error_value,
+        // The callback's realm: an isolated world's error event is that
+        // world's only (report_exception).
+        .realm = realm,
     };
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
@@ -315,29 +532,51 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
 /// Operation: setTimeout
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
 ///
-/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
-/// if handler.function is a JavaScript callback. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
-///
-/// Implementation requirements:
-/// 1. For handler.function variant, create Global handle
-/// 2. Store in timer registry with Global handle
-/// 3. Dispose Global handle when timer fires or is cleared via clearTimeout
-/// 4. Handle one-shot invocation (unlike setInterval)
+/// "The setTimeout(handler, timeout, ...arguments) method steps are to
+/// return the result of running the timer initialization steps given this,
+/// handler, timeout, arguments, and false." (`setTimer`)
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return setTimer(instance, handler, timeout, arguments, false);
 }
 
 /// Operation: clearTimeout
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return clearTimer(instance, id);
+}
+
+/// HTML 8.6's timer initialization steps for `instance`, run by its kind of
+/// global (dom.global_settings `set_timer`): its map of setTimeout and
+/// setInterval IDs, its event loop and its realm are the global's own. A
+/// WorkerGlobalScope's reach here - the members are its prototype's,
+/// WindowOrWorkerGlobalScope being a mixin it includes (WebIDL 3.7.3) - and
+/// a Window's are its own operations ([Global]: page_realm's window
+/// operations), which answer first.
+fn setTimer(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 {
+    // The Function is BORROWED for the call: kept before anything can fail.
+    const converted: global_settings.TimerHandler = switch (handler) {
+        .function => |function| .{ .function = function.keep() },
+        .trusted_script => |trusted| .{ .trusted_script = trusted },
+        .domstring => |text| .{ .string = text.asSlice() },
+    };
+    const settings = global_settings.of(instance) orelse {
+        converted.release();
+        return error.NotImplemented;
+    };
+    const set = settings.set_timer orelse {
+        converted.release();
+        return error.NotImplemented;
+    };
+    // `optional long timeout = 0`.
+    return set(instance, converted, timeout.getOrDefault(0), arguments, repeat);
+}
+
+/// clearTimeout() and clearInterval(): `optional long id = 0`; an id no timer
+/// of this global has names nothing.
+fn clearTimer(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+    const settings = global_settings.of(instance) orelse return error.NotImplemented;
+    const clear = settings.clear_timer orelse return error.NotImplemented;
+    clear(instance, id.getOrDefault(0));
 }
 
 // One call, from the moment the fetch starts until it is entirely over:
@@ -408,6 +647,12 @@ const FetchCall = struct {
     /// read stands for the fetch in `fetch_holds`.
     upload: ?*fetch_body.ReadAll = null,
     pending_request: ?*fetch.internal.InternalRequest = null,
+    /// While requestObject's stream body is read as it comes into the
+    /// request's body pipe - a request a service worker is asked to handle
+    /// (`offeredToServiceWorker`): the fetch is under way meanwhile. Cleared
+    /// when the pump is gone (`uploadPumpEnded`); the abort steps cancel it
+    /// with their reason.
+    upload_pump: ?*fetch_body.UploadPump = null,
 
     const Self = @This();
 
@@ -614,6 +859,12 @@ const FetchCall = struct {
             }
             self.fetch_holds = false;
         }
+        // The same for a stream body read as it comes (`upload_pump`): its
+        // stream hears the reason now; the fetch is ended below.
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            self.cancelPump(pump, if (signal) |s| abortReasonOf(s) else null);
+        }
 
         // Step 11.3: Abort controller with the signal's abort reason -
         // the fetch ends here, its transfer cancelled, and a body still
@@ -652,6 +903,29 @@ const FetchCall = struct {
         const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return };
         defer reason_value.release();
         engine.rejectPromise(&self.capability, reason_value.value) catch {};
+    }
+
+    /// `signal`'s abort reason, held by the caller.
+    fn abortReasonOf(signal: *runtime.Instance) ?engine.Owned {
+        return .{ .value = interfaces.AbortSignal.get_reason(signal) catch return null };
+    }
+
+    /// Cancel a stream body read as it comes (`upload_pump`) with `reason`
+    /// (released here), or undefined: Fetch "abort the fetch() call" step 2.
+    fn cancelPump(self: *Self, pump: *fetch_body.UploadPump, reason: ?engine.Owned) void {
+        defer if (reason) |r| r.release();
+        const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch return;
+        const value = if (reason) |r| cancel_realm.fromRuntime(r.value) catch null else cancel_realm.undefinedValue() catch null;
+        const v = value orelse return;
+        defer streams_js.dispose(v);
+        pump.cancel(v);
+    }
+
+    /// The pump reading requestObject's stream body is gone: its body ended,
+    /// failed, or nobody read it.
+    fn uploadPumpEnded(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.upload_pump = null;
     }
 
     fn liveSignal(self: *const Self) ?*runtime.Instance {
@@ -747,6 +1021,10 @@ const FetchCall = struct {
         self.settleResolver();
         self.releaseKeepalive();
         self.untrack();
+        // A pump still reading the stream body outlives the call (the
+        // request's pipe still has a reader): it tells nobody when it ends.
+        if (self.upload_pump) |pump| pump.owner = null;
+        self.upload_pump = null;
         self.allocator.destroy(self);
     }
 
@@ -847,6 +1125,11 @@ const FetchCall = struct {
             self.fetch_holds = false;
             failed = true;
         }
+        // A stream body read as it comes: cancelled with the same TypeError.
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            engine.runInRealm(self.ctx, cancelPumpForCache, pump) catch {};
+        }
         if (self.in_flight) |f| {
             self.in_flight = null;
             // A body still arriving fails as the network failing would:
@@ -866,6 +1149,13 @@ const FetchCall = struct {
             self.outcome = error.NetworkError;
             self.queueSettle();
         }
+    }
+
+    fn cancelPumpForCache(data: ?*anyopaque) void {
+        const pump: *fetch_body.UploadPump = @ptrCast(@alignCast(data.?));
+        const e = pump.realm.typeError("Failed to fetch") catch return;
+        defer streams_js.dispose(e);
+        pump.cancel(e);
     }
 
     fn cancelUploadForCache(data: ?*anyopaque) void {
@@ -993,6 +1283,16 @@ const FetchCall = struct {
                 }
             }
             self.fetch_holds = false;
+        }
+        if (self.upload_pump) |pump| {
+            self.upload_pump = null;
+            if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
+                const value = if (reason) |e| r.fromRuntime(e.value) catch null else r.undefinedValue() catch null;
+                if (value) |v| {
+                    defer streams_js.dispose(v);
+                    pump.cancel(v);
+                }
+            }
         }
         if (self.in_flight) |f| {
             self.in_flight = null;
@@ -1160,7 +1460,50 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const url = fetched_request.getUrl();
     const transmits_body = std.ascii.startsWithIgnoreCase(url, "http:") or std.ascii.startsWithIgnoreCase(url, "https:");
     const body_stream = if (transmits_body) fetch_objects.requestBodyStream(request_object) else null;
-    if (body_stream) |stream| {
+    if (body_stream != null and offeredToServiceWorker(fetched_request)) {
+        // A service worker is asked to handle the request (HTTP fetch step
+        // 3): its fetch event's request.body is a stream of the bytes as the
+        // page's stream gives them (step 3.2's tee, service_worker_fetch.
+        // Upload), so the fetch starts now, its body a pipe the stream is
+        // read into as it comes (fetch_body.UploadPump). Waiting for the
+        // whole body first left a stream that never closes - an upload the
+        // worker cancels - with a fetch that never started
+        // (service-workers/service-worker/fetch-request-body-cancel.https.html).
+        // Should the network get the request after all (no worker handles
+        // it, or it falls back), HTTP fetch step 4 waits for the bytes then.
+        const started = fetch_body.UploadPump.start(allocator, realm, body_stream.?, .{ .context = call, .ended = Call.uploadPumpEnded }) catch {
+            fetched_request.deinit();
+            call.releaseKeepalive();
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+        // A stream's body: no source, its bytes through the pipe.
+        const body = fetch.internal.Body.fromPipe(allocator, started.pipe) catch {
+            started.pipe.release();
+            fetched_request.deinit();
+            call.releaseKeepalive();
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+        if (fetched_request.body) |old| switch (old) {
+            .body => |b| b.deinit(),
+            .bytes => {},
+        };
+        fetched_request.body = .{ .body = body };
+        call.upload_pump = started.pump;
+        call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, @import("dom").agent_fetches.of(instance.ctx), call.client()) catch {
+            // The fetch owned the request, and freed it - its pipe with it,
+            // which leaves the pump to cancel the stream in a task.
+            call.releaseKeepalive();
+            if (call.upload_pump) |pump| pump.owner = null;
+            call.upload_pump = null;
+            allocator.destroy(call);
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
+        };
+    } else if (body_stream) |stream| {
         // The body's bytes are only in its stream: read them first (the
         // read starts below, once the abort steps can reach it).
         call.pending_request = fetched_request;
@@ -1197,10 +1540,19 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // Read the body to send. It may be read - and the fetch started, or p
     // rejected and the call freed - before this returns: `call` is not
     // touched after.
-    if (call.upload) |u| u.begin();
+    if (call.upload) |u| u.begin() else if (call.upload_pump) |pump| pump.begin();
 
     // Step 13.
     return p.take();
+}
+
+/// Whether HTTP fetch step 3 will ask a service worker to handle `request`:
+/// its service-workers mode is "all" and its client is controlled - "populate
+/// request from client" gave it a route to its Browser's service workers
+/// only then (service_worker_fetch.Route). Handle Fetch may still return
+/// null (no fetch event handler, a router rule), sending it to the network.
+fn offeredToServiceWorker(request: *const @import("fetch").internal.InternalRequest) bool {
+    return request.service_workers_mode == .all and request.service_worker != null;
 }
 
 /// Fetch "populate request from client", for a request whose client is

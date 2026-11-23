@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Observers</title>
+<!-- Observer callbacks: each constructor converts its callback (a callback function
+     type) and keeps it; MutationObserver delivers through a microtask. Resize and
+     intersection observations are delivered by the rendering steps, so those rows time
+     what script does every time: construct, observe, disconnect. -->
+<script src="../harness.js"></script>
+<body>
+<script>
+perf.add('observers.mutation-construct', {
+  ops: 20000,
+  setup() { this.el = document.body.appendChild(document.createElement('div')); this.options = { attributes: true }; },
+  run(n) {
+    const el = this.el, options = this.options;
+    for (let i = 0; i < n; i++) { const o = new MutationObserver(() => {}); o.observe(el, options); o.disconnect(); }
+  },
+  teardown() { this.el.remove(); },
+});
+perf.add('observers.mutation-deliver', {
+  ops: 20000,
+  setup() { this.el = document.body.appendChild(document.createElement('div')); },
+  run(n) {
+    // One delivery per op: each callback makes the next mutation, delivered at
+    // the next microtask checkpoint.
+    return new Promise((resolve) => {
+      const el = this.el;
+      let left = n;
+      const observer = new MutationObserver((records) => {
+        left -= 1;
+        if (left === 0) { observer.disconnect(); resolve(); } else el.setAttribute('data-n', String(left + records.length));
+      });
+      observer.observe(el, { attributes: true });
+      el.setAttribute('data-n', '0');
+    });
+  },
+  teardown() { this.el.remove(); },
+});
+perf.add('observers.resize-construct', {
+  ops: 20000,
+  setup() {
+    if (typeof ResizeObserver !== 'function') throw new perf.Unsupported('ResizeObserver');
+    this.el = document.body.appendChild(document.createElement('div'));
+  },
+  run(n) {
+    const el = this.el;
+    for (let i = 0; i < n; i++) { const o = new ResizeObserver(() => {}); o.observe(el); o.disconnect(); }
+  },
+  teardown() { this.el.remove(); },
+});
+perf.add('observers.intersection-construct', {
+  ops: 20000,
+  setup() {
+    if (typeof IntersectionObserver !== 'function') throw new perf.Unsupported('IntersectionObserver');
+    this.el = document.body.appendChild(document.createElement('div'));
+  },
+  run(n) {
+    const el = this.el;
+    for (let i = 0; i < n; i++) { const o = new IntersectionObserver(() => {}); o.observe(el); o.disconnect(); }
+  },
+  teardown() { this.el.remove(); },
+});
+</script>

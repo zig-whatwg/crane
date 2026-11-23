@@ -21,7 +21,7 @@ const gif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABA
 
 test "with no renderer an img with a natural size and width and height attributes has no layout box" {
     const allocator = std.testing.allocator;
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

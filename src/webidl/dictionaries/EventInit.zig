@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const EventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     bubbles: ?bool = null,
     cancelable: ?bool = null,
     composed: ?bool = null,

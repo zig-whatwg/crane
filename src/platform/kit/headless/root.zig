@@ -284,6 +284,16 @@ pub fn releasePickedFile(browser: *BrowserPlatform, file: platform.FileToken) vo
     _ = .{ browser, file };
 }
 
+pub fn userFile(browser: *BrowserPlatform, path: Str, reply: Reply(platform.PickedFile)) void {
+    _ = .{ browser, path };
+    drop(reply);
+}
+
+pub fn userDirectory(browser: *BrowserPlatform, path: Str, reply: Reply(platform.PickedFiles)) void {
+    _ = .{ browser, path };
+    drop(reply);
+}
+
 // ---------------------------------------------------------------------------
 // 6.10.5 Media
 // ---------------------------------------------------------------------------
@@ -868,6 +878,62 @@ pub fn showVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
 
 pub fn hideVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
     _ = .{ browser, tab };
+}
+
+// 6.12 Remote debugging transport: none (iOS; `-Dcdp=false`).
+
+pub fn devtoolsListen(port: u16) Error!platform.DevtoolsListener {
+    _ = port;
+    return error.NotSupported;
+}
+
+pub fn devtoolsWakeNew() Error!platform.DevtoolsWake {
+    return error.NotSupported;
+}
+
+pub fn devtoolsWake(wake: platform.DevtoolsWake) void {
+    _ = wake;
+}
+
+pub fn devtoolsWakeClose(wake: platform.DevtoolsWake) void {
+    _ = wake;
+}
+
+pub fn devtoolsAccept(listener: platform.DevtoolsListener, wake: platform.DevtoolsWake) Error!?platform.DevtoolsStream {
+    _ = .{ listener, wake };
+    return error.NotSupported;
+}
+
+pub fn devtoolsRead(stream: platform.DevtoolsStream, buffer: []u8) Error!usize {
+    _ = .{ stream, buffer };
+    return error.NotSupported;
+}
+
+pub fn devtoolsReadOrWake(stream: platform.DevtoolsStream, buffer: []u8, wake: platform.DevtoolsWake) Error!?usize {
+    _ = .{ stream, buffer, wake };
+    return error.NotSupported;
+}
+
+pub fn devtoolsWrite(stream: platform.DevtoolsStream, bytes: Bytes) Error!void {
+    _ = .{ stream, bytes };
+    return error.NotSupported;
+}
+
+pub fn devtoolsShutdown(stream: platform.DevtoolsStream) void {
+    _ = stream;
+}
+
+pub fn devtoolsClose(stream: platform.DevtoolsStream) void {
+    _ = stream;
+}
+
+pub fn devtoolsCloseListener(listener: platform.DevtoolsListener) void {
+    _ = listener;
+}
+
+pub fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!platform.DevtoolsPipe {
+    _ = .{ read_fd, write_fd };
+    return error.NotSupported;
 }
 
 // ---------------------------------------------------------------------------

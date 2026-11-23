@@ -241,19 +241,152 @@ fn sameOrigin(isolate: *v8.Isolate, current_realm: ?*anyopaque, object_ptr: ?*an
     const check = protocol_realms.sameOriginCheckOf(object.ctx) orelse return true;
     const key = current_realm orelse return false;
     const current = context_manager.getByKey(@intFromPtr(key)) orelse return false;
+    // An isolated world's script (protocol_worlds.zig): a world made with
+    // universal access reaches every origin's objects - Blink's isolated
+    // world security origin, which Page.createIsolatedWorld's
+    // grantUniveralAccess gives every origin's access (DOMWrapperWorld::
+    // SetIsolatedWorldSecurityOrigin, BindingSecurity's
+    // ShouldAllowAccessTo) - and any other world is its page's origin: the
+    // host is asked about its main realm.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    if (protocol_worlds.realmMayHaveWorlds(current)) {
+        if (protocol_worlds.hasUniversalAccess(current)) return true;
+        return check.is_platform_object_same_origin(check.host, protocol_worlds.mainRealmOf(current), object);
+    }
     return check.is_platform_object_same_origin(check.host, current, object);
 }
 
+/// Which access a SecurityError refused (v8_wrapper.cpp's
+/// kCrossOriginAccess*): the groups of v8::ExceptionContext a message names
+/// - a named property's [[Get]], [[GetOwnProperty]] or query; its [[Set]] or
+/// [[DefineOwnProperty]]; its [[Delete]]; the same three for an array
+/// index; and an access V8's failed-access-check callback reports with no
+/// property (unknown).
+pub const Access = enum(i32) {
+    unknown = 0,
+    named_get = 1,
+    named_set = 2,
+    named_delete = 3,
+    indexed_get = 4,
+    indexed_set = 5,
+    indexed_delete = 6,
+    _,
+};
+
 /// A SecurityError DOMException, made in the current realm: the realm of
-/// the [[Get]], [[Set]] or call that tried the cross-origin access.
-fn throwSecurityError(isolate: *v8.Isolate) callconv(.c) void {
+/// the [[Get]], [[Set]] or call that tried the cross-origin access, with
+/// the message Chrome gives it (`securityErrorMessage`).
+fn throwSecurityError(isolate: *v8.Isolate, kind: i32, access: i32, name: [*]const u8, name_len: usize) callconv(.c) void {
     // Owned: a fresh Global<Context>.
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
         conv.throwError(isolate, "SecurityError");
         return;
     };
     defer v8.v8_Context_Dispose(context);
-    conv.throwWebIDLErrorFromContext(isolate, context, "SecurityError");
+    var buffer: [1024]u8 = undefined;
+    const object: Kind = if (kind == @backingInt(Kind.location)) .location else .window;
+    const origin = accessingOrigin(context);
+    defer if (origin) |o| o.global.ctx.allocator.free(o.serialized);
+    const message = securityErrorMessage(&buffer, object, @fromBackingInt(@intCast(access)), name[0..name_len], if (origin) |o| o.serialized else null);
+    conv.throwDOMExceptionFromContext(isolate, context, "SecurityError", message);
+}
+
+/// The current realm's origin, serialized (OWNED by its global's realm
+/// allocator), or null when the realm has none to tell.
+fn accessingOrigin(context: *v8.Context) ?struct { global: *runtime.Instance, serialized: []const u8 } {
+    const global = context_manager.globalObjectForContext(context) orelse return null;
+    const settings = dom.global_settings.of(global) orelse return null;
+    const serialized = settings.origin(global) catch return null;
+    return .{ .global = global, .serialized = serialized };
+}
+
+/// A cross-origin SecurityError's message, in Chrome's words (the user's
+/// Chrome-compatible choice for UA-defined text, as navigator.vendor; main,
+/// 2026-11-20 1:10 PM ET): the context Blink's bindings add for the access -
+/// "Failed to read a named property 'href' from 'Location': " - before the
+/// detail its DOMWindow gives a script - "Blocked a frame with origin
+/// "<origin>" from accessing a cross-origin frame." HTML leaves the text to
+/// the user agent; html/browsers/browsing-the-web/navigating-across-documents/
+/// grandparent_location_aboutsrcdoc.sub.window.js compares it whole
+/// (wpt#65241). With no origin to name (a realm with no settings) the detail
+/// is the exception's name, as before.
+///
+/// The strings are reproduced from Chromium (BSD-3-Clause; credited in
+/// THIRD_PARTY_NOTICES.md), revision 671d6af90da4ab79e89cabbd7220cae70025cc11:
+/// third_party/blink/renderer/platform/bindings/exception_messages.cc
+/// (ExceptionMessages::AddContextToMessage, FailedToGetNamed, FailedToSetNamed,
+/// FailedToDeleteNamed, FailedToGetIndexed, FailedToSetIndexed,
+/// FailedToDeleteIndexed, OptionalNameProperty, OptionalIndexProperty;
+/// Copyright (C) 2013 Google Inc. All rights reserved.) and
+/// third_party/blink/renderer/core/frame/dom_window.cc
+/// (DOMWindow::SanitizedCrossDomainAccessErrorMessage; Copyright 2014 The
+/// Chromium Authors).
+pub fn securityErrorMessage(buffer: []u8, object: Kind, access: Access, name: []const u8, origin: ?[]const u8) []const u8 {
+    const interface = switch (object) {
+        .window => "Window",
+        .location => "Location",
+    };
+    var detail_buffer: [512]u8 = undefined;
+    const detail = if (origin) |o|
+        std.fmt.bufPrint(&detail_buffer, "Blocked a frame with origin \"{s}\" from accessing a cross-origin frame.", .{o}) catch "SecurityError"
+    else
+        "SecurityError";
+    const result = switch (access) {
+        .named_get => if (name.len > 0)
+            std.fmt.bufPrint(buffer, "Failed to read a named property '{s}' from '{s}': {s}", .{ name, interface, detail })
+        else
+            std.fmt.bufPrint(buffer, "Failed to read a named property from '{s}': {s}", .{ interface, detail }),
+        .named_set => if (name.len > 0)
+            std.fmt.bufPrint(buffer, "Failed to set a named property '{s}' on '{s}': {s}", .{ name, interface, detail })
+        else
+            std.fmt.bufPrint(buffer, "Failed to set a named property on '{s}': {s}", .{ interface, detail }),
+        .named_delete => if (name.len > 0)
+            std.fmt.bufPrint(buffer, "Failed to delete a named property '{s}' from '{s}': {s}", .{ name, interface, detail })
+        else
+            std.fmt.bufPrint(buffer, "Failed to delete a named property from '{s}': {s}", .{ interface, detail }),
+        .indexed_get => std.fmt.bufPrint(buffer, "Failed to read an indexed property [{s}] from '{s}': {s}", .{ name, interface, detail }),
+        .indexed_set => std.fmt.bufPrint(buffer, "Failed to set an indexed property [{s}] on '{s}': {s}", .{ name, interface, detail }),
+        .indexed_delete => std.fmt.bufPrint(buffer, "Failed to delete an indexed property [{s}] from '{s}': {s}", .{ name, interface, detail }),
+        else => std.fmt.bufPrint(buffer, "{s}", .{detail}),
+    };
+    // A name too long for the buffer: the detail alone.
+    return result catch std.fmt.bufPrint(buffer, "{s}", .{detail}) catch "SecurityError";
+}
+
+test "a cross-origin SecurityError's message is Chrome's" {
+    var buffer: [1024]u8 = undefined;
+    const origin = "http://www.web-platform.test:8001";
+    try std.testing.expectEqualStrings(
+        "Failed to read a named property 'href' from 'Location': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .location, .named_get, "href", origin),
+    );
+    try std.testing.expectEqualStrings(
+        "Failed to set a named property 'foo' on 'Window': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .named_set, "foo", origin),
+    );
+    try std.testing.expectEqualStrings(
+        "Failed to delete a named property 'document' from 'Window': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .named_delete, "document", origin),
+    );
+    try std.testing.expectEqualStrings(
+        "Failed to read an indexed property [3] from 'Window': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .indexed_get, "3", origin),
+    );
+    try std.testing.expectEqualStrings(
+        "Failed to set an indexed property [0] on 'Window': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .indexed_set, "0", origin),
+    );
+    // A symbol has no name to show; an access with no property is the detail alone.
+    try std.testing.expectEqualStrings(
+        "Failed to read a named property from 'Window': Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .named_get, "", origin),
+    );
+    try std.testing.expectEqualStrings(
+        "Blocked a frame with origin \"http://www.web-platform.test:8001\" from accessing a cross-origin frame.",
+        securityErrorMessage(&buffer, .window, .unknown, "", origin),
+    );
+    // No origin to name: the exception's name, as before.
+    try std.testing.expectEqualStrings("Failed to read a named property 'href' from 'Location': SecurityError", securityErrorMessage(&buffer, .location, .named_get, "href", null));
 }
 
 /// The number of W's document-tree child navigables (7.2.3.10 step 2).

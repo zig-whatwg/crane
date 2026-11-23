@@ -31,6 +31,12 @@ pub const AgentHost = struct {
     /// the owner's thread); 0 when none is known. Read by
     /// html.agent_clusters.agentClusterOf.
     agent_cluster: u64 = 0,
+    /// Whether that agent cluster - a dedicated worker's (its owner's), or a
+    /// shared or service worker's own - has a cross-origin isolation mode
+    /// other than "none", as the worker host records it when it obtains the
+    /// agent (html.agent_clusters.crossOriginIsolationMode on the owner's
+    /// thread). Read for the realm of a dedicated worker this worker owns.
+    agent_cluster_cross_origin_isolated: bool = false,
     /// The agent's fetches on its event loop - its network scheduler and
     /// every fetch in flight (fetch.algorithms.AgentFetches): pumped by the
     /// agent's loop, on its thread only; reached from a realm through its
@@ -60,8 +66,8 @@ pub const AgentHost = struct {
     /// DOM 4.3: the agent's mutation observer microtask queued flag, its
     /// pending mutation observers and its signal slots
     /// (dom.mutation_observer_algorithms, found from a realm with `agentOf`).
-    /// Read and written on the agent's thread only; emptied by its page's end
-    /// (`resetAgent`). It was one per thread.
+    /// Read and written on the agent's thread only; a page's end takes its
+    /// own tab's out (`resetPage`). It was one per thread.
     mutation_observers: dom.mutation_observer_algorithms.MutationObserverAgent,
     /// HTML timer initialization steps, step 3: the nesting level of the task
     /// the agent's event loop is running, when it is a timer's (its "timer

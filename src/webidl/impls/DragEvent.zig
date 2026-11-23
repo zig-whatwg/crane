@@ -1,4 +1,12 @@
-//! Implementation for DragEvent interface
+//! Implementation for DragEvent interface (HTML 6.11.4): a MouseEvent with
+//! the DataTransfer it was initialized with.
+//!
+//! The event keeps its DataTransfer by a traced edge (slot
+//! "drag-event:dataTransfer"), as Blink's DragEvent traces data_transfer_:
+//! a listener that keeps the event keeps its DataTransfer. Not a node, so
+//! no node hold.
+//!
+//! https://html.spec.whatwg.org/multipage/dnd.html#the-dragevent-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +16,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const DragEvent = interfaces.DragEvent;
 
 pub const State = DragEvent.State;
@@ -16,29 +25,48 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// DragEvent currently has no owned state beyond its generated ancestors.
-pub const InternalState = struct {};
+/// The DataTransfer the event was initialized to, when it has one.
+pub const InternalState = struct {
+    data_transfer: *runtime.Instance,
+    /// Whether the edge is drawn (an engine; engine-free tests draw none).
+    traced: bool,
+};
+
+const data_transfer_slot: engine.TracedSlot = .{ .name = "drag-event:dataTransfer" };
 
 pub const construction_args = .{"drag_init"};
 
-/// The generated chain initializes MouseEvent before DragEvent's own part.
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
+}
+
+/// The generated chain initializes MouseEvent before DragEvent's own part:
+/// "Initialize ... its dataTransfer attribute to" the dictionary's.
 pub fn initOwn(
     instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
     args: anytype,
 ) !void {
-    _ = instance;
     _ = allocator;
     _ = StateType;
-    if (@hasField(@TypeOf(args), "drag_init")) {
-        const dictionary: dictionaries.DragEventInit = args.drag_init;
-        // TODO(520): HTML DragEvent's constructor must retain dataTransfer.
-        // The FILELIST + DATATRANSFER ownership item in
-        // tmp/plans/feature-queue.md:520 owns that holder; supplied values
-        // still read null until it lands. Never keep a bare pointer here.
-        _ = dictionary.dataTransfer;
-    }
+    if (!@hasField(@TypeOf(args), "drag_init")) return;
+    const dictionary: dictionaries.DragEventInit = args.drag_init;
+    const data_transfer = dictionary.dataTransfer orelse return;
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{ .data_transfer = data_transfer, .traced = instance.ctx.hasEngine() };
+    instance.getState(State).own._internal = internal;
+    if (internal.traced) engine.traceChild(instance, data_transfer, data_transfer_slot);
+}
+
+/// Let the DataTransfer go with the event.
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    if (internal.traced) engine.forgetTracedChild(instance, data_transfer_slot);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
 /// DOM event constructor steps 1–2, including all MouseEventInit members.
@@ -52,8 +80,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     });
 }
 
-/// Getter for dataTransfer
+/// Getter for dataTransfer: "must return the value it was initialized to".
 pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return internal.data_transfer;
 }

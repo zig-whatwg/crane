@@ -162,6 +162,9 @@ fn reportThrown(context: *ffi.Context, exception: *ffi.Value, report: runtime.Re
         .colno = 0,
         // Borrowed: the caller's completion Global outlives the report.
         .error_value = .{ .handle = .{ .ptr = exception } },
+        // The realm that threw: an isolated world's error event is that
+        // world's only (html report_exception).
+        .realm = context_manager.get(context),
     };
     if (info) |i| {
         if (i.getMessage()) |m| error_info.message = m;
@@ -294,15 +297,6 @@ pub fn frameWindowDestroyed(realm: runtime.Context) void {
     operations.windowDestroyed(realm);
 }
 
-/// The realm of the function being called - V8 enters a FunctionTemplate
-/// function's own context for the call - and so the Window whose method it is.
-fn callingRealm(isolate: *ffi.Isolate) ?runtime.Context {
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
-    // Owned: GetCurrentContext allocates a Global per call.
-    defer ffi.v8_Context_Dispose(context);
-    return context_manager.get(context);
-}
-
 /// `v8_Integer_New` allocates a Global and SetReturnValue only reads it, so
 /// the caller still owns it - an undisposed one per return is how 14,774
 /// `v8_Number_New` handles leaked in a single timers file.
@@ -322,17 +316,61 @@ fn throwTypeError(isolate: *ffi.Isolate, message: []const u8) void {
 }
 
 fn setTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
-    timerInitializationFromCall(info, false);
+    const realm = receiverWindowRealm(info) orelse return;
+    timerInitializationFromCall(info, realm, false);
 }
 
 fn setIntervalCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
-    timerInitializationFromCall(info, true);
+    const realm = receiverWindowRealm(info) orelse return;
+    timerInitializationFromCall(info, realm, true);
+}
+
+/// WebIDL 3.7.6 "create an operation function" step 2.1, for these Window
+/// operations: "If esValue is null or undefined, set esValue to realm's
+/// global object" - V8 hands a FunctionTemplate function the global proxy
+/// for those - and step 2.1.3: "If esValue does not implement the interface
+/// target, throw a TypeError." So `Object.create(globalThis).setInterval(f)`
+/// and `clearTimeout.call({}, 0)` throw, as in Chrome 157, Firefox 160 and
+/// Safari 27.2 (webidl/ecmascript-binding/global-object-implicit-this-value
+/// {.any,-cross-realm}.html; a worker's global scope already did). The
+/// function's own Window - its realm's global - is the answer without a
+/// handle; any other receiver goes by THE Window-receiver rule
+/// (binding_plumbing.windowOf), which every generated Window member uses.
+///
+/// The answer is the realm of that Window - esValue's, which the operation
+/// acts on: HTML's timer initialization steps run for `this` ("global"), so
+/// `window.setTimeout.call(frame, "...")` makes the timer in the frame's map,
+/// under the frame's Content Security Policy, and
+/// `frame.setTimeout.call(window, ...)` in the window's
+/// (content-security-policy/unsafe-eval/eval-scripts-setTimeout-setInterval-
+/// cross-realm.html; Chrome 157, Firefox 160 and Safari 27.2 pass). They acted
+/// on the function's realm. Null, with the TypeError thrown, when the
+/// receiver is no Window.
+fn receiverWindowRealm(info: *const ffi.FunctionCallbackInfo) ?runtime.Context {
+    const isolate = info.getIsolate();
+    const own_id = ffi.FunctionCallbackInfo.v8_FunctionCallbackInfo_ContextIdIfThisIsCurrentGlobal(info);
+    // An isolated world's global (protocol_worlds.zig) answers its world
+    // realm: the host keeps the Window's state on the Window's main realm
+    // (engine.mainRealmOf) - one map of active timers whatever world calls,
+    // Blink's DOMTimerCoordinator per window - and runs what the world gave
+    // it IN the world: a string handler is compiled there, a callback's this
+    // is the world's WindowProxy (Blink's ScheduledAction keeps the caller's
+    // ScriptState).
+    if (own_id != 0) return context_manager.getByKey(own_id);
+    const this_obj = info.getThis();
+    defer ffi.v8_Object_Dispose(this_obj);
+    if (@import("binding_plumbing.zig").windowOf(isolate, this_obj)) |found| {
+        const window: *runtime.Instance = @ptrCast(@alignCast(found));
+        return window.ctx;
+    }
+    throwTypeError(isolate, "Illegal invocation");
+    return null;
 }
 
 /// The binding of `long setTimeout(TimerHandler handler, optional long
 /// timeout = 0, any... arguments)` and of setInterval: WebIDL argument
 /// conversion, then the host's timer initialization steps.
-fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bool) void {
+fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, realm: runtime.Context, repeat: bool) void {
     const isolate = info.getIsolate();
     const argc: usize = @intCast(@max(info.length(), 0));
 
@@ -347,10 +385,9 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer ffi.v8_Context_Dispose(context);
 
-    // The function's realm - the window whose method this is - and its own
-    // window operations. Found before any argument is converted: the
-    // handler's conversion asks the host about a platform object.
-    const realm = context_manager.get(context) orelse return setIntegerReturn(info, isolate, 0);
+    // The receiver's realm (receiverWindowRealm) and its own window
+    // operations. Found before any argument is converted: the handler's
+    // conversion asks the host about a platform object.
     const operations = realm.window_operations orelse return setIntegerReturn(info, isolate, 0);
 
     // TimerHandler is (TrustedScript or DOMString or Function), converted as
@@ -415,6 +452,7 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
 /// either kind.
 fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    const realm = receiverWindowRealm(info) orelse return;
     if (info.length() < 1) return;
 
     const id_value = info.get(0);
@@ -427,8 +465,7 @@ fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
     var id: i32 = 0;
     if (!ffi.v8_Value_ToInt32(id_value, context, &id)) return;
 
-    // The function's realm: an id names a timer in THIS window's map only.
-    const realm = context_manager.get(context) orelse return;
+    // The receiver's realm: an id names a timer in ITS window's map only.
     const operations = realm.window_operations orelse return;
     operations.clearTimer(realm, id);
 }
@@ -436,23 +473,23 @@ fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
 /// requestAnimationFrame(callback).
 fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    const realm = receiverWindowRealm(info) orelse return;
 
-    // A missing or non-callable argument is a TypeError per WebIDL, but these
-    // natives report argument problems by returning the 0 sentinel rather than
-    // throwing, and a lone thrower here would be the odd one out.
-    if (info.length() < 1) return setIntegerReturn(info, isolate, 0);
+    // WebIDL: `FrameRequestCallback callback` is required and not nullable,
+    // so a call without it, or with anything not callable (null, a number, a
+    // plain object), throws a TypeError - as setTimeout's missing handler
+    // does - with Chrome's messages; Firefox and Safari throw too. It used to
+    // return the 0 sentinel, which zone.js's own suite (Angular's) asserts
+    // against ("should be tolerant of invalid arguments": toThrow()).
+    if (info.length() < 1) return throwTypeError(isolate, "Failed to execute 'requestAnimationFrame' on 'Window': 1 argument required, but only 0 present.");
 
     // OWNED from here: handed to the host, or disposed on the way out.
     const callback_value = info.get(0);
     if (!ffi.v8_Value_IsFunction(callback_value)) {
         ffi.v8_Global_Dispose(callback_value);
-        return setIntegerReturn(info, isolate, 0);
+        return throwTypeError(isolate, "Failed to execute 'requestAnimationFrame' on 'Window': The callback provided as parameter 1 is not a function.");
     }
-    // The function's realm: this window's map of animation frame callbacks.
-    const realm = callingRealm(isolate) orelse {
-        ffi.v8_Global_Dispose(callback_value);
-        return setIntegerReturn(info, isolate, 0);
-    };
+    // The receiver's realm: its window's map of animation frame callbacks.
     const operations = realm.window_operations orelse {
         ffi.v8_Global_Dispose(callback_value);
         return setIntegerReturn(info, isolate, 0);
@@ -465,6 +502,7 @@ fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv
 /// cancelAnimationFrame(handle). An unknown handle must do nothing.
 fn cancelAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
+    const realm = receiverWindowRealm(info) orelse return;
     if (info.length() < 1) return;
 
     const handle_value = info.get(0);
@@ -475,7 +513,6 @@ fn cancelAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(
     const as_f64 = ffi.v8_Value_NumberValue(handle_value, context);
     if (std.math.isNan(as_f64) or as_f64 < 1 or as_f64 > @as(f64, @floatFromInt(std.math.maxInt(u32)))) return;
 
-    const realm = context_manager.get(context) orelse return;
     const operations = realm.window_operations orelse return;
     operations.cancelAnimationFrame(realm, @intFromFloat(as_f64));
 }

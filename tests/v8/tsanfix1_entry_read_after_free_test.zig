@@ -13,6 +13,23 @@
 //! On one thread the read answers null and changes nothing, so this test
 //! counts it instead: the bridge counts every getNodeBase of a freed slot
 //! (instance_bridge.deadSlotLookups), and a realm's end must make none.
+//!
+//! Since the wrapper redesign a node's main-world wrapper lives in its own
+//! slot and never enters a wrapper cache (node_wrappers.zig): the nodes below
+//! are freed by their counts, not by the cache's sweep, and only the Event
+//! and the AbortController take the sweep's gc.onObjectFreed branch this
+//! test was written for (lane mem1's audit, 2026-11-22).
+//!
+//! THE CLASS IT GUARDS: no read of a freed slot in the sweep. Not the order
+//! of the free and the wrapper's end: that order no longer matters, because
+//! letting the wrapper go (wrapper_cache `letGo`) touches only the record and
+//! the V8 wrapper, never the instance or its slot. Reverting it - free first,
+//! then letGo - keeps this test green, and there is no read for
+//! ThreadSanitizer to catch either (lane mem1, 2026-11-23). What fails it is
+//! the read: put the original bug's `instance_bridge.getNodeBase(instance)`
+//! back after `gc.onObjectFreed(instance)` in that branch and it reads
+//! "expected 0, found 4" (the READBACK experiment, lane mem1; the
+//! integrator's ruling, 2026-11-23 7:32 AM ET: this guard, no ordering test).
 
 const std = @import("std");
 const testing = std.testing;
@@ -57,7 +74,7 @@ test "a realm's end reads nothing of an instance its wrapper cache freed" {
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = testing.allocator });
     defer engine.destroyAgent(agent);
-    const page = try engine.createWindowRealm(&.{ .agent = agent, .allocator = testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
+    const page = try engine.createWindowRealm(&.{ .agent_cluster_cross_origin_isolated = true, .agent = agent, .allocator = testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://example.test", .browser_scope = &browser, .create_global_object = Host.window });
     var page_live = true;
     defer if (page_live) engine.destroyWindowRealm(page, .global_detached);
 
@@ -70,7 +87,8 @@ test "a realm's end reads nothing of an instance its wrapper cache freed" {
     dom.document_browsing_context.setWindow(document, window);
 
     // Detached nodes and an event that only their wrappers keep: the realm's
-    // end frees each (the wrapper cache's last branch, gc.onObjectFreed).
+    // end frees each - the Event and the AbortController through the wrapper
+    // cache's last branch (gc.onObjectFreed), the nodes by their counts.
     try expect(page,
         \\globalThis.kept = [new Text('a'), new Comment('b'), new DocumentFragment(),
         \\  document.createElement('p'), new Event('e'), new AbortController()];

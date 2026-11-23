@@ -711,8 +711,16 @@ const ElementNames = struct { id: []const u8, name: ?[]const u8 };
 
 fn namesOf(element: *runtime.Instance) ?ElementNames {
     const data = dom.element_data.of(element) orelse return null;
+    // DOM 4.2.10.2: an element names the collection by its `name` attribute
+    // only when it "is in the HTML namespace" - namedItem's second case and
+    // the supported property names' alike. Any element's name counted, so a
+    // non-HTML element's was found by name, listed by
+    // Object.getOwnPropertyNames and `in` (dom/nodes/Element-children.html,
+    // Element- and Document-getElementsByTagName.html,
+    // dom/collections/HTMLCollection-supported-property-names.html; Chrome
+    // 157, Firefox 160 and Safari 27.2 pass).
     const name: ?[]const u8 = if (data.indexOfQualifiedName("name")) |index|
-        (if (data.attributeAt(index)) |entry| entry.value else null)
+        (if (data.attributeAt(index)) |entry| (if (data.name.isHtml()) entry.value else null) else null)
     else
         null;
     return .{ .id = data.idValue(), .name = name };

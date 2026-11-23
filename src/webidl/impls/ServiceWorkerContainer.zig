@@ -56,6 +56,7 @@ pub fn installHooks() void {
         .route_for_global = &service_worker.realm.routeForGlobal,
         .registration_count = &service_worker.realm.registrationCount,
         .focused = &service_worker.realm.documentFocused,
+        .client_id = &service_worker.realm.clientIdOfRealm,
     });
 }
 

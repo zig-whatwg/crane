@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const SanitizerElementNamespace = @import("SanitizerElementNamespace.zig").SanitizerElementNamespace;
 
 pub const SanitizerElementNamespaceWithAttributes = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from SanitizerElementNamespace
     base: SanitizerElementNamespace,
 

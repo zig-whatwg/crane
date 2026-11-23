@@ -27,6 +27,7 @@ const curl = @import("curl_ffi.zig");
 const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
+const platform = @import("platform");
 const kit_curl = @import("kit_curl_share");
 const content_coding = @import("../content_coding/root.zig");
 
@@ -218,6 +219,13 @@ pub const LibcurlBackend = struct {
         /// same block).
         final_block_start: ?usize = null,
         final_block_scans: u32 = 0,
+        /// Fetch's first interim and final network-response start times
+        /// (HTTP-network fetch's response loop, "While true" steps 1 and 5.1;
+        /// Resource Timing's firstInterimResponseStart and
+        /// finalResponseHeadersStart) for a transfer that received a 1xx
+        /// interim response: made at its first 1xx status line, null for
+        /// every other transfer (`InterimTiming`).
+        interim: ?*InterimTiming = null,
 
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
@@ -239,6 +247,7 @@ pub const LibcurlBackend = struct {
 
         fn deinit(self: *CallbackContext) void {
             self.dropDecoder();
+            self.dropInterim();
             self.response_body.deinit(self.allocator);
             for (self.response_headers.items) |header| {
                 self.allocator.free(header.name);
@@ -251,6 +260,27 @@ pub const LibcurlBackend = struct {
             if (self.url_z) |url| self.allocator.free(url);
             if (self.method_z) |method| self.allocator.free(method);
             if (self.header_list) |list| curl.slist_free_all(list);
+        }
+
+        /// The final network-response start time (ms after the transfer
+        /// started) and, when a 1xx came, the first interim one (us after it;
+        /// 0 for none). curl's time to the first byte, `starttransfer_ms`,
+        /// is the first response byte - libcurl sets STARTTRANSFER at the
+        /// first header line it writes, a 1xx's included (lib/sendf.c
+        /// cw_download_write) - so with an interim response it is the first
+        /// interim start, and the final start is that plus how long after it
+        /// the final status line came.
+        fn responseStarts(self: *const CallbackContext, starttransfer_ms: f64) struct { final_ms: f64, first_interim_us: u32 } {
+            const timing = self.interim orelse return .{ .final_ms = starttransfer_ms, .first_interim_us = 0 };
+            const after = timing.final_after_first_ns orelse return .{ .final_ms = starttransfer_ms, .first_interim_us = 0 };
+            const us = std.math.lossyCast(u32, starttransfer_ms * std.time.us_per_ms);
+            return .{ .final_ms = starttransfer_ms + nsToMs(after), .first_interim_us = @max(us, 1) };
+        }
+
+        fn dropInterim(self: *CallbackContext) void {
+            const timing = self.interim orelse return;
+            self.interim = null;
+            self.allocator.destroy(timing);
         }
 
         /// The final response's header block (`finalBlock`), scanned for
@@ -707,6 +737,7 @@ pub const Transfer = struct {
         self.ctx.final_block_start = null;
         self.ctx.encoded_bytes = 0;
         self.ctx.decode_failed = false;
+        self.ctx.dropInterim();
     }
 
     /// How many attempts a transfer gets when its connection fails.
@@ -801,6 +832,7 @@ pub const Transfer = struct {
         // headers are in: its measurements are all known now, and HTTP-network
         // fetch records them from this head (a navigation is streamed).
         const connection = ConnectionMeasures.of(self);
+        const starts = self.ctx.responseStarts(starttransfer_time * 1000);
 
         const status_message = try ownedReason(allocator, block);
         errdefer if (status_message.len > 0) allocator.free(status_message);
@@ -822,7 +854,8 @@ pub const Transfer = struct {
             else
                 null,
             .total_time_ms = 0,
-            .time_to_first_byte_ms = starttransfer_time * 1000,
+            .time_to_first_byte_ms = starts.final_ms,
+            .first_interim_response_us = starts.first_interim_us,
             .redirect_count = 0,
             .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
@@ -870,12 +903,15 @@ pub const Transfer = struct {
         var status_code: c_long = 0;
         _ = curl.easy_getinfo(self.handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
         if (isCloseDelimitedEndOfBlock(result, status_code, self.ctx.raw_headers.items[self.ctx.block_start..end])) return;
-        const net_err = curl_error.mapCurlError(result);
+        const message = curl.errorBufferMessage(&self.error_buf, result);
+        // Chromium's name for it: a body cut short, or a chunked body that
+        // does not parse, is told by curl's message (refineTransferError).
+        const net_err = refineTransferError(curl_error.mapCurlError(result), message);
         log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
             self.method,
             self.url,
             result,
-            curl.errorBufferMessage(&self.error_buf, result),
+            message,
             @errorName(net_err),
         });
         return net_err;
@@ -925,12 +961,13 @@ pub const Transfer = struct {
                 // and the WPT runner's default level is `.warn`, so a DNS
                 // failure, a refused connection and a TLS handshake error all
                 // printed exactly nothing.
-                const net_err = curl_error.mapCurlError(result);
+                const message = curl.errorBufferMessage(&self.error_buf, result);
+                const net_err = refineTransferError(curl_error.mapCurlError(result), message);
                 log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
                     self.method,
                     self.url,
                     result,
-                    curl.errorBufferMessage(&self.error_buf, result),
+                    message,
                     @errorName(net_err),
                 });
                 return net_err;
@@ -947,6 +984,7 @@ pub const Transfer = struct {
 
         var starttransfer_time: f64 = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
+        const starts = ctx.responseStarts(starttransfer_time * 1000);
 
         var redirect_count: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_COUNT, &redirect_count);
@@ -1025,7 +1063,8 @@ pub const Transfer = struct {
             .encoded_body_size = ctx.encoded_bytes,
             .final_url = final_url,
             .total_time_ms = @intFromFloat(total_time * 1000),
-            .time_to_first_byte_ms = starttransfer_time * 1000,
+            .time_to_first_byte_ms = starts.final_ms,
+            .first_interim_response_us = starts.first_interim_us,
             .redirect_count = @intCast(redirect_count),
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
@@ -1073,6 +1112,74 @@ fn codingsOfBlock(block: []const u8) content_coding.Plan {
     return content_coding.plan(BlockFields{ .lines = headerLines(block), .name = "content-encoding" });
 }
 
+/// A transfer's failure as Chromium names it (net_error_list.h), where curl's
+/// code does not say and its message does. `err` is the code's mapping
+/// (curl_error.mapCurlError), `message` what curl wrote for the failure
+/// (CURLOPT_ERRORBUFFER keeps the first). lib/ at the vendored curl
+/// (zig-whatwg/curl 8300fa889e5e, curl 8.18.0):
+/// - a chunked body whose framing does not parse: http_chunks.c fails it
+///   with CURLE_RECV_ERROR, a reset's code, and one of its messages
+///   (`isChunkFramingMessage`): ERR_INVALID_CHUNKED_ENCODING;
+/// - a body cut short: CURLE_PARTIAL_FILE, which the code mapping leaves
+///   unknown - of a chunked body (http_chunks.c "transfer closed with
+///   outstanding read data remaining"): ERR_INCOMPLETE_CHUNKED_ENCODING; of
+///   a Content-Length (sendf.c "end of response with %d bytes missing",
+///   transfer.c "transfer closed with %d bytes remaining to read"):
+///   ERR_CONTENT_LENGTH_MISMATCH.
+/// A curl update that rewords these fails tests/fetch/
+/// fw2_chunked_errors_test.zig, which sends each through the vendored curl.
+fn refineTransferError(err: NetworkError, message: []const u8) NetworkError {
+    if (err == NetworkError.ConnectionReset and isChunkFramingMessage(message)) return NetworkError.InvalidChunkedEncoding;
+    if (err == NetworkError.Unknown) {
+        if (std.mem.eql(u8, message, "transfer closed with outstanding read data remaining")) return NetworkError.IncompleteChunkedEncoding;
+        if (std.mem.startsWith(u8, message, "end of response with ") and std.mem.endsWith(u8, message, " bytes missing")) return NetworkError.ContentLengthMismatch;
+        if (std.mem.startsWith(u8, message, "transfer closed with ") and std.mem.endsWith(u8, message, " bytes remaining to read")) return NetworkError.ContentLengthMismatch;
+    }
+    return err;
+}
+
+/// curl's messages for a chunked body whose framing does not parse
+/// (http_chunks.c): httpchunk_readwrite's own for a hex length too long
+/// ("chunk hex-length longer than %d"), a length character that is not hex
+/// ("chunk hex-length char not a hex digit: 0x%x") and a length that does
+/// not parse ("invalid chunk size: '%s'"); Curl_httpchunk_read's "%s in
+/// chunked-encoding" for those without one, of which the framing ones are
+/// Curl_chunked_strerror's CHUNKE_TOO_LONG_HEX, CHUNKE_ILLEGAL_HEX and
+/// CHUNKE_BAD_CHUNK (a chunk's data not followed by CRLF). Not
+/// CHUNKE_PASSTHRU_ERROR ("Failed reading the chunked-encoded stream": the
+/// writer behind the parser failed) nor CHUNKE_OUT_OF_MEMORY.
+fn isChunkFramingMessage(message: []const u8) bool {
+    const prefixes = [_][]const u8{ "chunk hex-length longer than ", "chunk hex-length char not a hex digit: ", "invalid chunk size: " };
+    for (prefixes) |p| if (std.mem.startsWith(u8, message, p)) return true;
+    const whole = [_][]const u8{
+        "Too long hexadecimal number in chunked-encoding",
+        "Illegal or missing hexadecimal sequence in chunked-encoding",
+        "Malformed encoding found in chunked-encoding",
+    };
+    for (whole) |w| if (std.mem.eql(u8, message, w)) return true;
+    return false;
+}
+
+test "refineTransferError: curl's messages for a body cut short and a chunked body that does not parse" {
+    try std.testing.expectEqual(NetworkError.ContentLengthMismatch, refineTransferError(NetworkError.Unknown, "end of response with 95 bytes missing"));
+    try std.testing.expectEqual(NetworkError.ContentLengthMismatch, refineTransferError(NetworkError.Unknown, "transfer closed with 95 bytes remaining to read"));
+    try std.testing.expectEqual(NetworkError.IncompleteChunkedEncoding, refineTransferError(NetworkError.Unknown, "transfer closed with outstanding read data remaining"));
+    for ([_][]const u8{
+        "chunk hex-length char not a hex digit: 0x7a",
+        "chunk hex-length longer than 16",
+        "invalid chunk size: 'ffffffffffffffffff'",
+        "Illegal or missing hexadecimal sequence in chunked-encoding",
+        "Malformed encoding found in chunked-encoding",
+        "Too long hexadecimal number in chunked-encoding",
+    }) |message| try std.testing.expectEqual(NetworkError.InvalidChunkedEncoding, refineTransferError(NetworkError.ConnectionReset, message));
+    // A reset stays a reset; the parser's writer failing is no framing error;
+    // another unknown failure stays unknown.
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Recv failure: Connection reset by peer"));
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Failed reading the chunked-encoded stream"));
+    try std.testing.expectEqual(NetworkError.ConnectionReset, refineTransferError(NetworkError.ConnectionReset, "Out of memory in chunked-encoding"));
+    try std.testing.expectEqual(NetworkError.Unknown, refineTransferError(NetworkError.Unknown, "HTTP/2 stream 1 was reset"));
+}
+
 fn blockHasField(block: []const u8, name: []const u8) bool {
     var fields: BlockFields = .{ .lines = headerLines(block), .name = name };
     return fields.next() != null;
@@ -1112,11 +1219,47 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
     }
 
     const total_size = size * nmemb;
+    const starts_block = ctx.raw_headers.items.len == ctx.block_start;
     ctx.raw_headers.appendSlice(ctx.allocator, data[0..total_size]) catch {
         return 0; // Signal error
     };
+    if (starts_block) noteStatusLine(ctx, data[0..total_size]);
     noteHeaderLine(ctx, data[0..total_size]);
     return total_size;
+}
+
+/// The interim response timing of a transfer that received a 1xx: the
+/// monotonic clock from its first 1xx status line - the response's first
+/// byte - and how long after it the final status line came. Allocated only
+/// then: every transfer without one carries one null pointer.
+const InterimTiming = struct {
+    since_first: platform.Stopwatch,
+    final_after_first_ns: ?u64 = null,
+};
+
+/// A header block's first line has arrived: when it is the status line of
+/// the first 1xx interim response, start its InterimTiming; when it is the
+/// final response's after one, note how long after (HTTP-network fetch's
+/// response loop: step 1 sets the final network-response start time at each
+/// response's first byte, and step 5.1, for a status in the range 100 to
+/// 199, the first interim one when it is still 0). Timing is best effort: a
+/// failed allocation leaves the transfer timed as one with no interim
+/// response.
+fn noteStatusLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
+    if (ctx.head_end != null) return;
+    const status = statusOfBlock(line) orelse return;
+    if (status >= 100 and status < 200) {
+        if (ctx.interim != null) return;
+        const timing = ctx.allocator.create(InterimTiming) catch return;
+        timing.* = .{ .since_first = platform.Stopwatch.start() };
+        ctx.interim = timing;
+    } else if (ctx.interim) |timing| {
+        timing.final_after_first_ns = timing.since_first.read();
+    }
+}
+
+fn nsToMs(ns: u64) f64 {
+    return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
 }
 
 /// Keep track of where header blocks end. curl hands every block it reads -

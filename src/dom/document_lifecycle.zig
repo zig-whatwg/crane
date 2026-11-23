@@ -41,13 +41,16 @@ pub const Implementation = struct {
     script_delivery_discarded: *const fn (document: *runtime.Instance, removed_parser_blocker: bool) void,
     delays_load_event: *const fn (document: *runtime.Instance) bool,
     is_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) bool,
+    /// HTML print() step 5: set the document's "print when loaded" flag,
+    /// which "the end" step 12 reads.
+    set_print_when_loaded: *const fn (document: *runtime.Instance) void,
     mark_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) void,
     is_completely_loaded: *const fn (document: *runtime.Instance) bool,
     is_initial_about_blank: *const fn (document: *runtime.Instance) bool,
     mark_initial_about_blank: *const fn (document: *runtime.Instance) void,
     is_unloading: *const fn (document: *runtime.Instance) bool,
-    fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
-    unload: *const fn (document: *runtime.Instance, destroy: UnloadDestroy) void,
+    fire_beforeunload: *const fn (document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult,
+    unload: *const fn (document: *runtime.Instance, destroy: UnloadDestroy, timing: ?*UnloadTimingInfo) void,
     abort: *const fn (document: *runtime.Instance) void,
     /// Navigation's provisional abort, before the replacement commits.
     abort_for_navigation: *const fn (document: *runtime.Instance) void,
@@ -192,6 +195,13 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     return impl.delays_load_event(document);
 }
 
+/// HTML print() step 5: `document`'s "print when loaded" flag is set - "the
+/// end" runs the printing steps once it reaches step 12.
+pub fn setPrintWhenLoaded(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.set_print_when_loaded(document);
+}
+
 /// HTML "ready for post-load tasks", independent of current readiness and
 /// completely-loaded time. Document.open does not reset this state.
 pub fn isReadyForPostLoadTasks(document: *runtime.Instance) bool {
@@ -234,9 +244,29 @@ pub fn isUnloading(document: *runtime.Instance) bool {
 
 /// The "steps to fire beforeunload" given `document`.
 pub fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
-    const impl = implementation.get() orelse return .{};
-    return impl.fire_beforeunload(document);
+    return fireBeforeUnloadGiven(document, false);
 }
+
+/// The "steps to fire beforeunload" given `document` and
+/// `unload_prompt_shown`: whether an earlier document of the same check
+/// already showed the unload prompt (step 6 shows at most one per check -
+/// "checking if unloading is canceled" passes it along).
+pub fn fireBeforeUnloadGiven(document: *runtime.Instance, unload_prompt_shown: bool) BeforeUnloadResult {
+    const impl = implementation.get() orelse return .{};
+    return impl.fire_beforeunload(document, unload_prompt_shown);
+}
+
+/// HTML's "document unload timing info": the unload event's start and end
+/// times, which "unload" steps 11 and 13 set (milliseconds of `now`'s clock,
+/// the unsafe shared current time the caller made it relative to its new
+/// document's time origin from: Navigation Timing's unloadEventStart and
+/// unloadEventEnd). Times only the document's own unload event - not its
+/// pagehide, and not its descendants' unloads.
+pub const UnloadTimingInfo = struct {
+    unload_event_start: f64 = 0,
+    unload_event_end: f64 = 0,
+    now: *const fn () f64,
+};
 
 /// Who runs "unload" step 20 - "if oldDocument's salvageable state is false,
 /// then destroy oldDocument" - for an unload.
@@ -252,7 +282,7 @@ pub const UnloadDestroy = enum {
 /// destroyed (step 20).
 pub fn unload(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
-    impl.unload(document, .now);
+    impl.unload(document, .now, null);
 }
 
 /// `unload` without step 20: `document` is not destroyed here, even when it
@@ -266,8 +296,14 @@ pub fn unload(document: *runtime.Instance) void {
 /// is the document shut down (Document::Shutdown). HTMLIFrameElement's
 /// unloadDocumentTree states the order.
 pub fn unloadLeavingDestroy(document: *runtime.Instance) void {
+    unloadLeavingDestroyTimed(document, null);
+}
+
+/// `unloadLeavingDestroy` given HTML's unloadTimingInfo: `timing`, when
+/// given, gets the unload event's start and end (steps 11 and 13).
+pub fn unloadLeavingDestroyTimed(document: *runtime.Instance, timing: ?*UnloadTimingInfo) void {
     const impl = implementation.get() orelse return;
-    impl.unload(document, .by_caller);
+    impl.unload(document, .by_caller, timing);
 }
 
 /// HTML "abort" `document` (§7.5.6): a parser still running - a navigation

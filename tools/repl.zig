@@ -82,6 +82,8 @@ const Browser = browser_mod.Browser;
 const BrowserConfig = browser_mod.BrowserConfig;
 const printer = @import("console").printer;
 const developer_console = Browser.developer_console;
+/// Chrome's remote debugging (src/devtools; -Dcdp).
+const devtools = @import("devtools");
 
 /// No debug log lines in a Debug build of the console: the console's output
 /// is what the user reads (tools/gc_bench.zig does the same).
@@ -125,6 +127,39 @@ pub const Options = struct {
     check_leaks: bool = false,
     /// `--help`.
     help: bool = false,
+    /// Chrome's `--remote-debugging-port=<n>` (0: any free port): the
+    /// console serves the Chrome DevTools Protocol (`serveDevtools`).
+    remote_debugging_port: ?u16 = null,
+    /// Chrome's `--remote-debugging-pipe`: CDP on the inherited descriptors
+    /// 3 (read) and 4 (write), NUL-delimited (decision D8).
+    remote_debugging_pipe: bool = false,
+    /// Chrome's `--remote-allow-origins=<a,b>` (or `*`): origins whose
+    /// WebSocket connections are served.
+    remote_allow_origins: ?[]const u8 = null,
+    /// Chrome's `--user-data-dir=<dir>`: the Browser's profile directory
+    /// (BrowserConfig.profile_dir, decision D6), where DevToolsActivePort is
+    /// written too.
+    user_data_dir: ?[]const u8 = null,
+    /// Chrome's `--headless[=new|old]`: Crane always is.
+    headless: bool = false,
+    /// Chrome's `--proxy-server=<rules>` (switches::kProxyServer): Chrome's
+    /// proxy rules (ProxyRules::ParseFromString) for every request, over
+    /// `--proxy`. Playwright's launch-level proxy passes it.
+    proxy_server: ?[]const u8 = null,
+    /// Chrome's `--proxy-bypass-list=<rules>` (switches::kProxyBypassList),
+    /// with --proxy-server.
+    proxy_bypass_list: ?[]const u8 = null,
+    /// Chrome's `--no-startup-window` (switches::kNoStartupWindow): the
+    /// browser starts with no window - no first tab - and a client makes the
+    /// tabs it wants (Playwright passes it for a launch that is not
+    /// persistent, playwright-core chromium.ts _innerDefaultArgs).
+    no_startup_window: bool = false,
+
+    /// Whether the command line asks for remote debugging: then Chrome's
+    /// other switches are accepted and ignored, as a launcher passes many.
+    pub fn remoteDebugging(self: *const Options) bool {
+        return self.remote_debugging_port != null or self.remote_debugging_pipe;
+    }
 };
 
 pub const usage =
@@ -146,18 +181,36 @@ pub const usage =
     \\  --check-leaks            a leak-checking allocator; leaks reported at exit
     \\                           (CRANE_LEAK_TRACES=1 adds each one's stack trace)
     \\
+    \\Remote debugging (Chrome's switches; the console then reads no input and runs
+    \\until Browser.close, the pipe's end, or a signal):
+    \\  --remote-debugging-port=<n>   serve the Chrome DevTools Protocol on 127.0.0.1:<n>
+    \\                                (0: any free port); prints "DevTools listening on
+    \\                                ws://..." on stderr
+    \\  --remote-debugging-pipe       serve it on descriptors 3 (in) and 4 (out)
+    \\  --remote-allow-origins=<list> origins allowed to connect (comma-separated, or *)
+    \\  --user-data-dir=<dir>         the profile directory; DevToolsActivePort is written there
+    \\  --headless                    accepted (Crane is headless); other Chrome switches are
+    \\                                accepted and ignored with remote debugging
+    \\
 ;
 
 /// Why `--profile` is refused.
 pub const profile_refusal = "profiles are not supported yet: Crane's stores (cookies, localStorage, IndexedDB, the Cache API, the HTTP cache) are in memory only, so a profile directory would keep nothing";
 
-pub const OptionsError = error{ UnknownOption, MissingValue, InvalidTimeout, TooManyArguments };
+pub const OptionsError = error{ UnknownOption, MissingValue, InvalidTimeout, TooManyArguments, InvalidPort };
 
 /// The options `args` (without the program name) ask for. Every slice is
 /// borrowed from `args`. `bad` is set to the argument a failure is about.
 pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Options {
     var options: Options = .{};
     var url_seen = false;
+    // Chrome's launchers (Puppeteer, chromedriver) pass many switches the
+    // console has no use for: with remote debugging asked for, an unknown
+    // switch is accepted and ignored, as Chrome ignores one it does not
+    // know (base::CommandLine keeps every switch; nothing reads it).
+    const chrome_mode = for (args) |arg| {
+        if (valueOf(arg, "--remote-debugging-port") != null or std.mem.eql(u8, arg, "--remote-debugging-pipe")) break true;
+    } else false;
     for (args) |arg| {
         bad.* = arg;
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
@@ -186,7 +239,25 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
         } else if (valueOf(arg, "--profile")) |value| {
             if (value.len == 0) return error.MissingValue;
             options.profile = value;
+        } else if (valueOf(arg, "--remote-debugging-port")) |value| {
+            options.remote_debugging_port = std.fmt.parseUnsigned(u16, value, 10) catch return error.InvalidPort;
+        } else if (std.mem.eql(u8, arg, "--remote-debugging-pipe")) {
+            options.remote_debugging_pipe = true;
+        } else if (valueOf(arg, "--remote-allow-origins")) |value| {
+            options.remote_allow_origins = value;
+        } else if (valueOf(arg, "--user-data-dir")) |value| {
+            if (value.len == 0) return error.MissingValue;
+            options.user_data_dir = value;
+        } else if (std.mem.eql(u8, arg, "--headless") or valueOf(arg, "--headless") != null) {
+            options.headless = true;
+        } else if (valueOf(arg, "--proxy-server")) |value| {
+            options.proxy_server = value;
+        } else if (valueOf(arg, "--proxy-bypass-list")) |value| {
+            options.proxy_bypass_list = value;
+        } else if (std.mem.eql(u8, arg, "--no-startup-window")) {
+            options.no_startup_window = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
+            if (chrome_mode) continue;
             return error.UnknownOption;
         } else {
             if (url_seen) return error.TooManyArguments;
@@ -196,6 +267,106 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
     }
     return options;
 }
+
+/// Chrome's remote debugging (decision D2, the user 2026-11-21): with
+/// --remote-debugging-port or --remote-debugging-pipe the console is the
+/// headless browser a CDP client drives - Puppeteer's launch
+/// (PUPPETEER_EXECUTABLE_PATH) starts it with Chrome's switches and reads
+/// "DevTools listening on ws://..." from stderr, as from Chrome
+/// (chrome/browser/devtools/remote_debugging_server.cc prints the same line).
+/// Its Browser runs on a thread of its own (BrowserHost) with one tab, the
+/// command line's URL (Chrome opens about:blank when none); the console reads
+/// no input and waits until Browser.close, the pipe's end, or a signal ends
+/// the process.
+fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.Io.Writer) !u8 {
+    var config: BrowserConfig = .{
+        .ca_bundle_path = options.ca_bundle,
+        .user_agent = options.user_agent,
+        .proxy = options.proxy,
+        .accept_insecure_certs = options.accept_insecure_certs,
+    };
+    // --proxy-server: the Browser's, and every context the client makes
+    // (Chrome's off-the-record profiles take the command line's proxy).
+    var proxy_rules = try chromeProxyRules(allocator, options);
+    defer if (proxy_rules) |*rules| rules.deinit();
+    if (proxy_rules) |*rules| config.proxy = .{ .rules = rules };
+    // Decision D6 (the user, 2026-11-21): --user-data-dir is the Browser's
+    // profile directory (lane life1's profile persistence).
+    if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = options.user_data_dir;
+    const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
+        try err_out.print("repl: the browser could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer host.stop();
+
+    // The first tab, before the server starts: the client finds it as an
+    // existing target, as it finds Chrome's first window.
+    const FirstTab = struct {
+        url: []const u8,
+        failed: bool = false,
+        fn run(context: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            _ = devtools.host_bridge.createTab(b, .{ .url = self.url }) catch {
+                self.failed = true;
+            };
+        }
+    };
+    // --no-startup-window: none (Chrome starts with no browser window; the
+    // client's Target.createTarget makes the first tab).
+    var first_tab: FirstTab = .{ .url = options.url };
+    if (!options.no_startup_window) host.call(&first_tab, FirstTab.run) catch {
+        first_tab.failed = true;
+    };
+    if (first_tab.failed) {
+        try err_out.print("repl: the first tab could not open\n", .{});
+        try err_out.flush();
+        return 1;
+    }
+
+    var origins: [32][]const u8 = undefined;
+    var origin_count: usize = 0;
+    if (options.remote_allow_origins) |list| {
+        var it = std.mem.tokenizeScalar(u8, list, ',');
+        while (it.next()) |origin| {
+            if (origin_count == origins.len) break;
+            origins[origin_count] = std.mem.trim(u8, origin, " ");
+            origin_count += 1;
+        }
+    }
+    const server = devtools.Server.start(allocator, .{
+        .port = options.remote_debugging_port,
+        .pipe = if (options.remote_debugging_pipe) .{} else null,
+        .allowed_origins = origins[0..origin_count],
+        .user_data_dir = options.user_data_dir,
+        .user_agent = options.user_agent orelse "",
+        .default_host = host,
+        .context_config = config,
+    }) catch |err| {
+        try err_out.print("repl: remote debugging could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer server.stop();
+    if (options.remote_debugging_port != null) {
+        var url_buffer: [160]u8 = undefined;
+        try err_out.print("\nDevTools listening on {s}\n", .{server.browserUrl(&url_buffer)});
+        try err_out.flush();
+    }
+    server.waitUntilClosed();
+    return 0;
+}
+
+/// Chrome's `--proxy-server` and `--proxy-bypass-list`, parsed as Chrome
+/// parses them (fetch/network/proxy_rules.zig); null without
+/// --proxy-server. OWNED: `deinit`.
+fn chromeProxyRules(allocator: std.mem.Allocator, options: Options) !?ProxyRules {
+    const server = options.proxy_server orelse return null;
+    return try ProxyRules.parse(allocator, server, options.proxy_bypass_list orelse "");
+}
+
+/// fetch.network.NetworkContext.ProxyRules, as BrowserConfig names it.
+const ProxyRules = @typeInfo(@FieldType(BrowserConfig.Proxy, "rules")).pointer.child;
 
 /// `arg`'s value when it is `<name>=<value>`.
 fn valueOf(arg: []const u8, name: []const u8) ?[]const u8 {
@@ -774,8 +945,8 @@ pub const Console = struct {
         \\.url             the tab's URL
         \\.tabs            the Browser's tabs: its own and every popup a page opened
         \\.tab <n>         evaluate in tab <n> from now on
-        \\.newtab [<url>]  open a new tab (not supported yet)
-        \\.close [<n>]     close tab <n> (a popup), or the selected one
+        \\.newtab [<url>]  open a new tab (about:blank by default), select it and wait for its load
+        \\.close [<n>]     close tab <n>, or the selected one (not the Browser's first)
         \\.help            this list
         \\.exit            end the console (Ctrl+D, or Ctrl+C twice at an empty prompt)
         \\
@@ -831,7 +1002,7 @@ pub const Console = struct {
         } else if (std.mem.eql(u8, name, ".tab")) {
             self.selectTab(argument);
         } else if (std.mem.eql(u8, name, ".newtab")) {
-            self.emit("(.newtab is not supported yet: a tab the host opens needs a Window realm that is not entered for its life - its own batch, HOST-OPENED TABS; window.open() from a page opens a popup, which .tabs lists)\n");
+            return self.newTab(argument);
         } else if (std.mem.eql(u8, name, ".close")) {
             self.closeTab(argument);
         } else {
@@ -882,6 +1053,23 @@ pub const Console = struct {
         self.print("(the console evaluates in tab {s}: {s})\n", .{ argument, url });
     }
 
+    /// `.newtab [<url>]`: the browser's new-tab button - a tab of the host's
+    /// own in a new browsing context group (Browser.createTab) - selected,
+    /// then its first navigation waited for as `.open` waits.
+    fn newTab(self: *Console, argument: []const u8) void {
+        const url = if (argument.len == 0) "about:blank" else argument;
+        const id = self.browser.createTab(.{}) catch |err| {
+            self.print("(could not open a tab: {s})\n", .{describe(err)});
+            return self.becomeReady(.ready);
+        };
+        self.selected = id;
+        if (std.mem.eql(u8, url, "about:blank")) {
+            self.print("(the console evaluates in the new tab: about:blank)\n", .{});
+            return self.becomeReady(.ready);
+        }
+        self.open(url);
+    }
+
     fn closeTab(self: *Console, argument: []const u8) void {
         const chosen: ?u64 = if (argument.len == 0) self.selected else self.tabNumbered(argument);
         const id = chosen orelse return self.print("(no tab {s}: .tabs lists them)\n", .{argument});
@@ -889,6 +1077,8 @@ pub const Console = struct {
             error.HostTraversable => return self.emit("(the Browser's own tab closes with the console: .exit)\n"),
             else => return self.print("(could not close the tab: {s})\n", .{describe(err)}),
         };
+        // The selected tab closed: the console evaluates in the active one.
+        if (self.selected != null and self.selected.? == id) self.selected = self.browser.activeTab();
         self.noteDocuments(true);
     }
 
@@ -1862,6 +2052,7 @@ pub fn main(init: std.process.Init) !u8 {
             error.MissingValue => "needs a value",
             error.InvalidTimeout => "not a number of milliseconds",
             error.TooManyArguments => "only one URL is opened",
+            error.InvalidPort => "not a port number",
         }, usage });
         try err_out.flush();
         return 2;
@@ -1873,6 +2064,11 @@ pub fn main(init: std.process.Init) !u8 {
     }
     if (options.profile) |dir| {
         try err_out.print("repl: --profile={s}: {s}\n", .{ dir, profile_refusal });
+        try err_out.flush();
+        return 2;
+    }
+    if (options.remoteDebugging() and !devtools.enabled) {
+        try err_out.print("repl: --remote-debugging-{s}: {s}\n", .{ if (options.remote_debugging_pipe) "pipe" else "port", devtools.unavailable_message });
         try err_out.flush();
         return 2;
     }
@@ -1908,11 +2104,17 @@ pub fn main(init: std.process.Init) !u8 {
     var process = try browser_mod.Process.init(.{ .snapshot_path = if (has_snapshot) snapshot else null });
     defer process.deinit();
 
+    if (comptime devtools.enabled) {
+        if (options.remoteDebugging()) return serveDevtools(allocator, options, err_out);
+    }
+
     // In memory (BrowserConfig's default): nothing is written to disk.
+    var proxy_rules = try chromeProxyRules(allocator, options);
+    defer if (proxy_rules) |*rules| rules.deinit();
     const browser = try Browser.init(allocator, .{
         .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
-        .proxy = options.proxy,
+        .proxy = if (proxy_rules) |*rules| .{ .rules = rules } else options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
     });
     defer browser.deinit();

@@ -413,7 +413,13 @@ fn prepareScriptElementFor(
         const base_url = documentBaseUrlAlloc(allocator, node_document, script_element) orelse
             return ScriptExecutionError.OutOfMemory;
         defer allocator.free(base_url);
-        const parsed_url = parseUrl(script_element, src, base_url) orelse {
+        // With the node document's character encoding for the query, as
+        // all three browsers encode it (html/syntax/speculative-parsing
+        // document-write/meta-charset-script-src: Chrome 157, Firefox 160 and
+        // Safari 27.2 send a windows-1252 document's U+011E as "&#286;") -
+        // and as the speculative HTML parser does, whose request the element's
+        // must equal to take it over.
+        const parsed_url = (dom.encoding_parse.encodingParseAndSerializeAgainst(script_element.ctx.allocator, script_element, src, base_url) catch null) orelse {
             // Step 33.6: If url is failure, queue an element task to fire error
             // at el, and return.
             queueErrorEventTask(script_element);
@@ -585,49 +591,7 @@ fn prepareScriptElementFor(
                 if (prepareInlineModuleScript(script_element, doc, source_text, start orelse .{}, base_url))
                     return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
             },
-            .importmap => {
-                // Parse and register import map
-                // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
-
-                // Step 1: Check if import map has already been acquired
-                if (document_modules.importMapAcquired(doc)) {
-                    // Only one import map per document is allowed
-                    // Subsequent import maps are ignored with a console warning
-                    log.debug("Import map ignored: document already has an import map\n", .{});
-                    return false;
-                }
-
-                // Step 2: Parse the import map JSON
-                var import_map_result = parseImportMap(allocator, source_text, base_url);
-                // The parse result is this step's: registering it copies
-                // every specifier, scope and URL into the document's map
-                // (Document's add(Scoped)ImportMapping dupe each one). Left,
-                // its maps, keys and resolved URLs leaked per import map.
-                defer import_map_result.deinit(allocator);
-                defer {
-                    if (import_map_result.allocator) |alloc| {
-                        if (import_map_result.error_message) |msg| {
-                            alloc.free(msg);
-                        }
-                    }
-                }
-
-                if (import_map_result.error_message) |err_msg| {
-                    log.debug("Import map parse error: {s}\n", .{err_msg});
-                    return false;
-                }
-
-                // Step 3: Register the import map
-                registerImportMap(doc, import_map_result) catch |err| {
-                    log.debug("Failed to register import map: {}\n", .{err});
-                    return false;
-                };
-
-                // Step 4: Mark import map as acquired
-                document_modules.acquireImportMap(doc);
-
-                return true;
-            },
+            .importmap => return registerInlineImportMap(allocator, doc, source_text, base_url),
             .speculationrules => {
                 // Parse and process speculation rules
                 // Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rules
@@ -799,6 +763,7 @@ fn handleScriptSchedulingOf(
                 return ScriptExecutionError.OutOfMemory;
             };
             setPendingParsingBlockingScript(parser_document orelse doc, script_element);
+            reportDocumentWrittenBlockingScript(parser_document orelse doc);
         }
         return true;
     }
@@ -1063,6 +1028,19 @@ pub fn pendingParsingBlockingScript(document: *runtime.Instance) ?*runtime.Insta
     return scripts.pending_parsing_blocking_script;
 }
 
+/// A host's blockedParser violation: a parser-blocking external script
+/// written by document.write() into a top-level document (Blink's
+/// MaybeDisallowFetchForDocWrittenScript -> probe::DocumentWriteFetchScript:
+/// in document.write, in the outermost main frame, not deferred).
+fn reportDocumentWrittenBlockingScript(document: *runtime.Instance) void {
+    const lists = document_scripts.of(document) orelse return;
+    if (lists.document_write_depth == 0) return;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const bc = dom.browser_state.browsingContextOf(window) orelse return;
+    if (bc.parent != null) return;
+    dom.performance_monitor.reportUntimed(window.ctx, .blocked_parser, "Parser was blocked due to document.write(<script>)");
+}
+
 fn setPendingParsingBlockingScript(document: *runtime.Instance, script: ?*runtime.Instance) void {
     if (document_scripts.of(document)) |scripts| scripts.pending_parsing_blocking_script = script;
 }
@@ -1297,8 +1275,7 @@ const max_drain_depth = 16;
 /// The drain state of the agent `document`'s realm belongs to (a document's
 /// realm is a window realm: its agent is its Browser's window agent).
 fn drainStateOf(document: *runtime.Instance) ?*ScriptDrain {
-    const agent = document.ctx.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(document.ctx) orelse return null;
     return &host.script_drain;
 }
 
@@ -1634,8 +1611,7 @@ const ClassicScripts = @import("html_core").agent_host.ClassicScripts;
 /// The classic script records of `realm`'s agent; null for an agent with no
 /// host - an engine-less test's, or an adapter's that keeps none.
 fn classicScriptsOf(realm: runtime.Context) ?*ClassicScripts {
-    const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.classic_scripts;
 }
 
@@ -1704,6 +1680,51 @@ fn disposeModuleMapEntry(key: []const u8, value: *anyopaque) void {
     module_script.disposeEntry(value);
 }
 
+/// Step 34.2's "importmap" case, for an HTML or an SVG script whose type is
+/// "importmap": parse `source_text` relative to `base_url` and register the
+/// import map with `document`'s. True when it was registered.
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
+fn registerInlineImportMap(allocator: std.mem.Allocator, doc: *runtime.Instance, source_text: []const u8, base_url: []const u8) bool {
+    // Step 1: Check if import map has already been acquired
+    if (document_modules.importMapAcquired(doc)) {
+        // Only one import map per document is allowed
+        // Subsequent import maps are ignored with a console warning
+        log.debug("Import map ignored: document already has an import map\n", .{});
+        return false;
+    }
+
+    // Step 2: Parse the import map JSON
+    var import_map_result = parseImportMap(allocator, source_text, base_url);
+    // The parse result is this step's: registering it copies
+    // every specifier, scope and URL into the document's map
+    // (Document's add(Scoped)ImportMapping dupe each one). Left,
+    // its maps, keys and resolved URLs leaked per import map.
+    defer import_map_result.deinit(allocator);
+    defer {
+        if (import_map_result.allocator) |alloc| {
+            if (import_map_result.error_message) |msg| {
+                alloc.free(msg);
+            }
+        }
+    }
+
+    if (import_map_result.error_message) |err_msg| {
+        log.debug("Import map parse error: {s}\n", .{err_msg});
+        return false;
+    }
+
+    // Step 3: Register the import map
+    registerImportMap(doc, import_map_result) catch |err| {
+        log.debug("Failed to register import map: {}\n", .{err});
+        return false;
+    };
+
+    // Step 4: Mark import map as acquired
+    document_modules.acquireImportMap(doc);
+
+    return true;
+}
+
 // =============================================================================
 // SVG script elements
 // =============================================================================
@@ -1765,7 +1786,10 @@ pub fn processSvgScriptElementWithLoader(
 /// is fetched at insertion and run from a task, as a force-async HTML script
 /// is.
 ///
-/// Deviation, stated: type="module" is not supported for SVG.
+/// Deviation, stated: type="module" is not supported for SVG. An inline
+/// type="importmap" is (step 34.2), as in Chrome 157, Firefox 160 and Safari
+/// 27.2 (trusted-types/script-enforcement-007.html and -009.https.html's
+/// SVGScriptElement importmap cases).
 fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool, loader: ?ParserScriptLoader) void {
     const state = svgScriptState(element) orelse return;
     // Step 1.
@@ -1798,7 +1822,8 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     if (!isConnected(element)) return;
 
     // Steps 8-13: the type. A JavaScript MIME type, or none, is classic.
-    if (determineScriptType(element) != .classic) return;
+    const script_type = determineScriptType(element);
+    if (script_type != .classic and script_type != .importmap) return;
 
     // Step 14.
     if (parser_inserted) state.parser_inserted = true;
@@ -1834,6 +1859,18 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
 
     const credentials_mode = scriptCredentialsMode(element);
 
+    if (script_type == .importmap) {
+        // Step 33.1: an external import map is not supported - queue an
+        // element task to fire error at el.
+        if (href != null) return queueErrorEventTask(element);
+        // Step 34.2, "importmap": register it, with the document base URL
+        // (step 34.1).
+        const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+        defer allocator.free(base_url);
+        _ = registerInlineImportMap(allocator, document, source, base_url);
+        return;
+    }
+
     if (href) |raw| {
         // Step 33.3: an empty URL queues an element task to fire error at the
         // element - and fetches nothing: resolved, "" is the document's own
@@ -1843,7 +1880,9 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         // failure queues the error event too.
         const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
         defer allocator.free(base_url);
-        const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
+        // Encoding-parsed with the node document's encoding, as an HTML
+        // script's src is (step 33.5 above).
+        const url = (dom.encoding_parse.encodingParseAndSerializeAgainst(element.ctx.allocator, element, raw, base_url) catch null) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
         // A script-inserted one is fetched in parallel and runs from the
@@ -2939,8 +2978,14 @@ fn getLanguageAttribute(element: *runtime.Instance) []const u8 {
 /// Determine script type from type attribute
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element (steps 8-13)
 fn determineScriptType(element: *runtime.Instance) ScriptType {
-    const type_attr = getAttribute(element, "type");
+    return scriptTypeAtPrepare(getAttribute(element, "type"), getLanguageAttribute(element));
+}
 
+/// Prepare steps 8-13 for a script element whose type attribute is
+/// `type_attr` (null: none) and whose language attribute is `language` (""
+/// when absent) - the element's, and a speculative script's (HTML 13.2.8:
+/// the speculative HTML parser fetches only what the element would).
+pub fn scriptTypeAtPrepare(type_attr: ?[]const u8, language: []const u8) ScriptType {
     // Prepare step 8 distinguishes a missing type from an explicitly empty
     // one: the latter is classic even when language says something else.
     // WebKit ScriptElement::determineScriptType makes the same distinction.
@@ -2957,7 +3002,6 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
         if (value.len == 0) return .classic;
         break :blk value;
     } else blk: {
-        const language = getLanguageAttribute(element);
         if (language.len == 0) return .classic;
         // Step 8's obsolete language form is exactly "text/" + language;
         // language itself is not stripped. No recognized essence is longer.
@@ -3103,33 +3147,6 @@ fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instan
         } else |_| {}
     }
     return allocator.dupe(u8, documentUrl(document, script_element)) catch null;
-}
-
-/// Parse `input` against `base` with the URL Standard's parser and return the
-/// serialized result, or null on failure.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-a-url
-/// For a UTF-8 document "encoding-parsing a URL" is the URL parser with the
-/// document base URL, which is what `URL.parse(input, base)` runs.
-///
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
-///
-/// Goes through the URL interface because html cannot reach the URL module's
-/// parser directly (and the impls boundary rules out the impl). The temporary
-/// URL object is never exposed to script, so nothing wraps it and nothing else
-/// will free it - `runtime.Instance.deinit` releases its state and its slab
-/// slot here.
-///
-/// The returned slice is owned by `context_instance.ctx.allocator`.
-pub fn parseUrl(context_instance: *runtime.Instance, input: []const u8, base: []const u8) ?[]const u8 {
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const url_instance = (interfaces.URL.call_static_parse(context_instance, input, base_arg) catch
-        return null) orelse return null;
-    defer runtime.Instance.deinit(url_instance);
-    return interfaces.URL.get_href(url_instance) catch null;
 }
 
 /// "Queue an element task on the DOM manipulation task source given el to fire

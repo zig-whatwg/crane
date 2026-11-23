@@ -7,6 +7,8 @@ const GPUBindGroupEntry = @import("GPUBindGroupEntry.zig").GPUBindGroupEntry;
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUBindGroupDescriptor = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 

@@ -134,6 +134,9 @@ pub const Import = struct {
     layer: ?[]u8 = null,
     /// supports(<condition>)'s text (not evaluated: stated in sheet.zig).
     supports: ?[]u8 = null,
+    /// CSS Values 5 §4.1.1: the url()'s request modifiers, owned; their
+    /// steps change the import's request (css.import_rules reads the same).
+    modifiers: css.style_values.RequestModifiers = .{},
     /// The rule's index among its sheet's @import rules as parsed: the
     /// index the loader delivers the fetched sheet by (css.import_rules
     /// counts the same rules). Null for a rule insertRule() made.
@@ -292,6 +295,7 @@ pub const Rule = struct {
             },
             .import => |*i| {
                 a.free(i.href);
+                i.modifiers.deinitOwned(a);
                 i.media.deinit();
                 if (i.layer) |l| a.free(l);
                 if (i.supports) |t| a.free(t);
@@ -480,7 +484,13 @@ pub const Rule = struct {
             // not empty, ";".
             .import => |*i| {
                 try out.appendSlice(allocator, "@import ");
-                try serializeUrl(allocator, out, i.href);
+                // Values 5 §4.1.1: the request modifiers stay inside the
+                // url(), in the grammar's order (Chrome, css/css-values/urls/
+                // url-request-modifiers-import-parsing.sub.html).
+                try out.appendSlice(allocator, "url(");
+                try serializeString(allocator, out, i.href);
+                try i.modifiers.serialize(out, allocator);
+                try out.append(allocator, ')');
                 if (i.layer) |l| {
                     if (l.len == 0) try out.appendSlice(allocator, " layer") else {
                         try out.appendSlice(allocator, " layer(");
@@ -1375,6 +1385,11 @@ fn buildImport(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule {
     if (rest.len == 0) return null;
     var href: std.ArrayList(u8) = .empty;
     defer href.deinit(a);
+    // What the rule takes; freed here on every way out but its making (an
+    // invalid prelude returns null, not an error).
+    var keep = false;
+    var modifiers: css.style_values.RequestModifiers = .{};
+    defer if (!keep) modifiers.deinitOwned(a);
     if (rest[0] == '"' or rest[0] == '\'') {
         const end = try readString(a, rest, 0, &href) orelse return null;
         rest = rest[end..];
@@ -1383,31 +1398,52 @@ fn buildImport(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule {
         while (i < rest.len and rest[i] == ' ') i += 1;
         if (i < rest.len and (rest[i] == '"' or rest[i] == '\'')) {
             i = try readString(a, rest, i, &href) orelse return null;
-            while (i < rest.len and rest[i] == ' ') i += 1;
-            if (i >= rest.len or rest[i] != ')') return null;
-            rest = rest[i + 1 ..];
+            // Values 5 §4.1.1: request modifiers after the string, through
+            // the function's ")" (or the prelude's end, which closes it).
+            var tokens = css.tokenizer.Tokenizer.init(rest[i..]);
+            modifiers = (try css.style_values.RequestModifiers.consume(a, css.style_values.SkippingTokenizer{ .tok = &tokens })) orelse return null;
+            rest = rest[i + tokens.pos ..];
         } else {
-            const close = std.mem.indexOfScalarPos(u8, rest, i, ')') orelse return null;
-            try href.appendSlice(a, std.mem.trim(u8, rest[i..close], " "));
-            rest = rest[close + 1 ..];
+            // An unquoted url() is a <url-token>: its escapes decoded, and
+            // anything else in it - whitespace then more, a quote, a
+            // parenthesis - makes it a <bad-url-token>, no URL. Values 4
+            // §4.5.3: so it takes no modifier (all three browsers,
+            // css/css-values/urls/url-request-modifiers-import-parsing.sub.html
+            // "unquoted url() with cross-origin in @import").
+            var tokens = css.tokenizer.Tokenizer.init(rest);
+            const token = tokens.next();
+            if (token.token_type != .url) return null;
+            const decoded = try css.tokenizer.decode(a, token.value);
+            defer a.free(decoded);
+            try href.appendSlice(a, decoded);
+            rest = rest[tokens.pos..];
         }
     } else return null;
     rest = std.mem.trim(u8, rest, " \t\n\r\x0c");
     var layer: ?[]u8 = null;
-    errdefer if (layer) |l| a.free(l);
+    defer if (!keep) if (layer) |l| a.free(l);
+    // A layer() that holds no <layer-name> is not the optional layer part:
+    // it, and all that follows it, is the <import-conditions> - and a
+    // supports() is the conditions' first part only - so it all reads as
+    // the <media-query-list>, its first query a <general-enclosed>
+    // (CSS Cascade 5 §2.4; Chrome, Firefox and Safari keep the rule, its
+    // media "not all" or the layer() as written: css/css-cascade/parsing/
+    // layer-import-parsing.html, css/cssom/CSSImportRule-layer-false-positive.html).
+    var conditions = true;
     if (std.ascii.startsWithIgnoreCase(rest, "layer(")) {
-        const end = std.mem.indexOfScalar(u8, rest, ')') orelse return null;
-        const n = std.mem.trim(u8, rest["layer(".len..end], " ");
-        if (!isLayerName(n)) return null;
-        layer = try a.dupe(u8, n);
-        rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
+        const end = matchingParen(rest, "layer".len) orelse rest.len;
+        const n = std.mem.trim(u8, rest["layer(".len..@min(end, rest.len)], " ");
+        if (end < rest.len and isLayerName(n)) {
+            layer = try a.dupe(u8, n);
+            rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
+        } else conditions = false;
     } else if (rest.len >= 5 and std.ascii.eqlIgnoreCase(rest[0..5], "layer") and (rest.len == 5 or rest[5] == ' ')) {
         layer = try a.dupe(u8, "");
         rest = std.mem.trim(u8, rest[5..], " \t\n\r\x0c");
     }
     var supports: ?[]u8 = null;
-    errdefer if (supports) |t| a.free(t);
-    if (std.ascii.startsWithIgnoreCase(rest, "supports(")) {
+    defer if (!keep) if (supports) |t| a.free(t);
+    if (conditions and std.ascii.startsWithIgnoreCase(rest, "supports(")) {
         const end = matchingParen(rest, "supports".len) orelse return null;
         supports = try a.dupe(u8, std.mem.trim(u8, rest["supports(".len..end], " "));
         rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
@@ -1416,7 +1452,9 @@ fn buildImport(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule {
     errdefer media.deinit();
     const owned_href = try href.toOwnedSlice(a);
     errdefer a.free(owned_href);
-    return try make(a, try a.dupe(u8, prelude_text), .{ .import = .{ .href = owned_href, .media = media, .layer = layer, .supports = supports } });
+    const rule = try make(a, try a.dupe(u8, prelude_text), .{ .import = .{ .href = owned_href, .media = media, .layer = layer, .supports = supports, .modifiers = modifiers } });
+    keep = true;
+    return rule;
 }
 
 /// The index just past the string starting at `start`, its value decoded

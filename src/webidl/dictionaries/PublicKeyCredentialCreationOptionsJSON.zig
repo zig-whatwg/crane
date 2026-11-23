@@ -12,6 +12,8 @@ const AuthenticatorSelectionCriteria = @import("AuthenticatorSelectionCriteria.z
 const AuthenticationExtensionsClientInputsJSON = @import("AuthenticationExtensionsClientInputsJSON.zig").AuthenticationExtensionsClientInputsJSON;
 
 pub const PublicKeyCredentialCreationOptionsJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     rp: PublicKeyCredentialRpEntity,
     user: PublicKeyCredentialUserEntityJSON,
     challenge: typedefs.Base64URLString,

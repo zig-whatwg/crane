@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const FullscreenOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     keyboardLock: ?enums.FullscreenKeyboardLock = null,
     navigationUI: ?enums.FullscreenNavigationUI = null,
     screen: ?*runtime.Instance = null,

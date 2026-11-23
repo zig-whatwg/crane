@@ -57,7 +57,7 @@ fn onThread(comptime function: anytype, args: anytype) !void {
 // ============================================================================
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// Show a page of `origin` (no network: the page's markup is given).

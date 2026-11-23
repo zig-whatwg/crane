@@ -98,6 +98,14 @@ pub const InternalState = struct {
     /// Selection owns it; input/textarea flags belong to those controls.
     selectionchange_scheduled: bool = false,
 
+    /// The form of the Position the last modify() left the focus at
+    /// (visible_position.FocusForm), with the selection as that modify left
+    /// it: the next modify starts from that Position while the selection is
+    /// still the same - Blink's selection keeps a Position, not only its
+    /// DOM boundary point (SelectionInDOMTree). Compared, never followed:
+    /// the snapshot's nodes are only told apart from the live ones.
+    modify_focus: ?struct { selection: Snapshot, form: @import("html").execcommand.visible_position.FocusForm } = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -535,9 +543,11 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 ///              "lineboundary" | "sentenceboundary" | "paragraphboundary" | "documentboundary"
 ///
 /// "character" and "word" move over visible positions (Blink's
-/// SelectionModifier, src/html/execcommand/visible_position.zig) and
-/// "documentboundary" to the document's edge; the line and sentence
-/// granularities are renderer reads (TODO(renderer)) and move nothing.
+/// SelectionModifier, src/html/execcommand/visible_position.zig),
+/// "documentboundary" to the document's edge, and "lineboundary" to a line's
+/// end where no soft wrap can come first (a forced break, a block or host
+/// edge); the line and sentence granularities - and lineboundary elsewhere -
+/// are renderer reads (TODO(renderer)) and move nothing.
 pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
     // Selection API modify steps 1-3: only ASCII case-insensitive matches
     // are accepted; omitted arguments have no valid keyword default.
@@ -560,28 +570,41 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
     const focus_offset = try get_focusOffset(instance);
 
     const is_character = std.ascii.eqlIgnoreCase(granularity_slice, "character");
-    if (is_character or std.ascii.eqlIgnoreCase(granularity_slice, "word")) {
+    const is_word = std.ascii.eqlIgnoreCase(granularity_slice, "word");
+    // "lineboundary" where no renderer is needed: a line that ends at a
+    // forced break, a block edge or its host's edge before any soft wrap
+    // could (visible_position.zig logicalLineBoundary); elsewhere it stays.
+    const is_lineboundary = std.ascii.eqlIgnoreCase(granularity_slice, "lineboundary");
+    if (is_character or is_word or is_lineboundary) {
         // Blink's SelectionModifier (selection_modifier.cc) over visible
         // positions, as WebKit's FrameSelection::modify: the caret moves to
         // the next position a caret can be at, not the next DOM offset
         // (src/html/execcommand/visible_position.zig). Null: Blink's modify
         // returns false and the selection stays.
         const vp = @import("html").execcommand.visible_position;
+        const internal = getInternal(instance) orelse return;
         var selection: vp.Selection = .{ .focus = .{ .node = focus_node, .offset = focus_offset } };
+        // The Position the previous modify made, while the selection is the
+        // one it left.
+        if (internal.modify_focus) |kept| {
+            if (std.meta.eql(kept.selection, snapshot(internal))) selection.focus_form = kept.form;
+        }
         if (!try get_isCollapsed(instance)) {
-            const internal = getInternal(instance) orelse return;
             const bounds = visibleBoundaries(internal) orelse return;
             selection.range = .{
                 .start = .{ .node = bounds.start_container, .offset = bounds.start_offset },
                 .end = .{ .node = bounds.end_container, .offset = bounds.end_offset },
             };
         }
-        const target = vp.modifyPosition(instance.ctx.allocator, selection, is_extend, is_forward, if (is_character) .character else .word) orelse return;
+        const vp_granularity: vp.Granularity = if (is_character) .character else if (is_word) .word else .lineboundary;
+        const modified = vp.modifyPosition(instance.ctx.allocator, selection, is_extend, is_forward, vp_granularity) orelse return;
+        const target = modified.point;
         if (is_extend) {
             try call_extend(instance, target.node, .passed(target.offset));
         } else {
             try call_collapse(instance, target.node, .passed(target.offset));
         }
+        internal.modify_focus = .{ .selection = snapshot(internal), .form = modified.form };
         return;
     }
 

@@ -20,11 +20,6 @@ pub const AgentFetches = fetch.algorithms.AgentFetches;
 /// agent's. Null for a realm with no agent (an engine-less test's), whose
 /// fetch the caller fails as a network error.
 pub fn of(realm: runtime.Context) ?*AgentFetches {
-    var current: ?runtime.Context = realm;
-    while (current) |r| : (current = r.principal_realm) {
-        const agent = r.agent orelse continue;
-        const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
-        return &host.fetches;
-    }
-    return null;
+    const host: *AgentHost = @import("agent_hosts.zig").of(realm) orelse return null;
+    return &host.fetches;
 }

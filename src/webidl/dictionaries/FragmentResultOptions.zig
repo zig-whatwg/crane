@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const BreakTokenOptions = @import("BreakTokenOptions.zig").BreakTokenOptions;
 
 pub const FragmentResultOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     inlineSize: ?f64 = null,
     blockSize: ?f64 = null,
     autoBlockSize: ?f64 = null,

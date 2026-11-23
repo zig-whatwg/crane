@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ReportingObserverCallback = *const fn (reports: runtime.JSValue, observer: *runtime.Instance) void;
+/// callback ReportingObserverCallback = undefined (sequence<Report> reports, ReportingObserver observer)
+pub const ReportingObserverCallback = runtime.BorrowedCallbackFunction;

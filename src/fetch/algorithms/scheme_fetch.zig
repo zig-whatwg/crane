@@ -9,7 +9,7 @@
 //! - about: Returns about:blank response or network error
 //! - blob: Resolves blob URL and returns blob data (stubbed)
 //! - data: Processes data URLs
-//! - file: Implementation-defined (returns network error)
+//! - file: implementation-defined; the browsers' answer (file_fetch.zig)
 //! - http/https: Delegates to HTTP fetch (stubbed)
 
 const std = @import("std");
@@ -23,6 +23,7 @@ const ResponseType = internal_response.ResponseType;
 const Body = @import("../internal/body.zig").Body;
 const InternalRequest = @import("../internal/request.zig").InternalRequest;
 const parsing = @import("../internal/parsing.zig");
+const file_fetch = @import("file_fetch.zig");
 
 const log = std.log.scoped(.scheme_fetch);
 
@@ -76,10 +77,26 @@ pub fn schemeFetch(
     }
 }
 
-/// Handle about: URLs.
+/// Scheme fetch, "about": "If request's current URL's path is the string
+/// "blank", then return a new response whose status message is `OK`, header
+/// list is « (`Content-Type`, `text/html;charset=utf-8`) », and body is the
+/// empty byte sequence as a body. URLs such as "about:config" are handled
+/// during navigation and result in a network error in the context of
+/// fetching top-level navigables."
 ///
-/// Per spec: Only about:blank is supported.
-/// Returns a response with status 200 and content-type text/html;charset=utf-8.
+/// about:srcdoc is such a URL: an iframe srcdoc document is made from the
+/// srcdoc attribute (the navigation's srcdoc resource, never this fetch),
+/// and a navigation to about:srcdoc by any other route - location, a link,
+/// window.open() - is a network error, whose document has an opaque origin
+/// (html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-
+/// navigation-blocked.window.js; wpt.fyi stable: Chrome 157 0/3, Firefox
+/// 160 3/3, Safari 27.2 0/3). Golden rule 2, the user's ruling (2026-11-12
+/// 01:01 UTC): the spec, which Firefox ships. Chrome and Safari lag rather
+/// than deviate: Chromium's own open bug 40165505 (crbug 1169736),
+/// "Navigation to about:srcdoc should fail per HTML Standard", wrote this
+/// WPT, and whatwg/html#6316 (annevk, 2021) confirms the network error;
+/// no engine declined. (A navigation fetched about: URLs apart until lane
+/// tpg, 2026-11-22; every scheme goes through Fetch now.)
 fn aboutFetch(allocator: Allocator, url: []const u8) SchemeFetchError!SchemeFetchResult {
     // Parse out the path from about:blank or about:blank?... or about:blank#...
     const after_scheme = if (std.mem.startsWith(u8, url, "about:"))
@@ -193,7 +210,41 @@ pub fn schemeFetchRequest(allocator: Allocator, request: *const InternalRequest)
             error.OutOfMemory => SchemeFetchError.OutOfMemory,
         };
     }
+    if (std.ascii.eqlIgnoreCase(scheme, "file")) return fileFetchRequest(allocator, request);
     return schemeFetch(allocator, scheme, url);
+}
+
+/// Scheme fetch, "file" - implementation-defined (Fetch 4.3); Crane answers
+/// as the three browsers do (file_fetch.zig): a request whose client may
+/// load local files, or with no client, gets the file with its extension's
+/// MIME type; any other - a web page's - a network error.
+fn fileFetchRequest(allocator: Allocator, request: *const InternalRequest) SchemeFetchError!SchemeFetchResult {
+    // A page's request names its client's origin (populate request from
+    // client); one still "client" has none.
+    if (!request.local_file_access and request.origin != .client) return .{ .network_error = "Not allowed to load local resource" };
+    const found = file_fetch.read(allocator, request.currentUrl(), file_fetch.max_file_bytes) catch return SchemeFetchError.OutOfMemory;
+    const file = switch (found) {
+        .file => |f| f,
+        .not_found, .bad_host => return .{ .network_error = "file not found" },
+    };
+    defer allocator.free(file.bytes);
+    defer allocator.free(file.path);
+    const response = InternalResponse.init(allocator) catch return SchemeFetchError.OutOfMemory;
+    errdefer response.deinit();
+    response.status = 200;
+    response.setStatusMessage("OK") catch return SchemeFetchError.OutOfMemory;
+    response.header_list.append("Content-Type", file.mime_type) catch return SchemeFetchError.OutOfMemory;
+    var date_buffer: [29]u8 = undefined;
+    if (file_fetch.lastModified(&date_buffer, file.path)) |date| {
+        response.header_list.append("Last-Modified", date) catch return SchemeFetchError.OutOfMemory;
+    }
+    const body = Body.fromBytes(allocator, file.bytes) catch return SchemeFetchError.OutOfMemory;
+    // fromBytes copies the bytes but keeps `source` on the caller's slice,
+    // which is freed above: the source is the body's own copy (as
+    // http_fetch.zig and cache/transaction.zig repoint theirs).
+    body.source = .{ .bytes = body.data.items };
+    response.body = body;
+    return .{ .response = response };
 }
 
 /// Scheme fetch, "blob".

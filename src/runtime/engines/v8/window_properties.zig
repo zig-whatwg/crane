@@ -57,7 +57,9 @@ const Template = struct {
 /// written unlocked: two Browsers making window realms on two threads at
 /// once could hand one isolate the other's template.
 fn templateFor(isolate: *v8.Isolate) Template {
-    const record = protocol_agents.recordOf(isolate);
+    // Only window realm creation reaches this, which calls V8: the record
+    // with no lock on the agent's thread (protocol_agents.callbackRecordOf).
+    const record = protocol_agents.callbackRecordOf(isolate);
     if (record) |r| {
         if (r.window_properties_template) |cached| return .{ .template = cached, .owned = false };
     }

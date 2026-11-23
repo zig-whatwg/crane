@@ -32,7 +32,17 @@ test "authentication challenge retries once on the shared sync and async job pat
         try std.testing.expect(retry == .network);
         try std.testing.expectEqualStrings("Basic dTpw", header(retry.network.request, "Authorization").?);
         try std.testing.expect(std.mem.indexOf(u8, retry.network.request.url, "@") == null);
-        try std.testing.expect(try job.resumeNetwork(try answer(final_status)) == .done);
+        var finished = try job.resumeNetwork(try answer(final_status));
+        // A second 401 is the authentication fetch's: step 15.3.2 prompts
+        // the end user (lane cdpt2's `.auth` step, which a host's handler or
+        // CDP's Fetch.authRequired answers); with no prompting UI the driver
+        // answers `.default`, and the 401 is handed on (fetch.zig,
+        // async_fetch.zig).
+        if (final_status == 401) {
+            try std.testing.expect(finished == .auth);
+            finished = try job.resumeAuth(.default);
+        }
+        try std.testing.expect(finished == .done);
         var result = job.takeResult();
         defer result.deinit();
         try std.testing.expectEqual(final_status, result.response.status);

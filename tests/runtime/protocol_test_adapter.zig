@@ -48,6 +48,7 @@ pub const capabilities: engine.Capabilities = .{
     .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign's P5): the engine-less test adapter has no collector.
     .wrapper_tracing = .unsupported,
+    .inspector_protocol = .unsupported,
 };
 
 /// No engine behind it.
@@ -89,6 +90,11 @@ pub fn initializeEngine(_: engine.EngineOptions) Error!void {
     return error.NotSupported;
 }
 pub fn deinitializeEngine() void {}
+
+/// No engine, no version.
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return error.NotSupported;
+}
 pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
@@ -102,6 +108,10 @@ pub fn agentRestoredFromSnapshot(_: *Agent) bool {
 }
 /// No agent is made here (createAgent is NotSupported): none has a host.
 pub fn agentHost(_: *Agent) ?*anyopaque {
+    return null;
+}
+/// No agent is made here: none has host state.
+pub fn hostStateOf(_: *Agent) ?*engine.HostState {
     return null;
 }
 /// No agent is made here: none has a queue.
@@ -126,13 +136,16 @@ pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
 /// No engine: no realm, so none that exposes a [SecureContext] construct
-/// it was asked to hide (WindowRealmOptions.secure_context).
+/// it was asked to hide (WindowRealmOptions.secure_context), nor a
+/// SharedArrayBuffer it was asked to delete
+/// (WindowRealmOptions.agent_cluster_cross_origin_isolated).
 /// Nor one to adopt (WindowRealmOptions.auxiliary: [reuse_window_proxy] is
 /// unsupported here, so the host keeps one Window per navigable).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }
 pub fn destroyWindowRealm(_: Context, _: engine.WindowRealmEnd) void {}
+pub fn detachWindowRealm(_: Context) void {}
 pub fn createWorkerRealm(_: *Agent, _: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
     return error.NotSupported;
 }
@@ -162,6 +175,69 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 
 pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _: *const engine.BuiltinFunction) Error!engine.Owned {
     return error.NotSupported;
+}
+// Isolated worlds (engine.createWorldRealm and the rest): no engine linked,
+// no world realm - the host has no worlds (engine-protocol.md, "Isolated
+// worlds").
+pub fn createWorldRealm(_: Context, _: *const engine.WorldRealmOptions) Error!Context {
+    return error.NotSupported;
+}
+pub fn worldRealmFor(main: Context, world: engine.WorldId) ?Context {
+    return if (world == engine.main_world) main else null;
+}
+pub fn worldOf(_: Context) engine.WorldId {
+    return engine.main_world;
+}
+pub fn mainRealmOf(realm: Context) Context {
+    return realm;
+}
+pub fn worldInfoOf(_: Context) ?engine.WorldInfo {
+    return null;
+}
+pub fn worldRealmsOf(_: Context, _: []Context) usize {
+    return 0;
+}
+pub fn destroyWorldRealms(_: Context) void {}
+pub fn installWorldObserver(_: *Agent, _: ?*const engine.WorldObserver, _: ?*anyopaque) void {}
+// [inspector_protocol] (engine section 4.2b): unsupported - no inspector, no
+// JavaScript domains of CDP.
+pub fn installInspectorClient(_: *Agent, _: ?*const engine.InspectorClient) void {}
+pub fn inspectorConnect(_: *Agent, _: engine.InspectorGroup, _: engine.InspectorChannel) Error!*engine.InspectorSession {
+    return error.NotSupported;
+}
+pub fn inspectorDisconnect(_: *engine.InspectorSession) void {}
+pub fn inspectorDispatch(_: *engine.InspectorSession, _: []const u8) void {}
+pub fn inspectorCanDispatch(_: []const u8) bool {
+    return false;
+}
+pub fn inspectorContextCreated(_: *const engine.InspectorContext) Error!i64 {
+    return error.NotSupported;
+}
+pub fn inspectorContextDestroyed(_: Context) void {}
+pub fn inspectorResetGroup(_: *Agent, _: engine.InspectorGroup) void {}
+pub fn inspectorContextId(_: Context) ?i64 {
+    return null;
+}
+pub fn inspectorRealmOfContextId(_: *Agent, _: i64) ?Context {
+    return null;
+}
+pub fn inspectorWrap(_: *engine.InspectorSession, _: Context, _: JSValue, _: []const u8, _: std.mem.Allocator) Error![]u8 {
+    return error.NotSupported;
+}
+pub fn inspectorUnwrap(_: *engine.InspectorSession, _: []const u8) Error!?engine.InspectorUnwrapped {
+    return error.NotSupported;
+}
+pub fn inspectorConsoleMessage(_: Context, _: []const u8, _: []const JSValue) void {}
+pub fn inspectorExceptionThrown(_: Context, _: JSValue, _: *const engine.InspectorExceptionDetails) u32 {
+    return 0;
+}
+pub fn inspectorExceptionRevoked(_: Context, _: u32, _: []const u8) void {}
+pub fn inspectorCaptureStack(_: Context) ?*engine.InspectorStack {
+    return null;
+}
+pub fn inspectorReleaseStack(_: *engine.InspectorStack) void {}
+pub fn inspectorStackTrace(_: *Agent, _: u32, _: std.mem.Allocator) Error!?[]u8 {
+    return null;
 }
 
 // 4.3 Running script
@@ -289,10 +365,12 @@ pub fn isConstructor(_: Context, _: JSValue) bool {
 /// The binding's callback-function value is BORROWED for the call; the take
 /// is a hold of the caller's own, released once. This adapter has no
 /// binding and holds nothing: undefined, whose release is a no-op.
-pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
+// No engine to hold a function in: the kept value is undefined, with no
+// callback context.
+pub fn keepCallbackFunction(_: engine.BorrowedCallbackFunction) engine.CallbackFunction {
     return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
 }
-pub fn takeCallbackInterface(_: *const engine.CallbackWrapper) engine.CallbackInterface {
+pub fn keepCallbackInterface(_: engine.BorrowedCallbackInterface) engine.CallbackInterface {
     return .{ .object = .{ .value = JSValue.jsUndefined }, .context = null };
 }
 

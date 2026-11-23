@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -132,9 +133,23 @@ pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Getter for maxTouchPoints
+///
+/// Pointer Events 3: "the maximum number of simultaneous touch contacts
+/// supported by the device" - none on a headless device (0, as headless
+/// Chrome answers), unless the host emulates touch for the tab
+/// (html.window.host_overrides: CDP Emulation.setTouchEmulationEnabled).
 pub fn get_maxTouchPoints(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (hostOverridesOf(instance)) |overrides| if (overrides.max_touch_points) |points| return points;
+    return 0;
+}
+
+/// The host's overrides for the tab this navigator's Window shows
+/// (html.window.host_overrides: CDP's Emulation, WebDriver BiDi's
+/// emulation), if it is a Window's.
+fn hostOverridesOf(instance: *runtime.Instance) ?*const @import("html").window.host_overrides.HostOverrides {
+    const window = @import("html").user_activation.windowOfRealm(instance.ctx) orelse return null;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return null;
+    return &bc.getTop().host_overrides;
 }
 
 /// Getter for attribution
@@ -316,7 +331,9 @@ pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for platform
 /// Per HTML Standard: Returns the platform identifier.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
+    // The host's override for the tab (CDP Emulation.setUserAgentOverride
+    // `platform`), else the compile target's.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.platform) |platform| return runtime.DOMString.initDupe(instance.ctx.allocator, platform);
     // Return platform based on compile target
     const builtin = @import("builtin");
     return runtime.DOMString.initInterned(switch (builtin.os.tag) {
@@ -346,16 +363,28 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// `User-Agent` value - its Browser's (fetch.network.NetworkContext), the
 /// one its fetches send, so the two always agree.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // The host's override for the tab (CDP Emulation.setUserAgentOverride)
+    // wins over the Browser's user agent.
+    if (hostOverridesOf(instance)) |overrides| if (overrides.user_agent) |ua| return runtime.DOMString.initDupe(instance.ctx.allocator, ua);
     const network = @import("dom").browser_state.networkOf(instance.ctx) orelse
         return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.default_user_agent);
     return runtime.DOMString.initDupe(instance.ctx.allocator, network.userAgent());
 }
 
 /// Getter for vendor
-/// Per HTML Standard: Returns the vendor name.
+/// HTML "vendor" getter steps: "return the appropriate string from the
+/// following list: If the navigator compatibility mode is Chrome: the string
+/// "Google Inc."; Gecko: the empty string; WebKit: "Apple Computer, Inc."".
+/// DEVIATION, by the user's ruling of 2026-11-21 7:32 PM ET: Crane returns
+/// its own name, "Crane", in place of the Chrome mode's "Google Inc." (the
+/// 2026-11-20 ruling it replaces). productSub ("20030107") and appVersion
+/// stay in the Chrome mode. Known cost: WPT
+/// html/webappapis/system-state-and-capabilities/the-navigator-object/
+/// navigator.any.html "vendor" fails, recorded as a user-ruling loss.
+/// ([Exposed=Window]: a WorkerNavigator has no vendor.)
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return runtime.DOMString.initInterned("WhatWG-Zig");
+    return runtime.DOMString.initInterned("Crane");
 }
 
 /// Getter for vendorSub
@@ -378,22 +407,68 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     });
 }
 
-/// Getter for language
-/// Per HTML Standard: Returns the preferred language of the user.
-pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return runtime.DOMString.initInterned("en-US");
+const host_overrides = @import("html").window.host_overrides;
+
+/// The languages the navigator reports now (OWNED): the tab's
+/// Accept-Language override (CDP Emulation.setUserAgentOverride's
+/// acceptLanguage), else the platform's list - each through Blink's
+/// ParseAndSanitize (NavigatorLanguage::EnsureUpdatedLanguage reads the
+/// override first; html.window.host_overrides).
+fn currentLanguages(instance: *runtime.Instance) !host_overrides.Languages {
+    if (hostOverridesOf(instance)) |overrides| if (try overrides.languages(instance.ctx.allocator)) |list| return list;
+    return host_overrides.platformLanguages(instance.ctx.allocator);
 }
 
-/// Getter for languages
-/// Per HTML Standard: Returns a frozen array of preferred languages.
-/// Note: For WPT tests, we return a pointer to a static array structure.
-/// The V8 binding layer should convert this to a JS array.
+/// Getter for language (HTML 8.9.1.4): "a valid BCP 47 language tag
+/// representing either a plausible language or the user's most preferred
+/// language" - navigator.languages' first (Blink's NavigatorLanguage::
+/// language: languages().front()).
+pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    var list = try currentLanguages(instance);
+    defer list.deinit(instance.ctx.allocator);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, list.first());
+}
+
+/// The member a navigator keeps its languages array in (engine.traceValue).
+const languages_slot: engine.TracedSlot = .{ .name = "languages" };
+
+/// Whether `array` holds exactly `tags`, in order.
+fn holdsLanguages(instance: *runtime.Instance, array: runtime.JSValue, tags: []const []u8) bool {
+    var key_buffer: [24]u8 = undefined;
+    for (tags, 0..) |tag, i| {
+        const key = std.fmt.bufPrint(&key_buffer, "{d}", .{i}) catch return false;
+        const element = engine.getProperty(instance.ctx, array, key) catch return false;
+        defer element.release();
+        const text = engine.convertToDOMString(instance.ctx, element.borrow(), instance.ctx.allocator) catch return false;
+        defer instance.ctx.allocator.free(text);
+        if (!std.mem.eql(u8, text, tag)) return false;
+    }
+    // No element past the list's.
+    const past = std.fmt.bufPrint(&key_buffer, "{d}", .{tags.len}) catch return false;
+    return !(engine.hasOwnProperty(instance.ctx, array, past) catch true);
+}
+
+/// Getter for languages (HTML 8.9.1.4): "a frozen array of valid BCP 47
+/// language tags ... ordered by preference with the most preferred language
+/// first" - the whole list (`currentLanguages`) - and "the same object must
+/// be returned until the user agent needs to return different values": the
+/// array made for the list is kept by an edge from the navigator while the
+/// list is the same; a host's override changing it is such a change.
+/// (No WebDriver BiDi emulated language: step 2 never applies.)
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // TODO: Return proper frozen array of strings when V8 array creation is available
-    // For now, return undefined - the spec requires returning a frozen array of strings
-    return runtime.JSValue.jsUndefined;
+    const allocator = instance.ctx.allocator;
+    var list = try currentLanguages(instance);
+    defer list.deinit(allocator);
+    if (engine.tracedValue(instance, languages_slot)) |kept| {
+        if (holdsLanguages(instance, kept.borrow(), list.tags)) return kept.take();
+        kept.release();
+    }
+    const values = try allocator.alloc(runtime.JSValue, list.tags.len);
+    defer allocator.free(values);
+    for (list.tags, values) |tag, *value| value.* = .{ .string = .{ .data = tag, .owned = false } };
+    const array = try engine.createFrozenArray(instance.ctx, values);
+    engine.traceValue(instance, array.value, languages_slot);
+    return array.take();
 }
 
 /// Getter for onLine

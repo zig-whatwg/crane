@@ -57,13 +57,13 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
 /// testing platform's): it stands still while the page works and moves to
 /// the next timer when the loop is idle.
 fn startBrowser() !*browser_mod.Browser {
-    if (comptime is_testing) return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
+    if (comptime is_testing) return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
     return startRealTimeBrowser();
 }
 
 /// A Browser on the real clock, as a host runs it.
 fn startRealTimeBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// The caches of the Browser's documents whose 10 s are running: its event

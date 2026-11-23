@@ -675,6 +675,8 @@ pub fn writeMetadata(
 
     // [SameObject]: the binding ties these children to their owner.
     if (!is_mixin) try writeSameObjectAttributes(writer, own_attributes, type_registry);
+    // FrozenArray<T>: the binding knows the getter's array as one.
+    if (!is_mixin) try writeFrozenArrayAttributes(writer, own_attributes, type_registry);
 
     // Generate [PutForwards] metadata for attributes with setter forwarding
     // Per WebIDL spec §4.3.10: [PutForwards=X] means setting the attribute
@@ -2967,7 +2969,7 @@ pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
 
 /// The Zig type of one constructor argument, as the binding converts it:
 /// `optional T` is `webidl.Opt(T)`, `T...` a slice, an interface type
-/// `*runtime.Instance`, a callback interface `?*runtime.CallbackWrapper`.
+/// `*runtime.Instance`, a callback interface `runtime.BorrowedCallbackInterface`.
 /// Shared by a single constructor's parameters and an overloaded
 /// constructor's ConstructorArgs variants - which typed an interface by its
 /// generated struct (`KeyframeEffect: KeyframeEffect`), a type no
@@ -3012,7 +3014,7 @@ fn writeConstructorArgType(
     var arg_type = type_mapping.type_name;
 
     // Check if this is an interface type - if so, use *runtime.Instance
-    // Callback interfaces use ?*runtime.CallbackWrapper
+    // Callback interfaces use runtime.BorrowedCallbackInterface
     const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
     const is_interface = type_kind != null and type_kind.? == .interface;
     const is_callback_interface = type_kind != null and type_kind.? == .callback_interface;
@@ -3022,14 +3024,15 @@ fn writeConstructorArgType(
         arg_type = "runtime.JSValue";
     }
 
-    // For callback interface types, use ?*runtime.CallbackWrapper
-    // For regular interface types, use *runtime.Instance directly
+    // A callback interface type's value is the engine protocol's borrowed
+    // callback interface (WebIDL 3.2.16), BORROWED for the call and kept with
+    // `keep()`; a regular interface type's is *runtime.Instance.
     // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
     if (is_callback_interface) {
         if (arg.idlType.nullable and !arg.variadic) {
             try writer.writeAll("?");
         }
-        try writer.writeAll("?*runtime.CallbackWrapper");
+        try writer.writeAll("runtime.BorrowedCallbackInterface");
     } else if (is_interface) {
         if (arg.idlType.nullable and !arg.variadic) {
             try writer.writeAll("?");
@@ -3159,6 +3162,9 @@ pub fn writeOverloadedConstructor(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (ctor.arguments) |arg| {
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
@@ -3441,13 +3447,15 @@ fn writeOperationDelegate(
         return_type = to_json_type_buf.?;
     } else {
         // Check if return type is an interface - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper
+        // A callback interface value an operation returns is the object
+        // (WebIDL 3.2.16: "a reference to the same object"), a value the
+        // binding releases, as a callback interface attribute's is.
         const return_type_kind = if (type_registry) |reg| reg.lookup(op.idlType.type) else null;
         const is_interface_return = return_type_kind != null and return_type_kind.? == .interface;
         const is_callback_interface_return = return_type_kind != null and return_type_kind.? == .callback_interface;
 
         return_type = if (is_callback_interface_return)
-            "?*runtime.CallbackWrapper"
+            "runtime.JSValue"
         else if (is_interface_return)
             "*runtime.Instance"
         else if (type_registry) |reg|
@@ -3524,14 +3532,15 @@ fn writeOperationDelegate(
         }
 
         // Check if parameter type is an interface - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper: the binding's
-        // wrapper, borrowed for the call (engine.takeCallbackInterface)
+        // Callback interfaces use runtime.BorrowedCallbackInterface: the
+        // object, BORROWED for the call (kept with `keep()`,
+        // engine.keepCallbackInterface)
         const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
         const is_interface_param = type_kind != null and type_kind.? == .interface;
         const is_callback_interface_param = type_kind != null and type_kind.? == .callback_interface;
 
         var arg_type = if (is_callback_interface_param)
-            "?*runtime.CallbackWrapper"
+            "runtime.BorrowedCallbackInterface"
         else if (is_interface_param)
             "*runtime.Instance"
         else if (type_registry) |reg|
@@ -4859,22 +4868,40 @@ pub fn writeMemberDefaults(w: anytype, members: []const types.DictionaryMember, 
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
 /// type is a promise runs its steps - the brand check, argument conversion and
 /// the operation - with an exception handler, and an exception becomes a
-/// promise rejected with it. The binding needs to know which operations:
+/// promise rejected with it. The attribute getter does the same for an
+/// attribute whose type is a promise (3.7.6, "attribute getter": "If
+/// attribute's type is a promise type, then return ! Call(%Promise.reject%,
+/// %Promise%, «E»)"): a read on a wrong receiver rejects. The binding needs to
+/// know which operations and getters:
 ///
-///     pub const promise_returning = .{ "call_json", "call_static_any" };
+///     pub const promise_returning = .{ "get_closed", "call_json", "call_static_any" };
 ///
 /// Keyed like `legacy_null_to_empty`, by the Zig function the binding installs.
-pub fn writePromiseReturning(writer: anytype, overload_ops: []const types.Operation) !void {
+pub fn writePromiseReturning(writer: anytype, attributes: []const types.Attribute, overload_ops: []const types.Operation) !void {
     const allocator = std.heap.page_allocator;
     var any = false;
+    var any_attribute = false;
+    for (attributes) |attr| {
+        if (isPromiseType(attr.idlType)) any_attribute = true;
+    }
     for (overload_ops) |op| {
         if (isPromiseType(op.idlType)) any = true;
     }
-    if (!any) return;
+    if (!any and !any_attribute) return;
 
     try writer.writeAll("    /// WebIDL: operations whose return type is a promise - an exception in\n");
     try writer.writeAll("    /// their steps becomes a rejected promise.\n");
+    // The getters of promise-typed attributes, likewise (3.7.6 "attribute
+    // getter"): said only where there are some, so the other tables read
+    // as they did.
+    if (any_attribute) try writer.writeAll("    /// So does a promise-typed attribute's getter.\n");
     try writer.writeAll("    pub const promise_returning = .{\n");
+    for (attributes) |attr| {
+        if (!isPromiseType(attr.idlType)) continue;
+        const sanitized = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized, attr.name)) allocator.free(sanitized);
+        try writer.print("        \"{s}{s}\",\n", .{ getterPrefix(attr), sanitized });
+    }
     const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
     defer overload.freeOverloadSets(allocator, overload_sets);
     for (overload_sets) |set| {
@@ -5135,6 +5162,9 @@ fn writeOverloadedOperation(
             try writer.writeAll(")\n");
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
+            // An overload's argument list (positive marker: the binding walks
+            // its members as arguments, never takes it for a dictionary).
+            try writer.writeAll("            pub const webidl_arguments = true;\n");
             for (op.arguments) |arg| {
                 // Build type with optional, variadic, nullable, and union handling
                 var buffer: [512]u8 = undefined;
@@ -5248,8 +5278,8 @@ fn capitalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
 pub fn getterReturnType(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) []const u8 {
     // Check if this is an interface type - if so, use *runtime.Instance
     // A callback interface attribute returns the object that was given
-    // (NodeIterator.filter): a runtime.JSValue. Only an ARGUMENT of a
-    // callback interface type is a *runtime.CallbackWrapper.
+    // (NodeIterator.filter): a runtime.JSValue. Only a value the binding
+    // CONVERTS - an argument, a member - is a runtime.BorrowedCallbackInterface.
     const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
     const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
     const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;
@@ -5302,6 +5332,56 @@ pub fn writeSameObjectAttributes(writer: anytype, own_attributes: []const types.
     for (own_attributes) |attr| {
         if (!sameObjectCacheable(attr, type_registry)) continue;
         // The getter's name less `get_`, as the binding derives it.
+        try writer.writeAll("            \"");
+        try writeSanitizedName(writer, attr.name);
+        try writer.writeAll("\",\n");
+    }
+    try writer.writeAll("        };\n");
+}
+
+/// Whether `attr`'s IDL type is a FrozenArray<T> (nullable or not), named
+/// directly or through typedefs (`isFrozenArrayType`): its generated getter
+/// returns a runtime.JSValue like an `any` attribute's, so the binding
+/// learns the type from `Meta.frozen_array_attributes`.
+pub fn isFrozenArrayAttribute(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) bool {
+    return isFrozenArrayType(attr.idlType, type_registry, 0);
+}
+
+/// Whether `idl_type` is a FrozenArray<T>: itself, or a typedef the registry
+/// resolves to one - through typedefs of typedefs, as `interfaceNamed`
+/// resolves them (bounded: a cycle the IR would refuse cannot loop here).
+fn isFrozenArrayType(idl_type: types.IDLType, type_registry: ?*const @import("ir.zig").TypeRegistry, depth: u8) bool {
+    if (std.mem.eql(u8, idl_type.type, "FrozenArray")) return true;
+    if (depth >= 8) return false;
+    const reg = type_registry orelse return false;
+    const info = reg.resolve(idl_type.type) orelse return false;
+    if (info.kind != .typedef) return false;
+    return isFrozenArrayType(info.underlying_type orelse return false, type_registry, depth + 1);
+}
+
+/// `Meta.frozen_array_attributes`: the instance attributes typed
+/// FrozenArray<T>, by their getter's name less `get_`. The getter returns
+/// the array as a runtime.JSValue, as an `any` attribute's value; the
+/// binding (engines/v8 interface.zig `frozenArrayAttribute`,
+/// binding_plumbing.finishGetter) reads this list at compile time so that
+/// an isolated world gets a frozen array of its own for it (engine section
+/// 4.2a; Blink's FrozenArray, a JS array per world) - a type it would
+/// otherwise have to guess at run time.
+pub fn writeFrozenArrayAttributes(writer: anytype, own_attributes: []const types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) !void {
+    var any = false;
+    for (own_attributes) |attr| {
+        if (!attr.static and isFrozenArrayAttribute(attr, type_registry)) {
+            any = true;
+            break;
+        }
+    }
+    if (!any) return;
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and\n");
+    try writer.writeAll("        /// the binding gives each isolated world a frozen array of its own.\n");
+    try writer.writeAll("        pub const frozen_array_attributes = .{\n");
+    for (own_attributes) |attr| {
+        if (attr.static or !isFrozenArrayAttribute(attr, type_registry)) continue;
         try writer.writeAll("            \"");
         try writeSanitizedName(writer, attr.name);
         try writer.writeAll("\",\n");
@@ -5729,7 +5809,7 @@ pub fn writeDelegateFunctions(
     // Which integer arguments and attribute values take [EnforceRange]'s or
     // [Clamp]'s conversion.
     try writeIntegerConversions(writer, own_attributes, overload_ops);
-    try writePromiseReturning(writer, overload_ops);
+    try writePromiseReturning(writer, own_attributes, overload_ops);
     // Which functions run a [CEReactions] bracket: the binding dispatches
     // them in a catch scope.
     try writeCEReactionsTable(writer, &ce_functions);
@@ -5780,6 +5860,17 @@ pub fn writeIterableSupport(
     try writer.print("    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const {s}.IterableEntry {{\n", .{impl_name});
     try writer.print("        return {s}.getEntriesInternal(instance);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
+    // An impl whose value pairs are made when asked (CSS Typed OM's
+    // StylePropertyMapReadOnly reifies each declaration) takes them once,
+    // when an iterator or forEach starts, as Blink's PairSyncIterable
+    // iteration source and WebKit's StylePropertyMapReadOnly::Iterator do.
+    // (No member names in the doc comment: an iterable declaration's
+    // generated file never mentions its iteration methods -
+    // tests/codegen/iterable_members_test.zig.)
+    try writer.writeAll("    /// The impl's snapshot of the value pairs to iterate over, taken once\n");
+    try writer.writeAll("    /// when iteration starts (`iterableSnapshot`), or null when the\n");
+    try writer.writeAll("    /// impl's live list (`getEntriesInternal`) is read at each step.\n");
+    try writer.print("    pub const iterable_snapshot = if (@hasDecl({s}, \"iterableSnapshot\")) {s}.iterableSnapshot else null;\n\n", .{ impl_name, impl_name });
 }
 
 /// Write getSupportedPropertyNames delegate for named property support
@@ -6243,6 +6334,72 @@ test "mapWebIDLType maps string types to runtime types" {
     try testing.expectEqualStrings("runtime.DOMString", mapWebIDLType(.{ .type = "DOMString" }));
     try testing.expectEqualStrings("runtime.ByteString", mapWebIDLType(.{ .type = "ByteString" }));
     try testing.expectEqualStrings("runtime.USVString", mapWebIDLType(.{ .type = "USVString" }));
+}
+
+test "writeIterableSupport publishes a pair iterable's live entries and its impl's snapshot, if any" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeIterableSupport(&buffer.writer, "MapImpl", .{ .keyType = .{ .type = "USVString" }, .valueType = .{ .type = "sequence" } });
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const MapImpl.IterableEntry {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const iterable_snapshot = if (@hasDecl(MapImpl, \"iterableSnapshot\")) MapImpl.iterableSnapshot else null;") != null);
+
+    // A value iterable has neither.
+    var value_only: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer value_only.deinit();
+    try writeIterableSupport(&value_only.writer, "ListImpl", .{ .keyType = .{ .type = "Node" } });
+    try testing.expectEqualStrings("", value_only.written());
+}
+
+test "writeFrozenArrayAttributes lists the instance attributes typed FrozenArray<T>, nullable too, and nothing else" {
+    const attributes = [_]types.Attribute{
+        .{ .name = "languages", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true },
+        .{ .name = "ariaLabelledByElements", .idlType = .{ .type = "FrozenArray", .generic = "Element", .nullable = true } },
+        .{ .name = "data", .idlType = .{ .type = "any" }, .readonly = true },
+        .{ .name = "knownSources", .idlType = .{ .type = "FrozenArray", .generic = "DOMString" }, .readonly = true, .static = true },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeFrozenArrayAttributes(&buffer.writer, &attributes, null);
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub const frozen_array_attributes = .{") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"languages\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"ariaLabelledByElements\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"data\"") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"knownSources\"") == null);
+
+    // An interface with none writes nothing.
+    var none: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer none.deinit();
+    try writeFrozenArrayAttributes(&none.writer, attributes[2..3], null);
+    try testing.expectEqualStrings("", none.written());
+}
+
+test "writeFrozenArrayAttributes resolves typedefs: an alias of a FrozenArray<T>, through another typedef too, is one" {
+    var reg = ir.TypeRegistry.init(testing.allocator);
+    defer reg.deinit();
+    // `typedef FrozenArray<DOMString> LanguageList;` and an alias of it.
+    try reg.registerTypedef("LanguageList", "test.idl", .{ .type = "FrozenArray", .generic = "DOMString" });
+    try reg.registerTypedef("PreferredLanguages", "test.idl", .{ .type = "LanguageList" });
+    // A typedef of something else is not one.
+    try reg.registerTypedef("Names", "test.idl", .{ .type = "sequence", .generic = "DOMString" });
+    const attributes = [_]types.Attribute{
+        .{ .name = "languages", .idlType = .{ .type = "LanguageList" }, .readonly = true },
+        .{ .name = "preferred", .idlType = .{ .type = "PreferredLanguages", .nullable = true }, .readonly = true },
+        .{ .name = "names", .idlType = .{ .type = "Names" }, .readonly = true },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeFrozenArrayAttributes(&buffer.writer, &attributes, &reg);
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "\"languages\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"preferred\",") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\"names\"") == null);
+    // Without the registry the aliases cannot be told.
+    var unresolved: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer unresolved.deinit();
+    try writeFrozenArrayAttributes(&unresolved.writer, &attributes, null);
+    try testing.expectEqualStrings("", unresolved.written());
 }
 
 test "writeHeader writes basic header" {

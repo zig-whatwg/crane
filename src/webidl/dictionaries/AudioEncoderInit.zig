@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 
 pub const AudioEncoderInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     output: callbacks.EncodedAudioChunkOutputCallback,
     @"error": callbacks.WebCodecsErrorCallback,
 };

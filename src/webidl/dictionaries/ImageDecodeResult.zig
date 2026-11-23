@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const ImageDecodeResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     image: *runtime.Instance,
     complete: bool,
 

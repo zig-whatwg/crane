@@ -593,7 +593,7 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
     );
     if (function) |f| {
         // The raw-handler path transfers this same Global directly, without
-        // takeCallbackFunction. Detaching the document must weaken its root
+        // keepCallbackFunction. Detaching the document must weaken its root
         // just as it weakens an IDL-assigned callback's (HTML steps 3.12-13).
         if (context_manager.keyOf(context)) |key| ffi.v8_Global_TagRealm(f, key);
         return .{ .value = realm_entry.owned(f) };

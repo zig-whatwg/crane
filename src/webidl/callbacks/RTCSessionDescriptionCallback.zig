@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const RTCSessionDescriptionCallback = *const fn (description: runtime.JSValue) void;
+/// callback RTCSessionDescriptionCallback = undefined (RTCSessionDescriptionInit description)
+pub const RTCSessionDescriptionCallback = runtime.BorrowedCallbackFunction;

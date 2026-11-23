@@ -62,6 +62,7 @@ pub const TimingReporter = struct {
 /// How a request reaches its Browser's service workers (Service Workers
 /// "Handle Fetch"; service_worker_fetch.zig).
 pub const ServiceWorkerRoute = @import("service_worker_fetch.zig").Route;
+pub const DocumentResourcesRoute = @import("document_resources.zig").Route;
 
 /// SRI §3.8.3: all strings and endpoint names are BORROWED for the call.
 pub const IntegrityViolation = struct {
@@ -363,6 +364,14 @@ pub const InternalRequest = struct {
     /// null/UA client. Never inferred from the request URL or current realm.
     prohibits_mixed_security_contexts: bool = false,
 
+    /// The client is a local document - a file: document, or a srcdoc one
+    /// inside it - which may load local files: scheme fetch "file" serves a
+    /// file: URL to it, and to a request with no client, and to nothing else
+    /// (fetch/algorithms/file_fetch.zig; Blink's SecurityOrigin::
+    /// CanLoadLocalResources). Captured from the client at population, kept
+    /// across clones and redirects.
+    local_file_access: bool = false,
+
     /// Reserved client for navigation/worker requests (internal HTML spec concept)
     reserved_client: ?*anyopaque = null,
 
@@ -371,6 +380,12 @@ pub const InternalRequest = struct {
 
     /// Traversable for user prompts
     traversable_for_user_prompts: TraversableForUserPrompts = .client,
+
+    /// A worker client's global, whose user agent override the request
+    /// sends (RequestClient.user_agent_client; http_fetch.
+    /// userAgentOverrideOf). BORROWED: cleared, as the traversable is, when
+    /// a kept fetch outlives its client.
+    user_agent_client: ?*anyopaque = null,
 
     // === Request Metadata ===
 
@@ -491,6 +506,27 @@ pub const InternalRequest = struct {
     /// step 3 costs one check.
     service_worker: ?ServiceWorkerRoute = null,
 
+    /// Fetch step 11's way to the request's client's document's resources -
+    /// its map of preloaded resources, and what it loaded while loading
+    /// (document_resources.zig) - set by "populate request from client" for
+    /// a Window client. BORROWED, and read once, at the fetch's start
+    /// (FetchJob.start clears it), while the client is alive. Null: no
+    /// Window client.
+    document_resources: ?DocumentResourcesRoute = null,
+
+    /// HTML "preload": the request is a preload's (a `link rel=preload`'s),
+    /// whose response the document keeps in its map of preloaded resources
+    /// for a later fetch to consume.
+    link_preload: bool = false,
+
+    /// HTML 13.2.8 "speculative fetch": the request is the speculative HTML
+    /// parser's, made "as if the element was processed normally" before the
+    /// parser reaches the element. Its response goes into the document's
+    /// map of preloaded resources as a speculative entry, for the element's
+    /// own fetch to consume (Fetch step 11) - Blink's speculative preload,
+    /// which the element's request matches (ResourceFetcher::MatchPreload).
+    speculative_preload: bool = false,
+
     /// SRI policy reports go to the client's global. BORROWED with the CSP
     /// reporter's lifetime: a fetch whose client is gone is terminated, or
     /// kept with this dropped, before it reports. Null for a request whose
@@ -599,6 +635,16 @@ pub const InternalRequest = struct {
 
     /// Timing allow failed flag
     timing_allow_failed: bool = false,
+
+    /// Which fetch this request is, for its Browser's fetch observer
+    /// (network/observer.zig): unique in its Browser, set when the fetch
+    /// starts with an observer present; kept across redirects (CDP's
+    /// requestId). 0: none given.
+    request_id: u64 = 0,
+    /// The navigation this request is the fetch of (HTML navigate step 7's
+    /// navigation ID: CDP's loaderId, and its navigation request's
+    /// requestId); 0 for any other request.
+    navigation_id: u64 = 0,
     /// The redirect-taint the hops this request's URL list no longer holds
     /// gave it: set when it is not "same-origin". Fetch computes a request's
     /// redirect-taint from its URL list; a copy that keeps only the
@@ -941,9 +987,11 @@ pub const InternalRequest = struct {
             .body = null, // Handle body separately
             .client = self.client,
             .prohibits_mixed_security_contexts = self.prohibits_mixed_security_contexts,
+            .local_file_access = self.local_file_access,
             .reserved_client = self.reserved_client,
             .replaces_client_id = self.replaces_client_id,
             .traversable_for_user_prompts = self.traversable_for_user_prompts,
+            .user_agent_client = self.user_agent_client,
             .keepalive = self.keepalive,
             .initiator_type = self.initiator_type,
             .service_workers_mode = self.service_workers_mode,
@@ -966,6 +1014,9 @@ pub const InternalRequest = struct {
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
             .service_worker = self.service_worker,
+            .document_resources = self.document_resources,
+            .link_preload = self.link_preload,
+            .speculative_preload = self.speculative_preload,
             .integrity_violation_reporter = self.integrity_violation_reporter,
             .coep_violation_reporter = self.coep_violation_reporter,
             // Cloned below: each request owns its own.
@@ -997,6 +1048,8 @@ pub const InternalRequest = struct {
             .prevent_no_cache_cache_control_header_modification = self.prevent_no_cache_cache_control_header_modification,
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
+            .request_id = self.request_id,
+            .navigation_id = self.navigation_id,
             .redirect_tainted = self.redirect_tainted,
             .dropped_urls_site = self.dropped_urls_site,
             .main_frame_navigation = self.main_frame_navigation,

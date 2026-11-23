@@ -1,6 +1,11 @@
 # Debugging: Xcode updated itself mid-session and took the build's SDK with it
 
 **Date**: 2026-09-22
+**Status** (2026-11-21, lane z17f): the Fix below is retired. Zig 0.17's libc++
+builds against the macOS 27 SDK, so the port (2c684d65b7c) deleted
+`useBuildableMacosSdk` and its libc file; `build.zig` uses the default SDK
+(.claude/rules/build-and-toolchain.md, "The macOS SDK is the default one").
+The triage steps and the takeaway still hold.
 **Lesson**: A build error naming a file that does not exist means the toolchain
 moved; check that before the code.
 

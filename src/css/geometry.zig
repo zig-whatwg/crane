@@ -1,8 +1,9 @@
 //! Geometry Interfaces Module Level 1: the abstract point and matrix
 //! algorithms DOMPointReadOnly, DOMMatrixReadOnly and DOMMatrix share - "create
 //! a 2d/3d matrix" (6.3), "validate and fixup" a DOMMatrixInit (6.1), the
-//! is-2D rules of the element setters and isIdentity (6.4), and "transform a
-//! point with a matrix" (2.1).
+//! is-2D rules of the element setters and isIdentity (6.4), "transform a
+//! point with a matrix" (2.1), and "parse a string into an abstract matrix"
+//! (6.2), through CSS's own transform grammar and composition.
 //!
 //! Pure: numbers in, numbers out. The interfaces convert their arguments (a
 //! DOMMatrixInit dictionary, a sequence, a Float32Array) to these plain types
@@ -276,7 +277,113 @@ pub fn fromDictionary(other: MatrixInit) error{TypeError}!Matrix {
     });
 }
 
+/// 6.2 "parse a string into an abstract matrix": `transform_list` parsed as
+/// the CSS transform property's value and composed into one matrix, with its
+/// 2dTransform flag in `is_2d`; null is failure. OUT OF MEMORY propagates.
+pub fn parseTransformList(allocator: std.mem.Allocator, transform_list: []const u8) std.mem.Allocator.Error!?Matrix {
+    const properties = @import("properties.zig");
+    const box_transform_values = @import("box_transform_values.zig");
+    // 1. The empty string is "matrix(1, 0, 0, 1, 0, 0)".
+    const text = if (transform_list.len == 0) "matrix(1, 0, 0, 1, 0, 0)" else transform_list;
+    // 2. Parse it with the transform property's grammar. A CSS-wide keyword
+    //    and an arbitrary substitution function (var() and the like, whose
+    //    value is pending) are neither a <transform-list> nor none: failure.
+    var assignments: std.ArrayList(properties.Assignment) = .empty;
+    defer {
+        for (assignments.items) |a| a.value.release();
+        assignments.deinit(allocator);
+    }
+    if (!try properties.parseDeclaration(.{ .allocator = allocator }, .{ .longhand = .transform }, text, &assignments)) return null;
+    if (assignments.items.len != 1 or assignments.items[0].value != .value) return null;
+    const parsed = assignments.items[0].value.value;
+    // 3. none: a single identity matrix (2D).
+    if (parsed.isKeyword(.none)) return Matrix.identity;
+    if (parsed != .transform_list) return null;
+    // Step 2's "any <length> values without absolute length units" (and a
+    // percentage, which needs a reference box): a literal must have an
+    // absolute unit (a number, an absolute length, an angle); a calc() is
+    // computed under two sets of font and viewport metrics, and one whose
+    // value moves with them - or stays a percentage - is relative.
+    const list = parsed.transform_list;
+    for (list.items) |function| for (function.arguments) |argument| {
+        if (argument == .literal) {
+            const unit = argument.literal.unit;
+            if (unit == .percent or unit.absoluteScale() == null) return null;
+        }
+    };
+    const computed = try list.compute(allocator, .{});
+    defer computed.unref();
+    const doubled = try list.compute(allocator, .{
+        .font_size = 32,
+        .root_font_size = 32,
+        .line_height = 38.4,
+        .root_line_height = 38.4,
+        .viewport_width = 2048,
+        .viewport_height = 1536,
+    });
+    defer doubled.unref();
+    // 4. 2dTransform: false when any function is a three-dimensional one
+    //    (CSS Transforms 2 §13: matrix3d, translate3d, translateZ, scale3d,
+    //    scaleZ, rotate3d, rotateX, rotateY, rotateZ, perspective).
+    var two_dimensional = true;
+    for (computed.items, doubled.items) |function, other| {
+        for (function.arguments, other.arguments) |argument, again| {
+            if (argument != .literal or again != .literal) return null;
+            if (argument.literal.unit == .percent) return null;
+            const a = argument.literal.value;
+            const b = again.literal.value;
+            if (a != b and !(std.math.isNan(a) and std.math.isNan(b))) return null;
+        }
+        switch (function.kind) {
+            .matrix3d, .translate3d, .translateZ, .scale3d, .scaleZ, .rotate3d, .rotateX, .rotateY, .rotateZ, .perspective => two_dimensional = false,
+            else => {},
+        }
+    }
+    // 5-6. Each function's matrix (Transforms 1 §15), post-multiplied left
+    //      to right - CSS's own composition (box_transform_values.matrixOf,
+    //      the one getComputedStyle uses).
+    const m = box_transform_values.matrixOf(computed.items) orelse return null;
+    // 7. The matrix and 2dTransform, as the matrix the constructor (6.3 step
+    //    3) and setMatrixValue make of them: with 2dTransform, a 2d matrix of
+    //    m11, m12, m21, m22, m41 and m42; else a 3d matrix of all sixteen.
+    if (two_dimensional) return Matrix.create2d(.{
+        m[index(1, 1)], m[index(1, 2)],
+        m[index(2, 1)], m[index(2, 2)],
+        m[index(4, 1)], m[index(4, 2)],
+    });
+    return Matrix.create3d(m);
+}
+
 const testing = std.testing;
+
+test "6.2 parse a string into an abstract matrix" {
+    const allocator = testing.allocator;
+    // Empty and none: the 2D identity.
+    try testing.expect((try parseTransformList(allocator, "")).?.isIdentity());
+    try testing.expect((try parseTransformList(allocator, "none")).?.is_2d);
+    // 2D functions, post-multiplied in order.
+    const t = (try parseTransformList(allocator, "translate(10px, 20px) scale(2)")).?;
+    try testing.expect(t.is_2d);
+    try testing.expectEqual(@as(f64, 2), t.m[index(1, 1)]);
+    try testing.expectEqual(@as(f64, 10), t.m[index(4, 1)]);
+    try testing.expectEqual(@as(f64, 20), t.m[index(4, 2)]);
+    // Absolute units compute (1in = 96px); a 3D function clears 2dTransform.
+    const inch = (try parseTransformList(allocator, "translateX(1in) translateZ(0)")).?;
+    try testing.expectEqual(@as(f64, 96), inch.m[index(4, 1)]);
+    try testing.expect(!inch.is_2d);
+    const m = (try parseTransformList(allocator, "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 25, 50, 0, 1)")).?;
+    try testing.expectEqual(@as(f64, 25), m.m[index(4, 1)]);
+    try testing.expectEqual(@as(f64, 50), m.m[index(4, 2)]);
+    try testing.expect(!m.is_2d);
+    // Failure: relative lengths, percentages, keywords other than none,
+    // invalid syntax.
+    try testing.expect((try parseTransformList(allocator, "translateX(1em)")) == null);
+    try testing.expect((try parseTransformList(allocator, "translateX(10%)")) == null);
+    try testing.expect((try parseTransformList(allocator, "translate(1vw)")) == null);
+    try testing.expect((try parseTransformList(allocator, "translateX(calc(1px + 1em))")) == null);
+    try testing.expect((try parseTransformList(allocator, "inherit")) == null);
+    try testing.expect((try parseTransformList(allocator, "nonsense(1px)")) == null);
+}
 
 test "a 2d matrix keeps its six values and the identity elsewhere" {
     const matrix = Matrix.create2d(.{ 1, 2, 3, 4, 5, 6 });

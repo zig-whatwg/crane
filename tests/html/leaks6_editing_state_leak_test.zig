@@ -31,7 +31,7 @@ fn ignoreReport(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
 fn run() !void {
     var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
-        const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(debug.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;
@@ -98,13 +98,16 @@ fn frameDocument(page: anytype, realm: runtime.Context) !*runtime.Instance {
 fn reusedAddress() !void {
     var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
-        const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(debug.allocator(), .{ .snapshot_path = "" });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;
         try page.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
         const realm = browser.getRealm() orelse return error.NoRealm;
-        try page.runScript("window.f = document.body.appendChild(document.createElement('iframe')); f.contentDocument.execCommand('undo');");
+        // A configuration command makes the editor state (html_core's executor);
+        // undo with nothing to undo no longer does (lane edit3: execcommand/
+        // undo.zig reads the history only if it exists).
+        try page.runScript("window.f = document.body.appendChild(document.createElement('iframe')); f.contentDocument.execCommand('styleWithCSS', false, 'true');");
         const edited = try frameDocument(page, realm);
         try std.testing.expect(dom.document_internals.editorState(edited) != null);
         const edited_address = @intFromPtr(edited);

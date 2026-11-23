@@ -16,7 +16,7 @@ const Reason = dom.bfcache.Reason;
 const page_url = "http://bfa-nrr.test/page.html";
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 fn instanceOf(browser: *browser_mod.Browser, source: []const u8) !*runtime.Instance {

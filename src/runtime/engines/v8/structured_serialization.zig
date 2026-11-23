@@ -171,10 +171,10 @@ pub fn structuredDeserializeWithOptions(realm: runtime.Context, serialized: []co
     // its contents (V8 copies them). Step 3: StructuredDeserialize.
     var stack: [16]ffi.ArrayBufferTransferData = undefined;
     const heap = if (array_buffers.len > stack.len)
-        std.heap.page_allocator.alloc(ffi.ArrayBufferTransferData, array_buffers.len) catch return EngineError.OutOfMemory
+        realm.allocator.alloc(ffi.ArrayBufferTransferData, array_buffers.len) catch return EngineError.OutOfMemory
     else
         null;
-    defer if (heap) |h| std.heap.page_allocator.free(h);
+    defer if (heap) |h| realm.allocator.free(h);
     const data = heap orelse stack[0..array_buffers.len];
     for (array_buffers, 0..) |contents, i| {
         data[i] = .{ .data = if (contents.len > 0) @ptrCast(@constCast(contents.ptr)) else null, .size = contents.len };

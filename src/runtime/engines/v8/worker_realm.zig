@@ -130,6 +130,12 @@ const Record = struct {
 /// `threadlocal`, every agent's on the thread in one list.
 pub const Records = std.ArrayListUnmanaged(Record);
 
+/// What an agent's `Records` list is allocated from: libc's heap, as the
+/// agent's wrapper cache list (wrapper_cache `caches_allocator`) - no agent
+/// allocator is in reach where a realm joins or leaves it; it was
+/// std.heap.page_allocator, a page for a few records.
+const records_allocator = std.heap.c_allocator;
+
 /// The worker realms of the agent whose isolate this is; null for an isolate
 /// createAgent did not make, which makes no realm.
 fn recordsOf(isolate: *ffi.Isolate) ?*Records {
@@ -144,7 +150,7 @@ fn take(realm: runtime.Context) ?Record {
         const taken = records.swapRemove(i);
         // The list's memory goes with its last record (and with the agent,
         // `endAgent`).
-        if (records.items.len == 0) records.clearAndFree(std.heap.page_allocator);
+        if (records.items.len == 0) records.clearAndFree(records_allocator);
         return taken;
     }
     return null;
@@ -154,7 +160,7 @@ fn take(realm: runtime.Context) ?Record {
 /// realm still on it was not destroyed before its agent; the context manager
 /// tore it down with the agent's realms.
 pub fn endAgent(records: *Records) void {
-    records.deinit(std.heap.page_allocator);
+    records.deinit(records_allocator);
     records.* = .empty;
 }
 
@@ -185,13 +191,21 @@ fn GlobalKind(comptime global: runtime.WorkerRealmOptions.WorkerGlobal) type {
 
 /// The global scope interface's template in `isolate`, which must be
 /// entered. Templates belong to one isolate, and the registry is where every
-/// later lookup - the interface object installForScope puts on the global, a
-/// subclass's Inherit() - finds this one, so the global object and
-/// `<Interface>.prototype` share a template.
-pub fn globalScopeTemplate(comptime Interface: type, isolate: *ffi.Isolate) *ffi.FunctionTemplate {
+/// later lookup - the global's `<Interface>` interface object, a subclass's
+/// Inherit() - finds this one, so the global object and
+/// `<Interface>.prototype` share a template. Made here, its instance
+/// template - the template of every global of `scope` in the isolate -
+/// carries `scope`'s exposed constructs as lazy data properties
+/// (interface_bindings.installExposedConstructs; Blink:
+/// IDLMemberInstaller::InstallExposedConstructs on the global's instance
+/// template, for a worker's as for a Window's).
+pub fn globalScopeTemplate(comptime Interface: type, comptime scope: webidl_helpers.GlobalScope, isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     const name = Interface.Meta.name;
     if (template_registry.getTemplateForIsolate(name, isolate)) |template| return template;
     const template = V8Interface(Interface).createTemplate(isolate);
+    const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
+    interface_bindings.installExposedConstructs(scope, instance_template);
     template_registry.register(name, template, isolate);
     return template;
 }
@@ -221,7 +235,7 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // which makes the global object one of its platform objects, with its
     // internal fields - Blink's WorkerOrWorkletScriptController::Initialize
     // does the same with the interface template's InstanceTemplate().
-    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(Kind.Interface, isolate)) orelse
+    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(Kind.Interface, Kind.scope, isolate)) orelse
         return EngineError.OperationFailed;
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
@@ -250,7 +264,7 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
         ffi.v8_Context_Dispose(context);
         return EngineError.OperationFailed;
     };
-    records.append(std.heap.page_allocator, .{
+    records.append(records_allocator, .{
         .realm = realm,
         .isolate = isolate,
         .context = context,
@@ -271,11 +285,15 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // the global scope reads them as it is made.
     if (options.on_realm) |hook| hook(options.data, realm);
 
-    // Every interface exposed in the worker's scope, per WebIDL's [Exposed] -
-    // and, in a realm that is not a secure context, [SecureContext].
+    // Every construct exposed in the worker's scope, per WebIDL's [Exposed]:
+    // those every such realm has are on the global's template
+    // (globalScopeTemplate), and a secure realm adds its [SecureContext]
+    // ones - built when script first reads them.
     interface_bindings.installForScope(isolate, context, Kind.scope);
-    interface_bindings.hideSecureContextInterfaceObjects(isolate, context, Kind.scope);
     interface_bindings.registerNamespacesGeneric(@import("namespaces"), isolate, context);
+    // HTML "create a new realm" step 5: no SharedArrayBuffer global where the
+    // worker's agent cluster is not cross-origin isolated.
+    @import("shared_array_buffer_exposure.zig").apply(isolate, context, options.agent_cluster_cross_origin_isolated);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.
@@ -536,7 +554,11 @@ fn builtinCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer ffi.v8_Context_Dispose(context);
 
-    const allocator = std.heap.page_allocator;
+    // The arguments' values live for this call. No realm allocator is in
+    // reach of a builtin's callback (its data names the function only):
+    // libc's, never std.heap.page_allocator's page per string argument
+    // (docs/lessons/architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
+    const allocator = std.heap.c_allocator;
     const argc: usize = @intCast(@max(info.length(), 0));
     var handles_buf: [8]*ffi.Value = undefined;
     var values_buf: [8]runtime.JSValue = undefined;

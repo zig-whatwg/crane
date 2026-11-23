@@ -17,6 +17,14 @@
 //! Each test allocates an impostor before the teardown's last phase: the
 //! slot is never free while the teardown can still allocate into it.
 //!
+//! Since the wrapper redesign (node_wrappers.zig) a node's main-world wrapper lives in
+//! the node's own slot and never enters a wrapper cache: its release is the
+//! node wrapper registry's (a collection's `collected`, then the drain), not
+//! wrapper_cache.finalizeEntry, and `page.cache.get(node)` answers from the
+//! node's slot. The history above is the mechanism these tests were written
+//! against; what they pin - the slot returned only once nothing can read it
+//! - is unchanged (lane mem1's audit, 2026-11-22).
+//!
 //! A wrapped node's ancestors are wrapped too (node tracing: the cache's
 //! `set` draws the tree's edges, wrapping the root), and the wrapped part of
 //! a tree is one cycle the collector keeps or takes whole - so these trees'
@@ -65,6 +73,7 @@ const Made = struct {
 
 fn openRealm(agent: *engine.Agent) !runtime.Context {
     return engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,

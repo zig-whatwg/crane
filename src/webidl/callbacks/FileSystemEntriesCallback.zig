@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const FileSystemEntriesCallback = *const fn (entries: runtime.JSValue) void;
+/// callback FileSystemEntriesCallback = undefined (sequence<FileSystemEntry> entries)
+pub const FileSystemEntriesCallback = runtime.BorrowedCallbackFunction;

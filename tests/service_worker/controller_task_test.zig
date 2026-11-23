@@ -70,7 +70,7 @@ fn sleepMs(ms: u64) void {
 }
 
 test "a task queued before controllerchange's still sees the old controller, though the registry has changed it" {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
     const context = browser.current_context orelse return error.NoPage;

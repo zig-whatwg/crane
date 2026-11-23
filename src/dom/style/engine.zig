@@ -74,6 +74,7 @@ const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
 const svg_hints = @import("svg_hints.zig");
+const smil_animations = @import("../smil/document_animations.zig");
 pub const available_images = @import("available_images.zig");
 const matched_properties_cache = @import("matched_properties_cache.zig");
 
@@ -258,6 +259,9 @@ pub const StyleEngine = struct {
         environment_revision: u64 = 0,
         /// The last observed Document-owned top-layer entry revision.
         top_layer_revision: u64 = 0,
+        /// The last observed revision of :focus-visible's inputs
+        /// (`observeFocusVisible`).
+        focus_visible_revision: u64 = 0,
         /// Whether this document has a fullscreen element, as of the
         /// top-layer revision `fullscreen_revision`: Fullscreen 5.2's
         /// user-agent sheet is matched only then (`observeFullscreen`).
@@ -664,6 +668,24 @@ pub const StyleEngine = struct {
         self.environmentChanged();
     }
 
+    /// Selectors 4 9.4: :focus-visible reads the user agent's heuristic - the
+    /// last input modality, what a focus() call's focusVisible decided, and
+    /// whether the element takes text input (designMode included) - none of
+    /// which moves the tree version, and the focused element itself is in
+    /// every key already (`singletonKey`). Its inputs' revision
+    /// (dom.focus_matching.focusVisibleRevision) is pulled like the top
+    /// layer's, and a moved revision recomputes every style - Blink likewise
+    /// invalidates a focused element's style when its :focus-visible state
+    /// changes rather than resolving it on every read - so a focused
+    /// element's style is cached like any other. Before, matching marked it volatile, which made every style
+    /// read inside a focused editing host resolve again (lane tpc).
+    pub fn observeFocusVisible(self: *StyleEngine, revision: u64) Error!void {
+        const seen: u64 = if (self.rare) |r| r.focus_visible_revision else 0;
+        if (revision == seen) return;
+        (try self.ensureRare()).focus_visible_revision = revision;
+        self.environmentChanged();
+    }
+
     /// Fullscreen 5.2's user-agent rules (ua_sheet's fullscreen sheet) are
     /// matched only while this document has a fullscreen element, as Blink
     /// adds its fullscreen sheet only once an element goes fullscreen
@@ -694,10 +716,18 @@ pub const StyleEngine = struct {
         if (self.resourceState()) |resources| resources.invalidate();
     }
 
+    /// An SVG animation's override style changed as its timeline moved
+    /// (dom.smil.document_animations): no DOM mutation moved the tree
+    /// version, so every cached style is keyed again on the generation.
+    pub fn animatedOverrideStyleChanged(self: *StyleEngine) void {
+        self.generation +%= 1;
+    }
+
     /// The active sheets, rebuilt first if anything they depend on moved.
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
         try self.observeTopLayer(@import("../top_layer.zig").revisionOf(document));
+        try self.observeFocusVisible(@import("../focus_matching.zig").focusVisibleRevision(document));
         self.observeFullscreen(document);
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
@@ -1165,6 +1195,21 @@ const Resolution = struct {
     /// read (`inTopLayer`): null in a document that never had one.
     top_layer: ?*top_layer_mod.State = null,
     top_layer_read: bool = false,
+    /// The element collectMatched is matching rules for, as an @container
+    /// condition asks (`containerQueries`); a pseudo-element's originating
+    /// element with `pseudo` set.
+    query_subject: ?QuerySubject = null,
+    /// CDP's DOM.getQueryingDescendantsForContainer (`queriesContainer`):
+    /// set only for that read - null on every resolution a page makes, one
+    /// test per candidate rule.
+    container_probe: ?*ContainerProbe = null,
+
+    /// The element whose rules are being matched, for @container conditions
+    /// (sheet.Contents.conditionHoldsFor).
+    fn containerQueries(self: *Resolution) ?sheet_mod.ContainerQueries {
+        if (self.query_subject == null) return null;
+        return .{ .context = self, .holds = containerHolds };
+    }
 
     /// Position 4 §3.1 "Top Layer Styling" applies to an element in its
     /// node document's top layer and to that element's ::backdrop. Whether
@@ -2147,9 +2192,412 @@ fn scopedContentAttribute(context: *const anyopaque, declaration_scope: u64, map
     return null;
 }
 
+// ============================================================================
+// Container queries (CSS Conditional 5 5.4, 6.2)
+// ============================================================================
+
+/// The element whose rules collectMatched matches (Resolution.query_subject).
+const QuerySubject = struct {
+    node: *NodeBase,
+    /// A pseudo-element of `node`: its originating element is the first
+    /// candidate query container ("generated pseudos include their
+    /// originating element", as containerEligibility reads 5.1).
+    pseudo: bool,
+};
+
+/// A selected query container: the element and its computed style (cached:
+/// the lineage resolves root-down, so an ancestor's style is current before
+/// its descendants' rules are matched).
+const QueryContainer = struct {
+    element: *runtime.Instance,
+    style: *const ComputedStyle,
+};
+
+/// sheet.ContainerQueries' `holds` for the resolution's subject: an
+/// @container rule's <container-condition>#, "true if any of its component
+/// <container-condition>s are true" (5.4), each selecting its own query
+/// container. Out of memory, a condition is not true.
+fn containerHolds(context: *anyopaque, compiled: *const css.container_queries.Compiled) bool {
+    const res: *Resolution = @ptrCast(@alignCast(context));
+    const subject = res.query_subject orelse return false;
+    for (compiled.conditions) |condition| {
+        if (containerConditionHolds(res, subject, condition) catch false) return true;
+    }
+    return false;
+}
+
+/// One <container-condition> (5.4): "the query container to be queried is
+/// selected from among the element's ancestor query containers that are
+/// established as a valid query container for all the container features
+/// in the <container-query>. If the <container-query> contains unknown or
+/// unsupported container features, no query container will be selected
+/// ... The <container-name> filters the set of query containers considered
+/// to just those with a matching query container name." With no eligible
+/// ancestor the query is unknown; with no <container-query> the container
+/// is eligible "as long as the <container-name> matches".
+fn containerConditionHolds(res: *Resolution, subject: QuerySubject, condition: css.container_queries.CompiledCondition) anyerror!bool {
+    if (condition.needs.unknown) return false;
+    const container = queryContainer(subject, condition.name, condition.needs) orelse return false;
+    const holds = if (condition.query) |query| blk: {
+        var evaluation: ContainerEvaluation = .{ .res = res, .container = container };
+        break :blk (try css.container_queries.Compiled.evaluate(query, &evaluation)) == .true;
+    } else true;
+    // The probe: this rule's @container selected the probed container.
+    if (res.container_probe) |probe| if (holds and container.element == probe.container) {
+        probe.pending = true;
+    };
+    return holds;
+}
+
+/// What `queriesContainer` asks of one resolution: whether a rule that
+/// matched the element had an @container whose query container is
+/// `container` (Blink's InspectorDOMAgent::ContainerQueriedByElement walks
+/// the matched rules' parent @container rules for the same answer).
+pub const ContainerProbe = struct {
+    container: *runtime.Instance,
+    /// The rule being matched now selected the container.
+    pending: bool = false,
+    /// A matched rule did.
+    hit: bool = false,
+};
+
+/// Whether `element`'s style queries `container`: one of the style rules
+/// that match it sits in an @container rule whose query container, for
+/// this element, is `container` (CDP's
+/// DOM.getQueryingDescendantsForContainer; Blink's
+/// ContainerQueriedByElement). Read only: the element's rules are matched
+/// once more with the probe set, and nothing is cached from it.
+pub fn queriesContainer(element: *runtime.Instance, container: *runtime.Instance) bool {
+    // The element's (and its ancestors') styles first: the query containers
+    // are read from their cached styles.
+    _ = (computedStyle(element, null) catch return false) orelse return false;
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const engine = hooks.engineOf(document) orelse return false;
+    const state = element_style.of(element) orelse return false;
+    engine.enterResolution();
+    defer engine.resolving = false;
+    const active = engine.ensureActive(document) catch return false;
+    var probe: ContainerProbe = .{ .container = container };
+    var res: Resolution = .{
+        .allocator = engine.allocator,
+        .document = document,
+        .engine = engine,
+        .active = active,
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
+        .container_probe = &probe,
+    };
+    defer res.deinit();
+    var reads: selector_matching.StateReads = .{};
+    collectMatched(&res, element, node, state, null, &reads) catch return false;
+    return probe.hit;
+}
+
+/// The nearest flat-tree ancestor - the originating element first for a
+/// pseudo-element - that is a valid query container for `needs` and, with a
+/// name, lists it in its container-name (5.1-5.2): every element is a style
+/// container (container-type: normal "remains a query container for
+/// container style queries"); a size feature needs a size or inline-size
+/// container, scroll-state() a scroll-state one.
+fn queryContainer(subject: QuerySubject, name: []const u8, needs: css.container_queries.Needs) ?QueryContainer {
+    var slotted = false;
+    var next: FlatParent = if (subject.pseudo) .{ .element = subject.node } else flatParent(subject.node, &slotted);
+    while (next == .element) {
+        const node = next.element;
+        const element = instanceOf(node) orelse return null;
+        const state = element_style.existingOf(element) orelse return null;
+        const style = (state.cached orelse return null).style;
+        if (eligibleQueryContainer(style, name, needs)) return .{ .element = element, .style = style };
+        next = flatParent(node, &slotted);
+    }
+    return null;
+}
+
+/// The pseudo-elements an element generates boxes for, of those CDP's DOM
+/// domain reports (Blink keeps a PseudoElement node for each:
+/// ForEachSupportedPseudo's before, after, marker, backdrop).
+pub const GeneratedPseudos = packed struct(u4) {
+    before: bool = false,
+    after: bool = false,
+    marker: bool = false,
+    backdrop: bool = false,
+};
+
+/// Which pseudo-elements `element` has now, as Blink decides at its style
+/// recalc whether to make a PseudoElement (Element::UpdatePseudoElement:
+/// CanGeneratePseudoElement - the element has a computed style that is not
+/// display: none - and PseudoElementLayoutObjectIsNeeded - the
+/// pseudo-element's own display is not none and, for ::before and ::after,
+/// its content is not none or normal; ::marker only on a list item, its
+/// content not none; ::backdrop only in the top layer). Read only: styles
+/// are resolved as getComputedStyle would. CDP's DOM agents ask (lane
+/// cdpd1).
+pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
+    const style = (computedStyle(element, null) catch null) orelse return .{};
+    const state = element_style.existingOf(element) orelse return .{};
+    const cached = state.cached orelse return .{};
+    if (!cached.rendered) return .{};
+    const display = style.display();
+    if (display.box == .none) return .{};
+    var out: GeneratedPseudos = .{};
+    out.before = pseudoGenerates(element, "before", true);
+    out.after = pseudoGenerates(element, "after", true);
+    if (display.list_item) out.marker = pseudoGenerates(element, "marker", false);
+    if (inTopLayerOf(element)) out.backdrop = pseudoGenerates(element, "backdrop", false);
+    return out;
+}
+
+/// The pseudo-element `name` of `element` has a box: its display is not
+/// none, and its content generates something - a list for ::before and
+/// ::after (none and normal compute to nothing there), anything but none
+/// otherwise.
+fn pseudoGenerates(element: *runtime.Instance, comptime name: []const u8, comptime needs_list: bool) bool {
+    const style = (computedStyle(element, name) catch null) orelse return false;
+    if (style.display().box == .none) return false;
+    const content = style.get(.content);
+    if (content == .content) return true;
+    if (needs_list) return false;
+    return !(content == .keyword and content.keyword == .none);
+}
+
+fn inTopLayerOf(element: *runtime.Instance) bool {
+    const layer = (top_layer_mod.ofElement(element, false) catch null) orelse return false;
+    return layer.inTopLayer(element);
+}
+
+/// What CDP's DOM.getContainerForNode asks for (Blink's ContainerSelector
+/// from its params): a container name, the axes a size query would read,
+/// and the scroll-state and anchored container types.
+pub const ContainerRequest = struct {
+    name: []const u8 = "",
+    physical_horizontal: bool = false,
+    physical_vertical: bool = false,
+    logical_inline: bool = false,
+    logical_block: bool = false,
+    scroll_state: bool = false,
+    anchored: bool = false,
+};
+
+/// The element's query container for `request` (CDP DOM.getContainerForNode:
+/// Blink's StyleResolver::FindContainerForElement ->
+/// ContainerQueryEvaluator::FindContainer): the nearest flat-tree ancestor
+/// whose computed container-name lists the name (any, with none) and whose
+/// container-type has every type the request selects
+/// (ContainerSelector::Type: a physical axis is the candidate's inline or
+/// block axis by its writing mode; inline needs inline-size or size, block
+/// needs size). Read only: styles are resolved as getComputedStyle would.
+/// No anchored container type exists here, so a request for one finds none.
+pub fn findQueryContainer(element: *runtime.Instance, request: ContainerRequest) ?*runtime.Instance {
+    if (request.anchored) return null;
+    const node = instance_bridge.getNodeBase(element) orelse return null;
+    var slotted = false;
+    var next = flatParent(node, &slotted);
+    while (next == .element) {
+        const candidate = instanceOf(next.element) orelse return null;
+        const style = (computedStyle(candidate, null) catch null) orelse return null;
+        if (requestMatches(style, request)) return candidate;
+        next = flatParent(next.element, &slotted);
+    }
+    return null;
+}
+
+fn requestMatches(style: *const ComputedStyle, request: ContainerRequest) bool {
+    if (request.name.len != 0 and !css.container_values.namesContain(style.get(.container_name), request.name)) return false;
+    const horizontal = switch (style.keyword(.writing_mode)) {
+        .vertical_rl, .vertical_lr, .sideways_rl, .sideways_lr => false,
+        else => true,
+    };
+    const inline_axis = request.logical_inline or (if (horizontal) request.physical_horizontal else request.physical_vertical);
+    const block_axis = request.logical_block or (if (horizontal) request.physical_vertical else request.physical_horizontal);
+    const container_type = style.get(.container_type);
+    const size = css.container_values.sizeType(container_type);
+    if (inline_axis and size == null) return false;
+    if (block_axis and size != .size) return false;
+    if (request.scroll_state and !css.container_values.hasScrollState(container_type)) return false;
+    return true;
+}
+
+fn eligibleQueryContainer(style: *const ComputedStyle, name: []const u8, needs: css.container_queries.Needs) bool {
+    if (name.len != 0 and !css.container_values.namesContain(style.get(.container_name), name)) return false;
+    const container_type = style.get(.container_type);
+    if (needs.size and css.container_values.sizeType(container_type) == null) return false;
+    if (needs.scroll_state and !css.container_values.hasScrollState(container_type)) return false;
+    return true;
+}
+
+/// A container style query (6.2) against a selected query container: its
+/// computed values, and query values "computed with respect to the query
+/// container". Custom properties only, as all three engines ship them
+/// (container_queries.featureName; a standard property's feature is
+/// unknown, if_function.isQueryableStyleFeature).
+const ContainerEvaluation = struct {
+    res: *Resolution,
+    container: QueryContainer,
+
+    /// A style() query of the compiled condition (container_queries.Node).
+    pub fn styleQuery(self: *ContainerEvaluation, query: *const css.if_function.StyleQuery) anyerror!css.container_queries.Truth {
+        return query.evaluate(self) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => .false,
+        };
+    }
+
+    /// One <style-feature>, for if_function's expression tree.
+    pub fn evaluate(self: *ContainerEvaluation, feature: css.if_function.StyleFeature) Error!css.if_function.Truth {
+        var arena = std.heap.ArenaAllocator.init(self.res.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        switch (feature) {
+            // "A style feature without a value evaluates to true if the
+            // computed value is different from the initial value for the
+            // given property."
+            .boolean => |name| {
+                const value = self.container.style.customValue(name) orelse return .false;
+                if (self.registration(name)) |entry| {
+                    if (entry.initial) |initial| if (css.cascade.tokensEqual(value.computed().text, initial.computed().text)) return .false;
+                }
+                return .true;
+            },
+            // "evaluates to true if the computed value of the given property
+            // on the query container matches the given value (which is also
+            // computed with respect to the query container)".
+            .plain => |plain| {
+                const current = self.container.style.customValue(plain.name);
+                if (css.custom_properties.cssWideKeyword(plain.value)) |keyword| {
+                    // "The remaining non-cascade-dependent CSS-wide keywords
+                    // are computed with respect to the query container";
+                    // revert and revert-layer make the query false.
+                    const expected: ?*css.custom_properties.Text = switch (keyword) {
+                        .initial => if (self.registration(plain.name)) |entry| entry.initial else null,
+                        .inherit, .unset => self.parentValue(plain.name),
+                        .revert, .revert_layer, .revert_rule => return .false,
+                    };
+                    if (current == null or expected == null) return if (current == null and expected == null) .true else .false;
+                    return if (css.cascade.tokensEqual(current.?.computed().text, expected.?.computed().text)) .true else .false;
+                }
+                const value = current orelse return .false;
+                const query = (try self.substitute(a, plain.value)) orelse return .false;
+                // TODO(maj3): a registered property with a syntax compares
+                // its query value computed under the registration (as if()
+                // does, cascade.Builder.queryValueMatchesCallback); here the
+                // substituted tokens are compared.
+                return if (css.cascade.tokensEqual(value.computed().text, query)) .true else .false;
+            },
+            // 6.2 "To evaluate a <style-range>": a custom property name is
+            // substituted as var() would, other operands substituted, each
+            // parsed as one numeric value (else false), and compared.
+            .range => |range| {
+                var values: [3]css.substitution.Numeric = undefined;
+                const math = self.mathContext();
+                for (range.operands, 0..) |operand, i| {
+                    const text = if (std.mem.startsWith(u8, operand, "--") and css.custom_properties.isName(operand))
+                        (self.container.style.customValue(operand) orelse return .false).computed().text
+                    else
+                        (try self.substitute(a, operand)) orelse return .false;
+                    values[i] = (try css.cascade.numericOperand(a, text, math)) orelse return .false;
+                }
+                return css.if_function.compareRange(values[0..range.operands.len], range.comparisons);
+            },
+        }
+    }
+
+    fn registration(self: *const ContainerEvaluation, name: []const u8) ?*const css.registered_properties.Snapshot.Entry {
+        const snapshot = self.container.style.registered orelse return null;
+        return snapshot.find(name);
+    }
+
+    /// The container's parent's computed value of `name` (inherit and unset:
+    /// custom properties inherit), or the initial value at the root.
+    fn parentValue(self: *const ContainerEvaluation, name: []const u8) ?*css.custom_properties.Text {
+        const node = instance_bridge.getNodeBase(self.container.element) orelse return null;
+        var slotted = false;
+        const parent = switch (flatParent(node, &slotted)) {
+            .element => |p| p,
+            else => return if (self.registration(name)) |entry| entry.initial else null,
+        };
+        const element = instanceOf(parent) orelse return null;
+        const state = element_style.existingOf(element) orelse return null;
+        const cached = state.cached orelse return null;
+        return cached.style.customValue(name);
+    }
+
+    /// `text` with its arbitrary substitution functions substituted for the
+    /// query container: var() reads its computed custom properties, attr()
+    /// its attributes. Null for the guaranteed-invalid value.
+    fn substitute(self: *ContainerEvaluation, a: Allocator, text: []const u8) Error!?[]const u8 {
+        const source = css.substitution.originalText(text);
+        if (!css.substitution.mentionsFunction(source)) return source;
+        const nodes = css.substitution.parse(a, source) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return null,
+        };
+        const host: css.substitution.Host = .{
+            .context = self,
+            .custom_value = customValueOfContainer,
+            .attribute = attributeOfContainer,
+            .math = self.mathContext(),
+        };
+        const rendered = css.substitution.substituteAndRender(a, nodes, host, .{}) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return null,
+        };
+        return rendered.text;
+    }
+
+    fn customValueOfContainer(context: *anyopaque, name: []const u8) css.substitution.Error!?css.substitution.Computed {
+        const self: *ContainerEvaluation = @ptrCast(@alignCast(context));
+        const value = self.container.style.customValue(name) orelse return null;
+        return value.computed();
+    }
+
+    fn attributeOfContainer(context: *anyopaque, declaration_scope: u64, map: ?*const css.substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?css.substitution.Attribute {
+        const self: *ContainerEvaluation = @ptrCast(@alignCast(context));
+        _ = declaration_scope;
+        // The container's own attribute: the query value is computed with
+        // respect to the query container, which is no declaration's
+        // shadow-scoped element.
+        return scopedContentAttribute(self.container.element, scopeSerial(rootOf(self.container.element) orelse return null), map, prefix, local_name);
+    }
+
+    /// The container's font metrics for em and lh, the root's for rem and
+    /// rlh, the viewport for the viewport units (Values 4 6.1).
+    fn mathContext(self: *const ContainerEvaluation) css.math_values.Context {
+        const style_ = self.container.style;
+        const em = style_.get(.font_size).length.value;
+        const mode = style_.keyword(.writing_mode);
+        return .{
+            .font_size = em,
+            .root_font_size = self.res.root_font_size,
+            .line_height = switch (style_.get(.line_height)) {
+                .length => |length| length.value,
+                .number => |number| number * em,
+                else => em * 1.2,
+            },
+            .root_line_height = self.res.root_line_height,
+            .vertical = mode == .vertical_rl or mode == .vertical_lr,
+            .upright = style_.keyword(.text_orientation) == .upright,
+            .root_vertical = self.res.root_vertical,
+            .root_upright = self.res.root_upright,
+            .viewport_vertical = mode != .horizontal_tb,
+            .viewport_width = self.res.active.media.width,
+            .viewport_height = self.res.active.media.height,
+        };
+    }
+};
+
+/// The root of `element`'s tree (a document or a shadow root).
+fn rootOf(element: *runtime.Instance) ?*NodeBase {
+    var root = instance_bridge.getNodeBase(element) orelse return null;
+    while (root.parent_node) |parent| root = parent;
+    return root;
+}
+
 /// Cascade 5 section 5: every declaration block that applies to the
 /// element, with where it enters the cascade.
 fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, reads: *selector_matching.StateReads) Error!void {
+    // CSS Conditional 5 5.4: an @container rule's style rules match this
+    // element where its query is true for this element's query container.
+    res.query_subject = .{ .node = node, .pseudo = pseudo != null };
     const data = element_data.of(element) orelse return;
     const ns = data.namespaceSlice();
     const is_html = if (ns) |n| std.mem.eql(u8, n, html_namespace) else false;
@@ -2320,6 +2768,15 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
             }
         }
     }
+    // SVG Animations 2 2.6: an animation of a CSS property sets the
+    // property's override style - element-attached, after the style
+    // attribute, normal (Blink StyleResolver::MatchAllRules adds an SVG
+    // element's AnimatedSMILStyleProperties after its inline style; Gecko's
+    // cascade level SMILOverride follows StyleAttrNormal).
+    if (svg_eligible) if (smil_animations.animatedStyleBlock(res.document, element)) |block| {
+        try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .per_element = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
+        res.own_blocks = true;
+    };
 }
 
 /// Reuse the existing document-local shadow identity, never a new counter.
@@ -2347,7 +2804,8 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
-        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        if (res.container_probe) |probe| probe.pending = false;
+        if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
             const Args = struct { host: *runtime.Instance, complex: ComplexRef, pseudo: ?[]const u8 };
@@ -2364,6 +2822,9 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 
@@ -2398,7 +2859,8 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
-        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        if (res.container_probe) |probe| probe.pending = false;
+        if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
             const args: Args = .{ .kind = kind, .element = element, .outer = outer, .complex = rule.complex, .pseudo = pseudo, .exposed = exposed };
@@ -2418,6 +2880,9 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 
@@ -2443,7 +2908,8 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
-        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        if (res.container_probe) |probe| probe.pending = false;
+        if (!contents.conditionHoldsFor(rule.condition, &res.active.media, res.containerQueries())) continue;
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
             proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, Args{ .element = element, .complex = rule.complex, .pseudo = pseudo }, Run.run)) orelse continue;
@@ -2457,6 +2923,9 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         }
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.container_probe) |probe| if (probe.pending) {
+            probe.hit = true;
+        };
     }
 }
 

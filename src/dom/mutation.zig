@@ -41,6 +41,8 @@ const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
 const custom_elements = @import("custom_elements.zig");
 const tree_ordered_map = @import("tree_ordered_map.zig");
+const heading_offsets = @import("heading_offsets.zig");
+const inspector_probes = @import("inspector_probes.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -389,19 +391,35 @@ fn setConnectedRecursive(node: anytype, connected: bool) void {
     while (walk.next()) |descendant| descendant.is_connected = connected;
 }
 
-/// DOM "remove" step 15: "For each inclusive ancestor inclusiveAncestor of
-/// parent, and then for each registered of inclusiveAncestor's registered
-/// observer list, if
-/// registered's options["subtree"] is true, then append a new transient
-/// registered observer whose observer is registered's observer, options is
-/// registered's options, and source is registered to node's registered
-/// observer list."
+/// DOM "add transient registered observers" given `node` and `parent` (the
+/// remove algorithm's step 15, the move algorithm's step 17): for each
+/// inclusive ancestor of parent, for each of its registered observers whose
+/// options["subtree"] is true -
+/// 3. "Let source be registered's source if registered is a transient
+///    registered observer; otherwise registered." A source here is named by
+///    the node that lists it (registered_observer.transient_source), the
+///    observer being the same: a transient's own source, else the ancestor.
+/// 4. "If node's registered observer list contains a transient registered
+///    observer whose source is source, then continue."
+/// 5. Append a transient registered observer with source's options and
+///    source to node's list; 6. a weak reference to node to the observer's
+///    transient node set (observer_registrations.transientAdded);
+/// 7. "Append observer to the surrounding agent's pending mutation
+///    observers"; 8. "Queue a mutation observer microtask" - so the
+///    transient observers go at the next notify even when no record is
+///    queued for the observer.
+///
+/// Steps 3-4 and 7-8 were missing (the older text's "source is registered"):
+/// a subtree removed from a removed subtree kept a transient that observe()
+/// on the original target did not remove, and with no record queued the
+/// transients outlived the next notify
+/// (dom/nodes/MutationObserver-transient-registered-observers.window.html;
+/// Chrome 157, Firefox 160 and Safari 27.2 pass).
 ///
 /// Only `node` gets one: "queue a mutation record" walks the inclusive
 /// ancestors of its target, so a transient observer on the removed subtree's
-/// root sees every mutation inside it. The observer is told, so that notify
-/// step 6.3 can take the transient observers off again.
-/// Spec: https://dom.spec.whatwg.org/#concept-node-remove
+/// root sees every mutation inside it.
+/// Spec: https://dom.spec.whatwg.org/#add-transient-registered-observers
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
     const removed: *NodeBase = @ptrCast(node);
     const removed_instance: ?*runtime.Instance = if (instance_bridge.getInstance(removed)) |opaque_ptr|
@@ -421,20 +439,40 @@ fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void 
         // of its old parent.
         var entries = ancestor.registeredObservers();
         while (entries.next()) |registered| {
+            // Step 1.
             if (!registered.options.subtree) continue;
+            // Step 3.
+            const source: *const anyopaque = registered.transient_source orelse @ptrCast(ancestor);
+            // Step 4.
+            if (hasTransientFrom(removed, registered.observer, source)) continue;
+            // Step 5.
             _ = try removed.appendRegisteredObserver(.{
                 .observer = registered.observer,
                 .observer_generation = registered.observer_generation,
                 .options = registered.options,
-                .transient_source = ancestor,
+                .transient_source = source,
             });
             const observer_opaque = @import("handles.zig").mutationObserverToAnyopaque(registered.observer) orelse continue;
             const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
+            if (runtime.SlabAllocator.generationOf(observer) != registered.observer_generation) continue;
+            // Step 6.
             if (removed_instance) |instance| {
                 @import("observer_registrations.zig").transientAdded(observer, registered.observer_generation, instance);
             }
+            // Steps 7-8.
+            try mutation_observer.transientObserverAdded(observer, if (removed_instance) |instance| instance.ctx else observer.ctx);
         }
     }
+}
+
+/// Step 4's test: whether `node`'s registered observer list has a transient
+/// registered observer of `observer` whose source is `source`.
+fn hasTransientFrom(node: *NodeBase, observer: anytype, source: *const anyopaque) bool {
+    var entries = node.registeredObservers();
+    while (entries.next()) |registered| {
+        if (registered.transient_source == source and registered.observer == observer) return true;
+    }
+    return false;
 }
 
 /// Helper to get node type from any node-like type
@@ -617,6 +655,16 @@ fn hasTextChild(node: anytype) bool {
 fn hasDoctypeChild(parent: anytype) bool {
     var children = parent.children();
     while (children.next()) |child| {
+        if (isDocumentType(child)) return true;
+    }
+    return false;
+}
+
+/// Whether `parent` has a doctype child other than `exclude`.
+fn hasDoctypeChildOtherThan(parent: anytype, exclude: anytype) bool {
+    var children = parent.children();
+    while (children.next()) |child| {
+        if (child == exclude) continue;
         if (isDocumentType(child)) return true;
     }
     return false;
@@ -931,6 +979,13 @@ fn insertWith(
         // that node brings a slot into.
         insertionSlotSteps(parent.allocator(), n, @ptrCast(parent));
 
+        // CDP's DOM agents (dom.inspector_probes; one load while none is
+        // enabled): Blink's probe::DidInsertDOMNode, after the link and the
+        // slot check, before the insertion steps (ContainerNode::
+        // InsertNodeVector: mutator, ChildAdded, CheckSlotChangeAfterInserted,
+        // DidInsertDOMNode, NotifyNodeInsertedInternal).
+        if (inspector_probes.active()) inspector_probes.didInsertDOMNode(n);
+
         // Step 7.7: For each shadow-including inclusive descendant of node,
         // in shadow-including tree order, run the insertion steps
         // Spec: DOM §4.2.5 step 7.7
@@ -1093,6 +1148,9 @@ pub fn appendChildren(
     }
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
+    // CDP's DOM agents: each inserted child, in order (Blink's
+    // DidInsertDOMNode; insert's step 7 has the same probe).
+    if (inspector_probes.active()) for (children) |child| inspector_probes.didInsertDOMNode(child);
 
     // Step 6: Update live ranges if document is available (the first
     // appended child's index: counted only when there are live ranges)
@@ -1227,6 +1285,8 @@ pub fn insertChildrenBefore(
     for (children) |child| parent.linkChildBefore(child, ref_child);
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
+    // CDP's DOM agents: each inserted child, in order (DidInsertDOMNode).
+    if (inspector_probes.active()) for (children) |child| inspector_probes.didInsertDOMNode(child);
 
     // Update live ranges (the first inserted child's index: counted only
     // when there are live ranges)
@@ -1345,7 +1405,13 @@ pub fn replace(
                 return error.HierarchyRequestError;
             }
         } else if (isDocumentType(node)) {
-            if (hasDoctypeChild(parent) or isElementPreceding(parent, child)) {
+            // "parent has a doctype child that is not child, or an element
+            // is preceding child." Any doctype child counted, child
+            // included, so replacing a document's doctype with another
+            // threw (dom/nodes/Node-replaceChild.html "inserting a new
+            // doctype should work"; Chrome 157, Firefox 160 and Safari 27.2
+            // pass).
+            if (hasDoctypeChildOtherThan(parent, child) or isElementPreceding(parent, child)) {
                 return error.HierarchyRequestError;
             }
         }
@@ -1503,9 +1569,12 @@ pub fn preRemove(
     child: anytype,
     parent: anytype,
 ) (DOMException || error{OutOfMemory})!@TypeOf(child) {
-    // Step 1: If child's parent is not parent, throw NotFoundError
+    // Step 1: If child's parent is not parent, throw NotFoundError. Its text
+    // is Chrome's and Firefox's ("The node to be removed is not a child of
+    // this node."; Safari: "The object can not be found here."):
+    // runtime.exception_text, lane react1.
     if (child.parent_node != parent) {
-        return error.NotFoundError;
+        return runtime.exception_text.fail(error.NotFoundError, "The node to be removed is not a child of this node.");
     }
 
     // Step 2: Remove child
@@ -1567,6 +1636,12 @@ fn removeHeldMoving(
         // If parent is null, this is an error in the algorithm usage
         return error.HierarchyRequestError;
     };
+
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::WillRemoveDOMNode, while node still has its
+    // parent (ContainerNode::WillRemoveChild and WillRemoveChildren, before
+    // the removal and before any frame in it is disconnected).
+    if (inspector_probes.active()) inspector_probes.willRemoveDOMNode(node);
 
     // Step 3: Run the live range pre-remove steps
     runLiveRangePreRemoveSteps(node);
@@ -1866,6 +1941,12 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     const old_parent = node.parent_node orelse return error.HierarchyRequestError;
     const allocator = new_parent.allocator();
 
+    // CDP's DOM agents: a move is Blink's removal and insertion
+    // (ContainerNode::moveBefore runs WillRemoveChild, then
+    // InsertNodeVector): WillRemoveDOMNode now, while node is oldParent's
+    // child, and DidInsertDOMNode after step 24.
+    if (inspector_probes.active()) inspector_probes.willRemoveDOMNode(node);
+
     // 9. "Run the live range pre-remove steps, given node."
     runLiveRangePreRemoveSteps(node);
     // 10. "For each NodeIterator object iterator whose root's node document
@@ -1946,6 +2027,9 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // newParent." 24. "Run assign slottables for a tree with node's root."
     // (The insert steps 7.4-7.6.)
     insertionSlotSteps(allocator, node, new_parent);
+
+    // CDP's DOM agents: the move's insertion (DidInsertDOMNode).
+    if (inspector_probes.active()) inspector_probes.didInsertDOMNode(node);
 
     // The new parent's children changed - the stated deviation above.
     runChildrenChangedSteps(new_parent, .moved);
@@ -2717,6 +2801,11 @@ fn adoptHeld(
             @ptrCast(@alignCast(opaque_instance))
         else
             null;
+
+        // dom.heading_offsets: the moved elements may have a headingoffset
+        // or headingreset attribute - the new document has seen them if the
+        // old one had (once per adoption, not per descendant).
+        if (oldDocument) |old_base| heading_offsets.adopted(old_base, document);
 
         // Step 3.1: For each shadow-including inclusive descendant in tree order
         for (0..descendants.len) |idx| {

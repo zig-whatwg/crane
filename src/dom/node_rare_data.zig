@@ -657,16 +657,52 @@ pub fn keptMade(ctx: Context, holder: *Holder, comptime kept: Kept, child: *runt
     keptSet(holder, kept, child);
 }
 
-/// `child` is going to script: the element keeps it, in its member `slot`,
-/// for as long as the element's wrapper lives. Once per child made
-/// (KeptChild.handOut).
-pub fn keptHandOut(holder: *Holder, comptime kept: Kept, owner: *runtime.Instance, child: *runtime.Instance, slot: engine.TracedSlot) void {
+/// The member a handed-out kept child hangs from on its element's wrapper -
+/// its IDL attribute's name - for `keptHandOut` and `keptEndHandOut` alike.
+fn keptSlot(comptime kept: Kept) engine.TracedSlot {
+    return switch (kept) {
+        .style => .{ .name = "style" },
+        .shadow_root => .{ .name = "shadowRoot" },
+        .named_node_map => @compileError("the NamedNodeMap's edge is dom.same_object_cache's (\"attributes\")"),
+    };
+}
+
+/// `child` is going out - to script, or to a native reader (editing reads
+/// element.style): the element keeps it, in its member (`keptSlot`), for as
+/// long as the element's wrapper lives. Once per child made
+/// (KeptChild.handOut). An element with no wrapper yet has no member to
+/// hang it from: the engine then holds the child's wrapper strongly until
+/// the element gets one (engine.traceChild), and the element's deinit ends
+/// that hold (`keptEndHandOut`).
+pub fn keptHandOut(holder: *Holder, comptime kept: Kept, owner: *runtime.Instance, child: *runtime.Instance) void {
     // A child handed out with an edge has a traced flag (named_node_map has none).
     const traced: Flag = comptime keptTraced(kept).?;
     if (flag(holder.*, traced)) return;
-    engine.traceChild(owner, child, slot);
+    engine.traceChild(owner, child, keptSlot(kept));
     // Read again: the trace may have run anything.
     setFlag(holder, traced, true);
+}
+
+/// The element is going - its deinit, never its Browser's exit sweep, which
+/// runs after the engine is gone - and its kept child was handed out: end
+/// the edge the hand-out drew. On an element with a wrapper the edge dies
+/// with the wrapper, and this finds nothing; on one script never wrapped (a
+/// native read: editing's typing-style reads of element.style made one per
+/// element until they read the inline block natively) the engine still
+/// holds the child's wrapper strongly, waiting for the element's, and only
+/// engine.forgetTracedChild lets it go - as HTMLElement's deinit ends its
+/// ElementInternals' wait. Without it the child's wrapper, and the storage
+/// runtime.gc.releaseOwned leaves to that wrapper, outlived the element to
+/// its realm's end: one CSSStyleProperties per element edit4's delete-join
+/// row read, past the undo history's bound (lane mem1, gc_bench
+/// --live-types: 11,003 alive after 16,000 joins with 5,003 HTML elements
+/// alive). Safe in any teardown, the collector's included
+/// (engine.forgetTracedChild). Before `keptRelease` / `keptReleaseOwned`,
+/// which clear the traced flag.
+pub fn keptEndHandOut(holder: Holder, comptime kept: Kept, owner: *runtime.Instance) void {
+    const traced: Flag = comptime keptTraced(kept) orelse @compileError("a kept child with no traced flag draws no edge here");
+    if (!flag(holder, traced)) return;
+    engine.forgetTracedChild(owner, keptSlot(kept));
 }
 
 /// The element is going: its child, if it is still the object it made, is

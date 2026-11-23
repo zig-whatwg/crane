@@ -38,10 +38,10 @@ fn byId(document: *runtime.Instance, id: []const u8) !*runtime.Instance {
 }
 
 fn modalityPerTab() !void {
-    const a = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const a = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer a.deinit();
     const document_a = try openPage(a, "<!doctype html><body><button id=b>b</button>");
-    const b = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const b = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer b.deinit();
     const document_b = try openPage(b, "<!doctype html><body><button id=b>b</button>");
 
@@ -62,7 +62,7 @@ test "the input modality :focus-visible reads is its own top-level traversable's
 
 fn pendingEditPerTab() !void {
     const allocator = std.testing.allocator;
-    const a = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const a = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer a.deinit();
     const document_a = try openPage(a, "<!doctype html><body><textarea id=t>before</textarea>");
     const page_a = a.current_context.?;
@@ -78,7 +78,7 @@ fn pendingEditPerTab() !void {
 
     // Tab B's user begins editing seventeen controls of its own, none
     // committed.
-    const b = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const b = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer b.deinit();
     var markup: std.ArrayListUnmanaged(u8) = .empty;
     defer markup.deinit(allocator);

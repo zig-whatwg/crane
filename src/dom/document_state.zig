@@ -213,6 +213,12 @@ pub const InternalState = struct {
     last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
+    /// The window's load event is under way: set as "the end" step 9.5 fires
+    /// load at the window, cleared when page showing becomes true (step 9.10)
+    /// or the document unloads. "Unload a document" step 10 reads it beside
+    /// page showing - a document unloaded inside its own load listeners
+    /// hears pagehide and visibilitychange, as in all three browsers.
+    in_load_event: bool = false,
     /// HTML 7.4.6.3 "has been revealed": pagereveal fires once per
     /// activation - at the first rendering opportunity after the document is
     /// shown, and again after each reactivation (`revealStep`).
@@ -222,6 +228,9 @@ pub const InternalState = struct {
     /// HTML "ready for post-load tasks", reached by "the end" step 11.
     /// Document.open preserves this independently of readiness/loaded time.
     ready_for_post_load_tasks: bool = false,
+    /// HTML "print when loaded": print() was called before the document was
+    /// ready for post-load tasks; "the end" step 12 runs the printing steps.
+    print_when_loaded: bool = false,
     /// HTML "is initial about:blank": the document "create a new browsing
     /// context and document" made, until something replaces it.
     is_initial_about_blank: bool = false,
@@ -557,6 +566,9 @@ pub const InternalState = struct {
     /// pause: reads only, creates no state.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
         const self = Registry.get(instance) orelse return;
+        // Its editing undo history's nodes (Blink's Editor traces its
+        // UndoStack; dom.editor_states).
+        if (self.editor_state) |editor_state| @import("editor_states.zig").trace(editor_state, tracer);
         if (self.active_parser) |parser| parser.traceHeldNodes(tracer);
         var on_stack = self.parsers_on_stack;
         while (on_stack) |parser| : (on_stack = parser.next_on_stack) {
@@ -586,8 +598,15 @@ pub const InternalState = struct {
             // HTML properties
             .referrer = "",
             .design_mode = runtime.DOMString.initInterned("off"),
-            .visibility_state = ._visible_,
-            .hidden = false,
+            // HTML 6.2: "A Document has a visibility state, which is either
+            // "hidden" or "visible", initially set to "hidden"." A document a
+            // navigable shows gets its traversable's system visibility from
+            // "set the initial visibility state" (dom.visibility_state
+            // setInitial); one with no navigable - createHTMLDocument,
+            // DOMParser, an XHR response document - stays hidden, as in all
+            // three browsers (page-visibility/test_default_view.html).
+            .visibility_state = ._hidden_,
+            .hidden = true,
             // Active element (focus)
             .active_element = null,
             // Event handlers
@@ -722,6 +741,9 @@ pub const InternalState = struct {
         // The rare data: what few Documents set (dom.document_rare_data).
         if (self.rare) |rare| {
             self.rare = null;
+            // The sequential focus navigation starting point's Range, which
+            // the document handed out as its own (see `KeptChild`).
+            if (rare.sequential_start.get()) |range| rare.sequential_start.releaseOwned(range);
             rare.destroy(self.allocator);
         }
 

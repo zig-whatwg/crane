@@ -106,6 +106,9 @@ fn escapeAsCodePoint(allocator: std.mem.Allocator, out: *std.ArrayList(u8), c: u
 }
 
 fn appendCodePoint(allocator: std.mem.Allocator, out: *std.ArrayList(u8), c: u21) !void {
+    // A lone surrogate - the DOMString's own, kept as WTF-8 - is "the
+    // character itself" too: its three-byte encoding.
+    if (c >= 0xD800 and c <= 0xDFFF) return out.appendSlice(allocator, &.{ 0xED, 0x80 | @as(u8, @intCast((c >> 6) & 0x3F)), 0x80 | @as(u8, @intCast(c & 0x3F)) });
     var buf: [4]u8 = undefined;
     const n = std.unicode.utf8Encode(c, &buf) catch std.unicode.utf8Encode(0xFFFD, &buf) catch unreachable;
     try out.appendSlice(allocator, buf[0..n]);
@@ -117,14 +120,34 @@ const CodePoint = struct { value: u21, len: usize };
 fn codePointAt(s: []const u8, i: usize) CodePoint {
     const len = std.unicode.utf8ByteSequenceLength(s[i]) catch return .{ .value = 0xFFFD, .len = 1 };
     if (i + len > s.len) return .{ .value = 0xFFFD, .len = 1 };
-    const value = std.unicode.utf8Decode(s[i .. i + len]) catch return .{ .value = 0xFFFD, .len = 1 };
+    const value = std.unicode.utf8Decode(s[i .. i + len]) catch return surrogateAt(s[i .. i + len]) orelse .{ .value = 0xFFFD, .len = 1 };
     return .{ .value = value, .len = len };
+}
+
+/// A lone surrogate in WTF-8 (ED A0..BF xx), as a DOMString converted from
+/// JavaScript keeps one: a code point of its own, which CSSOM's serialize an
+/// identifier leaves as itself. Read as ill-formed UTF-8 it became three
+/// U+FFFD (css/cssom/escape.html "Surrogates": CSS.escape('\uDF06') is
+/// '\uDF06' in Chrome 157, Firefox 160 and Safari 27.2).
+fn surrogateAt(bytes: []const u8) ?CodePoint {
+    if (bytes.len != 3 or bytes[0] != 0xED or bytes[1] < 0xA0 or bytes[1] > 0xBF or bytes[2] & 0xC0 != 0x80) return null;
+    const value = (@as(u21, bytes[0] & 0x0F) << 12) | (@as(u21, bytes[1] & 0x3F) << 6) | @as(u21, bytes[2] & 0x3F);
+    return .{ .value = value, .len = 3 };
 }
 
 fn expectSerialized(input: []const u8, expected: []const u8) !void {
     const got = try serializeIdentifier(std.testing.allocator, input);
     defer std.testing.allocator.free(got);
     try std.testing.expectEqualStrings(expected, got);
+}
+
+test "a lone surrogate (WTF-8) is the character itself" {
+    try expectSerialized("\xED\xBC\x86", "\xED\xBC\x86");
+    try expectSerialized("\xED\xA0\xB4", "\xED\xA0\xB4");
+    // Through the escaping path too: after a leading digit.
+    try expectSerialized("1\xED\xBC\x86", "\\31 \xED\xBC\x86");
+    // Truly ill-formed bytes are still U+FFFD each.
+    try expectSerialized("\xED\x80", "\u{FFFD}\u{FFFD}");
 }
 
 test "NULL becomes U+FFFD" {

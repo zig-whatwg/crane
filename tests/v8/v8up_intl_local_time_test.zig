@@ -19,9 +19,11 @@
 //! - It compiled a script on every call (V8 15.7 runs without its
 //!   compilation cache; tests/infra/v8up_adapter_script_compiles_test.zig).
 //!
-//! The local time is the platform's now (the platform protocol's
-//! localDateTime, the OS's zone and its rules, which document.lastModified
-//! reads too), asked for the instant being formatted.
+//! The binding then took the platform's local time (the platform protocol's
+//! localDateTime), asked for the instant being formatted. Since lane icu1
+//! Intl and toLocaleString are V8's own, from ICU: the local time is ICU's
+//! default zone, the one V8's Date reads (TZ, else /etc/localtime), as in
+//! Chrome. The answers these tests hold did not change.
 
 const std = @import("std");
 const rounds_lib = @import("handle_rounds.zig");
@@ -79,6 +81,15 @@ test "a page that replaces Date and Date.prototype.getTimezoneOffset does not ch
     , "true");
 }
 
+/// The fields the two tests below compare with the Date's getters: every one
+/// numeric, the year in full and the hour on a 24-hour clock. en-US's
+/// `dateStyle: 'short', timeStyle: 'medium'` - what they used - is a 2-digit
+/// year and a 12-hour hour with a dayPeriod (Chrome 157 formatToParts of
+/// 2026-01-15 12:07:09 UTC in Los Angeles: year "26", hour "4", dayPeriod
+/// "AM": tmp/probes/icu1/chrome-157-3.json), which Crane's own Intl had
+/// printed as 2026 and 16 and the tests had pinned (lane icu1).
+const numeric_fields = " { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }";
+
 test "the local time Intl formats is the realm's own Date's, in January and in July" {
     var page: rounds_lib.Page = undefined;
     try page.start("https://intl-dst.test");
@@ -89,7 +100,9 @@ test "the local time Intl formats is the realm's own Date's, in January and in J
     // daylight saving time this holds trivially.)
     try rounds_lib.expectEval(page.realm,
         \\(() => {
-        \\  const dtf = new Intl.DateTimeFormat('en-US', { dateStyle: 'short', timeStyle: 'medium' });
+        \\  const dtf = new Intl.DateTimeFormat('en-US',
+    ++ numeric_fields ++
+        \\);
         \\  const out = [];
         \\  for (const t of [Date.UTC(2026, 0, 15, 12, 7, 9), Date.UTC(2026, 6, 15, 12, 7, 9), Date.UTC(1999, 11, 31, 23, 59, 59), 0]) {
         \\    const d = new Date(t);
@@ -156,7 +169,9 @@ test "an instant outside the platform clock's range is still formatted, in the n
     // out-of-range instant is formatted with is its own.
     try rounds_lib.expectEval(page.realm,
         \\(() => {
-        \\  const dtf = new Intl.DateTimeFormat('en-US', { dateStyle: 'short', timeStyle: 'medium' });
+        \\  const dtf = new Intl.DateTimeFormat('en-US',
+    ++ numeric_fields ++
+        \\);
         \\  const out = [];
         \\  for (const t of [Date.UTC(3000, 5, 15, 12, 0, 0), Date.UTC(1500, 5, 15, 12, 0, 0)]) {
         \\    const part = {};

@@ -261,6 +261,7 @@ pub const Face = struct {
         const load = try FaceLoad.create(self, null);
         self.load = load;
         self.status = .loading;
+        load.beginLoadEventDelay();
         self.notifySets();
         load.queue(.next_source);
     }
@@ -362,6 +363,8 @@ pub const ResourceEntry = struct {
         // CSS Values 4 §4.5.4 step 3: use URL credentials for style resources.
         request.use_url_credentials = true;
         request.referrer_policy = self.key.referrer_policy;
+        // Step 5: an integrity() modifier's metadata.
+        try request.setIntegrityMetadata(self.key.integrity);
         request.initiator_type = if (self.key.origin_clean) .css else null;
         var client = try @import("../global_settings.zig").requestClient(global);
         defer client.deinit();
@@ -533,6 +536,9 @@ const FaceLoad = struct {
     queued: bool = false,
     action: Action = .next_source,
     abort_marked: bool = false,
+    /// Whether this load delays its document's load event (start to
+    /// finishPending: beginLoadEventDelay, endLoadEventDelay).
+    delaying_load_event: bool = false,
 
     const Action = enum { start_buffer, next_source, success, failure };
 
@@ -574,6 +580,7 @@ const FaceLoad = struct {
         return !self.canceled and self.ownerLive();
     }
     fn finishPending(self: *FaceLoad) void {
+        self.endLoadEventDelay();
         if (self.kept) {
             self.kept = false;
             if (self.ownerLive()) engine.releasePlatformObject(self.owner);
@@ -667,8 +674,40 @@ const FaceLoad = struct {
             key.referrer_policy = fetch.internal.policy_container.parseReferrerPolicyHeader(source.referrer_policy);
             key.origin_clean = source.origin_clean;
         }
+        // CSS Values 4 §4.5.4 step 5: the url()'s request modifier steps.
+        resource_loading.applyModifiers(&key, resource.modifiers);
         const result = try cache.getOrPut(key);
         try result.entry.attach(self);
+    }
+
+    /// A URL face's load delays its document's load event from the moment
+    /// it starts (Face.start: the FontFace load() steps, synchronously -
+    /// its fetch begins in a later task, after which the load event may
+    /// already have been queued) until the face has loaded or failed, as the
+    /// browsers' do - Gecko's FontFaceSet blocks onload while it is loading
+    /// (FontFaceSetDocumentImpl BlockOnload), Blink's font fetch is a
+    /// load-blocking request of the document's ResourceFetcher. No spec says
+    /// so; so a test that registers its subtests when document.fonts.load()
+    /// settles still runs them before load
+    /// (css/css-text-decor/parsing/text-decoration-inset-computed.html ran
+    /// its first subtest only: Chrome 157 16/16, Firefox 160 10/16 - the 6
+    /// it fails are percentages it does not support).
+    fn beginLoadEventDelay(self: *FaceLoad) void {
+        if (self.delaying_load_event) return;
+        const document = self.document orelse return;
+        if (document_activity.activity(document, self.document_generation) == .gone) return;
+        @import("../document_lifecycle.zig").delayLoadEvent(document);
+        self.delaying_load_event = true;
+    }
+
+    /// The end of startFetch's load-event delay, on every path a load ends
+    /// by (success, failure, cancel): a document that is gone is skipped.
+    fn endLoadEventDelay(self: *FaceLoad) void {
+        if (!self.delaying_load_event) return;
+        self.delaying_load_event = false;
+        const document = self.document orelse return;
+        if (document_activity.activity(document, self.document_generation) == .gone) return;
+        @import("../document_lifecycle.zig").undelayLoadEvent(document);
     }
 };
 
@@ -1050,9 +1089,14 @@ pub const Source = struct {
     url_end: usize,
     /// Captured only when this source is installed in an owning rule/face.
     resource: ?values.ResourceUrl = null,
+    /// CSS Values 5 §4.1.1: the url()'s request modifiers, owned (the
+    /// captured resource carries its own copy).
+    modifiers: values.RequestModifiers = .{},
 
     fn deinit(self: Source, allocator: Allocator) void {
         if (self.resource) |resource| resource.deinit(allocator);
+        var modifiers = self.modifiers;
+        modifiers.deinitOwned(allocator);
         allocator.free(self.value);
         allocator.free(self.serialized);
     }
@@ -1132,6 +1176,7 @@ fn parseSource(allocator: Allocator, text: []const u8) Allocator.Error!?Source {
     const first = stream.next();
     var kind: Source.Kind = .url;
     var value: []u8 = undefined;
+    var modifiers: values.RequestModifiers = .{};
     if (function(first, "local")) {
         kind = .local;
         if (stream.next().token_type != .left_paren) return null;
@@ -1160,15 +1205,26 @@ fn parseSource(allocator: Allocator, text: []const u8) Allocator.Error!?Source {
     } else if (function(first, "url") or function(first, "src")) {
         if (stream.next().token_type != .left_paren) return null;
         const token = stream.next();
-        if (token.token_type != .string or stream.next().token_type != .right_paren) return null;
-        value = try css.tokenizer.decode(allocator, token.stringContents());
+        if (token.token_type != .string) return null;
+        // Values 5 §4.1.1: request modifiers after the string, through the
+        // url()'s ")" (Chrome, css/css-values/urls/url-request-modifiers-
+        // font-face-parsing.html).
+        modifiers = (try values.RequestModifiers.consume(allocator, &stream)) orelse return null;
+        value = css.tokenizer.decode(allocator, token.stringContents()) catch |err| {
+            modifiers.deinitOwned(allocator);
+            return err;
+        };
     } else return null;
     var keep_value = false;
-    defer if (!keep_value) allocator.free(value);
+    defer if (!keep_value) {
+        allocator.free(value);
+        modifiers.deinitOwned(allocator);
+    };
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(allocator);
     try out.appendSlice(allocator, if (kind == .local) "local(" else "url(");
     try values.appendString(value, &out, allocator);
+    try modifiers.serialize(&out, allocator);
     try out.append(allocator, ')');
     const url_end = out.items.len;
     if (kind == .url and function(stream.peek(), "format")) {
@@ -1208,7 +1264,7 @@ fn parseSource(allocator: Allocator, text: []const u8) Allocator.Error!?Source {
     if (!stream.atEnd()) return null;
     const serialized = try out.toOwnedSlice(allocator);
     keep_value = true;
-    return .{ .kind = kind, .value = value, .serialized = serialized, .url_end = url_end };
+    return .{ .kind = kind, .value = value, .serialized = serialized, .url_end = url_end, .modifiers = modifiers };
 }
 
 /// CSS Fonts 4 §§4.7/4.10 and Fonts 5 §§4.3–4.6. Two-axis metric
@@ -1473,7 +1529,9 @@ pub const FontRule = struct {
                 break :blk resolver.resolve(resolver.context, allocator, source.value);
             } else null;
             defer if (resolved) |url| allocator.free(url);
-            const resource = values.ResourceUrl.describe(source.value, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = source.url_end });
+            var resource = values.ResourceUrl.describe(source.value, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = source.url_end });
+            // Borrowed here; the clone owns its copy.
+            resource.modifiers = source.modifiers;
             source.resource = try resource.clone(allocator, 0);
         }
         const metadata_changed = if (self.sources) |*old| !sourceListsEqual(old, &replacement) else true;

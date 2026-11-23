@@ -56,6 +56,12 @@ pub const Fixture = struct {
     /// A Browser showing `host_url`, its first tab. `allocator` is the
     /// Browser's and the server's (a thread's own, for two Browsers).
     pub fn start(allocator: std.mem.Allocator) !*Fixture {
+        return startWith(allocator, .every_tab);
+    }
+
+    /// `start`, with the Browser's focus model (BrowserConfig.focus: lane
+    /// tab1's narrowed focus).
+    pub fn startWith(allocator: std.mem.Allocator, focus: browser_mod.BrowserConfig.FocusModel) !*Fixture {
         const self = try allocator.create(Fixture);
         errdefer allocator.destroy(self);
         self.allocator = allocator;
@@ -63,9 +69,9 @@ pub const Fixture = struct {
         errdefer self.server.stop();
         const proxy = try self.server.proxyUrl(&self.proxy_buf);
         self.browser = try Browser.init(allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
+            .focus = focus,
         });
         errdefer self.browser.deinit();
         try self.showHostPage(host_url);

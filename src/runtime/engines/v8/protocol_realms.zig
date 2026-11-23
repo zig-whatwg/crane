@@ -12,6 +12,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
+const shared_array_buffer_exposure = @import("shared_array_buffer_exposure.zig");
 const context_manager = @import("context_manager.zig");
 const interface_bindings = @import("interface_bindings.zig");
 const window_properties = @import("window_properties.zig");
@@ -87,7 +88,40 @@ const WindowRealmState = struct {
     /// reaches it, and ends once the collector takes it.
     detached: ?*Detached = null,
     allocator: std.mem.Allocator,
+    /// WindowRealmOptions.agent_cluster_cross_origin_isolated and
+    /// .from_snapshot, as the realm was made with them: its world realms
+    /// (protocol_worlds.zig) are made the same way.
+    cross_origin_isolated: bool = false,
+    from_snapshot: bool = false,
 };
+
+/// What protocol_worlds.zig needs of a Window realm to make a world realm
+/// of it (`windowRealmFacts`).
+pub const WindowRealmFacts = struct {
+    isolate: *ffi.Isolate,
+    /// The realm's Window, which the world realm's global wraps.
+    window: *engine.Instance,
+    allocator: std.mem.Allocator,
+    cross_origin_isolated: bool,
+    from_snapshot: bool,
+    /// Detached (`detach`): its world realms ended, and no new one is made.
+    detached: bool,
+};
+
+/// `realm`'s facts while it is a Window realm made here with its Window
+/// bound; null for any other realm.
+pub fn windowRealmFacts(realm: Context) ?WindowRealmFacts {
+    const state = stateOf(realm) orelse return null;
+    const window = state.window orelse return null;
+    return .{
+        .isolate = state.isolate,
+        .window = window,
+        .allocator = state.allocator,
+        .cross_origin_isolated = state.cross_origin_isolated,
+        .from_snapshot = state.from_snapshot,
+        .detached = state.detached != null,
+    };
+}
 
 /// What a Window realm whose navigable was destroyed keeps until its end
 /// (`detach`). Its own allocation: the weak callback that announces the
@@ -200,9 +234,9 @@ fn realmOfOwnedContext(context: ?*ffi.Context) ?Context {
 ///    Context::FromSnapshot; the Window is bound to the global after.
 /// 2-4. The realm is the context's; V8 never leaves a realm execution context
 ///    on the stack for it.
-/// 5. Deleting SharedArrayBuffer when the agent cluster's cross-origin
-///    isolation mode is "none" is NOT performed: Crane has no agent clusters
-///    yet, and V8 exposes SharedArrayBuffer as it always has here.
+/// 5. If the agent cluster's cross-origin isolation mode is "none" (the
+///    host's `agent_cluster_cross_origin_isolated` false), the global's
+///    SharedArrayBuffer is deleted (shared_array_buffer_exposure.zig).
 ///
 /// The realm's context stays entered for the realm's life, so it is made
 /// with no script running in the agent - as HTML makes a Window's realm, from
@@ -306,17 +340,13 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // The context: restored from the snapshot, whose global already has the
     // WebIDL interfaces (~2 ms), or made afresh with them defined below
     // (~40 ms) - always on an engine without snapshots.
-    var restored = false;
     const context: *ffi.Context = blk: {
         if (options.from_snapshot and @import("protocol.zig").capabilities.restores_snapshots != .unsupported) {
             const made = if (reused_proxy) |proxy|
                 ffi.v8_Context_NewFromSnapshotWithGlobal(isolate, proxy)
             else
                 ffi.v8_Context_NewFromSnapshot(isolate);
-            if (made) |c| {
-                restored = true;
-                break :blk c;
-            }
+            if (made) |c| break :blk c;
             log.debug("the snapshot's context could not be made; building the realm afresh", .{});
         }
         // The global object is an instance of the Window interface object's
@@ -381,22 +411,30 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // [SecureContext] construct (WebIDL 3.3.13).
     realm.secure_context = options.secure_context;
 
-    if (restored) {
-        // The snapshot has the interfaces; the adapter's template registry
-        // still has to learn them, or a wrapped Document gets the wrong
-        // prototype. A frame's realm builds only the interface objects its
-        // script reads (.lazy_follows, as context_manager's child contexts
-        // did): every one of ~1,260 costs a frame ~25 ms and ~2.8 MB, and a
-        // frame-heavy page makes dozens.
-        interface_bindings.registerAllTemplatesOnly(isolate, context, if (options.parent != null) .lazy_follows else .eager);
-    } else {
-        interface_bindings.initializeBindingsWithGlobalTemplate(isolate, context);
-    }
+    // WebIDL 3.7: the global's exposed constructs. Those every Window
+    // realm has are lazy data properties of Window's instance template, which
+    // this context was made from - restored from the snapshot, whose context
+    // the generator made from it, or afresh (windowTemplate): nothing to do
+    // per realm, and an interface object is built when script first reads it
+    // or a wrap first needs it (Blink: IDLMemberInstaller::
+    // InstallExposedConstructs on the instance template, V8PerContextData::
+    // ConstructorForType). Every Window realm, a page's as a frame's, takes
+    // this one path: until lane tmpl1 a restored realm deserialized every
+    // interface object of the snapshot and replaced them all - eagerly for a
+    // page - keeping both (tmp/plans/tmpl1-measure.md). Intl and the
+    // built-ins' toLocaleString are V8's own, from ICU, in every context
+    // (lane icu1): a fresh context needs nothing the snapshot's has beside
+    // the template's.
+    // The constructs only some Window realms expose: the [SecureContext]
+    // ones, in a realm that is a secure context (recorded above) - decided
+    // here, as the realm is made; never installed and then hidden.
+    interface_bindings.installConditionalConstructs(.Window, context);
     // The namespaces (console, WebAssembly, CSS...) are not in the snapshot.
     interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
-    // A realm that is not a secure context: no [SecureContext] interface
-    // object, whichever way they were installed above.
-    interface_bindings.hideSecureContextInterfaceObjects(isolate, context, .Window);
+    // Step 5: no SharedArrayBuffer global where the agent cluster is not
+    // cross-origin isolated - decided as the realm is made, before any of
+    // its script runs.
+    shared_array_buffer_exposure.apply(isolate, context, options.agent_cluster_cross_origin_isolated);
 
     // Ours until the Window's wrapper-cache entry adopts it (bindWindowToGlobal),
     // which releases it at the realm's end; the host BORROWS it until then.
@@ -433,6 +471,8 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
+        .cross_origin_isolated = options.agent_cluster_cross_origin_isolated,
+        .from_snapshot = options.from_snapshot,
     };
     errdefer state.children.deinit(std.heap.c_allocator);
     // Room for a parentless predecessor (E1 below), taken before the realm is
@@ -461,6 +501,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         }
     }
 
+    // A WindowProxy per (navigable, world): the worlds' proxies of the realm
+    // this one took the main world's from go on with it (protocol_worlds).
+    if (predecessor_realm) |old| @import("protocol_worlds.zig").handOnWorldProxies(old, realm);
+
     if (options.parent) |parent| {
         // A frame's window gets the window operations its parent's has, and
         // a popup's those of its creator's.
@@ -473,6 +517,23 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         if (entered_isolate) {
             ffi.v8_Isolate_Exit(isolate);
             state.entered_isolate = false;
+        }
+    } else if (!options.entered_for_life and !options.auxiliary) {
+        // A tab the host opened beside its first page
+        // (WindowRealmOptions.entered_for_life false): top-level and
+        // parentless like the host's page, but entered only for the calls
+        // that run in it, as a frame's and a popup's are - so that two tabs
+        // never stack entered contexts, and one can end while another lives
+        // (V8 exits contexts only in the reverse order of entering them).
+        // The isolate entry this call made for the realm goes with it; an
+        // entry it took over from a predecessor (`takes_isolate_entry`: a
+        // predecessor entered for its life, which a tab's never is) stays
+        // the new realm's.
+        ffi.v8_Context_Exit(context);
+        state.context_entered = false;
+        if (entered_isolate) {
+            ffi.v8_Isolate_Exit(isolate);
+            state.entered_isolate = takes_isolate_entry;
         }
     }
     return realm;
@@ -527,7 +588,7 @@ fn appendChild(state: *WindowRealmState, child: Context) error{OutOfMemory}!void
 /// (`frames[i]`, HTML 7.2.3.1) on its instances, as the snapshot generator's
 /// does; one an earlier realm made and used cannot change any more (V8 refuses
 /// to alter an instantiated template).
-fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
+pub fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     if (template_registry.getTemplateForIsolate("Window", isolate)) |made| return made;
     if (template_registry.getTemplateForIsolate("EventTarget", isolate) == null) {
         template_registry.register("EventTarget", interface_bindings.EventTarget.createTemplate(isolate), isolate);
@@ -536,18 +597,22 @@ fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     template_registry.register("Window", template, isolate);
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
     defer ffi.v8_ObjectTemplate_Dispose(instance_template);
-    // The deleter is WindowProxy [[Delete]]'s step for an index
-    // (context_manager.windowIndexedPropertyDeleter).
+    // The deleter, setter and definer are WindowProxy [[Delete]]'s, [[Set]]'s
+    // and [[DefineOwnProperty]]'s steps for an index
+    // (context_manager.windowIndexedPropertyDeleter, -Setter, -Definer).
     ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
         instance_template,
         context_manager.windowIndexedPropertyGetter,
-        null,
+        context_manager.windowIndexedPropertySetter,
         context_manager.windowIndexedPropertyQuery,
         context_manager.windowIndexedPropertyDeleter,
         context_manager.windowIndexedPropertyEnumerator,
-        null,
+        context_manager.windowIndexedPropertyDefiner,
         null,
     );
+    // Every Window realm's exposed constructs, once per isolate, as the
+    // snapshot generator puts them on the snapshot's Window template.
+    interface_bindings.installExposedConstructs(.Window, instance_template);
     return template;
 }
 
@@ -610,8 +675,10 @@ pub fn windowProxyOf(window: *engine.Instance) ?*ffi.Object {
 }
 
 /// Bind `window` as `global`'s platform object, and give the global what a
-/// Window's global has.
-fn bindWindowToGlobal(
+/// Window's global has - a Window realm's, and a world realm's
+/// (protocol_worlds.zig: the main realm's Window, bound to the world's
+/// global).
+pub fn bindWindowToGlobal(
     isolate: *ffi.Isolate,
     context: *ffi.Context,
     realm: Context,
@@ -677,19 +744,12 @@ fn bindWindowToGlobal(
     // wrapped with the realm's anchor (Blink SetupWindowPrototypeChain 434-437).
     _ = window_properties.insertIntoPrototypeChain(isolate, context);
 
-    // `self` and `frames` are [Replaceable]: own data properties whose value
-    // is the global itself, as their setter's [[DefineOwnProperty]] makes them
-    // - defined, never assigned, which would run the script-facing setter
-    // (docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-
-    // never-assigns-them.md). They keep `self === globalThis`, which
-    // testharness.js's `(function (global_scope) { ... })(self)` needs.
-    // (`window` is an own accessor, registered above.)
-    inline for (.{ "self", "frames" }) |name| {
-        if (ffi.v8_String_NewFromUtf8(isolate, name.ptr, name.len)) |key| {
-            defer ffi.v8_String_Dispose(key);
-            _ = ffi.v8_Object_DefineProperty(global, context, @ptrCast(key), @ptrCast(global), true, true, true);
-        }
-    }
+    // `self` and `frames`, like `window`, are own ACCESSORS of the global,
+    // registered above (HTML 7.2.2: "[Replaceable] readonly attribute
+    // WindowProxy self"; Chrome, Firefox and Safari expose a getter and a
+    // setter - html/browsers/the-window-object/window-properties.https.html):
+    // their getters answer the global this value (answerWindowGetter), so
+    // `self === globalThis` still holds, and a detached frame's still answer.
 }
 
 /// A Window realm whose end is under way: a stack, one node per `endRealm`
@@ -751,6 +811,29 @@ pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     endRealm(realm, how);
 }
 
+/// engine.detachWindowRealm: HTML "destroy a child navigable" for `realm`, a
+/// realm whose navigable was destroyed - detached (`detach`) when it is still
+/// attached, and left alone when it is detached already or has ended. A
+/// navigable is destroyed twice over: its container removed and then its
+/// container's document destroyed by a navigation (this realm detached by
+/// its parent's `detach` first), or a navigation that destroys a document
+/// whose <iframe> elements the collector frees later - whose teardown ended
+/// their navigables' realms with `destroyWindowRealm`, whose call on a
+/// detached realm ends it: a Window that script still held through its
+/// WindowProxy was freed when the collector chose, and the next member call
+/// threw "Illegal invocation" (lane flk4: event-listeners.window.js, 1 run
+/// in 11). HTML keeps the Window for as long as a WindowProxy for it is
+/// held; Chrome 157, Firefox 159 and Safari 27 answer through such a proxy
+/// after collections (tmp/probes/flk4-navwin, 2026-11-22). A detached realm
+/// ends once the collector takes it, or with its page (`endRealm`).
+pub fn detachWindowRealm(realm: Context) void {
+    // Ended (its state gone with it), or not a Window realm of this adapter:
+    // nothing is left to detach.
+    const state = stateOf(realm) orelse return;
+    if (state.detached != null) return;
+    destroyWindowRealm(realm, .navigable_destroyed);
+}
+
 /// HTML "destroy a child navigable" - or "destroy a document" for a document
 /// a navigation replaced - for the realm: script activity stops - its timers
 /// and animation frames, the callbacks its script registered, its tasks
@@ -774,6 +857,12 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     defer if (stack) |top| {
         top.* = ending.next;
     };
+
+    // Its world realms end now (protocol_worlds.zig): Blink disposes every
+    // world's context of a frame at its navigation or removal
+    // (WindowProxyManager::ClearForNavigation, ClearForClose), and no world
+    // realm is made for a detached realm.
+    @import("protocol_worlds.zig").destroyWorldRealms(realm);
 
     // A child already detached - its iframe was removed before this realm's
     // document went - is left as it is: it ends when the collector takes it,
@@ -818,12 +907,11 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     // frames) - the window's own, through which a realm with a parent (a
     // frame, or a top-level predecessor, whose parent is the realm that
     // replaced it) or a popup's gives up its timers before they are
-    // forgotten; a page's own realm ended them with its page - and the
-    // callbacks this realm's script registered - each a strong handle into
-    // the context.
+    // forgotten; a page's own realm ended them with its page. (The callbacks
+    // its script registered are kept values, each realm-tagged when it was
+    // kept: step 2's detach weakens them.)
     if (state.parent != null or state.auxiliary) page_realm.frameWindowDestroyed(realm);
     page_realm.endWindowOperations(realm);
-    @import("callback_registry.zig").cleanupForContext(@ptrFromInt(key));
 
     // 2. No strong handle into the context is left: what the wrapper cache
     // held strongly is kept from the retained store now, and the intrinsics
@@ -940,6 +1028,59 @@ fn isLive(context: *ffi.Context) bool {
     return !ffi.v8_Global_IsEmpty(@ptrCast(context));
 }
 
+/// The context a realm's end enters for itself (`enterForEnd`). A realm
+/// entered only per call - a host tab's (WindowRealmOptions.entered_for_life
+/// false), a frame's, a popup's - can end outside any call into it: its host
+/// closes the tab, the collector's queue ends it. With no page entered for
+/// its life beside it (the host's first page closed, or never made) no
+/// context is entered then, and the end runs in its own, as an
+/// entered-for-life realm's end always did: Blink's
+/// LocalWindowProxy::DisposeContext runs under a ScriptState::Scope on the
+/// context it disposes (local_window_proxy.cc). Its agent's isolate is
+/// current already: the agent's thread keeps it entered for the agent's life
+/// (protocol_agents createAgent; lane tpg - before that, such an end read a
+/// null isolate in its first HandleScope, SIGSEGV at 0x228, in
+/// cdph_host_realm_entry_test and cdph_host_tabs_test).
+const EndEntry = struct {
+    /// The context this entry entered, if any: exited at the end's step 3,
+    /// where an entered-for-life realm's is (`exitContext`), or here, by an
+    /// end that returned before it.
+    context: ?*ffi.Context = null,
+
+    /// Exit the context this entry entered, if it is still entered.
+    fn exitContext(self: *EndEntry) void {
+        const context = self.context orelse return;
+        self.context = null;
+        ffi.v8_Context_Exit(context);
+    }
+
+    fn leave(self: *EndEntry) void {
+        self.exitContext();
+    }
+};
+
+/// Enter `realm`'s context for its end when its agent is current and no
+/// context is entered at all - the end of a realm entered per call, outside
+/// any call. A realm whose end runs inside an entered context (a frame's
+/// inside its parent's script, a tab's beside the host's first page) is
+/// left as it was.
+fn enterForEnd(realm: Context, state: ?*WindowRealmState) EndEntry {
+    const s = state orelse return .{};
+    if (s.context_entered) return .{};
+    if (ffi.v8_Isolate_GetCurrent() != s.isolate) return .{};
+    if (ffi.v8_Isolate_GetEnteredOrMicrotaskContext(s.isolate)) |entered| {
+        ffi.v8_Context_Dispose(entered);
+        return .{};
+    }
+    // A detached realm's context is its record's handle - weak, and empty
+    // once collected; entered, the collector cannot take it before the end
+    // releases it.
+    const context: *ffi.Context = if (s.detached) |d| d.context else contextOf(realm) orelse return .{};
+    if (!isLive(context)) return .{};
+    ffi.v8_Context_Enter(context);
+    return .{ .context = context };
+}
+
 /// The end of a Window realm: its frames' realms first, then the Window,
 /// its document and its wrapper cache (the context manager), then the
 /// context. A detached realm (`detach`) ends here when the collector took it
@@ -959,6 +1100,16 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     defer if (stack) |top| {
         top.* = ending.next;
     };
+
+    // The end runs inside its context, as an entered-for-life realm's always
+    // did (`enterForEnd`): a realm entered per call may end with no context
+    // entered. Left last - after its step 3, or on an early return.
+    var end_entry = enterForEnd(realm, stateOf(realm));
+    defer end_entry.leave();
+
+    // Its world realms end before it (protocol_worlds.zig): each one's
+    // global wraps this realm's Window, which the context manager frees below.
+    @import("protocol_worlds.zig").destroyWorldRealms(realm);
 
     // Its frames' realms that are still alive end first, the same way: a
     // removed frame's frames are destroyed navigables too.
@@ -1048,11 +1199,14 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         .navigable_destroyed => {},
     };
     // 3. Exit the context entered for the realm's life - unless a realm
-    // that took over its WindowProxy was entered in its place. Only the last
-    // entered context can be exited; one still under another is left entered
-    // rather than exited out of order, which V8 does not survive.
-    const entered = if (state) |s| s.context_entered else true;
-    if (entered and isLive(context)) {
+    // that took over its WindowProxy was entered in its place - or entered
+    // for its end (`enterForEnd`). Only the last entered context can be
+    // exited; one still under another is left entered rather than exited out
+    // of order, which V8 does not survive.
+    if (end_entry.context != null) {
+        // Entered for the end: nothing entered since is left entered.
+        end_entry.exitContext();
+    } else if ((if (state) |s| s.context_entered else true) and isLive(context)) {
         if (isLastEntered(isolate, context))
             ffi.v8_Context_Exit(context)
         else

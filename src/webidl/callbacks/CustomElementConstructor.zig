@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const CustomElementConstructor = *const fn () *runtime.Instance;
+/// callback CustomElementConstructor = HTMLElement ()
+pub const CustomElementConstructor = runtime.BorrowedCallbackFunction;

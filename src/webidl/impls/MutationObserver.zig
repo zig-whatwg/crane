@@ -290,7 +290,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The callback is invoked with a list of MutationRecord objects as first
 /// argument and the constructed MutationObserver object as second argument.
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
-    std.log.debug("[MutationObserver] call_constructor called with callback={*}", .{@as(?*const anyopaque, @ptrCast(callback))});
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
@@ -299,12 +298,12 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     // function over, and the observer keeps it (OWNED) with its callback
     // context.
     const internal = getInternal(instance);
-    const taken = engine.takeCallbackFunction(@ptrCast(callback));
-    internal.callback = taken;
+    const kept = callback.keep();
+    internal.callback = kept;
     // The observer's wrapper keeps the function, the state's hold of it is
     // weak (refcount step 8): until the binding wraps `this`, the edge waits
     // in the realm's wrapper cache, strong.
-    if (engine.traceValues(instance, &.{taken.function.value}, callback_slot)) engine.holdWeakly(taken.function);
+    if (engine.traceValues(instance, &.{kept.function.value}, callback_slot)) engine.holdWeakly(kept.function);
 
     // Steps 2-3: "Set this's creation index to this's relevant agent's
     // mutation observer counter. Increase this's relevant agent's mutation
@@ -723,12 +722,13 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
         return;
     };
 
-    // The records as a sequence<MutationRecord>. Wrapping hands each to the
-    // wrapper cache, which owns them from here. Traced from the observer
-    // until the sequence holds them (P6): a collection the wrapping starts
-    // finds them nowhere else.
+    // The records as a sequence<MutationRecord>, made in the callback's realm
+    // and world (WebIDL invoke steps 5 and 10: dom.callback_sequences).
+    // Wrapping hands each to the wrapper cache, which owns them from here.
+    // Traced from the observer until the sequence holds them (P6): a
+    // collection the wrapping starts finds them nowhere else.
     internal.delivering = records;
-    const made = engine.createSequenceOfPlatformObjects(realm, records);
+    const made = engine.createSequenceOfPlatformObjects(dom_module.callback_sequences.argumentRealm(realm, &callback), records);
     internal.delivering = &.{};
     const sequence = made catch |err| {
         freeUnwrapped(records);

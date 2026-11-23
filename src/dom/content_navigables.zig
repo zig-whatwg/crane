@@ -84,6 +84,13 @@ pub fn stopLoadingIfNavigating(document: *runtime.Instance) void {
     if (impl.is_navigating(document)) impl.stop_loading(document);
 }
 
+/// Whether `document`'s node navigable has an ongoing navigation ID - a
+/// navigation of it is under way. False with no owner installed.
+pub fn isNavigating(document: *runtime.Instance) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.is_navigating(document);
+}
+
 /// `document`'s load was stopped before its load event (window.stop()):
 /// see Implementation.load_stopped.
 pub fn loadStopped(document: *runtime.Instance) void {

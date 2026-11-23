@@ -396,6 +396,12 @@ navigation tests (tests/html/navigation/). WPT: IndexedDB/ A/B.
 
 ## Step 4. The storage engine (decision 10)
 
+**Status (2026-11-21, lanes life1 and prof1, the user's ruling D6 "SQLite everywhere"):** done - kit/sqlite and
+kit/memory_store (multi-version) behind 6.6, no LevelDB; IndexedDB runs on the store in both modes
+(src/storage/indexeddb/backing_store.zig); localStorage, cookies, the HTTP cache and Cache Storage persist
+under a profile directory; src/storage/backends/{sqlite,leveldb}.zig, build.zig's `configureStorageBackends`
+and the legacy src/browser/storage/Storage.zig are gone. The plan below is kept as it was written.
+
 **Files**: src/storage/backends/{sqlite,leveldb,memory}.zig move to src/platform/kit/{sqlite,leveldb,memory_store}/
 behind the store operations (contract 6.6); src/storage/backend.zig's engine choice by `builtin.os.tag`
 (:652-700) becomes `platform.identity.storage_engine` inside each platform; build.zig's

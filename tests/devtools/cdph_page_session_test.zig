@@ -1,0 +1,972 @@
+//! The page-side domains (lane cdph, P4) through a page session attached to
+//! a Browser on its own thread, as the devtools thread attaches one - with
+//! no transport: the session's link writes to an outbound queue the test
+//! reads, so what is checked is exactly what a client would be sent, in
+//! order. The orders are Chrome 157's, measured from the punted suites'
+//! runners (tmp/plans/cdp1-evidence/seq-vue-e2e-one.txt, seq-svelte.txt;
+//! design 1.2): setLifecycleEventsEnabled replays commit, DOMContentLoaded,
+//! load, networkAlmostIdle, networkIdle; Page.navigate answers before
+//! frameNavigated; a commit gives lifecycle init then frameNavigated; then
+//! domContentEventFired, lifecycle DOMContentLoaded, loadEventFired,
+//! lifecycle load, frameStoppedLoading.
+//!
+//! Written in the CDP phase (user directive 2026-11-21 5:48 PM ET: implement
+//! now, run every test in one later pass).
+
+const std = @import("std");
+const testing = std.testing;
+const devtools = @import("devtools");
+const browser_mod = @import("browser");
+const Browser = browser_mod.Browser;
+const BrowserHost = browser_mod.BrowserHost;
+const outbound = devtools.outbound;
+/// Lane cdpr's loopback site: "/" (a page with a frame and a script),
+/// "/frame.html", and 404 for any other path.
+const Site = @import("cdpr_replay.zig").Site;
+
+/// A Browser on its own thread with one page session on a tab, and the
+/// messages the session sends.
+const Harness = struct {
+    allocator: std.mem.Allocator,
+    host: *BrowserHost,
+    queue: *outbound.Outbound,
+    link: *outbound.SessionLink,
+    side: *devtools.BrowserSide,
+    session: *devtools.PageSession,
+    tab: u64,
+    next_id: i64 = 1,
+    /// Messages read so far, parsed, OWNED.
+    seen: std.ArrayList(std.json.Parsed(std.json.Value)) = .empty,
+
+    fn init(self: *Harness, allocator: std.mem.Allocator) !void {
+        self.* = .{ .allocator = allocator, .host = undefined, .queue = undefined, .link = undefined, .side = undefined, .session = undefined, .tab = 0 };
+        self.host = try BrowserHost.start(allocator, .{});
+        self.queue = try outbound.Outbound.create(allocator);
+        self.link = try outbound.SessionLink.create(allocator, self.queue, "SESSION1");
+        var context_id: [32]u8 = undefined;
+        @memset(&context_id, 'C');
+        var sink_context: u8 = 0;
+        self.side = try devtools.BrowserSide.create(allocator, self.host, 0xC0FFEE, context_id, .{ .context = &sink_context, .post = sinkPost });
+        try devtools.browser_side.InstallTask.post(self.side);
+        self.tab = try self.host.createTab(.{});
+        self.session = try devtools.PageSession.allocate(allocator, self.link, self.tab, devtools.ids.frameId(0xC0FFEE, self.tab));
+        try devtools.browser_side.AttachTask.post(self.side, self.session);
+    }
+
+    fn sinkPost(context: *anyopaque, side: *devtools.BrowserSide, event: devtools.browser_side.TargetEvent) void {
+        _ = context;
+        switch (event) {
+            // The event owns its URL and its title (TargetSink.post).
+            .navigated => |navigated| side.allocator.free(navigated.url),
+            .title_changed => |changed| side.allocator.free(changed.title),
+            else => {},
+        }
+    }
+
+    fn deinit(self: *Harness) void {
+        devtools.browser_side.DetachTask.post(self.side, self.session);
+        devtools.browser_side.uninstallAndWait(self.side);
+        self.host.stop();
+        self.side.destroy();
+        self.link.release();
+        self.drain();
+        self.queue.release();
+        for (self.seen.items) |*parsed| parsed.deinit();
+        self.seen.deinit(self.allocator);
+    }
+
+    /// Send `method` with `params_json`; returns the call's id.
+    fn send(self: *Harness, method: []const u8, params_json: []const u8) !i64 {
+        const id = self.next_id;
+        self.next_id += 1;
+        const message = try std.fmt.allocPrint(self.allocator, "{{\"id\":{d},\"method\":\"{s}\",\"params\":{s},\"sessionId\":\"SESSION1\"}}", .{ id, method, params_json });
+        defer self.allocator.free(message);
+        try devtools.browser_side.MessageTask.post(self.side, self.session, message);
+        return id;
+    }
+
+    /// Move what the session sent into `seen`.
+    fn drain(self: *Harness) void {
+        var items: std.ArrayList(outbound.Item) = .empty;
+        defer items.deinit(self.allocator);
+        _ = self.queue.takeAll(&items) catch return;
+        for (items.items) |item| {
+            defer self.allocator.free(item.bytes);
+            const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, item.bytes, .{}) catch continue;
+            self.seen.append(self.allocator, parsed) catch {};
+        }
+    }
+
+    /// Wait until the response to `id` arrives (10 s): its "result", or
+    /// error.CommandFailed with its "error".
+    fn result(self: *Harness, id: i64) !std.json.Value {
+        var waited: u32 = 0;
+        while (waited < 10_000) : (waited += 10) {
+            self.drain();
+            for (self.seen.items) |parsed| {
+                const object = parsed.value.object;
+                const got = object.get("id") orelse continue;
+                if (got != .integer or got.integer != id) continue;
+                if (object.get("error")) |_| return error.CommandFailed;
+                return object.get("result") orelse error.NoResult;
+            }
+            self.queue.wait(10 * std.time.ns_per_ms);
+        }
+        return error.Timeout;
+    }
+
+    fn call(self: *Harness, method: []const u8, params_json: []const u8) !std.json.Value {
+        return self.result(try self.send(method, params_json));
+    }
+
+    /// Wait until an event `method` has been seen (10 s) at or after index
+    /// `from` of `seen`; its index.
+    fn waitEvent(self: *Harness, method: []const u8, from: usize) !usize {
+        var waited: u32 = 0;
+        while (waited < 10_000) : (waited += 10) {
+            self.drain();
+            for (self.seen.items[from..], from..) |parsed, i| {
+                const m = parsed.value.object.get("method") orelse continue;
+                if (m == .string and std.mem.eql(u8, m.string, method)) return i;
+            }
+            self.queue.wait(10 * std.time.ns_per_ms);
+        }
+        return error.Timeout;
+    }
+
+    /// What was seen from index `from`, as one line per message: an event's
+    /// method (with a lifecycle event's name), or "=<id>" for a response.
+    fn transcript(self: *Harness, from: usize, out: *std.ArrayList(u8)) !void {
+        for (self.seen.items[from..]) |parsed| {
+            const object = parsed.value.object;
+            if (object.get("method")) |m| {
+                try out.appendSlice(self.allocator, m.string);
+                if (std.mem.eql(u8, m.string, "Page.lifecycleEvent")) {
+                    try out.append(self.allocator, ':');
+                    try out.appendSlice(self.allocator, object.get("params").?.object.get("name").?.string);
+                }
+            } else if (object.get("id")) |id| {
+                try out.print(self.allocator, "={d}", .{id.integer});
+            }
+            try out.append(self.allocator, '\n');
+        }
+    }
+};
+
+test "setLifecycleEventsEnabled replays the current document's lifecycle as Chrome does" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const tree = try h.call("Page.getFrameTree", "{}");
+    const frame = tree.object.get("frameTree").?.object.get("frame").?.object;
+    // A page target's id IS its main frame's id; a new tab is about:blank
+    // with a loaderId.
+    try testing.expectEqualStrings(devtools.ids.frameId(0xC0FFEE, h.tab).slice(), frame.get("id").?.string);
+    try testing.expectEqualStrings("about:blank", frame.get("url").?.string);
+    try testing.expectEqual(@as(usize, 32), frame.get("loaderId").?.string.len);
+
+    const before = h.seen.items.len;
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.transcript(before, &lines);
+    try testing.expectEqualStrings(
+        \\Page.lifecycleEvent:commit
+        \\Page.lifecycleEvent:DOMContentLoaded
+        \\Page.lifecycleEvent:load
+        \\Page.lifecycleEvent:networkAlmostIdle
+        \\Page.lifecycleEvent:networkIdle
+        \\=3
+        \\
+    , lines.items);
+}
+
+test "a frame's idleness runs from its DOMContentLoaded with no session listening for it, and a replay reports its quiet start before the event fires (Blink's IdlenessDetector)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // A document loaded while no session has lifecycle events on.
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>quiet\"}");
+    _ = try h.waitEvent("Page.loadEventFired", from);
+    // 200 ms on: past its quiet start, short of the 500 ms window.
+    const waited = try h.host.evaluate(h.allocator, h.tab, "new Promise((resolve) => setTimeout(() => resolve(1), 200))", .{ .await_promise = true }, 5_000);
+    defer waited.deinit(h.allocator);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    // GetNetworkAlmostIdleTime / GetNetworkIdleTime: the quiet stretch's
+    // start, known as it began - replayed although no event has fired, and
+    // stamped then, not now.
+    var dcl_at: ?f64 = null;
+    var idle_at: ?f64 = null;
+    var almost_idle_at: ?f64 = null;
+    for (h.seen.items[before..]) |parsed| {
+        const method = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, method.string, "Page.lifecycleEvent")) continue;
+        const params = parsed.value.object.get("params").?.object;
+        const name = params.get("name").?.string;
+        const at = switch (params.get("timestamp").?) {
+            .float => |f| f,
+            .integer => |i| @as(f64, @floatFromInt(i)),
+            else => return error.NoTimestamp,
+        };
+        if (std.mem.eql(u8, name, "DOMContentLoaded")) dcl_at = at;
+        if (std.mem.eql(u8, name, "networkAlmostIdle")) almost_idle_at = at;
+        if (std.mem.eql(u8, name, "networkIdle")) idle_at = at;
+    }
+    try testing.expect(almost_idle_at != null and idle_at != null and dcl_at != null);
+    // The replay's DOMContentLoaded is stamped now; the quiet began at the
+    // document's own DOMContentLoaded, 200 ms or more before.
+    try testing.expect(dcl_at.? - idle_at.? >= 0.15);
+}
+
+test "Page.navigate answers when ready to commit, then the commit, DOMContentLoaded and load arrive in Chrome's order" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const before = h.seen.items.len;
+    const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<title>t</title><p>x\"}");
+    const answer = try h.result(id);
+    try testing.expectEqual(@as(usize, 32), answer.object.get("loaderId").?.string.len);
+    // isDownload is always in the answer, as Chrome's.
+    try testing.expect(!answer.object.get("isDownload").?.bool);
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.transcript(before, &lines);
+    // The measured order (seq-vue-e2e-one.txt), Network's events aside.
+    const expected = [_][]const u8{
+        "Page.frameStartedNavigating",
+        "Page.frameStartedLoading",
+        "=3",
+        "Page.lifecycleEvent:init",
+        "Page.frameNavigated",
+        "Page.domContentEventFired",
+        "Page.lifecycleEvent:DOMContentLoaded",
+        "Page.loadEventFired",
+        "Page.lifecycleEvent:load",
+        "Page.frameStoppedLoading",
+    };
+    var it = std.mem.splitScalar(u8, lines.items, '\n');
+    var at: usize = 0;
+    while (it.next()) |line| {
+        if (at < expected.len and std.mem.eql(u8, line, expected[at])) at += 1;
+    }
+    if (at != expected.len) {
+        std.debug.print("transcript:\n{s}\n", .{lines.items});
+        return error.WrongOrder;
+    }
+    // frameNavigated's loaderId is the navigate answer's.
+    const navigated = h.seen.items[try h.waitEvent("Page.frameNavigated", before)].value.object.get("params").?.object.get("frame").?.object;
+    try testing.expectEqualStrings(answer.object.get("loaderId").?.string, navigated.get("loaderId").?.string);
+}
+
+test "a fragment navigation answers at once with no loaderId and reports navigatedWithinDocument" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>x\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", 0);
+    const before = h.seen.items.len;
+    const id = try h.send("Page.navigate", "{\"url\":\"data:text/html,<p>x#part\"}");
+    const answer = try h.result(id);
+    try testing.expect(answer.object.get("loaderId") == null);
+    const event_index = try h.waitEvent("Page.navigatedWithinDocument", before);
+    // The answer goes first (Chrome; lane cdpr's react log l.1078-1079).
+    var answer_index: ?usize = null;
+    for (h.seen.items[before..], before..) |parsed, i| {
+        const got = parsed.value.object.get("id") orelse continue;
+        if (got == .integer and got.integer == id) answer_index = i;
+    }
+    try testing.expect(answer_index.? < event_index);
+}
+
+test "an iframe's initial about:blank: frameAttached and lifecycle init, no frameNavigated, no executionContextCreated" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const init_index = try h.waitEvent("Page.lifecycleEvent", attached);
+    try testing.expectEqualStrings(frame_id, h.seen.items[init_index].value.object.get("params").?.object.get("frameId").?.string);
+    // Two frames of the page later, nothing else was said of the frame.
+    const settled = try h.host.evaluate(h.allocator, h.tab, "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))", .{ .await_promise = true }, 5_000);
+    defer settled.deinit(h.allocator);
+    h.drain();
+    for (h.seen.items[attached..]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Page.frameNavigated") or std.mem.eql(u8, method, "Runtime.executionContextCreated")) return error.Unexpected;
+    }
+}
+
+test "addScriptToEvaluateOnNewDocument runs before the document's own scripts, in its world when it names one" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const added = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.early = 'first'\"}");
+    try testing.expectEqualStrings("1", added.object.get("identifier").?.string);
+    _ = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.inWorld = 1\",\"worldName\":\"utility\"}");
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<script>document.title = typeof early + ':' + (typeof inWorld)</script>\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", 0);
+    const title = try h.host.evaluate(h.allocator, h.tab, "document.title", .{}, 5_000);
+    defer title.deinit(h.allocator);
+    // The main-world script ran first; the world's global is not the page's.
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"string:undefined\"}", title.json);
+}
+
+test "setDocumentContent replaces the document's content through open, write and close" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    const frame_id = devtools.ids.frameId(0xC0FFEE, h.tab);
+    var params_buffer: [256]u8 = undefined;
+    const params = try std.fmt.bufPrint(&params_buffer, "{{\"frameId\":\"{s}\",\"html\":\"<title>set</title><p id=p>content\"}}", .{frame_id.slice()});
+    _ = try h.call("Page.setDocumentContent", params);
+    const title = try h.host.evaluate(h.allocator, h.tab, "document.title + '|' + document.getElementById('p').textContent", .{}, 5_000);
+    defer title.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"set|content\"}", title.json);
+}
+
+test "Emulation overrides reach the page and a detaching session takes its own away" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false}");
+    _ = try h.call("Emulation.setEmulatedMedia", "{\"media\":\"\",\"features\":[{\"name\":\"prefers-color-scheme\",\"value\":\"dark\"}]}");
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"CraneTest/1\",\"acceptLanguage\":\"de-DE,de\",\"platform\":\"TestOS\"}");
+    _ = try h.call("Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":3}");
+    const seen = try h.host.evaluate(h.allocator, h.tab, "[innerWidth, innerHeight, matchMedia('(prefers-color-scheme: dark)').matches, navigator.userAgent, navigator.language, navigator.platform, navigator.maxTouchPoints].join('|')", .{}, 5_000);
+    defer seen.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"800|600|true|CraneTest/1|de-DE|TestOS|3\"}", seen.json);
+    // A locale other than the default is refused (design R13).
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setLocaleOverride", "{\"locale\":\"fr-FR\"}"));
+}
+
+test "setDeviceMetricsOverride emulates the device's screen, scale and orientation; clearing gives the platform's back" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // Playwright's phone: a screen, a scale, an orientation.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":390,\"height\":664,\"deviceScaleFactor\":3,\"mobile\":true,\"screenWidth\":390,\"screenHeight\":844,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":0}}");
+    const phone = try h.host.evaluate(h.allocator, h.tab, "[innerWidth, screen.width, screen.height, screen.availHeight, devicePixelRatio, screen.orientation.type, screen.orientation.angle, matchMedia('(resolution: 3dppx)').matches].join('|')", .{}, 5_000);
+    defer phone.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"390|390|844|844|3|portrait-primary|0|true\"}", phone.json);
+    // Puppeteer's: no screen size on a desktop device keeps the real screen.
+    _ = try h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":2,\"mobile\":false}");
+    // (screen.orientation's [[type]] follows in a task of its own: the
+    // change steps queue it, html.screen_orientation.)
+    const desktop = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio].join('|')", .{}, 5_000);
+    defer desktop.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|2\"}", desktop.json);
+    // Chrome's checks.
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":-1,\"mobile\":false}"));
+    try testing.expectError(error.CommandFailed, h.call("Emulation.setDeviceMetricsOverride", "{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false,\"screenOrientation\":{\"type\":\"portraitPrimary\",\"angle\":360}}"));
+    _ = try h.call("Emulation.clearDeviceMetricsOverride", "{}");
+    const cleared = try h.host.evaluate(h.allocator, h.tab, "[screen.width, devicePixelRatio].join('|')", .{}, 5_000);
+    defer cleared.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"1920|1\"}", cleared.json);
+}
+
+test "a dedicated worker made after Emulation.setUserAgentOverride reports the override; one made before keeps its copy" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    const ask =
+        \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
+        \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.userAgent + "|" + navigator.platform)'], { type: 'text/javascript' })));
+        \\globalThis.before = makeWorker(); 1
+    ;
+    const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"CraneWorker/1\",\"platform\":\"WorkerOS\"}");
+    const after = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer after.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"CraneWorker/1|WorkerOS\"}", after.json);
+    // Chrome's copy is taken at creation: a worker made before keeps the
+    // Browser's user agent.
+    const earlier = try h.host.evaluate(h.allocator, h.tab, "askWorker(before).then((v) => v.startsWith('CraneWorker/1'))", .{ .await_promise = true }, 5_000);
+    defer earlier.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":false}", earlier.json);
+}
+
+test "navigator.languages is the whole list - the platform's en-US, en with no override, the override's own list with one - in the page and in a worker" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    const ask =
+        \\globalThis.askWorker = (w) => new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); w.postMessage(0); });
+        \\globalThis.makeWorker = () => new Worker(URL.createObjectURL(new Blob(['onmessage = () => postMessage(navigator.language + "|" + navigator.languages.join(","))'], { type: 'text/javascript' })));
+        \\globalThis.inPage = () => navigator.language + "|" + navigator.languages.join(",");
+        \\1
+    ;
+    const made = try h.host.evaluate(h.allocator, h.tab, ask, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    // No override: the platform's list - Chrome's and Firefox's for an en-US
+    // user (Safari's is en-US alone).
+    const page_default = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", page_default.json);
+    const worker_default = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_default.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"en-US|en-US,en\"}", worker_default.json);
+
+    // Playwright's locale call: an empty userAgent overrides the languages
+    // alone. Blink's ParseAndSanitize of the override as given: split at
+    // ',', trimmed, xx_ made xx-, q-values kept. The worker copies its tab's
+    // override as it is made (Chrome's NavigatorLanguage::
+    // EnsureUpdatedLanguage reads the override "to allow for workers to
+    // respect the override").
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"de_DE, de;q=0.9\"}");
+    const page_override = try h.host.evaluate(h.allocator, h.tab, "inPage()", .{}, 5_000);
+    defer page_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", page_override.json);
+    const worker_override = try h.host.evaluate(h.allocator, h.tab, "askWorker(makeWorker())", .{ .await_promise = true }, 5_000);
+    defer worker_override.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"de-DE|de-DE,de;q=0.9\"}", worker_override.json);
+    // The page's array changed with the list ("until the user agent needs
+    // to return different values"), and stays the same object after.
+    const same = try h.host.evaluate(h.allocator, h.tab, "Object.isFrozen(navigator.languages) && navigator.languages === navigator.languages", .{}, 5_000);
+    defer same.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"boolean\",\"value\":true}", same.json);
+}
+
+test "document.open() is Page.documentOpened, then lifecycle init, as Chrome's DidOpenDocument" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "document.open(); document.write('<p>x</p>'); document.close(); 1", .{}, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.documentOpened", from);
+    const init_index = try h.waitEvent("Page.lifecycleEvent", index);
+    const init_params = h.seen.items[init_index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("init", init_params.get("name").?.string);
+    // The same loader as the frame documentOpened carries.
+    const frame = h.seen.items[index].value.object.get("params").?.object.get("frame").?.object;
+    try testing.expectEqualStrings(frame.get("loaderId").?.string, init_params.get("loaderId").?.string);
+}
+
+test "setUserAgentOverride with an empty userAgent overrides the languages alone (Playwright's locale call)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Emulation.setUserAgentOverride", "{\"userAgent\":\"\",\"acceptLanguage\":\"fr-FR\"}");
+    const seen = try h.host.evaluate(h.allocator, h.tab, "[navigator.userAgent.length > 0, navigator.language].join('|')", .{}, 5_000);
+    defer seen.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"true|fr-FR\"}", seen.json);
+}
+
+test "Log violations: document.write and a slow listener and timer are reported as Chrome's PerformanceMonitor does" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    // Not enabled: refused, as InspectorLogAgent.
+    try testing.expectError(error.CommandFailed, h.call("Log.startViolationsReport", "{\"config\":[]}"));
+    _ = try h.call("Log.enable", "{}");
+    _ = try h.call("Log.startViolationsReport", "{\"config\":[{\"name\":\"discouragedAPIUse\",\"threshold\":-1},{\"name\":\"handler\",\"threshold\":1},{\"name\":\"recurringHandler\",\"threshold\":1},{\"name\":\"longTask\",\"threshold\":1}]}");
+    const from = h.seen.items.len;
+    const ran = try h.host.evaluate(h.allocator, h.tab,
+        \\document.body.addEventListener('click', () => { const t = performance.now(); while (performance.now() - t < 5); });
+        \\document.body.click();
+        \\setTimeout(() => { const t = performance.now(); while (performance.now() - t < 5); }, 0);
+        \\document.write('<p>w</p>'); 1
+    , .{}, 5_000);
+    defer ran.deinit(h.allocator);
+    var texts: std.ArrayList(u8) = .empty;
+    defer texts.deinit(h.allocator);
+    var at = from;
+    var seen_handler = false;
+    var seen_timer = false;
+    var seen_write = false;
+    while (!(seen_handler and seen_timer and seen_write)) {
+        const index = try h.waitEvent("Log.entryAdded", at);
+        at = index + 1;
+        const entry = h.seen.items[index].value.object.get("params").?.object.get("entry").?.object;
+        try testing.expectEqualStrings("violation", entry.get("source").?.string);
+        try testing.expectEqualStrings("verbose", entry.get("level").?.string);
+        const text = entry.get("text").?.string;
+        if (std.mem.startsWith(u8, text, "'click' handler took ")) seen_handler = true;
+        if (std.mem.startsWith(u8, text, "'setTimeout' handler took ")) seen_timer = true;
+        if (std.mem.startsWith(u8, text, "Avoid using document.write().")) seen_write = true;
+        // longTask is subscribed but never reported (no ReportLongTask).
+        try testing.expect(std.mem.indexOf(u8, text, "long task") == null);
+    }
+    _ = try h.call("Log.stopViolationsReport", "{}");
+}
+
+/// The Log.entryAdded events seen from index `from`, each checked to be a
+/// network error entry for a URL ending in `path`.
+fn countNetworkEntries(h: *Harness, from: usize, path: []const u8) !usize {
+    var entries: usize = 0;
+    for (h.seen.items[from..]) |parsed| {
+        const method = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, method.string, "Log.entryAdded")) continue;
+        entries += 1;
+        const entry = parsed.value.object.get("params").?.object.get("entry").?.object;
+        try testing.expectEqualStrings("network", entry.get("source").?.string);
+        try testing.expectEqualStrings("error", entry.get("level").?.string);
+        try testing.expect(std.mem.startsWith(u8, entry.get("text").?.string, "Failed to load resource: the server responded with a status of 404"));
+        try testing.expect(std.mem.endsWith(u8, entry.get("url").?.string, path));
+    }
+    return entries;
+}
+
+/// Page.navigate the session's tab to `url` and wait for its load.
+fn navigateAndLoad(h: *Harness, url: []const u8) !void {
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"url\":\"{s}\"}}", .{url});
+    defer h.allocator.free(params);
+    const from = h.seen.items.len;
+    _ = try h.call("Page.navigate", params);
+    _ = try h.waitEvent("Page.loadEventFired", from);
+}
+
+/// Log.disable then Log.enable: the entries the enable replays, counted.
+fn reenableLog(h: *Harness) !usize {
+    _ = try h.call("Log.disable", "{}");
+    const from = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    return countNetworkEntries(h, from, "/missing.json");
+}
+
+test "Log.enable replays the tab's entries from before it, kept whether or not a session listens; a top-level commit and Log.clear forget them" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try Site.start(testing.allocator);
+    defer site.stop();
+    var url_buffer: [64]u8 = undefined;
+    const page_url = try site.url(&url_buffer, "/");
+
+    _ = try h.call("Page.enable", "{}");
+    try navigateAndLoad(&h, page_url);
+    // A 404 while no session has Log on: nothing is sent, the entry is kept
+    // (Blink's ConsoleMessageStorage keeps every message of the page).
+    const fetch_404 = "fetch('/missing.json').then((r) => r.status)";
+    const first = try h.host.evaluate(h.allocator, h.tab, fetch_404, .{ .await_promise = true }, 5_000);
+    defer first.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":404}", first.json);
+
+    // InspectorLogAgent::enable -> InnerEnable: each kept entry, before the
+    // answer; the page's own load (200s) left none.
+    const before_enable = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 1), try countNetworkEntries(&h, before_enable, "/missing.json"));
+    // Already enabled: enable does nothing (no replay).
+    const again = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 0), try countNetworkEntries(&h, again, "/missing.json"));
+    // Disabled and enabled again: the storage is the page's, not the
+    // session's - replayed again.
+    try testing.expectEqual(@as(usize, 1), try reenableLog(&h));
+    // Log.clear empties it (InspectorLogAgent::clear -> storage_->Clear()).
+    _ = try h.call("Log.clear", "{}");
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+
+    // A frame's commit is not the main frame's: the entry stays.
+    const live_from = h.seen.items.len;
+    const second = try h.host.evaluate(h.allocator, h.tab, fetch_404, .{ .await_promise = true }, 5_000);
+    defer second.deinit(h.allocator);
+    // Log on: sent as it happens, and kept.
+    _ = try h.waitEvent("Log.entryAdded", live_from);
+    const framed = try h.host.evaluate(h.allocator, h.tab, "new Promise((resolve) => { const f = document.createElement('iframe'); f.src = '/frame.html'; f.onload = () => resolve(1); document.body.append(f); })", .{ .await_promise = true }, 5_000);
+    defer framed.deinit(h.allocator);
+    try testing.expectEqual(@as(usize, 1), try reenableLog(&h));
+    // The main frame commits a new document: Page::DidCommitLoad clears the
+    // page's storage.
+    try navigateAndLoad(&h, page_url);
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+}
+
+test "a javascript: URL's document keeps the page's Log entries: only a regular commit starts a new page's (Blink's CommitReason)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try Site.start(testing.allocator);
+    defer site.stop();
+    var url_buffer: [64]u8 = undefined;
+    const page_url = try site.url(&url_buffer, "/");
+
+    _ = try h.call("Page.enable", "{}");
+    try navigateAndLoad(&h, page_url);
+    const fetched = try h.host.evaluate(h.allocator, h.tab, "fetch('/missing.json').then((r) => r.status)", .{ .await_promise = true }, 5_000);
+    defer fetched.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"number\",\"value\":404}", fetched.json);
+    // The page's document replaced by a javascript: URL's String ("navigate
+    // to a javascript: URL" step 13): Blink commits it with
+    // CommitReason::kJavascriptUrl, and DidCommitNavigation returns before
+    // Page::DidCommitLoad - the page's storage stays.
+    const from = h.seen.items.len;
+    const replaced = try h.host.evaluate(h.allocator, h.tab, "location.href = \"javascript:'<b>replaced</b>'\"; 1", .{}, 5_000);
+    defer replaced.deinit(h.allocator);
+    _ = try h.waitEvent("Page.frameNavigated", from);
+    const text = try h.host.evaluate(h.allocator, h.tab, "document.body.textContent", .{}, 5_000);
+    defer text.deinit(h.allocator);
+    try testing.expectEqualStrings("{\"type\":\"string\",\"value\":\"replaced\"}", text.json);
+    const before_enable = h.seen.items.len;
+    _ = try h.call("Log.enable", "{}");
+    try testing.expectEqual(@as(usize, 1), try countNetworkEntries(&h, before_enable, "/missing.json"));
+    // A regular commit after it does start a new page's.
+    try navigateAndLoad(&h, page_url);
+    try testing.expectEqual(@as(usize, 0), try reenableLog(&h));
+}
+
+/// A fresh iframe named `name` on its initial about:blank, then `touch` run
+/// in the page: its main world context is announced only then (Blink's lazy
+/// LocalWindowProxy::Initialize), carrying its frameId.
+fn expectContextOnTouch(h: *Harness, name: []const u8, touch: []const u8) !void {
+    const from = h.seen.items.len;
+    // A block: each call's `f` is its own (a second top-level `const f`
+    // would be a redeclaration, a SyntaxError).
+    const make = try std.fmt.allocPrint(h.allocator, "{{ const f = document.createElement('iframe'); f.name = '{s}'; f.id = '{s}'; document.body.append(f); }} 1", .{ name, name });
+    defer h.allocator.free(make);
+    const made = try h.host.evaluate(h.allocator, h.tab, make, .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const before_touch = h.seen.items.len;
+    for (h.seen.items[attached..before_touch]) |parsed| {
+        const method = (parsed.value.object.get("method") orelse continue).string;
+        if (std.mem.eql(u8, method, "Runtime.executionContextCreated")) {
+            const aux = parsed.value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+            if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return error.AnnouncedBeforeTouch;
+        }
+    }
+    const touched = try h.host.evaluate(h.allocator, h.tab, touch, .{}, 5_000);
+    defer touched.deinit(h.allocator);
+    var at = before_touch;
+    while (true) {
+        const index = try h.waitEvent("Runtime.executionContextCreated", at);
+        at = index + 1;
+        const aux = h.seen.items[index].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+        if (std.mem.eql(u8, aux.get("frameId").?.string, frame_id)) return;
+    }
+}
+
+test "a fresh iframe's main world context is announced when script first reaches it, by every route" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    try expectContextOnTouch(&h, "a", "void document.getElementById('a').contentWindow; 1");
+    try expectContextOnTouch(&h, "b", "void document.getElementById('b').contentDocument; 1");
+    try expectContextOnTouch(&h, "c", "void window[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "d", "void window.frames[window.length - 1]; 1");
+    try expectContextOnTouch(&h, "e", "void window.e; 1");
+    try expectContextOnTouch(&h, "g", "void window.open('', 'g'); 1");
+}
+
+test "a session targeting a fresh iframe (Page.createIsolatedWorld) announces its main world first" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "document.body.append(document.createElement('iframe')); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const attached = try h.waitEvent("Page.frameAttached", from);
+    const frame_id = h.seen.items[attached].value.object.get("params").?.object.get("frameId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"frameId\":\"{s}\",\"worldName\":\"util\"}}", .{frame_id});
+    defer h.allocator.free(params);
+    const before = h.seen.items.len;
+    _ = try h.call("Page.createIsolatedWorld", params);
+    const first = try h.waitEvent("Runtime.executionContextCreated", before);
+    const aux = h.seen.items[first].value.object.get("params").?.object.get("context").?.object.get("auxData").?.object;
+    try testing.expect(aux.get("isDefault").?.bool);
+    try testing.expectEqualStrings(frame_id, aux.get("frameId").?.string);
+}
+
+test "Page.windowOpen tells the opener's session of window.open before the window exists" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const opened = try h.host.evaluate(h.allocator, h.tab, "void window.open('about:blank#p', 'named', 'width=300,height=200')", .{ .user_activation = true }, 5_000);
+    defer opened.deinit(h.allocator);
+    const index = try h.waitEvent("Page.windowOpen", from);
+    const params = h.seen.items[index].value.object.get("params").?.object;
+    try testing.expectEqualStrings("about:blank#p", params.get("url").?.string);
+    try testing.expectEqualStrings("named", params.get("windowName").?.string);
+    try testing.expect(params.get("userGesture").?.bool);
+    const features = params.get("windowFeatures").?.array.items;
+    try testing.expectEqualStrings("width=300", features[0].string);
+    try testing.expectEqualStrings("height=200", features[1].string);
+}
+
+test "DOM.describeNode gives a stable backendNodeId; a node that is gone is not found" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<div id=d class=c>x</div>\"}");
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    // No inspector session yet (lane cdpw's bridge): by an unknown id.
+    try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", "{\"backendNodeId\":999999}"));
+    try testing.expectError(error.CommandFailed, h.call("DOM.getContentQuads", "{\"backendNodeId\":999999}"));
+    // With no depth: childNodeCount, no children (Chrome's depth.value_or(0)).
+    _ = try h.call("Runtime.enable", "{}");
+    const object = try h.call("Runtime.evaluate", "{\"expression\":\"document.getElementById('d')\"}");
+    const object_id = object.object.get("result").?.object.get("objectId").?.string;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"objectId\":\"{s}\"}}", .{object_id});
+    defer h.allocator.free(params);
+    const described = try h.call("DOM.describeNode", params);
+    const node = described.object.get("node").?.object;
+    try testing.expectEqual(@as(i64, 1), node.get("childNodeCount").?.integer);
+    try testing.expect(node.get("children") == null);
+}
+
+/// Load `url` in the harness's tab and wait for its frameStoppedLoading.
+fn loadUrl(h: *Harness, url: []const u8) !void {
+    _ = try h.call("Page.enable", "{}");
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"url\":\"{s}\"}}", .{url});
+    defer h.allocator.free(params);
+    _ = try h.call("Page.navigate", params);
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+}
+
+fn child(node: std.json.Value, index: usize) std.json.ObjectMap {
+    return node.object.get("children").?.array.items[index].object;
+}
+
+/// The setChildNodes events from index `from` of `seen`: "parentId:nodeName,nodeName" each.
+fn setChildNodesSince(h: *Harness, from: usize, out: *std.ArrayList(u8)) !void {
+    h.drain();
+    for (h.seen.items[from..]) |parsed| {
+        const m = parsed.value.object.get("method") orelse continue;
+        if (!std.mem.eql(u8, m.string, "DOM.setChildNodes")) continue;
+        const params = parsed.value.object.get("params").?.object;
+        try out.print(h.allocator, "{d}:", .{params.get("parentId").?.integer});
+        for (params.get("nodes").?.array.items, 0..) |node, i| {
+            if (i > 0) try out.append(h.allocator, ',');
+            try out.appendSlice(h.allocator, node.object.get("nodeName").?.string);
+        }
+        try out.append(h.allocator, '\n');
+    }
+}
+
+test "DOM.getDocument binds nodeIds to depth 2 with Chrome's document fields (InspectorDOMAgent::getDocument)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head><title>t</title></head><body><div id=a><span>x</span></div><p>y</p></body></html>");
+
+    const got = try h.call("DOM.getDocument", "{}");
+    const root = got.object.get("root").?;
+    const root_id = root.object.get("nodeId").?.integer;
+    try testing.expect(root_id != 0);
+    try testing.expectEqual(@as(i64, 9), root.object.get("nodeType").?.integer);
+    try testing.expectEqualStrings("#document", root.object.get("nodeName").?.string);
+    try testing.expect(std.mem.startsWith(u8, root.object.get("documentURL").?.string, "data:text/html,"));
+    // No DOCTYPE: quirks mode.
+    try testing.expectEqualStrings("QuirksMode", root.object.get("compatibilityMode").?.string);
+    try testing.expectEqual(@as(i64, 1), root.object.get("childNodeCount").?.integer);
+    // Depth 2: <html> and its children, whose own children are only counted.
+    const html = child(root, 0);
+    try testing.expectEqualStrings("HTML", html.get("nodeName").?.string);
+    try testing.expectEqual(root_id, html.get("parentId").?.integer);
+    try testing.expect(html.get("frameId") != null);
+    const html_value: std.json.Value = .{ .object = html };
+    const body = child(html_value, 1);
+    try testing.expectEqualStrings("BODY", body.get("nodeName").?.string);
+    try testing.expectEqual(@as(i64, 2), body.get("childNodeCount").?.integer);
+    try testing.expect(body.get("children") == null);
+    // An only text child is pushed with its element even past the depth:
+    // <title>'s "t" is not (the title is at depth 0 under <head>, which has
+    // an element child, so <head> has no children array).
+    const head = child(html_value, 0);
+    try testing.expectEqual(@as(i64, 1), head.get("childNodeCount").?.integer);
+    try testing.expect(head.get("children") == null);
+    // Every id is distinct.
+    try testing.expect(html.get("nodeId").?.integer != body.get("nodeId").?.integer);
+}
+
+test "DOM.querySelector pushes the result's path as DOM.setChildNodes and answers its nodeId; describeNode, resolveNode and getOuterHTML take it (PushNodePathToFrontend)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head></head><body><div id=a><span>x</span></div><p>y</p></body></html>");
+
+    const got = try h.call("DOM.getDocument", "{}");
+    const root_id = got.object.get("root").?.object.get("nodeId").?.integer;
+    const html = child(got.object.get("root").?, 0);
+    const body_id = child(.{ .object = html }, 1).get("nodeId").?.integer;
+
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"span\"}}", .{root_id});
+    defer h.allocator.free(params);
+    const found = try h.call("DOM.querySelector", params);
+    const span_id = found.object.get("nodeId").?.integer;
+    try testing.expect(span_id != 0);
+    // <body>'s children, then <div>'s (its only text child "x" comes with <span>).
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try setChildNodesSince(&h, before, &lines);
+    const expected_body = try std.fmt.allocPrint(h.allocator, "{d}:DIV,P\n", .{body_id});
+    defer h.allocator.free(expected_body);
+    try testing.expect(std.mem.startsWith(u8, lines.items, expected_body));
+    try testing.expect(std.mem.endsWith(u8, lines.items, ":SPAN\n"));
+
+    // The same node again: the same id, nothing more pushed.
+    const again = try h.call("DOM.querySelector", params);
+    try testing.expectEqual(span_id, again.object.get("nodeId").?.integer);
+    // No match: 0.
+    const none_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"table\"}}", .{root_id});
+    defer h.allocator.free(none_params);
+    try testing.expectEqual(@as(i64, 0), (try h.call("DOM.querySelector", none_params)).object.get("nodeId").?.integer);
+    // querySelectorAll: both, in document order.
+    const all_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"p, div\"}}", .{root_id});
+    defer h.allocator.free(all_params);
+    const all = try h.call("DOM.querySelectorAll", all_params);
+    try testing.expectEqual(@as(usize, 2), all.object.get("nodeIds").?.array.items.len);
+    // By nodeId: describeNode, getOuterHTML.
+    const by_id = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d}}}", .{span_id});
+    defer h.allocator.free(by_id);
+    const described = try h.call("DOM.describeNode", by_id);
+    try testing.expectEqualStrings("span", described.object.get("node").?.object.get("localName").?.string);
+    try testing.expectEqual(span_id, described.object.get("node").?.object.get("nodeId").?.integer);
+    const outer = try h.call("DOM.getOuterHTML", by_id);
+    try testing.expectEqualStrings("<span>x</span>", outer.object.get("outerHTML").?.string);
+    // Errors: an unknown id, a selector on a text node, a bad selector.
+    try testing.expectError(error.CommandFailed, h.call("DOM.querySelector", "{\"nodeId\":999999,\"selector\":\"a\"}"));
+    const bad_params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"selector\":\"[\"}}", .{root_id});
+    defer h.allocator.free(bad_params);
+    try testing.expectError(error.CommandFailed, h.call("DOM.querySelector", bad_params));
+    try testing.expectError(error.CommandFailed, h.call("DOM.resolveNode", "{}"));
+}
+
+test "DOM.requestChildNodes pushes a node's children; a new document discards the nodeIds and sends DOM.documentUpdated" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try loadUrl(&h, "data:text/html,<html><head></head><body><b>1</b><i>2</i></body></html>");
+
+    _ = try h.call("DOM.enable", "{}");
+    const got = try h.call("DOM.getDocument", "{\"depth\":1}");
+    const html = child(got.object.get("root").?, 0);
+    const html_id = html.get("nodeId").?.integer;
+    try testing.expect(html.get("children") == null);
+
+    const before = h.seen.items.len;
+    const params = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d}}}", .{html_id});
+    defer h.allocator.free(params);
+    _ = try h.call("DOM.requestChildNodes", params);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try setChildNodesSince(&h, before, &lines);
+    const expected = try std.fmt.allocPrint(h.allocator, "{d}:HEAD,BODY\n", .{html_id});
+    defer h.allocator.free(expected);
+    try testing.expectEqualStrings(expected, lines.items);
+    const zero = try std.fmt.allocPrint(h.allocator, "{{\"nodeId\":{d},\"depth\":0}}", .{html_id});
+    defer h.allocator.free(zero);
+    try testing.expectError(error.CommandFailed, h.call("DOM.requestChildNodes", zero));
+
+    // A new document: documentUpdated, and the old ids name nothing.
+    const at = h.seen.items.len;
+    try loadUrl(&h, "data:text/html,<p>next</p>");
+    _ = try h.waitEvent("DOM.documentUpdated", at);
+    try testing.expectError(error.CommandFailed, h.call("DOM.describeNode", params));
+}
+
+test "lifecycle init comes before executionContextsCleared at a commit (Chrome's order)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Runtime.enable", "{}");
+    _ = try h.call("Page.setLifecycleEventsEnabled", "{\"enabled\":true}");
+    const before = h.seen.items.len;
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>o\"}");
+    _ = try h.waitEvent("Page.frameStoppedLoading", before);
+    var lines: std.ArrayList(u8) = .empty;
+    defer lines.deinit(h.allocator);
+    try h.transcript(before, &lines);
+    const init_at = std.mem.indexOf(u8, lines.items, "Page.lifecycleEvent:init") orelse return error.NoInit;
+    const cleared_at = std.mem.indexOf(u8, lines.items, "Runtime.executionContextsCleared") orelse return error.NoCleared;
+    const navigated_at = std.mem.indexOf(u8, lines.items, "Page.frameNavigated") orelse return error.NoNavigated;
+    try testing.expect(init_at < cleared_at and cleared_at < navigated_at);
+}
+
+test "an opaque origin's frame reports securityOrigin \"://\", as Chrome" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>opaque\"}");
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const tree = try h.call("Page.getFrameTree", "{}");
+    try testing.expectEqualStrings("://", tree.object.get("frameTree").?.object.get("frame").?.object.get("securityOrigin").?.string);
+}
+
+test "a frame's first navigation is requested as initialFrameNavigation" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    const from = h.seen.items.len;
+    const made = try h.host.evaluate(h.allocator, h.tab, "const f = document.createElement('iframe'); f.src = 'data:text/html,<p>child'; document.body.append(f); 1", .{}, 5_000);
+    defer made.deinit(h.allocator);
+    const index = try h.waitEvent("Page.frameRequestedNavigation", from);
+    try testing.expectEqualStrings("initialFrameNavigation", h.seen.items[index].value.object.get("params").?.object.get("reason").?.string);
+}
+
+test "a new-document script's world has universal access, as EnsureDOMWrapperWorld(frame, name, true)" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+
+    _ = try h.call("Page.enable", "{}");
+    _ = try h.call("Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"1\",\"worldName\":\"cdph-world\"}");
+    _ = try h.call("Page.navigate", "{\"url\":\"data:text/html,<p>w\"}");
+    _ = h.waitEvent("Page.frameStoppedLoading", 0) catch 0;
+    const Check = struct {
+        universal: bool = false,
+        found: bool = false,
+        fn run(ctx: ?*anyopaque, b: *Browser) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            const worlds = browser_mod.isolated_worlds.of(b.scope) catch return;
+            for (worlds.worlds.items) |world| if (std.mem.eql(u8, world.name, "cdph-world")) {
+                self.found = true;
+                self.universal = world.universal_access;
+            };
+        }
+    };
+    var check: Check = .{};
+    try h.host.call(&check, Check.run);
+    try testing.expect(check.found and check.universal);
+}

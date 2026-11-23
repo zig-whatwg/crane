@@ -331,7 +331,8 @@ pub const Capabilities = struct {
     simple_dialogs: Support,
     /// The printing steps end without output.
     printing: Support,
-    /// No files chosen (`cancel`; AbortError for File System Access).
+    /// No files chosen (`cancel`; AbortError for File System Access), and
+    /// no file a host names by path (`userFile` drops).
     file_picker: Support,
     /// Every popup allowed; window rects ignored.
     windows: Support,
@@ -431,6 +432,11 @@ pub const Capabilities = struct {
     device_posture: Support,
     virtual_keyboard: Support,
     protocol_handlers: Support,
+    /// The remote debugging transport (6.12): the Chrome DevTools Protocol's
+    /// listener and connections. Unsupported, there is no remote debugging -
+    /// the console's --remote-debugging-port and WebDriver's se:cdp answer
+    /// that this build has none (iOS; `-Dcdp=false` compiles it out).
+    devtools_transport: Support,
 };
 
 pub const Capability = std.meta.FieldEnum(Capabilities);
@@ -1522,8 +1528,9 @@ pub const CssEnvironmentVariable = enum(u8) {
 /// fallback. x/y index viewport segments horizontally/vertically; ignored
 /// for scalars. Hosts supply finite values and bump cssEnvironmentRevision
 /// whenever a value changes. Available without the layout capability.
-/// Until recipes step 7 supplies document -> TabId mapping, built-in
-/// platforms answer per Browser, ignoring tab; DOM callers pass 0.
+/// DOM callers pass the document's tab - its realm's (runtime.TabScope:
+/// recipes step 7's document -> TabId mapping), 0 for a realm of no tab;
+/// built-in platforms answer per Browser, ignoring tab.
 pub inline fn cssEnvironmentVariable(browser: *BrowserPlatform, tab: TabId, variable: CssEnvironmentVariable, x: u32, y: u32) ?f64 {
     return impl.cssEnvironmentVariable(browser, tab, variable, x, y);
 }
@@ -1795,6 +1802,10 @@ pub const PickedFile = extern struct {
     mime_type: Str = .{},
     size: u64,
     last_modified: WallTime,
+    /// A file of a chosen directory: its path from the directory, the
+    /// directory's own name first ("photos/2026/a.jpg") - File's
+    /// webkitRelativePath. Empty for a file chosen on its own.
+    relative_path: Str = .{},
 };
 
 /// The files chosen; none: canceled. BORROWED for `deliver`.
@@ -1818,6 +1829,27 @@ pub inline fn readPickedFile(browser: *BrowserPlatform, file: FileToken, offset:
 pub inline fn releasePickedFile(browser: *BrowserPlatform, file: FileToken) void {
     comptime gate(.file_picker, "releasePickedFile");
     return impl.releasePickedFile(browser, file);
+}
+
+/// A file the HOST chose by its path, with no picker: a remote end's
+/// DOM.setFileInputFiles (Blink's FileInputType::SetFilesFromPaths), an
+/// automation's "set input files". Answers the PickedFile a picker would -
+/// its token read by `readPickedFile` and let go by `releasePickedFile`, and
+/// let go at the Browser's end when Crane never does. Dropped when `path`
+/// (BORROWED for the call) names no regular file the platform can read.
+pub inline fn userFile(browser: *BrowserPlatform, path: Str, reply: Reply(PickedFile)) void {
+    comptime gate(.file_picker, "userFile");
+    return impl.userFile(browser, path, reply);
+}
+
+/// The files of a directory the HOST chose by its path (a remote end's
+/// DOM.setFileInputFiles on an input with webkitdirectory: Blink's
+/// FileInputType::SetFilesFromDirectory): every regular file under it, at
+/// any depth, each with its own token and its `relative_path`. Dropped when
+/// `path` (BORROWED for the call) names no directory the platform can list.
+pub inline fn userDirectory(browser: *BrowserPlatform, path: Str, reply: Reply(PickedFiles)) void {
+    comptime gate(.file_picker, "userDirectory");
+    return impl.userDirectory(browser, path, reply);
 }
 
 // ---- 6.10.4 Screen and system state (required; defaults allowed) ----
@@ -3518,6 +3550,142 @@ pub inline fn protectPages(range: AddressRange, offset: usize, length: usize, ac
 pub inline fn releaseAddressSpace(range: AddressRange) void {
     comptime gate(.address_space, "releaseAddressSpace");
     return impl.releaseAddressSpace(range);
+}
+
+// ============================================================================
+// 6.12 Remote debugging transport [devtools_transport]
+// ============================================================================
+//
+// The Chrome DevTools Protocol's transport (src/devtools; CDP part 1,
+// tmp/plans/cdp-part1-design.md 2.1): a TCP listener on the loopback interface
+// only - Chrome's DevToolsHttpHandler binds 127.0.0.1 unless told otherwise
+// (content/browser/devtools/devtools_http_handler.cc) and Crane never binds
+// another address - its accepted connections, and the inherited pipe pair of
+// Chrome's --remote-debugging-pipe (devtools_pipe_handler.cc: fd 3 reads, fd
+// 4 writes). Blocking calls, made from the remote end's own threads, never
+// from a Browser thread: a connection's reader blocks in `devtoolsRead`, its
+// writer in `devtoolsWrite`, and `devtoolsShutdown` from another thread ends
+// a blocked read of a socket (the connection's end); the acceptor and a pipe's
+// reader wait on their descriptor and a `DevtoolsWake` together, with no
+// timeout, so an idle remote end makes no syscalls and the waker (the
+// server's stop, the connection's end) ends the wait - Chrome's
+// DevToolsHttpHandler waits on its IO thread's message loop, whose socket
+// watcher wakes only for a connection or a quit task. Darwin and Linux:
+// kit/posix. iOS has no remote debugging: kit/headless answers
+// `error.NotSupported`.
+
+/// A listening socket, OWNED until `devtoolsCloseListener`. `port` is the
+/// port it listens on (the one asked for, or the one the OS chose for 0).
+pub const DevtoolsListener = extern struct {
+    handle: i64,
+    port: u16,
+};
+
+/// One end of a byte stream - an accepted connection, or one direction of
+/// an inherited pipe. OWNED until `devtoolsClose`.
+pub const DevtoolsStream = extern struct {
+    handle: i64,
+};
+
+/// The two inherited pipe ends of --remote-debugging-pipe.
+pub const DevtoolsPipe = extern struct {
+    read: DevtoolsStream,
+    write: DevtoolsStream,
+};
+
+/// What ends a wait of `devtoolsAccept` or `devtoolsReadOrWake` from another
+/// thread: once `devtoolsWake` was called on it, every wait on it returns at
+/// once (it stays woken). OWNED until `devtoolsWakeClose`. Its descriptors
+/// are the platform's.
+pub const DevtoolsWake = extern struct {
+    read: i64,
+    write: i64,
+};
+
+/// A new wake, not woken.
+pub inline fn devtoolsWakeNew() Error!DevtoolsWake {
+    comptime gate(.devtools_transport, "devtoolsWakeNew");
+    return impl.devtoolsWakeNew();
+}
+
+/// Wake every wait on `wake`, now and later. Any thread.
+pub inline fn devtoolsWake(wake: DevtoolsWake) void {
+    comptime gate(.devtools_transport, "devtoolsWake");
+    return impl.devtoolsWake(wake);
+}
+
+/// Release `wake`. Nothing may be waiting on it.
+pub inline fn devtoolsWakeClose(wake: DevtoolsWake) void {
+    comptime gate(.devtools_transport, "devtoolsWakeClose");
+    return impl.devtoolsWakeClose(wake);
+}
+
+/// Listen on 127.0.0.1:`port` (0: any free port). `error.Busy` when the
+/// port is taken, `error.AccessDenied` when the OS refuses it.
+pub inline fn devtoolsListen(port: u16) Error!DevtoolsListener {
+    comptime gate(.devtools_transport, "devtoolsListen");
+    return impl.devtoolsListen(port);
+}
+
+/// Wait for a connection on `listener`, with no timeout, until one comes or
+/// `wake` is woken: null then (the caller is stopping). The connection is
+/// OWNED by the caller.
+pub inline fn devtoolsAccept(listener: DevtoolsListener, wake: DevtoolsWake) Error!?DevtoolsStream {
+    comptime gate(.devtools_transport, "devtoolsAccept");
+    return impl.devtoolsAccept(listener, wake);
+}
+
+/// Read what has arrived, at most `buffer.len` bytes, blocking until
+/// something has. 0: the peer closed its end, or `devtoolsShutdown` ended
+/// the read.
+pub inline fn devtoolsRead(stream: DevtoolsStream, buffer: []u8) Error!usize {
+    comptime gate(.devtools_transport, "devtoolsRead");
+    return impl.devtoolsRead(stream, buffer);
+}
+
+/// `devtoolsRead`, waiting with no timeout until something arrives or
+/// `wake` is woken: null then (the caller's connection was shut). The pipe's
+/// reader needs it: `devtoolsShutdown` cannot end a read blocked on a pipe
+/// (shutdown(2) is for sockets), so the connection's end wakes the reader
+/// instead (Chrome's DevToolsPipeHandler never waits for its pipe reader:
+/// devtools_pipe_handler.cc PipeIOBase::Shutdown).
+pub inline fn devtoolsReadOrWake(stream: DevtoolsStream, buffer: []u8, wake: DevtoolsWake) Error!?usize {
+    comptime gate(.devtools_transport, "devtoolsReadOrWake");
+    return impl.devtoolsReadOrWake(stream, buffer, wake);
+}
+
+/// Write all of `bytes` (BORROWED), blocking until the OS has taken them.
+/// `error.Io` when the peer has gone.
+pub inline fn devtoolsWrite(stream: DevtoolsStream, bytes: Bytes) Error!void {
+    comptime gate(.devtools_transport, "devtoolsWrite");
+    return impl.devtoolsWrite(stream, bytes);
+}
+
+/// End both directions of `stream` without releasing it: a read blocked in
+/// another thread returns 0. Any thread.
+pub inline fn devtoolsShutdown(stream: DevtoolsStream) void {
+    comptime gate(.devtools_transport, "devtoolsShutdown");
+    return impl.devtoolsShutdown(stream);
+}
+
+/// Release `stream`. Nothing may be blocked on it.
+pub inline fn devtoolsClose(stream: DevtoolsStream) void {
+    comptime gate(.devtools_transport, "devtoolsClose");
+    return impl.devtoolsClose(stream);
+}
+
+/// Stop listening and release `listener`. Nothing may be blocked on it.
+pub inline fn devtoolsCloseListener(listener: DevtoolsListener) void {
+    comptime gate(.devtools_transport, "devtoolsCloseListener");
+    return impl.devtoolsCloseListener(listener);
+}
+
+/// Take the pipe pair the process inherited: `read_fd` to read the
+/// client's messages from, `write_fd` to write to it (Chrome's 3 and 4).
+/// `error.NotFound` when either descriptor is not open.
+pub inline fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!DevtoolsPipe {
+    comptime gate(.devtools_transport, "devtoolsOpenInheritedPipe");
+    return impl.devtoolsOpenInheritedPipe(read_fd, write_fd);
 }
 
 // ============================================================================

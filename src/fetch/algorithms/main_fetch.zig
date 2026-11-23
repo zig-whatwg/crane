@@ -204,9 +204,9 @@ pub fn mainFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    // Step 7 (bad port): Check bad port
+    // Step 7 (bad port): Check bad port (Chromium's ERR_UNSAFE_PORT).
     if (shouldBlockDueToBadPort(request)) {
-        return .{ .response = try internal_response.networkError(allocator) };
+        return .{ .response = try internal_response.networkErrorWith(allocator, .unsafe_port) };
     }
 
     // Step 7 (CSP's part): "If ... should request be blocked by Content
@@ -472,7 +472,15 @@ fn schemeFetch(allocator: Allocator, request: *const InternalRequest, scheme: []
     };
     return switch (scheme_result) {
         .response => |resp| .{ .response = resp },
-        .network_error => .{ .response = try internal_response.networkError(allocator) },
+        // Its reason, for observers: a data: URL that does not parse,
+        // a file: URL with nothing to read (Chrome 157: ERR_INVALID_URL,
+        // ERR_FILE_NOT_FOUND).
+        .network_error => .{ .response = try internal_response.networkErrorWith(allocator, if (std.ascii.eqlIgnoreCase(scheme, "data"))
+            .invalid_url
+        else if (std.ascii.eqlIgnoreCase(scheme, "file"))
+            .file_not_found
+        else
+            .failed) },
     };
 }
 
@@ -490,6 +498,21 @@ pub fn mainFetchFinish(
     // Step 13: If recursive is true, then return response.
     if (recursive) {
         return fetched;
+    }
+
+    // Steps 15-16: "Let internalResponse be response, if response is a
+    // network error; otherwise response's internal response. If
+    // internalResponse's URL list is empty, then set it to a clone of
+    // request's URL list." A response a service worker made (new
+    // Response()) has none, so XHR's responseURL and responseXML's URL read
+    // "" (service-workers/service-worker/xhr-response-url.https.html, the
+    // generated-response cases; Chrome 157, Firefox 160 and Safari 27.2
+    // pass). A network error's URL list is never read; it is left alone.
+    {
+        const internal = fetched.internal orelse fetched;
+        if (!isNetworkError(internal) and internal.url_list.items.len == 0) {
+            for (request.url_list.items) |url| internal.addUrl(url) catch break;
+        }
     }
 
     // Step 20 (current Fetch numbering), before marking the response's

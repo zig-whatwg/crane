@@ -98,10 +98,13 @@ fn plaintextOnlyLineBreaks() !void {
     try page.run("setupHost('A[]B').focus(); events.length = 0;");
     pressEnter(page, false);
     try harness.expectEval(page, "hostHTML() + '|' + events.join(',')", "A\nB|beforeinput:insertLineBreak:null:true,input:insertLineBreak:null");
-    // A contenteditable=true host keeps the <br>, whatever its white-space
-    // (editing/run/insertlinebreak.html).
+    // A contenteditable=true host takes the linefeed too where its
+    // white-space keeps newlines, and keeps the <br> inside a <pre> (Blink's
+    // InsertLineBreakCommand::ShouldUseBreakElement and Safari: editing/run/
+    // insertlinebreak.html's flex and <pre> rows; lane edit3).
     try page.run("host.setAttribute('contenteditable', 'true');");
-    try harness.expectEval(page, "runCommands('A[]B', [['insertlinebreak', '']]); hostHTML()", "A<br>B");
+    try harness.expectEval(page, "runCommands('A[]B', [['insertlinebreak', '']]); hostHTML()", "A\nB");
+    try harness.expectEval(page, "runCommands('<pre>A[]B</pre>', [['insertlinebreak', '']]); hostHTML()", "<pre>A<br>B</pre>");
 }
 
 test "plaintext-only: Enter inserts a line break, a linefeed where white-space keeps newlines" {

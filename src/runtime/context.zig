@@ -49,6 +49,7 @@ const infra = @import("infra");
 const timer_mod = @import("timer.zig");
 const native_timer = @import("native_timer.zig");
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const TabScope = @import("tab_scope.zig").TabScope;
 const TaskSink = @import("task_sink.zig").TaskSink;
 
 // Realm infrastructure for context type and exposure checking
@@ -205,6 +206,18 @@ pub const ContextData = struct {
     /// worker realm its owner's. BORROWED: the Browser outlives its realms.
     browser_scope: ?*BrowserScope = null,
 
+    /// The tab this realm belongs to: its scope, where the tab's state lives
+    /// (docs/instances.md, rule 2: "a realm will carry its Browser's scope
+    /// and its Tab's scope") - session storage, session history, the frame
+    /// clock, system visibility and focus. A Window realm's is its Window's
+    /// browsing context's tab: set by the Window as its browsing context
+    /// becomes final, and released and cleared at the Window's end, so a
+    /// realm the engine keeps after its end names no tab. A COUNTED
+    /// reference (runtime.TabScope.retain). Null for any other realm - a
+    /// worker's has no tab; an isolated world's and a ShadowRealm's are read
+    /// through their main or principal realm (`TabScope.ofRealm`).
+    tab_scope: ?*TabScope = null,
+
     /// The cross-thread inbox of this realm's event loop (runtime.TaskSink):
     /// what another thread posts a task of this realm to - a message for a
     /// port of the realm, a worker's end for a Worker of it. Set with
@@ -219,6 +232,17 @@ pub const ContextData = struct {
     /// - a task fired from the page's loop into a worker's realm - enter its
     /// agent, which for a worker realm is never the page's.
     agent: ?*@import("engine_types.zig").Agent = null,
+
+    /// The embedder's state for `agent` (engine.hostStateOf: html's
+    /// AgentHost for every agent a Browser or worker host makes), cached by
+    /// the adapter when it sets `agent`, so the DOM and html read their
+    /// agent's state from the realm in one load (dom.agent_hosts.of /
+    /// ofOwnAgent) - the agent registry's locked lookup was paid around every
+    /// [CEReactions] call before (lane tpc). Opaque here: `engine.HostState`,
+    /// which the runtime tier cannot name. BORROWED: the agent - and its
+    /// host state, which lives as long as the agent - outlives its realms.
+    /// Null for a realm with no agent, or an agent made without host state.
+    host_state: ?*anyopaque = null,
 
     /// Whether this realm's environment settings object is a secure context
     /// (HTML 8.1.3.5), as the host decided it when it asked for the realm
@@ -257,6 +281,14 @@ pub const ContextData = struct {
     ///
     /// Spec: https://github.com/whatwg/html/pull/9893 ("principal realm")
     principal_realm: ?*ContextData = null,
+
+    /// The isolated world this realm is of (engine section 4.2a): 0, the
+    /// main world, for every realm but a world realm, whose engine adapter
+    /// sets it as it makes the realm and never clears it - so what the
+    /// realm's script left behind (an event handler on a page's node) is
+    /// still known as that world's after the realm ended, when
+    /// engine.worldOf answers the main world for it.
+    world: u32 = 0,
 
     console_state: ConsoleState,
 
@@ -314,6 +346,15 @@ pub const ContextData = struct {
     /// (or sooner, when the host gives it back). It was one map per thread,
     /// every Window's timers in it.
     active_timers: native_timer.TimerIdMap(*anyopaque) = .empty,
+
+    /// The next id this global's timer initialization steps give out (HTML
+    /// 8.6 step 2: "an implementation-defined integer that is greater than
+    /// zero and does not already exist in global's map of active timers"):
+    /// each global counts its own from 1, wrapping past the greatest `long`
+    /// - as Blink's DOMTimerCoordinator, Gecko's TimeoutManager and WebKit's
+    /// ScriptExecutionContext count per global, and a worker's global here
+    /// does (html.worker_host takeTimerId).
+    next_timer_id: i32 = 1,
 
     /// The realm's own platform objects of each kind that something must
     /// reach as a whole - HTML "destroy a document" step 5's MessagePorts,

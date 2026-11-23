@@ -72,7 +72,7 @@ test "a realm decodes through its Browser scope's platform state, once there is 
 test "a Browser's page and its frame answer canPlayType from the platform's decoder" {
     try onThread(struct {
         fn body() !void {
-            const browser = try @import("browser").Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try @import("browser").Browser.init(testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             const page = browser.current_context orelse return error.TestUnexpectedResult;
             try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "https://example.test/" });

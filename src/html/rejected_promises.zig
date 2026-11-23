@@ -46,10 +46,36 @@ const Rejected = struct {
     promise: engine.Owned,
     /// Null when the engine gave none.
     reason: ?engine.Owned,
+    /// The agent's inspector's id for the rejection it was told of
+    /// (`reportToInspector`), for Runtime.exceptionRevoked when a handler
+    /// comes; 0: none.
+    inspector_id: u32 = 0,
+    /// Where it was rejected, for the inspector's report
+    /// (`reportToInspector`): the stack of the call that rejected, captured
+    /// in HostPromiseRejectionTracker's "reject" - after which nothing of it
+    /// is on the stack - as Blink's V8Initializer::PromiseRejectHandler
+    /// captures its SourceLocation (third_party/blink/renderer/bindings/
+    /// core/v8/v8_initializer.cc; BSD-3 - reproduced, not copied). OWNED;
+    /// null when the agent has no inspector. Released once reported, and
+    /// with the record (handled, revoked, dropped).
+    site: ?*engine.InspectorStack = null,
+    /// The isolated world of the realm that rejected it (engine section
+    /// 4.2a), whose listeners alone hear of it - Blink's PromiseRejectionEvent
+    /// ::CanBeDispatchedInWorld (third_party/blink/renderer/core/events/
+    /// promise_rejection_event.cc; BSD-3 - reproduced, not copied) - or every
+    /// listener's, for a Browser with no world (dom.fire_event.reportWorldOf).
+    world: u32 = @import("dom").event_dispatch.DispatchPath.any_world,
 
     fn release(self: Rejected) void {
         self.promise.release();
         if (self.reason) |reason| reason.release();
+        self.releaseSite();
+    }
+
+    fn releaseSite(self: Rejected) void {
+        if (engine.capabilities.inspector_protocol != .unsupported) {
+            if (self.site) |site| engine.inspectorReleaseStack(site);
+        }
     }
 
     fn reasonValue(self: Rejected) ?runtime.JSValue {
@@ -91,7 +117,15 @@ const Tracked = struct {
 /// handles, into another isolate.) Null for an agent with no host (a unit
 /// test's bare agent): nothing is tracked.
 fn listOf(agent: ?*engine.Agent) ?*std.ArrayListUnmanaged(*anyopaque) {
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent orelse return null) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent orelse return null) orelse return null;
+    return &host.rejections;
+}
+
+/// `listOf` for `realm`'s agent, from the host state cached on the realm
+/// (dom.agent_hosts.ofOwnAgent): one load, no registry lookup - what every
+/// rejection's bookkeeping asks (lane tpc).
+fn listOfRealm(realm: runtime.Context) ?*std.ArrayListUnmanaged(*anyopaque) {
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.rejections;
 }
 
@@ -125,7 +159,7 @@ pub fn releaseAgent(agent: *engine.Agent) void {
 /// find everything the process keeps for it
 /// (docs/lessons/architecture-before-disposing-an-isolate-find-everything-the.md).
 pub fn forgetGlobal(global: *runtime.Instance) void {
-    const list = listOf(global.ctx.agent) orelse return;
+    const list = listOfRealm(global.ctx) orelse return;
     for (list.items, 0..) |_, i| {
         const t = trackedAt(list, i);
         if (t.global != global) continue;
@@ -139,7 +173,7 @@ pub fn forgetGlobal(global: *runtime.Instance) void {
 /// The bookkeeping for `global`, created on first use. Entries of the agent
 /// whose global has gone are released on the way.
 fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
-    const list = listOf(global.ctx.agent) orelse return null;
+    const list = listOfRealm(global.ctx) orelse return null;
     var i: usize = 0;
     var found: ?*Tracked = null;
     while (i < list.items.len) {
@@ -182,7 +216,14 @@ fn takeMatching(realm: runtime.Context, list: *std.ArrayListUnmanaged(Rejected),
 /// are OWNED by this hook.
 fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: engine.Owned, operation: engine.RejectionOperation, reason: ?engine.Owned) void {
     _ = host;
-    const rejected: Rejected = .{ .promise = promise, .reason = reason };
+    var rejected: Rejected = .{ .promise = promise, .reason = reason, .world = @import("dom").fire_event.reportWorldOf(realm) };
+    // Operation "reject" - V8's kPromiseRejectWithNoHandler, a rejection
+    // with no handler yet - runs inside the call that rejected: its stack
+    // is captured now for the inspector's report, as Blink's
+    // PromiseRejectHandler does for that event alone (never for "handle").
+    if (operation == .reject and engine.capabilities.inspector_protocol != .unsupported) {
+        rejected.site = engine.inspectorCaptureStack(realm);
+    }
 
     // Steps 1-5: the current settings object's global. (Step 2's muted-errors
     // exception needs the running script, which the engine does not report
@@ -220,8 +261,12 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
 /// be notified at every checkpoint, which once workers track rejections too
 /// would notify the page's at a worker's.
 pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
-    _ = host;
-    const list = listOf(agent) orelse return;
+    _ = agent;
+    // The hook's host: html's AgentHost, which html made the agent with
+    // together with this hook (html.microtask_checkpoint reads it the same
+    // way) - no registry lookup at every checkpoint.
+    const agent_host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(host orelse return));
+    const list = &agent_host.rejections;
     // This agent's live entries, taken first: notifying queues tasks, and
     // the list must not move under the walk. Gone globals' entries are
     // released on the way.
@@ -321,6 +366,7 @@ fn notificationSteps(data: ?*anyopaque) void {
             .unhandled_rejection => notifyOne(task.global, rejected),
             .rejection_handled => {
                 defer rejected.release();
+                revokeAtInspector(inspectorRealm(task.global, rejected), rejected);
                 _ = firePromiseRejectionEvent(task.global, "rejectionhandled", rejected, false);
             },
         }
@@ -347,12 +393,51 @@ fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
     // Browser's, when its host shows one (dom.developer_console).
     if (not_canceled and !reportToDeveloperConsole(realm, rejected)) log.debug("unhandled promise rejection", .{});
 
+    // And to the agent's inspector: Runtime.exceptionThrown, "Uncaught (in
+    // promise)" (Blink's RejectedPromises::Message::Report ->
+    // ThreadDebugger::PromiseRejected).
+    var outstanding = rejected;
+    if (not_canceled) outstanding.inspector_id = reportToInspector(inspectorRealm(global, rejected), rejected);
+    // Its site has been reported (or never will be: canceled): the record
+    // kept in the outstanding set does not hold it.
+    outstanding.releaseSite();
+    outstanding.site = null;
+
     // 4.1.4: If p.[[PromiseIsHandled]] is false, append p to the global's
     // outstanding rejected promises weak set.
-    if (isHandled(realm, rejected.promise.value)) return rejected.release();
-    const t = trackedFor(global, true) orelse return rejected.release();
+    if (isHandled(realm, outstanding.promise.value)) return outstanding.release();
+    const t = trackedFor(global, true) orelse return outstanding.release();
     if (t.outstanding.items.len >= max_outstanding) t.outstanding.orderedRemove(0).release();
-    t.outstanding.append(allocator, rejected) catch rejected.release();
+    t.outstanding.append(allocator, outstanding) catch outstanding.release();
+}
+
+/// The realm the inspector is told a rejection happened in: its world's
+/// realm of `global` (an isolated world's script rejected it), else the
+/// global's own.
+fn inspectorRealm(global: *runtime.Instance, rejected: Rejected) runtime.Context {
+    const any_world = @import("dom").event_dispatch.DispatchPath.any_world;
+    if (rejected.world == any_world or rejected.world == engine.main_world) return global.ctx;
+    return engine.worldRealmFor(global.ctx, rejected.world) orelse global.ctx;
+}
+
+/// An unhandled rejection, to the agent's inspector (engine section 4.2b
+/// [inspector_protocol]): its id, 0 when none took it (no inspector, the
+/// realm not registered, or no inspector protocol: -Dcdp=false).
+fn reportToInspector(realm: runtime.Context, rejected: Rejected) u32 {
+    if (engine.capabilities.inspector_protocol != .unsupported) {
+        const reason = rejected.reasonValue() orelse runtime.JSValue.jsUndefined;
+        return engine.inspectorExceptionThrown(realm, reason, &.{ .message = "Uncaught (in promise)", .stack = rejected.site });
+    }
+    return 0;
+}
+
+/// A rejection the inspector was told of got its handler:
+/// Runtime.exceptionRevoked (Blink's ThreadDebugger::PromiseRejectionRevoked).
+fn revokeAtInspector(realm: runtime.Context, rejected: Rejected) void {
+    if (rejected.inspector_id == 0) return;
+    if (engine.capabilities.inspector_protocol != .unsupported) {
+        engine.inspectorExceptionRevoked(realm, rejected.inspector_id, "Handler added to rejected promise");
+    }
 }
 
 /// Step 4.1.3's report to `realm`'s Browser's developer console, as DevTools
@@ -400,8 +485,9 @@ fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, 
         return true;
     };
     const generation = runtime.SlabAllocator.generationOf(event);
-    // Fired by the user agent, so trusted (DOM 2.10).
-    const not_canceled = @import("dom").fire_event.dispatchTrusted(global, event) catch true;
+    // Fired by the user agent, so trusted (DOM 2.10) - at the listeners of
+    // the rejecting realm's world only (`Rejected.world`).
+    const not_canceled = @import("dom").fire_event.dispatchTrustedInWorld(global, event, rejected.world) catch true;
     event.releaseIfUnwrapped(generation);
     return not_canceled;
 }

@@ -36,8 +36,12 @@ test "IndexedDB clear allocation failure leaves records intact" {
     defer allocator.destroy(write);
     failing.fail_index = failing.alloc_index;
     try std.testing.expectError(error.OutOfMemory, store.clear());
-    try std.testing.expectEqual(@as(usize, 1), store.recordsList().items.len);
-    try std.testing.expectEqualStrings("value", store.recordsList().items[0].value);
+    // The reads that check it may allocate - the backing store's key
+    // buffers grow on first use (lane prof1's engine) - so allocation works
+    // again for them.
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(@as(usize, 1), (try store.recordCount(null)));
+    try std.testing.expectEqualStrings("value", (try store.recordAt(0)).?.value);
 }
 
 fn readIndex(allocator: std.mem.Allocator) !void {

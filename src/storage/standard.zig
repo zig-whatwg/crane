@@ -39,7 +39,8 @@
 
 const std = @import("std");
 const fs = @import("fs");
-const infra = @import("infra");
+const platform = @import("platform");
+const profile_mod = @import("profile.zig");
 
 // ============================================================================
 // Storage Types (Phase 3.1)
@@ -340,6 +341,13 @@ pub const StorageProxyMap = struct {
     /// Allocator for value allocations
     allocator: std.mem.Allocator,
 
+    /// The area's link to its Browser's profile directory (a localStorage
+    /// bottle of a Browser that has one; profile.zig): every change is
+    /// recorded in its commit batch BEFORE the map changes, as Chromium's
+    /// StorageAreaImpl records a key and then updates its map. Null: the
+    /// map is all there is.
+    area: ?*profile_mod.Area = null,
+
     const Self = @This();
 
     /// Get a value from the map
@@ -349,6 +357,7 @@ pub const StorageProxyMap = struct {
 
     /// Set a value in the map
     pub fn set(self: Self, key: []const u8, value: []const u8) !void {
+        if (self.area) |area| area.recordKey(key);
         // Remove the old entry if it exists: its key copy too - the put below
         // stores a new one (freeing only the value leaked a key per overwrite).
         if (self.backing_map.fetchRemove(key)) |old| {
@@ -368,6 +377,9 @@ pub const StorageProxyMap = struct {
 
     /// Delete a key from the map
     pub fn delete(self: Self, key: []const u8) bool {
+        if (self.area) |area| {
+            if (self.backing_map.contains(key)) area.recordKey(key);
+        }
         if (self.backing_map.fetchRemove(key)) |old| {
             self.allocator.free(old.key);
             self.allocator.free(old.value);
@@ -388,6 +400,7 @@ pub const StorageProxyMap = struct {
 
     /// Clear all entries
     pub fn clear(self: Self) void {
+        if (self.area) |area| area.recordClear();
         var iter = self.backing_map.iterator();
         while (iter.next()) |entry| {
             self.allocator.free(entry.key_ptr.*);
@@ -417,6 +430,11 @@ pub const StorageBottle = struct {
     /// Allocator for this bottle
     allocator: std.mem.Allocator,
 
+    /// The bottle's area in its Browser's profile directory, when it is a
+    /// localStorage bottle of a Browser that has one (profile.zig): its
+    /// proxy maps record their changes there. Owned by the Profile.
+    area: ?*profile_mod.Area = null,
+
     const Self = @This();
 
     /// Create a new storage bottle
@@ -431,6 +449,8 @@ pub const StorageBottle = struct {
 
     /// Free the storage bottle's resources
     pub fn deinit(self: *Self) void {
+        // Its area lets go of the map; the Browser's end flushed it already.
+        if (self.area) |area| area.detachMap();
         // Free all map entries
         var iter = self.map.iterator();
         while (iter.next()) |entry| {
@@ -446,6 +466,7 @@ pub const StorageBottle = struct {
         return StorageProxyMap{
             .backing_map = &self.map,
             .allocator = self.allocator,
+            .area = self.area,
         };
     }
 
@@ -738,10 +759,14 @@ pub const UserAgentStorage = struct {
     mutex: std.Io.Mutex = .init,
     /// The user agent's storage shed: local storage, a shelf per storage
     /// key. (Session storage is not the user agent's: each traversable
-    /// navigable holds a shed of its own - `TraversableStorageSheds`.)
+    /// navigable holds a shed of its own - `initTraversableStorageShed`.)
     shed: StorageShed,
     /// The bucket file systems (navigator.storage.getDirectory()).
     buckets: fs.BucketManager,
+    /// The Browser's profile directory, when it has one (`attachProfile`):
+    /// its localStorage areas are read from it and their changes committed
+    /// to it (profile.zig). Null: every area is in memory alone.
+    profile: ?*profile_mod.Profile = null,
 
     pub fn init(allocator: std.mem.Allocator) UserAgentStorage {
         return .{
@@ -751,10 +776,35 @@ pub const UserAgentStorage = struct {
         };
     }
 
-    /// With its Browser: every storage area of it is gone.
+    /// With its Browser: every storage area of it is gone. Its bottles let
+    /// go of their profile areas first; nothing touches a store here (the
+    /// Browser flushed - `flushProfile` - while its platform state lived).
     pub fn deinit(self: *UserAgentStorage) void {
         self.shed.deinit();
         self.buckets.deinit();
+        if (self.profile) |profile| profile.destroy();
+        self.profile = null;
+    }
+
+    /// The Browser has a profile directory (D6, the user's ruling
+    /// 2026-11-21): its local storage persists through `browser`'s stores,
+    /// committing on `timer`, its writes run on `sequence` (the Browser's
+    /// storage sequence, lane prof2). Browser.init's
+    /// (src/browser/profile_stores.zig), before any realm obtains a shelf;
+    /// never for a Browser with none.
+    pub fn attachProfile(self: *UserAgentStorage, browser: *platform.BrowserPlatform, timer: ?profile_mod.CommitTimer, sequence: *@import("sequence.zig").StorageSequence) std.mem.Allocator.Error!void {
+        std.debug.assert(self.profile == null and self.shed.count() == 0);
+        self.profile = try profile_mod.Profile.create(self.allocator, browser, timer, sequence);
+    }
+
+    /// Hand every pending localStorage change to the storage sequence now
+    /// (Chromium LocalStorageImpl::ShutDown). Browser.deinit's, before the
+    /// sequence stops and its event loop and its platform state end;
+    /// nothing without a profile. On the window thread, as every
+    /// localStorage map is read and written.
+    pub fn flushProfile(self: *UserAgentStorage) void {
+        const profile = self.profile orelse return;
+        profile.flush();
     }
 
     pub fn lock(self: *UserAgentStorage) void {
@@ -768,9 +818,31 @@ pub const UserAgentStorage = struct {
     /// "Obtain a local storage shelf" for `key`, a key "obtain a storage key"
     /// gave (the caller holds the lock, or is the window thread reaching a
     /// shelf only it uses). Null - failure - for a key it would have refused.
+    ///
+    /// With a profile directory, a shelf made here has its localStorage
+    /// read from the profile into its bottle, which records its changes for
+    /// it from then on (profile.zig).
     pub fn obtainLocalShelfLocked(self: *UserAgentStorage, key: StorageKey) !?*StorageShelf {
         const storage_key = obtainStorageKey(key) orelse return null;
-        return try self.shed.obtainShelf(storage_key);
+        const profile = self.profile orelse return try self.shed.obtainShelf(storage_key);
+        if (self.shed.getShelf(storage_key)) |shelf| return shelf;
+        const shelf = try self.shed.obtainShelf(storage_key);
+        self.loadLocalStorage(profile, storage_key, shelf) catch |err| {
+            // Nothing half-read stays: the next obtain reads again.
+            self.shed.removeShelf(storage_key);
+            return err;
+        };
+        return shelf;
+    }
+
+    /// A new shelf's localStorage, read from the profile.
+    fn loadLocalStorage(self: *UserAgentStorage, profile: *profile_mod.Profile, key: StorageKey, shelf: *StorageShelf) !void {
+        const bucket = shelf.getDefaultBucket() orelse return;
+        const bottle = bucket.getBottle(.localStorage) orelse return;
+        std.debug.assert(bottle.area == null and bottle.map.count() == 0);
+        const serialized = try key.serialize(self.allocator);
+        defer self.allocator.free(serialized);
+        bottle.area = try profile.load(serialized, &bottle.map, bottle.quota orelse FIVE_MEBIBYTES);
     }
 
     /// The local storage shelf of `origin` alone, with no top-level site:
@@ -796,15 +868,14 @@ pub const UserAgentStorage = struct {
     }
 };
 
-/// The storage sheds of a Browser's traversable navigables. Storage 4.3: "A
+/// A traversable navigable's storage shed: session storage. Storage 4.3: "A
 /// traversable navigable holds a storage shed ... A traversable navigable's
-/// storage shed holds all session storage data." Each is the shed of one
-/// top-level traversable, by its top-level browsing context's id; it holds a
-/// shelf per storage key.
+/// storage shed holds all session storage data." It holds a shelf per
+/// storage key - a `StorageShed` of the session type.
 ///
-/// The Browser's navigables own this (html.window.Navigables), beside the
-/// browsing contexts whose traversables hold the sheds, and each shed ends
-/// with its traversable's record (BrowsingContext.deinit, `discard`): session
+/// Its tab holds it (runtime.TabScope's `session_storage` slot, made with the
+/// tab's first session storage), and it ends with the tab - its top-level
+/// browsing context's record (BrowsingContext.deinit closes the tab): session
 /// storage does not outlive its tab. HTML "destroy a top-level traversable"
 /// step 5 removes the traversable from the user agent's top-level
 /// traversable set, and what it holds goes with it. All three browsers end a
@@ -813,96 +884,22 @@ pub const UserAgentStorage = struct {
 /// BrowsingContext.cpp), Chromium per WebContents (the NavigationController's
 /// SessionStorageNamespace, released with the tab unless the browser UI keeps
 /// it to restore a closed tab), WebKit per page (its session storage
-/// namespace is the WebPageProxy's). It sat on the user agent's storage and
-/// ended only with the Browser: one shed per closed popup, and one per test
-/// file in a WPT runner process (each file a fresh traversable), kept for the
-/// Browser's whole life.
+/// namespace is the WebPageProxy's).
 ///
 /// A shed outlives every Storage object that reads it: a Storage's proxy map
-/// is its Window's (the Window owns the backend), a Window holds the browsing
-/// context it shows until its own end (BrowsingContext.window_holds), and the
-/// context's record - and with it the shed - ends only after its last hold.
+/// is its Window's (the Window owns the backend), each Window of the tab ends
+/// with its realm, and the tab's record - and with it the shed - ends only
+/// after the last Window that showed it.
 ///
-/// THREADS: the Browser's window thread only, as its navigables are.
+/// THREADS: the Browser's window thread only, as its tabs are.
 /// sessionStorage is [Exposed=Window], so no other thread reaches a
 /// traversable's shed, and nothing here is locked.
 ///
 /// A shed's shelves keep their own allocation when the map grows, so a
 /// Storage object's proxy map stays valid while its shed lives.
-pub const TraversableStorageSheds = struct {
-    allocator: std.mem.Allocator,
-    /// By traversable. Its keys come and go - one per tab that used session
-    /// storage - so its tombstones are rehashed away (infra.tombstones).
-    sheds: std.AutoHashMapUnmanaged(u64, StorageShed) = .empty,
-    sheds_guard: infra.tombstones.TombstoneGuard = .{},
-
-    pub fn init(allocator: std.mem.Allocator) TraversableStorageSheds {
-        return .{ .allocator = allocator };
-    }
-
-    /// Ends with the Browser's navigables: the sheds of traversables whose
-    /// records outlived the navigables go with them.
-    pub fn deinit(self: *TraversableStorageSheds) void {
-        var sheds = self.sheds.valueIterator();
-        while (sheds.next()) |shed| shed.deinit();
-        self.sheds.deinit(self.allocator);
-        self.sheds = .empty;
-    }
-
-    /// The shed of the traversable `traversable` (its top-level browsing
-    /// context's id), made empty on first use.
-    pub fn shedOf(self: *TraversableStorageSheds, traversable: u64) !*StorageShed {
-        if (self.sheds.getPtr(traversable)) |shed| return shed;
-        self.sheds_guard.beforeInsert(&self.sheds);
-        const entry = try self.sheds.getOrPut(self.allocator, traversable);
-        if (!entry.found_existing) entry.value_ptr.* = StorageShed.init(self.allocator, .session);
-        return entry.value_ptr;
-    }
-
-    /// Give the traversable `traversable`, which has none, the shed `shed`
-    /// (Storage "legacy-clone a traversable storage shed", whose caller makes
-    /// the copy): this owns it from here, and on failure the caller still
-    /// does.
-    pub fn publish(self: *TraversableStorageSheds, traversable: u64, shed: StorageShed) std.mem.Allocator.Error!void {
-        self.sheds_guard.beforeInsert(&self.sheds);
-        try self.sheds.putNoClobber(self.allocator, traversable, shed);
-    }
-
-    /// The traversable's record ended (BrowsingContext.deinit): its shed goes
-    /// with it, every Storage that read it gone before. Nothing for a
-    /// traversable that never had one - a child navigable's context among
-    /// them.
-    pub fn discard(self: *TraversableStorageSheds, traversable: u64) void {
-        const removed = self.sheds.fetchRemove(traversable) orelse return;
-        self.sheds_guard.noteRemoval(&self.sheds);
-        var shed = removed.value;
-        shed.deinit();
-    }
-
-    /// The traversable's shed if it has one; never makes one.
-    pub fn existing(self: *TraversableStorageSheds, traversable: u64) ?*StorageShed {
-        return self.sheds.getPtr(traversable);
-    }
-
-    /// Whether the traversable has a shed.
-    pub fn contains(self: *const TraversableStorageSheds, traversable: u64) bool {
-        return self.sheds.contains(traversable);
-    }
-
-    /// How many traversables have a shed.
-    pub fn count(self: *const TraversableStorageSheds) usize {
-        return self.sheds.count();
-    }
-
-    /// "Obtain a session storage shelf": `key`'s shelf in the traversable's
-    /// shed, both made on first use. Null - failure - for a key "obtain a
-    /// storage key" refuses.
-    pub fn obtainShelf(self: *TraversableStorageSheds, traversable: u64, key: StorageKey) !?*StorageShelf {
-        const storage_key = obtainStorageKey(key) orelse return null;
-        const shed = try self.shedOf(traversable);
-        return try shed.obtainShelf(storage_key);
-    }
-};
+pub fn initTraversableStorageShed(allocator: std.mem.Allocator) StorageShed {
+    return StorageShed.init(allocator, .session);
+}
 
 // ============================================================================
 // Bucket File System Integration (File System Standard)
@@ -988,19 +985,21 @@ pub fn obtainLocalStorageBottleMap(
     return obtainStorageBottleMap(user_agent_storage, key, identifier);
 }
 
-/// Obtain a session storage bottle map: `key`'s, in the storage shed of the
-/// top-level traversable `traversable` (its browsing context id), one of
-/// `sheds` - its Browser's. Null when "obtain a storage key" fails for `key`.
-/// On the Browser's window thread (TraversableStorageSheds, THREADS).
+/// Obtain a session storage bottle map: `key`'s, in `shed` - the storage
+/// shed of a top-level traversable (`initTraversableStorageShed`), its tab's.
+/// Null when "obtain a storage key" fails for `key`. On the Browser's window
+/// thread (`initTraversableStorageShed`, THREADS).
 /// https://storage.spec.whatwg.org/#obtain-a-session-storage-bottle-map
 pub fn obtainSessionStorageBottleMap(
-    sheds: *TraversableStorageSheds,
-    traversable: u64,
+    shed: *StorageShed,
     key: StorageKey,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    const shelf = try sheds.obtainShelf(traversable, key) orelse return null;
-    return bottleMapOf(sheds.allocator, shelf, identifier);
+    // "Obtain a session storage shelf": failure for a key "obtain a storage
+    // key" refuses; else the key's shelf, made on first use.
+    const storage_key = obtainStorageKey(key) orelse return null;
+    const shelf = try shed.obtainShelf(storage_key);
+    return bottleMapOf(shed.allocator, shelf, identifier);
 }
 
 // ============================================================================

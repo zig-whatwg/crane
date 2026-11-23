@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const MemoryAttribution = @import("MemoryAttribution.zig").MemoryAttribution;
 
 pub const MemoryBreakdownEntry = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     bytes: ?u64 = null,
     attribution: ?[]const MemoryAttribution = null,
     types: ?[]const runtime.DOMString = null,

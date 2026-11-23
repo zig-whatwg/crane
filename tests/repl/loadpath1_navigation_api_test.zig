@@ -39,7 +39,7 @@ fn expectLog(path: []const u8, expected: []const u8) !void {
     defer site.stop();
     const url = try site.url(testing.allocator, path);
     defer testing.allocator.free(url);
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateInPlace(url);
     var goal: DoneGoal = .{ .browser = browser };

@@ -60,6 +60,7 @@ const Page = struct {
         });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,

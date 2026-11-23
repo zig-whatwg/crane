@@ -78,7 +78,7 @@ fn collect(realm: runtime.Context) !void {
 }
 
 fn ordered() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -124,7 +124,7 @@ test "font set load retains ordered faces after membership removal and garbage c
 }
 
 fn emptyAndSyntax() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -164,7 +164,7 @@ test "font set load returns an empty sequence or a rejected syntax promise" {
 }
 
 fn synchronousStart() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -191,7 +191,7 @@ test "font set load starts matched faces before returning its promise" {
 }
 
 fn initiallyFailed() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -241,7 +241,7 @@ test "font set load rejects an already failed match and ignores unmatched failur
 }
 
 fn failureAndDiscard() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -301,7 +301,7 @@ test "font set load propagates face failure and discards pending reactions at te
 
 fn allocationFailures() !void {
     var failing = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
-    const browser = try Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -376,7 +376,7 @@ test "font set load success failure and discarded partial reactions survive ever
 fn callbackAllocationFailure() !void {
     var failing = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
     defer failing.fail_index = std.math.maxInt(usize);
-    const browser = try Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -434,7 +434,7 @@ test "allocation failure inside a font reaction detaches the record and makes la
 
 fn deinitPending() !void {
     const fonts = dom.style.engine.resource_loading.font_loading;
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -479,7 +479,7 @@ test "font set deinit cancels a pending load before a late face fulfillment" {
 }
 
 fn unwrappedOwner() !void {
-    const browser = try Browser.init(a, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(a, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;

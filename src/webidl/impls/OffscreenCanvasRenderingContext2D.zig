@@ -1,4 +1,10 @@
 //! Implementation for OffscreenCanvasRenderingContext2D interface
+//!
+//! HTML 4.12.5.3.1: a 2D rendering context for an OffscreenCanvas's bitmap,
+//! made by its getContext("2d") (the offscreen 2D context creation
+//! algorithm, whose facts arrive as `construction_args`). The members it
+//! includes are the mixins' (dom.canvas_2d holds the state they share with
+//! the canvas element's context).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -9,6 +15,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const OffscreenCanvasRenderingContext2D = interfaces.OffscreenCanvasRenderingContext2D;
+const dom = @import("dom");
+const same_object = dom.same_object;
 
 pub const State = OffscreenCanvasRenderingContext2D.State;
 
@@ -16,125 +24,100 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// The offscreen 2D context creation algorithm's facts (HTML 4.12.5.3.1):
+/// the associated OffscreenCanvas object (step 4) and its bitmap's width
+/// and height (step 6).
+pub const construction_args = .{ "offscreen_canvas", "width", "height" };
 
-/// Initialize instance (creates the instance)
-pub fn init(
+/// An OffscreenCanvasRenderingContext2D's state: its output bitmap and
+/// drawing state (dom.canvas_2d.Context2D, which the mixins it includes
+/// read and write) and its associated OffscreenCanvas object.
+pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    /// The output bitmap - the OffscreenCanvas's bitmap: "set target's
+    /// bitmap to the same bitmap (so that they are shared)" - and the
+    /// drawing state.
+    context: dom.canvas_2d.Context2D,
+    /// The associated OffscreenCanvas object, kept for as long as this
+    /// context's wrapper lives (`canvas` keeps answering it), as the canvas
+    /// element's 2D context keeps its canvas.
+    canvas: ?same_object.Link = null,
+    canvas_edge: same_object.Traced = .{ .slot = .{ .name = "canvas" } },
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+/// The offscreen 2D context creation algorithm, steps 3-7, for the context
+/// `instance` being made (OffscreenCanvas's getContext gives the facts):
+/// its associated OffscreenCanvas (4) and an output bitmap of the canvas's
+/// dimensions, transparent black (6-7: the alpha flag is true - the
+/// settings' alpha is not modelled, stated).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+    internal.* = .{ .allocator = allocator, .context = dom.canvas_2d.Context2D.init(allocator) };
+    errdefer internal.context.deinit();
+    if (comptime @hasField(@TypeOf(args), "width") and @hasField(@TypeOf(args), "height")) {
+        try setBitmapDimensions(&internal.context, args.width, args.height);
+    }
+    instance.getState(State).own._internal = internal;
+    if (comptime @hasField(@TypeOf(args), "offscreen_canvas")) {
+        internal.canvas = same_object.Link.to(args.offscreen_canvas);
+        internal.canvas_edge.hold(instance, args.offscreen_canvas);
+    }
 }
 
-/// Getter for canvas
+/// Resize `context`'s output bitmap to `width` x `height` of transparent
+/// black, after resetting its drawing state: the OffscreenCanvas's width
+/// and height setters' steps for a 2d context ("reset the rendering context
+/// to its default state and resize the OffscreenCanvas object's bitmap").
+/// A bitmap past dom.canvas_2d.max_bitmap_pixels gets no pixels, as the
+/// canvas element's.
+fn setBitmapDimensions(context: *dom.canvas_2d.Context2D, width: u64, height: u64) !void {
+    context.reset();
+    const fits = width <= std.math.maxInt(u32) and height <= std.math.maxInt(u32) and
+        (std.math.mul(u64, width, height) catch std.math.maxInt(u64)) <= dom.canvas_2d.max_bitmap_pixels;
+    if (!fits) return context.bitmap.resize(0, 0);
+    try context.bitmap.resize(@intCast(width), @intCast(height));
+}
+
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.stateAs(State) orelse return;
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    // The edge to the canvas goes with this context; the canvas itself is
+    // not touched (the collector may have freed it first).
+    internal.canvas_edge.release(instance);
+    internal.context.deinit();
+    internal.allocator.destroy(internal);
+}
+
+/// The hooks this type owns: its state, which the mixins it includes reach
+/// (dom.canvas_2d), and the resizing step its OffscreenCanvas runs.
+pub fn installHooks() void {
+    dom.canvas_2d.installOffscreenContext(.{ .state_of = contextState, .set_bitmap_dimensions = resize });
+}
+
+fn contextState(instance: *runtime.Instance) ?*dom.canvas_2d.Context2D {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.context;
+}
+
+fn resize(instance: *runtime.Instance, width: u64, height: u64) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try setBitmapDimensions(&internal.context, width, height);
+}
+
+/// Getter for canvas: "the associated OffscreenCanvas object".
 pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for strokeStyle
-pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fillStyle
-pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineWidth
-pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineCap
-pub fn get_lineCap(instance: *runtime.Instance) anyerror!enums.CanvasLineCap {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineJoin
-pub fn get_lineJoin(instance: *runtime.Instance) anyerror!enums.CanvasLineJoin {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for miterLimit
-pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineDashOffset
-pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for strokeStyle
-pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fillStyle
-pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineWidth
-pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineCap
-pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineJoin
-pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for miterLimit
-pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineDashOffset
-pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const canvas = internal.canvas orelse return error.InvalidStateError;
+    if (!canvas.isLive()) return error.InvalidStateError;
+    return canvas.instance;
 }
 
 /// Operation: rect
@@ -144,12 +127,6 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) an
     _ = y;
     _ = w;
     _ = h;
-    return error.NotImplemented;
-}
-
-/// Operation: getLineDash
-pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
     return error.NotImplemented;
 }
 
@@ -167,15 +144,6 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
     return error.NotImplemented;
 }
 
-/// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = startAngle;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
 /// Operation: arc
 pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
@@ -185,18 +153,6 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
     _ = startAngle;
     _ = endAngle;
     _ = counterclockwise;
-    return error.NotImplemented;
-}
-
-/// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = r0;
-    _ = x1;
-    _ = y1;
-    _ = r1;
     return error.NotImplemented;
 }
 
@@ -217,14 +173,6 @@ pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
     return error.NotImplemented;
 }
 
-/// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
-    _ = instance;
-    _ = image;
-    _ = repetition;
-    return null;
-}
-
 /// Operation: lineTo
 pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
@@ -241,13 +189,6 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
     _ = x2;
     _ = y2;
     _ = radius;
-    return error.NotImplemented;
-}
-
-/// Operation: setLineDash
-pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = segments;
     return error.NotImplemented;
 }
 
@@ -278,15 +219,5 @@ pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2
     _ = cp2y;
     _ = x;
     _ = y;
-    return error.NotImplemented;
-}
-
-/// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = x1;
-    _ = y1;
     return error.NotImplemented;
 }

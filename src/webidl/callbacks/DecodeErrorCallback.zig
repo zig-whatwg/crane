@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const DecodeErrorCallback = *const fn (@"error": *runtime.Instance) void;
+/// callback DecodeErrorCallback = undefined (DOMException error)
+pub const DecodeErrorCallback = runtime.BorrowedCallbackFunction;

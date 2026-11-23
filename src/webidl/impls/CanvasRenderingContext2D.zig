@@ -13,57 +13,26 @@ const engine = @import("engine");
 const dom = @import("dom");
 const same_object = @import("dom").same_object;
 
-// Use shared InstanceRegistry utility for internal state management
-const utils = @import("webidl").utils;
-
 pub const State = CanvasRenderingContext2D.State;
 
 pub const ImplError = error{
     NotImplemented,
 };
 
-/// A canvas bitmap larger than this many pixels (Blink's limit, 2^28: 1 GiB
-/// of RGBA8) gets no pixels: it is 0 x 0, so nothing is drawn on it and it
-/// reads back as transparent black.
-const max_bitmap_pixels: u64 = 1 << 28;
-
-/// Internal state for CanvasRenderingContext2D
-/// Contains private data for canvas rendering:
-/// - line_dash: Current line dash pattern (sequence of f64)
-/// - line_dash_offset: Offset for line dash pattern
-/// - bitmap: the output bitmap (HTML 4.12.5.1.2), which its canvas shares
-/// - canvas: the canvas attribute's element
+/// A CanvasRenderingContext2D's state: its output bitmap and drawing state
+/// (dom.canvas_2d.Context2D, which the mixins it includes read and write)
+/// and the canvas it was made for.
 pub const InternalState = struct {
-    /// Current line dash pattern - stored as owned slice
-    line_dash: []f64 = &[_]f64{},
-    /// Offset for line dash pattern
-    line_dash_offset: f64 = 0,
-    /// Allocator used for this state
-    allocator: std.mem.Allocator = undefined,
-    /// The output bitmap: premultiplied RGBA8 with its origin-clean flag.
-    bitmap: dom.image_sources.OutputBitmap = .{ .allocator = std.heap.page_allocator },
+    allocator: std.mem.Allocator,
+    /// The output bitmap (HTML 4.12.5.1.2, which its canvas shares) and the
+    /// drawing state.
+    context: dom.canvas_2d.Context2D,
     /// The canvas this context was made for (the 2D context creation
     /// algorithm step 3), kept for as long as the context's wrapper lives:
     /// `context.canvas` keeps answering it (Blink's
     /// CanvasRenderingContext::Trace visits host_).
     canvas: ?same_object.Link = null,
     canvas_edge: same_object.Traced = .{ .slot = .{ .name = "canvas" } },
-
-    /// Reset the rendering context to its default state - the drawing state
-    /// this context models: the line dash.
-    fn reset(self: *InternalState) void {
-        if (self.line_dash.len > 0) self.allocator.free(self.line_dash);
-        self.line_dash = &[_]f64{};
-        self.line_dash_offset = 0;
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        if (self.line_dash.len > 0) {
-            self.allocator.free(self.line_dash);
-            self.line_dash = &[_]f64{};
-        }
-        self.bitmap.deinit();
-    }
 };
 
 const Registry = runtime.InstanceRegistry(.canvas_rendering_context_2d, InternalState);
@@ -79,9 +48,10 @@ fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
     // Create new internal state
     const allocator = instance.ctx.allocator;
     const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
     internal.* = .{
         .allocator = allocator,
-        .bitmap = .{ .allocator = allocator },
+        .context = dom.canvas_2d.Context2D.init(allocator),
     };
     try Registry.set(instance, internal);
     return internal;
@@ -94,9 +64,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
@@ -106,21 +74,23 @@ pub fn deinit(instance: *runtime.Instance) void {
         // The edge to the canvas goes with this context; the canvas itself
         // is not touched (the collector may have freed it first).
         internal.canvas_edge.release(instance);
-        internal.deinit();
+        internal.context.deinit();
         internal.allocator.destroy(internal);
     }
     Registry.remove(instance);
 }
 
-/// The hooks this type owns: its output bitmap and the creation and
-/// resizing steps its canvas runs (dom.image_sources).
+/// The hooks this type owns: its state, which the mixins it includes reach
+/// (dom.canvas_2d), and the creation and resizing steps its canvas runs
+/// (dom.image_sources).
 pub fn installHooks() void {
-    dom.image_sources.installContext2D(outputBitmap, attachContext, setBitmapDimensions);
+    dom.canvas_2d.installElementContext(contextState);
+    dom.image_sources.installContext2D(attachContext, setBitmapDimensions);
 }
 
-fn outputBitmap(instance: *runtime.Instance) ?*dom.image_sources.OutputBitmap {
+fn contextState(instance: *runtime.Instance) ?*dom.canvas_2d.Context2D {
     const internal = getInternal(instance) orelse return null;
-    return &internal.bitmap;
+    return &internal.context;
 }
 
 /// The 2D context creation algorithm, steps 3 and 5, for `canvas`.
@@ -140,11 +110,11 @@ fn attachContext(instance: *runtime.Instance, canvas: *runtime.Instance, width: 
 fn setBitmapDimensions(instance: *runtime.Instance, width: u32, height: u32) anyerror!void {
     const internal = try getOrCreateInternal(instance);
     // 1. Reset the rendering context to its default state.
-    internal.reset();
+    internal.context.reset();
     // 2. Resize the output bitmap to the new width and height (transparent
     //    black).
-    if (@as(u64, width) * height > max_bitmap_pixels) return internal.bitmap.resize(0, 0);
-    try internal.bitmap.resize(width, height);
+    if (@as(u64, width) * height > dom.canvas_2d.max_bitmap_pixels) return internal.context.bitmap.resize(0, 0);
+    try internal.context.bitmap.resize(width, height);
 }
 
 /// Getter for canvas: "the value it was initialized to when the object was
@@ -156,96 +126,6 @@ pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return canvas.instance;
 }
 
-/// Getter for strokeStyle
-pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fillStyle
-pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineWidth
-pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineCap
-pub fn get_lineCap(instance: *runtime.Instance) anyerror!enums.CanvasLineCap {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineJoin
-pub fn get_lineJoin(instance: *runtime.Instance) anyerror!enums.CanvasLineJoin {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for miterLimit
-pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineDashOffset
-pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.line_dash_offset;
-}
-
-/// Setter for strokeStyle
-pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fillStyle
-pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineWidth
-pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineCap
-pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineJoin
-pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for miterLimit
-pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineDashOffset
-pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
-    const internal = try getOrCreateInternal(instance);
-    internal.line_dash_offset = value;
-}
-
 /// Operation: rect
 pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
@@ -254,25 +134,6 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) an
     _ = w;
     _ = h;
     return error.NotImplemented;
-}
-
-/// Operation: getLineDash
-/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-getlinedash
-/// "return a sequence whose values are the values of this's dash list, in
-/// the same order" - a new Array each call, in the current realm (WebIDL
-/// converts a result there). Its items are data properties
-/// (CreateDataProperty), so an accessor on Array.prototype is never reached:
-/// the old "known V8 limitation" here was Set used where the conversion
-/// defines.
-pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const dash: []const f64 = if (getInternal(instance)) |internal| internal.line_dash else &.{};
-    const allocator = instance.ctx.allocator;
-    const values = try allocator.alloc(runtime.JSValue, dash.len);
-    defer allocator.free(values);
-    for (dash, values) |segment, *value| value.* = runtime.JSValue.fromNumber(segment);
-    const realm = engine.currentRealm() orelse instance.ctx;
-    // A new value made for the call: the binding takes it.
-    return (try engine.createSequenceOfValues(realm, values)).take();
 }
 
 /// Operation: ellipse
@@ -289,15 +150,6 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
     return error.NotImplemented;
 }
 
-/// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = startAngle;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
 /// Operation: arc
 pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
@@ -307,18 +159,6 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
     _ = startAngle;
     _ = endAngle;
     _ = counterclockwise;
-    return error.NotImplemented;
-}
-
-/// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = r0;
-    _ = x1;
-    _ = y1;
-    _ = r1;
     return error.NotImplemented;
 }
 
@@ -339,14 +179,6 @@ pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
     return error.NotImplemented;
 }
 
-/// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
-    _ = instance;
-    _ = image;
-    _ = repetition;
-    return null;
-}
-
 /// Operation: lineTo
 pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
@@ -364,59 +196,6 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
     _ = y2;
     _ = radius;
     return error.NotImplemented;
-}
-
-/// The IDL value of a `sequence<unrestricted double>` argument being
-/// converted, item by item (WebIDL 3.2.21 "create a sequence from an
-/// iterable", each item converted to unrestricted double).
-const DoubleSequence = struct {
-    realm: runtime.Context,
-    allocator: std.mem.Allocator,
-    items: std.ArrayListUnmanaged(f64) = .empty,
-
-    fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
-        const self: *DoubleSequence = @ptrCast(@alignCast(data.?));
-        // ToNumber: what a valueOf throws is pending, and propagates.
-        const number = try engine.convertToUnrestrictedDouble(self.realm, item);
-        self.items.append(self.allocator, number) catch return error.OutOfMemory;
-    }
-};
-
-/// Operation: setLineDash
-/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-setlinedash
-///
-/// `segments` is a `sequence<unrestricted double>`, which arrives unconverted:
-/// WebIDL converts the whole of it - any iterable object, anything else a
-/// TypeError, each item by ToNumber - before the method's steps run. (This
-/// used to take null and undefined as "clear", and to stop iterating at the
-/// first invalid item, so a later item's valueOf never ran.)
-pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-    const internal = try getOrCreateInternal(instance);
-    const allocator = instance.ctx.allocator;
-
-    var sequence = DoubleSequence{ .realm = instance.ctx, .allocator = allocator };
-    defer sequence.items.deinit(allocator);
-    // WebIDL 3.2.21 steps 1-3: not an object, or no @@iterator, is a TypeError.
-    if (!try engine.iterate(instance.ctx, segments, DoubleSequence.each, &sequence)) return error.TypeError;
-    const values = sequence.items.items;
-
-    // 1. If any value in segments is not finite (e.g. an Infinity or a NaN
-    // value), or if any value is negative (less than zero), then return
-    // (without throwing an exception).
-    for (values) |value| {
-        if (!std.math.isFinite(value) or value < 0) return;
-    }
-
-    // 2. If the number of elements in segments is odd, then let segments be
-    // the concatenation of two copies of segments.
-    const count = if (values.len % 2 != 0) values.len * 2 else values.len;
-    const dash = try allocator.alloc(f64, count);
-    @memcpy(dash[0..values.len], values);
-    if (count != values.len) @memcpy(dash[values.len..], values);
-
-    // 3. Set this's dash list to segments.
-    if (internal.line_dash.len > 0) allocator.free(internal.line_dash);
-    internal.line_dash = dash;
 }
 
 /// Operation: moveTo
@@ -446,15 +225,5 @@ pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2
     _ = cp2y;
     _ = x;
     _ = y;
-    return error.NotImplemented;
-}
-
-/// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = x1;
-    _ = y1;
     return error.NotImplemented;
 }

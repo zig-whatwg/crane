@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const WebTransportDatagramStats = @import("WebTransportDatagramStats.zig").WebTransportDatagramStats;
 
 pub const WebTransportConnectionStats = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     bytesSent: ?u64 = null,
     bytesSentOverhead: ?u64 = null,
     bytesAcknowledged: ?u64 = null,

@@ -547,10 +547,11 @@ fn unblockRenderingFor(load: *Load) void {
 /// preload steps' fetch, then `error` at the element for a network error and
 /// `load` otherwise. The load's id, or null when nothing is fetched.
 ///
-/// Not modelled, stated: the document's map of preloaded resources, which a
-/// later fetch of the same resource would consume instead of the network.
-/// A preload fetches, and fires its event; the fetch that would have used it
-/// goes to the network again.
+/// Steps 6-7 and 11-12, the preload entry and its commit to the document's
+/// map of preloaded resources, are the request's (`link_preload`): Fetch
+/// step 11 makes the entry, and the response handed over whole fills it
+/// (fetch.internal.document_resources, dom.document_resources), for a later
+/// fetch of the same preload key to consume.
 pub fn startPreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     return startLinkFetch(element, .preload, options, destination);
 }
@@ -901,11 +902,64 @@ fn terminateFetches(load: *Load) void {
     for (load.sheets.items) |sheet| {
         if (sheet.fetch) |f| {
             sheet.fetch = null;
-            f.terminate();
+            // A sheet the loading document keeps (dom.document_resources)
+            // goes on loading for it: an element of the same sheet made next
+            // - `head.innerHTML += ...` re-creates every link of the head -
+            // takes its response, with no fetch and no Resource Timing entry
+            // of its own. All three browsers keep a style sheet's load when
+            // its element goes: Chrome cancels a resource with no client only
+            // from a later task (Resource::AllClientsAndObserversRemoved ->
+            // ResourceLoader::ScheduleCancel), so a client added in the same
+            // turn keeps it; Firefox coalesces a new load with
+            // the one in flight and cancels sheet loads only when the
+            // document stops (layout/style/Loader.cpp
+            // MaybeCoalesceLoadAndNotifyOpen, Loader::Stop); Safari's
+            // CachedResource::allClientsRemoved cancels a link preload's
+            // load alone (loader/cache/CachedResource.cpp) - which is why a
+            // preload's is terminated here, as Safari does.
+            if (load.kind != .preload and f.keepsForDocument()) {
+                if (DetachedFetch.create(load.allocator, load.realm)) |detached| {
+                    f.rebind(detached.client());
+                } else f.terminate();
+            } else f.terminate();
             load.in_flight -= 1;
         }
     }
 }
+
+/// A style sheet fetch whose element went while the loading document keeps
+/// its response (`terminateFetches`): it goes on, its response handed to
+/// nobody but the document's entry (AsyncFetch.keepsForDocument), and ends
+/// with the fetch or with the realm.
+const DetachedFetch = struct {
+    allocator: std.mem.Allocator,
+    realm: runtime.Context,
+
+    fn create(allocator: std.mem.Allocator, realm: runtime.Context) ?*DetachedFetch {
+        const self = allocator.create(DetachedFetch) catch return null;
+        self.* = .{ .allocator = allocator, .realm = realm };
+        return self;
+    }
+
+    fn client(self: *DetachedFetch) AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = ended, .finished = ended };
+    }
+
+    fn done(_: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        var result = outcome catch return;
+        result.deinit();
+    }
+
+    fn alive(context: *anyopaque) bool {
+        const self: *DetachedFetch = @ptrCast(@alignCast(context));
+        return self.realm.engine_ctx != null;
+    }
+
+    fn ended(context: *anyopaque) void {
+        const self: *DetachedFetch = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+};
 
 /// How a load ends, which says whether its document is told.
 const Ending = enum {
@@ -1101,6 +1155,10 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     // Prefetch step 5. Fetch consumes this for CSP's union check.
     // It is distinct from Resource Timing's initiatorType.
     if (load.kind == .prefetch) request.initiator = .prefetch;
+    // HTML "preload": the response goes into the document's map of
+    // preloaded resources (steps 6-7 and 11-12: dom.document_resources), for
+    // a later fetch of the same preload key to consume (Fetch step 11).
+    if (load.kind == .preload and parent == null) request.link_preload = true;
     // "Set request's client to options's environment": the element's
     // relevant settings object - its realm's global's.
     if (globalOf(load.realm)) |global| {
@@ -1383,15 +1441,15 @@ fn fail(load: *Load) void {
 /// Fetch the @import rules of `text`, the sheet `sheet` fetched (null: the
 /// style element's own), resolving them against `base`.
 fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8) void {
-    const urls = css.import_rules.importUrls(load.allocator, text) catch {
+    const requests = css.import_rules.importRequests(load.allocator, text) catch {
         load.failed = true;
         return;
     };
-    defer css.import_rules.freeUrls(load.allocator, urls);
-    for (urls, 0..) |raw, index| {
+    defer css.import_rules.freeRequests(load.allocator, requests);
+    for (requests, 0..) |request, index| {
         // CSS Values "fetch a style resource" step 1: "If that failed,
         // return" - an import whose URL does not parse is not fetched.
-        const url = resolve(load.element, raw, base) orelse continue;
+        const url = resolve(load.element, request.url, base) orelse continue;
         defer load.element.ctx.allocator.free(url);
         if (sheet) |parent| {
             if (parent.chainHas(url) or parent.depth + 1 > max_import_depth) {
@@ -1399,8 +1457,25 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
                 continue;
             }
         }
-        startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), .{ .href = url }, .style);
+        startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), importOptions(url, request.modifiers), .style);
     }
+}
+
+/// CSS Values 4 §4.5.4 step 5 for an @import: its url()'s Values 5 §4.1.1
+/// request modifier steps - cross-origin() makes the request "cors" with
+/// credentials "same-origin" (anonymous) or "include" (use-credentials),
+/// integrity() sets its integrity metadata, referrer-policy() its referrer
+/// policy. With none, steps 3-4's "no-cors" and "include" stand.
+fn importOptions(url: []const u8, modifiers: css.style_values.RequestModifiers) LinkOptions {
+    return .{
+        .href = url,
+        .cors = if (modifiers.cross_origin) |value| switch (value) {
+            .anonymous => .anonymous,
+            .use_credentials => .use_credentials,
+        } else .no_cors,
+        .integrity = modifiers.integrity orelse "",
+        .referrer_policy = if (modifiers.referrer_policy) |value| fetch.internal.policy_container.parseReferrerPolicyHeader(value.name()) else .empty,
+    };
 }
 
 /// "Encoding-parsing a URL" `href` for a link request (HTML "create a link

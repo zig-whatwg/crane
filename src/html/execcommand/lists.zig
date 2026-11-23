@@ -145,11 +145,42 @@ pub fn selectionListState(edit: *Edit) !ListState {
     return listState(edit, true);
 }
 
-/// The list state, `for_query` applying the browsers' table-cell rule of
-/// the queries (below); toggle lists' own mode (its step 1) is the spec's
-/// state, so a second insertOrderedList over two cells' lists takes both
-/// out, as the browsers do.
+/// The list a caret's queries answer: the ol or ul whose editable list item
+/// is the caret's nearest li, or null (the spec's state decides). All three
+/// browsers answer from the item that holds the caret: Blink's
+/// SelectionListState, for a caret, "EnclosingElementWithTag(start,
+/// tag_name)" (third_party/blink/renderer/core/editing/commands/
+/// editor_command.cc, chromium 1f3d2bc10d1; WebKit's selectionListState the
+/// same), Gecko's ListElementSelectionState an li's parent list. The spec's
+/// block-extension climbs past a wrapper whose edges meet the list's and
+/// answers "mixed": `<div><ol><li>abc[]</li></ol></div>` - what all three
+/// browsers make of `<div>{}<br></div>` + insertOrderedList + "abc" - is
+/// queryCommandState true and queryCommandIndeterm false in Chrome 157,
+/// Firefox 160 and Safari 27.2 (editing/run/insertorderedlist.html,
+/// wpt.fyi 2358bd4835). Golden rule 2, no newer spec.
+fn caretItemList(edit: *Edit) !?ListState {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    var current: ?*Instance = caret.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (!try common.isHtmlElementNamed(c, "li")) continue;
+        if (!try common.isEditable(c)) return null;
+        const list = (try common.parent(c)) orelse return null;
+        if (try common.isHtmlElementNamed(list, "ol")) return .ol;
+        if (try common.isHtmlElementNamed(list, "ul")) return .ul;
+        return null;
+    }
+    return null;
+}
+
+/// The list state, `for_query` applying the browsers' rules of the queries
+/// (a caret's list item, caretItemList; table cells, below); toggle lists'
+/// own mode (its step 1) is the spec's state, so a second insertOrderedList
+/// over two cells' lists takes both out, as the browsers do.
 fn listState(edit: *Edit, for_query: bool) !ListState {
+    if (for_query) {
+        if (try caretItemList(edit)) |state| return state;
+    }
     // Steps 1-2 (a table cell bounds the extension, see
     // extendedActiveRange).
     const range = (try extendedActiveRange(edit)) orelse return .none;
@@ -265,6 +296,85 @@ const NewListContext = struct {
     }
 };
 
+/// The container of an empty line the caret is in, which toggle lists gives
+/// a new list inside (see toggleListsAction): a collapsed selection in an
+/// empty editing host (nothing to wrap), or in a div - an editable one or
+/// the host - whose only child is a br (the node list is that div, or its
+/// br).
+fn emptyLineContainer(edit: *Edit, node_list: []const *Instance) !?*Instance {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (node_list.len == 0) {
+        if (!try common.isEditingHost(caret.node)) return null;
+        if ((try common.firstChild(caret.node)) != null) return null;
+        return caret.node;
+    }
+    if (node_list.len != 1) return null;
+    // The node list holds the div itself (its block-extended range contains
+    // it), or - the host being the div - its br.
+    const member = node_list[0];
+    const container = if (try common.isHtmlElementNamed(member, "br")) (try common.parent(member)) orelse return null else member;
+    if (!try common.isHtmlElementNamed(container, "div")) return null;
+    if (!(try common.isEditable(container)) and !try common.isEditingHost(container)) return null;
+    // A div with nothing in it at all (`<div>{}</div>`) is an empty line too
+    // (lane edit4, A36): the data and Firefox 160 make `<div><ol><li>abc
+    // </li></ol></div>` of it with insertOrderedList + "abc" (Gecko keeps a
+    // div as the list's container, as for `<div>{}<br></div>`); Chrome 157
+    // makes no list at all and Safari 27.2 puts the list before the div -
+    // the three differ on where the list goes, so the spec and its data
+    // decide (golden rule 2, mechanisms without a majority; integrator's
+    // confirmation 2026-11-21 2:11 PM ET). The spec's own steps leave the
+    // text outside the item (`<ol><li></li>abc</ol>`), which no browser does.
+    if (try common.firstChild(container)) |br| {
+        if ((try common.childCount(container)) != 1) return null;
+        if (!try common.isHtmlElementNamed(br, "br")) return null;
+        if (caret.node != container and caret.node != br) return null;
+    } else if (caret.node != container) return null;
+    return container;
+}
+
+/// An empty `<p>` (no children at all) holding a collapsed selection, which
+/// toggle lists replaces with a new list whose one empty item holds the
+/// caret (lane edit4, A36): editing/run/insertorderedlist.html and
+/// insertunorderedlist.html `<p>{}</p>` + insert*list + "abc" give
+/// `<ol><li>abc</li></ol>` in the data and Firefox 160 (FPF, wpt.fyi
+/// 2358bd4835). Mechanism by mechanism (golden rule 2): the list replaces
+/// the p - Firefox and the spec (set the tag name to li), Chrome 157 keeps
+/// the p and makes no list, Safari 27.2 keeps it and puts the list before:
+/// no majority, so the spec; the typed text goes into the new item -
+/// Firefox and Safari: the majority. The spec's literal steps leave the
+/// caret after the item (set the tag name removes the p with the caret in
+/// it), so "abc" would land beside the li. A p with its padding br keeps
+/// the spec's path (lane edit3, 606c17785).
+fn emptyParagraphToReplace(edit: *Edit, node_list: []const *Instance) !?*Instance {
+    if (!try edit.rangeCollapsed()) return null;
+    const caret = (try edit.rangeStart()) orelse return null;
+    if (node_list.len != 1) return null;
+    const p = node_list[0];
+    if (!try common.isHtmlElementNamed(p, "p")) return null;
+    if (!try common.isEditable(p)) return null;
+    if ((try common.firstChild(p)) != null) return null;
+    if (caret.node != p) return null;
+    return p;
+}
+
+/// `end` moved before the block whose first position it is, when that block
+/// does not hold `start` (see toggleListsAction).
+fn endBeforeStartedBlock(start: Point, end: Point) !Point {
+    if (end.offset != 0) return end;
+    var node = end.node;
+    while (true) {
+        if (common.isElement(node) and common.isBlockNode(node)) {
+            if (try common.isEditingHost(node)) return end;
+            if (common.isInclusiveDescendantOf(start.node, node)) return end;
+            return try common.pointBefore(node, (try common.parent(node)) orelse return end);
+        }
+        const p = (try common.parent(node)) orelse return end;
+        if ((try common.firstChild(p)) != node) return end;
+        node = p;
+    }
+}
+
 /// Remove and return the first member of `list`.
 fn shift(list: *std.ArrayList(*Instance)) *Instance {
     return list.orderedRemove(0);
@@ -281,7 +391,22 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
     try normalizeItemsAroundActiveRange(edit);
     // Step 5: the block-extended range (a table cell bounds it, see
     // extendedActiveRange), live through step 6's changes.
-    const extended = (try extendedActiveRange(edit)) orelse return true;
+    // A selection that ends at the first position of a later block leaves
+    // that block out (lane edit4, A26): `<div>[abc</div><div>def</div><div>]
+    // ghi</div>` + insertUnorderedList lists abc and def and keeps the ghi
+    // div (Chrome 157 and Firefox 160; editing/run/insertunorderedlist.html
+    // PPF at wpt.fyi 2358bd4835, Safari lists all three as the spec's
+    // block-extend does). Blink's InsertListCommand::DoApply: "When a
+    // selection ends at the start of a paragraph ... it would be confusing
+    // if [the command] operated on that paragraph" - its end moves to the
+    // previous position. Golden rule 2, the majority. The selection itself
+    // is not moved.
+    const extended = blk: {
+        const start = (try edit.rangeStart()) orelse return true;
+        var end = (try edit.rangeEnd()) orelse return true;
+        if (!try edit.rangeCollapsed()) end = try endBeforeStartedBlock(start, end);
+        break :blk try extendedRange(start, end);
+    };
     const live = try block.LiveRange.init(edit, extended);
     defer live.release();
     // Step 6: lists of the other type become this type.
@@ -321,6 +446,43 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
             const kind = (try isList(node)) or (try parentIsList(node)) or try block.isAllowedChildOfName(.{ .node = node }, "li");
             if (!kind) continue;
             try node_list.append(edit.allocator, node);
+        }
+    }
+    // An empty line with nothing to wrap - an empty editing host, or a div
+    // holding only its padding br - gets a new list with one empty item at
+    // the caret, inside its container: all three browsers turn `{}` and
+    // `<div>{}<br></div>` + insertOrderedList + "abc" into `<ol><li>abc</li>
+    // </ol>` and `<div><ol><li>abc</li></ol></div>` (editing/run/
+    // insertorderedlist.html, insertunorderedlist.html: PPP at wpt.fyi
+    // 2358bd4835; Blink InsertListCommand::DoApplyForSingleParagraph puts the
+    // list in the empty paragraph, Gecko keeps a div as a container), where
+    // the spec's node list is empty or replaces the div. A p keeps the spec's
+    // replacement (Firefox and the data; Chrome and Safari nest the list in
+    // the p - following them would trade passing subtests).
+    if (!mode_disable) {
+        if (try emptyLineContainer(edit, node_list.items)) |container| {
+            const list = try edit.createElement(tag_name);
+            const item = try edit.createElement("li");
+            try edit.appendChild(list, item);
+            if (try common.firstChild(container)) |br| {
+                try edit.appendChild(item, br);
+            } else {
+                try edit.appendChild(item, try edit.createElement("br"));
+            }
+            try edit.appendChild(container, list);
+            try edit.collapse(item, 0);
+            return true;
+        }
+        if (try emptyParagraphToReplace(edit, node_list.items)) |p| {
+            const parent = (try common.parent(p)).?;
+            const list = try edit.createElement(tag_name);
+            const item = try edit.createElement("li");
+            try edit.appendChild(list, item);
+            try edit.appendChild(item, try edit.createElement("br"));
+            try edit.insertBefore(parent, list, p);
+            try edit.removeNode(p);
+            try edit.collapse(item, 0);
+            return true;
         }
     }
     // Step 9: enabling leaves top-level lists alone.
@@ -365,6 +527,9 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
         // Step 11.1.
         var sublist: std.ArrayList(*Instance) = .empty;
         defer sublist.deinit(edit.allocator);
+        // The direction of the first block that becomes an item, which the
+        // new list takes instead of its items (see below).
+        var list_dir: ?[]const u8 = null;
         // Step 11.2.
         while (node_list.items.len > 0 and
             (sublist.items.len == 0 or (try common.nextSibling(sublist.items[sublist.items.len - 1])) == node_list.items[0]))
@@ -373,7 +538,27 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
             if (try common.isHtmlElementIn(first, &.{ "p", "div" })) {
                 // Step 11.2.1.
                 _ = shift(&node_list);
-                try sublist.append(edit.allocator, try edit.setTagName(first, "li"));
+                const item = try edit.setTagName(first, "li");
+                // A converted block's dir goes to the new list, the first
+                // block's for all of them (lane edit4, A25):
+                // `<div dir=rtl>a[bc</div><div dir=ltr>de]f</div>` +
+                // insertOrderedList gives `<ol dir="rtl"><li>abc</li><li>def
+                // </li></ol>` in Firefox 160, and Chrome 157 keeps the first
+                // div around the list (`<div dir="rtl"><ol>...</ol></div>`);
+                // both are the data's, Safari 27.2 fails all six rows
+                // (editing/run/insertorderedlist.html and insertunordered
+                // list.html, PPF at wpt.fyi 2358bd4835). Mechanism by
+                // mechanism (golden rule 2): the list takes the first line's
+                // direction - Chrome and Firefox, the majority; whether the
+                // div stays as its container - the two split, so the spec
+                // decides, and the spec turns the div into the item
+                // (Firefox's shape). The spec's set the tag name would leave
+                // each li its own dir.
+                if (try common.getAttribute(edit.scratchAllocator(), item, "dir")) |dir| {
+                    if (sublist.items.len == 0) list_dir = dir;
+                    if (list_dir != null) try common.removeAttribute(item, "dir");
+                }
+                try sublist.append(edit.allocator, item);
             } else if (try common.isHtmlElementIn(first, &.{ "li", "ol", "ul" })) {
                 // Step 11.2.2.
                 try sublist.append(edit.allocator, shift(&node_list));
@@ -418,6 +603,12 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
         }
         // Steps 11.5-11.6.
         if (try wrap_mod.wrap(edit, sublist.items, NewListContext{ .name = tag_name, .first = sublist.items[0] })) |result| {
+            if (list_dir) |dir| {
+                if ((try common.isHtmlElementNamed(result, tag_name)) and !try common.hasAttribute(result, "dir")) {
+                    try common.setAttribute(result, "dir", dir);
+                    edit.modified = true;
+                }
+            }
             try block.fixDisallowedAncestors(edit, result);
         }
     }
@@ -451,6 +642,11 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
 fn extendedActiveRange(edit: *Edit) !?block.Range {
     const start = (try edit.rangeStart()) orelse return null;
     const end = (try edit.rangeEnd()) orelse return null;
+    return try extendedRange(start, end);
+}
+
+/// extendedActiveRange over `start` and `end`.
+fn extendedRange(start: Point, end: Point) !block.Range {
     var range = try block.blockExtend(start, end);
     if (try boundaryCell(start, .start)) |cell| {
         if (try leavesTableOf(range.start, cell)) range.start = .{ .node = cell, .offset = 0 };

@@ -132,9 +132,15 @@ pub fn register(
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
         return;
     };
-    storage.registered.put(storage.allocator, interface_name, template) catch {
+    // A new name takes the next registration index (isolate_templates.
+    // Registered); a re-registration keeps its own. Nothing is ever removed,
+    // so the indices of an isolate are 0 to its count - 1.
+    const slot = storage.registered.getOrPut(storage.allocator, interface_name) catch {
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
+        return;
     };
+    if (!slot.found_existing) slot.value_ptr.index = @intCast(storage.registered.count() - 1);
+    slot.value_ptr.template = template;
 }
 
 /// Get a registered FunctionTemplate by interface name for the current isolate
@@ -156,31 +162,54 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
     // If no isolate provided, can't match
     const key = isolate orelse return null;
     const storage = isolate_templates.getTemplateStorage(key) orelse return null;
+    const registered = storage.registered.get(interface_name) orelse return null;
+    return registered.template;
+}
+
+/// The registry's entry for `interface_name` in `isolate`: its template and
+/// its registration index (isolate_templates.Registered), or null when the
+/// isolate registered none under that name.
+pub fn getRegisteredForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) ?isolate_templates.Registered {
+    const key = isolate orelse return null;
+    const storage = isolate_templates.getTemplateStorage(key) orelse return null;
     return storage.registered.get(interface_name);
 }
 
-/// [interface_prototypes] In a realm that builds its interface objects on
-/// first read (context_manager.InterfaceObjects): build `interface_name`'s
+/// [interface_prototypes] A realm builds its interface objects on first read
+/// (context_manager.InterfaceObjects): build `interface_name`'s
 /// before the realm's first wrapper of it - the lazy global's getter does
-/// the same work (global_constructor_handler.lazyConstructorGetter), and a
+/// the same work (global_constructor_handler.lazyConstructGetter), and a
 /// built one is found marked and handed back as it is. Once per interface
-/// per realm: the template is recorded after, built or not, so an interface
-/// that has no interface object to build (none is registered under its
-/// name) costs the search once. Out of memory to record it, the next wrap
-/// searches again - the same answer.
-fn ensureInterfaceObjectBuilt(
+/// per realm: the interface's registration index is recorded after, built or
+/// not, so an interface that has no interface object to build (none is
+/// registered under its name) costs the search once. Out of memory to record
+/// it, the next wrap searches again - the same answer. The check is a bit at
+/// that index (context_manager.InterfaceObjects): it runs on every wrap.
+inline fn ensureInterfaceObjectBuilt(
     entry: *@import("context_manager.zig").ContextEntry,
-    template: *v8.FunctionTemplate,
+    index: u16,
     interface_name: []const u8,
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    const objects = &entry.interface_objects;
-    if (objects.built.contains(template)) return;
+    if (entry.interface_objects.isBuilt(index)) return;
+    buildInterfaceObject(entry, index, interface_name, isolate, context);
+}
+
+/// The first wrap of an interface in a realm: build its interface object, or
+/// find it built, and record the interface's index.
+fn buildInterfaceObject(
+    entry: *@import("context_manager.zig").ContextEntry,
+    index: u16,
+    interface_name: []const u8,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @branchHint(.cold);
     if (@import("interface_bindings.zig").materializeInterfaceObjectByName(interface_name, isolate, context)) |constructor| {
         v8.v8_Function_Dispose(constructor);
     }
-    objects.built.put(entry.allocator, template, {}) catch {};
+    entry.interface_objects.markBuilt(entry.allocator, index);
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
@@ -216,6 +245,22 @@ pub fn wrapInstanceAsV8Object(
     // the half worth checking.
     ownership.assertOwned(isolate, "template_registry.wrapInstanceAsV8Object");
 
+    // An isolated world's realm (protocol_worlds.zig): its own wrapper of
+    // every platform object, nodes and its Window included, in its own world
+    // cache. Two loads decide it for a Browser that has made no world.
+    const protocol_worlds = @import("protocol_worlds.zig");
+    const in_world = protocol_worlds.realmMayHaveWorlds(instance.ctx) and protocol_worlds.worldOfContext(context) != 0;
+    if (in_world) {
+        if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
+            // The world realm's global, which its cache keeps for the Window
+            // it is bound to - never the main world's (boundGlobal).
+            const world_realm = @import("context_manager.zig").get(context) orelse return error.WindowHasNoGlobal;
+            const storage = world_realm.getV8WrapperCacheStorage() orelse return error.WindowHasNoGlobal;
+            const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
+            return cache.get(instance) orelse error.WindowHasNoGlobal;
+        }
+    }
+
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
@@ -245,7 +290,9 @@ pub fn wrapInstanceAsV8Object(
     // runtime.lifetime.slotOf: the adapter never names NodeBase's field. The
     // slot holds the wrapper itself - a TracedReference - and its address is
     // the handle (node_wrappers, the wrapper redesign's P2 and P4).
-    if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
+    if (!in_world) {
+        if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
+    }
 
     // ========================================
     // CACHE LOOKUP: Check if we already have a wrapper for this instance
@@ -310,17 +357,21 @@ pub fn wrapInstanceAsV8Object(
     // Look up the FunctionTemplate for this interface
     // First try the template registry (for templates already registered for this isolate)
     // Then fall back to on-demand creation for interfaces not yet registered
-    const template = getTemplate(interface_name) orelse blk: {
+    // The registry's entry carries the interface's registration index, which
+    // the realm's built-interface-object check below reads (no hash).
+    const current_isolate = v8.v8_Isolate_GetCurrent();
+    const registered = getRegisteredForIsolate(interface_name, current_isolate) orelse blk: {
         // Template not registered for this isolate - try on-demand creation
         // This handles multi-isolate scenarios (Workers) where templates are isolate-specific
         const interface_bindings = @import("interface_bindings.zig");
-        const created_template = interface_bindings.createTemplateOnDemandByName(interface_name, isolate);
-        if (created_template) |t| {
-            break :blk t;
+        if (interface_bindings.createTemplateOnDemandByName(interface_name, isolate) != null) {
+            // It registered what it made, under this name, in `isolate`.
+            if (getRegisteredForIsolate(interface_name, isolate)) |made| break :blk made;
         }
         // Template still not found - interface not implemented or not registered
         return error.TemplateNotRegistered;
     };
+    const template = registered.template;
 
     // The wrapper: a new instance of the interface's instance template in
     // this realm's context (InstanceTemplate()->NewInstance(), never
@@ -333,13 +384,11 @@ pub fn wrapInstanceAsV8Object(
     // v8_FunctionTemplate_NewWrapper says how). ONE call, whose one Global is
     // the wrapper's.
     //
-    // [interface_prototypes] A realm that builds its interface objects when
-    // script first reads them builds this one first, so the prototype has
-    // everything WebIDL puts on it whether or not script read the global.
-    // An interface the isolate makes on first use has a lazy interface
-    // object in every realm (interface_bindings.madeOnFirstUse).
-    if (entry.interface_objects.lazy or @import("interface_bindings.zig").madeOnFirstUse(interface_name))
-        ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
+    // [interface_prototypes] A realm builds its interface objects when script
+    // first reads them (interface_bindings.installExposedConstructs): it
+    // builds this one first, so the prototype has everything WebIDL puts on
+    // it whether or not script read the global.
+    ensureInterfaceObjectBuilt(entry, registered.index, interface_name, isolate, context);
     const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context) orelse {
         return error.ObjectCreationFailed;
     };
@@ -349,7 +398,8 @@ pub fn wrapInstanceAsV8Object(
     // V8DOMWrapper::SetNativeInfo) - no template but a realm's global's has
     // an internal field. Not a node's here: its anchor is made at the cache
     // step below (WrapperCache.set -> node_wrappers.adopt, design 4.2).
-    if (!platform_anchor.bind(isolate, v8_object, instance)) {
+    const bound = if (in_world) platform_anchor.bindInWorld(isolate, v8_object, instance) else platform_anchor.bind(isolate, v8_object, instance);
+    if (!bound) {
         v8.v8_Object_Dispose(v8_object);
         return error.ObjectCreationFailed;
     }

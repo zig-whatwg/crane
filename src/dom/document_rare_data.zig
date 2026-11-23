@@ -35,6 +35,11 @@ pub const DocumentRareData = struct {
     /// or null when it is not counted.
     counted_in: ?*runtime.gc.ExternalMemory = null,
 
+    /// HTML 4.6.8.20's map of preloaded resources and the style sheets the
+    /// document loaded while loading (dom.document_resources): made by the
+    /// first fetch that leaves a response for the document. OWNED.
+    resources: ?*@import("document_resources.zig").DocumentResources = null,
+
     // === Import maps (HTML 8.1.5.2) ===
 
     /// The import map's imports: bare specifier -> resolved URL. Keys and
@@ -55,6 +60,10 @@ pub const DocumentRareData = struct {
     /// bytes, independent of later changes to the document's URL. Null
     /// leaves the live fallback effective (including a rejected base).
     frozen_base_url: ?[]u8 = null,
+    /// DOM "base URL override": the source's document base URL, set when
+    /// this document was made by cloning one ("clone a single node",
+    /// Document step 2). Owned; null for any other document.
+    base_url_override: ?[]u8 = null,
     /// HTML 4.2.5.3: owned pragma-set default language, null before any
     /// content-language pragma. Removing its meta does not clear it.
     pragma_language: ?[]const u8 = null,
@@ -71,11 +80,19 @@ pub const DocumentRareData = struct {
     /// and freed while it is designated.
     hovered_element: ?same_object.Link = null,
     pointed_element: ?same_object.Link = null,
-    /// HTML 6.6.5's sequential focus navigation starting point, when the
-    /// user agent keeps one apart from the focused area: the element the
-    /// focus fixup took the focus from (dom.focused_area.startPoint) - a
-    /// weak link (element and slab generation), never a count.
-    sequential_start: ?same_object.Link = null,
+    /// HTML 6.6.5's sequential focus navigation starting point: a live
+    /// Range selecting the contents of the element last focused
+    /// (dom.focused_area.set), or of the node an algorithm moved the point
+    /// to, which the removal steps move to where it was (Blink's Document
+    /// keeps one the same way). The document's for its whole life, traced
+    /// from its wrapper; released with the rare data (document_state's
+    /// teardown).
+    sequential_start: same_object.KeptChild = .{},
+    /// The point is unset (dom.focused_area.unsetStartPoint) although the
+    /// range stays: Blink drops its Range there, and Crane keeps the one
+    /// Range the document made for its whole life instead, so it needs no
+    /// second hand-out.
+    sequential_start_unset: bool = false,
     activated_element: ?same_object.Link = null,
 
     /// The pointer lock element (Pointer Lock 2.0) and the
@@ -103,6 +120,19 @@ pub const DocumentRareData = struct {
     /// with no lazy element.
     lazy_load_targets: @import("lazy_load_observer.zig").Targets = .empty,
 
+    /// SVG Animations 2: the document's outermost svg elements with a
+    /// timeline, and its animated values (dom.smil.document_animations).
+    /// Empty for a document with no SVG animation.
+    smil: @import("smil/document_animations.zig").DocumentState = .{},
+
+    /// Intersection Observer's IntersectionObserverTaskQueued flag ("Each
+    /// document has an IntersectionObserverTaskQueued flag which is
+    /// initialized to false"): a "notify intersection observers" task is
+    /// queued for this document (dom.document_internals, for
+    /// IntersectionObserver). Rare data: only a document whose observers
+    /// queued an entry ever sets it.
+    intersection_observer_task_queued: bool = false,
+
     fn init(allocator: std.mem.Allocator) DocumentRareData {
         return .{
             .import_map_imports = .init(allocator),
@@ -126,6 +156,11 @@ pub const DocumentRareData = struct {
     /// Free what the block owns, then the block (`allocator` the one it was
     /// made with), and uncount it.
     pub fn destroy(self: *DocumentRareData, allocator: std.mem.Allocator) void {
+        if (self.resources) |resources| {
+            self.resources = null;
+            resources.deinit();
+            allocator.destroy(resources);
+        }
         freeStringMap(allocator, &self.import_map_imports);
         freeStringMap(allocator, &self.import_map_integrity);
         {
@@ -142,9 +177,11 @@ pub const DocumentRareData = struct {
             self.prefetch_hints.deinit();
         }
         if (self.frozen_base_url) |url| allocator.free(url);
+        if (self.base_url_override) |url| allocator.free(url);
         if (self.pragma_language) |language| allocator.free(language);
         self.parser_form_associations.deinit(allocator);
         self.lazy_load_targets.deinit(allocator);
+        self.smil.deinit(allocator);
         if (self.counted_in) |memory| memory.sub(@sizeOf(DocumentRareData));
         allocator.destroy(self);
     }

@@ -37,7 +37,7 @@ fn exercise(comptime case: Case) !void {
         return;
     }
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-    const browser = try Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;

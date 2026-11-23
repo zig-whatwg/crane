@@ -25,6 +25,9 @@ pub const BlobURLStore = file.BlobURLStore;
 pub const Navigables = html_core.Navigables;
 pub const BrowsingContext = html_core.BrowsingContext;
 pub const NetworkContext = fetch.network.NetworkContext;
+/// A tab's scope (docs/instances.md rule 2), for the layers that import no
+/// runtime (html_core's browsing contexts).
+pub const TabScope = runtime.TabScope;
 
 const log = std.log.scoped(.browser_state);
 
@@ -94,6 +97,34 @@ pub fn networkOf(realm: runtime.Context) ?*NetworkContext {
 pub fn userAgentStorageOf(realm: runtime.Context) ?*storage.UserAgentStorage {
     const scope = realm.browser_scope orelse return null;
     return scope.of(storage.UserAgentStorage) catch null;
+}
+
+/// The tab `realm` belongs to (runtime.TabScope.ofRealm): a Window realm's,
+/// its frames' and an isolated world's; null for a worker's, or a realm no
+/// Browser tab made.
+pub fn tabOf(realm: runtime.Context) ?*TabScope {
+    return TabScope.ofRealm(realm);
+}
+
+/// The storage shed of the top-level traversable `realm`'s Window is in -
+/// session storage (Storage 4.3: "a traversable navigable holds a storage
+/// shed") - its tab's, made on first use. Null for a realm of no tab, a tab
+/// that has closed, or out of memory: "the user agent is configured to not
+/// allow" session storage there.
+pub fn sessionStorageShedOf(realm: runtime.Context) ?*storage.StorageShed {
+    const tab = TabScope.ofRealm(realm) orelse return null;
+    return sessionStorageShedIn(tab);
+}
+
+/// `tab`'s storage shed, made on first use. Null for a closed tab or out of
+/// memory.
+pub fn sessionStorageShedIn(tab: *TabScope) ?*storage.StorageShed {
+    if (tab.get(.session_storage, storage.StorageShed)) |shed| return shed;
+    if (tab.closed) return null;
+    const shed = tab.allocator.create(storage.StorageShed) catch return null;
+    shed.* = storage.initTraversableStorageShed(tab.allocator);
+    if (!tab.put(.session_storage, storage.StorageShed, shed)) return null;
+    return shed;
 }
 
 /// The user agent's blob URL store (File API 8.1) of the Browser `realm`

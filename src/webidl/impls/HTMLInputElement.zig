@@ -2275,10 +2275,17 @@ pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.
     return null;
 }
 
-/// Getter for popoverTargetAction
+/// Getter for popoverTargetAction: "must reflect the popovertargetaction
+/// attribute, limited to only known values" - toggle, show and hide, whose
+/// "missing value default and invalid value default are both the Toggle
+/// state" (HTML 6.12.6).
 pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const value = attribute(instance, "popovertargetaction") orelse return runtime.DOMString.initInterned("toggle");
+    defer instance.ctx.allocator.free(value);
+    inline for (.{ "toggle", "show", "hide" }) |keyword| {
+        if (std.ascii.eqlIgnoreCase(value, keyword)) return runtime.DOMString.initInterned(keyword);
+    }
+    return runtime.DOMString.initInterned("toggle");
 }
 
 /// Setter for colorSpace
@@ -2326,11 +2333,9 @@ pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.In
     return error.NotImplemented;
 }
 
-/// Setter for popoverTargetAction
+/// Setter for popoverTargetAction: sets the reflected content attribute.
 pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("popovertargetaction"), .{ .domstring = value });
 }
 
 /// Operation: showPicker
@@ -2351,10 +2356,15 @@ fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) vo
     // activation behavior when inactive/immutable; otherwise consume.
     if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
     activation.consume(window);
-    // Step 4: an unsupported file dialog is dismissed without a selection.
-    // Use the existing kept-control element-task mechanism for cancel.
-    // Other pickers need host operations that the current protocol lacks.
-    if (input_type == .file and @import("platform").capabilities.file_picker == .unsupported) {
+    // Step 4: a file dialog the platform cannot show is dismissed without a
+    // selection: unsupported, or emulated - the built-in platforms' files a
+    // host names by path, with no picker UI (their showFilePicker answers
+    // none chosen; html/file_selection.zig takes the host's files). Use the
+    // existing kept-control element-task mechanism for cancel.
+    // TODO(file picker UI): a `.native` picker calls platform.showFilePicker
+    // and applies its answer through html.file_selection; no platform has
+    // one yet. Other pickers need host operations the protocol lacks.
+    if (input_type == .file and @import("platform").capabilities.file_picker != .native) {
         form_associated.queueCancelEvent(instance, &pendingSelectTasks);
     }
 }

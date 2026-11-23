@@ -7,7 +7,7 @@ const std = @import("std");
 const Browser = @import("browser").Browser;
 
 fn exercise(comptime html: []const u8, comptime source: []const u8, expected: []const u8) !void {
-    const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions("https://move1.test/", .window, .{ .skip_load = true });
     const context = browser.current_context orelse return error.NoContext;

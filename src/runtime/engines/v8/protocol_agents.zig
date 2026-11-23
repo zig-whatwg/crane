@@ -23,16 +23,16 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const young_generation = @import("young_generation.zig");
 const navigation_collection = @import("navigation_collection.zig");
-const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
-const callback_registry = @import("callback_registry.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_webassembly = @import("protocol_webassembly.zig");
 /// [repl_mode]: the agent's console session (AgentRecord `repl`).
 const protocol_repl = @import("protocol_repl.zig");
+/// The agent's inspector (AgentRecord `inspector`; engine section 4.2b).
+const protocol_inspector = @import("protocol_inspector.zig");
 /// An agent's WebAssembly streaming compilations (AgentRecord
 /// `webassembly_compilations`), named for tests/v8.
 pub const WebAssemblyCompilations = protocol_webassembly.Compilations;
@@ -172,10 +172,17 @@ pub fn deinitializeEngine() void {
 // ============================================================================
 
 /// What the adapter keeps for an agent it made: the host's hooks.
-const AgentRecord = struct {
+pub const AgentRecord = struct {
     isolate: *ffi.Isolate,
+    /// `createAgent` entered the isolate for the agent's life - the agent is
+    /// its thread's (no other isolate was current there) - and
+    /// `destroyAgent` exits it after every realm of the agent ended.
+    entered_for_life: bool = false,
     hooks: *const engine.HostHooks,
     host: ?*anyopaque,
+    /// AgentOptions.host_state: the embedder's state for the agent, BORROWED
+    /// for its life (engine.hostStateOf).
+    host_state: ?*engine.HostState = null,
     /// AgentOptions.allocator: the agent's own state.
     allocator: std.mem.Allocator,
     /// The isolate was restored from the engine's snapshot, whose bytes it
@@ -206,6 +213,12 @@ const AgentRecord = struct {
     /// the agent's end in two steps (endAgent says when). Never made for an
     /// agent no console evaluates in.
     repl: ?*protocol_repl.Session = null,
+    /// THE agent's inspector (protocol_inspector.Inspector; engine section
+    /// 4.2b): its V8Inspector - one per isolate - which the console's REPL
+    /// sessions and a host's inspector sessions share. Made on the first need
+    /// (`inspectorOf`), on the agent's thread; ended by the agent's end in the
+    /// console session's two steps, after it (endAgent).
+    inspector: ?*protocol_inspector.Inspector = null,
     /// AgentOptions.deferred_teardown: the host's queue a garbage tree's
     /// teardown goes to (dom.refcount_teardown, refcount step 7), BORROWED;
     /// the agent's end drains and closes it. For an agent made without one,
@@ -225,11 +238,6 @@ const AgentRecord = struct {
     /// V8PerIsolateData; disposed by the agent's end. Read and written on
     /// the agent's own thread only.
     window_properties_template: ?*ffi.FunctionTemplate = null,
-    /// The agent's live Intl objects' internal slots (intl_binding.Objects):
-    /// made by its first Intl construction, on the agent's thread; freed by
-    /// its end. The adapter's per-isolate state is the agent's (instances
-    /// B2), as the nine process-wide Intl registries it replaces were not.
-    intl_objects: ?*intl_binding.Objects = null,
     /// The agent's live ObservableArray states (observable_array.Registry):
     /// made by its first array, on the agent's thread; freed by its end.
     observable_arrays: ?*observable_array.Registry = null,
@@ -244,6 +252,12 @@ const AgentRecord = struct {
     /// frames' own stacks, innermost first. Read and written on the agent's
     /// own thread only, its end included. It was a `threadlocal`.
     ending_window_realms: ?*const protocol_realms.EndingRealm = null,
+    /// The agent's isolated worlds (protocol_worlds.zig): its world realms,
+    /// by realm and by main realm, the worlds' options, the WindowProxies a
+    /// navigation kept for them, and the host's observer. Read and written on
+    /// the agent's own thread only (the walk reads it in a collection's
+    /// atomic pause); freed with the record (removeAgent).
+    worlds: @import("protocol_worlds.zig").AgentWorlds = .{},
     /// [webassembly_streaming]: the compilations handed to the host's
     /// compilePotentialWebAssemblyResponse that it has not ended
     /// (protocol_webassembly.zig); the agent's end ends and frees them,
@@ -262,12 +276,6 @@ const AgentRecord = struct {
     /// frees this agent's realms and no other's. It was a threadlocal, which
     /// the thread's host agent's end took down whole.
     realms: context_manager.Realms = .{},
-    /// The agent's callback wrappers not yet freed (callback_registry.Live),
-    /// so that a realm's end can release the handles its script's callbacks
-    /// hold. Read and written on the agent's own thread only, through its
-    /// end; its storage goes with the record (removeAgent). It was a
-    /// `threadlocal`, every agent's on the thread in one set.
-    callbacks: callback_registry.Live = .empty,
     /// The agent's module records alive, by identity hash
     /// (protocol_modules.Records), for the callbacks V8 hands a module - a
     /// Link's referrer, import.meta. Read and written on the agent's own
@@ -312,9 +320,26 @@ pub fn teardownHoldsOf(isolate: *ffi.Isolate) ?*@import("wrapper_cache.zig").Tea
 /// createAgent did not make (a test's own), which then matches in a context
 /// made for the call. Called on the agent's own thread only.
 pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
-    const record = recordOf(isolate) orelse return null;
+    const record = callbackRecordOf(isolate) orelse return null;
     if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
     return record.pattern_matcher;
+}
+
+/// The agent's inspector (protocol_inspector.zig), made on its first need
+/// with the agent's allocator; null for an isolate createAgent did not make,
+/// for an agent whose end has begun, or when V8 could not make one. Called
+/// on the agent's own thread only, with its isolate entered.
+pub fn inspectorOf(isolate: *ffi.Isolate) ?*protocol_inspector.Inspector {
+    const record = recordOf(isolate) orelse return null;
+    if (record.inspector == null) record.inspector = protocol_inspector.Inspector.create(record.allocator, isolate) catch null;
+    return record.inspector;
+}
+
+/// The agent's inspector if one was made (never makes one): what an
+/// operation that has nothing to do without one asks.
+pub fn existingInspectorOf(isolate: *ffi.Isolate) ?*protocol_inspector.Inspector {
+    const record = recordOf(isolate) orelse return null;
+    return record.inspector;
 }
 
 /// [repl_mode] The agent's console session, made on its first use with the
@@ -327,20 +352,11 @@ pub fn replSessionOf(isolate: *ffi.Isolate) ?*protocol_repl.Session {
     return record.repl;
 }
 
-/// The agent's Intl objects, made on their first use with the agent's
-/// allocator; null for an isolate createAgent did not make, or when there is
-/// no memory for them. Called on the agent's own thread only.
-pub fn intlObjectsOf(isolate: *ffi.Isolate) ?*intl_binding.Objects {
-    const record = recordOf(isolate) orelse return null;
-    if (record.intl_objects == null) record.intl_objects = intl_binding.Objects.create(record.allocator) catch null;
-    return record.intl_objects;
-}
-
 /// The agent's ObservableArray registry, made on its first use with the
 /// agent's allocator; null for an isolate createAgent did not make, or when
 /// there is no memory for it. Called on the agent's own thread only.
 pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
-    const record = recordOf(isolate) orelse return null;
+    const record = callbackRecordOf(isolate) orelse return null;
     if (record.observable_arrays == null) record.observable_arrays = observable_array.Registry.create(record.allocator) catch null;
     return record.observable_arrays;
 }
@@ -393,11 +409,50 @@ pub fn liveAgentCount() usize {
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own), and for an agent whose end has
 /// begun (`AgentRecord.ending`).
+/// Whether `createAgent` entered `isolate` for its agent's life
+/// (`AgentRecord.entered_for_life`): `destroyAgent` exits it last.
+pub fn enteredForLife(isolate: *ffi.Isolate) bool {
+    const record = recordOf(isolate) orelse return false;
+    return record.entered_for_life;
+}
+
+/// The record of the agent whose isolate this is, from the agent registry
+/// under its process-wide lock (about 127 ns: dom.mutation_observer_
+/// algorithms.walk_before_asking): null for an isolate createAgent did not
+/// make, and once its end has begun (`AgentRecord.ending`). Pure Zig - no
+/// V8 call - so code an executable without V8 reaches (the src/dom module's
+/// tests, through engine.hostStateOf) still links. Code that V8 itself
+/// reaches - a callback, a binding - asks `callbackRecordOf`.
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return if (record.ending) null else record;
+}
+
+/// `recordOf` for code only V8 reaches - a V8 callback, a binding, a
+/// function that calls V8 already - which links V8 anyway: one load from
+/// the isolate on the thread that has it entered (`fastRecordOf`), the
+/// registry under its lock anywhere else (lane tpc; the integrator's
+/// design (B), 5:17 PM ET: the realm's own answer for html and the DOM is
+/// runtime.ContextData.host_state, a field read).
+pub fn callbackRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
+    return fastRecordOf(isolate) orelse recordOf(isolate);
+}
+
+/// The record with no lock, for the thread that has `isolate` entered: the
+/// one createAgent put on the isolate's own storage
+/// (isolate_templates.IsolateTemplates.agent_record). A thread with the
+/// isolate entered has the isolate to itself - one thread uses an isolate
+/// at a time - and the storage's record is set and cleared only with the
+/// isolate entered (createAgent, forgetAgent), so no clear or free can run
+/// while this reads it. Null on any other thread, before createAgent set it
+/// and after forgetAgent cleared it: the caller asks the registry then.
+pub fn fastRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
+    if (ffi.v8_Isolate_GetCurrent() != isolate) return null;
+    const storage = isolate_templates.getTemplateStorage(isolate) orelse return null;
+    const record = storage.agent_record orelse return null;
+    return @ptrCast(@alignCast(record));
 }
 
 /// The stack of the agent's Window realms whose end is under way
@@ -420,17 +475,6 @@ pub fn preparedScriptsOf(isolate: *ffi.Isolate) ?*u32 {
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.prepared_scripts;
-}
-
-/// The callback wrappers of the agent whose isolate this is
-/// (callback_registry.Live), until the agent's record goes - through its end,
-/// while its realms end; null for an isolate createAgent did not make.
-/// Called on the agent's own thread only.
-pub fn callbacksOf(isolate: *ffi.Isolate) ?*callback_registry.Live {
-    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
-    defer std.Io.Threaded.mutexUnlock(&agents_lock);
-    const record = agents.get(isolate) orelse return null;
-    return &record.callbacks;
 }
 
 /// The module records of the agent whose isolate this is
@@ -478,18 +522,29 @@ pub fn realmsOf(isolate: *ffi.Isolate) ?*context_manager.Realms {
     return &record.realms;
 }
 
+/// The isolated worlds of the agent whose isolate this is
+/// (`AgentRecord.worlds`), until its record goes - through its end too, as
+/// `realmsOf`; null for an isolate createAgent did not make. Called on the
+/// agent's own thread only.
+pub fn worldsOf(isolate: *ffi.Isolate) ?*@import("protocol_worlds.zig").AgentWorlds {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.worlds;
+}
+
 /// HostHooks.agentClusterOf for `realm` of the agent whose isolate this is:
 /// the realm's agent cluster key, or 0 - no cluster known, nothing checked -
 /// for an agent without the hook, or an isolate createAgent did not make.
 pub fn agentClusterOf(isolate: *ffi.Isolate, realm: Context) u64 {
-    const record = recordOf(isolate) orelse return 0;
+    const record = callbackRecordOf(isolate) orelse return 0;
     const call = record.hooks.agentClusterOf orelse return 0;
     return call(record.host, realm);
 }
 
 /// HTML's cross-origin isolated capability; absent hooks deny shared memory.
 pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool {
-    const record = recordOf(isolate) orelse return false;
+    const record = callbackRecordOf(isolate) orelse return false;
     const call = record.hooks.crossOriginIsolatedCapability orelse return false;
     return call(record.host, realm);
 }
@@ -499,14 +554,14 @@ pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool
 /// interface's construction runs (interface.zig). Null for an agent without
 /// the hook, or an isolate createAgent did not make.
 pub const HTMLConstructorHook = struct {
-    call: *const fn (host: ?*anyopaque, realm: Context, new_target: engine.JSValue, interface: []const u8) Error!engine.HTMLConstructed,
+    hooks: engine.HTMLConstructorHooks,
     host: ?*anyopaque,
 };
 
 pub fn htmlConstructorHookOf(isolate: *ffi.Isolate) ?HTMLConstructorHook {
-    const record = recordOf(isolate) orelse return null;
-    const call = record.hooks.htmlConstructor orelse return null;
-    return .{ .call = call, .host = record.host };
+    const record = callbackRecordOf(isolate) orelse return null;
+    const hooks = record.hooks.htmlConstructor orelse return null;
+    return .{ .hooks = hooks, .host = record.host };
 }
 
 /// engine.agentHost: the host pointer `agent` was made with; null once
@@ -514,6 +569,14 @@ pub fn htmlConstructorHookOf(isolate: *ffi.Isolate) ?HTMLConstructorHook {
 pub fn agentHost(agent: *Agent) ?*anyopaque {
     const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
     return record.host;
+}
+
+/// engine.hostStateOf: the host state `agent` was made with; null when none
+/// was given, once endAgent has forgotten it, or for an isolate createAgent
+/// did not make.
+pub fn hostStateOf(agent: *Agent) ?*engine.HostState {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
+    return record.host_state;
 }
 
 /// The deferred teardown queue of the agent whose isolate this is: the one
@@ -588,7 +651,14 @@ pub fn restoredFromSnapshot(agent: *Agent) bool {
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
-/// installed. The isolate is not entered.
+/// installed. The agent is its thread's: its isolate is entered here and
+/// stays entered until `destroyAgent` (`AgentRecord.entered_for_life`), so
+/// every operation on the agent's thread finds its engine current, whatever
+/// realm is or is not entered - a renderer's main thread keeps its isolate
+/// entered for the thread's life, and each worker thread its own. A realm's
+/// own entries nest inside. (An agent made while another isolate is current
+/// on the thread - a test's second agent - is not its thread's, and is
+/// entered only per call, as before.)
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // Every agent of a build has the build's young generation
     // (-Dv8-young-generation-mb, young_generation.zig): the window agent's
@@ -627,6 +697,11 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
         break :blk ffi.v8_Isolate_NewWithOptions(&isolate_options) orelse return support.protocolError(error.OperationFailed);
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
+    // The thread's agent: entered for its life (above). Exited before the
+    // isolate is disposed, on a failure too.
+    const entered_for_life = ffi.v8_Isolate_GetCurrent() == null;
+    if (entered_for_life) ffi.v8_Isolate_Enter(isolate);
+    errdefer if (entered_for_life) ffi.v8_Isolate_Exit(isolate);
     if (options.engine_task_sink) |sink| {
         const retained = sink.retain();
         if (!ffi.v8_Isolate_AttachForegroundTaskSink(isolate, retained, wakeEngineLoop, releaseEngineSink)) {
@@ -654,7 +729,7 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .host_state = options.host_state, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -714,6 +789,13 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     {
         const entered = EnteredIsolate.of(@ptrCast(isolate));
         defer entered.leave();
+        // The record on the isolate's own storage, for the thread that has
+        // it entered (`fastRecordOf`): set with the isolate entered here.
+        // Until now every lookup asked the registry, which has it.
+        if (isolate_templates.storageFor(isolate)) |storage| {
+            std.debug.assert(ffi.v8_Isolate_GetCurrent() == isolate);
+            storage.agent_record = record;
+        }
         isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
             // One restored from a snapshot may have it already.
             if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
@@ -722,6 +804,13 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
             log.warn("ShadowRealm support was not installed: {}", .{err});
             break :blk null;
         };
+        // An isolate restored from the snapshot takes the snapshot's
+        // templates back into its registry, once - the templates its
+        // restored contexts were made from, and its only copy of them; every
+        // other template is made the first time a realm needs it (Blink:
+        // V8ContextSnapshotImpl::InstallInterfaceTemplates; lane tmpl1).
+        if (record.from_snapshot and !@import("interface_bindings.zig").takeSnapshotTemplates(isolate))
+            log.warn("the snapshot holds no templates for this build to take back: its Window realms make their own", .{});
     }
     return @ptrCast(isolate);
 }
@@ -757,9 +846,9 @@ pub fn endAgent(agent: *Agent) void {
     const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     const own_deferred_teardown = if (record) |r| r.own_deferred_teardown else null;
-    const intl_objects = if (record) |r| r.intl_objects else null;
     const observable_arrays = if (record) |r| r.observable_arrays else null;
     const repl = if (record) |r| r.repl else null;
+    const inspector = if (record) |r| r.inspector else null;
     // The compilations the host never ended: V8's side of each holds a
     // WasmStreaming, which must not outlive the isolate, and its record is
     // the agent's. Ended before the record goes with forgetAgent.
@@ -777,6 +866,9 @@ pub fn endAgent(agent: *Agent) void {
     //    thenCallback reads v8::debug::GetInspector). Answers that arrive in
     //    between find no evaluation and are released.
     if (repl) |session| session.end();
+    // And the agent's inspector, the same step: its host sessions
+    // disconnected, every context it knows forgotten while it exists.
+    if (inspector) |i| i.end();
     // Its node wrappers end, every one's reference let go (engine.
     // releaseNodeWrappers, idempotent: a host that called it before its last
     // drain left nothing here) - before the agent is forgotten, while the
@@ -790,12 +882,8 @@ pub fn endAgent(agent: *Agent) void {
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
-    // Its Intl objects' internal slots, whichever kind of agent it is: their
-    // weak handles are this isolate's, disarmed here before the collections
-    // below could reach a freed cell.
-    if (intl_objects) |objects| objects.destroy();
-    // Its ObservableArray states, the same way: their proxies' weak handles
-    // disarmed before the collections below.
+    // Its ObservableArray states: their proxies' weak handles disarmed
+    // before the collections below.
     if (observable_arrays) |registry| registry.destroy();
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
@@ -842,6 +930,8 @@ pub fn endAgent(agent: *Agent) void {
     // [repl_mode] Step 2 of the console session's end (above): the
     // inspector goes, with the isolate still entered and not yet disposed.
     if (repl) |session| session.destroy();
+    // Then the agent's inspector itself: every V8 session of it went first.
+    if (inspector) |i| i.destroy();
     // The agent's own queue (a host gave none): drained and closed above,
     // freed now - after the last collections, before the isolate is
     // disposed and its C++ heap freed (worker_realm.destroyAgent). What
@@ -860,6 +950,8 @@ pub fn endAgent(agent: *Agent) void {
 /// `agent` - its isolate - entered for the scope of a call, if it was not the
 /// current one: V8 runs microtasks and collections only in the entered
 /// isolate.
+const isolate_templates = @import("isolate_templates.zig");
+
 const EnteredIsolate = struct {
     isolate: *ffi.Isolate,
     entered: bool,
@@ -983,9 +1075,10 @@ pub fn oweNavigationCollection(isolate: *ffi.Isolate) void {
 /// navigation_collection.zig, IF and WHAT: at the agent's engine-task step
 /// (worker_realm.zig `runEngineTasks`) - the event loop's own turn, no DOM
 /// algorithm on the stack. When a navigation's collection is owed and V8's
-/// heap holds at least the agent's threshold (v8::HeapStatistics
-/// used_heap_size + external_memory), one critical memory-pressure notice
-/// (`notifyMemoryPressure`), as Blink sends
+/// heap and the DOM the agent reports hold at least the agent's threshold
+/// (v8::HeapStatistics used_heap_size + external_memory, + what V8 was last
+/// told of the host's figure, external_memory.zig), one critical
+/// memory-pressure notice (`notifyMemoryPressure`), as Blink sends
 /// at a main frame's context disposal when the page being left used much
 /// memory (v8_gc_for_context_dispose.cc:69-87, Chromium 157.0.8103.50).
 /// Below the threshold, or with none, what was owed is forgotten: V8 was
@@ -999,7 +1092,10 @@ pub fn payNavigationCollection(agent: *Agent) void {
     var used: usize = 0;
     var external: usize = 0;
     ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, &external);
-    if (used + external < threshold) return;
+    // The DOM the agent reports: V8 counts it toward its own limit, and
+    // HeapStatistics does not show it (navigation_collection.zig, IF).
+    const dom = @import("external_memory.zig").reportedOn(isolate);
+    if (used + external + dom < threshold) return;
     record.navigation_collections += 1;
     notifyMemoryPressure(agent, .critical);
 }
@@ -1038,6 +1134,16 @@ pub fn forgetAgent(agent: *Agent) void {
         record.ending = true;
         break :blk record;
     };
+    // Off the isolate's storage too (`fastRecordOf`), with the isolate
+    // entered - the thread ending the agent is the one using its isolate -
+    // and so before the storage (isolate_lifecycle.cleanupAll) and the
+    // record (removeAgent) are freed.
+    {
+        const entered = EnteredIsolate.of(agent);
+        defer entered.leave();
+        std.debug.assert(ffi.v8_Isolate_GetCurrent() == isolate);
+        if (isolate_templates.getTemplateStorage(isolate)) |storage| storage.agent_record = null;
+    }
     // This isolate's tracker alone: the dispatcher is every agent's.
     if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
     if (record.hooks.afterMicrotaskCheckpoint != null) {
@@ -1072,7 +1178,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
         break :blk kv.value;
     };
     std.debug.assert(record.ending);
-    callback_registry.endAgent(&record.callbacks);
+    @import("protocol_worlds.zig").endAgent(isolate, &record.worlds);
     protocol_modules.endAgent(&record.modules);
     worker_realm.endAgent(&record.worker_realms);
     @import("wrapper_cache.zig").endAgent(isolate, &record.caches);
@@ -1106,7 +1212,8 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
     // muted errors suppresses both reject and handle. Nothing is adopted.
     if (ffi.v8_Isolate_CurrentScriptHasMutedErrors(isolate)) return;
 
-    const record = recordOf(isolate) orelse return;
+    // A V8 callback, on the isolate's thread: the record with no lock.
+    const record = callbackRecordOf(isolate) orelse return;
     const tracker = record.hooks.promiseRejectionTracker orelse return;
     const operation: engine.RejectionOperation = switch (event) {
         kPromiseRejectWithNoHandler => .reject,

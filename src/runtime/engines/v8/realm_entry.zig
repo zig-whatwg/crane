@@ -1,6 +1,6 @@
 //! Entering a realm, and handing a runtime.JSValue to V8 - shared by the
 //! runtime-impls lane's adapter files (value_construction.zig,
-//! callback_interfaces.zig, webidl_conversions_numeric.zig).
+//! webidl_conversions_numeric.zig).
 //!
 //! A realm is entered as engine.zig's realm operations enter one: its agent
 //! (isolate) when it is not the current one, then a HandleScope with its

@@ -61,6 +61,7 @@ fn window() !runtime.Context {
     if (test_window) |w| return w;
     _ = try agent();
     const w = try test_agent.windowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = test_agent.agent(),
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -89,10 +90,10 @@ fn expectEval(r: runtime.Context, source: []const u8, expected: []const u8) !voi
 test "the [Serializable] interfaces with steps are exactly this batch's" {
     defer test_agent.close();
     const expected = [_][]const u8{
-        "Blob",               "CryptoKey",       "DOMException",     "DOMMatrix",
-        "DOMMatrixReadOnly",  "DOMPoint",        "DOMPointReadOnly", "DOMQuad",
-        "DOMRect",            "DOMRectReadOnly", "File",             "ImageData",
-        "QuotaExceededError",
+        "Blob",              "CryptoKey",       "DOMException",       "DOMMatrix",
+        "DOMMatrixReadOnly", "DOMPoint",        "DOMPointReadOnly",   "DOMQuad",
+        "DOMRect",           "DOMRectReadOnly", "File",               "FileList",
+        "ImageBitmap",       "ImageData",       "QuotaExceededError",
     };
     const names = v8.serializable_objects.serializableInterfaces();
     try std.testing.expectEqual(expected.len, names.len);
@@ -102,7 +103,8 @@ test "the [Serializable] interfaces with steps are exactly this batch's" {
     // Not [Serializable], or no steps: not in the table.
     try std.testing.expect(v8.serializable_objects.stepsFor("Response") == null);
     try std.testing.expect(v8.serializable_objects.stepsFor("MessagePort") == null);
-    try std.testing.expect(v8.serializable_objects.stepsFor("FileList") == null);
+    // [Transferable] only.
+    try std.testing.expect(v8.serializable_objects.stepsFor("OffscreenCanvas") == null);
 }
 
 test "structuredClone keeps a point, a rectangle and a matrix" {

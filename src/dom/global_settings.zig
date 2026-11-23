@@ -2,7 +2,10 @@
 //! settings object": a global's origin, whether it is a secure context and
 //! cross-origin isolated, and the objects it hands out once per global
 //! (IndexedDB's factory, CacheStorage, Performance), the cookie jar it
-//! reaches, and - `requestClient` - all of that as a fetch request's client.
+//! reaches, and - `requestClient` - all of that as a fetch request's client;
+//! and the timer initialization steps its kind runs for the mixin's
+//! setTimeout() and setInterval() (HTML 8.6), whose map of setTimeout and
+//! setInterval IDs is the global's own.
 //!
 //! HTML gives every global an environment settings object, and each kind of
 //! global - a Window, a WorkerGlobalScope - defines how its settings answer.
@@ -18,11 +21,33 @@
 const std = @import("std");
 const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
 const storage = @import("storage");
 const origin_record = @import("origin_record.zig");
 const OriginRecord = origin_record.OriginRecord;
+
+/// setTimeout()'s and setInterval()'s `handler` as the binding converted it
+/// (WebIDL 3.2.24, the TimerHandler union - TrustedScript, Function or
+/// DOMString - in the union algorithm's order), for `Settings.set_timer`.
+pub const TimerHandler = union(enum) {
+    /// The Function, its callback context the incumbent realm of the call.
+    /// OWNED, handed over: the timer keeps it, or releases it.
+    function: engine.CallbackFunction,
+    /// A TrustedScript. BORROWED for the call.
+    trusted_script: *runtime.Instance,
+    /// What ToString made of any other value. BORROWED for the call.
+    string: []const u8,
+
+    /// Release what the handler owns (a Function), when no timer took it.
+    pub fn release(self: TimerHandler) void {
+        switch (self) {
+            .function => |function| function.release(),
+            .trusted_script, .string => {},
+        }
+    }
+};
 
 /// One kind of global's answers. Each getter is handed a global `owns`
 /// accepted.
@@ -39,6 +64,10 @@ pub const Settings = struct {
     origin_record: ?*const fn (global: *runtime.Instance) ?*OriginRecord = null,
     /// The settings object's execution environment is a secure context.
     is_secure_context: *const fn (global: *runtime.Instance) bool,
+    /// A Window's associated Document: whose map of preloaded resources
+    /// Fetch step 11 consumes from (dom.document_resources). BORROWED; null
+    /// where this kind of global has none.
+    associated_document: ?*const fn (global: *runtime.Instance) ?*runtime.Instance = null,
     /// The settings object's cross-origin isolated capability.
     cross_origin_isolated: *const fn (global: *runtime.Instance) bool,
     /// The global's IDBFactory; null where this kind of global has none yet.
@@ -96,6 +125,17 @@ pub const Settings = struct {
     /// keeps its document (a Window) or lives (a worker). Null where this
     /// kind of global keeps none.
     storage_key: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]const u8 = null,
+    /// HTML 8.6, setTimeout() (`repeat` false) and setInterval(): the timer
+    /// initialization steps with this global, `handler`, `timeout`,
+    /// `arguments` and `repeat`, and no previousId - the handle, or 0 when
+    /// no timer was armed. `handler` is handed over (`TimerHandler.release`
+    /// on every path that keeps no timer); `arguments` are BORROWED. Null
+    /// where this kind's timers are not the mixin's operations - a Window's
+    /// are its own ([Global]: page_realm's window operations).
+    set_timer: ?*const fn (global: *runtime.Instance, handler: TimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 = null,
+    /// clearTimeout() and clearInterval(): "remove this's map of setTimeout
+    /// and setInterval IDs[id]" - one map for both.
+    clear_timer: ?*const fn (global: *runtime.Instance, id: i32) void = null,
 };
 
 /// `global`'s settings object's storage key for non-storage purposes,
@@ -126,7 +166,39 @@ pub fn storageKeyForNonStoragePurposesOf(global: *runtime.Instance) error{OutOfM
 /// https://storage.spec.whatwg.org/#obtain-a-storage-key
 pub fn storageKeyOf(global: *runtime.Instance) error{OutOfMemory}!?storage.StorageKey {
     const key = (try storageKeyForNonStoragePurposesOf(global)) orelse return null;
-    return storage.obtainStorageKey(key);
+    if (storage.obtainStorageKey(key)) |obtained| return obtained;
+    // A file: document's: the spec's path is failure - a file: URL's origin
+    // is opaque here (URL "origin": "left as an exercise to the reader ...
+    // when in doubt, return a new opaque origin"), and "obtain a storage key"
+    // fails for an opaque origin, so localStorage and sessionStorage throw a
+    // SecurityError. All three browsers give a file: document storage
+    // (golden rule 2: the browsers decide where they and the spec text
+    // differ, no newer spec involved): Chrome 157, measured by lane tpf
+    // (2026-11-21), shares ONE localStorage across every file: page - Blink's
+    // SecurityOrigin for file: is the tuple "file://", serialized "null"
+    // under BlockLocalAccessFromLocalOrigin, and CanAccessLocalStorage asks
+    // only IsOpaque; WebKit's file: SecurityOrigin is non-unique; Gecko's file:
+    // principals have storage. So a file: document's key is the tuple origin
+    // ("file", "", null), one key for every file: document, as Chrome's
+    // StorageKey of url::Origin("file://"). Only the storage key: the
+    // document's origin stays opaque (self.origin "null", as Chrome's), and
+    // no same-origin check changes. The document is the Window's (a srcdoc
+    // document's, its ancestor's: the referrer source requestClient uses).
+    if (isFileDocumentWindow(global)) return storage.StorageKey.initBorrowed(file_storage_origin, file_storage_origin, false);
+    return null;
+}
+
+/// The serialized tuple origin ("file", "", null) - a file: document's
+/// storage key's origin and site (`storageKeyOf`).
+const file_storage_origin = "file://";
+
+/// Whether `global` is a Window whose document - a srcdoc document's
+/// ancestor's - has a file: URL.
+fn isFileDocumentWindow(global: *runtime.Instance) bool {
+    if (!std.mem.eql(u8, global.vtable.name, "Window")) return false;
+    const settings = of(global) orelse return false;
+    const url: []const u8 = (if (settings.referrer_source) |source_of| source_of(global) else global.ctx.documentUrl()) orelse return false;
+    return std.ascii.startsWithIgnoreCase(url, "file:");
 }
 
 pub fn topLevelOriginOf(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
@@ -286,8 +358,10 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // A srcdoc Window walks to its ancestor document; a worker's realm
     // document URL is already its creation URL (Referrer Policy 8.3).
     client.request.referrer_source = if (settings.referrer_source) |source_of| source_of(global) else global.ctx.documentUrl();
-    // A Window stands in for its navigable's traversable.
-    if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
+    // A Window stands in for its navigable's traversable; any other global
+    // is the client whose user agent override its requests send (a
+    // dedicated worker's copy of its tab's).
+    if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global) else client.request.user_agent_client = @ptrCast(global);
     client.request.cookie_jar = cookieJarOf(global);
     // The blob URL store a blob: request's blob is obtained from: the
     // global's Browser's (its realm's scope).
@@ -312,6 +386,11 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // Service Workers "Handle Fetch" step 10: the route of a controlled
     // client's requests to its active service worker.
     client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
+    // Fetch step 11: a Window client's document's map of preloaded resources
+    // (and the resources it loaded while loading).
+    if (settings.associated_document) |document_of| {
+        if (document_of(global)) |document| client.request.document_resources = @import("document_resources.zig").routeFor(document);
+    }
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
     client.request.coep_violation_reporter = @import("coep_reporting.zig").reporterFor(global);
     return client;

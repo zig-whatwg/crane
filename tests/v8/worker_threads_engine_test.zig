@@ -10,7 +10,8 @@
 //! v8_wrapper.cpp's weak-handle maps and its one-isolate async iterator
 //! template, ShadowRealm's callback data (each agent's end cleared the
 //! process's), the isolate lifecycle handlers registered by every
-//! createAgent, the Intl registries. Each thread here makes worker realms in
+//! createAgent, the Intl registries (until V8's own Intl replaced Crane's,
+//! lane icu1: a worker realm has Intl itself now). Each thread here makes worker realms in
 //! an agent of its own and churns what every worker realm runs - events and
 //! listeners, URLs, ports, Blobs, Intl, an async iterator, weak wrappers
 //! collected - while the other does the same; then both agents end, one
@@ -81,16 +82,12 @@ const Agent = struct {
         var round: usize = 0;
         while (round < rounds) : (round += 1) {
             const made = try v8.worker_realm.createWorkerRealm(agent, .{
+                .agent_cluster_cross_origin_isolated = true,
                 .url = "http://web-platform.test:8000/workers/w.js",
                 .timer = null,
                 .event_loop = inline_task_loop.eventLoop(),
                 .allocator = std.heap.c_allocator,
             });
-            // Crane's Intl is installed only on window realms today; a
-            // worker realm gets it the same way here, so the registries
-            // Intl objects live in are shared by both threads, as they are
-            // by a page and its frames.
-            installIntl(agent, made.realm);
             var answer: [256]u8 = undefined;
             const text = try evalStringIn(agent, made.realm, churn_script, &answer);
             if (std.mem.startsWith(u8, text, "ok:")) {
@@ -106,19 +103,6 @@ const Agent = struct {
         }
     }
 };
-
-/// intl_binding's Intl, on `realm`'s global (as window realms get it).
-fn installIntl(agent: *runtime.Agent, realm: runtime.Context) void {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
-    ffi.v8_Isolate_Enter(isolate);
-    defer ffi.v8_Isolate_Exit(isolate);
-    const scope = ffi.v8_HandleScope_New(isolate) orelse return;
-    defer ffi.v8_HandleScope_Dispose(scope);
-    const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx orelse return));
-    ffi.v8_Context_Enter(context);
-    defer ffi.v8_Context_Exit(context);
-    v8.intl_binding.registerGlobal(isolate, context);
-}
 
 /// `code`, run in `realm` of `agent`, as a string in `buffer` (truncated).
 fn evalStringIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8, buffer: []u8) ![]const u8 {

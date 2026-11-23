@@ -89,6 +89,7 @@ const Page = struct {
         });
         errdefer engine.destroyAgent(agent);
         const realm = try engine.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -243,7 +244,9 @@ fn shapeDroppableOf(page: Page, comptime interface: [:0]const u8, with_edge: boo
     defer page.leave(entered);
     const isolate = page.isolate();
     const context: *ffi.Context = @ptrCast(@alignCast(page.realm.engine_ctx.?));
-    const template = v8.template_registry.getTemplateForIsolate(interface, isolate) orelse return error.NoTemplate;
+    // The isolate's template, made now if no realm has needed it yet: every
+    // template is made on first use (lane tmpl1; Blink's FindV8Template).
+    const template = v8.interface_bindings.getOrCreateTemplateByName(interface, isolate) orelse return error.NoTemplate;
     const script: ?Script = if (apply) |source| try Script.of(page, source) else null;
     defer if (script) |s| s.release();
     return ffi.v8_test_NodeTemplateWrapperDroppable(isolate, context, template, null, with_edge, if (script) |s| s.handle() else null);

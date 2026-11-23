@@ -28,6 +28,9 @@ const IDBObjectStore = @import("object_store.zig").IDBObjectStore;
 const IDBRequest = @import("request.zig").IDBRequest;
 const IDBError = @import("errors.zig").IDBError;
 const server_mod = @import("server.zig");
+const backing_store = @import("backing_store.zig");
+const stored_schema = @import("stored_schema.zig");
+const IDBKey = @import("key.zig").IDBKey;
 
 /// Transaction mode
 /// https://w3c.github.io/IndexedDB/#transaction-mode
@@ -94,6 +97,31 @@ pub const IDBTransaction = struct {
     /// Tells its owner it may be able to start (`serverNote`). Set by the
     /// owner of the transaction's task while that task lives.
     wake_hook: ?WakeHook = null,
+    /// Its view of the backing store - a snapshot taken at its first
+    /// request, after the scheduler started it, and its write batch
+    /// (backing_store.zig; lane prof1, D6 step 4). Written at commit, dropped
+    /// at abort.
+    backing_txn: ?*backing_store.Transaction = null,
+    /// The stores and indexes this upgrade deleted, whose records, index
+    /// entries and reverse rows go from the batch when it is written
+    /// (`writeChanges`), not at the deletion: a request accepted before the
+    /// deletion still runs after it and reads them, as its operation is
+    /// queued before the deletion's in Chromium's transaction
+    /// (IndexedDBDatabase::DeleteObjectStoreOperation, scheduled with
+    /// IndexedDBTransaction::ScheduleTask after the earlier requests' tasks)
+    /// and Firefox's (DeleteObjectStoreOp, dispatched in order). Definition
+    /// ids are never reused, so nothing a later store or index writes is
+    /// under them. Cleared with the batch.
+    dropped: std.ArrayListUnmanaged(Dropped) = .empty,
+    /// The results its requests read from the backing store - a value's
+    /// bytes, a key - each freed when its request is consumed, or with the
+    /// transaction (what a native request held as a borrow of its records).
+    owned_results: std.ArrayListUnmanaged(OwnedResult) = .empty,
+    /// Its commit, handed to the Browser's storage sequence and not yet
+    /// answered (lane prof2): the transaction is committing until the job
+    /// says the batch was written - then it completes, or (the write
+    /// failed) aborts. The waiter reference is the transaction's.
+    pending_commit: ?*backing_store.CommitJob = null,
 
     /// Transaction mode
     mode: IDBTransactionMode,
@@ -118,6 +146,36 @@ pub const IDBTransaction = struct {
     onabort: ?*const fn (*Self) void,
     oncomplete: ?*const fn (*Self) void,
     onerror: ?*const fn (*Self) void,
+
+    pub const OwnedResult = struct {
+        request: *IDBRequest,
+        result: union(enum) { value: []u8, key: IDBKey },
+
+        fn deinit(self: *OwnedResult, allocator: std.mem.Allocator) void {
+            switch (self.result) {
+                .value => |bytes| allocator.free(bytes),
+                .key => |*key| key.deinit(),
+            }
+        }
+    };
+
+    /// Keep `result` for `request` (IDBRequest.prepare reserved the slot).
+    pub fn keepResult(self: *Self, request: *IDBRequest, result: @FieldType(OwnedResult, "result")) void {
+        self.owned_results.appendAssumeCapacity(.{ .request = request, .result = result });
+    }
+
+    /// `request` was consumed: its kept result goes.
+    pub fn releaseResult(self: *Self, request: *IDBRequest) void {
+        var i: usize = 0;
+        while (i < self.owned_results.items.len) {
+            if (self.owned_results.items[i].request != request) {
+                i += 1;
+                continue;
+            }
+            var kept = self.owned_results.swapRemove(i);
+            kept.deinit(self.allocator);
+        }
+    }
 
     pub const WakeHook = struct {
         context: *anyopaque,
@@ -192,8 +250,15 @@ pub const IDBTransaction = struct {
         std.debug.assert(self.references > 0);
         self.references -= 1;
         if (self.references != 0) return;
+        // A commit still being written decides how this ends: its outcome
+        // is waited for (the agent's end), never rolled back under it.
+        if (self.pending_commit != null) self.finishCommit() catch {};
         // A transaction that never finished (its task never ran) must not
-        // hold up the scheduler.
+        // hold up the scheduler; its batch is never written.
+        self.dropBacking();
+        self.dropped.deinit(self.allocator);
+        for (self.owned_results.items) |*kept| kept.deinit(self.allocator);
+        self.owned_results.deinit(self.allocator);
         self.finishServerRecord(null);
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
         if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
@@ -229,6 +294,124 @@ pub const IDBTransaction = struct {
         self.retired_stores.deinit(self.allocator);
         self.db.deinit();
         if (self.destroy_on_release) self.allocator.destroy(self);
+    }
+
+    /// The transaction's view of the backing store, begun on first use.
+    pub fn backingTransaction(self: *Self) IDBError!*backing_store.Transaction {
+        if (self.backing_txn) |txn| return txn;
+        const store = try self.db.backingStore();
+        const txn = store.begin() catch |err| return backing_store.idbError(err);
+        self.backing_txn = txn;
+        return txn;
+    }
+
+    fn dropBacking(self: *Self) void {
+        self.dropped.clearRetainingCapacity();
+        const txn = self.backing_txn orelse return;
+        self.backing_txn = null;
+        txn.destroy();
+    }
+
+    /// A deleted store's or index's data, to go when the batch is written.
+    const Dropped = union(enum) {
+        store: u64,
+        index: struct { store: u64, index: u64 },
+    };
+
+    /// deleteObjectStore: the store `definition_id`'s schema record goes
+    /// from this upgrade's batch now; its records, index entries and reverse
+    /// rows when the batch is written (`dropped`).
+    pub fn dropStoreData(self: *Self, definition_id: u64) IDBError!void {
+        const txn = try self.backingTransaction();
+        try self.dropped.ensureUnusedCapacity(self.allocator, 1);
+        const schema_key = txn.buffer(.key);
+        try backing_store.storeSchemaKey(schema_key, txn.gpa(), self.db.databaseId(), definition_id);
+        try txn.delete(schema_key.items);
+        self.dropped.appendAssumeCapacity(.{ .store = definition_id });
+    }
+
+    /// deleteIndex: the index's entries go when the batch is written
+    /// (`dropped`; its reverse rows are left to the next write of each
+    /// record, which drops every row it had).
+    pub fn dropIndexData(self: *Self, store_id: u64, index_id: u64) IDBError!void {
+        try self.dropped.ensureUnusedCapacity(self.allocator, 1);
+        self.dropped.appendAssumeCapacity(.{ .index = .{ .store = store_id, .index = index_id } });
+    }
+
+    /// The range deletions of every store and index this upgrade deleted.
+    fn writeDropped(self: *Self, txn: *backing_store.Transaction) IDBError!void {
+        const alloc = txn.gpa();
+        const db = self.db.databaseId();
+        for (self.dropped.items) |dropped| switch (dropped) {
+            .store => |definition_id| for ([_]u8{ backing_store.tag_record, backing_store.tag_index, backing_store.tag_reverse }) |tag| {
+                const prefix = txn.buffer(.prefix);
+                try prefix.append(alloc, tag);
+                try backing_store.appendU64(prefix, alloc, db);
+                try backing_store.appendU64(prefix, alloc, definition_id);
+                const end = txn.buffer(.upper);
+                try backing_store.prefixEnd(end, alloc, prefix.items);
+                try txn.deleteRange(prefix.items, end.items);
+            },
+            .index => |index| {
+                const prefix = txn.buffer(.prefix);
+                try backing_store.indexPrefix(prefix, alloc, db, index.store, index.index);
+                const end = txn.buffer(.upper);
+                try backing_store.prefixEnd(end, alloc, prefix.items);
+                try txn.deleteRange(prefix.items, end.items);
+            },
+        };
+    }
+
+    /// IDB 5.4 step 3: the transaction's changes, written to the database -
+    /// its batch, and the schema records of what it may have changed: an
+    /// upgrade's database record and every store's, a readwrite
+    /// transaction's scope's (their key generators). A database an upgrade
+    /// made gets its directory entry.
+    fn writeChanges(self: *Self) IDBError!void {
+        if (self.mode == .readonly) return;
+        // A readwrite transaction that wrote nothing (its first write takes
+        // the rollback snapshot) has nothing to write: no store transaction.
+        if (self.mode == .readwrite and self.rollback_schema == null) return;
+        const txn = try self.backingTransaction();
+        const alloc = txn.gpa();
+        const db = self.db.databaseId();
+        try self.writeDropped(txn);
+        self.db.lockSchema();
+        defer self.db.unlockSchema();
+        const schema_map = self.db.schema();
+        if (self.mode == .versionchange) {
+            const durable = self.db.backing orelse self.db;
+            const record = try stored_schema.encodeDatabase(alloc, self.db.version, durable.next_store_id);
+            defer alloc.free(record);
+            const key = txn.buffer(.key);
+            try backing_store.databaseKey(key, alloc, db);
+            try txn.put(key.items, record);
+            if (self.db.server_database) |database| if (!database.persisted) {
+                const serialized = try database.storage_key.serialize(alloc);
+                defer alloc.free(serialized);
+                const directory = txn.buffer(.key);
+                try backing_store.directoryKey(directory, alloc, serialized, database.name);
+                var id: [8]u8 = undefined;
+                std.mem.writeInt(u64, &id, db, .big);
+                try txn.put(directory.items, &id);
+            };
+            var stores = schema_map.valueIterator();
+            while (stores.next()) |metadata| try putStoreSchema(txn, db, metadata);
+            return;
+        }
+        for (self.scope) |name| {
+            const metadata = schema_map.getPtr(name) orelse continue;
+            try putStoreSchema(txn, db, metadata);
+        }
+    }
+
+    fn putStoreSchema(txn: *backing_store.Transaction, db: u64, metadata: *const @import("database.zig").ObjectStoreMetadata) IDBError!void {
+        const alloc = txn.gpa();
+        const record = try stored_schema.encodeStore(alloc, metadata);
+        defer alloc.free(record);
+        const key = txn.buffer(.key);
+        try backing_store.storeSchemaKey(key, alloc, db, metadata.record_data.definition_id);
+        try txn.put(key.items, record);
     }
 
     /// IDB 5.5 step 2: keep the pre-write schema, records and generators until
@@ -396,11 +579,136 @@ pub const IDBTransaction = struct {
     /// 1. If state is not active, throw InvalidStateError.
     /// 2. Set state to committing.
     /// 3. Process pending requests and commit.
+    ///
+    /// The whole commit, written before this returns: on this thread, or -
+    /// a storage sequence (a profile directory) - waited for here. A caller
+    /// with an event loop uses `startCommit`, and is told.
     pub fn commit(self: *Self) IDBError!void {
+        _ = try self.startCommit(null);
+        // A write that failed aborted the transaction instead (IDB 5.4 step
+        // 3.1): the engine-free caller, which hears no abort event, is told
+        // the error the abort carries - as the binding's caller is told by
+        // its "abort" (impls/IDBTransaction). Silent, the allocation-failure
+        // walks went on with a schema the abort had rolled back (lane tpg).
+        if (self.state == .finished) if (self.err) |err| return err;
+    }
+
+    pub const CommitProgress = enum {
+        /// Committed, or aborted (`err` says which): finished.
+        done,
+        /// The batch is on the storage sequence: committing until the
+        /// waiter's endpoint is told (`wake_hook`), then `startCommit` again
+        /// answers.
+        writing,
+    };
+
+    /// Whether a commit is being written on the storage sequence now.
+    pub fn commitWriting(self: *const Self) bool {
+        const job = self.pending_commit orelse return false;
+        return !job.isDone();
+    }
+
+    /// Whether this transaction's commit would be written on the Browser's
+    /// storage sequence: its caller then makes an endpoint to be told on
+    /// (dom.indexeddb.endpointOf) - and only then, so a Browser with no
+    /// profile directory makes none.
+    pub fn commitsOnSequence(self: *Self) bool {
+        if (self.mode == .readonly or self.pending_commit != null) return false;
+        const store = self.db.backingStore() catch return false;
+        return store.sequence != null;
+    }
+
+    /// IDB 5.4 "commit a transaction", as far as it can go now. Its step 3,
+    /// writing the changes, is the storage sequence's with a profile
+    /// directory (lane prof2): the batch moves into a job and this answers
+    /// `writing`; `notify` (OWNED: an endpoint of the transaction's agent,
+    /// with a sink) is told when it was written, through the transaction's
+    /// `wake_hook`, and the next call takes the answer - the complete
+    /// steps, or "abort a transaction" with the write's error (step 3.1).
+    /// Chromium commits on its backing store's sequence and posts complete
+    /// to the renderer only after (IndexedDBTransaction::CommitPhaseTwo).
+    /// With no `notify` the write is waited for here; with no sequence
+    /// (kit/memory_store) it is made here, as before.
+    pub fn startCommit(self: *Self, notify: ?server_mod.Endpoint) IDBError!CommitProgress {
+        var endpoint = notify;
+        defer if (endpoint) |*owned| owned.release();
+        if (endpoint) |*owned| if (owned.sink == null) {
+            // Nothing could be posted to it: the write is waited for here.
+            owned.release();
+            endpoint = null;
+        };
         // Step 1: Check state
         if (self.state == .finished) {
             return IDBError.InvalidStateError;
         }
+        if (self.pending_commit) |job| {
+            if (!job.isDone()) return .writing;
+            try self.finishCommit();
+            return .done;
+        }
+
+        // IDB 5.4 step 3: write the changes; "if an error occurs while
+        // writing the changes to the database, then abort a transaction
+        // with transaction and an appropriate DOMException" - and nothing
+        // of them is written.
+        const written: ?IDBError = blk: {
+            self.writeChanges() catch |err| break :blk err;
+            const txn = self.backing_txn orelse break :blk null;
+            if (txn.backing.sequence != null and txn.hasChanges()) {
+                const told = endpoint != null;
+                const job = txn.prepareCommit(endpoint, null) catch |err| {
+                    endpoint = null;
+                    break :blk backing_store.idbError(err);
+                };
+                endpoint = null;
+                self.pending_commit = job;
+                // The waiter is set before the post, so the task the job
+                // posts to this thread finds it.
+                if (told) job.waiter = .{ .context = self, .call = commitWritten };
+                job.post();
+                if (told) return .writing;
+                job.wait();
+                try self.finishCommit();
+                return .done;
+            }
+            txn.commit() catch |err| break :blk backing_store.idbError(err);
+            break :blk null;
+        };
+        if (written) |err| {
+            try self.abortForError(err);
+            return .done;
+        }
+        self.completeCommit();
+        return .done;
+    }
+
+    /// The job's task, on this transaction's agent's thread: it was written;
+    /// the transaction's owner is woken to take the answer.
+    fn commitWritten(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        if (self.wake_hook) |hook| hook.call(hook.context);
+    }
+
+    /// The written commit's answer, taken: completed, or aborted with the
+    /// write's error. Waits for it if it is still being written (an agent's
+    /// end: the one wait on the sequence an agent makes).
+    fn finishCommit(self: *Self) IDBError!void {
+        const job = self.pending_commit.?;
+        self.pending_commit = null;
+        job.wait();
+        job.take() catch |err| return self.abortForError(backing_store.idbError(err));
+        self.completeCommit();
+    }
+
+    /// IDB 5.4 steps 4-5, the changes written: the transaction is finished,
+    /// and leaves the scheduler.
+    fn completeCommit(self: *Self) void {
+        self.dropBacking();
+        if (self.mode == .versionchange) if (self.db.server_database) |database| {
+            database.server.lock();
+            database.persisted = true;
+            database.server.unlock();
+        };
 
         // ED 5.7: an upgrade's version becomes the database's when it
         // commits - in its server, with the scheduler record, under its lock.
@@ -445,9 +753,16 @@ pub const IDBTransaction = struct {
     pub fn abortForError(self: *Self, reason: IDBError) IDBError!void {
         // Step 1: an already finished transaction is unchanged.
         if (self.state == .finished) return;
+        // A commit already handed to the storage sequence is past
+        // aborting: its write decides (an agent ending meanwhile waits for
+        // it), so a durable commit is never rolled back in memory.
+        if (self.pending_commit != null) return self.finishCommit();
 
-        // IDB 5.5 step 2: restore schema, records and key generators atomically,
-        // under the schema lock: other threads read the map meanwhile.
+        // IDB 5.5 step 2: the batch is dropped - none of its records or
+        // index entries was written - and the schema and key generators are
+        // restored atomically, under the schema lock: other threads read the
+        // map meanwhile.
+        self.dropBacking();
         if (self.rollback_schema) |snapshot| {
             self.db.lockSchema();
             defer self.db.unlockSchema();
@@ -609,4 +924,205 @@ test "IDBTransaction - objectStore not in scope" {
 
     const result = txn.objectStore("store2");
     try std.testing.expectError(IDBError.NotFoundError, result);
+}
+
+/// An engine-free agent loop for the storage sequence tests: a task sink
+/// the job posts to from the sequence's thread, drained on this one.
+const TestSink = struct {
+    mutex: std.Io.Mutex = .init,
+    inbox: std.ArrayListUnmanaged(server_mod.Task) = .empty,
+
+    fn endpoint(self: *TestSink) server_mod.Endpoint {
+        return .{ .thread = std.Thread.getCurrentId(), .sink = self, .ops = &ops };
+    }
+
+    const ops: server_mod.SinkOps = .{ .post = post, .release = release };
+
+    fn post(sink: *anyopaque, task: server_mod.Task) bool {
+        const self: *TestSink = @ptrCast(@alignCast(sink));
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        const accepted = if (self.inbox.append(std.testing.allocator, task)) true else |_| false;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        if (!accepted) task.drop(task.data);
+        return accepted;
+    }
+
+    /// The test owns the sink: no reference is counted.
+    fn release(_: *anyopaque) void {}
+
+    /// Run what was posted until `flag` is set.
+    fn runUntil(self: *TestSink, flag: *const bool) void {
+        while (!@atomicLoad(bool, flag, .acquire)) {
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+            var taken = self.inbox;
+            self.inbox = .empty;
+            std.Io.Threaded.mutexUnlock(&self.mutex);
+            defer taken.deinit(std.testing.allocator);
+            for (taken.items) |task| task.run(task.data);
+            if (taken.items.len == 0) std.Thread.yield() catch {};
+        }
+    }
+
+    fn deinit(self: *TestSink) void {
+        for (self.inbox.items) |task| task.drop(task.data);
+        self.inbox.deinit(std.testing.allocator);
+    }
+};
+
+/// A job that holds the storage sequence until its gate is set.
+const HeldSequence = struct {
+    job: @import("../sequence.zig").Job = .{ .run = run, .drop = drop },
+    gate: @import("../sequence.zig").Done = .{},
+
+    fn run(job: *@import("../sequence.zig").Job) void {
+        const self: *HeldSequence = @fieldParentPtr("job", job);
+        self.gate.wait();
+    }
+
+    fn drop(_: *@import("../sequence.zig").Job) void {}
+};
+
+fn setWoken(context: *anyopaque) void {
+    const flag: *bool = @ptrCast(@alignCast(context));
+    @atomicStore(bool, flag, true, .release);
+}
+
+fn ignorePlatformEvent(context: ?*anyopaque, event: *const @import("platform").PlatformEvent) callconv(.c) void {
+    _ = .{ context, event };
+}
+
+test "on the storage sequence a commit completes only once it was written, and a failed write aborts the transaction" {
+    const allocator = std.testing.allocator;
+    const platform = @import("platform");
+    const StorageSequence = @import("../sequence.zig").StorageSequence;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(base);
+    const directory = try std.fs.path.join(allocator, &.{ base, "profile" });
+    defer allocator.free(directory);
+    const browser = try platform.createBrowserPlatform(allocator, &.{ .profile_dir = platform.Str.from(directory) }, .{ .context = null, .post = ignorePlatformEvent });
+    defer platform.destroyBrowserPlatform(browser);
+    var server = server_mod.IDBServer.init(allocator);
+    defer server.deinit();
+    try server.attachPlatform(browser);
+    // Stopped before the server and the platform state end (the defers run
+    // in reverse), as at a Browser's end.
+    var sequence = StorageSequence.init(allocator);
+    defer sequence.deinit();
+    try sequence.start();
+    server.attachSequence(&sequence);
+    var sink: TestSink = .{};
+    defer sink.deinit();
+
+    const unique = try server.uniqueDatabase(server_mod.firstPartyKey("https://sequence.test"), "db");
+    defer server.release(unique);
+    const opened = try server.openConnection(unique, 1, false, allocator, sink.endpoint());
+    const database = opened.connection;
+    defer database.releaseHeapOwnership();
+    {
+        // An upgrade committed with no endpoint: written, and waited for.
+        var upgrade = IDBTransaction.init(allocator, database, &.{}, .versionchange);
+        defer upgrade.deinit();
+        database.version_change_transaction = &upgrade;
+        const created = try database.createObjectStore("s", .{});
+        created.deinit();
+        allocator.destroy(created);
+        try upgrade.commit();
+        database.version_change_transaction = null;
+        try std.testing.expectEqual(IDBTransactionState.finished, upgrade.state);
+    }
+
+    // A readwrite transaction, its commit handed to a held sequence: it is
+    // committing - not finished, no complete - until the write is done.
+    var held: HeldSequence = .{};
+    sequence.post(&held.job);
+    const write = try database.transaction(&.{"s"}, .readwrite, .{});
+    defer {
+        write.deinit();
+        allocator.destroy(write);
+    }
+    var woken = false;
+    write.wake_hook = .{ .context = &woken, .call = setWoken };
+    const put = try (try write.objectStore("s")).put("value", IDBKey.number(1));
+    defer allocator.destroy(put);
+    write.state = .committing;
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.writing, try write.startCommit(sink.endpoint()));
+    try std.testing.expect(write.commitWriting());
+    try std.testing.expectEqual(IDBTransactionState.committing, write.state);
+    // Asked again before the write is done: still writing.
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.writing, try write.startCommit(null));
+    held.gate.set();
+    // The job's task, run on this thread, wakes the transaction's owner.
+    sink.runUntil(&woken);
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.done, try write.startCommit(null));
+    try std.testing.expectEqual(IDBTransactionState.finished, write.state);
+    try std.testing.expect(write.err == null);
+
+    // The store's one writer, held on this thread: the sequence's write of
+    // the next commit fails (Conflict), and the transaction aborts with an
+    // UnknownError (IDB 5.4 step 3.1), its record never written.
+    const store = try platform.openStore(browser, platform.Str.from(backing_store.store_name), .{});
+    defer platform.closeStore(store);
+    const blocker = try platform.beginTransaction(store, .write);
+    const failing = try database.transaction(&.{"s"}, .readwrite, .{});
+    defer {
+        failing.deinit();
+        allocator.destroy(failing);
+    }
+    var failed_woken = false;
+    failing.wake_hook = .{ .context = &failed_woken, .call = setWoken };
+    const lost = try (try failing.objectStore("s")).put("lost", IDBKey.number(2));
+    defer allocator.destroy(lost);
+    failing.state = .committing;
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.writing, try failing.startCommit(sink.endpoint()));
+    sink.runUntil(&failed_woken);
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.done, try failing.startCommit(null));
+    platform.abortTransaction(blocker);
+    try std.testing.expectEqual(IDBTransactionState.finished, failing.state);
+    try std.testing.expectEqual(IDBError.UnknownError, failing.err.?);
+
+    // What is in the store: the first commit's record, not the second's.
+    const read = try database.transaction(&.{"s"}, .readonly, .{});
+    defer {
+        read.deinit();
+        allocator.destroy(read);
+    }
+    const records = try read.objectStore("s");
+    try std.testing.expectEqual(@as(u64, 1), try records.recordCount(null));
+    try read.commit();
+}
+
+test "with no storage sequence a commit is written on the committing thread, as before" {
+    const allocator = std.testing.allocator;
+    var server = server_mod.IDBServer.init(allocator);
+    defer server.deinit();
+    const unique = try server.uniqueDatabase(server_mod.firstPartyKey("https://inline.test"), "db");
+    defer server.release(unique);
+    const opened = try server.openConnection(unique, 1, false, allocator, server_mod.Endpoint.here());
+    const database = opened.connection;
+    defer database.releaseHeapOwnership();
+    {
+        var upgrade = IDBTransaction.init(allocator, database, &.{}, .versionchange);
+        defer upgrade.deinit();
+        database.version_change_transaction = &upgrade;
+        const created = try database.createObjectStore("s", .{});
+        created.deinit();
+        allocator.destroy(created);
+        try upgrade.commit();
+        database.version_change_transaction = null;
+    }
+    const write = try database.transaction(&.{"s"}, .readwrite, .{});
+    defer {
+        write.deinit();
+        allocator.destroy(write);
+    }
+    const put = try (try write.objectStore("s")).put("value", IDBKey.number(1));
+    defer allocator.destroy(put);
+    // No sequence: no endpoint is wanted, and the commit is done at once.
+    try std.testing.expect(!write.commitsOnSequence());
+    try std.testing.expectEqual(IDBTransaction.CommitProgress.done, try write.startCommit(null));
+    try std.testing.expectEqual(IDBTransactionState.finished, write.state);
+    try std.testing.expect(write.pending_commit == null);
+    try std.testing.expect(server.backingStore().?.sequence == null);
 }

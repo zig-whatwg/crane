@@ -1183,6 +1183,21 @@ pub const View = struct {
         }
         return null;
     }
+
+    /// Index of the attribute in no namespace whose local name is
+    /// `local_name`, one of the static names: an HTML element's "has a
+    /// `local_name` attribute". Compared by id, as Blink's
+    /// Element::FastHasAttribute compares a QualifiedName: no name is
+    /// decoded unless an entry's id is dynamic (`namesLocal`).
+    pub fn indexOfLocal(self: View, comptime local_name: []const u8) ?usize {
+        const static = comptime attribute_names.comptimeLocalId(local_name);
+        const entries = self.data.stored();
+        for (entries, 0..) |entry, index| {
+            if (entry.name == static) return index;
+            if (!entry.name.isStatic() and namesLocal(self.tables(), entry.name, static)) return index;
+        }
+        return null;
+    }
 };
 
 /// DOM "get an attribute by namespace and local name": the attribute in the

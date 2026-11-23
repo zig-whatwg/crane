@@ -32,6 +32,8 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
 
 /// WebIDL: operations whose return type is a promise - an exception in
 /// their steps becomes a rejected promise.
+/// So does a promise-typed attribute's getter.
 pub const promise_returning = .{
+    "get_closed",
     "call_cancel",
 };

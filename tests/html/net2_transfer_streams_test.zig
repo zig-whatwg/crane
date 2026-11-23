@@ -59,7 +59,7 @@ fn collect(browser: *browser_mod.Browser) !void {
 fn withPage(comptime body: fn (*browser_mod.Browser) anyerror!void) !void {
     const Run = struct {
         fn exercise() !void {
-            const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
             const page = browser.current_context orelse return error.NoPage;

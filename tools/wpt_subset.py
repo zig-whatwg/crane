@@ -545,6 +545,20 @@ INCLUDE = [
     # fullscreen flag, the fullscreen element, its events, :fullscreen), nothing
     # drawn. Geometry, screen-size and reftest-only files are excluded below.
     ('fullscreen/', 'Fullscreen API: requestFullscreen/exitFullscreen, the fullscreen element and events, :fullscreen; geometry exceptions below'),
+    # Lane tpw (the integrator, 2026-11-22 12:50 AM ET, under the scope line): Page Visibility is HTML's
+    # (6.2, all three browsers ship it); Screen Orientation is the W3C Screen Orientation API, whose
+    # ScreenOrientation (type, angle, onchange, lock/unlock) Chrome and Firefox ship and whose reading half
+    # Safari ships. Crane implements both (system visibility from the platform; lock() rejects with
+    # NotSupportedError, as desktop Chrome). Manual and tentative files are out by the blanket rules; the
+    # screen-orientation files that need a device able to lock the orientation are excluded below.
+    ('page-visibility/', 'Page Visibility (HTML 6.2): visibilityState, hidden, visibilitychange, through minimize/restore and unload'),
+    ('screen-orientation/', 'Screen Orientation API: ScreenOrientation reading, change events, lock/unlock argument and state checks; device-lock files excluded below'),
+    # Lane tpw (the integrator, 2026-11-22 2:56 AM ET): Resize Observer 1 (W3C, all three browsers ship it); Crane
+    # implements it (lane tpf 227027b88: the gather/broadcast steps at the rendering steps, sizes from the renderer
+    # protocol, 0x0 with none). The first observation fires at 0x0 too (lastReportedSizes starts (-1,-1)), so
+    # callback, observe/unobserve/disconnect, error and IDL files are in; files whose every subtest needs a box
+    # size or a size change are excluded below (measured on a runner of lane/tpf d68a3ec18).
+    ('resize-observer/', 'Resize Observer: observe/unobserve/disconnect, the first observation, callbacks, errors, IDL; geometry files excluded below'),
 
     # --- iframe needs real browsing contexts; navigation needs the rest. ----
     ('html/browsers/windows/',           'nested browsing contexts, contentWindow'),
@@ -573,6 +587,18 @@ INCLUDE = [
     ('url/', 'URL'), ('urlpattern/', 'URLPattern'), ('encoding/', 'Encoding'),
     ('console/', 'Console'), ('mimesniff/', 'MIME Sniffing'), ('streams/', 'Streams'),
     ('webidl/', 'WebIDL'),
+    # Lane tpw (the integrator, 2026-11-22 10:51 AM ET, under the scope line): ECMA-402 leaves a locale's
+    # formatted output implementation-defined, and this file pins what web compatibility requires of it
+    # (U+0020 before AM/PM in en and en-US, yyyy-mm-dd for en-CA and sv-SE; Chromium 1414292 and 1418727,
+    # Mozilla 1864612). ECMA-402 is a ratified Ecma standard, the file is not tentative and reads no
+    # geometry, and all three browsers ship it (wpt.fyi aligned runs at a3830cd8f7: Chrome 158, Firefox 160,
+    # Safari 27.2 4/4 each). Crane answers through V8's ICU (lane icu1): 3/4 on generation 236, 4/4 with ICU.
+    ('ecmascript/locale-compat.html', 'ECMA-402 web-compat requirements on implementation-defined locale formatting (all three browsers ship them)'),
+    # Lane tpw (the integrator, 2026-11-22 10:57 AM ET, the same scope line): RegExp lookbehind assertions
+    # (ECMA-262 since ES2018, ratified; V8's port of test262's built-ins/RegExp/lookBehind cases), not
+    # tentative, no geometry; all three browsers ship it (wpt.fyi aligned runs at a3830cd8f7: Chrome 158,
+    # Firefox 160, Safari 27.2 17/17 each).
+    ('ecmascript/regexp-lookbehind.html', 'ECMA-262 RegExp lookbehind assertions (ES2018; all three browsers ship them)'),
 
     # --- Tier 1: core headless APIs real apps and agents use (the user, 2026-10-01). ---
     ('shadow-dom/',    'DOM Standard shadow trees, slots, retargeting'),
@@ -677,6 +703,138 @@ INCLUDE = [
     ('css/motion/animation/offset-rotate-interpolation-math-functions.html', 'computed values sampled from animations and transitions (no geometry)'),
     ('css/motion/animation/offset-rotate-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
     ('css/motion/offset-supports-calc.html', 'property syntax, cascade or computed value outside the parsing directory'),
+
+    # HTML 13.2.8 "Speculative HTML parsing" (lane pscan1, 2026-11-21; main's GO 5:46 AM ET, ASK A): the
+    # speculative parser a waiting HTML parser runs, a section of the HTML Standard all three browsers ship
+    # (aligned stable runs at 2358bd4835: of these 126 files 89 pass in Chrome 157, Firefox 160 and Safari
+    # 27.2, 30 in two of them). The generated files keep their .tentative names because the section leaves
+    # the mechanism open; each is listed here, exactly, to waive only the tentative exclusion below.
+    ('html/syntax/speculative-parsing/generated/document-write/base-href-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/base-in-dsd.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/base-nonexistent.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/image-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-data-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-src-crossorigin.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-src-loading-lazy.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-src-referrerpolicy-no-referrer.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/img-srcset.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-no-rel.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-alternate-stylesheet.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-preload-as-font-crossorigin.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-preload-as-image.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-preload-as-script.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-preload-as-style.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-crossorigin.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-disabled.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-integrity.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-nomatch-media.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-referrerpolicy-no-referrer.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-type-text-css.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet-unsupported-type.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/link-rel-stylesheet.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/math-font-face-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/math-font-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/math-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-charset-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-csp-img-src-asterisk.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-csp-img-src-in-dsd.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-csp-img-src-none.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-referrer-no-referrer-img-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/meta-viewport-link-stylesheet-media.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/nested-template-shadowrootmode-1.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/nested-template-shadowrootmode-2.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/picture-source-br-img.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/picture-source-no-img.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/picture-source-nomatch-media.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/picture-source-unsupported-type.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-async.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-crossorigin.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-defer.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-integrity.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-module.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-nomodule.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-referrerpolicy-no-referrer.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-type-application-ecmascript.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src-unsupported-type.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-image-href.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-image-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-image-xlinkhref.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-script-href.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/svg-script-xlinkhref.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-img-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-link-stylesheet.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-shadowrootmode-img-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-shadowrootmode-link-stylesheet.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/template-shadowrootmode-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/video-poster.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/document-write/xmp-script-src.tentative.sub.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/base-href-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/base-in-dsd.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/base-nonexistent.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/image-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-data-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-src-crossorigin.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-src-loading-lazy.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-src-referrerpolicy-no-referrer.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/img-srcset.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-no-rel.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-alternate-stylesheet.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-preload-as-font-crossorigin.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-preload-as-image.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-preload-as-script.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-preload-as-style.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-crossorigin.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-disabled.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-integrity.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-nomatch-media.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-referrerpolicy-no-referrer.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-type-text-css.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet-unsupported-type.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/link-rel-stylesheet.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/math-font-face-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/math-font-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/math-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-charset-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-csp-img-src-asterisk.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-csp-img-src-in-dsd.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-csp-img-src-none.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-referrer-no-referrer-img-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/meta-viewport-link-stylesheet-media.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/nested-template-shadowrootmode-1.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/nested-template-shadowrootmode-2.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/picture-source-br-img.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/picture-source-no-img.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/picture-source-nomatch-media.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/picture-source-unsupported-type.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-async.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-crossorigin.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-defer.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-integrity.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-module.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-nomodule.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-referrerpolicy-no-referrer.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-type-application-ecmascript.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src-unsupported-type.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-image-href.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-image-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-image-xlinkhref.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-script-href.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/svg-script-xlinkhref.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-img-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-link-stylesheet.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-shadowrootmode-img-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-shadowrootmode-link-stylesheet.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/template-shadowrootmode-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/video-poster.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
+    ('html/syntax/speculative-parsing/generated/page-load/xmp-script-src.tentative.html', 'HTML 13.2.8 speculative HTML parsing (shipped by all three browsers)'),
 ]
 
 # Substring or prefix -> why it is out. Only the two tentative rules below
@@ -853,6 +1011,44 @@ EXCLUDE = [
     ('fullscreen/api/fullscreen-reordering.html', 'asserts the topmost element through elementFromPoint hit-testing'),
     ('fullscreen/rendering/fullscreen-root-block-scroll.html', 'asserts the fullscreen root\'s scrollTop over laid-out overflow'),
     ('fullscreen/rendering/fullscreen-root-block-size.html', 'asserts the fullscreen root\'s laid-out block size'),
+    # Screen Orientation files whose every subtest needs lock() to succeed - a device that can lock the screen
+    # orientation (hardware): on wpt.fyi's aligned stable run a3830cd8f7, Chrome 158 and Firefox 160 reject
+    # lock() with NotSupportedError ("not available on this device") and Safari 27.2 has no lock(), so all
+    # three pass none of them (lane tpw, 2026-11-22).
+    ('screen-orientation/active-lock.html', 'needs a device that can lock the orientation: 0/3 in all three browsers'),
+    ('screen-orientation/event-before-promise.html', 'needs a device that can lock the orientation: 0/1 in all three browsers'),
+    ('screen-orientation/lock-unlock-check.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/nested-documents.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/onchange-event-subframe.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    ('screen-orientation/onchange-event.html', 'needs a device that can lock the orientation: 0/2 in all three browsers'),
+    # Both subtests need lock() past step 3: the first locks in fullscreen (0/2 in all three), the second wants
+    # SecurityError from an iframe's lock() where the current spec rejects NotSupportedError at step 3 on a UA
+    # without lock support and NotAllowedError at step 4's pre-lock check. Crane = the spec + Chrome 158 (both
+    # NotSupportedError); only Firefox 160 passes the iframe subtest; Safari 27.2 has no lock(). On a UA that
+    # cannot lock it tests nothing reachable (the integrator, 2026-11-22 1:08 AM ET).
+    ('screen-orientation/fullscreen-interactions.html', 'needs a device that can lock the orientation: its iframe subtest asserts a pre-spec SecurityError'),
+    # Resize Observer files whose every subtest asserts a laid-out box size or waits for a notification that only
+    # a size change brings (0/N on a production runner of lane/tpf d68a3ec18 with no renderer, 2026-11-22; all
+    # three browsers pass them) - lane tpw.
+    ('resize-observer/change-layout-in-error.html', 'needs a box size change to reach the loop limit: TIMEOUT 0/1 with 0x0 boxes'),
+    ('resize-observer/fragments.html', 'asserts laid-out fragment inline/block sizes: 0/5'),
+    ('resize-observer/observe-001.html', 'asserts the observed box size ("target width expected 5 but got 0")'),
+    ('resize-observer/observe-006.html', 'waits for the img box size the decoded image gives'),
+    ('resize-observer/observe-009.html', 'asserts content-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-010.html', 'asserts content-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-011.html', 'asserts border-box sizes ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-012.html', 'asserts vertical writing-mode box sizes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-013.html', 'asserts box sizes across a writing-mode change ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-014.html', 'asserts box sizes across a writing-mode change ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-015.html', 'asserts box sizes per observed box ("target width expected 100 but got 0")'),
+    ('resize-observer/observe-016.html', 'asserts a laid-out size before display changes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-018.html', 'asserts box-sizing sizes ("target width expected 40 but got 0")'),
+    ('resize-observer/observe-019.html', 'asserts device-pixel-content-box sizes ("target width expected 50 but got 0")'),
+    ('resize-observer/observe-020.html', 'waits for device-pixel-content-box size changes'),
+    ('resize-observer/observer-in-cross-origin-frame.sub.html', 'asserts the frame\'s laid-out size ("expected 200 but got 0")'),
+    ('resize-observer/scrollbars.html', 'asserts content-box sizes minus scrollbar widths'),
+    ('resize-observer/scrollbars-2.html', 'asserts a scroll container\'s content-box size beside its scrollbars ("expected 120 but got 0")'),
+    ('resize-observer/zoom.html', 'asserts zoom-scaled content rects ("content-rect top should be scaled by zoom expected 5 but got 0")'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),
@@ -1047,6 +1243,45 @@ EXCLUDE = [
     # and Firefox 160 pass 3/3, Safari 27.2 0/3); the transferable-streams files that need no Web Audio stay.
     ('streams/transferable/audioworklet.https.html',
      'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
+    # The integrator's rulings on lane blk5's 0.1-gate triage (2026-11-20, 1:10 PM ET), each under the scope
+    # line. Web Audio moved to 0.2 (the user, 2026-11-20): the AudioWorklet files and a service worker file
+    # whose subject is an <audio> element fed through AudioContext.createMediaElementSource into a
+    # ScriptProcessorNode (Chrome 157 and Firefox 160 pass 1/1, Safari 27.2 times out).
+    ('fetch/metadata/generated/audioworklet.https.sub.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('hr-time/audioworklet.https.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('webidl/ecmascript-binding/es-exceptions/DOMException-audioworklet.https.html',
+     'AudioWorklet: Web Audio is 0.2 (the user, 2026-11-20; the integrator, lane blk5)'),
+    ('service-workers/service-worker/fetch-audio-tainting.https.html',
+     'AudioContext.createMediaElementSource + ScriptProcessorNode: Web Audio is 0.2 (the integrator, lane blk5)'),
+    # - MediaSource Extensions, 0.2 media: a blob: URL made from a MediaSource.
+    ('fetch/api/basic/mediasource.window.js',
+     'needs a MediaSource (MSE): 0.2 media (the integrator, 2026-11-20, lane blk5)'),
+    # - XSLT is out of scope (as dom/xslt/): an <?xml-stylesheet?> transform's base URL.
+    ('service-workers/service-worker/xsl-base-url.https.html',
+     'XSLT is out of scope (as dom/xslt/; the integrator, 2026-11-20, lane blk5)'),
+    # - Compression Dictionary Transport (fetch/compression-dictionary/ is not in the worklist; only Chrome
+    #   ships it: Chrome 157 2/2, Firefox 160 and Safari 27.2 0/2).
+    ('resource-timing/encoded-body-size-cached.https.html',
+     'Compression Dictionary Transport: its directory is outside the worklist, 0.2 (the integrator, 2026-11-20, lane blk5)'),
+    # - Media Capture: canvas.captureStream() and a MediaStreamTrack transferred to a service worker
+    #   (transferable tracks are mediacapture-extensions, Safari only; Chrome 157 and Firefox 160 throw
+    #   DataCloneError). mediacapture-* is not in the worklist.
+    ('service-workers/service-worker/ServiceWorkerGlobalScope/error-message-event.https.html',
+     'needs canvas.captureStream() and a transferable MediaStreamTrack: Media Capture is 0.2 (the integrator, 2026-11-20, lane blk5)'),
+    # - CSS Forms 1's appearance: base for <input> ships in no stable browser (Chrome only behind a flag:
+    #   Chrome 157, Firefox 160 and Safari 27.2 fail both at the first base-appearance assertion), and the
+    #   expectations differ from the ED's Appendix A (lane css2's upstream draft).
+    ('css/css-forms/input-file-base-appearance-computed.html',
+     'appearance: base for <input>: shipped by no stable browser (the integrator, 2026-11-20, lane blk5)'),
+    ('css/css-forms/input-text-base-appearance-computed-style.html',
+     'appearance: base for <input>: shipped by no stable browser (the integrator, 2026-11-20, lane blk5)'),
+    # - Behaviour removed from HTML in 2018: document.open() no longer unloads the document (whatwg/html's
+    #   document.open() simplification), and every browser dropped it, so no conforming engine reaches the
+    #   expected "ABCDEFGHIJKLMN" (Chrome 157 "ABGLMN", Firefox 160 "ABGHIJKLMN" = Crane, Safari 27.2 TIMEOUT).
+    ('html/browsers/browsing-the-web/unloading-documents/004.html',
+     'tests document.open() unloading the document, removed from HTML in 2018 (the integrator, 2026-11-20, lane blk5)'),
     # - filesystem: URLs: the File API: Directories and System, a W3C Working Group Note (2014) that was
     #   never ratified; only Chrome ships webkitRequestFileSystem (Firefox 160 and Safari 27.2 fail both
     #   files as Crane does).

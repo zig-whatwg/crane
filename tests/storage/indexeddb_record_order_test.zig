@@ -17,7 +17,7 @@ test "IndexedDB retrieval selects the lowest key independent of insertion order"
     const request = try store.getKey(idb.IDBKeyRange.unbounded());
     defer allocator.destroy(request);
     try std.testing.expectEqual(@as(f64, 1), request.result.?.key.value.number);
-    try std.testing.expectEqual(@as(f64, 1), store.recordsList().items[0].key.value.number);
-    try std.testing.expectEqual(@as(f64, 5), store.recordsList().items[1].key.value.number);
-    try std.testing.expectEqual(@as(f64, 9), store.recordsList().items[2].key.value.number);
+    try std.testing.expectEqual(@as(f64, 1), (try store.recordAt(0)).?.key.value.number);
+    try std.testing.expectEqual(@as(f64, 5), (try store.recordAt(1)).?.key.value.number);
+    try std.testing.expectEqual(@as(f64, 9), (try store.recordAt(2)).?.key.value.number);
 }

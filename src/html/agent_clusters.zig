@@ -74,13 +74,42 @@ pub fn crossOriginIsolatedCapability(_: ?*anyopaque, realm: runtime.Context) boo
     return settings.cross_origin_isolated(global);
 }
 
+/// Whether the agent cluster of `realm`'s agent has a cross-origin isolation
+/// mode other than "none" ("logical" or "concrete") - what HTML "create a new
+/// realm" step 5 reads for a realm made in that cluster
+/// (engine.WindowRealmOptions.agent_cluster_cross_origin_isolated):
+///
+/// - a Window realm: its browsing context group's mode, which "obtain a
+///   similar-origin window agent" step 6.2 gives each agent cluster it makes
+///   (BrowsingContext.cross_origin_isolation_mode: a group switch to a
+///   "same-origin-plus-COEP" response sets it before the new document's
+///   realm is made);
+/// - a worker realm: the cluster its worker host recorded on the agent's
+///   AgentHost when it obtained the agent.
+///
+/// A worklet's cluster is its owner's: its host asks for the owner's realm.
+///
+/// Not the cross-origin isolated capability (`crossOriginIsolatedCapability`),
+/// which a "concrete" mode grants only with the permissions policy's
+/// "cross-origin-isolated" feature. False when nothing is known.
+pub fn crossOriginIsolationMode(realm: runtime.Context) bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    if (std.mem.eql(u8, global.vtable.name, "Window")) {
+        const browsing_context = dom.browser_state.browsingContextOf(global) orelse return false;
+        return browsing_context.groupIsCrossOriginIsolated();
+    }
+    const agent_host: *const AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return false;
+    return agent_host.agent_cluster_cross_origin_isolated;
+}
+
 /// `realm`'s agent cluster key, as its agent's hook answers it - what the
 /// worker host records for a dedicated worker it makes on its owner's thread
 /// ("obtain a worker/worklet agent" step 3: the owner's agent cluster). 0
 /// when none is known.
 pub fn ofRealm(realm: runtime.Context) u64 {
-    const agent = realm.agent orelse return 0;
-    return agentClusterOf(engine.agentHost(agent), realm);
+    if (realm.agent == null) return 0;
+    return agentClusterOf(@import("dom").agent_hosts.ofOwnAgent(realm), realm);
 }
 
 /// A Window's agent cluster: its document's origin's site, or the origin when

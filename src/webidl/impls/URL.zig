@@ -704,8 +704,14 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
         return;
     };
 
-    // Step 6: Set this's query object's list to the result of parsing input
-    try updateQueryObjectList(internal, input);
+    // Step 6: "Set this's query object's list to the result of parsing url's
+    // query" - the query the parser left, whose ASCII tabs and newlines it
+    // removed - not `input`. Golden rule 2, the newer spec: whatwg/url
+    // changed step 6 from "parsing input" to "parsing url's query", and
+    // Firefox and Safari ship it (wpt.fyi 2358bd4835,
+    // url/url-setters-stripping.any.html "updates previously obtained
+    // searchParams": Firefox and Safari PASS, Chrome FAIL).
+    try updateQueryObjectList(internal, internal.url_record.query() orelse "");
 }
 
 /// Helper to update the query object's list when URL.search is set
@@ -866,10 +872,11 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
 /// canParse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
 pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
-    // Static method - instance is not used
-    _ = instance;
-
-    const allocator = std.heap.page_allocator; // TODO: Get from context
+    // The realm's allocator, as URL.parse's: the records live for this call
+    // only (std.heap.page_allocator mapped a page for each of their
+    // allocations: docs/lessons/architecture-std-heap-page-allocator-maps-a-
+    // page-per-allocation.md).
+    const allocator = instance.ctx.allocator;
 
     // Parse base URL if provided
     var base_record: ?URLRecord = null;

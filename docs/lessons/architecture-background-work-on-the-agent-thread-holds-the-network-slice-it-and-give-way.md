@@ -1,0 +1,12 @@
+# Architecture: Background work on an agent's thread holds its network - slice it small, and queue each slice behind a give-way task
+
+**Date**: 2026-11-21
+**Lesson**: Crane reads sockets only between tasks (browser/event_loop.zig `runOnceBlocking` step 2c, one network pump per turn). Work a browser does off the main thread - here the speculative HTML parser - delays every response that arrives while it runs. A slice queued during a turn also runs AHEAD of the response tasks that turn's pump queues.
+
+**Why**: Step 2 runs the tasks queued before the turn, then step 2c pumps the network, and a fetch that ended queues its task for the next turn. A slice that queues the next slice from inside its own task puts it ahead of that response task, so the response waits a whole slice before its task runs, even when it comes from the cache. WebKit and Blink scan all their input at once when the parser pauses (WebKit HTMLDocumentParser::pumpTokenizer; Blink PumpTokenizer -> ScanAndPreload, or BackgroundHTMLScanner on another thread). Their network reads on another thread or process, which a main-thread scan never holds.
+
+**What Happened**: Lane pscan1's speculative parser scanned in 32 KB slices, about 1 ms each, roughly the rate of a full parse. Every perf page blocks on a parser-blocking `harness.js` near its top, and the cost pair (tip 27617047a vs main 84b5286c7, chat.local) read load.news at 1.215 (9.875 vs 8.125 ms) and load.docs at 1.053, both with launches apart. Commit 2c92aa03d made the slices 2 KB and queued each one behind a give-way task, and load.news read 1.000, load.docs 0.997 and load.app 1.000. A variant with 8 KB slices and the same give-way read 1.000 / 1.006 / 1.000. No variant with small slices but no give-way was measured.
+
+**Fix**: `SpeculationStep.give_way` in src/html/scripted_parser.zig: the speculation's first task, and the task after each slice, only queue the next slice, behind whatever the network step queued meanwhile. `Speculation.slice_bytes` is 2 KB, and a unit test pins it at 4 KB or less. The real cure is a network thread (feature queue "NETWORKING THAT PROGRESSES WHILE SCRIPT RUNS"); with one, slices can grow again.
+
+**Takeaway**: **On an agent's thread, work a browser runs in parallel must run in short slices, each queued behind a task that gives way to what the network delivered. Otherwise it holds the very responses it is waiting beside.**

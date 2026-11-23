@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 
 pub const SanitizerElementNamespace = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     name: runtime.DOMString,
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),
 

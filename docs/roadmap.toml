@@ -122,11 +122,11 @@ progress = [
 
   [[infra.items]]
   name = "JSValue arguments borrowed by default; an impl that keeps one clones it (as Blink's ScriptValue)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Decide tracing (TracedReference / cppgc) versus manual disposal"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Event listeners and handlers are traced from their target, not held as strong roots - today a target whose listener closure captures the target can never be collected (Blink traces listeners from the target)"
@@ -178,11 +178,11 @@ progress = [
 
   [[infra.items]]
   name = "Navigation runs as tasks, not synchronously inside the caller"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Session history entries and traversal"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Unload, pagehide and beforeunload in the right order"
@@ -203,6 +203,9 @@ progress = [
   "066da9ed2 - asynchronous XHR on the same scheduler, XHR handlers on EventTarget's map, fetch() abort steps (increment 2); worker fetch() async through the bound operation (9ec30ea8f)",
   "64e40148e - response bodies stream: headers first, a body pipe each clone reads, response.body filled by the network, XHR progress as bytes arrive (increment 3)",
   "a93d2b413 - subresources on the same path: link and style style sheets with their @imports fire load/error and delay the document's load, link preload fetches; 2f89c234e hyperlink auditing pings (networking lane)",
+  "3fb0fa0ab3b - HTTP/2 through nghttp2 built from source: fetch offers h2 by ALPN (CURL_HTTP_VERSION_2TLS), a stream-bodied request goes out on h2 only (networking lane)",
+  "f52f9be092b - libcurl is the zig-whatwg/curl fork (crane/8.18.0): CURLOPT_HTTP_LENIENT reads an HTTP/1 response as the browsers do (a header line with no colon skipped, a non-numeric Content-Length absent), and a CONNECT_ONLY connection stays raw on h2; ea95c6b3682 the WPT runner loads wpt_flags=h2 variants from the h2 server (net3 lane)",
+  "16840694724, 6e40b54ed58, 15e52ba3827, 9a625e97c2c - WebSockets speak the protocol themselves on curl's connection: RFC 6455 handshake checks and framing in kit/curl, RFC 8441 WebSockets over HTTP/2 (extended CONNECT through nghttp2) when ALPN chooses h2 and the server enables it, else a fresh HTTP/1.1 connection - Firefox's model - and permessage-deflate (RFC 7692) as every browser offers it; websockets/ +139 subtests (net3 lane)",
 ]
 
   [[infra.items]]
@@ -215,11 +218,11 @@ progress = [
 
   [[infra.items]]
   name = "XHR and navigation fetch through the same path"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "HTTP/2 over ALPN, with nghttp2 built by build.zig (never a system library: it would break the static aarch64-ios link)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "0.2 (the user, 2026-11-19): HTTP/3 through Alt-Svc: ngtcp2 + nghttp3 built by build.zig, on a QUIC-capable TLS backend (ngtcp2 cannot use mbedTLS - BoringSSL or OpenSSL 3.5+, chosen by measurement); WPT tests it only through webtransport/, so fetch over HTTP/3 needs crane tests; then WebTransport"
@@ -254,7 +257,7 @@ progress = [
 
   [[infra.items]]
   name = "document.domain"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Agent clusters and Origin-Agent-Cluster"
@@ -262,11 +265,11 @@ progress = [
 
   [[infra.items]]
   name = "messageerror for values that cannot cross a cluster"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Cross-origin isolation: COOP browsing context group switches, COEP and CORP enforcement, crossOriginIsolated (COOP reports, per-hop COOP and the SharedArrayBuffer constructor gate remain)"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "engine-adapter"
@@ -341,7 +344,7 @@ progress = [
 
   [[infra.items]]
   name = "Codegen types callback parameters as the protocol's CallbackFunction and CallbackInterface, retiring the transitional takeCallbackFunction and takeCallbackInterface operations"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "\"v8\" removed from the non-adapter modules' imports in build.zig, once the baseline reaches zero"
@@ -362,6 +365,7 @@ progress = [
   "f12aaaa6686 (merge, lane bindtype) - an interface-typed value converts only from a platform object that implements its interface (arguments, overloads, constructors, setters, dictionary members, sequence elements), from codegen tables naming every position's interface",
   "65ba206e671, b7cdedccdc5, 5bc3b68c535 (lane bindtype) - codegen names the interface of every interface-typed value (interface_arguments, constructor_interface_arguments, interface_members); the binding converts one only from a platform object that implements it, and an uncovered position is a compile error",
   "85eddb05459, c5d1d544870, e7d9f135391, 3dcb23289f2, 4e401ddc74b, a42cac17dd2, 9b831681546 (lane binding4) - a dictionary converted to script is flattened, in WebIDL order, with defaulted and present-null members written; a JSValue union member keeps a present null; member_unions.zig (empty table) and enumeration union arms; setlike members defined by the binding over webidl.setlike.SetEntries (CustomStateSet); a failed argument conversion releases its handle; a FormData File entry iterates as its File; a SharedArrayBuffer for a BufferSource is a TypeError; an `object` that is not an Object is a TypeError",
+  "d31785468, 7a0889eec, c7dc47426, 86085bc56, c26bbb84e, 86d52512e (lane bind1 batch A) - callback values typed by the protocol: a callback function or callback interface reaches an impl as runtime.BorrowedCallbackFunction / BorrowedCallbackInterface (borrowed for the call; keepCallbackFunction / keepCallbackInterface make the owned engine types), retiring takeCallbackFunction / takeCallbackInterface, CallbackWrapper, callback_registry.zig and the untagged Global in a fn pointer; a callback interface value is any Object (WebIDL 3.2.16); dictionaries, record entries and overload argument lists are structs that say so (codegen markers), and record<K, V> converts by WebIDL 3.2.23; the file pickers' argument processing (File System Access 3.3-3.5)",
 ]
 
   [[infra.items]]
@@ -386,11 +390,11 @@ progress = [
 
   [[infra.items]]
   name = "WebIDL union types generated"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Callback functions carried by CallbackWrapper, not a tagged pointer"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Getter and setter receivers brand-checked"
@@ -438,11 +442,11 @@ progress = [
 
   [[infra.items]]
   name = "An interface-level way to fire a trusted event"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Window.prototype sound after a snapshot restore (window instanceof EventTarget)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "serialization"
@@ -467,7 +471,7 @@ progress = [
 
   [[infra.items]]
   name = "SharedArrayBuffer where the agent cluster allows it"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Serializable platform objects (Blob, File, DOMException, geometry, ImageData, CryptoKey) through structured serialization"
@@ -475,7 +479,7 @@ progress = [
 
   [[infra.items]]
   name = "Transferable platform objects inside a message (MessagePort in the value), resizable and length-tracking ArrayBuffer transfer"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Transferable streams (ReadableStream, WritableStream, TransformStream) through every postMessage carrier and structuredClone"
@@ -530,7 +534,7 @@ progress = [
 
   [[infra.items]]
   name = "SharedWorker: a shared worker agent whose port is entangled with the creator's (workers/constructors/SharedWorker/ and data-url-shared wait on a reply that an unentangled port now drops, per spec)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "instances"
@@ -568,6 +572,8 @@ progress = [
   "7905e783ef7..aa1d486e942 - service workers batch 6: the service worker timing info reaches navigation timing (fetchStart after activation); a worker's response keeps the client's timing allowed only as its own fetch did, its CORS sizes hidden where it substituted another origin's response, Cache Storage keeping the flag; TAO step 6 fails a redirect-tainted navigation; Upgrade-Insecure-Requests on every navigation; module imports re-fetched with the graph's request on update (sw1-b6 lane)",
   "da81e0faae7..4c15e890977 - the HTTP cache is the Browser's: one in-memory RFC 9111 cache on its network context (BrowserConfig.http_cache, 50 MiB, an eighth per response, LRU), shared by its tabs, frames and workers and by no other Browser, partitioned by network partition key; HTTP-network-or-cache fetch reads, revalidates and stores through it; frames, popups and service worker scripts carry their key; Clear-Site-Data cache clears it (httpcache1 lane)",
   "3e77e681cb6..48dc80fa2a6 - tabs share their Browser's state and keep their own: a tab's session storage shed is the Browser's navigables' and ends with its top-level browsing context's record (Storage 4.3; Firefox's SessionStorageManager on Top()), not with the Browser - one shed per closed tab, and per WPT file, no longer kept; tests: the tabs of one Browser share localStorage and its events, cookies and cookieStore events, BroadcastChannel, one shared worker, Web Locks, blob URLs, a service worker registration and permission changes and keep their own sessionStorage, and two Browsers on two threads share none of the registries (inst2 lane)",
+  "2aeeab6fa..ae4c1bd23 (lane cdph, CDP phase: implemented and compile-checked on Linux; tests written, run in the CDP test pass) - the host API: Browser.createTab (a host-opened tab in a new browsing context group, its realms entered per call - engine WindowRealmOptions.entered_for_life), closeTab (HTML close, beforeunload only when prompting), releaseTab/holdTabsOpenedByPages (life1's hold point), activateTab, listTabs, navigableTree, evaluateInTab (BiDi RemoteValue JSON), navigateNavigable; host_events from the navigation observer, the document-start hook and the user prompt hook (tabs, frames, milestones, dialogs); BrowserHost (a Browser on its own thread: post, call, postSessionMessage, answerUserPrompt); the C ABI include/crane.h; WebDriver sessions on BrowserHost threads with Back/Forward/Refresh, window handles and the user prompt commands; Browser.navigate unloads the page it replaces; simple dialogs and printing through HTML 8.9.1-8.9.2 with one pause primitive (runtime.BrowserPause)",
+  "521a81612..6c8cba891 (lane tab1) - the tab scope: runtime.TabScope, made and closed by the tab's top-level browsing context record and carried by every Window realm of the tab (ContextData.tab_scope, counted, released at the Window's end); under it the session history and traversal queue, the session storage shed (Storage 4.3; Navigables' map by tab id gone), system visibility and system focus, and the frame clock (each tab's own rendering opportunities on its display's interval, animation frame callbacks and animations; the loop lists the clocks); each window's timer ids from 1 (HTML 8.6, all three browsers); system focus per tab - headless every tab (the user's ruling 2026-11-19), a host's BrowserConfig.focus = .active_tab / crane.h focus_mode narrowing it to the tab activateTab names; an unfocused tab answers hasFocus() false, matches no :focus and moves focus silently, its pages hearing each change (Blink, WebKit and Gecko alike); CDP focus emulation; platform requests name the realm's tab (recipes step 7); one tab's end no longer drops another tab's rAF callbacks or pending mutation observers; the C ABI takes profile_dir (CRANE_ERR_PROFILE_IN_USE); PAC / auto-detection moved to 0.2 by the user's ruling (2026-11-23)",
 ]
 
   [[infra.items]]
@@ -584,11 +590,11 @@ progress = [
 
   [[infra.items]]
   name = "Tab state (session history, sessionStorage per top-level traversable, timers, animation frames, visibility and focus) belongs to the tab"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Host API (Zig and C ABI): instance create/destroy with profile options; tab create, list, activate, navigate, evaluate, close; events for tabs script opens and closes"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"
@@ -596,11 +602,11 @@ progress = [
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "zig-017"
@@ -617,6 +623,7 @@ progress = [
   "a17c622af26 (lane zigprep1) - the 0.16-compatible prep: @cImport -> translate-c modules, renames, `**` -> @splat, the iOS lib-full build fixed",
   "0aa6c6c8cfa (merge 4fa2978755a) - validated: a quiet side-by-side A/B against generation 197's 0.16 runner (worklist 1,883,696 -> 1,883,705, blocking 649 = 649, Crane tests 0 lost), timers x3 16/16, published as generation 198; still open for this item: an aarch64-ios LINK (needs a matching ios-arm64 V8 prebuilt or the JavaScriptCore adapter) and retiring 0.16 from the hosts",
   "2c684d65b7c (lanes zig017port + zig017mem) - the port: build.zig under 0.17 (refuses 0.17.0), useBuildableMacosSdk retired, @typeInfo codemod, regenerated WebIDL layers, one 0.17 zig fmt; the runner's debug-info allocator; gates green, snapshot byte-identical",
+  "lane z17f (2026-11-21) - 0.16 RETIRED: build.zig refuses any Zig but 0.17.1+ by name (tools/zig_toolchain.zig; asdf 0.16.0 now gets the refusal as its first build.zig error); the pool shim runs the pin everywhere (it fell back to 0.16 outside a 0.17 tree) and no script names 0.16; asdf 0.16.0 removed from chat2 by the integrator (chat.local after blk7's cost window; server1 never had it); no SDK-workaround trace left. Verified on 0.17 alone (0.16 off PATH, the 0.17-only shim): zig build test (codegen-check, check-configure-cache), wpt-runner and the release console green on macOS (chat2: 135 suites, 15,855 passed, 0 failed) and Linux (server1: 15,860 passed, 0 failed). CI fetches the pin from the toolchain release toolchain-zig-0.17.1-dev.77c319a0f0 (user ruling 2026-11-21: Linux x86_64 + a macOS 14 rebuild), SHA-256 pinned (.github/actions/setup-zig-pinned). The full sweep A/B and timers x3 are 0aa6c6c8cfa's (generation 198). The aarch64-ios LINK moves to the JavaScriptCore adapter: iOS builds are paused until it exists (the user, 2026-11-10), and V8 never runs on iOS",
 ]
 
   [[infra.items]]
@@ -629,7 +636,7 @@ progress = [
 
   [[infra.items]]
   name = "Verify: zig build test, iOS link, full sweep A/B, timers x3; retire 0.16 and the SDK workaround"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "impls-boundary"
@@ -676,7 +683,7 @@ progress = [
 
 [[infra]]
 id = "v8-pgo"
-title = "V8 built with Crane's own PGO profile (0.1 requirement)"
+title = "V8 built with Crane's own PGO profile (0.2 - moved from 0.1 by the user, 2026-11-22)"
 why = """The user, 2026-11-04: training our own profile-guided optimization for V8 "should \
 be part of the requirements for 0.1 release". Lane v8opt1 built V8 13.1.203 the way \
 Chrome's official build does, with ThinLTO and Chrome 131's own mac-arm profile plus V8's \
@@ -729,16 +736,16 @@ progress = [
 
   [[infra.items]]
   name = "Engine half (batches 0, E1-E5): the list of adapters, flags, sources and link inputs, the adapter module, snapshot and tests"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Platform half (batches P1-P4): the adapter list, the kit's C libraries, per-OS links, checks and tests"
-  status = "todo"
+  status = "doing"
 
 [[infra]]
 id = "api-subset-build"
-title = "A smaller build from a list of web APIs (0.1 requirement)"
-why = """The user, 2026-11-12: a dead-code-elimination build flag that takes the list of web \
+title = "A smaller build from a list of web APIs (0.2 - moved from 0.1 by the user, 2026-11-21)"
+why = """Moved to 0.2 by the user on 2026-11-21 ("I want to move the following to 0.2: smaller build from list of web APIs"). The user, 2026-11-12: a dead-code-elimination build flag that takes the list of web \
 APIs a host needs, adds what those depend on, and compiles a smaller engine - "a blocker \
 for 0.1". The release console is 89.8 MB (50.9 MB of code: about 26 MB V8 and ICU, about \
 24 MB Crane's own, by symbol name); only Crane's half can shrink this way."""
@@ -761,6 +768,153 @@ progress = []
 
   [[infra.items]]
   name = "The build option, the reduced snapshot, tests of a reduced build, documentation"
+  status = "todo"
+
+[[infra]]
+id = "cdp"
+title = "Chrome DevTools Protocol, part 1: what the punted framework suites need (0.1 requirement)"
+why = """The user, 2026-11-21: "I want to add the following to 0.1: Chrome Devtools Protocol", then \
+split it: "For 0.1 it would comprise of the spec necessary to run the js framework testes that we \
+have had to punt on" - React 19's Playwright e2e, Vue 3.5's Puppeteer e2e and Vitest browser mode, \
+Svelte 5's runtime-browser samples, htmx 4's web-test-runner + Playwright suite (and Angular's \
+web-test-runner targets where they need it). CDP is a host surface over Crane's own browser \
+algorithms (no invented paths); Chromium's content/browser/devtools is the reference."""
+done_when = """Each punted suite runs against Crane through its own runner (Playwright/Puppeteer \
+over CDP), with its results on the frameworks page. Part 1 covers what those runners send: \
+Target + Browser (connect, flat sessions, create/attach/close), Page (navigate, frame tree, \
+lifecycle events, addScriptToEvaluateOnNewDocument, createIsolatedWorld - engine isolated \
+worlds, Blink's model), Runtime (evaluate, callFunctionOn, remote objects, execution-context and \
+console events, bindings), Input (mouse/key dispatch), Network + Fetch (events and routing), and \
+the DOM/Emulation/Log basics those runners call, answered as a headless browser without a \
+renderer would. Protocol definitions from devtools-protocol (BSD-3), cited."""
+progress = []
+
+  [[infra.items]]
+  name = "Design: transport, sessions, the exact command set the punted suites' runners send, mapping onto Crane's browser algorithms"
+  status = "done"
+
+  [[infra.items]]
+  name = "Isolated worlds in the engine (several JS worlds over one DOM, each with its own globals and wrappers; Blink's DOMWrapperWorld)"
+  status = "done"
+
+  [[infra.items]]
+  name = "Transport + Target/Browser/Page/Runtime, then Input, Network/Fetch, DOM/Emulation/Log basics"
+  status = "done"
+
+  [[infra.items]]
+  name = "The punted suites run against Crane by their own runners; frameworks page updated"
+  status = "done"
+
+[[infra]]
+id = "cdp-live-dom"
+title = "Chrome DevTools Protocol: the live DOM, in full (0.1 requirement)"
+why = """The user, 2026-11-22 10:42 PM ET: "we need the live dom over cdp fully in scope for 0.1". \
+Part 1 sends a snapshot (DOM.getDocument, requestChildNodes -> setChildNodes, describeNode, \
+getOuterHTML, querySelector/All, resolveNode, documentUpdated at a commit); a connected client \
+(Chrome DevTools' Elements panel, Puppeteer/Playwright handles) sees no change the page makes \
+after that. Chromium's InspectorDOMAgent (third_party/blink/renderer/core/inspector/\
+inspector_dom_agent.cc) is the reference; no geometry (the renderer is 0.2)."""
+done_when = """Every DOM-domain event Chrome sends for a mutation is sent, in Chrome's order and \
+shape, to every enabled session: childNodeInserted / childNodeRemoved / childNodeCountUpdated \
+(for parents the client has or has not requested), attributeModified / attributeRemoved, \
+characterDataModified, inlineStyleInvalidated, shadowRootPushed / shadowRootPopped, \
+pseudoElementAdded / pseudoElementRemoved, distributedNodesUpdated, topLayerElementsUpdated, \
+documentUpdated, setChildNodes for pushed paths; and every DOM-domain command that needs no \
+geometry works: getAttributes, setAttributeValue / setAttributesAsText / removeAttribute, \
+setNodeValue, setNodeName, removeNode, setOuterHTML, moveTo / copyTo, undo / redo / \
+markUndoableState, performSearch / getSearchResults / discardSearchResults, requestNode, \
+pushNodeByPathToFrontend, pushNodesByBackendIdsToFrontend, getFlattenedDocument, focus, \
+setFileInputFiles, getNodeStackTraces / setNodeStackTracesEnabled, collectClassNamesFromSubtree, \
+getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner. \
+Proven by a trace against Chrome 157 for the same page script (mutation by mutation, ids and \
+order equal) and by Chrome DevTools' own Elements panel connected to Crane staying live; costs \
+nothing when no session has DOM enabled (cost pair within the bar)."""
+progress = [
+  "decided 2026-11-23 (main's D7, D8) - events Crane does not send, as Chrome: shadowRootPopped (Blink's WillPopShadowRoot probe has no call site in Chromium 145 or 157: a shadow root is never detached); and never sent here: scrollableFlagUpdated (layout geometry, the 0.2 renderer), adRelatedStateUpdated (Chrome's ad tagging, which Crane does not have), affectedByStartingStylesFlagUpdated (a style-recalc flag Crane's lazy style does not keep)",
+  "015adbe4f, 360911cae, 9a8c1bdc3 - lane cdpd1 batch 1: the DOM's probes behind one process-wide gate (Blink's s_existingAgents) to each DOM-enabled session: childNodeInserted / Removed / CountUpdated, attributeModified / Removed, characterDataModified, inlineStyleInvalidated (revalidation task), shadowRootPushed, topLayerElementsUpdated, a child frame's commit re-sending its owner",
+  "47d5f941d - lane cdpd1 batches 2-4: every non-geometry DOM command but setFileInputFiles (requestNode, push*, getFlattenedDocument, performSearch family, getAttributes, focus, node stack traces, collectClassNames, getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner), the edits over DOMEditor / InspectorHistory / DOMPatchSupport with undo / redo / marks, and the lazy events at Chrome's points: distributedNodesUpdated, adoptedStyleSheetsModified, pseudoElementAdded / Removed; 57439825c /json/list devtoolsFrontendUrl as Chrome's",
+  "a3ceab226, 8304fb367 - lane cdpd1 D9: DOM.setFileInputFiles over the platform's files a host names by path (protocol 6.10.3 userFile / userDirectory, file_picker emulated on darwin / linux / testing), webkitdirectory included; bytes read at selection until file-backed Blob sources land (queued from cdpd1, main's ruling: Blink's NotFoundError / NotReadableError at read time)",
+  "b79155f1b - lane cdpd1 batch 5: Crane's DOM events and answers equal Chrome for Testing 157's recorded trace (tests/devtools/fixtures/cdpd1-chrome157-trace.txt), two stated deviations ruled by main: showModal's order (spec + WebKit + Gecko) and close()'s deferred top-layer removal (lane rend1's step 23); Chrome DevTools' bundled Elements panel on a Crane page stays live and applies its edits (cdpd1_frontend_test, screenshots in lane cdpd1's handoff); A/B over 2,013 files 153,212 = 153,212 passing, bug-finding 0 differences, timers x3 0 crashes; cost pair (86aa49935 vs b68a92f96): time and instructions within, one memory-pass row over (events.add-remove-listener 1.037, not explained by the code; leave-one-out says ~0.35 MB comes with the DOM-side changes, the devtools code ~0.1 MB) - ruling pending",
+]
+
+  [[infra.items]]
+  name = "DOM mutation events to enabled sessions, Chrome's order and shape"
+  status = "done"
+
+  [[infra.items]]
+  name = "DOM editing, search and node-push commands (no geometry)"
+  status = "done"
+
+  [[infra.items]]
+  name = "Chrome DevTools frontend connected: Elements panel live (test)"
+  status = "done"
+
+[[infra]]
+id = "blob-file-sources"
+title = "File-backed Blob sources (0.1 requirement)"
+why = """The user, 2026-11-23 3:24 AM ET: "yes keep file blobs". A File chosen from the host (CDP \
+DOM.setFileInputFiles today, a real picker later) must keep its path and read at read time, as the File \
+API's snapshot state and Blink's BlobDataHandle / FileStreamReader do: a missing file fails the read with \
+NotFoundError, one modified since its snapshot with NotReadableError. Crane's Blob holds bytes in memory \
+and every consumer reads them infallibly (found by lane cdpd1)."""
+done_when = """BlobData has a file source (platform token, snapshot size and mtime, range); slices keep \
+ranges; new Blob([file]) references instead of copying; every consumer (Blob methods, FileReader, \
+FileReaderSync, fetch bodies, Request/Response, XHR send, WebSocket send, blob: URLs, FormData/multipart, \
+structured clone, IndexedDB, createImageBitmap) materializes through one fallible step and maps the failure \
+as its spec says; WPT FileAPI/ fetch/ xhr/ websockets/ IndexedDB/ lose nothing; leaks --atExit clean."""
+progress = []
+
+  [[infra.items]]
+  name = "File-backed sources, fallible materialize, every consumer moved"
+  status = "todo"
+
+[[infra]]
+id = "cdp-mcp"
+title = "Chrome DevTools MCP, built into Crane (0.1 requirement)"
+why = """The user, 2026-11-23 10:09 AM ET: "when the CDP feature is compiled into Crane it should also \
+conform to the Chrome DevTools MCP https://developer.chrome.com/blog/chrome-devtools-mcp so that agents \
+can drive crane. This is a 0.1 blocker"; 10:24 AM ET: "we will be installing crane to use on devices such \
+as the iphone and it won't make sense to also package node into this so I think our mcp server needs to be \
+slim and compiable into Crane and not a separate app server". Google's chrome-devtools-mcp \
+(github.com/ChromeDevTools/chrome-devtools-mcp, Apache-2.0) is a Node app driving Chrome through Puppeteer \
+over CDP; Crane's is an MCP server compiled into Crane with the CDP feature, exposing the same tools (names, \
+input schemas, result shapes, copied with citation) and serving each through Crane's own CDP domain handlers \
+in-process - one implementation of every behaviour, the browser's paths only (no invented paths). Its tools \
+need, beyond CDP part 1: the Accessibility domain (take_snapshot's a11y tree with uids: computed roles and \
+accessible names, html-aam / accname), Tracing, HeapProfiler snapshots, Network bodies, Emulation, Log / \
+console with stack traces, Page dialogs, and element input by uid (click / hover / drag / fill), which \
+Chrome's server does at a point from DOM.getContentQuads - geometry Crane does not have until the 0.2 \
+renderer (CDP decision D7: a raw point hits nothing)."""
+done_when = """A Crane built with CDP serves MCP over stdio and over the network transport the design \
+chooses (an agent on another machine reaching Crane on an iPhone), no Node, no separate process; its tool \
+list equals the pinned chrome-devtools-mcp's default categories by name and schema; each tool's result for \
+the same page and calls matches Chrome-via-chrome-devtools-mcp's (a differential suite), except tools that \
+need pixels or layout (take_screenshot, screencast_*, click_at, LCP / paint insights, ...), listed \
+needs-renderer with the CDP call each lacks; the element-input path without geometry is decided by the user \
+from the design's options before it is built; what the tools need from cdp-part-2 moves into 0.1 here."""
+progress = [
+  "decided 2026-11-23 10:24 AM ET (the user) - built into Crane, not Google's Node server: slim, compiled in with CDP, for devices such as the iPhone",
+]
+
+  [[infra.items]]
+  name = "Design: tool-by-tool needs vs Crane's CDP, transports, the geometry-free input question"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Built-in MCP server: every non-pixel tool matches Chrome's server (differential suite)"
+  status = "todo"
+
+[[infra]]
+id = "cdp-part-2"
+title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
+why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
+punted framework suites need."""
+done_when = """DOMSnapshot, the CSS domain, Storage, Emulation beyond the basics, Debugger, \
+Profiler, Tracing and the remaining domains Puppeteer/Playwright/chromedp users rely on."""
+progress = []
+
+  [[infra.items]]
+  name = "Domains beyond part 1"
   status = "todo"
 
 [[parallel]]

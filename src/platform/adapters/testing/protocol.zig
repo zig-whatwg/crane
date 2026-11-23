@@ -21,6 +21,12 @@ const platform = @import("platform");
 const platform_options = @import("platform_options");
 const posix = @import("kit_posix");
 const headless = @import("kit_headless");
+/// The remote debugging transport (protocol 6.12) over kit/posix's
+/// sockets, unless devtools_transport is compiled out (`-Dcdp=false`).
+const devtools_transport_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "devtools_transport")) break false;
+} else true;
+const devtools_transport = if (devtools_transport_built_in) posix else headless;
 const brotli = @import("kit_brotli");
 const inflate = @import("kit_inflate");
 const memory_store = @import("kit_memory_store");
@@ -54,7 +60,15 @@ const fonts = if (for (platform_options.platform_without) |capability| {
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
 const Extra = struct {
+    /// One live Browser per profile directory (kit/browser_state).
+    pub const ProfileLock = posix.ProfileLock;
+    /// The stores of a Browser with a profile directory (kit/browser_state):
+    /// SQLite on every platform with one (the user's ruling, 2026-11-21).
+    pub const persistent_store = @import("kit_sqlite");
+
     clipboard: memory_clipboard.Clipboard,
+    /// The files a host named by path, by token (kit/posix/user_files).
+    user_files: posix.user_files.Table,
     environment: environment_variables.Values,
     /// The Browser's virtual clock, when it asked for one (virtual_clock.zig).
     clock: VirtualClock,
@@ -64,6 +78,7 @@ const Extra = struct {
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
         return .{
             .clipboard = .init(allocator),
+            .user_files = .init(allocator),
             .environment = .init(allocator),
             .clock = .init(&options.platform),
             .random = .init(options.platform.random_seed),
@@ -72,11 +87,30 @@ const Extra = struct {
 
     pub fn deinit(self: *Extra) void {
         self.clipboard.deinit();
+        self.user_files.deinit();
         self.environment.deinit();
     }
 };
 
 const State = browser_state.BrowserState(Extra);
+
+/// 6.10.3 for files a host names by path: the Browser's kit/posix token
+/// table (user_files.zig). A picker's tokens would share it; there is none.
+fn openUserFile(browser: *platform.BrowserPlatform, path: platform.Str, reply: platform.Reply(platform.PickedFile)) void {
+    State.of(browser).extra.user_files.open(path, reply);
+}
+
+fn openUserDirectory(browser: *platform.BrowserPlatform, path: platform.Str, reply: platform.Reply(platform.PickedFiles)) void {
+    State.of(browser).extra.user_files.openDirectory(path, reply);
+}
+
+fn readUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.Bytes)) void {
+    State.of(browser).extra.user_files.read(file, offset, length, reply);
+}
+
+fn releaseUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken) void {
+    State.of(browser).extra.user_files.release(file);
+}
 
 /// openMediaDecoder: kit/media_decoding's, with the Browser's allocator.
 fn openMedia(browser: *platform.BrowserPlatform, mime: platform.Str) platform.Error!*platform.MediaDecoder {
@@ -137,9 +171,18 @@ pub const protocol = struct {
         c.resident_memory = .native;
         // Reserved address space for each Browser's heap (6.11): kit/posix.
         c.address_space = .native;
+        // The remote debugging transport (6.12): kit/posix's loopback
+        // listener and inherited pipes.
+        if (devtools_transport_built_in) c.devtools_transport = .native;
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
+        // kit/posix/user_files per Browser: the files a host names by path
+        // (userFile, userDirectory - a remote end's DOM.setFileInputFiles),
+        // read through their tokens. Deviation: no picker - showFilePicker
+        // answers none chosen (kit/headless), so an input's picker is
+        // dismissed with `cancel`, and only host-chosen files are selected.
+        c.file_picker = .emulated;
         // kit/image_decoding, compiled in: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
         // kit/image_encoding, compiled in: PNG.
@@ -261,19 +304,19 @@ pub const protocol = struct {
     pub const listDirectory = posix.listDirectory;
     pub const volumeSpace = posix.volumeSpace;
     pub const openStore = State.openStore;
-    pub const closeStore = memory_store.closeStore;
+    pub const closeStore = State.closeStore;
     pub const deleteStore = State.deleteStore;
-    pub const beginTransaction = memory_store.beginTransaction;
-    pub const commitTransaction = memory_store.commitTransaction;
-    pub const abortTransaction = memory_store.abortTransaction;
-    pub const storeGet = memory_store.storeGet;
-    pub const storePut = memory_store.storePut;
-    pub const storeDelete = memory_store.storeDelete;
-    pub const storeDeleteRange = memory_store.storeDeleteRange;
-    pub const openCursor = memory_store.openCursor;
-    pub const cursorNext = memory_store.cursorNext;
-    pub const closeCursor = memory_store.closeCursor;
-    pub const storeSize = memory_store.storeSize;
+    pub const beginTransaction = State.beginTransaction;
+    pub const commitTransaction = State.commitTransaction;
+    pub const abortTransaction = State.abortTransaction;
+    pub const storeGet = State.storeGet;
+    pub const storePut = State.storePut;
+    pub const storeDelete = State.storeDelete;
+    pub const storeDeleteRange = State.storeDeleteRange;
+    pub const openCursor = State.openCursor;
+    pub const cursorNext = State.cursorNext;
+    pub const closeCursor = State.closeCursor;
+    pub const storeSize = State.storeSize;
     pub const createEventLoopPort = curl.createEventLoopPort;
     pub const destroyEventLoopPort = curl.destroyEventLoopPort;
     pub const pollEventLoopPort = curl.pollEventLoopPort;
@@ -349,8 +392,10 @@ pub const protocol = struct {
     pub const requestWindowRect = headless.requestWindowRect;
     pub const printConsoleMessage = headless.printConsoleMessage;
     pub const showFilePicker = headless.showFilePicker;
-    pub const readPickedFile = headless.readPickedFile;
-    pub const releasePickedFile = headless.releasePickedFile;
+    pub const readPickedFile = readUserFile;
+    pub const releasePickedFile = releaseUserFile;
+    pub const userFile = openUserFile;
+    pub const userDirectory = openUserDirectory;
     pub const screenInfo = headless.screenInfo;
     pub const isOnline = headless.isOnline;
     pub const userPreferences = headless.userPreferences;
@@ -464,4 +509,16 @@ pub const protocol = struct {
     pub const queryLocalFonts = headless.queryLocalFonts;
     pub const showVirtualKeyboard = headless.showVirtualKeyboard;
     pub const hideVirtualKeyboard = headless.hideVirtualKeyboard;
+    pub const devtoolsListen = devtools_transport.devtoolsListen;
+    pub const devtoolsWakeNew = devtools_transport.devtoolsWakeNew;
+    pub const devtoolsWake = devtools_transport.devtoolsWake;
+    pub const devtoolsWakeClose = devtools_transport.devtoolsWakeClose;
+    pub const devtoolsAccept = devtools_transport.devtoolsAccept;
+    pub const devtoolsRead = devtools_transport.devtoolsRead;
+    pub const devtoolsReadOrWake = devtools_transport.devtoolsReadOrWake;
+    pub const devtoolsWrite = devtools_transport.devtoolsWrite;
+    pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
+    pub const devtoolsClose = devtools_transport.devtoolsClose;
+    pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
+    pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
 };

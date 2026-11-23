@@ -8,6 +8,8 @@ const enums = @import("enums");
 const callbacks = @import("callbacks");
 
 pub const JsonLdOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     base: ?runtime.USVString = null,
     compactArrays: ?bool = null,
     compactToRelative: ?bool = null,

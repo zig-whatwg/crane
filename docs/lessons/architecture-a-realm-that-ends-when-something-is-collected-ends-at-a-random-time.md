@@ -42,3 +42,44 @@ instead of pinned - is tmp/plans/frame-realm-tracing-design.md.
 **Takeaway**: **Tie every script-observable lifetime to a spec step, not to a
 collection.** When a result flips with process history, find what ends at GC
 time and ask which step should have ended it.
+
+**Recurrence (2026-11-22, lane flk4)**: the same shape, one level down. A
+NAVIGATION destroys the old document's child navigables
+(HTMLIFrameElement `destroyChildNavigables`), but it only discarded each
+child's browsing context: it left the child's realm with its `<iframe>`
+element, which stays in the destroyed document and is freed by the collector
+when that document goes. Its teardown (`iframeContextCleanup`) then called
+`destroyWindowRealm`. On a realm the parent's detach had already detached,
+that call is the OWNER'S END: it freed the Window while script still held the
+frame's WindowProxy. html/webappapis/dynamic-markup-insertion/
+opening-the-input-stream/event-listeners.window.js, "Standard event listeners
+are to be removed from Window for an active but not fully active document",
+failed about 1 run in 11 with "TypeError: Illegal invocation": whenever a full
+collection ran between `frame.src = ...` and the outer frame's load event.
+Reproduced on demand by crane/flk4-navigated-frame-window-survives-gc.html
+(TestUtils.gc() x4 after the navigation): 5 of 9 subtests failed every run on
+main 98160b541.
+- Two levels down, the removal path had the same hole: a frame inside a
+  removed frame.
+- A frame inside an initial about:blank whose Window a same-origin
+  navigation kept was never detached at all, and so never collected.
+
+Browsers (tmp/probes/flk4-navwin): Chrome 157 (forced gc()), Firefox 159 and
+Safari 27 all answer through such a proxy after collections: `document` is
+the old document, `closed` is true, and addEventListener and dispatchEvent do
+not throw. document.open's step 10 then erases the Window's listeners in
+Chrome and Safari but not in Firefox. Crane erases them: the spec and two of
+three.
+
+Fix:
+- `engine.detachWindowRealm`, an idempotent "its navigable was destroyed":
+  it detaches an attached frame realm and leaves a detached or ended one
+  alone. `destroyWindowRealm` keeps meaning "end it".
+- The navigation hands each child's realm over as the removal does
+  (dom.navigables.queueRemovedFrameRealmEnd, now shared).
+- A frame element's teardown only detaches.
+
+**Takeaway, refined**: **A realm has one owner for its end: its page, or the
+collector. Every other path that learns its navigable was destroyed - a
+removal, a navigation, an element's teardown - may only detach it, and
+detaching twice must be harmless.**

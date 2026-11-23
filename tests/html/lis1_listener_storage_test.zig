@@ -75,7 +75,7 @@ const Page = struct {
     browser: *browser_mod.Browser,
 
     fn open(counting: *CountingAllocator) !Page {
-        const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(counting.allocator(), .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;

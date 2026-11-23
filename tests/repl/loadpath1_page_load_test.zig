@@ -18,7 +18,7 @@ test "an embedder's load of a URL is a navigation request: mode navigate, destin
     const url = try site.url(testing.allocator, "/metadata.html");
     defer testing.allocator.free(url);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate(url, .window);
 
@@ -62,7 +62,7 @@ test "a page loaded by navigating its traversable opens a same-origin popup that
     const url = try site.url(testing.allocator, "/opener.html");
     defer testing.allocator.free(url);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     // The address bar's navigation of the page the Browser shows (the
     // console's .open), whose commit gives the page a new Window.
@@ -84,7 +84,7 @@ test "a cross-origin frame's popup is of the frame's document's origin, and load
     const url = try site.url(testing.allocator, "/cross-origin-frame-opener.html");
     defer testing.allocator.free(url);
 
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate(url, .window);
 

@@ -22,9 +22,11 @@
 //!                                 WebDriver BiDi session.subscribe for log.entryAdded
 //!   bidi_log_unsubscribe(id)      WebDriver BiDi session.unsubscribe
 //!
-//! Each returns a promise and runs as tasks: the command's steps run from a
-//! timer on the page's event loop, a tick of actions per timer, each tick
-//! waiting its duration before the next, and the promise settles after the
+//! Each returns a promise and runs as tasks: the command's first step is a
+//! task queued on the page's event loop - a command reaches the page from
+//! outside it, after the tasks the page queued before it asked - and its
+//! later steps run from a timer, a tick of actions per timer, each tick
+//! waiting its duration before the next; the promise settles after the
 //! last tick's events were dispatched. The events themselves - and every
 //! default action they have - are the engine's (src/html/user_input.zig,
 //! focus.zig, user_activation.zig): the remote end decides which input a
@@ -648,6 +650,31 @@ const Failure = struct {
 // Commands
 // ============================================================================
 
+/// A command's queued first step. It never owns the command: `endTest` and
+/// the command's own end clear `command` (Command.cancelStart), and the task
+/// frees only itself - when it runs, or when its loop drops it unrun. So a
+/// command freed with its test, or a driver destroyed, leaves nothing the
+/// task could reach.
+const StartTask = struct {
+    allocator: std.mem.Allocator,
+    command: ?*Command,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *StartTask = @ptrCast(@alignCast(context.?));
+        const command = self.command;
+        self.allocator.destroy(self);
+        const owner = command orelse return;
+        owner.start_task = null;
+        Command.fire(owner);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *StartTask = @ptrCast(@alignCast(context.?));
+        if (self.command) |owner| owner.start_task = null;
+        self.allocator.destroy(self);
+    }
+};
+
 const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission, computed_role, computed_label };
 
 const Command = struct {
@@ -678,6 +705,34 @@ const Command = struct {
     permission_descriptor: ?permissions.PermissionDescriptor = null,
     permission_state: permissions.PermissionState = .prompt,
     permission_batch: ?*permissions.ChangeBatch = null,
+    /// The queued task of the command's first step, until it runs.
+    start_task: ?*StartTask = null,
+
+    /// Queue the command's first step as a task on its realm's event loop.
+    /// A WebDriver command reaches the page from outside it: wptrunner's
+    /// testdriver posts it to the harness window, whose WebDriver client
+    /// sends it to the remote end (testdriver-extra.js, the executor's
+    /// message loop), so every task the page queued before it asked has run
+    /// when the command's steps start - a native timer of the same turn ran
+    /// ahead of them (permissions/permissions-garbage-collect.https.html:
+    /// its query task made the status after the override, so the status
+    /// heard no change). With no event loop, a timer as before.
+    fn queueStart(self: *Command) bool {
+        const loop = self.realm.getOptionalEventLoop() orelse return self.arm(0);
+        const task = self.driver.allocator.create(StartTask) catch return false;
+        task.* = .{ .allocator = self.driver.allocator, .command = self };
+        self.start_task = task;
+        loop.queueTask(.{ .callback = StartTask.run, .context = task, .drop = StartTask.drop });
+        return true;
+    }
+
+    /// Forget the queued first step: the task, when it runs or is dropped,
+    /// finds no command and frees itself.
+    fn cancelStart(self: *Command) void {
+        const task = self.start_task orelse return;
+        self.start_task = null;
+        task.command = null;
+    }
 
     /// Arm the command's next step after `delay_ms`.
     fn arm(self: *Command, delay_ms: f64) bool {
@@ -687,8 +742,9 @@ const Command = struct {
         return true;
     }
 
-    /// Cancel the armed step, if any.
+    /// Cancel the armed or queued step, if any.
     fn cancel(self: *Command) void {
+        self.cancelStart();
         const id = self.timer_id orelse return;
         self.timer_id = null;
         if (self.timer) |timer| _ = timer.clearTimeout(id);
@@ -698,6 +754,7 @@ const Command = struct {
     /// not armed (it fired, or `cancel` ran).
     fn free(self: *Command) void {
         const allocator = self.driver.allocator;
+        self.cancelStart();
         self.releasePermissionBatch();
         engine.releasePromiseCapability(&self.capability);
         if (self.pending_element) |element| element.release();
@@ -743,7 +800,8 @@ const Command = struct {
         self.free();
     }
 
-    /// The timer's callback: the command's next step, as a task.
+    /// The timer's callback (and the first step's task): the command's next
+    /// step, as a task.
     fn fire(user_data: ?*anyopaque) void {
         const self: *Command = @ptrCast(@alignCast(user_data orelse return));
         self.timer_id = null;
@@ -917,11 +975,13 @@ const Command = struct {
         const element = knownElement(self.element) orelse return staleElement();
         const document = nodeDocumentOf(element) orelse return staleElement();
         self.key_document = Weak.of(document);
-        // Step 6: a File Upload input takes file paths - none exist here.
+        // Step 6: "Let file be true if element is input element in the file
+        // upload state". With strict file interactability false (the
+        // default), step 7 is skipped for it and step 8 selects the files.
         if (html.form_associated.isInput(element)) {
             var buffer: [16]u8 = undefined;
             if (std.mem.eql(u8, html.form_associated.inputType(element, &buffer), "file")) {
-                return .{ .code = "invalid argument", .message = "no files can be selected" };
+                return self.selectFiles(element);
             }
         }
         // Step 7.6: "If element is not keyboard-interactable": an element
@@ -940,6 +1000,68 @@ const Command = struct {
         const id = allocator.dupe(u8, "__send_keys") catch return outOfMemory();
         self.own_key_source = id;
         return self.dispatchActionsForString(id);
+    }
+
+    /// Element Send Keys step 8, "file is true": the files `text` names - on
+    /// this host, where the runner and the WPT server run, as the server's
+    /// fs_path() substitution gives them - become `element`'s selected files.
+    fn selectFiles(self: *Command, element: *Instance) ?Failure {
+        const allocator = self.driver.allocator;
+        const host = @import("host");
+        // 8.1. "Let files be the result of splitting text on the newline
+        // (\n) character."
+        var paths: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer paths.deinit(allocator);
+        var split = std.mem.splitScalar(u8, self.text, '\n');
+        while (split.next()) |path| paths.append(allocator, path) catch return outOfMemory();
+        // 8.2. "If files is of 0 length, return an error with error code
+        // invalid argument."
+        if (paths.items.len == 0) return .{ .code = "invalid argument", .message = "no file was named" };
+        // 8.3-8.4. Without a multiple attribute, exactly one file.
+        const multiple = interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned("multiple")) catch false;
+        if (!multiple and paths.items.len != 1) return .{ .code = "invalid argument", .message = "the input takes one file" };
+        // 8.5. "Verify that each file given by the user exists": each is read
+        // whole now, before any is selected.
+        const contents = allocator.alloc([]u8, paths.items.len) catch return outOfMemory();
+        var read: usize = 0;
+        defer {
+            for (contents[0..read]) |bytes| allocator.free(bytes);
+            allocator.free(contents);
+        }
+        for (paths.items, contents) |path, *bytes| {
+            if (path.len == 0 or !std.fs.path.isAbsolute(path)) return .{ .code = "invalid argument", .message = "a file path must be absolute" };
+            bytes.* = host.cwd().readFileAlloc(host.io(), path, allocator, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+                error.OutOfMemory => return outOfMemory(),
+                else => return .{ .code = "invalid argument", .message = "a named file does not exist" },
+            };
+            read += 1;
+        }
+        // 8.6. "Complete implementation specific steps equivalent to setting
+        // the selected files on the input element. If multiple is true files
+        // are be appended to element's selected files." Each is a File named
+        // by its path's last component, of the type "" (no platform MIME
+        // mapping is consulted), in the input's realm.
+        const realm = element.ctx;
+        const list = (interfaces.HTMLInputElement.get_files(element) catch return outOfMemory()) orelse
+            return .{ .code = "invalid argument", .message = "the input has no selected files list" };
+        if (!multiple) dom.file_lists.clear(list) catch return .{ .code = "unknown error", .message = "FileList is not installed" };
+        for (paths.items, contents) |path, bytes| {
+            const buffer = engine.createArrayBuffer(realm, bytes) catch return outOfMemory();
+            defer buffer.release();
+            const parts = engine.createSequenceOfValues(realm, &.{buffer.value}) catch return outOfMemory();
+            defer parts.release();
+            const file = interfaces.File.call_constructor(realm, parts.value, std.fs.path.basename(path), .notPassed()) catch return outOfMemory();
+            const generation = runtime.SlabAllocator.generationOf(file);
+            defer file.releaseIfUnwrapped(generation);
+            dom.file_lists.append(list, file) catch return outOfMemory();
+        }
+        // 8.7. "Fire these events in order on element: input, change" - as
+        // the user agent's file selection does (HTML 4.10.5.1.18: input
+        // bubbles and is composed, change bubbles).
+        html.form_associated.fireSimpleEvent(element, "input", .{ .bubbles = true, .composed = true }) catch {};
+        html.form_associated.fireSimpleEvent(element, "change", .{ .bubbles = true }) catch {};
+        // 8.8. "Return success with data null."
+        return null;
     }
 
     /// WebDriver "dispatch actions for a string", as ticks: the typeable
@@ -1082,7 +1204,18 @@ const Command = struct {
                 const pointer = self.actionPointer(action) orelse return outOfMemory();
                 if (action.pointer_type != .mouse) applyProperties(pointer, action.properties);
                 switch (self.moveTarget(action)) {
-                    .target => |target| user_input.pointerMove(pointer, target, driver.globalModifiers()),
+                    .target => |target| {
+                        // Where the move put the pointer, for what compares
+                        // positions (the drag threshold): an offset from the
+                        // element origin's centre, or the viewport's (whose
+                        // hit is the root element here).
+                        const origin: *Instance = switch (action.origin) {
+                            .element => |weak| knownElement(weak) orelse target,
+                            else => target,
+                        };
+                        pointer.position = .{ .origin = Weak.of(origin), .x = action.x, .y = action.y };
+                        user_input.pointerMove(pointer, target, driver.globalModifiers());
+                    },
                     .stay => {},
                     .failure => |failure| return failure,
                 }
@@ -1596,7 +1729,7 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
     };
     if (failure) |f| {
         command.reject(f);
-    } else if (!command.arm(0)) {
+    } else if (!command.queueStart()) {
         command.reject(.{ .code = "unknown error", .message = "the realm has no timers" });
     }
     return promise.take();

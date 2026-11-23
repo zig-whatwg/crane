@@ -21,7 +21,7 @@ const Activity = dom.document_activity.Activity;
 const page_url = "http://bfa.test/page.html";
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// The platform object `source` evaluates to. Script must keep it alive (a

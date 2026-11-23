@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const SensorOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     frequency: ?f64 = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the

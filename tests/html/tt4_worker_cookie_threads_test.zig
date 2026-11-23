@@ -103,7 +103,6 @@ const Shared = struct {
         var proxy_buf: [128]u8 = undefined;
         const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.listener.port()});
         const browser = try Browser.init(allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
         });
@@ -168,7 +167,6 @@ fn rootCredentials() !void {
     var proxy_buf: [128]u8 = undefined;
     const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.listener.port()});
     const browser = try Browser.init(allocator, .{
-        .persist_storage = false,
         .snapshot_path = "",
         .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
     });

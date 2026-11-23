@@ -53,11 +53,16 @@
             .hash = "N-V-__8AAHS_IAg9aWt4o7t4EMnGUP7EhLnbi0wWDkz9vHYe",
             .lazy = true,
         },
-        // libcurl - HTTP client library for Fetch network requests
-        // Static compilation via allyourcodebase package
+        // libcurl - HTTP client library for Fetch network requests. Crane's
+        // fork, zig-whatwg/curl branch crane/8.18.0: curl 8.18.0 with the Zig
+        // packaging of allyourcodebase/curl 5184bb9 (building its own tree),
+        // CURLOPT_HTTP_LENIENT (HTTP/1 responses read as browsers read them)
+        // and a CONNECT_ONLY connection left raw when ALPN says h2 (the
+        // WebSocket transport speaks RFC 8441 itself). Both are drafted for
+        // upstream curl (THIRD_PARTY_NOTICES.md).
         .curl = .{
-            .url = "git+https://github.com/allyourcodebase/curl#5184bb9ff29cb0878be7983734c6852602570ea5",
-            .hash = "curl-8.18.0-mFDAWJ34AADFSd4AEhTLroKwtVlgX9N-T9lU_2qW-VAf",
+            .url = "git+https://github.com/zig-whatwg/curl#8300fa889e5e2177068328fcf14eec240375cbc1",
+            .hash = "curl-8.18.0-mFDAWBgwYAB4EgZYstPNBgx259yfzbzdyxj4Ybex-lkT",
             .lazy = true, // Only fetch when fetch module is used
         },
         // mbedTLS - TLS for libcurl, and WebCrypto's PSA/RSA/NIST-KW. The curl

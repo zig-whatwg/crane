@@ -34,7 +34,7 @@ test "a frame's navigation that replaces one delaying its container's load does 
     defer site.stop();
     const url = try site.url(testing.allocator, "/navc-page.html");
     defer testing.allocator.free(url);
-    const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateInPlace(url);
     var goal: DoneGoal = .{ .browser = browser };

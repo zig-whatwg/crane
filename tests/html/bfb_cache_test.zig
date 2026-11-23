@@ -96,7 +96,6 @@ const Fixture = struct {
         errdefer self.server.stop();
         const proxy = try self.server.proxyUrl(&self.proxy_buf);
         var with_proxy = config;
-        with_proxy.persist_storage = false;
         with_proxy.snapshot_path = "";
         with_proxy.proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } };
         self.browser = try Browser.init(allocator, with_proxy);
@@ -743,7 +742,7 @@ test "locks1: a lock granted to a cached page waits for its restore: its callbac
     const registry = try fixture.browser.scope.of(html.web_locks.Registry);
     var holder: TestHolder = .{};
     var environment: u8 = 0;
-    const client = try registry.register(&environment, &environment, "http://localhost", holder.delivery());
+    const client = try registry.register(&environment, &environment, "http://localhost", null, holder.delivery());
     defer registry.unregister(client);
     const id = try registry.request(client, "bfb-wait", .{});
     const bc = try fixture.openPopupAt("http://localhost", "/wait.html");

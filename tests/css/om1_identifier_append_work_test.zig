@@ -47,7 +47,9 @@ test "appendIdentifier - Unicode replacement and escapes retain prefix and bytes
         .{ .input = "--\x00\x7f", .expected = "--\u{FFFD}\\7f " },
         .{ .input = "--\xff", .expected = "--\u{FFFD}" },
         .{ .input = "--\xc3", .expected = "--\u{FFFD}" },
-        .{ .input = "--\xed\xa0\x80", .expected = "--\u{FFFD}\u{FFFD}\u{FFFD}" },
+        // A lone surrogate in WTF-8, as a DOMString from script keeps it: the
+        // character itself (css/cssom/escape.html "Surrogates"; lane maj6).
+        .{ .input = "--\xed\xa0\x80", .expected = "--\xed\xa0\x80" },
         .{ .input = "--\xe2(\xa1", .expected = "--\u{FFFD}\\(\u{FFFD}" },
     }) |case| {
         const owned = try css.serialize.serializeIdentifier(allocator, case.input);

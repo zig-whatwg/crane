@@ -32,7 +32,7 @@ src/platform/kit/                    Crane's reusable implementations, one modul
                                      any platform - built-in or third-party - may use:
     posix/      clocks, files, entropy, threads over libc
     curl/       the network: libcurl + mbedTLS (moved from src/fetch/network, src/websocket)
-    sqlite/, leveldb/, memory_store/   storage engines
+    sqlite/, memory_store/   storage engines (no LevelDB: the user's ruling 2026-11-21)
     crypto/     WebCrypto primitives: Zig std.crypto + mbedTLS
     headless/   every capability's "unsupported" answer, and the headless defaults
     memory_clipboard/   a per-Browser in-memory clipboard (darwin, linux and testing; D2)
@@ -155,6 +155,7 @@ The types are the ownership rule, as in the engine protocol.
 | `Error` | `error{ OutOfMemory, NotSupported, AccessDenied, NotFound, AlreadyExists, NoSpace, Io, Canceled, Busy }` for operations that can fail. `NotSupported` only from an operation whose capability is `.unsupported`. Network failures are `HttpError` (6.7), storage failures `StoreError` (6.6), crypto failures `CryptoError` (6.8). |
 | `BrowserPlatform` | Opaque per-Browser platform state (section 3). OWNED by the Browser: `createBrowserPlatform` / `destroyBrowserPlatform`. Every per-Browser operation takes it first. |
 | `Requester` | Who asks, BORROWED for the call: `request_id: RequestId`, `tab: TabId`, `frame: FrameId`, `origin` and `top_level_origin` (serialized - the permission key's inputs, Permissions 3.2), `secure_context`, `transient_activation`. No realm or engine value crosses. |
+| `TabId` | `u64`: a top-level traversable (a tab) of a Browser, named by its top-level browsing context's id - the id the host lists (`Browser.traversableIds`) and keeps for the tab's life (the integrator's ruling B, 2026-11-21, lane life1). `0` means every top-level traversable of the Browser: an operation asked about tab 0 answers for all of them, and an event posted for tab 0 applies to each (a platform that tracks no tabs, as the headless ones, posts 0). Operations and events that name a tab: `systemVisibility`, `displayRefreshInterval`, `windowRect`/`requestWindowRect`, `cssEnvironmentVariable`, `visibility_changed`, `window_rect_changed`; the DOM providers that still pass 0 are listed where they do. |
 | `RequestId` | `u64`, unique per Browser; names a pending request for `cancelRequest`. |
 | `Reply(T)` | One asynchronous answer (section 4). OWNED by the platform from the call until it calls exactly one of `deliver` / `drop`. |
 | `EventSink` | Crane's receiver for what the platform reports unasked (section 7); given to `createBrowserPlatform`, BORROWED by the platform until `destroyBrowserPlatform` returns. |
@@ -398,11 +399,20 @@ model (Storage 4.2 storage keys, 4.6 storage bottles) stays above the protocol.
 
 ### 6.6 The storage engine (decision 10)
 
-A transactional, ordered key-value store: the common shape of SQLite, LevelDB and an in-memory map,
-and of what Crane's stores need (IndexedDB, localStorage persistence, Cache API, the permission
-store). kit/sqlite, kit/leveldb and kit/memory_store implement it; darwin, linux and testing use them
-(today's choice: SQLite on iOS, LevelDB on desktop, memory with no profile directory), and a platform
-may supply its own.
+A transactional, ordered key-value store: the common shape of SQLite and an in-memory map, and of
+what Crane's stores need (IndexedDB, localStorage persistence, Cache API, the permission store).
+kit/sqlite and kit/memory_store implement it: SQLite on every platform with a profile directory (user
+ruling 2026-11-21: Firefox and Safari keep their profile state in SQLite, Chrome its cookies), and
+kit/memory_store for a Browser with none; darwin (macOS and iOS), linux and testing use both
+(kit/browser_state dispatches by the `StorageEngine` each handle points at), and a platform may
+supply its own. kit/sqlite (src/platform/kit/sqlite/root.zig, lane life1) keeps one database file
+per store under `<profile>/stores/`, a `kv(key BLOB PRIMARY KEY, value BLOB) WITHOUT ROWID` table
+whose BINARY collation is this section's byte order, WAL with synchronous=FULL (durable on return),
+a connection per transaction (WAL snapshot reads), and one writer per store (a second is
+`Conflict`). Its system library is declared by each adapter's `platform_build.zig` (section 10).
+Crane calls the write operations of a persistent store from one thread per Browser, its storage
+sequence (src/storage/sequence.zig, lane prof2): a commit's fsync never runs on an agent's thread.
+Reads stay on the caller's thread, each on its own snapshot.
 
 **Web-visible behaviour is above the protocol.** Keys are byte strings compared lexicographically
 (unsigned bytes) - the one order every implementation must give, so an IndexedDB key range or cursor
@@ -633,7 +643,13 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 |---|---|---|
 | `showFilePicker` | `(browser, requester, options: *const FilePickerOptions{ mode: open/open_multiple/save/directory, accept, capture, suggested_name }, reply: Reply(PickedFiles))` | HTML 4.10.5.1.17 File Upload state and "show the picker, if applicable"; showPicker(); File System Access's pickers. Unsupported: none chosen - `cancel` (input), AbortError (File System Access). |
 | `readPickedFile` | `(browser, file: FileToken, offset: u64, length: u32, reply: Reply(Bytes))` | Reading a picked File's bytes (FileReader, Blob.stream) - files stay where the OS keeps them (a document provider on iOS). |
-| `releasePickedFile` | `(browser, file: FileToken) void` | |
+| `releasePickedFile` | `(browser, file: FileToken) void` | A token never released is let go at the Browser's end. |
+| `userFile` | `(browser, path: Str, reply: Reply(PickedFile))` | A file the HOST chose by its path, with no picker: a remote end's DOM.setFileInputFiles (Blink's FileInputType::SetFilesFromPaths), an automation's "set input files". The same PickedFile a picker answers, its token read by `readPickedFile`. Dropped when the path names no regular file. kit/posix/user_files keeps the path and the size and modification time it had; a read of a file gone or changed since drops. |
+| `userDirectory` | `(browser, path: Str, reply: Reply(PickedFiles))` | The regular files under a directory the host chose (an input with webkitdirectory: Blink's SetFilesFromDirectory), each with its token and `relative_path` - the directory's name, then the path under it, '/'-separated (File's webkitRelativePath). kit/posix sorts them by relative path; Chrome lists them in file-system order. |
+
+darwin, linux and the testing platform declare file_picker `.emulated` (kit/posix/user_files, a token table per
+Browser): `userFile` and `userDirectory` answer, `showFilePicker` answers none chosen (no picker UI - an input's
+picker is dismissed with `cancel`). kit/headless, and so a platform built without it, is `.unsupported`.
 
 #### 6.10.4 Screen and system state (required; defaults allowed)
 
@@ -793,11 +809,11 @@ pub const EventSink = extern struct {
 
 | Event | Crane's steps |
 |---|---|
-| `screen_changed(ScreenInfo)` | ScreenOrientation `change`, resize-dependent steps |
+| `screen_changed(tab, ScreenInfo)` | DELIVERED (lane cdph, 2026-11-21): the tab's reported screen - every top-level traversable's for tab 0 - which screen.\*, devicePixelRatio and the device-width/device-height/resolution media features read (src/html/screen_info.zig; a host's emulated device, CDP Emulation.setDeviceMetricsOverride, wins while set; before any report, `screenInfo` answers). A change asks for a rendering opportunity (the media queries) and runs the screen orientation change steps: screen.orientation's `change` (src/html/screen_orientation.zig) |
 | `online_changed(bool)` | `online` / `offline` at every Window and WorkerGlobalScope (HTML 8.10.1.3) |
 | `languages_changed` | `languagechange` (HTML 8.10.1.2) |
 | `preferences_changed(UserPreferences)` | media query re-evaluation |
-| `visibility_changed(tab, Visibility)` | the document visibility steps |
+| `visibility_changed(tab, Visibility)` | DELIVERED (lane life1). HTML 6.2: the tab's traversable's system visibility state becomes the new one (src/browser/platform_events.zig `systemVisibilityChanged`; tab 0: every top-level traversable), and, when that is a change, each inclusive descendant navigable's active document gets "update the visibility state" from a task on its loop (visibilitychange; a hidden document has no rendering opportunity, a shown one asks for a frame). A document a navigable makes afterwards starts with the traversable's state ("set the initial visibility state", no event). A new traversable's initial state is `systemVisibility(browser, its TabId)` |
 | `memory_pressure(level)` | DELIVERED. `critical`: a task on the window's event loop - `engine.notifyMemoryPressure(.critical)` (a full collection) and then one release of the allocator's free memory at `.pressure` through the loop's gate (src/browser/memory_release.zig) - and a task on every running worker's loop, the same collection in the worker's agent on its own thread. `warning` and `normal`: nothing (WebKit and Firefox collect no script memory at a warning; Chromium alone sends V8 a moderate notice). The evidence is in src/browser/platform_events.zig |
 | `permission_changed(descriptor, origin, top_level_origin, state)` | an OS-governed decision changed (the user changed it in Settings), or a store entry was set; PermissionStatus `change` (Permissions 5.4) |
 | `media_devices_changed` | `devicechange` |
@@ -807,7 +823,7 @@ pub const EventSink = extern struct {
 | `position(watch, PositionResult)`, `sensor_reading(sensor, reading)`, `orientation(reading)` | the APIs' events |
 | `device_event(handle, DeviceEvent)` | HID `inputreport`, GATT `characteristicvaluechanged`, NFC `reading`, MIDI `midimessage`, disconnects |
 | `gamepad_connected(index, bool)`, `battery_changed`, `idle_changed`, `pressure_changed`, `connection_changed`, `key_session_message`, `speech_event`, `virtual_keyboard_geometry` | the APIs' events |
-| `window_rect_changed(tab, Rect)` | resize steps |
+| `window_rect_changed(tab, Rect)` | DELIVERED (lane life1; the integrator's ruling C, 2026-11-21: no viewport operation of its own). The rect's size, in CSS pixels, is the tab's top-level viewport - a headless window has no chrome (src/browser/viewport.zig; tab 0: every top-level traversable): innerWidth/innerHeight and the media queries read it, and a change asks for a rendering opportunity, where the resize steps fire `resize` (update the rendering step 8) and the media queries report their changes (step 10). A host's override (`viewport.setOverride`, CDP Emulation.setDeviceMetricsOverride) wins while set |
 
 ## 8. The permission model
 
@@ -924,6 +940,13 @@ environment itself: WPT runs build against it and keep the host's environment, a
 
 ## 10. Link plans
 
+**The build declaration (lane life1, 2026-11-21).** What a built-in platform builds in beyond the fixed
+kit - an extra kit part and the system libraries it links - is declared by its adapter in
+`src/platform/adapters/<platform>/platform_build.zig` (`kitParts(target)`), read through
+`src/platform/platform_build_protocol.zig` as the engine's adapters are read through
+src/runtime/engine_build_protocol.zig: build.zig names no library for it. The first part is kit/sqlite,
+`sqlite3` from the system on darwin (macOS and iOS SDKs) and linux.
+
 **The principle (the user, 2026-10-09): ship the smallest library.** For each capability - and, where it
 matters, each algorithm or feature - a platform dynamically links the system library when the platform
 ships one that does what Crane needs (complete and conformant for that use) and can be trusted.
@@ -954,7 +977,7 @@ not verified is marked UNVERIFIED.
 | HTTP/2 framing | nghttp2 (inside macOS's libcurl only; no libnghttp2 in either SDK) | - | no public library | static nghttp2 (build.zig `enable_http2`) | static |
 | zlib (Content-Encoding gzip/deflate, Compression Streams) | libz.tbd, zlib 1.2.12 (zlib.h in both SDKs) | both | yes - stable API; Apple's security backports to 1.2.12 UNVERIFIED | static zlib (today's) | dynamic |
 | Brotli (Content-Encoding br and Compression Streams) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | future alternative after validating the streaming and allocator contract (6.7.1) | pinned Google Brotli v1.2.0 | static |
-| storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite (amalgamation); kit/leveldb (no system LevelDB on darwin - today's macOS link is Homebrew's) | dynamic |
+| storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite over the system library; no LevelDB (the user's ruling 2026-11-21; the Homebrew LevelDB link went with build.zig's configureStorageBackends, lane prof1 D6 step 6) | dynamic |
 | SHA-1/256/384/512 | CommonCrypto `CC_SHA*` (CommonDigest.h) | both | yes | kit/crypto | dynamic |
 | HMAC | CommonCrypto `CCHmac` (SHA-1, -224, -256, -384, -512) | both | yes | kit/crypto | dynamic |
 | PBKDF2 | CommonCrypto `CCKeyDerivationPBKDF` (SHA-1 to SHA-512 PRFs) | both | yes | kit/crypto | dynamic |
@@ -1007,7 +1030,7 @@ RHEL and Arch are UNVERIFIED.
 | HTTP client | libcurl4 7.88.1 (bookworm), libcurl4t64 8.14.1 (trixie); 7.81.0 (22.04), 8.5.0 (24.04), 8.18.0 (26.04) | all | no by default - WebSockets became official only in curl 8.11.0 (curl's 8.11.0 changelog), so bookworm, 22.04 and 24.04 lack it; whether trixie's and 26.04's builds enable WebSockets is UNVERIFIED. A build-time choice on distros that have it | kit/curl | static |
 | HTTP/2 framing | libnghttp2-14 1.52.0 (bookworm), 1.64.0 (trixie) | Debian (Ubuntu UNVERIFIED) | yes | static nghttp2 | dynamic |
 | zlib | zlib1g 1.2.13 (bookworm), 1.3.1 (trixie) | all | yes | static zlib | dynamic |
-| storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; kit/leveldb (libleveldb1d 1.23 exists in Debian but is not installed by default) | dynamic SQLite (replacing today's desktop LevelDB default) |
+| storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; no LevelDB (the user's ruling 2026-11-21) | dynamic SQLite |
 | WebCrypto primitives | OpenSSL 3 libcrypto (above) | Debian, Ubuntu | yes - covers every algorithm, OAEP labels, any PSS salt, any RSA exponent, HKDF, AES-KW; AES-CTR's counter-wrap rule is chosen per call as on darwin | kit/crypto | dynamic once the vectors pass |
 | Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
 | clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | static: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09); a run-time load with a display is the adapter's later choice |

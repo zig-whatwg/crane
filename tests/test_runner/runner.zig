@@ -60,9 +60,23 @@ pub const poisoning = @import("poisoning.zig");
 /// Whether this process poisons what its tests free (`poisoning.enabled`).
 pub var poison_frees: bool = poisoning.by_default;
 
+/// No thread-local signal stack, as every production root (tools/repl.zig,
+/// src/webdriver/main.zig, tests/wpt_runner/main.zig, src/lib_exports.zig,
+/// tools/gc_bench.zig): Zig std's default (`signal_stack_size`, 1 << 18) is
+/// a 256 KB thread-local array, so a test executable carried a ~257 KB
+/// static TLS block where production's is under 1 KB
+/// (tools/thread_local_size_budget.txt). On Linux glibc puts a thread's
+/// static TLS inside its stack, so a thread made with a small stack fails to
+/// start: V8's CPU profiler makes its ProfilerEventsProcessor thread with a
+/// 64 KB stack, and console.profile with the Profiler domain on was a fatal
+/// "Check failed: processor_->StartSynchronously()" in every test executable
+/// on Linux, never in production (lane tpf, server1, 2026-11-22). Test
+/// executables share production's thread-local layout: build.zig holds them
+/// to the same budget.
 pub const std_options: std.Options = .{
     .logFn = log,
     .log_level = compiled_log_level,
+    .signal_stack_size = null,
 };
 
 /// -Dtest-log-level (build.zig, useCraneTestRunner), or null. Public for
@@ -169,6 +183,7 @@ var engine_start_done = false;
 fn startEngineOnce(environ: std.process.Environ) void {
     if (engine_start_done) return;
     engine_start_done = true;
+    loadModuleListOnce();
     const engine = suite.engine orelse return;
     if (!engineEarly(environ)) return;
     // "Before any thread exists" is checked, not assumed: the process has
@@ -184,6 +199,41 @@ fn startEngineOnce(environ: std.process.Environ) void {
         }
     }
     engine.initializeBeforeThreadCreation();
+}
+
+/// The process's module list, as std.debug keeps it for unwinding and
+/// symbolizing (`std.debug.SelfInfo`), loaded once while the process still
+/// has only the threads it had when main began - before the engine's process
+/// start, V8's workers and any test's thread.
+///
+/// Zig loads that list the first time a stack is captured (on x86-64 Linux
+/// every capture unwinds through DWARF: `SelfInfo.unwindFrame` ->
+/// `findModule`), through `dl_iterate_phdr`, and its callback is
+/// instrumented Zig under -Dsanitize-thread: it appends to a list, and the
+/// append's memcpy enters the sanitizer, which wants a mutex of its own.
+/// glibc runs that callback holding its loader lock. A V8 worker thread that
+/// "races" as the workers start (V8's absl::Mutex is invisible to the
+/// sanitizer) builds a report - suppressed, but symbolized first - holding
+/// the sanitizer's locks, and its symbolizer refreshes the module list
+/// through `dl_iterate_phdr` too: two threads, the two locks in opposite
+/// orders, and the test process sleeps until the launcher's timeout. About
+/// 1 engine test process in 900 hung that way under the sanitizer (lane
+/// build3, 2026-11-13: docs/lessons/testing-a-suppressed-sanitizer-report-
+/// still-symbolizes-and-can-deadlock-on-the-loader-lock.md; lane flk4,
+/// 2026-11-22: tests-v8's "a navigation that leaves much behind ..." timed
+/// out at 1,200 s once and passed alone twice).
+///
+/// Loaded here, the list is never loaded by a test's capture beside a
+/// worker's report: `findModule` rebuilds it only for an address outside
+/// every module it knows (code a library loaded later), which a test thread's
+/// frames - Zig's and libc's - are not. The list is std.debug's own (its
+/// debug-info allocator, an arena of the page allocator), not a test
+/// allocator's, so no state check sees it. Done in every build: it costs one
+/// walk of the loaded modules per test process, and keeps one process start.
+fn loadModuleListOnce() void {
+    if (std.debug.SelfInfo == void) return;
+    const self_info = std.debug.getSelfDebugInfo() catch return;
+    _ = self_info.getModuleName(std.Options.debug_io, @returnAddress()) catch {};
 }
 
 /// How many threads this process has when `main` begins (`threadCount`).

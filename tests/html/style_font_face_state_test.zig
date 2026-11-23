@@ -21,7 +21,7 @@ fn fresh(comptime exercise: fn () anyerror!void) !void {
 }
 
 fn descriptors() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -56,7 +56,7 @@ test "FontFace validates descriptors without fetching and keeps one pending prom
 }
 
 fn invalidStyleInitial() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -87,7 +87,7 @@ test "FontFace invalid constructor style retains its initial read-back and rejec
 }
 
 fn invalidSource() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -108,7 +108,7 @@ test "FontFace invalid source rejects the same promise without a fetch" {
 }
 
 fn workerExclusion() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -131,7 +131,7 @@ test "worker FontFace never registers in the window-thread table" {
 }
 
 fn explicitFontCancellation() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -158,7 +158,7 @@ test "font realm discard releases pending capability and activity without changi
 const SharingCase = enum { same_source, different_metadata, cancel_one, document_abort, realm_discard, document_abort_cache_first, realm_discard_cache_first, request_metadata };
 
 fn sharedFontRequests(comptime scenario: SharingCase) !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -330,7 +330,7 @@ test "font requests set the CSS Values CORS credentials and URL credentials flag
 }
 
 fn invalidSourceLazyRejection() !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;

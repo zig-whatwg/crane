@@ -54,6 +54,14 @@ pub const PaymentRequestEvent = struct {
             .{ "shippingOptions", "get_shippingOptions", null },
         };
 
+        /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
+        /// the binding gives each isolated world a frozen array of its own.
+        pub const frozen_array_attributes = .{
+            "methodData",
+            "modifiers",
+            "shippingOptions",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "openWindow", "call_openWindow", 1 },

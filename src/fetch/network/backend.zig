@@ -158,6 +158,14 @@ pub const NetworkResponse = struct {
     /// Time to first byte, in milliseconds after the transfer started, with
     /// its fraction (curl measures to the microsecond).
     time_to_first_byte_ms: f64,
+    /// When the status line of the first 1xx interim response (100 Continue,
+    /// 103 Early Hints) arrived, in microseconds after the transfer started;
+    /// 0 when none came. `time_to_first_byte_ms` is then the final response's
+    /// status line. A u32 of microseconds (71 minutes at most) fits the
+    /// struct's padding: the response is no bigger for it, and a fetch-heavy
+    /// page's memory does not move (lane maj4's cost window: a ?f64 here and
+    /// 40 bytes more per curl transfer cost the fetch page ~1 MB).
+    first_interim_response_us: u32 = 0,
     /// Number of redirects followed
     redirect_count: u32,
     /// Remote IP address
@@ -252,6 +260,21 @@ pub const NetworkError = error{
     HostUnreachable,
     /// Connection reset by peer
     ConnectionReset,
+    /// The connection closed with no response at all (libcurl's
+    /// CURLE_GOT_NOTHING; Chromium's ERR_EMPTY_RESPONSE). Retried, and
+    /// failed over, exactly as ConnectionReset, which it was before.
+    EmptyResponse,
+    /// The connection closed before the body its Content-Length announced
+    /// was in (libcurl's CURLE_PARTIAL_FILE; Chromium's
+    /// ERR_CONTENT_LENGTH_MISMATCH).
+    ContentLengthMismatch,
+    /// A chunked body ended before its last chunk (CURLE_PARTIAL_FILE on a
+    /// chunked response; Chromium's ERR_INCOMPLETE_CHUNKED_ENCODING).
+    IncompleteChunkedEncoding,
+    /// A chunked body whose framing does not parse (libcurl's chunk parser
+    /// fails it with CURLE_RECV_ERROR; Chromium's
+    /// ERR_INVALID_CHUNKED_ENCODING).
+    InvalidChunkedEncoding,
     /// Protocol error
     ProtocolError,
     /// Out of memory

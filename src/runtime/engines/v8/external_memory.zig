@@ -26,8 +26,11 @@
 //! brings the agent's DOM-algorithm depth to zero (dom_algorithm.zig, where
 //! a collection the report starts meets no DOM frame below), and each
 //! microtask checkpoint outside a DOM algorithm - after every task, Blink's
-//! point. A report is made only once the figure moved `report_step` (128 KB,
-//! V8's own step), which the host flags where the figure moves
+//! point - and, since lane mem1, a binding's return into the script of the
+//! innermost callback invocation, with no drain after it
+//! (`reportInCallbackStep`). A report is made only once the figure moved
+//! `report_step` (128 KB, V8's own step), which the host flags where the
+//! figure moves
 //! (ExternalMemory.due) and owes on the agent's queue
 //! (DeferredTeardown.Owed.report): the binding exit pays nothing for it -
 //! its one check of what the queue owes, the same compare as before, covers
@@ -56,7 +59,7 @@ pub fn install(isolate: *ffi.Isolate, memory: ?*ExternalMemory, queue: ?*runtime
     storage.external_reported = 0;
     storage.external_isolate = isolate;
     storage.external_accounter = accounter;
-    if (queue) |q| q.report_steps = .{ .run = reportStep, .data = storage };
+    if (queue) |q| q.report_steps = .{ .run = reportStep, .run_in_callback = reportInCallbackStep, .data = storage };
     given.claim(queue);
 }
 
@@ -64,6 +67,44 @@ pub fn install(isolate: *ffi.Isolate, memory: ?*ExternalMemory, queue: ?*runtime
 fn reportStep(data: ?*anyopaque) void {
     const storage: *Storage = @ptrCast(@alignCast(data orelse return));
     reportIfMoved(storage);
+}
+
+/// The queue's report steps INSIDE A CALLBACK (lane mem1): a binding
+/// returned into the script of the innermost callback invocation and a
+/// report is owed. Most of a page's script runs inside callbacks, whose
+/// bindings never return at depth zero, so a DOM-heavy callback that
+/// allocates little on V8's heap told V8 nothing until it returned, and
+/// nothing collected the wrappers it dropped. Blink's unified heap tells V8
+/// at each allocation, at any depth (15.7.112.43 src/heap/cppgc-js/
+/// cpp-heap.cc:1055-1107: every 128 KB, StartIncrementalMarkingIfAllocation
+/// LimitIsReached and, while marking, finalize on a large overshoot or
+/// advance). Here: at the binding's return, within one binding call of the
+/// growth - never where the figure moves, inside a DOM algorithm, where a
+/// collection's walk could read a tree in the middle of its mutation.
+///
+/// The collection the report may start or finish is the one any allocation
+/// inside the callback can already start: what it runs of Crane's is
+/// bookkeeping (v8_wrapper.cpp `v8_ExternalMemoryAccounter_UpdateNoDrain`).
+/// Unlike the depth-zero report, NOTHING is drained after it: what its
+/// collection queued runs by the fresh rule at the next binding return.
+/// False - still owed, for the next return - beneath a running finalizer
+/// or with the returning binding's exception pending.
+fn reportInCallbackStep(data: ?*anyopaque) bool {
+    const storage: *Storage = @ptrCast(@alignCast(data orelse return true));
+    const memory = storage.external_memory orelse return true;
+    if (!memory.due) return true;
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(storage.external_isolate orelse return true));
+    const accounter: *ffi.ExternalMemoryAccounter = @ptrCast(storage.external_accounter orelse return true);
+    if (!ffi.v8_Isolate_InCallbackReportOpen(isolate)) return false;
+    // As `report`: the figure is recorded told before V8 is, because a
+    // collection the report runs ends its marking with this figure
+    // (`endOfMarking`).
+    const live = memory.live;
+    const change = @as(i64, @intCast(live)) - @as(i64, @intCast(storage.external_reported));
+    storage.external_reported = live;
+    memory.markReported(live);
+    ffi.v8_ExternalMemoryAccounter_UpdateNoDrain(accounter, isolate, change);
+    return true;
 }
 
 /// The agent's end, its isolate entered: V8's count goes back to what it was

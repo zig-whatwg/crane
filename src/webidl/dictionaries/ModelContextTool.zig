@@ -7,6 +7,8 @@ const ToolAnnotations = @import("ToolAnnotations.zig").ToolAnnotations;
 const callbacks = @import("callbacks");
 
 pub const ModelContextTool = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     name: runtime.DOMString,
     title: ?runtime.USVString = null,
     description: runtime.DOMString,

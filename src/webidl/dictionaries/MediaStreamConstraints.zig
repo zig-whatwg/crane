@@ -7,6 +7,8 @@ const enums = @import("enums");
 const MediaTrackConstraints = @import("MediaTrackConstraints.zig").MediaTrackConstraints;
 
 pub const MediaStreamConstraints = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     video: ?runtime.JSValue = null,
     audio: ?runtime.JSValue = null,
     semantics: ?enums.GetUserMediaSemantics = null,

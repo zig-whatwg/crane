@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const ImageDecoderInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: runtime.DOMString,
     data: typedefs.ImageBufferSource,
     colorSpaceConversion: ?enums.ColorSpaceConversion = null,

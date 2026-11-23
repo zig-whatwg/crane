@@ -33,15 +33,22 @@
 //!     Never for a frame's realm, a page that closed, a tab or a Browser
 //!     that ended - nothing is reused there - and never for a page the
 //!     back/forward cache keeps, whose realm does not end.
-//!   - IF: V8's heap then holds at least the threshold - Crane's "the page
-//!     being left used much memory". What is measured is V8's own figure,
-//!     v8::HeapStatistics used_heap_size + external_memory: the size of the
-//!     objects in its heap, live or not yet collected, plus its ArrayBuffer
-//!     backing stores. (Not the external memory Crane reports for the DOM,
-//!     which V8 counts toward its own limit and HeapStatistics does not
-//!     show: the threshold was measured without it. A page heavy in DOM and
-//!     light in script reaches the threshold late; V8's own limit, 64 MB of
-//!     heap plus that reported memory, is the backstop for those.)
+//!   - IF: V8's heap and the DOM then hold at least the threshold - Crane's
+//!     "the page being left used much memory". What is measured is what V8
+//!     counts toward its own limit: v8::HeapStatistics used_heap_size +
+//!     external_memory - the size of the objects in its heap, live or not
+//!     yet collected, plus its ArrayBuffer backing stores - and the DOM
+//!     memory the agent reports (external_memory.zig, what V8 was last told
+//!     of it), which HeapStatistics does not show. Blink's figure is the
+//!     renderer's whole footprint (OomInterventionImpl::Check reads the
+//!     process's private footprint, oom_intervention_impl.cc), its DOM on
+//!     V8's C++ heap. The DOM was left out until lane tmpl1 (2026-11-20):
+//!     a page heavy in DOM and light in script reached the threshold late,
+//!     and realms that hold less heap - lane tmpl1's, interface objects
+//!     built on first use - could leave uncollected a page that the same
+//!     page with a bigger heap had collected (the cost window of 2026-11-20
+//!     read load.docs, load.app and memory.page-growth 10 to 32% higher at
+//!     the chain's end). The table below was measured without it.
 //!   - WHAT: one critical memory-pressure notice (protocol_agents.zig
 //!     `notifyMemoryPressure`): V8 collects everything, the finalizers of
 //!     what it found dead run, the trees they queued are torn down.

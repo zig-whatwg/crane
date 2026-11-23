@@ -41,7 +41,7 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
 }
 
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
 }
 
 /// Show a fresh page (no network: its markup is given) - a new Context, so

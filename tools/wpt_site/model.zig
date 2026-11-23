@@ -303,6 +303,11 @@ pub const ExemptionKind = enum {
     /// on has no decoder for its media (the user, 2026-11-18 2:53 PM ET); the
     /// entry comes off when a video-capable platform runs WPT.
     needs_decoder,
+    /// The file tests a feature only ONE browser ships, and its remaining
+    /// failures hinge on a mechanism where Crane does what the other two
+    /// browsers and the spec do (the user, 2026-11-21 5:58 AM ET, choice (a)).
+    /// The entry comes off when a second browser ships the feature.
+    single_shipper,
 
     /// The word the file spells the kind with.
     pub fn word(k: ExemptionKind) []const u8 {
@@ -312,6 +317,7 @@ pub const ExemptionKind = enum {
             .needs_renderer => "needs-renderer",
             .follows_majority => "follows-majority",
             .needs_decoder => "needs-decoder",
+            .single_shipper => "single-shipper",
         };
     }
 
@@ -329,8 +335,9 @@ pub const ExemptionKind = enum {
 /// the spec it tests (`intentional`), because it fails identically in all
 /// three through a test bug filed upstream (`test_bug`), because it fails
 /// only for want of a renderer to answer geometry (`needs_renderer`) or of a
-/// decoder for its media (`needs_decoder`), or because Crane's result is the
-/// browser majority's (`follows_majority`). Every key of the entry's kind is
+/// decoder for its media (`needs_decoder`), because Crane's result is the
+/// browser majority's (`follows_majority`), or because it tests a feature only
+/// one browser ships (`single_shipper`). Every key of the entry's kind is
 /// required but a follows-majority entry's ruling; slices point into the text.
 pub const Exemption = struct {
     path: []const u8,
@@ -339,9 +346,10 @@ pub const Exemption = struct {
     /// failing assertion needs a layout box or a decoder, or what Crane does
     /// and which browsers do the same.
     why: []const u8,
-    /// `intentional` only: the spec text (and change) the browsers decline.
+    /// `intentional`: the spec text (and change) the browsers decline;
+    /// `single_shipper`: the spec text of the mechanism Crane follows.
     spec: []const u8 = "",
-    /// `intentional`, `test_bug` and `follows_majority`, per `Browser`:
+    /// `intentional`, `test_bug`, `follows_majority` and `single_shipper`, per `Browser`:
     /// "wpt.fyi run <id>: <passes>/<total>".
     result: [3][]const u8 = .{ "", "", "" },
     /// `intentional` only, per `Browser`: the standards position, WontFix
@@ -350,7 +358,8 @@ pub const Exemption = struct {
     /// `test_bug` only: the web-platform-tests issue or pull request.
     upstream: []const u8 = "",
     /// `test_bug`: "when <upstream> is resolved"; `follows_majority`: "when
-    /// ...", what ends the exemption.
+    /// ...", what ends the exemption; `single_shipper`: "when <a second
+    /// browser> ships <the feature>".
     revisit: []const u8 = "",
     /// `needs_renderer` and `needs_decoder`: the failing assertion, as the run
     /// reports it.
@@ -363,7 +372,71 @@ pub const Exemption = struct {
     ruling: []const u8 = "",
     /// `needs_decoder` only: the media file(s) the test needs and their type.
     media: []const u8 = "",
+    /// `follows_majority` only, optional: the subtests that fail in Crane
+    /// only for want of a renderer, as written - "<name> :: <why>", several
+    /// separated by " || " (`rendererSubtests`). With a renderer they would
+    /// have the matched browsers' results.
+    renderer_subtests: []const u8 = "",
+    /// `single_shipper` only: the one browser that ships the feature.
+    shipper: Browser = .chrome,
+    /// `single_shipper` only: what Crane follows - what the other two
+    /// browsers and the spec do.
+    mechanism: []const u8 = "",
+
+    pub const RendererSubtest = struct { name: []const u8, why: []const u8 };
+
+    /// The entry's renderer subtests, in order.
+    pub fn rendererSubtests(self: *const Exemption) RendererSubtestIterator {
+        return .{ .rest = self.renderer_subtests };
+    }
+
+    pub fn rendererSubtestCount(self: *const Exemption) usize {
+        var it = self.rendererSubtests();
+        var n: usize = 0;
+        while (it.next()) |_| n += 1;
+        return n;
+    }
+
+    pub const RendererSubtestIterator = struct {
+        rest: ?[]const u8,
+
+        pub fn next(self: *RendererSubtestIterator) ?RendererSubtest {
+            const rest = self.rest orelse return null;
+            if (rest.len == 0) return null;
+            const end = std.mem.indexOf(u8, rest, renderer_subtest_sep);
+            const item = rest[0 .. end orelse rest.len];
+            self.rest = if (end) |e| rest[e + renderer_subtest_sep.len ..] else null;
+            return parseRendererSubtest(item);
+        }
+    };
 };
+
+/// `renderer-subtests` (lane blk5, main's GO 2026-11-20 1:37 PM ET): items
+/// separated by " || ", each "<name> :: <why>".
+const renderer_subtest_sep = " || ";
+const renderer_reason_sep = " :: ";
+
+fn parseRendererSubtest(item: []const u8) ?Exemption.RendererSubtest {
+    const sep = std.mem.indexOf(u8, item, renderer_reason_sep) orelse return null;
+    const name = std.mem.trim(u8, item[0..sep], " \t");
+    const why = std.mem.trim(u8, item[sep + renderer_reason_sep.len ..], " \t");
+    if (name.len == 0 or why.len == 0) return null;
+    return .{ .name = name, .why = why };
+}
+
+/// Whether every item of a `renderer-subtests` value reads "<name> :: <why>".
+fn validRendererSubtests(value: []const u8) bool {
+    var rest: []const u8 = value;
+    while (true) {
+        const end = std.mem.indexOf(u8, rest, renderer_subtest_sep);
+        if (parseRendererSubtest(rest[0 .. end orelse rest.len]) == null) return false;
+        rest = rest[(end orelse return true) + renderer_subtest_sep.len ..];
+    }
+}
+
+/// `matches = none` needs a ruling that names one of these golden rule 2
+/// cases (main's GO 2026-11-20 1:37 PM ET): Crane's result is the spec's.
+const none_ruling_cases = [_][]const u8{ "all three differ", "newer spec", "timing-bound" };
 
 /// Where and why the exemptions are invalid. The message lives in `buf`, so
 /// it outlives the parse's arena; `path` points into the caller's text.
@@ -384,7 +457,8 @@ const exemption_keys = [_][]const u8{
     "kind",           "upstream",
     "revisit",        "assertion",
     "matches",        "ruling",
-    "media",
+    "media",          "renderer-subtests",
+    "shipper",        "mechanism",
 };
 const key_why = 0;
 const key_spec = 1;
@@ -395,6 +469,9 @@ const key_assertion = 11;
 const key_matches = 12;
 const key_ruling = 13;
 const key_media = 14;
+const key_renderer_subtests = 15;
+const key_shipper = 16;
+const key_mechanism = 17;
 /// The `result` key of each `Browser`, and its `intent` key (the next one).
 const key_result = [3]usize{ 2, 4, 6 };
 
@@ -412,10 +489,14 @@ fn keyOf(kind: ExemptionKind, ki: usize) bool {
         },
         .needs_renderer => ki == key_why or ki == key_kind or ki == key_assertion,
         .follows_majority => is_result or switch (ki) {
-            key_why, key_kind, key_matches, key_ruling, key_revisit => true,
+            key_why, key_kind, key_matches, key_ruling, key_revisit, key_renderer_subtests => true,
             else => false,
         },
         .needs_decoder => ki == key_why or ki == key_kind or ki == key_media or ki == key_assertion,
+        .single_shipper => is_result or switch (ki) {
+            key_why, key_kind, key_shipper, key_mechanism, key_spec, key_revisit => true,
+            else => false,
+        },
     };
 }
 
@@ -423,13 +504,33 @@ fn keyOf(kind: ExemptionKind, ki: usize) bool {
 /// entry written before kinds existed has none; every other kind names
 /// itself), and a follows-majority entry's ruling.
 fn optionalKey(kind: ExemptionKind, ki: usize) bool {
-    return ki == key_kind or (kind == .follows_majority and ki == key_ruling);
+    return ki == key_kind or (kind == .follows_majority and (ki == key_ruling or ki == key_renderer_subtests));
+}
+
+/// A `shipper` value: one of "chrome", "firefox" and "safari"; null for
+/// anything else.
+fn parseShipper(v: []const u8) ?Browser {
+    if (std.mem.eql(u8, v, "chrome")) return .chrome;
+    if (std.mem.eql(u8, v, "firefox")) return .firefox;
+    if (std.mem.eql(u8, v, "safari")) return .safari;
+    return null;
+}
+
+/// A single-shipper entry's revisit: "when <...> ships <...>" - the entry
+/// comes off when a second browser ships the feature.
+fn shipsRevisit(v: []const u8) bool {
+    if (v.len <= revisit_prefix.len or !std.mem.startsWith(u8, v, revisit_prefix) or v[revisit_prefix.len] == ' ') return false;
+    const at = std.mem.indexOf(u8, v[revisit_prefix.len..], " ships ") orelse return false;
+    const after = v[revisit_prefix.len + at + " ships ".len ..];
+    return after.len > 0 and after[0] != ' ';
 }
 
 /// A `matches` value: Chrome, Firefox or Safari ("chrome", "firefox",
-/// "safari"), comma-separated, each once; null when it is anything else.
+/// "safari"), comma-separated, each once, or "none" (no browser: all false);
+/// null when it is anything else.
 fn parseMatches(v: []const u8) ?[3]bool {
     var out: [3]bool = .{ false, false, false };
+    if (std.mem.eql(u8, std.mem.trim(u8, v, " \t"), "none")) return out;
     var it = std.mem.splitScalar(u8, v, ',');
     while (it.next()) |raw| {
         const name = std.mem.trim(u8, raw, " \t");
@@ -534,6 +635,7 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
             .needs_renderer => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a needs-renderer exemption needs the failing assertion and why it needs a layout box", .{ p.path, k }),
             .follows_majority => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a follows-majority exemption needs every browser's result, the browsers Crane matches and when to revisit", .{ p.path, k }),
             .needs_decoder => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder", .{ p.path, k }),
+            .single_shipper => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a single-shipper exemption needs the browser that ships the feature, every browser's result, the mechanism Crane follows with its spec, and when to revisit", .{ p.path, k }),
         };
     }
     switch (kind) {
@@ -578,6 +680,15 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
             const matches = parseMatches(v[key_matches].?).?;
             var n: usize = 0;
             for (matches) |m| n += @intFromBool(m);
+            // matches = none: the spec's result, which no browser has - with
+            // a ruling that names its golden rule 2 case.
+            if (n == 0) {
+                const ruling = v[key_ruling] orelse "";
+                const named = for (none_ruling_cases) |case| {
+                    if (std.mem.indexOf(u8, ruling, case) != null) break true;
+                } else false;
+                if (!named) return invalid(diag, p.lines[key_matches], "[{s}]: matches = none needs a ruling that names its golden rule 2 case: \"all three differ\", \"newer spec\", \"timing-bound\"", .{p.path});
+            }
             // The user's 2026-11-18 ruling: the browser majority - or a recorded ruling.
             if (n < 2 and v[key_ruling] == null)
                 return invalid(diag, p.lines[key_matches], "[{s}]: a follows-majority exemption needs at least two browsers in matches, or a ruling", .{p.path});
@@ -610,6 +721,7 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
                 .matches = matches,
                 .ruling = v[key_ruling] orelse "",
                 .revisit = revisit,
+                .renderer_subtests = v[key_renderer_subtests] orelse "",
             };
         },
         .needs_decoder => return .{
@@ -618,6 +730,34 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
             .why = v[key_why].?,
             .media = v[key_media].?,
             .assertion = v[key_assertion].?,
+        },
+        .single_shipper => {
+            const revisit = v[key_revisit].?;
+            if (!shipsRevisit(revisit))
+                return invalid(diag, p.lines[key_revisit], "[{s}]: revisit must read \"when <a second browser> ships <the feature>\"", .{p.path});
+            const shipper = parseShipper(v[key_shipper].?).?;
+            // The two that do not ship the feature fail it alike.
+            var others: [2]Browser = undefined;
+            var n: usize = 0;
+            for (std.enums.values(Browser)) |browser| {
+                if (browser == shipper) continue;
+                others[n] = browser;
+                n += 1;
+            }
+            const first = resultCounts(v[key_result[@backingInt(others[0])]].?);
+            const second = resultCounts(v[key_result[@backingInt(others[1])]].?);
+            if (!std.mem.eql(u8, first, second))
+                return invalid(diag, p.line, "[{s}]: the browsers that do not ship the feature need the same result ({s} {s}, {s} {s})", .{ p.path, others[0].label(), first, others[1].label(), second });
+            return .{
+                .path = p.path,
+                .kind = .single_shipper,
+                .why = v[key_why].?,
+                .spec = v[key_spec].?,
+                .result = .{ v[2].?, v[4].?, v[6].? },
+                .revisit = revisit,
+                .shipper = shipper,
+                .mechanism = v[key_mechanism].?,
+            };
         },
     }
 }
@@ -661,12 +801,16 @@ pub fn parseExemptions(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
         if ((std.mem.eql(u8, key, "spec") or std.mem.endsWith(u8, key, ".intent")) and !isHttpUrl(value))
             return invalid(diag, n, "[{s}]: {s} must be an http(s) URL", .{ p.path, key });
         if (ki == key_kind and ExemptionKind.fromWord(value) == null)
-            return invalid(diag, n, "[{s}]: kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder, not \"{s}\"", .{ p.path, value });
+            return invalid(diag, n, "[{s}]: kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper, not \"{s}\"", .{ p.path, value });
+        if (ki == key_shipper and parseShipper(value) == null)
+            return invalid(diag, n, "[{s}]: shipper must name chrome, firefox or safari", .{p.path});
         if (ki == key_upstream and !isWptIssueUrl(value))
             return invalid(diag, n, "[{s}]: upstream must be a web-platform-tests issue or pull request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)", .{p.path});
         // (revisit's form is the kind's: checked when the entry is finished.)
         if (ki == key_matches and parseMatches(value) == null)
-            return invalid(diag, n, "[{s}]: matches must name chrome, firefox or safari, comma-separated, each once", .{p.path});
+            return invalid(diag, n, "[{s}]: matches must name chrome, firefox or safari, comma-separated, each once, or read none", .{p.path});
+        if (ki == key_renderer_subtests and !validRendererSubtests(value))
+            return invalid(diag, n, "[{s}]: renderer-subtests must give each subtest its name and its geometry reason (\"<name> :: <why>\", several separated by \" || \")", .{p.path});
         p.values[ki] = value;
         p.lines[ki] = n;
     }
@@ -1147,7 +1291,7 @@ test "exemptions: a malformed test-bug entry, or one mixing the kinds' keys, is 
     const a = testing.allocator;
     const cases = [_]struct { []const u8, []const u8, []const u8 }{
         // An unknown kind.
-        .{ "kind = test-bug", "kind = testbug", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = test-bug", "kind = testbug", "kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper" },
         // Upstream is a web-platform-tests issue or pull request, nothing else.
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://bugs.webkit.org/show_bug.cgi?id=1", "web-platform-tests issue or pull request" },
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://github.com/web-platform-tests/wpt/issues/", "web-platform-tests issue or pull request" },
@@ -1263,7 +1407,7 @@ test "exemptions: a needs-renderer entry missing a key, or with any other, is in
         .{ "why = ", "chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ", "\"chrome.result\" is not a key of a needs-renderer exemption" },
         .{ "why = ", "renderer = none\nwhy = ", "unknown key \"renderer\"" },
         // An unknown kind, a kind given twice, an empty assertion.
-        .{ "kind = needs-renderer", "kind = needs-a-renderer", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = needs-renderer", "kind = needs-a-renderer", "kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper" },
         .{ "kind = needs-renderer", "kind = needs-renderer\nkind = needs-renderer", "twice" },
         .{ "assertion = promise_test", "assertion = \nassertion_ = promise_test", "\"assertion\" is empty" },
     };
@@ -1404,7 +1548,7 @@ test "exemptions: a malformed follows-majority entry, or one mixing the kinds' k
         .{ "why = ", "assertion = promise_test: x\nwhy = ", "\"assertion\" is not a key of a follows-majority exemption" },
         .{ "why = ", "majority = yes\nwhy = ", "unknown key \"majority\"" },
         // An unknown kind, a kind or a ruling given twice, an empty ruling.
-        .{ "kind = follows-majority", "kind = majority", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = follows-majority", "kind = majority", "kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper" },
         .{ "kind = follows-majority", "kind = follows-majority\nkind = follows-majority", "twice" },
         .{ m, m ++ "\nruling = a\nruling = b", "twice" },
         .{ m, m ++ "\nruling = ", "\"ruling\" is empty" },
@@ -1453,6 +1597,153 @@ test "exemptions: a follows-majority exempt file counts as exempt, never as bloc
     try known.put(testing.allocator, "html/x/majority.html", {});
     try checkExemptionPaths(list, &known, &diag);
     try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .timed_out = 1 }).exempted());
+}
+
+// Two follows-majority forms (lane blk5, main's GO 2026-11-20 1:37 PM ET), on the fixture
+// tools/wpt_progress.py --self-test reads too, so the two readers agree: matches = none, with a ruling
+// that names its golden rule 2 case - Crane's result is the spec's and equals no browser's - and
+// renderer-subtests, the subtests that fail in Crane only for want of a renderer, each "<name> :: <why>".
+const fixture_shared = @embedFile("exemption_fixture.txt");
+
+test "exemptions: matches = none with a ruling naming its case, and renderer-subtests, parse as tools/wpt_progress.py reads them" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_shared, &diag);
+    try testing.expectEqual(@as(usize, 3), list.len);
+    const alone = list[0];
+    try testing.expectEqualStrings("html/x/spec-alone.html", alone.path);
+    try testing.expectEqual(ExemptionKind.follows_majority, alone.kind);
+    try testing.expectEqual([3]bool{ false, false, false }, alone.matches);
+    try testing.expect(std.mem.startsWith(u8, alone.ruling, "golden rule 2, the spec where all three differ"));
+    try testing.expectEqual(@as(usize, 0), alone.rendererSubtestCount());
+    const part = list[1];
+    try testing.expectEqual([3]bool{ true, true, false }, part.matches);
+    try testing.expectEqual(@as(usize, 2), part.rendererSubtestCount());
+    var it = part.rendererSubtests();
+    const first = it.next().?;
+    try testing.expectEqualStrings("the second subtest", first.name);
+    try testing.expectEqualStrings("its click lands on an absolutely positioned link", first.why);
+    const second = it.next().?;
+    try testing.expectEqualStrings("the third subtest", second.name);
+    try testing.expectEqualStrings("it reads a box's size", second.why);
+    try testing.expect(it.next() == null);
+    // Each of the three cases makes a ruling for none.
+    for ([_][]const u8{ "all three differ", "newer spec", "timing-bound" }) |case| {
+        const text = try std.mem.replaceOwned(u8, arena.allocator(), fixture_shared, "the spec where all three differ", case);
+        _ = try parseExemptions(arena.allocator(), text, &diag);
+    }
+}
+
+test "exemptions: matches = none without a ruling naming its case, a malformed renderer-subtests, or one on another kind, is invalid" {
+    const a = testing.allocator;
+    const rule = "ruling            = golden rule 2, the spec where all three differ: the main session, 2026-11-20\n";
+    try testing.expect(std.mem.indexOf(u8, fixture_shared, rule) != null);
+    const cases = "needs a ruling that names its golden rule 2 case";
+    const no_rule = try std.mem.replaceOwned(u8, a, fixture_shared, rule, "");
+    defer a.free(no_rule);
+    try expectInvalid(no_rule, cases);
+    const vague = try std.mem.replaceOwned(u8, a, fixture_shared, rule, "ruling            = the main session, 2026-11-20\n");
+    defer a.free(vague);
+    try expectInvalid(vague, cases);
+    const mixed = try std.mem.replaceOwned(u8, a, fixture_shared, "matches           = none", "matches           = none, chrome");
+    defer a.free(mixed);
+    try expectInvalid(mixed, "or read none");
+    const whole = "renderer-subtests = the second subtest :: its click lands on an absolutely positioned link || the third subtest :: it reads a box's size";
+    try testing.expect(std.mem.indexOf(u8, fixture_shared, whole) != null);
+    for ([_][]const u8{ "renderer-subtests = the second subtest", "renderer-subtests = :: a reason", "renderer-subtests = a name :: " }) |bad| {
+        const text = try std.mem.replaceOwned(u8, a, fixture_shared, whole, bad);
+        defer a.free(text);
+        try expectInvalid(text, "renderer-subtests must give");
+    }
+    const other = try std.mem.replaceOwned(u8, a, fixture_needs_renderer, "why = ", "renderer-subtests = a :: b\nwhy = ");
+    defer a.free(other);
+    try expectInvalid(other, "\"renderer-subtests\" is not a key of a needs-renderer exemption");
+}
+
+// The sixth kind (the user, 2026-11-21 5:58 AM ET, choice (a)): a file that
+// tests a feature only ONE browser ships, whose remaining failures hinge on a
+// mechanism where Crane does what the other two browsers and the spec do. Its
+// form is on the shared fixture, which tools/wpt_progress.py --self-test reads
+// too.
+fn singleShipperEntry() []const u8 {
+    return fixture_shared[std.mem.indexOf(u8, fixture_shared, "[resource-timing/x/only-one-ships.html]").?..];
+}
+
+test "exemptions: a single-shipper entry names its shipper, every browser's result, the mechanism Crane follows with its spec, and when to revisit - as tools/wpt_progress.py reads it" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_shared, &diag);
+    const e = list[2];
+    try testing.expectEqualStrings("resource-timing/x/only-one-ships.html", e.path);
+    try testing.expectEqual(ExemptionKind.single_shipper, e.kind);
+    try testing.expectEqual(Browser.chrome, e.shipper);
+    try testing.expectEqualStrings("Crane keeps parsing past an in-body style sheet, as Firefox, Safari and the spec do", e.mechanism);
+    try testing.expectEqualStrings("https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing", e.spec);
+    try testing.expectEqualStrings("when Firefox or Safari ships the feature", e.revisit);
+    try testing.expectEqualStrings("wpt.fyi run 4877168468033536: 0/1", e.result[@backingInt(Browser.firefox)]);
+    try testing.expectEqualStrings("single-shipper", ExemptionKind.single_shipper.word());
+    // Firefox shipping alone: the other two are Chrome and Safari.
+    var text = try std.mem.replaceOwned(u8, arena.allocator(), singleShipperEntry(), "shipper           = chrome", "shipper           = firefox");
+    text = try std.mem.replaceOwned(u8, arena.allocator(), text, "4786307730243584: 1/1", "4786307730243584: 0/1");
+    text = try std.mem.replaceOwned(u8, arena.allocator(), text, "4877168468033536: 0/1", "4877168468033536: 1/1");
+    const firefox = try parseExemptions(arena.allocator(), text, &diag);
+    try testing.expectEqual(Browser.firefox, firefox[0].shipper);
+}
+
+test "exemptions: a malformed single-shipper entry, one missing a key, or one mixing the kinds' keys, is invalid" {
+    const a = testing.allocator;
+    const entry = singleShipperEntry();
+    const needs = "a single-shipper exemption needs the browser that ships the feature, every browser's result, the mechanism Crane follows with its spec, and when to revisit";
+    for ([_][]const u8{ "why", "shipper", "chrome.result", "firefox.result", "safari.result", "mechanism", "spec", "revisit" }) |key| {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(a);
+        var it = std.mem.splitScalar(u8, entry, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, key) and line.len > key.len and line[key.len] == ' ') continue;
+            try buf.appendSlice(a, line);
+            try buf.append(a, '\n');
+        }
+        const needle = try std.fmt.allocPrint(a, "missing \"{s}\" - {s}", .{ key, needs });
+        defer a.free(needle);
+        try expectInvalid(buf.items, needle);
+    }
+    const cases = [_]struct { []const u8, []const u8, []const u8 }{
+        .{ "shipper           = chrome", "shipper           = edge", "shipper must name chrome, firefox or safari" },
+        .{ "shipper           = chrome", "shipper           = chrome, firefox", "shipper must name chrome, firefox or safari" },
+        .{ "6479119966273536: 0/1", "6479119966273536: 1/1", "the browsers that do not ship the feature need the same result (Firefox 0/1, Safari 1/1)" },
+        .{ "revisit           = when Firefox or Safari ships the feature", "revisit           = when the browsers change", "revisit must read \"when <a second browser> ships <the feature>\"" },
+        .{ "spec              = https://", "spec              = html.spec.whatwg.org/", "spec must be an http(s) URL" },
+        .{ "why               = ", "matches = chrome\nwhy = ", "\"matches\" is not a key of a single-shipper exemption" },
+        .{ "why               = ", "upstream = https://github.com/web-platform-tests/wpt/issues/1\nwhy = ", "\"upstream\" is not a key of a single-shipper exemption" },
+        .{ "kind              = single-shipper", "kind              = one-shipper", "kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper" },
+    };
+    for (cases) |c| {
+        try testing.expect(std.mem.indexOf(u8, entry, c[0]) != null);
+        const text = try std.mem.replaceOwned(u8, a, entry, c[0], c[1]);
+        defer a.free(text);
+        try expectInvalid(text, c[2]);
+    }
+    // Its shipper and mechanism belong to no other kind.
+    const others = [_]struct { []const u8, []const u8 }{
+        .{ fixture_exemption, "an intentional" },
+        .{ fixture_test_bug, "a test-bug" },
+        .{ fixture_needs_renderer, "a needs-renderer" },
+        .{ fixture_follows_majority, "a follows-majority" },
+    };
+    for (others) |o| {
+        for ([_][]const u8{ "shipper = chrome\n", "mechanism = a\n" }) |line| {
+            const with = try std.mem.concat(a, u8, &.{ line, "why = " });
+            defer a.free(with);
+            const text = try std.mem.replaceOwned(u8, a, o[0], "why = ", with);
+            defer a.free(text);
+            const key = line[0..std.mem.indexOfScalar(u8, line, ' ').?];
+            const needle = try std.fmt.allocPrint(a, "\"{s}\" is not a key of {s} exemption", .{ key, o[1] });
+            defer a.free(needle);
+            try expectInvalid(text, needle);
+        }
+    }
 }
 
 // The fifth kind (the user, 2026-11-18 2:53 PM ET): like needs-renderer, a file
@@ -1516,7 +1807,7 @@ test "exemptions: a needs-decoder entry missing a key, or with any other, is inv
         .{ "why = ", "chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ", "\"chrome.result\" is not a key of a needs-decoder exemption" },
         .{ "why = ", "matches = chrome, firefox\nwhy = ", "\"matches\" is not a key of a needs-decoder exemption" },
         .{ "why = ", "decoder = vp8\nwhy = ", "unknown key \"decoder\"" },
-        .{ "kind = needs-decoder", "kind = needs-a-decoder", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = needs-decoder", "kind = needs-a-decoder", "kind must be intentional, test-bug, needs-renderer, follows-majority, needs-decoder or single-shipper" },
         .{ "kind = needs-decoder", "kind = needs-decoder\nkind = needs-decoder", "twice" },
         .{ "media = /media", "media = \nmedia_ = /media", "\"media\" is empty" },
     };

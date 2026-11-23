@@ -55,12 +55,14 @@ fn evalInt(code: []const u8) !i32 {
 
 /// A dictionary as codegen emits one: optional members, null when absent.
 const Result = struct {
+    pub const webidl_dictionary = true;
     committed: ?f64 = null,
     finished: ?f64 = null,
     absent: ?f64 = null,
     nested: ?Inner = null,
 };
 const Inner = struct {
+    pub const webidl_dictionary = true;
     flag: ?bool = null,
 };
 

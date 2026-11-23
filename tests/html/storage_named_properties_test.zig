@@ -33,7 +33,7 @@ fn onThread(comptime function: anytype, args: anytype) !void {
 /// A Browser showing a page of the test's origin (no network: its markup is
 /// given), with an empty localStorage.
 fn openPage() !*browser_mod.Browser {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

@@ -95,8 +95,13 @@ pub const AnimationType = enum {
 /// animation and transition controls (Animations 1, Transitions 1), the
 /// bidi and writing-mode properties (Writing Modes 4 2.1-2.4, 5.1, 9.1),
 /// contain (Contain 2 3), interpolate-size (Values 5 / Sizing 4),
-/// forced-color-adjust (Color Adjustment 1 §4), scroll-behavior (Overflow 3
-/// §5).
+/// forced-color-adjust (Color Adjustment 1 §4).
+///
+/// Not scroll-behavior, though Overflow 3 §5 says "not animatable": Chrome
+/// 157, Firefox 160 and Safari 27.2 all animate it discretely (web-animations/
+/// animation-model/animation-types/{interpolation,addition,accumulation}-per-
+/// property-002.html, whose property list gives it 'discrete'), so golden
+/// rule 2 follows them; it is by computed value, a keyword, so discrete.
 const not_animatable = [_]Longhand{
     .animation_duration,    .animation_timing_function, .animation_delay,            .animation_iteration_count,
     .animation_direction,   .animation_fill_mode,       .animation_play_state,       .animation_name,
@@ -104,7 +109,7 @@ const not_animatable = [_]Longhand{
     .transition_property,   .transition_duration,       .transition_timing_function, .transition_delay,
     .transition_behavior,   .direction,                 .unicode_bidi,               .writing_mode,
     .text_orientation,      .contain,                   .interpolate_size,           .forced_color_adjust,
-    .scroll_behavior,       .text_combine_upright,
+    .text_combine_upright,
 };
 
 const type_table: [std.meta.fieldNames(Longhand).len]AnimationType = blk: {
@@ -308,6 +313,12 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     if (l == .filter or l == .backdrop_filter) {
         if (isNone(value)) return retained(underlying);
         if (isNone(underlying)) return retained(value);
+        // Filter Effects 1 11, addition: "the concatenation of the two
+        // lists: 'base filter list added filter list'". It replaced the base
+        // list (web-animations/animation-model/animation-types/addition-per-
+        // property-001.html filter rows; Chrome 157, Firefox 160 and Safari
+        // 27.2 pass).
+        if (filterList(underlying)) |a| if (filterList(value)) |b| return concatFilters(allocator, a, b);
     }
     switch (underlying) {
         .number => |a| if (value == .number) return .{ .number = a + value.number },
@@ -362,9 +373,14 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
         if (try transform_interpolation.combine(allocator, underlying, value, 1, .accumulate)) |sum| return sum;
         return retained(value);
     }
-    // Filter Effects 1 11: filter lists accumulate function by function.
+    // Filter Effects 1 11: filter lists accumulate function by function;
+    // lists that cannot (14.3: "returns the filter value, V_b") give V_b,
+    // never the addition's concatenation, as transforms above
+    // (web-animations accumulation-per-property-001.html 'filter: mismatched
+    // ordered filter functions'; Chrome 157, Firefox 160 and Safari 27.2).
     if (l == .filter or l == .backdrop_filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
+        return retained(value);
     };
     // translate, rotate and scale accumulate component by component; scale's
     // components as one-based values (mixTransforms).
@@ -580,6 +596,8 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
                 .opacity => std.math.clamp(n, 0, 1),
                 .font_weight => std.math.clamp(n, 1, 1000),
                 .flex_factor, .line_height, .text_value => @max(n, 0),
+                // Fill and Stroke 3 §6.5: stroke-miterlimit is <number [0,∞]>.
+                .miterlimit => @max(n, 0),
                 else => n,
             };
             return .{ .number = clamped };
@@ -592,7 +610,9 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
             },
         },
         .length => |len| {
-            if (nonNegativeLengths(grammar) and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
+            // SVG 2 §10.4: r, rx and ry are <length-percentage [0,∞]>.
+            const nonnegative = nonNegativeLengths(grammar) or l == .r or l == .rx or l == .ry;
+            if (nonnegative and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
             return v;
         },
         // A legacy color carried out of range (or between bytes) by the
@@ -1532,6 +1552,16 @@ fn mixFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem
     return .{ .filter = try filter_values.Filter.create(allocator, items) };
 }
 
+/// Filter Effects 1 11 addition: `a` then `b`, one list.
+fn concatFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem) Allocator.Error!Value {
+    if (a.len + b.len == 0) return Value.kw(.none);
+    const items = try allocator.alloc(FilterItem, a.len + b.len);
+    defer allocator.free(items);
+    @memcpy(items[0..a.len], a);
+    @memcpy(items[a.len..], b);
+    return .{ .filter = try filter_values.Filter.create(allocator, items) };
+}
+
 /// The initial value of a filter function (Filter Effects 1 11: "the
 /// initial value for interpolation").
 fn initialFilter(kind: filter_values.Kind) FilterFunction {
@@ -1701,6 +1731,8 @@ test "animation type default: an unlisted longhand is by computed value, never n
     try testing.expectEqual(AnimationType.by_computed_value, animationType(.width));
     try testing.expectEqual(AnimationType.by_computed_value, animationType(.opacity));
     try testing.expectEqual(AnimationType.visibility, animationType(.visibility));
+    // All three browsers animate scroll-behavior (discretely).
+    try testing.expectEqual(AnimationType.by_computed_value, animationType(.scroll_behavior));
     for (not_animatable) |l| try testing.expectEqual(AnimationType.not_animatable, animationType(l));
     var count: usize = 0;
     for (type_table) |t| {

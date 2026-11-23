@@ -547,6 +547,42 @@ pub const Longhand = enum(u16) {
     // CSS Generated Content 3 §4.1 (lane css1).
     quotes,
 
+    // Lane maj1: SVG 2 / Fill and Stroke 3 painting (§13), gradient stops
+    // (§14.2), text (§11.10) and geometry (§§9.2, 10.4) properties, Filter
+    // Effects 1 §16.2 flood-opacity, MathML Core §3, Pointer Events
+    // touch-action, and the Logical 1 §6.2 flow-relative corner radii.
+    fill_opacity,
+    fill_rule,
+    stroke_opacity,
+    stroke_linecap,
+    stroke_linejoin,
+    stroke_miterlimit,
+    stroke_dashoffset,
+    stop_color,
+    stop_opacity,
+    flood_opacity,
+    color_interpolation,
+    shape_rendering,
+    text_anchor,
+    vector_effect,
+    buffered_rendering,
+    paint_order,
+    x,
+    y,
+    cx,
+    cy,
+    r,
+    rx,
+    ry,
+    math_depth,
+    math_shift,
+    math_style,
+    touch_action,
+    border_start_start_radius,
+    border_start_end_radius,
+    border_end_start_radius,
+    border_end_end_radius,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -609,7 +645,7 @@ pub const Logical = struct {
     /// side"). Null for a side's longhand.
     inline_side: ?Side = null,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow, overscroll, contain_intrinsic, corner_shape };
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow, overscroll, contain_intrinsic, corner_shape, border_radius };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
 
@@ -627,6 +663,10 @@ pub fn physicalOf(lg: Logical, writing_mode: Keyword, direction: Keyword) Longha
             (if (horizontal == .left) .corner_top_left_shape else .corner_top_right_shape)
         else
             (if (horizontal == .left) .corner_bottom_left_shape else .corner_bottom_right_shape),
+        .border_radius => if (vertical == .top)
+            (if (horizontal == .left) .border_top_left_radius else .border_top_right_radius)
+        else
+            (if (horizontal == .left) .border_bottom_left_radius else .border_bottom_right_radius),
         else => unreachable,
     };
 }
@@ -683,7 +723,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
             .left, .right => .contain_intrinsic_width,
         },
         // A corner has two sides: physicalOf maps it.
-        .corner_shape => unreachable,
+        .corner_shape, .border_radius => unreachable,
         .scroll_margin => switch (side) {
             .top => .scroll_margin_top,
             .right => .scroll_margin_right,
@@ -883,6 +923,20 @@ pub const Grammar = enum {
     /// Generated Content 3 §4.1: auto | none | match-parent |
     /// [ <string> <string> ]+.
     quotes,
+    /// Fill and Stroke 3 §6.5 stroke-miterlimit: <number [0,∞]>.
+    miterlimit,
+    /// SVG 2 §13.5.7 stroke-dashoffset: <length-percentage> | <number>.
+    dashoffset,
+    /// SVG 2 §§9.2, 10.4: x, y, cx, cy (<length-percentage>) and r, rx, ry
+    /// (non-negative; rx and ry also auto).
+    svg_geometry,
+    /// SVG 2 §13.7 paint-order: normal | [ fill || stroke || markers ].
+    paint_order,
+    /// MathML Core §3.1: auto-add | add(<integer>) | <integer>.
+    math_depth,
+    /// Pointer Events: auto | none | [ pan-x || pan-y || pinch-zoom ] |
+    /// manipulation.
+    touch_action,
 };
 
 pub const Info = struct {
@@ -1418,6 +1472,55 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .d, .inherited = false, .initial = Value.kw(.none), .grammar = .path_data },
         .{ .longhand = .stroke_dasharray, .inherited = true, .initial = Value.kw(.none), .grammar = .dasharray },
         .{ .longhand = .quotes, .inherited = true, .initial = Value.kw(.auto), .grammar = .quotes },
+        // Lane maj1. Fill and Stroke 3 §§3.4, 3.5, 6.2-6.5 / SVG 2 §13.
+        .{ .longhand = .fill_opacity, .inherited = true, .initial = .{ .number = 1 }, .grammar = .opacity },
+        .{ .longhand = .fill_rule, .inherited = true, .initial = Value.kw(.nonzero), .grammar = .keywords, .keywords = &.{ .nonzero, .evenodd } },
+        .{ .longhand = .stroke_opacity, .inherited = true, .initial = .{ .number = 1 }, .grammar = .opacity },
+        .{ .longhand = .stroke_linecap, .inherited = true, .initial = Value.kw(.butt), .grammar = .keywords, .keywords = &.{ .butt, .round, .square } },
+        // Fill and Stroke 3 adds miter-clip and arcs, which no browser ships
+        // (svg/painting/parsing/stroke-linejoin-valid.svg: Chrome, Firefox
+        // and Safari all fail them).
+        .{ .longhand = .stroke_linejoin, .inherited = true, .initial = Value.kw(.miter), .grammar = .keywords, .keywords = &.{ .miter, .round, .bevel } },
+        .{ .longhand = .stroke_miterlimit, .inherited = true, .initial = .{ .number = 4 }, .grammar = .miterlimit },
+        .{ .longhand = .stroke_dashoffset, .inherited = true, .initial = Value.px(0), .grammar = .dashoffset },
+        // SVG 2 §14.2.3 / Filter Effects 1 §16.2: not inherited.
+        .{ .longhand = .stop_color, .inherited = false, .initial = .{ .color = Color.black }, .grammar = .color },
+        .{ .longhand = .stop_opacity, .inherited = false, .initial = .{ .number = 1 }, .grammar = .opacity },
+        .{ .longhand = .flood_opacity, .inherited = false, .initial = .{ .number = 1 }, .grammar = .opacity },
+        // SVG 2 §13.13.1; sRGB and linearRGB lowercase, as all three
+        // serialize them (color-interpolation-computed.svg).
+        .{ .longhand = .color_interpolation, .inherited = true, .initial = Value.kw(.srgb), .grammar = .keywords, .keywords = &.{ .auto, .srgb, .linearrgb } },
+        // SVG 2 §13.13.3, lowercase as in shape-rendering-computed.svg.
+        .{ .longhand = .shape_rendering, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .optimizespeed, .crispedges, .geometricprecision } },
+        // SVG 2 §11.10.1.1.
+        .{ .longhand = .text_anchor, .inherited = true, .initial = Value.kw(.start), .grammar = .keywords, .keywords = &.{ .start, .middle, .end } },
+        // SVG 2 §13.6.1: the values Chrome, Firefox and Safari ship (SVG 2's
+        // non-scaling-size, non-rotation and fixed-position ship nowhere).
+        .{ .longhand = .vector_effect, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .non_scaling_stroke } },
+        // SVG Tiny 1.2 §15.7 buffered-rendering: Chrome and Safari ship it.
+        .{ .longhand = .buffered_rendering, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .dynamic, .static } },
+        .{ .longhand = .paint_order, .inherited = true, .initial = Value.kw(.normal), .grammar = .paint_order },
+        // SVG 2 §§9.2, 10.4 geometry properties: not inherited.
+        .{ .longhand = .x, .inherited = false, .initial = Value.px(0), .grammar = .svg_geometry },
+        .{ .longhand = .y, .inherited = false, .initial = Value.px(0), .grammar = .svg_geometry },
+        .{ .longhand = .cx, .inherited = false, .initial = Value.px(0), .grammar = .svg_geometry },
+        .{ .longhand = .cy, .inherited = false, .initial = Value.px(0), .grammar = .svg_geometry },
+        .{ .longhand = .r, .inherited = false, .initial = Value.px(0), .grammar = .svg_geometry },
+        .{ .longhand = .rx, .inherited = false, .initial = Value.kw(.auto), .grammar = .svg_geometry },
+        .{ .longhand = .ry, .inherited = false, .initial = Value.kw(.auto), .grammar = .svg_geometry },
+        // MathML Core §§3.1-3.3, all inherited.
+        .{ .longhand = .math_depth, .inherited = true, .initial = .{ .integer = 0 }, .grammar = .math_depth },
+        .{ .longhand = .math_shift, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .compact } },
+        .{ .longhand = .math_style, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .compact } },
+        // Pointer Events touch-action: not inherited.
+        .{ .longhand = .touch_action, .inherited = false, .initial = Value.kw(.auto), .grammar = .touch_action },
+        // Logical 1 §6.2: border-<block>-<inline>-radius, "the first
+        // start/end gives the block axis side, and the second the
+        // inline-axis side" - mapped onto the physical corners.
+        .{ .longhand = .border_start_start_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner, .logical = .{ .group = .border_radius, .side = .block_start, .inline_side = .inline_start } },
+        .{ .longhand = .border_start_end_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner, .logical = .{ .group = .border_radius, .side = .block_start, .inline_side = .inline_end } },
+        .{ .longhand = .border_end_start_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner, .logical = .{ .group = .border_radius, .side = .block_end, .inline_side = .inline_start } },
+        .{ .longhand = .border_end_end_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner, .logical = .{ .group = .border_radius, .side = .block_end, .inline_side = .inline_end } },
     };
     for (defs) |def| {
         const i = @backingInt(def.longhand);
@@ -1754,6 +1857,15 @@ const legacy_aliases = .{
     .{ "-webkit-column-rule-width", Property{ .longhand = .column_rule_width } },
     .{ "-webkit-columns", Property{ .shorthand = .columns } },
     .{ "-webkit-column-rule", Property{ .shorthand = .column_rule } },
+    // Compat §3.4.1, shipped by Chrome, Firefox and Safari (wpt.fyi
+    // 2358bd4835: custom-elements/reactions/CSSStyleDeclaration.html,
+    // css/cssom/computed-style-set-property.html).
+    .{ "-webkit-filter", Property{ .longhand = .filter } },
+    .{ "-webkit-transition", Property{ .shorthand = .transition } },
+    .{ "-webkit-transition-delay", Property{ .longhand = .transition_delay } },
+    .{ "-webkit-transition-duration", Property{ .longhand = .transition_duration } },
+    .{ "-webkit-transition-property", Property{ .longhand = .transition_property } },
+    .{ "-webkit-transition-timing-function", Property{ .longhand = .transition_timing_function } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
@@ -1790,7 +1902,9 @@ const by_name = blk: {
 test "a legacy name alias is the property it names" {
     try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-webkit-appearance").?);
     try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-WEBKIT-APPEARANCE").?);
-    try std.testing.expectEqual(@as(?Property, null), lookup("-webkit-filter"));
+    try std.testing.expectEqual(Property{ .longhand = .filter }, lookup("-webkit-filter").?);
+    try std.testing.expectEqual(Property{ .shorthand = .transition }, lookup("-WEBKIT-TRANSITION").?);
+    try std.testing.expectEqual(@as(?Property, null), lookup("-webkit-not-a-property"));
 }
 
 /// The supported property named `property_name`, ASCII case-insensitively;
@@ -2485,6 +2599,12 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .dasharray => return @import("svg_paint.zig").parseDasharray(options, stream),
         .quotes => return quotesValue(options, stream),
+        .miterlimit => return @import("svg_values.zig").parseMiterlimit(options, stream),
+        .dashoffset => return @import("svg_values.zig").parseDashoffset(options, stream),
+        .svg_geometry => return @import("svg_values.zig").parseGeometry(options, l, stream),
+        .paint_order => return @import("svg_values.zig").parsePaintOrder(options, stream),
+        .math_depth => return @import("math_depth.zig").parse(options, stream),
+        .touch_action => return @import("touch_action.zig").parse(options, stream),
     }
 }
 
@@ -2627,7 +2747,9 @@ fn identKeyword(t: Token) ?Keyword {
     return Keyword.parse(t.value);
 }
 
-fn takeKeyword(stream: *Stream, allowed: []const Keyword) ?Keyword {
+/// The next token as one of `allowed` (ASCII case-insensitively), consumed;
+/// null, consuming nothing, for any other token.
+pub fn takeKeyword(stream: *Stream, allowed: []const Keyword) ?Keyword {
     const k = identKeyword(stream.peek()) orelse return null;
     for (allowed) |a| if (a == k) {
         _ = stream.next();
@@ -2811,16 +2933,22 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                     return null;
                 }
                 const s = stream.next();
-                const closing = if (s.token_type == .string) stream.next().token_type else s.token_type;
-                // Syntax3 §5.5.10: EOF closes the quoted URL function.
-                if (s.token_type != .string or (closing != .right_paren and closing != .eof)) {
+                if (s.token_type != .string) {
                     stream.restore(m);
                     return null;
                 }
+                // Values 5 §4.1.1: the request modifiers after the string,
+                // through the function's ")" (Syntax3 §5.5.10: EOF closes
+                // the quoted URL function).
+                var modifiers = (try resources.RequestModifiers.consume(options.allocator, stream)) orelse {
+                    stream.restore(m);
+                    return null;
+                };
+                defer modifiers.deinitOwned(options.allocator);
                 if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
                 const raw = try tokenizer_mod.decode(options.allocator, s.stringContents());
                 defer options.allocator.free(raw);
-                return try urlValue(options, raw);
+                return try urlValueModified(options, raw, modifiers);
             }
             for (image_functions) |f| {
                 if (!tokenizer_mod.nameEql(t.value, f)) continue;
@@ -2856,15 +2984,29 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
 }
 
 pub fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
+    return urlValueModified(options, raw, .{});
+}
+
+/// A url() image with Values 5 §4.1.1 request modifiers, written after the
+/// string in the grammar's order and kept (borrowed here, cloned by the
+/// shared text) on its resource URL.
+pub fn urlValueModified(options: ParseOptions, raw: []const u8, modifiers: resources.RequestModifiers) Allocator.Error!Value {
     const resolved: ?[]u8 = if (options.url_resolver) |r| r.resolve(r.context, options.allocator, raw) else null;
     defer if (resolved) |r| options.allocator.free(r);
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
     try out.appendSlice(options.allocator, "url(");
+    const argument_start = out.items.len;
     // Values4 §4.5: keep authored text separate from frozen resolution.
     try values.appendString(raw, &out, options.allocator);
+    const argument_end = out.items.len;
+    try modifiers.serialize(&out, options.allocator);
     try out.append(options.allocator, ')');
-    const url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
+    var url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
+    url.modifiers = modifiers;
+    // A computed value replaces only the string, keeping the modifiers
+    // (resolved_urls.append).
+    if (!modifiers.isEmpty()) url.argument_range = .{ .start = argument_start, .end = argument_end };
     const shared = try SharedText.createWithResources(options.allocator, out.items, &.{url});
     shared.image_kind = .url;
     return .{ .text = shared };

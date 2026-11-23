@@ -42,6 +42,7 @@ const log = std.log.scoped(.v8_interface);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const dom_algorithm = @import("dom_algorithm.zig");
@@ -163,6 +164,13 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         conv.throwError(isolate, "Failed to get runtime context");
         return;
     };
+    // A constructor of an isolated world (protocol_worlds.zig): the object it
+    // makes is the page's - its relevant realm the world realm's main realm,
+    // as Blink's isolated world shares the frame's ExecutionContext - and the
+    // receiver is its wrapper in the WORLD, kept by the world realm's cache.
+    // Two loads decide it for a Browser that has made no world.
+    const in_world = protocol_worlds.realmMayHaveWorlds(ctx) and protocol_worlds.worldOf(ctx) != 0;
+    const instance_realm = if (in_world) protocol_worlds.mainRealmOf(ctx) else ctx;
 
     // Get 'this' object (the newly created instance). Owned, like
     // every getThis(), until the wrapper cache takes it: from a
@@ -183,6 +191,16 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // the agent's host hook, the construction is HTML's - the element
     // a custom element class's super() gets, new or upgrading.
     if (self.html_constructor) {
+        // Custom elements are the main world's: an isolated world has no
+        // custom element registry, so an HTML element constructor there is
+        // an illegal constructor - Blink's V8HTMLConstructor::HtmlConstructor
+        // throws it for a non-main world (third_party/blink/renderer/
+        // bindings/core/v8/v8_html_constructor.cc; customElements is null in
+        // a Chrome extension's content script).
+        if (in_world) {
+            conv.throwTypeErrorFromContext(isolate, constructor_context, "Illegal constructor");
+            return;
+        }
         if (protocol_agents.htmlConstructorHookOf(isolate)) |hook| {
             // It binds or releases the receiver itself.
             receiver_taken = true;
@@ -210,7 +228,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     if (self.traces_construction) {
         log.debug("[CTOR_CALLBACK] {s} calling callConstructorWithArgs\n", .{self.interface_name});
     }
-    const instance = self.construct(info, allocator, ctx, current_context, isolate) catch |err| {
+    const instance = self.construct(info, allocator, instance_realm, current_context, isolate) catch |err| {
         // ExceptionPending means an exception was already rethrown during conversion
         // (e.g., from toString() throwing) - don't throw a second error
         if (self.traces_construction) {
@@ -237,14 +255,15 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // the result - binding `this_obj` instead would replace it, and
     // every edge drawn on it with it (WrapperCache.set refuses). The
     // receiver is then bound to nothing, and released.
-    if (interface.adoptExistingWrapper(info, this_obj, instance, constructor_context)) return;
+    if (interface.adoptExistingWrapperIn(info, this_obj, instance, constructor_context, ctx)) return;
 
     // The link: `this` reaches the instance through its anchor
     // (platform_anchor.zig; a node's is made when the cache takes it). A
     // receiver that cannot be bound - no API object, which V8 never makes
     // for an interface's constructor - reaches nothing: the construction
     // fails, the instance is freed, and the error is thrown.
-    if (!interface.setInstance(isolate, this_obj, instance)) {
+    const bound = if (in_world) interface.setInstanceInWorld(isolate, this_obj, instance) else interface.setInstance(isolate, this_obj, instance);
+    if (!bound) {
         instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
         const function_ctx_owned = info.getFunctionCreationContext();
         defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
@@ -309,18 +328,27 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
 
 /// HTML 3.2.3 "HTML element constructors", the overridden constructor
 /// steps of an [HTMLConstructor] interface, across the seam
-/// (engine.HostHooks.htmlConstructor): step 1 here, then steps 10-11
-/// (the receiver's prototype), the host's 2-9, 12, 13 and 15, and 14
-/// and 16 here. Takes `this_obj`, V8's receiver for NewTarget: it is
-/// bound to the element, or released - never left registered for an
-/// element whose existing wrapper is the result.
+/// (engine.HostHooks.htmlConstructor): steps 10-11 (the receiver's
+/// prototype), step 1 here, the host's 2-8 (`resolve`) and 9, 12, 13 and
+/// 15 (`finish`), back to back, and 14 and 16 here. Takes `this_obj`, V8's
+/// receiver for NewTarget: it is bound to the element, or released - never
+/// left registered for an element whose existing wrapper is the result.
 ///
-/// Order: V8 performed Get(NewTarget, "prototype") when it made the
-/// receiver, before step 1, so a throwing or side-effecting getter is
-/// seen before the TypeErrors of steps 1-9, 12 and 13 (the spec has it
-/// after them). Blink's V8HTMLConstructor::HtmlConstructor
+/// Order - the adapter's, as the protocol leaves it: V8 adapter follows
+/// Chrome's order (prototype read before the definition checks); the user,
+/// 2026-11-21; Firefox = spec, Safari ships no customized built-ins. V8
+/// performs Get(NewTarget, "prototype") when it makes an API function's
+/// receiver (builtins-api.cc HandleApiCallHelper: ApiNatives::
+/// InstantiateObject -> JSFunction::GetDerivedMap), before step 1, so a
+/// throwing or side-effecting getter is seen before the TypeErrors of
+/// steps 1-8, 12 and 13 (the spec has it after them: custom-elements/
+/// HTMLElement-constructor-customized-builtins.html, Chrome 157 0/2,
+/// Firefox 160 2/2). Blink's V8HTMLConstructor::HtmlConstructor
 /// (third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc)
-/// runs under the same V8 construct path and has the same order.
+/// runs under the same V8 construct path and has the same order. The
+/// class form that reads it in spec order - a derived class whose
+/// [[Construct]] makes no receiver - is lane blk7's handoff
+/// (tmp/plans/lane-blk7-handoff.md, "for the JSC/other adapters").
 fn constructHTMLElement(
     self: *const Constructor,
     info: *const v8.FunctionCallbackInfo,
@@ -384,11 +412,19 @@ fn constructHTMLElement(
         interface.handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, self.interface_name);
     }
 
-    // 2-9, 12, 13 and 15: the host's. NewTarget BORROWED for the call.
-    const constructed = hook.call(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
+    // 2-8: the host's `resolve`, then - with NewTarget's prototype read
+    // already (steps 10-11 above) and no author script between them - 9,
+    // or 12, 13 and 15: its `finish`. NewTarget BORROWED for the call.
+    const resolution = hook.hooks.resolve(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, self.interface_name) catch |err| {
         if (err == error.ExceptionPending) return;
-        // TypeError (steps 5, 7.1, 8.2 and 13): of the active
-        // function's realm.
+        // TypeError (steps 5, 7.1 and 8.2): of the active function's
+        // realm.
+        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+        return;
+    };
+    const constructed = hook.hooks.finish(hook.host, realm, resolution, self.interface_name) catch |err| {
+        if (err == error.ExceptionPending) return;
+        // TypeError (step 13): of the active function's realm.
         conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
         return;
     };
@@ -676,10 +712,9 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // call before.
     //
     // The current context is the conversion's to keep when converting one of
-    // the arguments may make the engine keep it (`conv.fromV8Value` stores it
-    // into a persistent `runtime.CallbackWrapper` for callback-typed
-    // parameters, so `createElement(DOMString)` is transient while
-    // `setTimeout(TimerHandler, ...)` is not). `typeRetainsContext` is an
+    // the arguments may make the engine keep it (a callback interface's
+    // wrapper kept a context handle of its own until lane bind1; an unknown
+    // type still may). `typeRetainsContext` is an
     // ALLOWLIST of provably inert types and answers "retains" for anything it
     // does not recognise. That direction matters: written as a blocklist,
     // this exact check released a context `setTimeout` still needed and
@@ -737,9 +772,10 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
         if (err == conv.ConversionError.ExceptionPending) {
             return;
         }
-        // Throw proper DOMException for WebIDL errors
+        // Throw proper DOMException for WebIDL errors, its message the
+        // impl's text for this operation (runtime.exception_text)
         if (frame.functionContext()) |realm| {
-            interface.throwMemberError(isolate, realm, err);
+            interface.throwMemberErrorFor(isolate, realm, err, .{ .kind = .operation, .interface_name = self.interface_name, .member_name = self.operation_name });
         } else {
             conv.throwError(isolate, @errorName(err));
         }
@@ -774,7 +810,7 @@ fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInf
     if (!self.global_interface) {
         // A node interface's receiver is unwrapped as a node wrapper
         // (`thisNodeInstance`: Object::Unwrap, comptime per interface).
-        const found_instance = if (self.node_receiver) thisNodeInstance(info) else thisInstance(info);
+        const found_instance = if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info);
         if (found_instance) |found| {
             if (!isPoisoned(@intFromPtr(found))) {
                 const instance: *runtime.Instance = @ptrCast(@alignCast(found));
@@ -889,7 +925,8 @@ pub const Getter = struct {
     /// WebIDL attribute getter 1.1.2.2 / HTML 7.2.1.1: Location's Proxy
     /// checks its platform target (`V8Interface.acceptsAnyReceiver`).
     checks_receiver: bool,
-    /// Window's `window`: answered without its Window (`answerWindowGetter`).
+    /// Window's `window`, `self` and `frames`: answered on the getter's own
+    /// global without its Window, before anything else (`answerWindowGetter`).
     answers_window: bool,
     /// A handle for `this` is used: a [Global] interface compares it with
     /// globals, and a [SameObject] attribute draws an edge from it.
@@ -923,12 +960,49 @@ pub const Getter = struct {
     };
 };
 
+/// The getter function of an attribute whose type is a promise (WebIDL 3.7.6,
+/// "attribute getter"): its steps - the security check, the receiver check
+/// and the getter steps - run in a "try", and "if an exception E was thrown:
+/// if attribute's type is a promise type, then return ! Call(%Promise.reject%,
+/// %Promise%, «E»)" (`rejectOnThrow`, as an operation returning a promise
+/// does). So `Object.getOwnPropertyDescriptor(ReadableStreamDefaultReader.
+/// prototype, "closed").get.call({})` returns a rejected promise; Chrome,
+/// Firefox and Safari all do (streams/idlharness.any.html and the other
+/// idlharness files at wpt.fyi 2358bd4835). The attribute's callback picks
+/// this function at comptime (interface.zig `PropertyGetterCallback`), so
+/// `attributeGetter`, which every other getter runs, is unchanged. The DOM
+/// algorithm brackets the whole call, the rejected promise's creation
+/// included, as `operation`'s does; `attributeGetter`'s own bracket nests in
+/// it (DeferredTeardown.enterAlgorithm counts depth, and only the outermost
+/// exit runs what is owed).
+pub fn promiseAttributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter) void {
+    const algorithm = dom_algorithm.enter(info.getIsolate());
+    defer dom_algorithm.leaveToScript(algorithm);
+    var call: GetterCall = .{ .info = info, .getter = self };
+    rejectOnThrow(info, &call, GetterCall.steps);
+}
+
+/// One read of a promise-typed attribute, as the data a catching run hands
+/// back to it.
+const GetterCall = struct {
+    info: *const v8.FunctionCallbackInfo,
+    getter: *const Getter,
+
+    fn steps(call: *GetterCall) void {
+        attributeGetter(call.info, call.getter);
+    }
+};
+
 /// An attribute getter function's steps (the generic
 /// PropertyGetterCallback's callback), for the attribute `self` describes.
 pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter) void {
     // Use compile-time debug logging to avoid runtime overhead
     // This is called on every property access, so must be zero-cost when disabled
     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ self.interface_name, self.getter_name });
+    // Window's window, self and frames on the getter's own global - nearly
+    // every read of them - need no Window, no bracket and no handle (see
+    // answerWindowGetter); any other receiver takes the steps below.
+    if (self.answers_window and answerWindowGetter(info, self.window_access)) return;
     // A DOM algorithm on the agent's stack until it returns
     // into script (dom_algorithm.zig; refcount design 9, risk 4).
     const algorithm = dom_algorithm.enter(info.getIsolate());
@@ -960,11 +1034,6 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
             return;
         },
         .instance => {},
-    }
-
-    // `window` needs no Window (see answerWindowGetter).
-    if (self.answers_window) {
-        if (answerWindowGetter(info, self.window_access)) return;
     }
 
     // Instance getter - extract instance from 'this' and call.
@@ -1020,8 +1089,9 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
             // read from `info` with no handle (`thisInstance`); a wrapper keeps
             // no WrapperTypeInfo beside it (lane v8up A0).
             // A node interface's receiver: a node wrapper's instance, through
-            // its anchor (`thisNodeInstance`).
-            if (if (self.node_receiver) thisNodeInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
+            // its anchor - or an isolated world's wrapper of the node
+            // (`nodeReceiverInstance`).
+            if (if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - return undefined instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);
@@ -1174,6 +1244,37 @@ pub const SameObjectEdge = struct {
 /// string, when it is one the impl allocated, is freed with
 /// `cleanup_allocator` - captured before the getter ran, as a collection the
 /// conversion triggers may free the instance's context.
+/// A JSValue result's V8 value for its getter (`finishGetter`), converted in
+/// the current context. A value the impl kept (a stored or traced JSValue)
+/// never reaches another world's script as that world's object
+/// (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference) - and a
+/// FrozenArray attribute's array reaches it as one frozen array per world
+/// (protocol_worlds.frozenArrayAcrossWorlds; Blink's FrozenArray, a JS array
+/// per world). THE FAST PATH: a non-handle result, or an object of a Browser
+/// with no isolated world - one branch, two loads, no lookup. A handle the
+/// impl returned is the binding's, as every result's: converted, the
+/// impl's goes now, the converted one is released as the result is.
+fn jsValueGetterResult(comptime frozen_array: bool, isolate: *v8.Isolate, value: runtime.JSValue, gate_realm: ?runtime.Context) *v8.Value {
+    const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return v8.v8_Undefined(isolate) orelse unreachable;
+    // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+    defer v8.v8_Context_Dispose(current_context);
+    const v8_converted = conv.toV8Value(runtime.JSValue, isolate, current_context, value) catch
+        return v8.v8_Undefined(isolate) orelse unreachable;
+    if (value == .handle) {
+        if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+            const converted = if (comptime frozen_array)
+                protocol_worlds.frozenArrayAcrossWorlds(isolate, v8_converted, current_context)
+            else
+                protocol_worlds.acrossWorlds(isolate, v8_converted, current_context);
+            if (converted) |made| {
+                v8.v8_Global_Dispose(v8_converted);
+                return made;
+            }
+        };
+    }
+    return v8_converted;
+}
+
 pub fn finishGetter(
     comptime PayloadType: type,
     comptime byte_string: bool,
@@ -1181,6 +1282,13 @@ pub fn finishGetter(
     result: PayloadType,
     cleanup_allocator: std.mem.Allocator,
     same_object: ?SameObjectEdge,
+    /// The realm of the object whose attribute this is: its Browser's
+    /// isolated-world flag gates the conversion across worlds (two loads).
+    gate_realm: ?runtime.Context,
+    /// The attribute's IDL type is a FrozenArray<T> (codegen's
+    /// `Meta.frozen_array_attributes`): another world reads it as a frozen
+    /// array of its own (`jsValueGetterResult`).
+    comptime frozen_array: bool,
 ) void {
     const isolate_inner = info.getIsolate();
     // For string types that allocate memory, free after V8 conversion.
@@ -1353,27 +1461,22 @@ pub fn finishGetter(
             // TODO: Implement proper Promise creation for [NewObject] methods
             break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
         } else if (PayloadType == runtime.JSValue) {
-            // JSValue - use conv.toV8Value to convert to V8 Value
-            // This handles all JSValue variants: undefined, null, boolean, number, string, handle, instance
-            const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
-                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-            };
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
-            defer v8.v8_Context_Dispose(current_context);
-            const v8_converted = conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
-                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-            };
-            break :comptime_convert v8_converted;
+            break :comptime_convert jsValueGetterResult(frozen_array, isolate_inner, result, gate_realm);
+        } else if (PayloadType == ?runtime.JSValue) {
+            // A nullable any, object or FrozenArray: null, or the value as
+            // a JSValue result is (`jsValueGetterResult`).
+            const value = result orelse break :comptime_convert (v8.v8_Null(isolate_inner) orelse unreachable);
+            break :comptime_convert jsValueGetterResult(frozen_array, isolate_inner, value, gate_realm);
         } else if (comptime isOptionalCallbackType(PayloadType)) {
             // An optional callback function type (EventHandler is
-            // ?EventHandlerNonNull, a function pointer): the value
-            // is the function's Global<Value>* (conversions.zig,
-            // UNTAGGED - a tag in a function pointer's low bits is
-            // illegal behaviour an optimized build acts on), which
-            // is what setReturnValue reads. Null is JavaScript null.
+            // ?EventHandlerNonNull): the value is BORROWED - the
+            // holder's own Global (an event handler map's), which is
+            // what setReturnValue reads. Null is JavaScript null.
             if (result) |function_value| {
-                const address: usize = @intFromPtr(function_value);
-                break :comptime_convert @ptrFromInt(address);
+                break :comptime_convert switch (function_value.function) {
+                    .handle => |h| @ptrCast(@alignCast(h.ptr)),
+                    else => v8.v8_Null(isolate_inner) orelse unreachable,
+                };
             } else {
                 break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
             }
@@ -1573,33 +1676,38 @@ pub fn recordSameObjectEdge(isolate: *v8.Isolate, owner: *v8.Object, prop_name: 
 /// relevant realm.[[GlobalEnv]].[[GlobalThisValue]]" - the WindowProxy,
 /// which the getter's own realm answers without its Window: when `this` is
 /// that realm's global, its global this value is the context's global
-/// proxy. `self` and `frames` are own data properties holding it already;
-/// `window` is an accessor, and a removed frame's realm ends
+/// proxy. A removed frame's realm ends
 /// (engine.WindowRealmEnd.navigable_destroyed) with its global still
 /// attached but its Window freed, so looking the Window up made `w.window`
 /// throw where `w.self` answered (self-et-al.window.js). Answers false for
 /// any other `this`, which the generic path brand-checks.
+///
+/// Nearly every read of the three is this case, so it runs first in
+/// attributeGetter, before the DOM-algorithm bracket and the error realm: it
+/// runs no DOM algorithm and throws nothing, and it makes no handle - the
+/// check and the return value are v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal's,
+/// on Locals, which answers the context's id. It used to make three Globals
+/// per read (the current context, its global, `this`), with the bracket and
+/// the error realm around them; once `self` and `frames` were accessors too
+/// (HTML's [Replaceable] attributes, lane maj5), `self === window` took twice
+/// as long (perf_bench window.self-read 2.0x) - Blink's generated getters
+/// make no persistent handle either. HTML 7.1.3.3's access report check is
+/// unchanged: for the Window the method's realm was registered with (never
+/// field 0 of its global, which a reused WindowProxy points at the next
+/// realm's Window), only while the Browser monitors access
+/// (reportWindowAccess's own first test: Chromium's DOMWindow::ReportCoopAccess
+/// early return), and inside the bracket, as before.
 pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo, window_access: ?[]const u8) bool {
+    const context_id = v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ReturnThisIfCurrentGlobal(info);
+    if (context_id == 0) return false;
+    const property = window_access orelse return true;
     const isolate = info.getIsolate();
-    // V8 enters the getter's creation context: the method's realm.
-    const method_ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
-    defer v8.v8_Context_Dispose(method_ctx);
-    const method_global = v8.v8_Context_Global(method_ctx) orelse return false;
-    defer v8.v8_Object_Dispose(method_global);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
-    // HTML 7.1.3.3's access report check, for the method's realm's Window:
-    // `this` is the method's own global, so THE Window-receiver rule's
-    // contextual case - the Window the method's realm was attached with
-    // (never field 0 of its global, which a reused WindowProxy points at the
-    // next realm's Window). reportWindowAccess asks first whether the
-    // Browser monitors access at all.
-    if (window_access) |property| {
-        if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| @import("protocol_realms.zig").reportWindowAccess(window, property);
-    }
-    // Copied into the return value; ours is released above.
-    info.setReturnValue(@ptrCast(method_global));
+    const window = @import("context_manager.zig").getWindowForContextId(isolate, context_id) orelse return true;
+    const protocol_realms = @import("protocol_realms.zig");
+    if (!protocol_realms.windowAccessMonitored(window)) return true;
+    const algorithm = dom_algorithm.enter(isolate);
+    defer dom_algorithm.leaveToScript(algorithm);
+    protocol_realms.reportWindowAccess(window, property);
     return true;
 }
 
@@ -1632,13 +1740,7 @@ pub fn isUnionResult(comptime T: type) bool {
 
 pub fn isOptionalCallbackType(comptime T: type) bool {
     const type_info = @typeInfo(T);
-    if (type_info != .optional) return false;
-
-    const child_info = @typeInfo(type_info.optional.child);
-    if (child_info != .pointer) return false;
-
-    const ptr_child_info = @typeInfo(child_info.pointer.child);
-    return ptr_child_info == .@"fn";
+    return type_info == .optional and type_info.optional.child == runtime.BorrowedCallbackFunction;
 }
 
 // ============================================================================
@@ -1758,6 +1860,21 @@ pub fn thisNodeInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
     return @ptrCast(@import("node_wrappers.zig").instanceOfSlot(slot) orelse return null);
 }
 
+/// `this`'s instance for a member of a node interface: the main world's node
+/// wrapper through its anchor (`thisNodeInstance`, the hit path), else any
+/// other wrapper of the node - an isolated world's, which is bound as a
+/// platform object (platform_anchor.bindInWorld) and so carries no node
+/// anchor - through the general read (`thisInstance`: instanceOfObject reads
+/// every kind of wrapper). Before the fallback, every attribute of a node
+/// read in a world threw "Illegal invocation" (Puppeteer's and Playwright's
+/// utility worlds: `script.type = ...`, `el.textContent`, `document.head`),
+/// while operations reached the node through `interface.getInstance`
+/// (lane tpf, Vue's Puppeteer e2e suite). Null for a `this` that is no
+/// platform object; the caller's brand check decides the interface.
+pub fn nodeReceiverInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
+    return thisNodeInstance(info) orelse thisInstance(info);
+}
+
 /// An attribute setter function's steps (the generic makeSetterCallback's
 /// callback and body), for the attribute `self` describes.
 pub fn attributeSetter(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
@@ -1865,8 +1982,9 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
             // The brand check is the instance's state ancestry (`self.implements`
             // below), per instance, so it holds across realms. `this`'s instance
             // is read from `info` with no handle (`thisInstance`): a
-            // Global<Object> per assignment before (perf3 phase 1b).
-            if (if (self.node_receiver) thisNodeInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
+            // Global<Object> per assignment before (perf3 phase 1b). A node
+            // interface's: `nodeReceiverInstance`.
+            if (if (self.node_receiver) nodeReceiverInstance(info) else thisInstance(info)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - silently return instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);
@@ -2068,7 +2186,7 @@ pub fn finishOperation(
     // for object creation - asked of the frame only by the results made in
     // it (a union's or a dictionary's object): a void, a wrapper or a handle
     // makes no context (perf3 phase 1b: every void operation made one).
-    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned);
+    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned, instance.ctx);
 }
 
 /// Convert Zig return value to V8 Value
@@ -2080,9 +2198,11 @@ pub fn convertReturnValue(
     isolate: *v8.Isolate,
     frame: *CallFrame,
     owned: *bool,
+    /// The realm of the object whose operation this is: its Browser's
+    /// isolated-world flag gates the conversion across worlds (two loads).
+    gate_realm: ?runtime.Context,
 ) !?*v8.Value {
-    // Suppress unused parameter warning - allocator used only in recursive calls
-    _ = allocator;
+    // `allocator` is only passed on, to the recursive calls below.
 
     // `owned` answers whether the handle returned is the binding's to
     // release once the caller has set it as the call's result
@@ -2099,7 +2219,7 @@ pub fn convertReturnValue(
     // Handle error union - unwrap it
     if (type_info == .error_union) {
         const PayloadType = type_info.error_union.payload;
-        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned);
+        return convertReturnValue(PayloadType, byte_string, result, allocator, isolate, frame, owned, gate_realm);
     }
 
     // Handle void return
@@ -2116,7 +2236,7 @@ pub fn convertReturnValue(
     if (type_info == .optional) {
         if (result) |value| {
             const ChildType = type_info.optional.child;
-            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned);
+            return convertReturnValue(ChildType, false, value, allocator, isolate, frame, owned, gate_realm);
         } else {
             owned.* = true;
             return @ptrCast(v8.v8_Null(isolate));
@@ -2192,8 +2312,23 @@ pub fn convertReturnValue(
                 }
                 break :blk @ptrCast(conv.newStringFromWtf8(isolate, s.data) orelse return v8.v8_Undefined(isolate));
             },
-            // A Global<Value>*, set as the result as it is.
-            .handle => |h| @ptrCast(h.ptr),
+            // A Global<Value>*, set as the result as it is - unless it is
+            // an object of another isolated world than the operation's
+            // (protocol_worlds.acrossWorlds; Blink's WorldSafeV8Reference):
+            // then its value in this world, the impl's handle released (the
+            // binding's, `owned`). THE FAST PATH: a Browser with no world -
+            // one branch, two loads, no lookup.
+            .handle => |h| blk: {
+                if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+                    if (frame.currentContext()) |current| {
+                        if (protocol_worlds.acrossWorlds(isolate, @ptrCast(@alignCast(h.ptr)), current)) |converted| {
+                            v8.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
+                            break :blk converted;
+                        }
+                    }
+                };
+                break :blk @ptrCast(h.ptr);
+            },
             // Its wrapper in its relevant realm, as above.
             .instance => |i| blk: {
                 const wrapper = conv.instanceToV8(isolate, @ptrCast(@alignCast(i)));
@@ -2246,7 +2381,19 @@ pub fn convertReturnValue(
     // Handle Promise(T) types - extract the handle and return the V8 Promise
     if (@typeInfo(ReturnType) == .@"struct") {
         if (@hasDecl(ReturnType, "ResultType") and @hasField(ReturnType, "handle")) {
-            // This is a Promise(T) type - extract the V8 Promise handle
+            // This is a Promise(T) type - extract the V8 Promise handle -
+            // unless it is another isolated world's promise: then the
+            // world's own promise for it (protocol_worlds.acrossWorlds,
+            // ScriptPromiseProperty per world), a new handle the binding
+            // releases. THE FAST PATH as for a JSValue result: two loads.
+            if (gate_realm) |realm| if (protocol_worlds.realmMayHaveWorlds(realm)) {
+                if (frame.currentContext()) |current| {
+                    if (protocol_worlds.acrossWorlds(isolate, @ptrCast(@alignCast(result.handle)), current)) |converted| {
+                        owned.* = true;
+                        return converted;
+                    }
+                }
+            };
             return @ptrCast(result.handle);
         }
         // A dictionary (URLPatternResult, NavigationResult): its object

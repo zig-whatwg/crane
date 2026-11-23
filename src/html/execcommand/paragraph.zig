@@ -31,8 +31,7 @@ fn isBr(node: *Instance) !bool {
 /// Range.insertNode(node) on the active range.
 fn insertNodeAtActiveRange(edit: *Edit, node: *Instance) !void {
     const range = (try edit.activeRange()) orelse return error.NoActiveRange;
-    try interfaces.Range.call_insertNode(range, node);
-    edit.modified = true;
+    try edit.insertNode(range, node);
 }
 
 /// The shared steps that keep insertNode off a Text node's edges: at its
@@ -84,8 +83,8 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
         const p = (try common.parent(start.node)) orelse return true;
         if (!try common.isAllowedChild(.{ .name = "br" }, p)) return true;
     }
-    // A plaintext-only editing host whose white-space keeps newlines takes
-    // a preformatted linefeed instead of the br (see insertLinefeed).
+    // Where the white-space keeps newlines, a preformatted linefeed instead
+    // of the br (see prefersLinefeed and insertLinefeed).
     if (try prefersLinefeed(edit, start)) return try insertLinefeed(edit, start);
     // Steps 5-6.
     try moveOffTextEdges(edit);
@@ -111,25 +110,43 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
     return true;
 }
 
-/// Whether a line break at `point` is a preformatted linefeed: the point's
-/// editing host is in the plaintext-only state (outside design mode) and
-/// the white-space around the point keeps newlines (pre, pre-wrap,
-/// pre-line, break-spaces). Gecko: HTMLEditUtils::
-/// ShouldInsertLinefeedCharacter, "If in contenteditable=plaintext-only, we
-/// should use linefeed when it's preformatted" (editor/libeditor/
-/// HTMLEditUtils.cpp, gecko-dev 5836a062726f). Where the host is
-/// contenteditable=true the spec's br stays (editing/run/insertlinebreak
-/// .html).
+/// Whether a line break at `point` is a preformatted linefeed:
+/// - in an editing host in the plaintext-only state (outside design mode),
+///   where the white-space around the point keeps newlines (pre, pre-wrap,
+///   pre-line, break-spaces) - Gecko: HTMLEditUtils::ShouldInsertLinefeed-
+///   Character, "If in contenteditable=plaintext-only, we should use
+///   linefeed when it's preformatted" (editor/libeditor/HTMLEditUtils.cpp,
+///   gecko-dev 5836a062726f); Blink too;
+/// - in richly editable content, where the style keeps newlines and no
+///   <pre> element encloses the point: Blink's InsertLineBreakCommand::
+///   ShouldUseBreakElement ("Use <br> for <pre> elements to align with other
+///   browsers", else a "\n" where the style does not collapse breaks;
+///   third_party/blink/renderer/core/editing/commands/insert_line_break_
+///   command.cc, chromium main 2026-11), as Safari does: a `<span>` in a
+///   `display:flex; white-space:pre` container takes `a\nbc`, where a
+///   `<pre>` keeps the br (editing/run/insertlinebreak.html: Chrome 157 and
+///   Safari 27.2 pass both, Firefox 160 - a br everywhere outside
+///   plaintext-only - only the <pre> rows; wpt.fyi 2358bd4835). Golden rule
+///   2, no newer spec: the two-browser majority.
 fn prefersLinefeed(edit: *Edit, point: Point) !bool {
+    if (!(try common.whiteSpaceAround(point.node)).preservesNewlines()) return false;
     var mode = try interfaces.Document.get_designMode(edit.document);
     defer mode.deinit(edit.document.ctx.allocator);
-    if (std.mem.eql(u8, mode.asSlice(), "on")) return false;
-    const host = (try common.editingHostOf(point.node)) orelse return false;
-    if (!try common.isHtmlElement(host)) return false;
-    var state = try interfaces.HTMLElement.get_contentEditable(host);
-    defer state.deinit(host.ctx.allocator);
-    if (!std.mem.eql(u8, state.asSlice(), "plaintext-only")) return false;
-    return (try common.whiteSpaceAround(point.node)).preservesNewlines();
+    const design_mode = std.mem.eql(u8, mode.asSlice(), "on");
+    if (!design_mode) {
+        const host = (try common.editingHostOf(point.node)) orelse return false;
+        if (try common.isHtmlElement(host)) {
+            var state = try interfaces.HTMLElement.get_contentEditable(host);
+            defer state.deinit(host.ctx.allocator);
+            if (std.mem.eql(u8, state.asSlice(), "plaintext-only")) return true;
+        }
+    }
+    // Richly editable: a br inside a <pre>, a linefeed elsewhere.
+    var current: ?*Instance = point.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try common.isHtmlElementNamed(c, "pre")) return false;
+    }
+    return true;
 }
 
 /// insertLineBreak's steps 5-11 for a preformatted linefeed: a "\n" into
@@ -229,6 +246,14 @@ pub fn insertHorizontalRuleAction(edit: *Edit) !bool {
 /// element named `tag`.
 const NewContainerContext = struct {
     tag: []const u8,
+    /// The line break that ended the previous line stays before the new
+    /// container: Chrome 157 and Safari 27.2 keep `foo<br>` when
+    /// insertParagraph wraps the line after it (`foo<br>bar[]<br><span>baz
+    /// </span>` -> `foo<br><div>bar</div><div><br><span>baz</span></div>`;
+    /// editing/run/insertparagraph.html, 22 subtests PFP at wpt.fyi
+    /// 2358bd4835), where wrap's step 16 removes it as extraneous (Firefox
+    /// 160 too). Golden rule 2, no newer spec: the majority.
+    pub const keep_line_break_before = true;
     pub fn siblingCriteria(_: NewContainerContext, _: *Instance) anyerror!bool {
         return false;
     }
@@ -303,6 +328,41 @@ fn outermostUnsplittable(node: *Instance) !?*Instance {
     return outermost;
 }
 
+/// The editable first cell (td or th) of the table that `node` - a table,
+/// thead, tbody, tfoot, tr, colgroup or col element - belongs to, or null
+/// (see insertParagraphAfterDeletion).
+fn tableStructureFirstCell(node: *Instance) !?*Instance {
+    if (!try common.isHtmlElementIn(node, &.{ "table", "thead", "tbody", "tfoot", "tr", "colgroup", "col" })) return null;
+    var table: ?*Instance = node;
+    while (table) |t| : (table = try common.parent(t)) {
+        if (try common.isHtmlElementNamed(t, "table")) break;
+    }
+    const root = table orelse return null;
+    // The first td or th in tree order inside the table (not a nested
+    // table's).
+    var current = try common.firstChild(root);
+    while (current) |c| {
+        if (try common.isHtmlElementIn(c, &.{ "td", "th" })) {
+            return if ((try common.isEditable(c)) or try common.isEditingHost(c)) c else null;
+        }
+        if ((try common.isHtmlElementIn(c, &.{ "thead", "tbody", "tfoot", "tr" })) and (try common.firstChild(c)) != null) {
+            current = try common.firstChild(c);
+            continue;
+        }
+        var next = c;
+        while (true) {
+            if (try common.nextSibling(next)) |sibling| {
+                current = sibling;
+                break;
+            }
+            const up = (try common.parent(next)) orelse return null;
+            if (up == root) return null;
+            next = up;
+        }
+    }
+    return null;
+}
+
 /// The insertParagraph command's action.
 pub fn insertParagraphAction(edit: *Edit) !bool {
     // Step 1.
@@ -339,8 +399,7 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     var offset = range_start.offset;
     // Step 4.
     if (common.isText(node) and offset != 0 and offset != try common.nodeLength(node)) {
-        _ = try interfaces.Text.call_splitText(node, offset);
-        edit.modified = true;
+        _ = try edit.splitText(node, offset);
     }
     // Step 5.
     if (common.isText(node) and offset == try common.nodeLength(node)) {
@@ -378,6 +437,30 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         node = p;
         offset = try common.indexOf(element);
     }
+    // A point in table structure outside any cell - in a table, a row
+    // group, a row, a colgroup or a col - moves to the start of the table's
+    // first cell, so the paragraph goes there (lane edit4, B2; the user's
+    // ruling 2026-11-21 ~2:25 PM ET, "follow Chrome + Safari"): `<table>
+    // <colgroup><col></colgroup><tbody><tr><td>abc</td></tr></tbody>
+    // </table>` with the caret in the col + Enter gives `<td><br>abc</td>`
+    // in Chrome 157 and Safari 27.2, where Firefox 160 puts a new paragraph
+    // before the table; the test accepts both (editing/other/insertparagraph-
+    // in-non-splittable-element.html col, colgroup, tbody, tr: PPP at
+    // wpt.fyi 2358bd4835), the spec's steps split the table. Blink
+    // canonicalizes the caret to the first visible position, inside the
+    // first cell (VisiblePosition, InsertParagraphSeparatorCommand). It
+    // costs editing/run/insertparagraph.html `[["insertparagraph",""]]
+    // "<table><tbody data-start=0 data-end=1><tr><td>foo<td>bar<tr><td>baz
+    // <td>quz</table>" compare innerHTML`, which all three browsers fail and
+    // Crane passed on the spec: ruled a user-ruling loss.
+    // In that cell the paragraph is a line break, as Blink makes one when
+    // the paragraph's block is a table cell (InsertParagraphSeparatorCommand
+    // applies an InsertLineBreakCommand for IsTableCell(start_block)):
+    // Chrome's and Safari's `<td><br>abc</td>`.
+    if (try tableStructureFirstCell(node)) |cell| {
+        try edit.collapse(cell, 0);
+        return insertLineBreakAfterDeletion(edit);
+    }
     // Step 7.
     try edit.collapse(node, offset);
     // No block to split: a line break instead (Chrome 156 and Firefox 158
@@ -386,9 +469,22 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     // AutoInsertParagraphHandler::ShouldInsertLineBreakInstead: no editable
     // block in the editing host, or an editing host that cannot hold a p).
     if (try shouldInsertLineBreakInstead(node)) return insertLineBreakAfterDeletion(edit);
-    // Steps 8-9: the nearest single-line container in the editing host.
+    // Steps 8-9: the nearest single-line container in the editing host - or,
+    // as Chrome and Safari split it, a flex or grid item on the way:
+    // `<div style=display:flex><span>a[]bc</span></div>` gives `<div
+    // style=display:flex><span>a</span><span>bc</span></div>` where the spec
+    // splits the flex container (editing/run/insertparagraph.html, 24
+    // subtests PFP at wpt.fyi 2358bd4835; Firefox 160 splits the
+    // container). Mechanism: Blink's InsertParagraphSeparatorCommand splits
+    // the paragraph's EnclosingBlock, which a blockified item is. Golden
+    // rule 2, no newer spec: the majority.
     var container = node;
+    var flex_item = false;
     while (!try common.isSingleLineContainer(container)) {
+        if (try common.isFlexOrGridItem(container)) {
+            if (try common.isEditable(container)) flex_item = true;
+            break;
+        }
         const p = (try common.parent(container)) orelse break;
         if (!try common.isEditable(p)) break;
         if (!try common.inSameEditingHost(p, node)) break;
@@ -407,8 +503,8 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         if (try common.isHtmlElementIn(outer, &.{ "dd", "dt", "li" })) container = outer;
     }
     // Step 11: no container - wrap the line in the default single-line
-    // container first.
-    if (!(try common.isEditable(container)) or !(try common.inSameEditingHost(container, node)) or !try common.isSingleLineContainer(container)) {
+    // container first (a flex or grid item is the container itself).
+    if (!flex_item and (!(try common.isEditable(container)) or !(try common.inSameEditingHost(container, node)) or !try common.isSingleLineContainer(container))) {
         // Step 11.1.
         const tag = try block.defaultSingleLineContainerName(edit);
         // Step 11.2.
@@ -560,13 +656,9 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         var walk = try block.ContainedWalk.init(line);
         while (try walk.next()) |contained| try contained_nodes.append(edit.allocator, contained);
     }
-    // Step 27: extractContents() on a range over the new line.
-    const range = try interfaces.Document.call_createRange(edit.document);
-    const range_generation = runtime.SlabAllocator.generationOf(range);
-    defer range.releaseIfUnwrapped(range_generation);
-    try interfaces.Range.call_setStart(range, line.start.node, line.start.offset);
-    try interfaces.Range.call_setEnd(range, line.end.node, line.end.offset);
-    const frag = try interfaces.Range.call_extractContents(range);
+    // Step 27: extractContents() on a range over the new line - the DOM's
+    // extract, recorded for undo (Edit.extractContents).
+    const frag = try edit.extractContents(line.start, line.end);
     const frag_generation = runtime.SlabAllocator.generationOf(frag);
     defer @import("dom").node_creation.releaseIfUnwrapped(frag, frag_generation);
     edit.modified = true;
@@ -719,6 +811,18 @@ const Edge = enum { start, end };
 
 /// Whether a split half holds nothing visible but, at most, one br as its
 /// last leaf - the empty line Enter leaves behind.
+/// An element whose box is its own content - embedded content and the
+/// replaced form controls - which a split's half that holds it is not
+/// empty of, and which takes no padding br inside it: insertParagraph in
+/// `<div><iframe srcdoc="abc"></iframe></div>` gives `<div><br></div><div>
+/// <iframe srcdoc="abc"></iframe></div>` in all three browsers (editing/
+/// other/insertparagraph-in-non-splittable-element.html, wpt.fyi
+/// 2358bd4835); the spec's "visible" counts only img and br among elements
+/// with no visible descendant.
+fn isEmbeddedContent(node: *Instance) !bool {
+    return try common.isHtmlElementIn(node, &.{ "iframe", "video", "audio", "canvas", "object", "embed", "select", "textarea", "button", "meter", "progress", "input" });
+}
+
 fn isEmptyLine(container: *Instance) !bool {
     var brs: usize = 0;
     var last_leaf: ?*Instance = null;
@@ -733,6 +837,7 @@ fn isEmptyLine(container: *Instance) !bool {
             continue;
         }
         if (try common.isVisible(n)) return false;
+        if (try isEmbeddedContent(n)) return false;
     }
     if (brs == 0) return true;
     return brs == 1 and last_leaf == last_br;
@@ -749,6 +854,7 @@ fn pruneEdgeInlines(edit: *Edit, container: *Instance, edge: Edge, empty_line: b
     while (true) {
         const child = (if (edge == .end) try common.lastChild(current) else try common.firstChild(current)) orelse break;
         if (!common.isElement(child) or !common.isInlineNode(child) or (try isBr(child)) or !try common.isEditable(child)) break;
+        if (try isEmbeddedContent(child)) break;
         try chain.append(edit.allocator, child);
         current = child;
     }
@@ -786,6 +892,7 @@ fn deepestTrailingInline(node: *Instance) !*Instance {
     while (try common.lastChild(target)) |last| {
         if (!common.isElement(last) or !common.isInlineNode(last)) break;
         if (try common.isHtmlElementIn(last, &.{ "br", "img", "hr", "input", "wbr" })) break;
+        if (try isEmbeddedContent(last)) break;
         if (!try common.isEditable(last)) break;
         target = last;
     }

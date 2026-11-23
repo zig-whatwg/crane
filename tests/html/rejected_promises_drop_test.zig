@@ -109,18 +109,18 @@ fn run(outcome: *Outcome) !void {
     // it outlives the agent.
     var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
     defer agent_host.deinit();
-    const agent = try engine.createAgent(.{
+    const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&agent_host, .{
         .can_block = true,
         .from_snapshot = false,
         .hooks = &html.rejected_promises.hooks,
-        .host = &agent_host,
         .allocator = allocator,
-    });
+    }));
     defer engine.destroyAgent(agent);
 
     var loop: CollectingLoop = .{};
     defer loop.tasks.deinit(allocator);
     const made = try engine.createWorkerRealm(agent, &.{
+        .agent_cluster_cross_origin_isolated = true,
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
         .event_loop = loop.eventLoop(),
@@ -184,13 +184,12 @@ const TwoAgents = struct {
     fn runA(self: *TwoAgents) !void {
         var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
         defer agent_host.deinit();
-        const agent = try engine.createAgent(.{
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&agent_host, .{
             .can_block = true,
             .from_snapshot = false,
             .hooks = &html.rejected_promises.hooks,
-            .host = &agent_host,
             .allocator = allocator,
-        });
+        }));
         defer engine.destroyAgent(agent);
         var loop: CollectingLoop = .{};
         defer {
@@ -198,6 +197,7 @@ const TwoAgents = struct {
             loop.tasks.deinit(allocator);
         }
         const made = try engine.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
             .url = "http://web-platform.test:8000/workers/a.js",
             .timer = null,
             .event_loop = loop.eventLoop(),
@@ -225,13 +225,12 @@ const TwoAgents = struct {
         wait(&self.a_tracked);
         var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
         defer agent_host.deinit();
-        const agent = try engine.createAgent(.{
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&agent_host, .{
             .can_block = true,
             .from_snapshot = false,
             .hooks = &html.rejected_promises.hooks,
-            .host = &agent_host,
             .allocator = allocator,
-        });
+        }));
         defer engine.destroyAgent(agent);
         // B's end: what Browser.deinit does before its agent goes.
         html.rejected_promises.releaseAgent(agent);

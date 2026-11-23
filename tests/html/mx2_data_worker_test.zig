@@ -99,7 +99,6 @@ fn check(shared: bool, worker_type: []const u8, nested: bool) !void {
     for ([_]bool{ false, true }) |secure_owner| {
         const before = server.received.load(.acquire);
         const browser = try Browser.init(allocator, .{
-            .persist_storage = false,
             .snapshot_path = "",
             .proxy = .{ .manual = .{ .http = proxy, .no_proxy = "" } },
         });

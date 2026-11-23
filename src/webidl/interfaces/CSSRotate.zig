@@ -187,6 +187,7 @@ pub const CSSRotate = struct {
         CSSNumericValue: *runtime.Instance,
         /// constructor(x, y, z, angle)
         CSSNumberish_CSSNumberish_CSSNumberish_CSSNumericValue: struct {
+            pub const webidl_arguments = true;
             x: CSSNumberish,
             y: CSSNumberish,
             z: CSSNumberish,

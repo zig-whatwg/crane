@@ -167,6 +167,7 @@ test "a defaulted member the value leaves unset is written with its default" {
 /// default kind and a real member named `base` (JsonLdOptions has one: a
 /// member, not an inherited dictionary).
 const Ancestor = struct {
+    pub const webidl_dictionary = true;
     zeta: ?bool = null,
     alpha: ?runtime.DOMString = null,
     pub const member_defaults = .{
@@ -175,6 +176,7 @@ const Ancestor = struct {
     };
 };
 const Descendant = struct {
+    pub const webidl_dictionary = true;
     base: Ancestor,
     count: ?f64 = null,
     list: ?[]const bool = null,
@@ -190,6 +192,7 @@ const Descendant = struct {
     };
 };
 const WithBaseMember = struct {
+    pub const webidl_dictionary = true;
     base: ?runtime.DOMString = null,
     other: ?bool = null,
 };

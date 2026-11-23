@@ -114,7 +114,7 @@ fn createWorkletRealmOf(comptime Kind: type, agent: *runtime.Agent, options: run
     // The global object is a platform object of the worklet global scope
     // interface: the context is made from that interface's template (Blink's
     // WorkerOrWorkletScriptController::Initialize, as for a worker).
-    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, worker_realm.globalScopeTemplate(Kind.Interface, isolate)) orelse
+    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, worker_realm.globalScopeTemplate(Kind.Interface, Kind.scope, isolate)) orelse
         return EngineError.OperationFailed;
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
@@ -161,6 +161,9 @@ fn setUp(comptime Kind: type, isolate: *ffi.Isolate, context: *ffi.Context, opti
     // exposed to worklets, and WebAssembly is the engine's own.
     interface_bindings.installForScope(isolate, context, Kind.scope);
     interface_bindings.registerNamespacesGeneric(@import("namespaces"), isolate, context);
+    // HTML "create a new realm" step 5: no SharedArrayBuffer global where the
+    // owner's agent cluster is not cross-origin isolated.
+    @import("shared_array_buffer_exposure.zig").apply(isolate, context, options.agent_cluster_cross_origin_isolated);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.

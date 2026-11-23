@@ -305,8 +305,10 @@ const Candidate = struct {
 };
 
 /// Two token texts equal token by token, whitespace runs (and the comments
-/// in them) normalized away at either end and to one between tokens.
-fn tokensEqual(a: []const u8, b: []const u8) bool {
+/// in them) normalized away at either end and to one between tokens - how a
+/// style feature compares an unregistered custom property's computed value
+/// (if()'s, and an @container query's against its container).
+pub fn tokensEqual(a: []const u8, b: []const u8) bool {
     const tokenizer = @import("tokenizer.zig");
     var x = tokenizer.Tokenizer.init(a);
     var y = tokenizer.Tokenizer.init(b);
@@ -331,6 +333,51 @@ fn tokensEqual(a: []const u8, b: []const u8) bool {
         if (s.token_type == .eof) return true;
         if (!std.mem.eql(u8, s.value, t.value)) return false;
     }
+}
+
+/// One numeric value of `text` - a number, percentage or dimension token, or
+/// a math function - computed with the shared math in `context` and
+/// converted to canonical units (px, deg, s, Hz, dppx): a style range's
+/// operand (CSS Conditional 5 6.2, steps 3-4), for if() in the element's own
+/// context and for an @container query in its container's. Null when it is
+/// no single numeric value.
+pub fn numericOperand(allocator: Allocator, text: []const u8, context: @import("math_values.zig").Context) Allocator.Error!?substitution.Numeric {
+    const math = @import("math_values.zig");
+    var stream = properties.Stream.init(text);
+    const token = stream.peek();
+    const literal: ?math.Numeric = switch (token.token_type) {
+        .number => .{ .value = token.numeric_value orelse return null, .unit = .number },
+        .percentage => .{ .value = token.numeric_value orelse return null, .unit = .percent },
+        .dimension => .{ .value = token.numeric_value orelse return null, .unit = math.Unit.parse(token.unit orelse return null) orelse return null },
+        else => null,
+    };
+    const value: math.Numeric = if (literal) |n| blk: {
+        _ = stream.next();
+        if (!stream.atEnd()) return null;
+        break :blk context.resolve(n);
+    } else blk: {
+        for ([_]math.Kind{ .number, .percentage, .length, .angle, .time, .resolution }) |kind| {
+            var attempt = properties.Stream.init(text);
+            const parsed = (try properties.mathValue(.{ .allocator = allocator }, &attempt, .{ .kind = kind })) orelse continue;
+            defer parsed.release();
+            if (!attempt.atEnd()) continue;
+            const computed = try parsed.calculation.compute(allocator, context);
+            defer computed.unref();
+            const known = computed.knownNumber() orelse return null;
+            break :blk context.resolve(known);
+        }
+        return null;
+    };
+    const dimension: substitution.Numeric.Dimension = switch (value.unit.base() orelse return .{ .value = value.value, .dimension = .number }) {
+        .percent => .percentage,
+        .length => if (value.unit == .px) .length else return null,
+        .angle => .angle,
+        .time => .time,
+        .frequency => .frequency,
+        .resolution => .resolution,
+        .flex => return null,
+    };
+    return .{ .value = value.value, .dimension = dimension };
 }
 
 /// Cascade 5 6.1's priority of a declaration from `source`.
@@ -490,12 +537,40 @@ fn highlightStyle(ctx: Context) Allocator.Error!*ComputedStyle {
     return style;
 }
 
+/// CSS Pseudo 4 §3.1.2: "Only a limited set of properties can be used on
+/// the ::marker pseudo-element": "all font properties", "the white-space
+/// property", "color", "text-combine-upright, unicode-bidi, direction",
+/// "content", "all animation and transition properties", and, as all
+/// three browsers apply them, line-height (a longhand of font), quotes,
+/// cursor and the inherited text and text-decoration properties
+/// (css/css-pseudo/parsing/marker-supported-properties.html: Chrome,
+/// Firefox and Safari apply each of these and none of display, position,
+/// float or list-style-*; Blink's css_properties.json5 valid_for_marker).
+const marker_longhands: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initMany(&.{
+        .line_height,            .white_space_collapse,     .text_wrap_mode,      .color,
+        .text_combine_upright,   .unicode_bidi,             .direction,           .content,
+        .quotes,                 .hyphens,                  .letter_spacing,      .line_break,
+        .overflow_wrap,          .tab_size,                 .text_transform,      .word_break,
+        .word_spacing,           .text_decoration_skip_ink, .text_emphasis_style, .text_emphasis_color,
+        .text_emphasis_position, .text_shadow,              .cursor,
+    });
+    for (0..Longhand.count) |i| {
+        const l: Longhand = @fromBackingInt(@intCast(i));
+        const name = @tagName(l);
+        if (std.mem.startsWith(u8, name, "font_") or std.mem.startsWith(u8, name, "animation_") or std.mem.startsWith(u8, name, "transition_")) set.insert(l);
+    }
+    break :blk set;
+};
+
 /// The longhands that may apply to `pseudo`, or null when every one does.
-/// Only ::first-letter and ::first-line filter, so only they pay.
+/// Only ::first-letter, ::first-line and ::marker filter, so only they pay.
 fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
     const name = pseudo orelse return null;
     if (std.mem.eql(u8, name, "first-letter")) return &first_letter_longhands;
     if (std.mem.eql(u8, name, "first-line")) return &first_line_longhands;
+    if (std.mem.eql(u8, name, "marker")) return &marker_longhands;
     return null;
 }
 
@@ -1542,43 +1617,7 @@ const Builder = struct {
     /// or a math function - computed with the shared math in this element's
     /// context and converted to canonical units.
     fn numeric(self: *Builder, allocator: Allocator, text: []const u8) Allocator.Error!?substitution.Numeric {
-        const math = @import("math_values.zig");
-        const context = self.mathContext(.width);
-        var stream = properties.Stream.init(text);
-        const token = stream.peek();
-        const literal: ?math.Numeric = switch (token.token_type) {
-            .number => .{ .value = token.numeric_value orelse return null, .unit = .number },
-            .percentage => .{ .value = token.numeric_value orelse return null, .unit = .percent },
-            .dimension => .{ .value = token.numeric_value orelse return null, .unit = math.Unit.parse(token.unit orelse return null) orelse return null },
-            else => null,
-        };
-        const value: math.Numeric = if (literal) |n| blk: {
-            _ = stream.next();
-            if (!stream.atEnd()) return null;
-            break :blk context.resolve(n);
-        } else blk: {
-            for ([_]math.Kind{ .number, .percentage, .length, .angle, .time, .resolution }) |kind| {
-                var attempt = properties.Stream.init(text);
-                const parsed = (try properties.mathValue(.{ .allocator = allocator }, &attempt, .{ .kind = kind })) orelse continue;
-                defer parsed.release();
-                if (!attempt.atEnd()) continue;
-                const computed = try parsed.calculation.compute(allocator, context);
-                defer computed.unref();
-                const known = computed.knownNumber() orelse return null;
-                break :blk context.resolve(known);
-            }
-            return null;
-        };
-        const dimension: substitution.Numeric.Dimension = switch (value.unit.base() orelse return .{ .value = value.value, .dimension = .number }) {
-            .percent => .percentage,
-            .length => if (value.unit == .px) .length else return null,
-            .angle => .angle,
-            .time => .time,
-            .frequency => .frequency,
-            .resolution => .resolution,
-            .flex => return null,
-        };
-        return .{ .value = value.value, .dimension = dimension };
+        return numericOperand(allocator, text, self.mathContext(.width));
     }
 
     /// attr() (Codex row 122): the element's attribute through the DOM's
@@ -2120,6 +2159,8 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // SVG 2 §13.5.7: a <number> stroke-dashoffset is a px length.
+            .stroke_dashoffset => if (v == .number) return Value.px(v.number),
             // Lists 3 §3.3: a counter-style name keeps the tree scope that
             // named it (list_values.ScopedName). The document's scope (0)
             // stays the plain name: no allocation for the common case, and
@@ -2154,8 +2195,18 @@ const Builder = struct {
                 inherited.retain();
                 return inherited;
             },
-            // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp.
-            .opacity, .shape_image_threshold => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp, and
+            // so do Fill and Stroke 3's fill-opacity and stroke-opacity, SVG
+            // 2's stop-opacity and Filter Effects 1's flood-opacity ("the
+            // specified value converted to a number, clamped to [0,1]").
+            .opacity, .shape_image_threshold, .fill_opacity, .stroke_opacity, .stop_opacity, .flood_opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // MathML Core §3.1: from the inherited math-depth (and, for
+            // auto-add, math-style).
+            .math_depth => {
+                const inherited = self.parentValue(.math_depth);
+                const depth: i32 = if (inherited == .integer) inherited.integer else 0;
+                if (@import("math_depth.zig").compute(v, depth, self.parentValue(.math_style).isKeyword(.compact))) |n| return .{ .integer = n };
+            },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},

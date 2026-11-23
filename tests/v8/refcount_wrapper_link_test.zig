@@ -58,6 +58,7 @@ const Page = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -254,6 +255,9 @@ test "a node's wrapper is in no wrapper cache: there is no entry to remove, and 
     // The wrapper redesign's P2: a node's wrapper lives in its own slot, its
     // agent's - the realm's cache has no entry for it.
     try testing.expect(!page.cache().remove(nodes[2]));
+    // A PIN, not a check: `remove` of a key the cache never had touches
+    // nothing, so the count below cannot move because of it - it pins that
+    // the reference stays the wrapper's (lane mem1's audit, 2026-11-22).
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
     try testing.expect(protocol.hasWrapper(nodes[2]));
 }

@@ -85,7 +85,7 @@ fn getDefaultArgValue(comptime T: type) ?T {
     }
 
     // Check for dictionary types with all-optional fields
-    if (info == .@"struct" and canDefaultInit(T)) {
+    if (comptime isDictionaryType(T) and canDefaultInit(T)) {
         return defaultInit(T);
     }
 
@@ -272,12 +272,9 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // context.
         if (T == *runtime.Instance) break :blk false;
 
-        // A callback interface converts to a CallbackWrapper, which keeps a
-        // context handle of its own (callback_wrapper.initFunction/initObject);
-        // a callback function converts to its own argument handle, tagged, and
-        // never reads the context. Neither keeps the caller's.
-        if (T == *runtime.CallbackWrapper) break :blk false;
-        if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
+        // A callback function or interface value (runtime.Borrowed*) is its
+        // own argument handle, and never reads the context: it keeps none.
+        if (isCallbackValueType(T)) break :blk false;
 
         // Buffer sources are made without the context: a BufferSource, an
         // AllowSharedBufferSource or an ArrayBufferView is a reference to its
@@ -298,7 +295,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (info == .pointer and info.pointer.size == .slice) {
             break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
         }
-        if (info == .@"struct") {
+        if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
                 if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
@@ -397,14 +394,22 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // functions, each of which holds its OWN element handle, freed with
         // the sequence (`freeConvertedArg`), never the sequence's.
         if (info == .pointer and info.pointer.size == .slice) {
-            break :blk argHandleIsCopied(info.pointer.child) or isCallbackFunctionShape(info.pointer.child);
+            break :blk argHandleIsCopied(info.pointer.child) or isCallbackValueShape(info.pointer.child);
         }
+
+        // A callback value (runtime.BorrowedCallbackFunction,
+        // BorrowedCallbackInterface) IS the handle it was converted from,
+        // freed with the value (`freeConvertedArg`). A struct, so it is named
+        // before the dictionary rule, which would read its JSValue field as a
+        // member that aliases only its own handle and call it copied: the
+        // argument's Global released at conversion, under the impl.
+        if (isCallbackValueType(T)) break :blk false;
 
         // A dictionary reads each member through its own handle (Get), so no
         // member aliases the dictionary's handle. Members are still held to a
         // rule - a JSValue member aliasing ITS OWN handle is fine - so that an
         // unknown pointer keeps the conservative answer.
-        if (info == .@"struct" and !@hasDecl(T, "Meta")) {
+        if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
                 // A member that is a sequence of the dictionary itself
                 // (AuctionAdConfig.componentAuctions,
@@ -447,12 +452,11 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argHandleIsCopied(T)) return true;
     if (T == runtime.JSValue) return true;
     if (argumentHandleIsKeptInValue(T)) return true;
-    // A callback function member - a function pointer, codegen's type for a
-    // callback function - holds the handle Get made for IT: conv.fromV8Value's
-    // function-pointer branch makes that Global the value, freed with the
-    // dictionary (freeConvertedArg), and an impl that keeps the callback takes
-    // a hold of its own (engine.takeCallbackFunction). Never the
-    // dictionary's. QueuingStrategy's `size` (`?callbacks.QueuingStrategySize`)
+    // A callback function or interface member (runtime.Borrowed*) holds the
+    // handle Get made for IT: conv.fromV8Value makes that Global the value,
+    // freed with the dictionary (freeConvertedArg), and an impl that keeps
+    // the callback keeps a hold of its own (`keep`). Never the dictionary's.
+    // QueuingStrategy's `size` (`?callbacks.QueuingStrategySize`)
     // made every strategy keep its argument's handle: one Global per
     // `new WritableStream(sink, strategy)`, `new ReadableStream(...)` and
     // TransformStream strategy (lane leaks2). Blink's bindings read the
@@ -461,7 +465,7 @@ fn memberHandleIsSafe(comptime T: type) bool {
     // CallbackFunctionBase holding a reference of its own made from its
     // member's Local (platform/bindings/callback_function_base.h,
     // `TraceWrapperV8Reference<v8::Object> callback_function_`).
-    if (isCallbackFunctionType(T)) return true;
+    if (isCallbackValueType(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
     // A sequence<any> / sequence<object> member reads each element through
@@ -475,22 +479,73 @@ fn memberHandleIsSafe(comptime T: type) bool {
     return false;
 }
 
-/// `T` is a callback function as codegen types one: a pointer to a Zig
-/// function (`callbacks.X = *const fn (...) R`), the type conv.fromV8Value's
-/// function-pointer branch converts by holding the handle it was given - a
-/// value BORROWED for the call, freed with it (`freeConvertedArg`).
-/// Not `*anyopaque` (a union's Function arm), which stays unknown here.
-fn isCallbackFunctionType(comptime T: type) bool {
-    const info = @typeInfo(T);
-    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
+/// `T` is a callback value as the binding converts one: a callback function
+/// or callback interface type's value (runtime.BorrowedCallbackFunction,
+/// runtime.BorrowedCallbackInterface), which conv.fromV8Value converts by
+/// holding the handle it was given - its argument's Global, or a member's,
+/// arm's or element's own Get handle - a value BORROWED for the call, freed
+/// with it (`freeConvertedArg`). An impl that keeps it keeps a hold of its
+/// own (`keep`, which moves the function out of this Global).
+pub fn isCallbackValueType(comptime T: type) bool {
+    return T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface;
 }
 
-/// A callback function or its nullable form: what conv.fromV8Value converts
-/// by holding the handle it was given (or, for null, holding nothing).
-fn isCallbackFunctionShape(comptime T: type) bool {
+/// `T` is a WebIDL dictionary: a struct that SAYS so - codegen writes
+/// `pub const webidl_dictionary = true` into every generated dictionary
+/// (generator.zig writeDictionary), and a test's dictionary-shaped struct
+/// declares it too. POSITIVE, as AGENTS.md has every such gate: an allowlist
+/// whose default is the safe answer. A struct that does not say so - a
+/// callback value holding its argument's handle, an interface, an
+/// optional-argument wrapper, a record - is never converted, freed or
+/// released as a dictionary, whatever its fields. "Any struct without Meta"
+/// misfired twice (lane bind1): argHandleIsCopied called a borrowed callback a
+/// copied dictionary, and the union conversion took one for its dictionary arm.
+pub fn isDictionaryType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every generated dictionary declares `pub const
+    // webidl_dictionary` (generator.zig writeDictionary), and so does every
+    // test struct that stands for one.
+    return @hasDecl(T, "webidl_dictionary");
+}
+
+/// `T` is a record<K, V>'s entry as codegen types one: `struct { key: K,
+/// value: V }`, marked `pub const webidl_record_entry = true` (generator.zig),
+/// a record being `[]const` of it. Positive, as isDictionaryType is: the
+/// binding converts it by WebIDL 3.2.23 (conv.recordFrom) and walks its two
+/// members as a dictionary's - each read through a Get of its own.
+pub fn isRecordEntryType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every record entry codegen emits declares `pub const
+    // webidl_record_entry` (generator.zig, record types), and so does every
+    // test struct that stands for one.
+    return @hasDecl(T, "webidl_record_entry");
+}
+
+/// `T` is an overload's argument list as codegen types one: a variant of an
+/// overloaded operation's or constructor's `Args`/`ConstructorArgs`, marked
+/// `pub const webidl_arguments = true` (writer.zig). Its members are
+/// arguments, each converted from its own argument handle.
+pub fn isArgumentListType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // hasdecl: every overload variant codegen emits declares `pub const
+    // webidl_arguments` (writer.zig), and so does every test struct that
+    // stands for one.
+    return @hasDecl(T, "webidl_arguments");
+}
+
+/// A struct whose members the ownership rules walk one by one: a dictionary,
+/// a record's entry (each member read through a Get of its own), or an
+/// overload's argument list (each member an argument of its own).
+fn isMemberwiseStruct(comptime T: type) bool {
+    return isDictionaryType(T) or isRecordEntryType(T) or isArgumentListType(T);
+}
+
+/// A callback value or its nullable form: what conv.fromV8Value converts by
+/// holding the handle it was given (or, for null, holding nothing).
+fn isCallbackValueShape(comptime T: type) bool {
     const info = @typeInfo(T);
-    if (info == .optional) return isCallbackFunctionType(info.optional.child);
-    return isCallbackFunctionType(T);
+    if (info == .optional) return isCallbackValueType(info.optional.child);
+    return isCallbackValueType(T);
 }
 
 /// A tagged union whose arms are copied (`argHandleIsCopied`) or callback
@@ -502,7 +557,7 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
         if (T == runtime.JSValue or T == runtime.DOMString) break :blk false;
         var callbacks = 0;
         for (info.@"union".field_types) |field_type| {
-            if (isCallbackFunctionShape(field_type)) {
+            if (isCallbackValueShape(field_type)) {
                 callbacks += 1;
             } else if (!argHandleIsCopied(field_type)) {
                 break :blk false;
@@ -512,11 +567,14 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
     };
 }
 
-/// The Global a callback-function value holds: its address, untagged
-/// (conversions.zig stores it as the function pointer's value).
-fn callbackFunctionGlobal(comptime T: type, value: T) *v8.Value {
-    comptime std.debug.assert(isCallbackFunctionType(T));
-    return @ptrFromInt(@intFromPtr(value));
+/// The Global a callback value holds: its handle.
+fn callbackValueGlobal(comptime T: type, value: T) ?*v8.Value {
+    comptime std.debug.assert(isCallbackValueType(T));
+    const held: runtime.JSValue = if (T == runtime.BorrowedCallbackFunction) value.function else value.object;
+    return switch (held) {
+        .handle => |h| @ptrCast(@alignCast(h.ptr)),
+        else => null,
+    };
 }
 
 /// Does `conv.toV8Value(T, ...)` make a fresh Global for every value of `T` -
@@ -622,7 +680,7 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
     // string TimerHandler kept its argument's Global.
     if (comptime callbackArmsOnlyKeepHandle(T)) {
         switch (value) {
-            inline else => |payload| return !comptime isCallbackFunctionShape(@TypeOf(payload)),
+            inline else => |payload| return !comptime isCallbackValueShape(@TypeOf(payload)),
         }
     }
     const info = @typeInfo(T);
@@ -684,12 +742,12 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
 /// A callback function and its nullable form are borrowed too, as every
 /// callback-function value is (`needsArgCleanup`): the value IS the handle,
 /// and the setter that keeps it - an event handler IDL attribute's
-/// (EventTarget.setEventHandler), a callback attribute's - takes a hold of
-/// its own (engine.takeCallbackFunction), which moves the function out. Every
-/// such setter was read for that (lane leaks7, 2026-10-25): the event handler
-/// attributes go through dom.event_handlers to setEventHandler, which takes;
-/// the other callback attributes (WebGPU's, MediaSession's) are stubs that
-/// read nothing.
+/// (EventTarget.setEventHandler), a callback attribute's - keeps a hold of
+/// its own (`keep`, engine.keepCallbackFunction), which moves the function
+/// out. Every such setter was read for that (lane leaks7, 2026-10-25): the
+/// event handler attributes go through dom.event_handlers to
+/// setEventHandler, which keeps; the other callback attributes (WebGPU's,
+/// MediaSession's) are stubs that read nothing.
 ///
 /// An ALLOWLIST: a buffer source, a dictionary or sequence that merely
 /// contains an `any`, and every type nobody named answer FALSE - the value
@@ -697,7 +755,7 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
 /// never correctness. A copied type (`argHandleIsCopied`) answers false too:
 /// the binding releases it whatever the value.
 pub fn setterValueIsBorrowed(comptime T: type) bool {
-    return comptime anyHandleIsKeptOnlyAsHandle(T) or isCallbackFunctionShape(T);
+    return comptime anyHandleIsKeptOnlyAsHandle(T) or isCallbackValueShape(T);
 }
 
 /// Whether an attribute getter's result of type `T` is a number or a boolean
@@ -1682,18 +1740,24 @@ fn ArgView(comptime mask: u32) type {
 /// `Error("ExceptionPending")` - an attribute setter's catch called this
 /// where an operation's caught it first (review-codex-aria D7).
 pub fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror) void {
+    throwMemberErrorFor(isolate, member_context, err, null);
+}
+
+/// `throwMemberError` naming the member that failed, for the exception's
+/// message (conv.throwWebIDLErrorFromContextFor; runtime.exception_text).
+pub fn throwMemberErrorFor(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror, member: ?runtime.exception_text.Member) void {
     if (err == error.ExceptionPending) return;
     if (comptime engine_capabilities.cross_origin_objects == .unsupported) {
         if (err == error.SecurityError) {
             if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
                 // Owned: a fresh Global<Context>, used only to pick the realm.
                 defer v8.v8_Context_Dispose(entered);
-                conv.throwWebIDLErrorFromContext(isolate, entered, @errorName(err));
+                conv.throwWebIDLErrorFromContextFor(isolate, entered, @errorName(err), member);
                 return;
             }
         }
     }
-    conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
+    conv.throwWebIDLErrorFromContextFor(isolate, member_context, @errorName(err), member);
 }
 
 /// A special operation's own exception - an indexed or named setter's, a
@@ -1745,7 +1809,7 @@ pub fn getOptionalValueType(comptime T: type) ?type {
 /// Check if a converted argument type needs to be freed after use.
 /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
 /// JSValue types may contain owned strings that need cleanup.
-/// CallbackWrapper types are the call's: released once it returns.
+/// Callback values are the call's: released once it returns.
 /// Struct types (dictionaries) may contain string fields that need cleanup.
 pub fn needsArgCleanup(comptime T: type) bool {
     @setEvalBranchQuota(10000);
@@ -1769,19 +1833,15 @@ pub fn needsArgCleanup(comptime T: type) bool {
     if (T == runtime.DOMString) return true;
     // JSValue may contain owned strings
     if (T == runtime.JSValue) return true;
-    // CallbackWrapper - the call's; a method that keeps the callback
-    // (addEventListener) takes its own CallbackInterface first.
-    if (T == *runtime.CallbackWrapper) return true;
-    // A callback function (codegen's function-pointer type) - the Global
-    // its conversion made, BORROWED for the call as a CallbackWrapper is: an
-    // impl that keeps the callback takes a hold of its own
-    // (engine.takeCallbackFunction), and the binding frees this one with the
-    // value - an argument, a dictionary member, a union arm, a sequence
-    // element. Before, the take adopted it and the binding freed nothing, so
-    // every impl that never took its callback kept it for the agent's life:
-    // `new ResizeObserver(fn)`, `canvas.toBlob(fn)`, `new Observable(fn)`
-    // (lane leaks7).
-    if (isCallbackFunctionType(T)) return true;
+    // A callback function or interface value (runtime.Borrowed*) - the
+    // Global its conversion made, BORROWED for the call: an impl that keeps
+    // the callback keeps a hold of its own (`keep`), and the binding frees
+    // this one with the value - an argument, a dictionary member, a union
+    // arm, a sequence element. Before lane leaks7 the take adopted it and the
+    // binding freed nothing, so every impl that never took its callback kept
+    // it for the agent's life: `new ResizeObserver(fn)`, `canvas.toBlob(fn)`,
+    // `new Observable(fn)`.
+    if (isCallbackValueType(T)) return true;
     // Generic slice types (sequences) - allocated by fromV8Sequence
     // This handles []const JSValue, []const DOMString, etc.
     if (@typeInfo(T) == .pointer) {
@@ -1797,7 +1857,6 @@ pub fn needsArgCleanup(comptime T: type) bool {
         if (Child == []const u8) return true;
         if (Child == runtime.DOMString) return true;
         if (Child == runtime.JSValue) return true;
-        if (Child == *runtime.CallbackWrapper) return true;
         // Recurse for nested optionals or other wrapper types
         if (needsArgCleanup(Child)) return true;
     }
@@ -1807,8 +1866,8 @@ pub fn needsArgCleanup(comptime T: type) bool {
             return needsArgCleanup(vt);
         }
     }
-    // Struct types (dictionaries) - check if any field needs cleanup
-    if (@typeInfo(T) == .@"struct") {
+    // Dictionaries and record entries - check if any field needs cleanup
+    if (comptime isMemberwiseStruct(T)) {
         inline for (comptime std.meta.fieldTypes(T)) |field_type| {
             if (needsArgCleanup(field_type)) return true;
         }
@@ -1865,20 +1924,14 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
             },
             else => {}, // Other variants don't need cleanup here
         }
-    } else if (T == *runtime.CallbackWrapper) {
-        // A callback interface argument is the call's, like every
-        // argument: the impl borrowed it, and one that keeps the
-        // callback (addEventListener) took a CallbackInterface of its
-        // own. Its wrapper goes now.
-        conv.releaseCallbackWrapper(arg);
-    } else if (comptime isCallbackFunctionType(T)) {
-        // A callback function is the call's too: the value IS the Global
-        // its conversion made (conv.fromV8Value's function-pointer branch,
-        // untagged). An impl that keeps the callback took a hold of its own,
-        // which moved the function out and left this Global empty
-        // (engine.takeCallbackFunction); either way it goes now - an emptied
-        // one without the general dispose's registry lookups.
-        v8.v8_Global_DisposeCallbackValue(callbackFunctionGlobal(T, arg));
+    } else if (comptime isCallbackValueType(T)) {
+        // A callback function or interface value is the call's, like every
+        // argument: the value IS the Global its conversion made. An impl
+        // that keeps the callback kept a hold of its own, which moved the
+        // object out and left this Global empty (engine.keepCallbackFunction,
+        // keepCallbackInterface); either way it goes now - an emptied one
+        // without the general dispose's registry lookups.
+        v8.v8_Global_DisposeCallbackValue(callbackValueGlobal(T, arg));
     } else if (@typeInfo(T) == .optional) {
         // Handle all optional types by recursively freeing the inner value
         if (arg) |val| {
@@ -1892,8 +1945,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
                 freeConvertedArg(vt, allocator, arg.value);
             }
         }
-    } else if (@typeInfo(T) == .@"struct") {
-        // Struct types (dictionaries) - free any fields that need
+    } else if (comptime isMemberwiseStruct(T)) {
+        // Dictionaries and record entries - free any fields that need
         // cleanup, and release each `any`-family member's handle (an
         // `any` or `object` member, a union typed JSValue, an
         // `object` union arm): the Get handle the dictionary loop
@@ -2741,9 +2794,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Global left behind is a strong root: one per interface per realm
         /// kept every iframe's realm alive for the life of the process.
         ///
-        /// Called once per interface per realm - eagerly for the main context,
-        /// and by the lazy data property on a child realm's global the first time
-        /// script reads it (global_constructor_handler.lazyConstructorGetter).
+        /// Called once per interface per realm: by the global's lazy data
+        /// property the first time script reads it (global_constructor_handler.
+        /// lazyConstructGetter), or before the realm's first wrapper of the
+        /// interface (template_registry.ensureInterfaceObjectBuilt) - or eagerly,
+        /// by registerAllInterfaces, for a context a test sets up by hand.
         pub fn materializeInterfaceObject(
             isolate: *v8.Isolate,
             context: *v8.Context,
@@ -2780,11 +2835,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // object is linked here, as Blink's V8PerContextData::
             // ConstructorForTypeSlowCase builds the parent's interface object
             // first and creates the child's over it. Every path that makes
-            // an interface object comes through here - a snapshot-restored
-            // page's registerGlobalFast, a frame's lazy getter, a worker's
-            // installForScope - and setupConstructorInheritance ran on none
-            // of them: Object.getPrototypeOf(IDBRequest) was
-            // %Function.prototype%, for 616 interfaces of a window.
+            // an interface object comes through here - a global's lazy
+            // construct getter, a wrap's ensureInterfaceObjectBuilt, a test's
+            // registerAllInterfaces - and the old setupConstructorInheritance
+            // pass ran on none of the realm paths: Object.getPrototypeOf(
+            // IDBRequest) was %Function.prototype%, for 616 interfaces of a
+            // window.
             if (comptime InheritedInterface) |Parent| {
                 if (V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name)) |parent_object| {
                     defer v8.v8_Function_Dispose(parent_object);
@@ -3155,17 +3211,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     const getter_name: []const u8 = prop[1];
                     const setter_name: ?[]const u8 = prop[2];
 
-                    // `self` and `frames` are [Replaceable]: the realm defines them
-                    // as own data properties whose value is the global itself
-                    // (protocol_realms bindWindowToGlobal), which testharness.js's
-                    // `(function (global_scope) { ... })(self)` needs. `window` is
-                    // an accessor like any other member, the global's own: its
-                    // getter answers the global (answerWindowGetter).
-                    if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
-                        std.mem.eql(u8, prop_name, "frames")))
-                    {
-                        continue;
-                    }
+                    // `window`, `self` and `frames` are accessors like any other
+                    // member, the global's own (WebIDL 3.7.6, [Global]); their
+                    // getters answer the global (answerWindowGetter), and `self`
+                    // and `frames` are [Replaceable]: their setter defines an own
+                    // data property in the accessor's place.
 
                     const prop_name_str = v8.v8_String_NewFromUtf8(
                         isolate,
@@ -4014,8 +4064,17 @@ pub fn V8Interface(comptime Interface: type) type {
         fn PropertyGetterCallback(comptime iface_name: []const u8, comptime getter_name: []const u8) type {
             return struct {
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // WebIDL 3.7.6 "attribute getter": a promise-typed
+                    // attribute's exception - its receiver check's included -
+                    // rejects the promise it returns. Chosen here, at
+                    // comptime, so no other getter pays a branch.
+                    if (comptime returns_promise) return binding_plumbing.promiseAttributeGetter(info, &plumbing);
                     binding_plumbing.attributeGetter(info, &plumbing);
                 }
+
+                /// The attribute's type is a promise: codegen lists its getter
+                /// in `promise_returning`.
+                const returns_promise = returnsPromise(Interface, getter_name);
 
                 const zig_getter = @field(Interface, getter_name);
                 const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
@@ -4039,7 +4098,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     .kind = kind,
                     .checks_receiver = std.mem.eql(u8, iface_name, "Location") and
                         !acceptsAnyReceiver(getter_name["get_".len..], .getter),
-                    .answers_window = kind == .instance and is_global_interface and std.mem.eql(u8, getter_name, "get_window"),
+                    .answers_window = kind == .instance and is_global_interface and (std.mem.eql(u8, getter_name, "get_window") or
+                        std.mem.eql(u8, getter_name, "get_self") or std.mem.eql(u8, getter_name, "get_frames")),
                     .needs_this_handle = kind == .instance and (is_global_interface or same_object),
                     .lenient_this = isLenientThisProperty(prop_name),
                     .global_interface = is_global_interface,
@@ -4092,6 +4152,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         result,
                         cleanup_allocator,
                         if (comptime same_object) .{ .owner = this_handle.?, .prop_name = prop_name } else null,
+                        instance.ctx,
+                        comptime frozenArrayAttribute(getter_name["get_".len..]),
                     );
                 }
             };
@@ -4106,6 +4168,18 @@ pub fn V8Interface(comptime Interface: type) type {
         /// each realm that reads it, and one shared key let each realm's read
         /// cut the edge to the other realm's wrapper.
         const recordSameObjectEdge = binding_plumbing.recordSameObjectEdge;
+
+        /// Whether attribute `attribute_name` (its getter's name less `get_`) is typed
+        /// FrozenArray<T>: the generated list (codegen
+        /// `Meta.frozen_array_attributes`), for binding_plumbing.finishGetter's
+        /// conversion across isolated worlds.
+        fn frozenArrayAttribute(comptime attribute_name: []const u8) bool {
+            if (!@hasDecl(Interface, "Meta") or !@hasDecl(Interface.Meta, "frozen_array_attributes")) return false;
+            inline for (Interface.Meta.frozen_array_attributes) |attribute| {
+                if (comptime std.mem.eql(u8, attribute, attribute_name)) return true;
+            }
+            return false;
+        }
 
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
             // The generated list (codegen `Meta.same_object_attributes`): an
@@ -4373,6 +4447,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (type_info.pointer.size != .slice) return false;
             // []const u8 is a string type, not variadic
             if (type_info.pointer.child == u8) return false;
+            // A record<K, V> (codegen's `[]const Entry`, the entry marked
+            // `webidl_record_entry`) is ONE argument, converted by WebIDL
+            // 3.2.23 - MLGraphBuilder.build(MLNamedOperands outputs) took
+            // each JS argument as an entry.
+            if (isRecordEntryType(type_info.pointer.child)) return false;
             return true;
         }
 
@@ -6636,6 +6715,40 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_Undefined(isolate) orelse return;
             defer v8.v8_Value_Dispose(this_arg);
 
+            // An interface whose value pairs are a snapshot: steps 6-8 over
+            // the pairs taken now, as its iterators take them.
+            if (comptime hasIterableSnapshot()) {
+                const pairs = snapshotPairs(isolate, v8_context, target) orelse {
+                    conv.throwTypeErrorFromContext(isolate, v8_context, "Failed to iterate");
+                    return;
+                };
+                defer v8.v8_Array_Dispose(pairs);
+                var position: u32 = 0;
+                while (position < v8.v8_Array_Length(pairs)) : (position += 1) {
+                    const pair_val = v8.v8_Array_Get(v8_context, pairs, position) orelse return;
+                    defer v8.v8_Value_Dispose(pair_val);
+                    const pair: *v8.Array = @ptrCast(pair_val);
+                    const key = v8.v8_Array_Get(v8_context, pair, 0) orelse return;
+                    defer v8.v8_Value_Dispose(key);
+                    const value = v8.v8_Array_Get(v8_context, pair, 1) orelse return;
+                    defer v8.v8_Value_Dispose(value);
+                    // Step 8.2: invoke idlCallback with « value, key, idlObject »
+                    // and thisArg; what it throws ends forEach.
+                    const args = [_]*v8.Value{ value, key, @ptrCast(this_obj) };
+                    var threw = false;
+                    const result = v8.v8_Function_CallCatching(v8_context, @ptrCast(callback_fn), this_arg, args.len, &args, &threw);
+                    if (threw) {
+                        if (result) |exception| {
+                            defer v8.v8_Value_Dispose(exception);
+                            v8.v8_Isolate_ThrowException(isolate, exception);
+                        }
+                        return;
+                    }
+                    if (result) |r| v8.v8_Value_Dispose(r);
+                }
+                return;
+            }
+
             // Get entries using getEntriesForIterable with live iteration
             // Per WebIDL spec, forEach must iterate live - modifications during iteration
             // should be visible (deletions skip items, additions are visited)
@@ -6947,9 +7060,108 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer v8.v8_Value_Dispose(flag);
                     setIteratorSlot(isolate, context, iterator_obj, "_isPairIterator", flag);
                 }
+                // The value pairs to iterate over, taken now for an interface
+                // whose impl makes them when asked (`iterable_snapshot`).
+                if (comptime hasIterableSnapshot()) {
+                    const instance = pairIterationTarget(target) orelse {
+                        v8.v8_Object_Dispose(iterator_obj);
+                        return null;
+                    };
+                    const pairs = snapshotPairs(isolate, context, instance) orelse {
+                        v8.v8_Object_Dispose(iterator_obj);
+                        return null;
+                    };
+                    defer v8.v8_Array_Dispose(pairs);
+                    setIteratorSlot(isolate, context, iterator_obj, "_pairs", @ptrCast(pairs));
+                }
             }
 
             return iterator_obj;
+        }
+
+        /// Whether this interface's impl takes its value pairs as a snapshot
+        /// when an iterator or forEach starts (the generated
+        /// `iterable_snapshot`, the impl's `iterableSnapshot`) instead of
+        /// handing out a live list (`getEntriesForIterable`). CSS Typed OM's
+        /// StylePropertyMapReadOnly reifies each declaration when asked, so
+        /// it does: Blink's PairSyncIterable iteration source
+        /// (StylePropertyMapReadOnlyMainThread::CreateIterationSource) and
+        /// WebKit's StylePropertyMapReadOnly::Iterator take the pairs once,
+        /// when the iterator is made.
+        fn hasIterableSnapshot() bool {
+            if (!@hasDecl(Interface, "iterable_snapshot")) return false;
+            return @TypeOf(Interface.iterable_snapshot) != @TypeOf(null);
+        }
+
+        /// `instance`'s value pairs (WebIDL "value pairs to iterate over"),
+        /// as the impl's snapshot makes them, converted to a JS Array of
+        /// [key, value] Arrays - each value a sequence of platform objects,
+        /// an Array of their wrappers. OWNED, or null with nothing thrown
+        /// when the snapshot or a conversion fails.
+        fn snapshotPairs(isolate: *v8.Isolate, context: *v8.Context, instance: *runtime.Instance) ?*v8.Array {
+            var snapshot = Interface.iterable_snapshot(instance) catch return null;
+            defer snapshot.deinit();
+            const entries = snapshot.entries.items;
+            const pairs = v8.v8_Array_New(isolate, @intCast(entries.len));
+            for (entries, 0..) |entry, i| {
+                const key = pairStringToV8(true, isolate, entry.name) orelse {
+                    v8.v8_Array_Dispose(pairs);
+                    return null;
+                };
+                defer v8.v8_Value_Dispose(key);
+                const values = v8.v8_Array_New(isolate, @intCast(entry.value.len));
+                defer v8.v8_Array_Dispose(values);
+                for (entry.value, 0..) |value_instance, j| {
+                    // Our own Global of the wrapper (the wrapper cache keeps
+                    // its own); Set copies it into the Array.
+                    const wrapper = v8.v8_Global_Clone(conv.instanceToV8(isolate, value_instance)) orelse {
+                        v8.v8_Array_Dispose(pairs);
+                        return null;
+                    };
+                    defer v8.v8_Value_Dispose(wrapper);
+                    _ = v8.v8_Array_Set(values, context, @intCast(j), wrapper);
+                }
+                const pair = v8.v8_Array_New(isolate, 2);
+                defer v8.v8_Array_Dispose(pair);
+                _ = v8.v8_Array_Set(pair, context, 0, key);
+                _ = v8.v8_Array_Set(pair, context, 1, @ptrCast(values));
+                _ = v8.v8_Array_Set(pairs, context, @intCast(i), @ptrCast(pair));
+            }
+            return pairs;
+        }
+
+        /// WebIDL 3.7.10.2 "get the next iteration result" for an iterator
+        /// over a snapshot of value pairs (`_pairs`, taken when it was made):
+        /// the pair at `index`, as `kind` asks - its key, its value, or a new
+        /// [key, value] Array - or done past the last one.
+        fn snapshotIteratorNext(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, iterator_obj: *v8.Object, index: u32, kind: IteratorKind) void {
+            const pairs_val = iteratorSlot(isolate, context, iterator_obj, "_pairs") orelse return;
+            defer v8.v8_Value_Dispose(pairs_val);
+            if (!v8.v8_Value_IsArray(pairs_val)) return returnIterDone(info, isolate, context);
+            const pairs: *v8.Array = @ptrCast(pairs_val);
+            if (index >= v8.v8_Array_Length(pairs)) return returnIterDone(info, isolate, context);
+            const pair_val = v8.v8_Array_Get(context, pairs, index) orelse return;
+            defer v8.v8_Value_Dispose(pair_val);
+            if (!v8.v8_Value_IsArray(pair_val)) return returnIterDone(info, isolate, context);
+            const pair: *v8.Array = @ptrCast(pair_val);
+            const key = v8.v8_Array_Get(context, pair, 0) orelse return;
+            defer v8.v8_Value_Dispose(key);
+            const value = v8.v8_Array_Get(context, pair, 1) orelse return;
+            defer v8.v8_Value_Dispose(value);
+            switch (kind) {
+                .keys => returnIterResult(info, isolate, context, key, false),
+                .values => returnIterResult(info, isolate, context, value, false),
+                .entries => {
+                    const result = v8.v8_Array_New(isolate, 2);
+                    defer v8.v8_Array_Dispose(result);
+                    _ = v8.v8_Array_Set(result, context, 0, key);
+                    _ = v8.v8_Array_Set(result, context, 1, value);
+                    returnIterResult(info, isolate, context, @ptrCast(result), false);
+                },
+            }
+            const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+            defer v8.v8_Value_Dispose(@ptrCast(new_index));
+            setIteratorSlot(isolate, context, iterator_obj, "_index", @ptrCast(new_index));
         }
 
         /// `iterator[slot_name]`, OWNED, or null.
@@ -7012,6 +7224,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
             const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context)))));
+
+            // An interface whose value pairs are a snapshot taken when the
+            // iterator was made (`iterable_snapshot`): the pair at index.
+            if (comptime hasIterableSnapshot()) {
+                snapshotIteratorNext(info, isolate, v8_context, iterator_obj, index, kind);
+                return;
+            }
 
             // Get live entries from the target object
             // This ensures concurrent modifications (like delete during iteration) are reflected
@@ -8145,7 +8364,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 binding_plumbing.getterFailed(info, err, error_realm);
                 return;
             };
-            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null);
+            binding_plumbing.finishGetter(runtime.DOMString, false, info, result, cleanup_allocator, null, instance.ctx, false);
         }
 
         /// The attribute setter: the value converted to a
@@ -8398,7 +8617,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // for the setter (v8_Global_DisposeCallbackValue).
                     .value_is_callback = blk: {
                         if (setter_params.len < 2) break :blk false;
-                        break :blk isCallbackFunctionShape(setter_params[1].type orelse break :blk false);
+                        break :blk isCallbackValueShape(setter_params[1].type orelse break :blk false);
                     },
                     .lenient_this = isLenientThisProperty(prop_name),
                     .global_interface = is_global_interface,
@@ -8480,7 +8699,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     var zig_value = converted_value catch |err| {
                         // A strict callback rejects before taking its Global.
                         // The setter's defer still owns that failed argument.
-                        if (comptime isCallbackFunctionType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over.* = false;
+                        if (comptime isCallbackValueType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over.* = false;
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {
                             return;
@@ -8838,10 +9057,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get runtime context from context manager
                     const context_manager = @import("context_manager.zig");
-                    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
+                    const function_ctx = context_manager.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
                         conv.throwError(isolate, "Failed to get runtime context");
                         return;
                     };
+                    // What a static operation of an isolated world makes is the
+                    // page's: its main realm's (protocol_worlds.zig), as for a
+                    // constructor (binding_plumbing.zig). Its result is wrapped
+                    // in the world all the same: the conversion asks the world
+                    // of the realm the operation runs in.
+                    const protocol_worlds = @import("protocol_worlds.zig");
+                    const runtime_ctx = if (protocol_worlds.realmMayHaveWorlds(function_ctx)) protocol_worlds.mainRealmOf(function_ctx) else function_ctx;
 
                     // Create a template instance to carry context to the static method
                     // This instance is just a vehicle for passing allocator/context
@@ -9130,6 +9356,15 @@ pub fn setInstance(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.
     return true;
 }
 
+/// `setInstance` for a receiver an isolated world realm's cache will keep
+/// (protocol_worlds.zig): a node's is bound to a platform anchor too
+/// (platform_anchor.bindInWorld).
+pub fn setInstanceInWorld(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.Instance) bool {
+    if (!platform_anchor.bindInWorld(isolate, object, instance)) return false;
+    runtime.instance_lifecycle.markWrapped(instance);
+    return true;
+}
+
 // ============================================================================
 // Cross-Realm Constructor Support
 // ============================================================================
@@ -9158,7 +9393,14 @@ pub fn setInstance(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.
 /// `receiver` is the caller's to release either way, bound to nothing when
 /// this answers true.
 pub fn adoptExistingWrapper(info: *const v8.FunctionCallbackInfo, receiver: *v8.Object, instance: *runtime.Instance, function_context: *v8.Context) bool {
-    const storage = instance.ctx.getV8WrapperCacheStorage() orelse return false;
+    return adoptExistingWrapperIn(info, receiver, instance, function_context, instance.ctx);
+}
+
+/// `adoptExistingWrapper` with the wrapper looked up in `cache_realm`'s cache:
+/// an isolated world's constructor adopts only its world's wrapper of the
+/// instance (protocol_worlds.zig), never the main world's.
+pub fn adoptExistingWrapperIn(info: *const v8.FunctionCallbackInfo, receiver: *v8.Object, instance: *runtime.Instance, function_context: *v8.Context, cache_realm: runtime.Context) bool {
+    const storage = cache_realm.getV8WrapperCacheStorage() orelse return false;
     const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
     if (cache.is_tearing_down) return false;
     const borrowed = cache.existingWrapper(instance) orelse return false;

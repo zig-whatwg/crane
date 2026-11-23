@@ -5,5 +5,7 @@
 const runtime = @import("runtime");
 
 pub const LanguageDetectorCreateCoreOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     expectedInputLanguages: ?[]const runtime.DOMString = null,
 };

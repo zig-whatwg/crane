@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const CreateHTMLCallback = *const fn (input: runtime.DOMString, arguments: []const runtime.JSValue) runtime.DOMString;
+/// callback CreateHTMLCallback = DOMString? (DOMString input, any... arguments)
+pub const CreateHTMLCallback = runtime.BorrowedCallbackFunction;

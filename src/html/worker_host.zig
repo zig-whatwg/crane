@@ -65,6 +65,7 @@ const message_ports = @import("dom").message_ports;
 // type compliant string", and CSP's EnsureCSPDoesNotBlockStringCompilation
 // over the global scope's CSP list.
 const trusted_types = @import("dom").trusted_types;
+const global_settings = @import("dom").global_settings;
 const code_generation = @import("code_generation.zig");
 
 // The agent cluster a dedicated worker's agent is in: its owner's.
@@ -73,6 +74,7 @@ const webassembly_streaming = @import("webassembly_streaming.zig");
 
 // Worker types from html_core
 const html_core = @import("html_core");
+const UserAgentSnapshot = html_core.window.host_overrides.UserAgentSnapshot;
 const workers = html_core.workers;
 const WorkerType = workers.WorkerType;
 
@@ -110,52 +112,6 @@ const TimerHandler = union(enum) {
     /// (the timer's allocator).
     string: []u8,
 };
-
-/// setTimeout()'s and setInterval()'s `handler` as WebIDL converts it: a
-/// member of the TimerHandler union, (DOMString or Function or
-/// TrustedScript).
-const ConvertedHandler = union(enum) {
-    /// BORROWED: the call's argument.
-    function: runtime.JSValue,
-    /// BORROWED: the call's argument.
-    trusted_script: *runtime.Instance,
-    /// What ToString made of the argument. OWNED.
-    string: []u8,
-
-    fn deinit(self: ConvertedHandler, allocator: Allocator) void {
-        switch (self) {
-            .string => |text| allocator.free(text),
-            .function, .trusted_script => {},
-        }
-    }
-};
-
-/// WebIDL 3.2.24, an ECMAScript value to the TimerHandler union, in the
-/// union algorithm's order: a platform object that implements TrustedScript
-/// (step 4), then a callable - the Function member (step 10) - and anything
-/// else converted to the DOMString member by ToString (step 15), which runs
-/// script and can throw (a Symbol is a TypeError).
-fn convertTimerHandler(realm: runtime.Context, value: runtime.JSValue, allocator: Allocator) runtime.EngineError!ConvertedHandler {
-    if (engine.convertToPlatformObject(realm, value)) |instance| {
-        if (trusted_types.dataOf(instance, .script) != null) return .{ .trusted_script = instance };
-    }
-    if (engine.isCallable(realm, value)) return .{ .function = value };
-    const text = engine.convertToDOMString(realm, value, allocator) catch |err| return engineError(err);
-    return .{ .string = text };
-}
-
-/// An engine operation's error as a built-in function's steps return it:
-/// what the operation threw stays pending, and its TypeError is thrown.
-fn engineError(err: engine.Error) runtime.EngineError {
-    return switch (err) {
-        error.ExceptionPending => error.ExceptionPending,
-        error.TypeError => error.TypeError,
-        error.OutOfMemory => error.OutOfMemory,
-        error.DataCloneError => error.DataCloneError,
-        error.NotSupported => error.NotSupported,
-        error.OperationFailed, error.ExceptionReported, error.MutedScriptError => error.OperationFailed,
-    };
-}
 
 /// One active timer.
 const WorkerTimerContext = struct {
@@ -205,17 +161,6 @@ fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
     for (ctx.arguments) |argument| argument.release();
     ctx.allocator.free(ctx.arguments);
     ctx.allocator.destroy(ctx);
-}
-
-/// WebIDL's conversion of a `long` (ConvertToInt(V, 32, "signed"), steps
-/// 5-12) from the Number ToNumber gave: NaN and the infinities are 0, the
-/// integer part is taken modulo 2^32 and read as two's complement - so 2^32
-/// is 0, as a Window's timeout is (the V8 adapter's ToInt32).
-pub fn convertToLong(number: f64) i32 {
-    if (std.math.isNan(number) or std.math.isInf(number)) return 0;
-    const modulo = @mod(@trunc(number), 4294967296.0);
-    const unsigned: u32 = @intFromFloat(modulo);
-    return @bitCast(unsigned);
 }
 
 /// Cancel and free every timer `owner` armed: HTML "terminate a worker" step 2
@@ -596,6 +541,28 @@ fn forScope(ctx: runtime.Context) ?*WorkerHost {
     return if (host.realm == ctx) host else null;
 }
 
+/// setTimeout() and setInterval() of a worker's global scope (`global`): the
+/// timer initialization steps of the host that runs it (WorkerHost.setTimer),
+/// which WindowOrWorkerGlobalScope's operations reach through
+/// dom.global_settings (WorkerGlobalScope's `set_timer`). `handler` is
+/// handed over; a global no host of this realm runs arms nothing and
+/// releases it.
+pub fn setTimerOf(global: *runtime.Instance, handler: global_settings.TimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 {
+    const host = forScope(global.ctx) orelse {
+        handler.release();
+        return 0;
+    };
+    return host.setTimer(handler, timeout, arguments, repeat);
+}
+
+/// clearTimeout() and clearInterval() of a worker's global scope: remove
+/// its map of setTimeout and setInterval IDs[id] - an id no timer has (zero,
+/// a negative one) names nothing.
+pub fn clearTimerOf(global: *runtime.Instance, id: i32) void {
+    const host = forScope(global.ctx) orelse return;
+    if (id > 0) host.clearTimer(@intCast(id));
+}
+
 /// Timer callback trampoline - invoked by the timer manager
 fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
@@ -808,6 +775,12 @@ pub const WorkerHost = struct {
     /// on the owner's thread (`ScopeSettings.cross_origin_isolated`).
     cross_origin_isolated: bool = false,
 
+    /// Whether the worker's agent cluster has a cross-origin isolation mode
+    /// other than "none", decided on the owner's thread
+    /// (`workerAgentClusterIsolated`): HTML "create a new realm" step 5 reads
+    /// it as the worker's realm is made (setupWorkerGlobalScope).
+    agent_cluster_cross_origin_isolated: bool = false,
+
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
@@ -818,6 +791,12 @@ pub const WorkerHost = struct {
     storage_top_level_nonce: ?u128 = null,
     origin_nonce: ?u128 = null,
     has_cross_site_ancestor: bool = false,
+
+    /// A dedicated worker's copy of its owner's tab's user agent override,
+    /// taken as it was made (html_core.window.host_overrides.
+    /// UserAgentSnapshot: Chrome's creation-params copy). Its navigator and
+    /// its requests (`userAgentOverrideOfRealm`) read it. OWNED.
+    user_agent_override: UserAgentSnapshot = .{},
 
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
@@ -857,7 +836,7 @@ pub const WorkerHost = struct {
 
     /// The built-in functions this host defines on the global object. The
     /// engine reads them on every call, so they live as long as this does.
-    builtins: [5]runtime.BuiltinFunction = undefined,
+    builtins: [1]runtime.BuiltinFunction = undefined,
 
     /// The global's map of setTimeout and setInterval IDs (HTML 8.6): its
     /// active timers, keyed by the id its script holds. Each global has its
@@ -964,6 +943,7 @@ pub const WorkerHost = struct {
             .owner_is_secure_context = start.owner_is_secure_context,
             .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
             .cross_origin_isolated = start.cross_origin_isolated,
+            .agent_cluster_cross_origin_isolated = start.agent_cluster_cross_origin_isolated,
             .animation_frames_owner_supported = start.owner_supports_animation_frames,
         };
         // Taken, not copied: the start's allocator is this one, and a move
@@ -977,23 +957,29 @@ pub const WorkerHost = struct {
         self.origin_nonce = start.origin_nonce;
         start.storage_top_level_site = null;
         self.has_cross_site_ancestor = start.has_cross_site_ancestor;
+        self.user_agent_override = start.user_agent_override;
+        start.user_agent_override = .{};
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
         // serializes is bound to and one it receives is checked against
         // (html.agent_clusters.agentClusterOf).
         self.agent_host.agent_cluster = start.agent_cluster;
+        // And its cross-origin isolation mode, which a dedicated worker this
+        // one starts takes as its own (html.agent_clusters.
+        // crossOriginIsolationMode).
+        self.agent_host.agent_cluster_cross_origin_isolated = start.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
-        const agent = try engine.createAgent(.{
+        // The agent's host and host state: this worker's AgentHost.
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&self.agent_host, .{
             .can_block = true,
             .from_snapshot = false,
             .hooks = &worker_hooks,
-            .host = &self.agent_host,
             .allocator = allocator,
             // A collected node's teardown is queued here, for the worker's
             // loop to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-        });
+        }));
         self.agent = agent;
         thread.loop.agent = agent;
         thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
@@ -1070,17 +1056,25 @@ pub const WorkerHost = struct {
             // the registration's top-level site and cross-site-ancestor bit.
             .storage_top_level_site = if (start.top_level_site) |named| allocator.dupe(u8, named) catch null else null,
             .has_cross_site_ancestor = start.has_cross_site_ancestor,
+            // Its agent cluster's mode ("concrete" when its embedder policy
+            // allows: serviceWorkerAgentClusterIsolated) and so its global
+            // scope's capability, as "run a worker" step 7 gives a worker's:
+            // a service worker has no owner and no permissions policy to
+            // take it away (steps 8-9).
+            .agent_cluster_cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
+            .cross_origin_isolated = serviceWorkerAgentClusterIsolated(start),
         };
+        self.agent_host.agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated;
         thread_host.host = self;
-        const agent = try engine.createAgent(.{
+        // The agent's host and host state: this worker's AgentHost.
+        const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&self.agent_host, .{
             .can_block = false,
             .from_snapshot = false,
             .hooks = &worker_hooks,
-            .host = &self.agent_host,
             .allocator = allocator,
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-        });
+        }));
         self.agent = agent;
         thread.loop.agent = agent;
         thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
@@ -1387,6 +1381,7 @@ pub const WorkerHost = struct {
         if (self.top_level_site) |site| self.allocator.free(site);
         if (self.top_level_origin) |origin| self.allocator.free(origin);
         if (self.storage_top_level_site) |site| self.allocator.free(site);
+        self.user_agent_override.deinit(self.allocator);
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
@@ -1407,17 +1402,15 @@ pub const WorkerHost = struct {
     /// "Run a worker" steps 5-9: the realm - a new realm in the worker's agent
     /// whose global object is a new DedicatedWorkerGlobalScope, with its
     /// settings (URL, type, name) recorded before the global scope is made -
-    /// and what this host puts on its global: the timers, and the harness's
-    /// hooks.
+    /// and what this host puts on its global: the harness's hooks.
     ///
     /// The global object's members come from the generated bindings: the
     /// DedicatedWorkerGlobalScope Instance behind it, and the interfaces on
     /// its prototype chain - WorkerGlobalScope's, which include every
     /// WindowOrWorkerGlobalScope member, and EventTarget's. postMessage and
     /// importScripts are the bound operations (DedicatedWorkerGlobalScope,
-    /// WorkerGlobalScope), which reach this host. Built-ins remain for the
-    /// timers, whose bound operations (WindowOrWorkerGlobalScope) return
-    /// NotImplemented.
+    /// WorkerGlobalScope), which reach this host; so are the timers
+    /// (WindowOrWorkerGlobalScope's, through dom.global_settings).
     pub fn setupWorkerGlobalScope(self: *Self) !void {
         const made = try engine.createWorkerRealm(self.agent, &.{
             .url = self.script_url,
@@ -1437,26 +1430,24 @@ pub const WorkerHost = struct {
             // owner's answer and the worker's own URL, as WorkerGlobalScope's
             // isSecureContext answers it. Out of memory: not secure.
             .secure_context = @import("secure_context.zig").ofWorker(self.allocator, self.script_url, self.owner_is_secure_context) catch false,
+            // HTML "create a new realm" step 5: the worker's agent cluster's
+            // cross-origin isolation mode, decided on its owner's thread.
+            .agent_cluster_cross_origin_isolated = self.agent_cluster_cross_origin_isolated,
         });
         self.global_scope = made.global_scope;
 
-        // HTML § 8.6: the timers, as built-ins on the global - own data
-        // properties, shadowing the bound operations further up the chain.
+        // HTML § 8.6: the timers are WindowOrWorkerGlobalScope's bound
+        // operations on WorkerGlobalScope.prototype, which the global
+        // inherits (WebIDL 3.7.3: a mixin's members are its includer's
+        // prototype's); they reach this host's timer initialization steps
+        // through dom.global_settings (`setTimerOf`, `clearTimerOf`).
         self.builtins = .{
-            .{ .steps = setTimeoutSteps, .data = self },
-            .{ .steps = clearTimerSteps, .data = self },
-            .{ .steps = setIntervalSteps, .data = self },
-            .{ .steps = clearTimerSteps, .data = self },
             .{ .steps = doneSteps, .data = self },
         };
         const realm = made.realm;
-        try engine.defineBuiltinFunction(realm, "setTimeout", 1, &self.builtins[0]);
-        try engine.defineBuiltinFunction(realm, "clearTimeout", 0, &self.builtins[1]);
-        try engine.defineBuiltinFunction(realm, "setInterval", 1, &self.builtins[2]);
-        try engine.defineBuiltinFunction(realm, "clearInterval", 0, &self.builtins[3]);
         // done() for the WPT harness: testharness.js defines its own, which
         // replaces this one when it loads.
-        try engine.defineBuiltinFunction(realm, "done", 0, &self.builtins[4]);
+        try engine.defineBuiltinFunction(realm, "done", 0, &self.builtins[0]);
         // `performance` is the global scope's own Performance (the
         // WindowOrWorkerGlobalScope member, through WorkerGlobalScope's
         // settings), its time origin `time_origin_ns`.
@@ -1595,8 +1586,17 @@ pub const WorkerHost = struct {
         const graph = module_script.moduleWorkerScriptGraph(&env, url, self.script_url, source) orelse return false;
         if (graph.error_to_rethrow != null) return false;
 
-        self.runModuleScript(&env, graph);
-        return true;
+        const evaluated = self.runModuleScript(&env, graph);
+        // Service Workers "Run Service Worker" step 9.5: a module script
+        // whose evaluation promise is rejected sets the start status to that
+        // throw completion, so the worker does not start and its
+        // registration's job rejects (as a classic script that throws). It
+        // started: register() resolved for a module service worker that
+        // throws at its top level (service-workers/service-worker/
+        // registration-script-module.https.html 'uncaught exception' and
+        // 'undefined error' cases; Chrome 157, Firefox 160 and Safari 27.2
+        // pass). Other workers run on after reporting it.
+        return evaluated or self.service == null;
     }
 
     /// HTML "run a module script" for the worker: evaluate between "prepare
@@ -1610,28 +1610,34 @@ pub const WorkerHost = struct {
     /// the ones the evaluation queued, and runs in step 9's checkpoint
     /// (microtasks/evaluation-order-1-throw-static-import: "body",
     /// "microtask", then "global-error").
-    fn runModuleScript(self: *Self, env: *const module_script.Environment, script: *module_script.ModuleScript) void {
-        const realm = self.realm orelse return;
+    /// False when the evaluation promise was settled with a rejection
+    /// (an error to rethrow, or a synchronous throw).
+    fn runModuleScript(self: *Self, env: *const module_script.Environment, script: *module_script.ModuleScript) bool {
+        const realm = self.realm orelse return false;
         self.entered += 1;
         defer self.entered -= 1;
         // Step 5: prepare to run script.
-        const scope = engine.prepareToRunScript(realm) catch return;
+        const scope = engine.prepareToRunScript(realm) catch return false;
         // Step 9: clean up after running script - the microtask checkpoint.
         defer engine.cleanUpAfterRunningScript(scope);
         switch (module_script.run(env, script)) {
-            .ok => {},
+            .ok => return true,
             // Steps 6-7 settled the evaluation promise with a rejection (an
             // error to rethrow, or a synchronous throw): step 8's reaction.
             .report => |exception| {
                 defer exception.release();
-                const promise = engine.createRejectedPromise(realm, exception.value) catch
-                    return self.reportValue(realm, exception.value);
+                const promise = engine.createRejectedPromise(realm, exception.value) catch {
+                    self.reportValue(realm, exception.value);
+                    return false;
+                };
                 defer promise.release();
                 self.reportRejectionLater(realm, promise.value);
+                return false;
             },
             .pending => |promise| {
                 defer promise.release();
                 self.reportRejectionLater(realm, promise.value);
+                return true;
             },
         }
     }
@@ -1851,30 +1857,6 @@ pub const WorkerHost = struct {
         end.post(port_message);
     }
 
-    fn setTimeoutSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
-        const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, false)));
-    }
-
-    fn setIntervalSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
-        const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, true)));
-    }
-
-    /// clearTimeout() and clearInterval(): remove this's map of setTimeout
-    /// and setInterval IDs[id] - the same map for both. `optional long id =
-    /// 0` converts as WebIDL does - ToNumber, which can run script and
-    /// throw, then modulo 2^32 - so "5" is 5; an id no timer has (zero, a
-    /// negative one) names nothing.
-    fn clearTimerSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
-        const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.jsUndefined));
-        if (args.len < 1 or args[0] == .undefined) return runtime.JSValue.jsUndefined;
-        const realm = self.realm orelse return runtime.JSValue.jsUndefined;
-        const id = convertToLong(engine.convertToUnrestrictedDouble(realm, args[0]) catch |err| return engineError(err));
-        if (id > 0) self.clearTimer(@intCast(id));
-        return runtime.JSValue.jsUndefined;
-    }
-
     /// Remove `id` from this global's timers: cancel the timer and free it,
     /// unless its callback is on the stack - the running trampoline then
     /// frees it on return. An id this global never armed is no entry here,
@@ -1898,8 +1880,9 @@ pub const WorkerHost = struct {
     fn takeTimerId(self: *Self) runtime.TimerId {
         while (true) {
             const id = self.next_timer_id;
-            // Script sees the id as a u32 (setTimer's return): wrap there.
-            self.next_timer_id = if (id >= std.math.maxInt(u32)) 1 else id + 1;
+            // Script sees the id as a `long` (setTimeout()'s return type):
+            // wrap past the greatest one, so every id is greater than zero.
+            self.next_timer_id = if (id >= std.math.maxInt(i32)) 1 else id + 1;
             if (id != 0 and !self.timers.contains(id)) return id;
         }
     }
@@ -1909,31 +1892,23 @@ pub const WorkerHost = struct {
         return runtime.JSValue.jsUndefined;
     }
 
-    /// setTimeout() and setInterval(): WebIDL's conversion of their
-    /// arguments - `TimerHandler handler, optional long timeout = 0, any...
-    /// arguments` - then the timer initialization steps (HTML § 8.6) with no
-    /// previousId. The new timer's id, or 0 when none was armed. The
-    /// conversions run script (a handler's toString(), a timeout's
-    /// valueOf()), so they happen here, at the call, in the order WebIDL
-    /// gives, and what they throw reaches the caller.
-    fn setTimer(self: *Self, args: []const runtime.JSValue, repeat: bool) runtime.EngineError!u32 {
+    /// setTimeout() and setInterval() for this worker's global scope: the
+    /// timer initialization steps (HTML § 8.6) with no previousId, given the
+    /// arguments as the binding converted them - `TimerHandler handler,
+    /// optional long timeout = 0, any... arguments`, in WebIDL's order, at
+    /// the call (WindowOrWorkerGlobalScope's operations on
+    /// WorkerGlobalScope.prototype). The new timer's id, or 0 when none was
+    /// armed. `handler` is handed over: a Function the timer does not keep
+    /// is released here, on every path.
+    fn setTimer(self: *Self, handler: global_settings.TimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) !i32 {
+        // Ours until the timer keeps it.
+        var function: ?engine.CallbackFunction = switch (handler) {
+            .function => |taken| taken,
+            .trusted_script, .string => null,
+        };
+        defer if (function) |unkept| unkept.release();
         const realm = self.realm orelse return 0;
         const global = self.global_scope orelse return 0;
-        // `handler` is not optional: "not enough arguments" is a TypeError.
-        if (args.len < 1) return error.TypeError;
-
-        // `handler`: TimerHandler, (DOMString or Function or TrustedScript),
-        // by WebIDL's union conversion (3.2.24): a platform object that is a
-        // TrustedScript (step 4), then a callable (step 10), else the string
-        // ToString makes of it (step 15).
-        var handler: ConvertedHandler = try convertTimerHandler(realm, args[0], self.allocator);
-        defer handler.deinit(self.allocator);
-
-        // `timeout`: optional long, 0 when undefined or not passed.
-        var timeout: i32 = 0;
-        if (args.len >= 2 and args[1] != .undefined) {
-            timeout = convertToLong(engine.convertToUnrestrictedDouble(realm, args[1]) catch |err| return engineError(err));
-        }
 
         // Step 1: a handler that is not a Function, and no previousId: "Set
         // handler to the result of invoking the get trusted type compliant
@@ -2000,33 +1975,28 @@ pub const WorkerHost = struct {
             .cancelled = false,
             .worker_host = self,
         };
-        switch (handler) {
-            // The handler as a callback function, with the incumbent realm -
-            // the worker's, whose built-in this is - as its callback
-            // context; and `arguments`, each kept for every run.
-            .function => |function| {
-                const kept = try self.allocator.alloc(engine.Owned, args.len -| 2);
-                var retained: usize = 0;
-                errdefer {
-                    for (kept[0..retained]) |argument| argument.release();
-                    self.allocator.free(kept);
-                }
-                for (kept, 2..) |*argument, i| {
-                    argument.* = engine.retainValue(realm, args[i]) catch |err| return engineError(err);
-                    retained += 1;
-                }
-                const retained_function = engine.retainValue(realm, function) catch |err| return engineError(err);
-                timer_ctx.handler = .{ .function = .{
-                    .function = retained_function,
-                    .context = engine.incumbentRealm() orelse realm,
-                } };
-                timer_ctx.arguments = kept;
-            },
+        if (function) |kept_function| {
+            // The handler as the callback function the binding converted -
+            // its callback context the incumbent realm of the call - and
+            // `arguments`, each kept for every run (step 10.7).
+            const kept = try self.allocator.alloc(engine.Owned, arguments.len);
+            var retained: usize = 0;
+            errdefer {
+                for (kept[0..retained]) |argument| argument.release();
+                self.allocator.free(kept);
+            }
+            for (kept, arguments) |*argument, value| {
+                argument.* = try engine.retainValue(realm, value);
+                retained += 1;
+            }
+            timer_ctx.handler = .{ .function = kept_function };
+            timer_ctx.arguments = kept;
+            // The timer has it now (freeWorkerTimer releases it).
+            function = null;
+        } else {
             // A string runs no arguments.
-            .trusted_script, .string => {
-                timer_ctx.handler = .{ .string = source.? };
-                source = null;
-            },
+            timer_ctx.handler = .{ .string = source.? };
+            source = null;
         }
 
         // Steps 3-6: the timeout, 0 when negative, and HTML §8.6's clamp
@@ -2065,6 +2035,7 @@ pub const WorkerHost = struct {
         timer_ctx.current_timer_id = timer_id;
         timer_ctx.id = self.takeTimerId();
         self.timers.putAssumeCapacityNoClobber(timer_ctx.id, timer_ctx);
+        // takeTimerId's ids are `long`s greater than zero.
         return @intCast(timer_ctx.id);
     }
 
@@ -2985,6 +2956,52 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
     return agent_clusters.crossOriginIsolatedCapability(null, start.owner_realm);
 }
 
+/// Whether the agent cluster of the worker `start` starts has a cross-origin
+/// isolation mode other than "none" when its realm is made (HTML "create a
+/// new realm" step 5), read on its owner's thread:
+///
+/// - a shared worker's agent starts a cluster of its own (isTopLevel), made
+///   with the mode "none"; "run a worker" makes the realm (step 7) before
+///   onComplete step 5 sets the mode from the embedder policy ("This really
+///   ought to be set when the agent cluster is created"), so the realm is
+///   made with "none" whatever its policy - and the browsers agree: Chrome
+///   157 and Firefox 160 make no shared worker cross-origin isolated even
+///   with COOP and COEP (html/cross-origin-embedder-policy/cross-origin-
+///   isolated-permission-worker.https.window.html "shared_worker
+///   (withCoopCoep: true)": C FAIL, F FAIL, S PASS, wpt.fyi 2358bd4835), so
+///   neither exposes SharedArrayBuffer there. Its capability stays the
+///   spec's (`workerCrossOriginIsolated`, steps 5-7);
+/// - a dedicated worker's agent is in its owner's cluster ("obtain a
+///   worker/worklet agent" step 3), whose mode it shares - a data: URL's too:
+///   step 9 takes only its capability away.
+fn workerAgentClusterIsolated(start: *const WorkerStart) bool {
+    if (start.shared != null) return false;
+    return agent_clusters.crossOriginIsolationMode(start.owner_realm);
+}
+
+/// Whether a service worker's agent cluster is cross-origin isolated: its
+/// script's embedder policy is compatible with cross-origin isolation.
+///
+/// Service Workers sets no mode for the cluster "obtain a service worker
+/// agent" makes, and gives the global scope no cross-origin isolated
+/// capability of its own; the browsers do not leave it there (golden rule 2,
+/// no newer spec): Chrome 157 and Safari 27.2 make a service worker whose
+/// script has COOP and COEP cross-origin isolated, Firefox 160 does not
+/// (html/cross-origin-embedder-policy/cross-origin-isolated-permission-
+/// worker.https.window.js "service_worker (withCoopCoep: true)": C PASS,
+/// F FAIL, S PASS; withCoopCoep false: all three not isolated; wpt.fyi
+/// 2358bd4835). Chrome's is "concrete" - its capability and its
+/// SharedArrayBuffer (Blink's SharedArrayBufferConstructorEnabledCallback
+/// reads the worker's SharedArrayBufferTransferAllowed) - as "run a worker"
+/// step 7 gives a shared worker's. Without COOP and COEP no service worker
+/// has the global in any of the three (html/infrastructure/safe-passing-of-
+/// structured-data/shared-array-buffers/no-coop-coep.https.any.
+/// serviceworker.html: C, F and S PASS).
+fn serviceWorkerAgentClusterIsolated(start: *const ServiceThreadHost.Start) bool {
+    const container = if (start.policy_container) |*c| c else return false;
+    return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+}
+
 /// A worker creator's mixed-content answer, read only on its own thread.
 /// A nested data worker captures its owner's already-inherited restriction.
 fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory}!bool {
@@ -3000,6 +3017,27 @@ fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory
 /// the worker's. A nested worker's owner is a worker realm, whose answer is
 /// the site it captured in turn. Shared workers use the creator's partition,
 /// as their storage-key-based identity does.
+/// A dedicated worker's copy of its owner's tab's user agent override, on
+/// the owner's thread: a Window owner's top-level traversable's override
+/// (html_core.window.host_overrides), or a dedicated worker owner's own copy.
+fn ownerUserAgentOverride(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!UserAgentSnapshot {
+    if (forScope(realm)) |owner| return owner.user_agent_override.clone(allocator);
+    if (!realm.isWindow()) return .{};
+    const record = realm.getRealm() orelse return .{};
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return .{}));
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return .{};
+    return UserAgentSnapshot.of(allocator, &bc.getTop().host_overrides);
+}
+
+/// The user agent override of a worker global scope's realm `ctx` - a
+/// dedicated worker's copy of its tab's - or null: its navigator and its
+/// requests (the fetch user agent override reader) read it, on the worker's
+/// thread. BORROWED for the worker's life.
+pub fn userAgentOverrideOfRealm(ctx: runtime.Context) ?*const UserAgentSnapshot {
+    const host = forScope(ctx) orelse return null;
+    return &host.user_agent_override;
+}
+
 fn ownerTopLevelSite(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!?[]u8 {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -3937,6 +3975,10 @@ const ThreadHost = struct {
         /// The worker's cross-origin isolated capability, decided on the
         /// owner's thread (`workerCrossOriginIsolated`).
         cross_origin_isolated: bool = false,
+        /// Whether the worker's agent cluster's cross-origin isolation mode
+        /// is not "none", decided on the owner's thread
+        /// (`workerAgentClusterIsolated`).
+        agent_cluster_cross_origin_isolated: bool = false,
         /// The owner's mixed-content answer, read on that same thread.
         owner_prohibits_mixed_security_contexts: bool,
         /// Whether a dedicated worker's global scope will be a supported
@@ -3983,6 +4025,10 @@ const ThreadHost = struct {
         /// Whether the owner upgrades insecure requests, read on its thread:
         /// a fetched script's container inherits it (UIR 3.3).
         owner_upgrades_insecure_requests: bool = false,
+        /// A dedicated worker's copy of its owner's tab's user agent
+        /// override, taken on the owner's thread (`ownerUserAgentOverride`).
+        /// OWNED.
+        user_agent_override: UserAgentSnapshot = .{},
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -4012,6 +4058,12 @@ const ThreadHost = struct {
         var owner_embedder_policy: fetch_mod.internal.EmbedderPolicy = if (owner_container) |owner| try owner.embedderPolicy().clone(allocator) else .{};
         errdefer owner_embedder_policy.deinit(allocator);
         const owner_upgrades_insecure_requests = if (owner_container) |owner| owner.upgradesInsecureRequests() else false;
+        // On the owner's thread: a dedicated worker's copy of its tab's user
+        // agent override, as Chrome's DedicatedWorker copies its owner's
+        // user agent into the worker's creation params. A shared worker has
+        // no one tab.
+        var user_agent_override: UserAgentSnapshot = if (start.shared == null) try ownerUserAgentOverride(allocator, start.owner_realm) else .{};
+        errdefer user_agent_override.deinit(allocator);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -4034,6 +4086,9 @@ const ThreadHost = struct {
                 // On the owner's thread: its capability and the worker's
                 // embedder policy decide the worker's.
                 .cross_origin_isolated = workerCrossOriginIsolated(start),
+                // On the owner's thread: the mode HTML "create a new realm"
+                // step 5 reads for the worker's realm.
+                .agent_cluster_cross_origin_isolated = workerAgentClusterIsolated(start),
                 // On the owner's thread: HTML 8.12's "supported" asks the
                 // owner set.
                 .owner_supports_animation_frames = start.shared == null and ownerSupportsAnimationFrames(start.owner_realm),
@@ -4052,6 +4107,7 @@ const ThreadHost = struct {
                 .csp_relay = start.csp_relay,
                 .owner_embedder_policy = owner_embedder_policy,
                 .owner_upgrades_insecure_requests = owner_upgrades_insecure_requests,
+                .user_agent_override = user_agent_override,
             },
         };
         return self;
@@ -4097,6 +4153,7 @@ const ThreadHost = struct {
         if (self.start.request_url) |url| self.allocator.free(url);
         self.start.request_url = null;
         self.start.owner_embedder_policy.deinit(self.allocator);
+        self.start.user_agent_override.deinit(self.allocator);
     }
 
     /// The worker's realm is a service worker client: it takes the reserved
@@ -4465,8 +4522,7 @@ pub fn serviceScopeOf(ctx: runtime.Context) ?ServiceScope {
 }
 
 fn serviceHostOf(ctx: runtime.Context) ?*WorkerHost {
-    const agent = ctx.agent orelse return null;
-    const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const agent_host: *html_core.agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(ctx) orelse return null;
     const host: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     if (host.service == null) return null;
     return host;

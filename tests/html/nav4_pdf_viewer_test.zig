@@ -25,7 +25,7 @@ const Page = struct {
     browser: *Browser,
 
     fn start() !Page {
-        const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigateWithOptions("http://nav4.test/pdf.html", .window, .{ .skip_load = true });
         const context = browser.current_context orelse return error.NoPage;

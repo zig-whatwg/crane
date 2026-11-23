@@ -31,10 +31,9 @@ test "hc1 Browser: each Browser has an HTTP cache of its own, sized by its confi
     defer testing.expect(debug_a.deinit() == .ok) catch @panic("Browser A leaked");
     var debug_b: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug_b.deinit() == .ok) catch @panic("Browser B leaked");
-    const a = try browser_mod.Browser.init(debug_a.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const a = try browser_mod.Browser.init(debug_a.allocator(), .{ .snapshot_path = "" });
     defer a.deinit();
     const b = try browser_mod.Browser.init(debug_b.allocator(), .{
-        .persist_storage = false,
         .snapshot_path = "",
         .http_cache = .{ .max_bytes = 1024 * 1024, .max_entry_bytes = 4096 },
     });
@@ -49,7 +48,7 @@ test "hc1 Browser: each Browser has an HTTP cache of its own, sized by its confi
     // A Browser with a cap of 0 has none.
     var debug_c: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug_c.deinit() == .ok) catch @panic("Browser C leaked");
-    const c = try browser_mod.Browser.init(debug_c.allocator(), .{ .persist_storage = false, .snapshot_path = "", .http_cache = .{ .max_bytes = 0 } });
+    const c = try browser_mod.Browser.init(debug_c.allocator(), .{ .snapshot_path = "", .http_cache = .{ .max_bytes = 0 } });
     defer c.deinit();
     try testing.expect((try networkOf(c)).http_cache == null);
 }
@@ -57,7 +56,7 @@ test "hc1 Browser: each Browser has an HTTP cache of its own, sized by its confi
 test "hc1 Browser: Clear-Site-Data cache removes the exact origin's responses, in every partition" {
     var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug.deinit() == .ok) catch @panic("leaked");
-    const browser = try browser_mod.Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(debug.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     const network = try networkOf(browser);
     const cache = network.http_cache.?;

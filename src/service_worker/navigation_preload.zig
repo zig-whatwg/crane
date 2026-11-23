@@ -93,7 +93,7 @@ const PreloadCall = struct {
 
     fn begin(self: *PreloadCall, global_scope: *runtime.Instance, request: *const InternalRequest, header_value: []const u8) !void {
         // 15.1.1. preloadRequest: a clone of request.
-        const preload = (try manager_mod.copyRequestForWorker(self.allocator, request)) orelse return error.NetworkError;
+        const preload = (try manager_mod.copyRequestForWorker(self.allocator, request, null)) orelse return error.NetworkError;
         var owned = true;
         errdefer if (owned) preload.deinit();
         // 15.1.4. `Service-Worker-Navigation-Preload`: the registration's

@@ -59,7 +59,7 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
 /// A Browser whose clock is virtual: it stands still while the page works
 /// and moves to the next timer when the loop is idle.
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
+    return browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
 }
 
 /// Let the caches' 10 s pass: a page timer moves the Browser's virtual

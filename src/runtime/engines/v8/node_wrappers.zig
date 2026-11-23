@@ -225,6 +225,19 @@ pub const Registry = struct {
     /// Releases a collection could not record (no memory): references kept,
     /// so those trees are freed only at the agent's end. Diagnostics.
     lost_releases: u64 = 0,
+    /// How many of `released`, from its start, a callback's safe point
+    /// judged OLD (`releaseFresh`): made before the outermost callback on
+    /// the stack, they wait for the drain and are not looked at again -
+    /// every later callback began later still. A drain empties the list and
+    /// resets it; anything else that reorders the list resets it to 0 (look
+    /// again).
+    judged_old: usize = 0,
+    /// A fresh release is on the stack (`releaseFresh`): a binding's return
+    /// beneath it releases nothing.
+    releasing_fresh: bool = false,
+    /// Releases run at a callback's safe point, cumulative (diagnostics,
+    /// tests).
+    fresh_released: u64 = 0,
     /// The walk's per-collection set of tree roots already walked
     /// (engine.traceVisitOnce): filled in a collection's atomic pause, emptied
     /// at the end of its marking (`markedCallback`), its capacity kept.
@@ -247,6 +260,11 @@ pub const Registry = struct {
     trace_check_failures: u64 = 0,
     /// Debug: a walk is running (inside the collector): no wrap may start.
     in_walk: bool = false,
+    /// The agent's isolated worlds (protocol_worlds.AgentWorlds), BORROWED
+    /// from its record from its first world realm until its end: the walk
+    /// keeps every world's wrapper of a node it names (`traceNodeWrapper`).
+    /// Null - the walk asks nothing more - while the agent has no world.
+    worlds: ?*const @import("protocol_worlds.zig").AgentWorlds = null,
 
     /// Release what the collections recorded - unless a walk holds the
     /// agent's teardowns: its last resume drains (`drainOf`).
@@ -256,10 +274,73 @@ pub const Registry = struct {
         // One at a time, the next taken afresh: a release can run what wraps
         // and collects, whose weak processing appends here.
         while (self.released.pop()) |released| releaseOne(released);
+        self.judged_old = 0;
         self.shrinkReleased();
         // Every recorded reference is released: what a collection's end of
         // marking predicted dead has been queued by now, or lived.
         @import("external_memory.zig").releasesDone(self.isolate);
+    }
+
+    /// THE SAFE POINT INSIDE A CALLBACK for the recorded releases (lane
+    /// mem1): a binding returned into the script of the innermost callback
+    /// invocation, which began at `innermost` on the agent's callback clock
+    /// (the outermost on the stack at `outermost`). A release whose node
+    /// was made inside that invocation - its slab generation, recorded by
+    /// the collection, at or above the invocation's entry
+    /// (DeferredTeardown.freshSerialOf) - runs here: the frames below the
+    /// invocation were suspended before the node existed, so none holds it,
+    /// the argument by which the invocation's fresh finalizers run here too
+    /// (finalizer_safe_point.zig). A release only counts: the tree it
+    /// leaves with no hold is QUEUED (dom.refcount_teardown.settle) and
+    /// freed by the queue's rules - inside a callback, only a tree made
+    /// inside it (DeferredTeardown.runFreshTrees). One made inside an outer
+    /// invocation waits for script to be back there (its stamp in
+    /// `waiting`); anything older waits for the drain (`judged_old`).
+    ///
+    /// Before this, every recorded release waited for depth zero, and a
+    /// garbage tree whose nodes script had wrapped stayed whole for the
+    /// rest of the callback: 3,000 delete-joins in one timer callback
+    /// peaked at 1.9x the same joins spread over callbacks
+    /// (tests/html/perf1_garbage_weight_test).
+    ///
+    /// Not here, and not done (the queue owes the look again): a
+    /// collection's marking window is open (`marking_from`: its end of
+    /// marking reads the list from that index), a walk holds the agent's
+    /// teardowns (its last resume drains), or a fresh release is already on
+    /// the stack. Nothing at all once the registry has ended. The caller
+    /// has checked the engine's own rules (no finalizer running, no
+    /// exception pending: v8_Isolate_RunFreshFinalizers answered done).
+    pub fn releaseFresh(self: *Registry, queue: *const runtime.gc.DeferredTeardown, innermost: u32, outermost: u32) runtime.gc.DeferredTeardown.FinalizerSteps.Fresh {
+        if (self.ended) return .{ .done = true, .waiting = 0 };
+        if (self.marking_from != null or self.releasing_fresh) return .{ .done = false, .waiting = 0 };
+        if (self.holds) |holds| if (holds.count != 0) return .{ .done = false, .waiting = 0 };
+        self.releasing_fresh = true;
+        defer self.releasing_fresh = false;
+        var waiting: u32 = 0;
+        var at = @min(self.judged_old, self.released.items.len);
+        self.judged_old = at;
+        while (at < self.released.items.len) {
+            const released = self.released.items[at];
+            const stamp = queue.freshSerialOf(runtime.SlabAllocator.ownerOf(released.instance), released.generation);
+            if (stamp != 0 and stamp >= innermost) {
+                // Off the list before it runs: a release can run what wraps
+                // and collects, whose weak processing appends here.
+                _ = self.released.swapRemove(at);
+                self.fresh_released += 1;
+                releaseOne(released);
+                continue;
+            }
+            if (stamp != 0 and stamp >= outermost) {
+                waiting = @max(waiting, stamp);
+            } else {
+                // OLD: into the judged prefix. What it trades places with
+                // was judged waiting in this pass (the entries between are).
+                std.mem.swap(Released, &self.released.items[at], &self.released.items[self.judged_old]);
+                self.judged_old += 1;
+            }
+            at += 1;
+        }
+        return .{ .done = true, .waiting = waiting };
     }
 
     /// The list a drain emptied keeps a small capacity, not its high water.
@@ -274,6 +355,7 @@ pub const Registry = struct {
     /// (design 4.9 steps 2-3). No node is wrapped again (`ended`), so one
     /// pass ends every wrapper.
     fn releaseAll(self: *Registry) void {
+        self.judged_old = 0;
         while (self.released.pop()) |released| releaseOne(released);
         var keeps = self.keeps.valueIterator();
         while (keeps.next()) |entry| {
@@ -583,6 +665,8 @@ pub fn nodeDestroyed(instance: *runtime.Instance) void {
 pub fn releaseRealm(realm: runtime.Context) void {
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
     const registry = registryOf(isolate) orelse return;
+    // Its removals reorder the list: the next callback's look judges afresh.
+    registry.judged_old = 0;
     var at: usize = 0;
     while (at < registry.released.items.len) {
         const released = registry.released.items[at];
@@ -613,9 +697,34 @@ pub const Tracer = struct {
 /// traced through the collection's visitor (v8_NodeTracer_TraceSlot), which
 /// marks the TracedNode and the wrapper and, through it, its anchor.
 pub fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
+    // And the node's wrappers in the agent's other worlds (protocol_worlds:
+    // a world's wrapper lives while the walk keeps its node's tree, as
+    // Blink's DOMDataStore for a non-main world keeps it by an ephemeron),
+    // whether or not the main world wrapped the node.
+    if (tracer.registry.worlds) |worlds| traceWorldWrappersOfSlot(worlds, tracer, slot);
     if (slot.isEmpty()) return;
     if (wrapper_trace_check) tracer.registry.traced.put(std.heap.c_allocator, @intFromPtr(slot), {}) catch {};
     ffi.v8_NodeTracer_TraceSlot(tracer.visitor, @ptrCast(@constCast(slot)));
+}
+
+/// `traceNodeWrapper`'s world half: the node whose slot `slot` is, and its
+/// wrapper in each world realm of its relevant realm.
+fn traceWorldWrappersOfSlot(worlds: *const @import("protocol_worlds.zig").AgentWorlds, tracer: *Tracer, slot: *const NodeWrapperSlot) void {
+    const instance = instanceOfTarget(runtime.lifetime.targetOfSlot(@constCast(slot))) orelse return;
+    @import("protocol_worlds.zig").traceWorldWrappers(worlds, instance, tracer.visitor);
+}
+
+/// The agent whose isolate this is has isolated worlds (`worlds`, from its
+/// record), or - null, its end - no longer: its walks keep world wrappers
+/// from now on (`Registry.worlds`). The registry is made if the agent has
+/// none yet; without one (no memory) world wrappers are only script's.
+pub fn noteWorlds(isolate: *ffi.Isolate, worlds: ?*const @import("protocol_worlds.zig").AgentWorlds) void {
+    if (worlds == null) {
+        if (registryOf(isolate)) |registry| registry.worlds = null;
+        return;
+    }
+    const registry = ensureRegistry(isolate) catch return;
+    registry.worlds = worlds;
 }
 
 /// engine.traceVisitOnce: true the first time `key` is offered in this
@@ -643,6 +752,9 @@ fn traceAnchor(raw_registry: ?*anyopaque, raw_slot: ?*anyopaque, visitor: ?*anyo
     const slot: *NodeWrapperSlot = @ptrCast(@alignCast(raw_slot orelse return));
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
     walk(registry, runtime.lifetime.targetOfSlot(slot), &tracer);
+    // The anchor's own node's world wrappers: the walk names a lone root's
+    // other nodes, never the anchor's own (its slot is traced by the anchor).
+    if (registry.worlds) |worlds| traceWorldWrappersOfSlot(worlds, &tracer, slot);
 }
 
 /// One walk from `target`, the registry's diagnostics around it.
@@ -666,8 +778,20 @@ fn traceHolder(raw_registry: ?*anyopaque, raw_instance: ?*anyopaque, generation:
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     // A test that removed the walk removed the holders' walks with it.
     if (!runtime.lifetime.walkInstalled()) return;
-    const trace = instance.vtable.trace_held_nodes orelse return;
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
+    // An isolated world's wrapper of a NODE (protocol_worlds.zig; bound to a
+    // holder anchor by platform_anchor.bindInWorld): reached, it keeps what a
+    // reached NodeAnchor keeps - its node's wrapper in every world (the main
+    // world's slot included: `traceNodeWrapper`) and the walk from its node
+    // (`walk`: every wrapper its host-including tree and its node document's
+    // tree keep). Blink: the world's wrapper reaches the C++ Node, whose
+    // Trace reaches its tree and its main-world wrapper.
+    if (instance.vtable.counted != null) {
+        const target = targetOf(instance) orelse return;
+        traceNodeWrapper(&tracer, runtime.lifetime.slotOf(target));
+        walk(registry, target, &tracer);
+    }
+    const trace = instance.vtable.trace_held_nodes orelse return;
     registry.in_walk = true;
     defer registry.in_walk = false;
     trace(instance, &tracer);

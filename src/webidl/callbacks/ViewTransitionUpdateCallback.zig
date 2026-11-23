@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ViewTransitionUpdateCallback = *const fn () runtime.JSValue;
+/// callback ViewTransitionUpdateCallback = Promise<any> ()
+pub const ViewTransitionUpdateCallback = runtime.BorrowedCallbackFunction;

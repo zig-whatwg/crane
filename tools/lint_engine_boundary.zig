@@ -19,6 +19,20 @@
 //!   * every member reached through an alias of such an import - `v8.ffi`,
 //!     `v8.context_manager`, and through `const ffi = v8.ffi;`, `v8.ffi.Isolate`.
 //!
+//! And the engine protocol's untyped agent host (lane tpc, 2026-11-22; lesson
+//! architecture-a-host-pointer-an-agent-was-given-is-only-its-creators-type.md):
+//!   * in src/ outside src/runtime/ (the protocol and its adapters), every
+//!     `agentHost(` call, keyed `agentHost()`: html and the DOM read an
+//!     agent's state through the type the protocol names for it
+//!     (engine.hostStateOf, dom.agent_hosts.ofAgent), never the host, whose type
+//!     is only its creator's - a cast of it read a test's struct as custom
+//!     element reaction queues. Baseline 0, so a two-step cast is caught too;
+//!   * in tests/ and tools/, where a test may read back the host it gave,
+//!     an `agentHost(` call inside an open `@ptrCast(` or `@alignCast(` -
+//!     on one line or split over several - keyed `@ptrCast(agentHost)`.
+//!     Baseline 0: a test that needs its own host keeps it, it does not cast
+//!     the engine's answer.
+//!
 //! Keying on the name, not just a per-file total, is what catches a swap:
 //! trading one call for a new one leaves the total unchanged.
 //!
@@ -207,6 +221,84 @@ pub fn references(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(Refer
     return out;
 }
 
+/// Which agent-host rule a path is held to: every `agentHost(` call (src/
+/// outside the protocol and its adapters), a cast of one (tests/, tools/),
+/// or none.
+pub const HostRule = enum { none, any_call, cast };
+
+pub fn hostRuleOf(path: []const u8) HostRule {
+    if (std.mem.startsWith(u8, path, "src/")) {
+        return if (std.mem.startsWith(u8, path, "src/runtime/")) .none else .any_call;
+    }
+    if (std.mem.startsWith(u8, path, "tests/") or std.mem.startsWith(u8, path, "tools/")) return .cast;
+    return .none;
+}
+
+/// The agent-host references in `text` under `rule`, in line order: each
+/// `agentHost(` call (`.any_call`, keyed `agentHost()`), or each one inside
+/// an open `@ptrCast(`/`@alignCast(` (`.cast`, keyed `@ptrCast(agentHost)`),
+/// the open builtins tracked across lines. A definition (`fn agentHost(`),
+/// comments, strings and multiline string literals are not references.
+pub fn hostReferences(gpa: std.mem.Allocator, rule: HostRule, text: []const u8) !std.ArrayList(Reference) {
+    var out: std.ArrayList(Reference) = .empty;
+    errdefer out.deinit(gpa);
+    if (rule == .none) return out;
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(gpa);
+    // One entry per open parenthesis: whether it opened a @ptrCast or
+    // @alignCast.
+    var opens: std.ArrayList(bool) = .empty;
+    defer opens.deinit(gpa);
+
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var line_no: u32 = 0;
+    while (lines.next()) |raw| {
+        line_no += 1;
+        const code = codeOf(raw);
+        const trimmed = std.mem.trim(u8, code, " \t\r");
+        if (std.mem.startsWith(u8, trimmed, "\\\\")) continue;
+        try buf.resize(gpa, code.len);
+        const plain = blankStrings(buf.items, code);
+        var i: usize = 0;
+        while (i < plain.len) : (i += 1) {
+            const c = plain[i];
+            if (c == '(') {
+                var start = i;
+                while (start > 0 and isIdentChar(plain[start - 1])) start -= 1;
+                const name = plain[start..i];
+                const builtin = start > 0 and plain[start - 1] == '@';
+                try opens.append(gpa, builtin and (std.mem.eql(u8, name, "ptrCast") or std.mem.eql(u8, name, "alignCast")));
+                continue;
+            }
+            if (c == ')') {
+                _ = opens.pop();
+                continue;
+            }
+            if (!isIdentChar(c) or (i > 0 and isIdentChar(plain[i - 1]))) continue;
+            const ident = identAt(plain, i);
+            const after = i + ident.len;
+            if (!std.mem.eql(u8, ident, "agentHost")) {
+                i = after - 1;
+                continue;
+            }
+            var next = after;
+            while (next < plain.len and plain[next] == ' ') next += 1;
+            const called = next < plain.len and plain[next] == '(';
+            const defined = i >= 3 and std.mem.eql(u8, plain[i - 3 .. i], "fn ");
+            i = after - 1;
+            if (!called or defined) continue;
+            switch (rule) {
+                .none => unreachable,
+                .any_call => try out.append(gpa, .{ .line = line_no, .name = "agentHost()", .code = trimmed }),
+                .cast => if (std.mem.indexOfScalar(bool, opens.items, true) != null) {
+                    try out.append(gpa, .{ .line = line_no, .name = "@ptrCast(agentHost)", .code = trimmed });
+                },
+            }
+        }
+    }
+    return out;
+}
+
 /// `[pub] const name = @import("<v8 path>")[.a.b];` or `const name = alias[.a];`
 fn bindAlias(gpa: std.mem.Allocator, aliases: *std.ArrayList(Alias), code: []const u8, plain: []const u8) !void {
     var s = std.mem.trim(u8, plain, " \t\r");
@@ -354,6 +446,9 @@ fn scanDir(
         if (std.mem.indexOf(u8, path, ".zig-cache/") != null) continue;
         const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
         var refs = try references(arena, text);
+        var host_refs = try hostReferences(arena, hostRuleOf(path), text);
+        try refs.appendSlice(arena, host_refs.items);
+        host_refs.deinit(arena);
         if (refs.items.len > 0) try files.put(arena, path, {});
         for (refs.items) |ref| {
             const key = try std.fmt.allocPrint(arena, "{s} {s}", .{ path, ref.name });
@@ -619,6 +714,55 @@ test "the baseline round-trips, sorted, and ignores comments" {
     try testing.expectEqual(@as(u32, 2), parsed.get("src/b.zig v8.ffi").?);
     try testing.expectEqual(@as(u32, 1), parsed.get("src/a.zig @import(\"v8\")").?);
     try testing.expectEqual(@as(u32, 2), parsed.count());
+}
+
+fn expectHostRefs(rule: HostRule, text: []const u8, expected: []const []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const refs = try hostReferences(arena.allocator(), rule, text);
+    var got: std.ArrayList(u8) = .empty;
+    for (refs.items) |ref| try got.print(arena.allocator(), "{d}:{s}\n", .{ ref.line, ref.name });
+    var want: std.ArrayList(u8) = .empty;
+    for (expected) |e| try want.print(arena.allocator(), "{s}\n", .{e});
+    try testing.expectEqualStrings(want.items, got.items);
+}
+
+test "the agent-host rule: every call in src/ outside the protocol and its adapters, casts in tests/ and tools/" {
+    try testing.expectEqual(HostRule.any_call, hostRuleOf("src/html/custom_elements/driver.zig"));
+    try testing.expectEqual(HostRule.any_call, hostRuleOf("src/dom/agent_hosts.zig"));
+    try testing.expectEqual(HostRule.none, hostRuleOf("src/runtime/engine_protocol.zig"));
+    try testing.expectEqual(HostRule.none, hostRuleOf("src/runtime/engines/jsc/protocol.zig"));
+    try testing.expectEqual(HostRule.cast, hostRuleOf("tests/html/ce_scope_agent_test.zig"));
+    try testing.expectEqual(HostRule.cast, hostRuleOf("tools/repl.zig"));
+}
+
+test "in src/, every agentHost call counts - a cast, a two-step cast, a comparison - and a definition does not" {
+    try expectHostRefs(.any_call,
+        \\const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+        \\const raw = engine.agentHost(agent) orelse return null;
+        \\const typed: *AgentHost = @ptrCast(@alignCast(raw));
+        \\if (engine.agentHost(agent) == other) {}
+        \\pub inline fn agentHost(agent: *Agent) ?*anyopaque {
+        \\// engine.agentHost(agent) in a comment
+        \\log.info("agentHost(agent)", .{});
+        \\const h = @import("engine").agentHost (agent);
+    , &.{ "1:agentHost()", "2:agentHost()", "4:agentHost()", "8:agentHost()" });
+}
+
+test "in tests/ and tools/, an agentHost call counts inside an open @ptrCast or @alignCast, on one line or split" {
+    try expectHostRefs(.cast,
+        \\const one: *Mine = @ptrCast(@alignCast(engine.agentHost(agent).?));
+        \\const split: *Mine = @ptrCast(@alignCast(
+        \\    engine.agentHost(agent) orelse return,
+        \\));
+        \\const inline_import: *Mine = @alignCast(@ptrCast(@import("engine").agentHost(agent).?));
+        \\try testing.expectEqual(@as(?*anyopaque, &mine), engine.agentHost(agent));
+        \\const after = foo(engine.agentHost(agent));
+    , &.{ "1:@ptrCast(agentHost)", "3:@ptrCast(agentHost)", "5:@ptrCast(agentHost)" });
+}
+
+test "outside both rules nothing is an agent-host reference" {
+    try expectHostRefs(.none, "const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent).?));", &.{});
 }
 
 test {

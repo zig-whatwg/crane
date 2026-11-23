@@ -58,7 +58,7 @@ fn documentContainer(page: anytype, realm: runtime.Context) !*dom.policy_contain
 
 fn sweep(rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{});
-    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

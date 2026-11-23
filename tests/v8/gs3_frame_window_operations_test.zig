@@ -99,6 +99,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = self.agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -150,6 +151,7 @@ fn frameEndsThroughItsOwnOperations() !void {
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     const page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -194,6 +196,7 @@ fn twoAgentsKeepTheirOwnOperations() !void {
     const first = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(first);
     const first_page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = first,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
@@ -212,6 +215,7 @@ fn twoAgentsKeepTheirOwnOperations() !void {
     var second_ended = false;
     defer if (!second_ended) protocol.destroyAgent(second);
     const second_page = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = second,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,

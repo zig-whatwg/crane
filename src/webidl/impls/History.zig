@@ -315,9 +315,19 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // - (a) history.go(0) while an earlier delta traversal that takes it to
     //   another document is pending is ignored (go0_middle, go0_last);
     // - (b) a delta traversal appended while a history.go(0) reload of it is
-    //   queued or running cancels the reload (go0_first).
-    // location.reload(), navigation.reload() and child navigables keep the
-    // spec's queue (integrator, 2026-10-28, lane nav2 C2).
+    //   queued or running cancels the reload (go0_first);
+    // - (c) location.reload() while an earlier location.reload() of it is
+    //   queued or running replaces that one (apply_history_step.reload): the
+    //   two reloads html/browsers/history/the-location-interface/
+    //   reload_document_write_onload.html makes in a row load the page once
+    //   more, not twice, in Chrome 157, Firefox 160 and Safari 27.2 alike
+    //   (all three: "lengths differ ... length 4" at wpt.fyi 2358bd4835,
+    //   4786307730243584, 4877168468033536, 6479119966273536; a new
+    //   navigation replaces the one in flight). Golden rule 2, the browsers
+    //   agreeing with no newer spec; it supersedes the 2026-10-28 line
+    //   (integrator, lane nav2 C2) that kept location.reload() on the spec's
+    //   queue (the integrator, 2026-11-19 9:50 AM ET, lane blk4).
+    // navigation.reload() and child navigables keep the spec's queue.
     if (delta_val == 0) {
         if (bc == top and apply_history_step.pendingCrossDocumentDelta(top, null) != null) return;
         // Step 3: "reload document's node navigable". Reload step 1: not
@@ -467,7 +477,9 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
 fn reloadWindow(window: *runtime.Instance, user_involvement: UserInvolvement) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     if (initialDocumentAwaitsNavigation(window, bc)) return;
-    reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, .reload);
+    // location.reload() (userInvolvement "none"): the reload rule (c) in
+    // call_go.
+    reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, if (user_involvement == .none) .location_reload else .reload);
 }
 
 /// Whether `window`'s document is its navigable's initial about:blank while
@@ -732,6 +744,12 @@ fn urlAndHistoryUpdate(
     }
     // Step 9: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
+    // The Browser's navigation observer: a same-document navigation (CDP
+    // navigatedWithinDocument; html_core.navigation.observer).
+    html_core.navigation.observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .same_document = .{ .url = new_url, .kind = switch (effective) {
+        .push => .push,
+        .replace => .replace,
+    } } } });
     // Step 12: "Update the navigation API entries for a same-document
     // navigation given document's relevant global object's navigation API,
     // newEntry, and historyHandling."
@@ -812,7 +830,11 @@ fn loopOfContext(bc: *BrowsingContext) ?runtime.EventLoop {
 /// "continue" unless a prompt was shown and the user stayed; none is shown
 /// without sticky activation). The documents are taken before any handler
 /// runs - script can take a frame away - and each is skipped if it went.
-fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator) bool {
+/// `unload_prompt_shown` is the check's unloadPromptShown (step 2), given
+/// to each document's steps to fire beforeunload and set when one shows
+/// the prompt (step 7.1-7.2): at most one prompt per check, as
+/// HTMLIFrameElement's definitelyCloseTraversable and navigate do it.
+fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator, unload_prompt_shown: *bool) bool {
     const Held = struct { document: *runtime.Instance, generation: u64 };
     var documents: std.ArrayListUnmanaged(Held) = .empty;
     defer documents.deinit(allocator);
@@ -823,7 +845,9 @@ fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator
     var canceled = false;
     for (documents.items) |held| {
         if (runtime.SlabAllocator.generationOf(held.document) != held.generation) continue;
-        if (@import("dom").document_lifecycle.fireBeforeUnload(held.document).canceled) canceled = true;
+        const result = @import("dom").document_lifecycle.fireBeforeUnloadGiven(held.document, unload_prompt_shown.*);
+        if (result.prompt_shown) unload_prompt_shown.* = true;
+        if (result.canceled) canceled = true;
     }
     return canceled;
 }
@@ -886,6 +910,11 @@ fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry:
     const scroll_restoration_manual = entry.scroll_restoration_manual;
 
     setDocumentUrl(window, new_url);
+    // The Browser's navigation observer: a same-document traversal (CDP
+    // navigatedWithinDocument; html_core.navigation.observer).
+    if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
+        html_core.navigation.observer.notify(bc.navigables, .{ .navigable_id = bc.id, .event = .{ .same_document = .{ .url = new_url, .kind = .traverse } } });
+    }
     // 6.3: "Restore the history object state given document and entry."
     internal.has_state = false;
     const kept_state: ?engine.Owned = stateValue(history_instance, internal, entry) catch null;
@@ -957,7 +986,9 @@ fn queueHashChange(window: *runtime.Instance, old_url: []const u8, new_url: []co
         .new_url = new_copy,
         .allocator = allocator,
     };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    // A task, never run in the caller: a window no event loop runs gets no
+    // hashchange (lane life1; it ran inline for test-built contexts).
+    const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
     loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
 }
 

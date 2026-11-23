@@ -76,6 +76,11 @@ fn current(edit: *Edit) !*FormattingOverrides {
     return store;
 }
 
+/// Whether any state or value override is set for the current selection.
+pub fn hasOverrides(edit: *Edit) !bool {
+    return (try current(edit)).any();
+}
+
 fn stateCommand(command: Command) ?FormattingOverrides.StateCommand {
     return switch (command) {
         .bold => .bold,
@@ -170,6 +175,26 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
     var list: std.ArrayList(Override) = .empty;
     // Step 2: createLink's value override first.
     if (try valueOverride(edit, .create_link)) |link| try list.append(arena, .{ .command = .create_link, .value = .{ .value = try arena.dupe(u8, link) } });
+    // Step 4 before step 3: the value overrides come back first, so the
+    // font they make is outermost, its attributes on one <font>, and the
+    // background span and the b, i, u or s go inside it - all three
+    // browsers type `["foreColor","#ff0000"],["bold",""],["insertText","b"]`
+    // into `a<font color=#ff0000><b>b</b></font>c` and fontName, foreColor,
+    // fontSize and backColor into one <font> around a background span
+    // (editing/run/multitest.html, PPP at wpt.fyi 2358bd4835), where the
+    // spec's order (states, then values) nests the font inside the b. Blink
+    // applies a typing style in one ApplyInlineStyleChange: font element
+    // first, then the CSS span, then b, i, u, s, sub, sup. Golden rule 2, no
+    // newer spec. A subscript or superscript state override puts fontSize
+    // back after the states, as the spec's own order does for that reason:
+    // the sub or sup makes the smaller size the recorded value holds (a
+    // deleted `foo<sub>[bar]</sub>baz` retypes as `foo<sub>a</sub>baz`,
+    // not inside a <font size=2>).
+    const sub_or_sup = ((try stateOverride(edit, .subscript)) orelse false) or ((try stateOverride(edit, .superscript)) orelse false);
+    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
+        if (command == .font_size and sub_or_sup) continue;
+        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
+    }
     // Step 3: the state overrides - in the order they were set rather than
     // the spec's fixed order, so a deletion's recorded wrappers come back
     // nested as they were (see recordCurrentStatesAndValues).
@@ -187,9 +212,8 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
         }
     }.earlierFirst);
     for (states.items) |entry| try list.append(arena, .{ .command = entry.command, .value = .{ .state = entry.state } });
-    // Step 4: the value overrides.
-    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
-        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
+    if (sub_or_sup) {
+        if (try valueOverride(edit, .font_size)) |value| try list.append(arena, .{ .command = .font_size, .value = .{ .value = try arena.dupe(u8, value) } });
     }
     return .{ .items = list.items };
 }
@@ -229,16 +253,74 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
 ///   the whole range (inline.zig); the spec's fixed order (bold, then
 ///   italic) would rebuild `<i><b>` for both.
 pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrides {
-    const arena = edit.scratchAllocator();
-    var list: std.ArrayList(Override) = .empty;
     // Steps 2-3: nothing formattable effectively contained in the active
     // range, nothing to record.
     _ = (try inline_formatting.firstFormattableNode(edit)) orelse return .{};
+    return recordAt(edit, start_node, null);
+}
+
+/// The typing style a deletion that only merges two blocks leaves (its
+/// range holds nothing formattable, so the spec's steps 2-3 record nothing):
+/// the browsers keep the style in effect where the deletion starts - the end
+/// of the first block's content - minus the link and what the link element
+/// itself adds (lane edit4, A04). Blink saves EditingStyle(selection_to_
+/// delete_.Start()) for every deletion and removes the style the enclosing
+/// anchor adds (DeleteSelectionCommand::SaveTypingStyleState: typing_style_
+/// ->RemoveStyleAddedByElement(EnclosingAnchorElement(...)), editing/
+/// commands/delete_selection_command.cc); Gecko's pending styles keep the
+/// <b> too. Backspace or Delete joining `<p><a style="color:blue"><b>foo
+/// </b></a></p><p><span style="color:red">[]bar</span></p>`, then typing
+/// "XY", gives `...</a><b>XY</b><span ...>bar</span>` in Firefox 160 (and
+/// Chrome 157 when no <br> goes with the join); Safari 27.2 bolds "XY" by
+/// wrapping the link (editing/other/typing-around-link-element-after-
+/// joining-paragraphs.html, wpt.fyi 2358bd4835). Bold: Firefox + Safari,
+/// the majority; the new <b> around the text: the three split, so the
+/// spec's state override decides (golden rule 2; integrator's confirmation
+/// 2026-11-21 2:11 PM ET). Only the merge case changes: a deletion of
+/// formattable content keeps the spec's record, link included.
+pub fn recordTypingStyleAcrossMerge(edit: *Edit, start_node: *Instance) !Overrides {
+    return recordAt(edit, start_node, try enclosingAnchor(start_node));
+}
+
+/// The nearest inclusive ancestor of `node` that is an `a` element with an
+/// href (Blink's EnclosingAnchorElement), or null.
+fn enclosingAnchor(node: *Instance) !?*Instance {
+    var ancestor: ?*Instance = node;
+    while (ancestor) |c| : (ancestor = try common.parent(c)) {
+        if ((try common.isHtmlElementNamed(c, "a")) and try common.hasAttribute(c, "href")) return c;
+    }
+    return null;
+}
+
+/// Whether `anchor` itself adds `command`'s effective value `recorded`: its
+/// value differs from its parent's and equals the recorded one (Blink's
+/// EditingStyle::RemoveStyleAddedByElement: the anchor's editing
+/// properties minus its parent's are removed from the typing style).
+fn addedByAnchor(edit: *Edit, anchor: *Instance, command: Command, recorded: ?[]const u8) !bool {
+    const parent = (try common.parent(anchor)) orelse return false;
+    const own = try inline_formatting.effectiveValue(edit, anchor, command);
+    const inherited = try inline_formatting.effectiveValue(edit, parent, command);
+    if (command.activatedValues() != null) {
+        const own_active = inline_formatting.isActivatedValue(command, own);
+        if (own_active == inline_formatting.isActivatedValue(command, inherited)) return false;
+        return own_active == inline_formatting.isActivatedValue(command, recorded);
+    }
+    if (inline_formatting.areLooselyEquivalent(edit, command, own, inherited)) return false;
+    return inline_formatting.areLooselyEquivalent(edit, command, own, recorded);
+}
+
+/// record current states and values' steps 4-7 at `start_node`; with an
+/// `anchor`, the link and what the anchor adds are left out (see
+/// recordTypingStyleAcrossMerge).
+fn recordAt(edit: *Edit, start_node: *Instance, anchor: ?*Instance) !Overrides {
+    const arena = edit.scratchAllocator();
+    var list: std.ArrayList(Override) = .empty;
     // The range's start as the caller was given it (delete the selection
     // has normalized the active range by now).
     const node = start_node;
-    // Step 4: its link.
-    try list.append(arena, .{ .command = .create_link, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, .create_link) } });
+    // Step 4: its link (not across a merge: the typed text goes outside
+    // the link, see recordTypingStyleAcrossMerge).
+    if (anchor == null) try list.append(arena, .{ .command = .create_link, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, .create_link) } });
     // Step 5: the toggles, true when its effective command value is one of
     // the inline command activated values - outermost wrapper first.
     const Toggle = struct { command: Command, active: bool, depth: u32 };
@@ -249,6 +331,7 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
         if (effective) |v| for (command.activatedValues().?) |candidate| {
             if (std.mem.eql(u8, v, candidate)) active = true;
         };
+        if (anchor) |a| if (try addedByAnchor(edit, a, command, effective)) continue;
         const depth: u32 = if (active) try specifyingDepth(edit, node, command) else 0;
         try toggles.append(arena, .{ .command = command, .active = active, .depth = depth });
     }
@@ -262,12 +345,63 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
     for (toggles.items) |toggle| try list.append(arena, .{ .command = toggle.command, .value = .{ .state = toggle.active } });
     // Step 6: fontName, foreColor and hiliteColor (at the start node, see
     // above).
-    for ([_]Command{ .font_name, .fore_color, .hilite_color }) |command| {
-        try list.append(arena, .{ .command = command, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, command) } });
-    }
     // Step 7: fontSize as the node's effective command value (pixels).
-    try list.append(arena, .{ .command = .font_size, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, .font_size) } });
+    for ([_]Command{ .font_name, .fore_color, .hilite_color, .font_size }) |command| {
+        const effective = try inline_formatting.effectiveValue(edit, node, command);
+        if (anchor) |a| if (try addedByAnchor(edit, a, command, effective)) continue;
+        try list.append(arena, .{ .command = command, .value = .{ .value = effective } });
+    }
     return .{ .items = list.items };
+}
+
+/// Delete the selection's step 41 ("restore states and values") as the
+/// browsers make the typing style a deletion leaves: with nothing
+/// formattable left in the range (the caret), only what differs from the
+/// style in effect at the caret's DOWNSTREAM point - its last equivalent
+/// point - becomes an override. Chrome 157 deletes `abc[<b>de]f</b>ghi` to
+/// `abc<b>f</b>ghi` with the caret in "abc" and bold OFF (the f still
+/// carries it at that place), but `abc[<b>def]</b>ghi` with bold ON; the
+/// data agrees (editing/run/multitest.html: delete then inserttext on
+/// `<div>abc[<b><i>def]</i></b>ghi</div>` -> `abc<b><i>def</i></b>ghi`,
+/// PPP, and on `<div>abc[<b><i>de]f</i></b>ghi</div>` -> `abcde<b><i>f
+/// </i></b>ghi`, PFP, wpt.fyi 2358bd4835). Blink computes its typing style
+/// before the delete and PrepareToApplyAt(ending position) drops what is in
+/// effect at the downstream ending position (DeleteSelectionCommand::
+/// CalculateTypingStyleAfterDelete, delete_selection_command.cc). The spec
+/// sets every recorded override. Golden rule 2, no newer spec.
+pub fn restoreTypingStyle(edit: *Edit, recorded: Overrides) !void {
+    if ((try inline_formatting.firstFormattableNode(edit)) != null) return restoreStatesAndValues(edit, recorded);
+    const caret = (try edit.rangeStart()) orelse return restoreStatesAndValues(edit, recorded);
+    const downstream = try common.lastEquivalentPoint(caret);
+    return restoreTypingStyleAgainst(edit, recorded, downstream.node);
+}
+
+/// restoreTypingStyle for a deletion that only merged two blocks (see
+/// recordTypingStyleAcrossMerge): what differs from the style in effect
+/// where the next typed text goes - the caret's own node, its Text node or
+/// the element it sits in (the join puts it at the end of the first line,
+/// outside a link: delete.zig joinCaretPoint) - becomes an override. Lane
+/// edit4, A04.
+pub fn restoreTypingStyleAfterMerge(edit: *Edit, recorded: Overrides) !void {
+    if ((try inline_formatting.firstFormattableNode(edit)) != null) return restoreStatesAndValues(edit, recorded);
+    const caret = (try edit.rangeStart()) orelse return restoreStatesAndValues(edit, recorded);
+    return restoreTypingStyleAgainst(edit, recorded, caret.node);
+}
+
+fn restoreTypingStyleAgainst(edit: *Edit, recorded: Overrides, node: *Instance) !void {
+    var kept: std.ArrayList(Override) = .empty;
+    for (recorded.items) |pair| {
+        const effective = try inline_formatting.effectiveValue(edit, node, pair.command);
+        const same = switch (pair.value) {
+            .state => |state| state == inline_formatting.isActivatedValue(pair.command, effective),
+            .value => |maybe| if (maybe) |value|
+                inline_formatting.areLooselyEquivalent(edit, pair.command, effective, value)
+            else
+                true,
+        };
+        if (!same) try kept.append(edit.scratchAllocator(), pair);
+    }
+    try restoreStatesAndValues(edit, .{ .items = kept.items });
 }
 
 /// The depth (ancestor count) of the nearest inclusive ancestor element of

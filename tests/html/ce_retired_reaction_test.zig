@@ -41,6 +41,7 @@ fn exercise() !void {
     defer engine.destroyAgent(agent);
     defer state.releasePending();
     const parent = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,
@@ -49,6 +50,7 @@ fn exercise() !void {
     });
     defer engine.destroyWindowRealm(parent, .global_detached);
     const retired = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = testing.allocator,
         .from_snapshot = false,

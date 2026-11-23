@@ -21,15 +21,15 @@ fn exercise() !void {
     // The agent's host, whose fetches a report upload would start on.
     var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
     defer agent_host.deinit();
-    const agent = try engine.createAgent(.{
+    const agent = try engine.createAgent(@import("dom").agent_hosts.agentOptions(&agent_host, .{
         .can_block = false,
         .from_snapshot = false,
         .allocator = allocator,
         .hooks = &.{},
-        .host = &agent_host,
-    });
+    }));
     defer engine.destroyAgent(agent);
     const realm = try engine.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = true,
         .agent = agent,
         .allocator = allocator,
         .from_snapshot = false,

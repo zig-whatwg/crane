@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const XRRenderStateInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     depthNear: ?f64 = null,
     depthFar: ?f64 = null,
     passthroughFullyObscured: ?bool = null,

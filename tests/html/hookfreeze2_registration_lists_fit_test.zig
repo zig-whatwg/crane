@@ -12,7 +12,7 @@ const testing = std.testing;
 fn checkLists() !void {
     // A Browser starts the whole process: every installHooks, the browser
     // layer's included (crane.Process.ensureStarted).
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
 
     const adopting = dom.adopting_steps.installedCount();

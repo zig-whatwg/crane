@@ -11,124 +11,22 @@ const test_suites = @import("tools/test_suites.zig");
 /// 2026-11-12: "the valid flags should be in the js engine protocol"). The protocol's build file lists the adapters
 /// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
+/// The build side of the platform protocol: the extra kit parts each
+/// platform's adapter declares, with the system libraries they link.
+const platform_build = @import("src/platform/platform_build_protocol.zig");
+
+/// The Zig that builds Crane, std-only and pinned by `zig build test`.
+const zig_toolchain = @import("tools/zig_toolchain.zig");
+const thread_local_size_scope = @import("tools/thread_local_size_scope.zig");
 
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
-// (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
-// aarch64-ios (ziglang/zig#37061) and its checkAllAllocationFailures lets
-// resizes reach SafeAllocator, so tests fail with NondeterministicMemoryUsage
-// (ziglang/zig#37142). build.zig.zon's minimum_zig_version is not enforced.
+// (0.17.1-dev+77c319a0f0) until 0.17.1 ships, and refuses every other Zig by
+// name: anything older than 0.17 (0.16 was retired on 2026-11-21) and 0.17.0
+// itself (ziglang/zig#37061, #37142) - tools/zig_toolchain.zig `refusal`.
+// build.zig.zon's minimum_zig_version is not enforced.
 comptime {
-    const v = @import("builtin").zig_version;
-    if (v.major == 0 and v.minor == 17 and v.patch == 0) @compileError("Crane does not build with Zig 0.17.0 (ziglang/zig#37061: aarch64-ios; #37142: checkAllAllocationFailures resizes): use the pinned 0.17.x-branch build 0.17.1-dev+77c319a0f0 (77c319a0f00a), or 0.17.1 once it ships");
-}
-
-// ============================================================================
-// Platform-Specific Storage Backend Configuration (Phase 9)
-// ============================================================================
-
-/// Configure storage backend library linking based on target platform
-///
-/// Phase 9.1: iOS SQLite Integration - Uses system-provided SQLite
-/// Phase 9.2: Android SQLite Integration - Uses system-provided SQLite
-/// Phase 9.3: Desktop LevelDB Static Linking - Statically links LevelDB
-///
-/// Platform Strategy:
-/// - iOS: System SQLite (always available, zero binary size cost)
-/// - Android: System SQLite (NDK provides libsqlite3)
-/// - macOS: Homebrew SQLite + LevelDB (development), system SQLite (production)
-/// - Linux: System SQLite + LevelDB via pkg-config
-/// - Windows: Bundled SQLite + LevelDB (static linking)
-/// - WASM: Memory backend only (no native libraries)
-fn configureStorageBackends(
-    module: *std.Build.Module,
-    target: std.Build.ResolvedTarget,
-) void {
-    const os = target.result.os.tag;
-    const cpu_arch = target.result.cpu.arch;
-
-    // Detect if this is an Android build (Linux ABI with Android)
-    const is_android = os == .linux and target.result.abi == .android;
-
-    if (os == .ios) {
-        // ====================================================================
-        // Phase 9.1: iOS SQLite Integration
-        // ====================================================================
-        // iOS provides SQLite as a system framework - no additional linking needed
-        // The SQLite C API is available via libsqlite3.tbd
-        module.linkSystemLibrary("sqlite3", .{});
-        // Note: On iOS, SQLite is part of the SDK, no path configuration needed
-
-        // LevelDB is not used on iOS (SQLite is the default backend)
-        // Memory backend is always available as fallback
-
-    } else if (is_android) {
-        // ====================================================================
-        // Phase 9.2: Android SQLite Integration
-        // ====================================================================
-        // Android NDK provides libsqlite3.so
-        // Link against the system SQLite library
-        module.linkSystemLibrary("sqlite3", .{});
-        // Note: Android's SQLite is provided by the system, linked dynamically
-
-        // LevelDB is not used on Android (SQLite is the default backend)
-        // Memory backend is always available as fallback
-
-    } else if (os == .macos) {
-        // ====================================================================
-        // macOS: Homebrew development / System production
-        // ====================================================================
-        // For development on macOS with Homebrew-installed libraries
-        // Production builds could use system SQLite or bundled libraries
-
-        // SQLite: Use Homebrew installation (development)
-        // System SQLite is also available at /usr/lib/libsqlite3.dylib
-        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-        module.linkSystemLibrary("sqlite3", .{});
-
-        // Phase 9.3: LevelDB Static Linking for Desktop
-        // Use Homebrew LevelDB (static library preferred)
-        module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/lib" });
-        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/leveldb/include" });
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (os == .linux) {
-        // ====================================================================
-        // Linux: System libraries via pkg-config
-        // ====================================================================
-        // Most Linux distributions provide SQLite and LevelDB packages
-
-        // SQLite: System library (libsqlite3-dev on Debian/Ubuntu)
-        module.linkSystemLibrary("sqlite3", .{});
-
-        // Phase 9.3: LevelDB Static Linking for Desktop
-        // System library (libleveldb-dev on Debian/Ubuntu)
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (os == .windows) {
-        // ====================================================================
-        // Windows: Static linking with bundled libraries
-        // ====================================================================
-        // Windows builds typically bundle SQLite and LevelDB statically
-        // TODO: Add paths to bundled Windows libraries when available
-
-        // For now, attempt system library linking (MSYS2, vcpkg, etc.)
-        module.linkSystemLibrary("sqlite3", .{});
-        module.linkSystemLibrary("leveldb", .{});
-    } else if (cpu_arch == .wasm32 or cpu_arch == .wasm64) {
-        // ====================================================================
-        // WASM: Memory backend only
-        // ====================================================================
-        // No native SQLite or LevelDB available in WASM
-        // The Memory backend will be used automatically
-        // No library linking needed
-
-    } else {
-        // ====================================================================
-        // Unknown/Other platforms: Best effort
-        // ====================================================================
-        // Attempt system library linking, fall back to memory backend at runtime
-        module.linkSystemLibrary("sqlite3", .{});
-        module.linkSystemLibrary("leveldb", .{});
-    }
+    const builtin = @import("builtin");
+    if (zig_toolchain.refusal(builtin.zig_version)) |why| @compileError("Zig " ++ builtin.zig_version_string ++ ": " ++ why);
 }
 
 // ============================================================================
@@ -1067,6 +965,10 @@ const TestLaunch = struct {
     /// `zig build test-launch`: the test executables alone, without the
     /// lints and checks `test` also runs.
     step: *std.Build.Step,
+    /// `zig build check-tests`: every test executable compiled, none run
+    /// (addSuiteRunWith adds each; lane cdpr, the integrator 2026-11-21
+    /// 10:05 PM ET: a test file no step builds hides its compile breaks).
+    check_tests: *std.Build.Step,
     launcher: *std.Build.Step.Compile,
     /// The launcher's own tests run by the build runner directly: they test
     /// the launcher, so they cannot run through it. The one exception
@@ -1113,6 +1015,11 @@ const TestLaunch = struct {
     /// Every test executable `addSuiteRun` runs, for the instrumentation
     /// pass at the end of `build` (`instrumentForThreadSanitizer`).
     test_exes: *std.ArrayList(*std.Build.Step.Compile),
+    /// The suite run of each of `test_exes`, at the same index: the
+    /// thread-local block check of an executable hangs off its own suite's
+    /// run, so it is made exactly when that suite is - by whichever step,
+    /// -Dspec and -Dtest-file selecting it with the suite.
+    test_runs: *std.ArrayList(*std.Build.Step.Run),
     /// `zig build test-verify`: the changed test files and their step
     /// (`TestVerify`).
     verify: *TestVerify,
@@ -1164,7 +1071,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // Suites that start the engine or a Browser: a process per test. (The
     // engine adapter's own test directory: its row is its build file's,
     // `facts.tests`.)
-    .{ .name = "tests-dom", .config = .{ .batch = 1 } },
+    .{ .name = "tests-dom", .config = .{ .batch = 1, .slow = &dom_slow } },
     // Both test variants fail (lane tsanfix1 fixed lane tsan1's findings,
     // docs/testing/test-variant-findings-2026-11-02.tsv).
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .tsan_skip = &html_tsan_skip } },
@@ -1201,6 +1108,26 @@ const html_slow = [_][]const u8{
     "nodeholds_cost_test.test.1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections",
     // 77.0 s.
     "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
+    // Lane flk4 item 8, 2026-11-23: chat2 gate (loaded) / alone on chat2 / server1 gate. Their work is
+    // the claim - a script's names collected, 2,500 delete-joins - and std.testing.allocator is a small share
+    // of it (`sample`: 15%, and the kept-edge test is on the churn allocator already).
+    // 128 s / 55 s / 18.5 s.
+    "nd2_name_lifetime_test.test.names made by script and collected leave the Browser's name table where it started",
+    // 293 s / 25 s / 75 s.
+    "mem1_kept_edge_teardown_test.test.a delete-join loop past the undo bound keeps no element.style object past its element",
+};
+
+// tests-dom's slow tests (lane flk4 item 8, 2026-11-23): chat2 gate (loaded) / alone on chat2 /
+// server1 gate. A crash-safety depth (3,000 levels) and a million-name lifetime claim are their subject,
+// so their sizes stay; a loaded gate stretches them toward the 300 s timeout.
+const dom_slow = [_][]const u8{
+    // 281 s / 26 s / 42 s.
+    "crash1_range_depth_test.test.cloneContents: a start and an end 3,000 levels deep clone as two chains, the tree untouched",
+    // 161 s and 160 s / - / 17 s and 18 s.
+    "crash1_range_depth_test.test.extractContents: a start 3,000 levels below the common ancestor comes out as one clone chain",
+    "crash1_range_depth_test.test.extractContents: an end 3,000 levels below the common ancestor comes out as one clone chain",
+    // 118 s / 12 s / 28 s (already on the churn allocator).
+    "nd2_element_name_test.test.a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started",
 };
 
 /// The row of the suite `name`: the engine adapter's own test directory's
@@ -1228,6 +1155,8 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// each of `groups` keeps its own row of suite_configs, keyed by its tests'
 /// name prefix (`addGroupArgs`).
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
+    // `check-tests` compiles what the launcher would run.
+    launch.check_tests.dependOn(&test_exe.step);
     const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links the engine and the browser module. The
@@ -1281,6 +1210,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // recorded, the step passes (`VariantMode`).
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
+    launch.test_runs.append(b.allocator, run) catch @panic("OOM");
     // -Dtest-filter: run-time selection, so the executable stays the cached
     // one.
     for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
@@ -1969,23 +1899,37 @@ fn addTestFilesFromDir(
     runs_engine: bool,
     select: TestSelection,
 ) !void {
+    _ = try addTestFilesFromDirCompile(builder, step, dir_path, target, modules, runs_engine, select);
+}
+
+/// `addTestFilesFromDir`, answering the directory's test executable (null
+/// when it has none of its own: no test files, or -Dtest-binaries=engine
+/// joined it) - what a compile-only step (check-storage-tests) builds.
+fn addTestFilesFromDirCompile(
+    builder: *std.Build,
+    step: *std.Build.Step,
+    dir_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    modules: []const std.Build.Module.Import,
+    runs_engine: bool,
+    select: TestSelection,
+) !?*std.Build.Step.Compile {
     const allocator = builder.allocator;
     const io = builder.graph.io;
     recordSuiteDir(builder, select, dir_path);
 
     if (select.file) |file| {
-        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return null;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
-        return;
+        return addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
     }
 
     var dir = builder.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         // Directory might not exist yet, skip silently - until it does.
         if (err == error.FileNotFound) {
             select.inputs.absent(builder, dir_path);
-            return;
+            return null;
         }
         return err;
     };
@@ -2003,7 +1947,7 @@ fn addTestFilesFromDir(
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         try files.append(allocator, try allocator.dupe(u8, entry.path));
     }
-    if (files.items.len == 0) return;
+    if (files.items.len == 0) return null;
     std.mem.sort([]const u8, files.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -2047,10 +1991,11 @@ fn addTestFilesFromDir(
             .runs_engine = runs_engine,
             .target = target,
         });
-        return;
+        return null;
     };
     const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, runs_engine, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
+    return test_exe;
 }
 
 /// -Dtest-binaries=engine, at the end of the build: the members that link the engine,
@@ -2317,8 +2262,8 @@ fn addCompileCheck(
     return check;
 }
 
-/// The system libraries a module graph names (configureStorageBackends:
-/// sqlite3 and leveldb on Linux) are resolved when the compiler starts, even
+/// The system libraries a module graph names (kit/sqlite's sqlite3, through
+/// the platform's build declaration) are resolved when the compiler starts, even
 /// for a compile that links nothing (-fno-emit-bin). The compiler searches
 /// the build machine's own library directories only for a target that leaves
 /// both its OS and its ABI to the build machine; a target that names either
@@ -2343,7 +2288,7 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
     const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
     if (target.result.os.tag != .linux or !names_os_or_abi) return;
     const empty = b.addWriteFiles().add("stub.zig", "");
-    for ([_][]const u8{ "sqlite3", "leveldb" }) |library| {
+    for ([_][]const u8{"sqlite3"}) |library| {
         const stub = b.addLibrary(.{
             .name = library,
             .linkage = .dynamic,
@@ -2505,8 +2450,8 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
 }
 
 /// A C header set translated to Zig by the build: what a file's `@cImport`
-/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; works on 0.16
-/// and 0.17, where Step.TranslateC is deprecated but present). The file
+/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; Step.TranslateC
+/// is deprecated in 0.17 but present). The file
 /// imports the result by name (`const c = @import("curl_c");`).
 ///
 /// `@cImport` translated against its module's include paths and C macros; a
@@ -2644,6 +2589,7 @@ const platform_capability_names = [_][]const u8{
     "virtual_keyboard",
     "protocol_handlers",
     "address_space",
+    "devtools_transport",
 };
 
 /// The link-plan items -Dplatform-static may name (contract section 10): a
@@ -2671,6 +2617,17 @@ fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []co
     return names.items;
 }
 
+/// `list` with `capability` added when it is not there already.
+fn withCapability(b: *std.Build, list: []const []const u8, capability: []const u8) []const []const u8 {
+    for (list) |name| {
+        if (std.mem.eql(u8, name, capability)) return list;
+    }
+    const result = b.allocator.alloc([]const u8, list.len + 1) catch @panic("OOM");
+    @memcpy(result[0..list.len], list);
+    result[list.len] = capability;
+    return result;
+}
+
 /// What every module graph shares, decided once in build().
 const ModuleConfig = struct {
     optimize: std.builtin.OptimizeMode,
@@ -2685,6 +2642,9 @@ const ModuleConfig = struct {
     engine: *const engine_build.Engine,
     use_system_curl: bool,
     enable_http2: bool,
+    /// -Dcdp: the `devtools` module's root (src/devtools/root.zig, or
+    /// src/devtools/unavailable.zig when off).
+    cdp: bool,
     /// libcurl and its mbedTLS, built once for every graph (null with
     /// -Dsystem-curl or when the lazy dependencies are not fetched yet).
     static_libcurl: ?StaticLibcurl,
@@ -2860,6 +2820,21 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         // A disabled codec does not import its C headers or link its libraries,
         // even when the conformance test compiles every adapter operation.
         impl.addImport(b.fmt("kit_{s}", .{part}), if (i == 7 and !brotli_enabled) kit[1] else kit[i]);
+    }
+    // The platform's own extra kit parts and the system libraries each links:
+    // its adapter's declaration (src/platform/platform_build_protocol.zig) -
+    // this file names none of them.
+    for (platform_build.kitParts(@tagName(options.platform), target.result)) |part| {
+        const module = b.createModule(.{
+            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part.name})),
+            .target = target,
+            .link_libc = true,
+        });
+        module.addImport("platform", facade);
+        module.addImport("platform_options", options_mod);
+        module.addImport("host", options.host);
+        platform_build.link(module, part);
+        impl.addImport(b.fmt("kit_{s}", .{part.name}), module);
     }
     // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
     // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
@@ -3047,6 +3022,21 @@ pub fn build(b: *std.Build) void {
         "HTTP/2 via the vendored nghttp2 (default on)",
     ) orelse true;
 
+    // The Chrome DevTools Protocol remote end (src/devtools; CDP part 1,
+    // tmp/plans/cdp-part1-design.md). The user, 2026-11-21: "We also need
+    // CDP to be a compile flag so it is either compiled into the code or
+    // not". Off, the `devtools` module's root is src/devtools/unavailable.zig
+    // (nothing else of src/devtools is reachable), `build_options.cdp` is
+    // false for the code outside it that exists only for CDP, and the
+    // platform's devtools_transport capability is compiled out
+    // (`platform_without`, below): the console's --remote-debugging-port and
+    // WebDriver's se:cdp answer "built without CDP support".
+    const enable_cdp = b.option(
+        bool,
+        "cdp",
+        "The Chrome DevTools Protocol remote end: the console's --remote-debugging-port, WebDriver's se:cdp, the devtools_transport platform capability (default on)",
+    ) orelse true;
+
     // ========================================================================
     // DEBUG OPTIONS
     // ========================================================================
@@ -3075,6 +3065,9 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+    // -Dcdp: code outside src/devtools that exists only for CDP compiles out
+    // behind it (the engine adapter's inspector bridge, among others).
+    build_options.addOption(bool, "cdp", enable_cdp);
     // The refcount zombie audit's hooks (dom.refcount_audit: the checks on
     // the hottest node paths, instance_bridge.getNodeBase and Node's state)
     // compile in only when asked, so a normal build pays nothing for them;
@@ -3161,6 +3154,7 @@ pub fn build(b: *std.Build) void {
         "platform",
         "websocket",
         "browser",
+        "devtools",
         "xhr",
         "xml",
         "wpt_runner",
@@ -3194,7 +3188,9 @@ pub fn build(b: *std.Build) void {
     // same artifacts. A runner graph whose C libraries differ in mode or
     // sanitizer builds its own (runnerGraph); none is ever written to by
     // another graph (checkLinkedC, at the end of build()).
-    const platform_without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    const platform_without_asked = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    // -Dcdp=false compiles the remote end's transport out of the platform too.
+    const platform_without = if (enable_cdp) platform_without_asked else withCapability(b, platform_without_asked, "devtools_transport");
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
@@ -3240,6 +3236,7 @@ pub fn build(b: *std.Build) void {
         .engine = &engine,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
+        .cdp = enable_cdp,
         .static_libcurl = static_libcurl,
         .brotli = brotli,
         .image_codecs = image_codecs,
@@ -3385,6 +3382,11 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+    // The storage engines' test executables, compiled and not run (lane
+    // prof1, the integrator 2026-11-21 9:03 PM ET: a compile break in a test
+    // hides where no step builds it): src/storage, tests/storage,
+    // src/cookiestore, src/platform, tests/platform and tests/browser.
+    const check_storage_tests = b.step("check-storage-tests", "Compile the storage, cookie, platform and browser test executables (nothing runs)");
 
     // tools/test_launcher runs EVERY test executable (addSuiteRun): seeded
     // batches of child processes over the Zig test runner's protocol, a
@@ -3542,9 +3544,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&launcher_tests.step);
         b.step("test-launcher", "Run tools/test_launcher's own tests").dependOn(&launcher_tests.step);
 
+        // Every test executable compiled, none run: tests/ directories and
+        // src's in-file test roots alike (addSuiteRunWith), and the
+        // launcher's own tests.
+        const check_tests_step = b.step("check-tests", "Compile every test executable - the tests/ directories and src's in-file test roots - without running them");
+        check_tests_step.dependOn(&own_tests.step);
         const l = b.allocator.create(TestLaunch) catch @panic("OOM");
         l.* = .{
             .step = launch_step,
+            .check_tests = check_tests_step,
             .launcher = launcher,
             .own_tests = own_tests,
             .batch = b.option(u32, "launch-batch", "Tests per child process for every suite, overriding build.zig's suite_configs (1 = a process per test; 0 = the whole suite in one process)"),
@@ -3561,6 +3569,11 @@ pub fn build(b: *std.Build) void {
                 const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");
                 list.* = .empty;
                 break :test_exes list;
+            },
+            .test_runs = test_runs: {
+                const list = b.allocator.create(std.ArrayList(*std.Build.Step.Run)) catch @panic("OOM");
+                list.* = .empty;
+                break :test_runs list;
             },
             .verify = testVerifySelection(b, build_probe),
             .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
@@ -4102,6 +4115,56 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_browser_tests.step);
     }
 
+    // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp): its unit
+    // tests, and tests/devtools/ - a Zig CDP client against Crane over
+    // loopback and the pipe (handshake, framing, routing, targets, the
+    // Host/Origin checks, Input/Network/Fetch). Engine-linked: the page
+    // sessions run in Browsers. With -Dcdp=false the directory is recorded
+    // and nothing of it compiles: there is no remote end to test.
+    // `check-devtools` compiles the unit tests without running them.
+    if (enable_cdp) {
+        const devtools_tests = addModuleTestWithEngine(b, testing_graph.devtools, target, tests_engine_link);
+        const check_devtools = b.step("check-devtools", "Compile src/devtools, its unit tests and tests/devtools (nothing runs)");
+        check_devtools.dependOn(&devtools_tests.step);
+        // tests/devtools in one compile (tests/devtools/compile_check.zig):
+        // the client tests compile without the suite running.
+        const devtools_client_check = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/devtools/compile_check.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "devtools", .module = testing_graph.devtools },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "platform", .module = testing_graph.platform },
+            },
+        }) });
+        // tests/support's loopback_listener, as addTestRootWith gives every
+        // test root (the replay tests' loopback site).
+        devtools_client_check.root_module.addImport("loopback_listener", b.createModule(.{
+            .root_source_file = b.path("tests/support/loopback_listener.zig"),
+            .target = target,
+        }));
+        tests_engine_link.into(b, devtools_client_check.root_module);
+        // The Crane test runner, as the suite's own executable has: the
+        // tests' allocators are its `poisoning.DebugAllocator`
+        // (@import("root").poisoning; tests/AGENTS.md), which std's default
+        // runner does not declare. Compiled only - never run here.
+        _ = useCraneTestRunner(b, devtools_client_check, launch.engine, "devtools_compile_check", .fail, .per_test, &.{}, false, launch.log_level);
+        check_devtools.dependOn(&devtools_client_check.step);
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "devtools")) {
+            test_step.dependOn(&addSuiteRun(b, launch, devtools_tests, "src-devtools", null).step);
+            const devtools_imports = [_]std.Build.Module.Import{
+                .{ .name = "devtools", .module = testing_graph.devtools },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "platform", .module = testing_graph.platform },
+            };
+            addTestFilesFromDir(b, test_step, "tests/devtools", target, &devtools_imports, true, test_selection) catch |err| {
+                std.debug.print("Warning: Failed to add devtools test files: {}\n", .{err});
+            };
+        }
+    } else recordSuiteDir(b, test_selection, "tests/devtools");
+
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
         const file_tests = b.addTest(.{ .root_module = testing_graph.file });
@@ -4124,6 +4187,9 @@ pub fn build(b: *std.Build) void {
         const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
         const run_fetch_tests = addSuiteRun(b, launch, fetch_tests, "src-fetch", null);
         test_step.dependOn(&run_fetch_tests.step);
+        // The HTTP cache's profile store tests (fetch/cache/persistence.zig)
+        // compile with the storage tests (approved 9:52 PM ET, lane prof2).
+        check_storage_tests.dependOn(&fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
@@ -4137,6 +4203,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "fetch", .module = testing_graph.fetch },
             // kit/curl's share, options and trust store, as fetch reaches them.
             .{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? },
+            // What the platform was built with: its HTTP/2 parts' tests run
+            // only where it has HTTP/2 (`http2`), as the platform's code does.
+            .{ .name = "platform_options", .module = testing_graph.platform_options },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
@@ -4283,6 +4352,7 @@ pub fn build(b: *std.Build) void {
         const storage_tests = b.addTest(.{ .root_module = testing_graph.storage });
         const run_storage_tests = addSuiteRun(b, launch, storage_tests, "src-storage", null);
         test_step.dependOn(&run_storage_tests.step);
+        check_storage_tests.dependOn(&storage_tests.step);
 
         // Add dedicated test files from tests/storage/
         const storage_imports = [_]std.Build.Module.Import{
@@ -4292,14 +4362,16 @@ pub fn build(b: *std.Build) void {
             // infra.tombstones: the slot counts of storage's long-lived maps.
             .{ .name = "infra", .module = testing_graph.infra },
         };
-        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
     }
 
     // CookieStore tests (WHATWG Cookie Store API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
         const cookiestore_tests = b.addTest(.{ .root_module = testing_graph.cookiestore });
+        check_storage_tests.dependOn(&cookiestore_tests.step);
         const run_cookiestore_tests = addSuiteRun(b, launch, cookiestore_tests, "src-cookiestore", null);
         test_step.dependOn(&run_cookiestore_tests.step);
 
@@ -4444,6 +4516,7 @@ pub fn build(b: *std.Build) void {
     // Platform tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
+        check_storage_tests.dependOn(&platform_tests.step);
         const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
         test_step.dependOn(&run_platform_tests.step);
 
@@ -4485,9 +4558,10 @@ pub fn build(b: *std.Build) void {
                 break :stack_overflow_fixtures options.createModule();
             } },
         };
-        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
+        if (addTestFilesFromDirCompile(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| blk: {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
-        };
+            break :blk null;
+        }) |exe| check_storage_tests.dependOn(&exe.step);
 
         // TRANSITIONAL: the old platform code step 0 keeps, compiled until each
         // recipes step that replaces it retires it (tests/platform/
@@ -4659,10 +4733,16 @@ pub fn build(b: *std.Build) void {
     const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
     const browser_test_imports = [_]std.Build.Module.Import{
         .{ .name = "browser", .module = testing_graph.browser },
+        // The Browser's storage sequence and its platform state's stores,
+        // which the storage sequence tests hold (tests/browser/
+        // prof2_storage_sequence_test.zig).
+        .{ .name = "storage", .module = testing_graph.storage },
+        .{ .name = "platform", .module = testing_graph.platform },
     };
-    addTestFilesFromDir(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| {
+    if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
-    };
+        break :blk null;
+    }) |exe| check_storage_tests.dependOn(&exe.step);
 
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
@@ -4789,15 +4869,24 @@ pub fn build(b: *std.Build) void {
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, full_static_lib.root_module, .{});
 
-    // Configure storage backends
-    configureStorageBackends(lib_exports_mod, target);
-
     b.installArtifact(full_static_lib);
 
     // The C ABI's own tests - a browser created and destroyed through it under
     // std.testing.allocator - run with the browser tests: nothing else compiles
-    // this module for the host.
-    const lib_exports_test = b.addTest(.{ .root_module = lib_exports_mod });
+    // this module for the host. On a module of their own, with the tests'
+    // engine link (addModuleTestWithEngine), never libwhatwg_full's own
+    // module: that one carries the PRODUCT link - the engine adapter's C++
+    // compiled in the module - and under -Dsanitize-thread the
+    // instrumentation pass (instrumentForThreadSanitizer, over every suite's
+    // executable) instrumented it, so the adapter's C++ compiled in an
+    // instrumented compilation, where Zig puts its own libc++'s -D_LIBCPP_*
+    // macros beside the engine's libc++'s: "'_LIBCPP_HARDENING_MODE' macro
+    // redefined" and 23 more errors (lane flk4, 2026-11-22). The tests' link
+    // compiles it apart in a sanitizer build, as every other test
+    // executable's does.
+    const lib_exports_test = addModuleTestWithEngine(b, lib_exports_mod, target, tests_engine_link);
+    // In the library's own mode, as it was tested on the library's module.
+    lib_exports_test.root_module.optimize = lib_exports_mod.optimize;
     test_browser_step.dependOn(&addSuiteRun(b, launch, lib_exports_test, "lib-exports", null).step);
 
     // Build step for the full browser runtime library
@@ -4853,9 +4942,6 @@ pub fn build(b: *std.Build) void {
     crane_mod.addImport("intl", intl_mod);
     crane_mod.addImport("platform", platform_mod);
 
-    // Configure storage backends
-    configureStorageBackends(crane_mod, target);
-
     // ---- Crane Static Library (libcrane.a) ----
     const crane_lib = b.addLibrary(.{
         .linkage = .static,
@@ -4904,9 +4990,6 @@ pub fn build(b: *std.Build) void {
 
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, crane_exe.root_module, .{});
-
-    // Configure storage backends for executable
-    configureStorageBackends(crane_exe.root_module, target);
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
@@ -4962,6 +5045,20 @@ pub fn build(b: *std.Build) void {
         if (previous_linux_check) |previous| sub_build.step.dependOn(previous);
         previous_linux_check = &sub_build.step;
         check_linux_step.dependOn(&sub_build.step);
+    }
+
+    // -Dcdp=false: the build without the Chrome DevTools Protocol remote end
+    // still compiles - the console and the WebDriver server answer "built
+    // without CDP support" (src/devtools/unavailable.zig). A sub-build of its
+    // own, as the cross-target checks above; nothing runs. The integrator's
+    // flag-off check.
+    {
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "crane-check", "repl-exe", "-Dcdp=false", "-j2" });
+        sub_build.addArg("--cache-dir");
+        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        sub_build.setCwd(b.path("."));
+        sub_build.has_side_effects = true;
+        b.step("check-cdp-off", "Compile crane (src/webdriver) and the console with -Dcdp=false (nothing runs)").dependOn(&sub_build.step);
     }
 
     // lib-full for aarch64-ios, its own `zig build` like check-linux: a static
@@ -5032,6 +5129,39 @@ pub fn build(b: *std.Build) void {
     // ~45 s on chat (a full regeneration and a byte compare of ~2,900 files).
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
         test_step.dependOn(&codegen_check.step);
+    }
+
+    // The Chrome DevTools Protocol types (src/devtools/protocol/), generated
+    // from the pinned definitions in specs/devtools-protocol/ by
+    // tools/devtools_protocol_gen.zig: `codegen` writes them beside the
+    // WebIDL tree, `codegen-check` compares the committed tree with a
+    // regeneration. A host tool, as codegen is.
+    const devtools_gen_module = b.createModule(.{
+        .root_source_file = b.path("tools/devtools_protocol_gen.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    const devtools_gen_exe = b.addExecutable(.{
+        .name = "devtools_protocol_gen",
+        .root_module = devtools_gen_module,
+    });
+    const run_devtools_gen = b.addRunArtifact(devtools_gen_exe);
+    // It reads specs/devtools-protocol/ and writes src/devtools/protocol/,
+    // which the build graph does not track.
+    run_devtools_gen.has_side_effects = true;
+    run_devtools_gen.setCwd(b.path("."));
+    run_devtools_gen.addArgs(&.{ "--dest", "src/devtools/protocol" });
+    codegen_step.dependOn(&run_devtools_gen.step);
+    const devtools_gen_check = b.addRunArtifact(devtools_gen_exe);
+    devtools_gen_check.has_side_effects = true;
+    devtools_gen_check.setCwd(b.path("."));
+    devtools_gen_check.addArgs(&.{ "--dest", "src/devtools/protocol", "--check" });
+    codegen_check_step.dependOn(&devtools_gen_check.step);
+    b.step("devtools-protocol", "Regenerate src/devtools/protocol/ from specs/devtools-protocol/ (zig build codegen also does)").dependOn(&run_devtools_gen.step);
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
+        test_step.dependOn(&devtools_gen_check.step);
+        const devtools_gen_tests = b.addTest(.{ .root_module = devtools_gen_module });
+        test_step.dependOn(&addSuiteRun(b, launch, devtools_gen_tests, "tools-devtools_protocol_gen", null).step);
     }
 
     // IDL scanner tool
@@ -5154,6 +5284,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "console", .module = repl_graph.console },
                 // Real time for the console's deadlines (platform.monotonicNow).
                 .{ .name = "platform", .module = repl_graph.platform },
+                // Chrome's --remote-debugging-port (src/devtools; -Dcdp).
+                .{ .name = "devtools", .module = repl_graph.devtools },
             },
         }),
     });
@@ -5271,6 +5403,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "browser", .module = testing_graph.browser },
                 .{ .name = "console", .module = testing_graph.console },
                 .{ .name = "platform", .module = testing_graph.platform },
+                .{ .name = "devtools", .module = testing_graph.devtools },
             },
         });
         const console_test_imports = [_]std.Build.Module.Import{
@@ -5835,6 +5968,15 @@ pub fn build(b: *std.Build) void {
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, test_suites_tests, "tools-test_suites", null).step);
 
+    // tools/zig_toolchain.zig: the configure's refusal of every Zig but the
+    // pinned 0.17 (the comptime block at the top of this file), std-only.
+    const zig_toolchain_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/zig_toolchain.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, zig_toolchain_tests, "tools-zig_toolchain", null).step);
+
     // The build side of the engine adapters: the std-only helpers of each
     // listed adapter's build file that hold tests of their own (the
     // protocol's `build_tests`), whichever engine this build binds.
@@ -6340,6 +6482,47 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
+    // LINT: @hasDecl probes that can never see their declaration
+    // ========================================================================
+    // Zig 0.17's @hasDecl is false for every declaration that is not `pub`,
+    // in the probe's own file too, so a generic's optional hook declared
+    // without `pub` is silently compiled out (lane tpf: the devtools tasks'
+    // drop; lane tpg: a state's deinit). tools/lint_hasdecl.zig resolves each
+    // @hasDecl / std.meta.hasFn / hasMethod probe's container - through
+    // scopes, @import, aliases, field chains and a generic's call sites - and
+    // fails, with no baseline, on a probed name declared only without `pub`;
+    // a probe it cannot resolve needs a `// hasdecl: <why>` line, and the
+    // unannotated ones are a ratchet in tools/hasdecl_baseline.txt (only goes
+    // down: `zig build lint-hasdecl -- --update`; `-- --list` shows each).
+    // `zig build test` depends on it.
+    const lint_hasdecl_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_hasdecl.zig"),
+        // Build-time tool: runs on the host, as codegen does. Optimized with
+        // its safety checks: it tokenizes every scanned file - 77 MB, the
+        // generated layer included - in every `zig build test`.
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    const lint_hasdecl_exe = b.addExecutable(.{
+        .name = "lint_hasdecl",
+        .root_module = lint_hasdecl_module,
+    });
+    const lint_hasdecl_step = b.step("lint-hasdecl", "Fail on an @hasDecl probe whose container declares the name only without pub (use -- --update after annotating unresolved probes, -- --list to see them)");
+    const lint_hasdecl = b.addRunArtifact(lint_hasdecl_exe);
+    // It reads src/, tools/, tests/, build.zig and the baseline, which the
+    // build graph does not track.
+    lint_hasdecl.has_side_effects = true;
+    lint_hasdecl.setCwd(b.path("."));
+    lint_hasdecl.addPassthruArgs();
+    lint_hasdecl_step.dependOn(&lint_hasdecl.step);
+    const lint_hasdecl_check = b.addRunArtifact(lint_hasdecl_exe);
+    lint_hasdecl_check.has_side_effects = true;
+    lint_hasdecl_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_hasdecl_check.step);
+    const lint_hasdecl_tests = b.addTest(.{ .root_module = lint_hasdecl_module });
+    test_step.dependOn(&addSuiteRun(b, launch, lint_hasdecl_tests, "tools-lint_hasdecl", null).step);
+
+    // ========================================================================
     // LINT: the CSS module's two import boundaries
     // ========================================================================
     // Two cold Typed OM entries stay off CSS's parsing and computation paths
@@ -6368,6 +6551,35 @@ pub fn build(b: *std.Build) void {
     lint_css_step.dependOn(&lint_css.step);
     test_step.dependOn(&lint_css.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_css_module }), "tools-lint_css", null).step);
+
+    // ========================================================================
+    // LINT: std.heap.page_allocator stays out of src/
+    // ========================================================================
+    // Zig's page allocator maps whole pages for every allocation: a small
+    // record on it costs a page and a mapping (lane alloc1's
+    // inventory; lane leak3 moved every run-time use to its owner's
+    // allocator). tools/lint_page_allocator.zig fails on any use in src/
+    // without a `// page-allocator: <why>` line directly above it; the
+    // build-time WebIDL generator (src/webidl/codegen/) is not scanned. Not a
+    // ratchet: any unmarked use fails.
+    const lint_page_allocator_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_page_allocator.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_page_allocator_exe = b.addExecutable(.{
+        .name = "lint_page_allocator",
+        .root_module = lint_page_allocator_module,
+    });
+    const lint_page_allocator_step = b.step("lint-page-allocator", "Fail on a use of std.heap.page_allocator in src/ with no reviewed `// page-allocator: <why>` line above it");
+    const lint_page_allocator = b.addRunArtifact(lint_page_allocator_exe);
+    // It reads src/, which the build graph does not track.
+    lint_page_allocator.has_side_effects = true;
+    lint_page_allocator.setCwd(b.path("."));
+    lint_page_allocator_step.dependOn(&lint_page_allocator.step);
+    test_step.dependOn(&lint_page_allocator.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_page_allocator_module }), "tools-lint_page_allocator", null).step);
 
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
@@ -6951,6 +7163,39 @@ pub fn build(b: *std.Build) void {
         thread_local_check.expectExitCode(0);
         step.dependOn(&thread_local_check.step);
     };
+    // Every test executable carries production's thread-local layout, held
+    // to the same budget (part of the test step): where a system's C library
+    // puts a thread's static thread-local block inside its stack, a larger
+    // block in a test executable makes threads that production starts with
+    // a small stack fail to start there - a JavaScript engine's profiler
+    // thread did, a fatal check on every console.profile, while the test
+    // runner kept Zig std's 256 KB thread-local signal stack (lane tpf,
+    // 2026-11-22; tests/test_runner/runner.zig's std_options).
+    //
+    // Each check hangs off its executable's own suite run, not off `test`:
+    // hung off `test` for every executable any step runs, it made
+    // `zig build test -Dtest-file=X` compile every suite the selection had
+    // skipped - test-browser's libwhatwg_full test executable, a whole
+    // engine link, among them (lane flk4, 2026-11-22).
+    //
+    // Not under -Dsanitize-thread: an instrumented executable carries
+    // ThreadSanitizer's runtime's own thread-local block
+    // (`__tsan::cur_thread_placeholder`, 1,856 of its 1,992 bytes on server1),
+    // not production's layout, which is what the budget holds; held to it,
+    // every suite of the sanitizer build failed its check
+    // (tools/thread_local_size_scope.zig, pinned by the tool's tests). The
+    // plain build checks the same executables against the budget.
+    if (thread_local_size_scope.checksTestExecutables(.{ .sanitize_thread = launch.sanitize_thread })) {
+        for (launch.test_exes.items, launch.test_runs.items) |test_exe, run| {
+            const thread_local_check = b.addRunArtifact(thread_local_size_exe);
+            thread_local_check.setName(b.fmt("thread-local block {s}", .{test_exe.name}));
+            thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
+            thread_local_check.addArg(b.fmt("--name={s}", .{test_exe.name}));
+            thread_local_check.addFileArg(test_exe.getEmittedBin());
+            thread_local_check.expectExitCode(0);
+            run.step.dependOn(&thread_local_check.step);
+        }
+    }
 
     // No Run step replays the configure-time environment from a cached
     // configuration (checkNoEnvironmentCopies): part of check-configure-cache.
@@ -7142,6 +7387,7 @@ const CraneModules = struct {
     permissions: *std.Build.Module,
     browser: *std.Build.Module,
     webdriver: *std.Build.Module,
+    devtools: *std.Build.Module,
     intl: *std.Build.Module,
 };
 
@@ -7401,12 +7647,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     storage_mod.addImport("clock", clock_mod);
     storage_mod.addImport("host", host_mod);
     storage_mod.addImport("infra", infra_mod);
-
-    // Configure platform-specific storage backend linking (Phase 9)
-    // - iOS: System SQLite (Phase 9.1)
-    // - Android: System SQLite (Phase 9.2)
-    // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
-    configureStorageBackends(storage_mod, target);
 
     // CookieStore module (WHATWG Cookie Store API)
     const cookiestore_mod = graphModule(b, public, "cookiestore", .{
@@ -8453,8 +8693,15 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const platform_mod = platform_binding.facade;
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
+    // A profile directory's HTTP cache commits on storage's commit timer
+    // (fetch/cache/persistence.zig).
+    fetch_mod.addImport("storage", storage_mod);
     dom_mod.addImport("platform", platform_mod);
     storage_mod.addImport("platform", platform_mod);
+    // The cookie jar's persistence in a profile directory: the platform's
+    // stores, and storage's commit timer (cookiestore/storage_integration.zig).
+    cookiestore_mod.addImport("platform", platform_mod);
+    cookiestore_mod.addImport("storage", storage_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
@@ -8536,6 +8783,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_mod.addImport("api_parser", url_parser_api_mod);
     // A style sheet's @import rules, for style_sheet_loading.zig.
     html_mod.addImport("css", css_mod);
+    // The img element's and the speculative HTML parser's source and link
+    // type checks (html.image_source_selection, html.link_types).
+    html_mod.addImport("mimesniff", mimesniff_mod);
 
     // The XML parser (XML 1.0 + Namespaces in XML): engine- and DOM-free, no
     // imports. HTML's XML tree builder (src/html/xml_document_parser.zig)
@@ -8632,6 +8882,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // "process cookie changes" step 2 (cookiestore imports neither
     // service_worker nor anything that does: no cycle).
     service_worker_mod.addImport("cookiestore", cookiestore_mod);
+    // Cache Storage's operations run on the Browser's storage sequence with
+    // a profile directory (storage.StorageSequence; lane prof2). storage
+    // imports nothing of service_worker: no cycle.
+    service_worker_mod.addImport("storage", storage_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)
@@ -8660,6 +8914,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
     browser_mod.addImport("cookiestore", cookiestore_mod);
+    // The Browser hands its profile directory's stores to its storage
+    // (src/browser/profile_stores.zig).
+    browser_mod.addImport("storage", storage_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
@@ -8680,6 +8937,36 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     webdriver_mod.addImport("clock", clock_mod);
     webdriver_mod.addImport("host", host_mod);
     webdriver_mod.addImport("browser", browser_mod);
+
+    // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp). Off, its
+    // root is src/devtools/unavailable.zig, which imports nothing: the
+    // console and WebDriver keep their one import and answer "built without
+    // CDP support".
+    const devtools_mod = graphModule(b, public, "devtools", .{
+        .root_source_file = b.path(if (config.cdp) "src/devtools/root.zig" else "src/devtools/unavailable.zig"),
+        .target = target,
+    });
+    if (config.cdp) {
+        devtools_mod.addImport("platform", platform_mod);
+        devtools_mod.addImport("browser", browser_mod);
+        devtools_mod.addImport("html", html_mod);
+        devtools_mod.addImport("dom", dom_mod);
+        devtools_mod.addImport("runtime", runtime_mod);
+        devtools_mod.addImport("engine", engine_mod);
+        devtools_mod.addImport("fetch", fetch_mod);
+        devtools_mod.addImport("infra", infra_mod);
+        // The page-side domains read documents and nodes through their
+        // generated interfaces (DOM.describeNode, Page.getFrameTree), as the
+        // console does - never an impl.
+        devtools_mod.addImport("interfaces", interfaces_mod);
+        devtools_mod.addOptions("build_options", build_options);
+        // GET /json/protocol serves the pinned definitions (server.zig
+        // protocolJson).
+        devtools_mod.addAnonymousImport("browser_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/browser_protocol.json") });
+        devtools_mod.addAnonymousImport("js_protocol.json", .{ .root_source_file = b.path("specs/devtools-protocol/js_protocol.json") });
+    }
+    // New Session's se:cdp capability (W3C WebDriver; Selenium 4).
+    webdriver_mod.addImport("devtools", devtools_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = graphModule(b, public, "intl", .{
@@ -8824,6 +9111,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .permissions = permissions_mod,
         .browser = browser_mod,
         .webdriver = webdriver_mod,
+        .devtools = devtools_mod,
         .intl = intl_mod,
     };
 }

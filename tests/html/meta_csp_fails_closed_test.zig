@@ -120,7 +120,7 @@ fn settled(browser: anytype, page: anytype, expression: []const u8, unsettled: [
 
 fn exercise() !void {
     const allocator = testing.allocator;
-    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
@@ -192,7 +192,7 @@ test "a document whose meta CSP could not be recorded blocks script, eval, fetch
 }
 
 fn lateFetch() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

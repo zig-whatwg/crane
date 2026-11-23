@@ -36,7 +36,10 @@ fn queuedSvgScriptKeepsItsElement() !void {
         \\  svg.appendChild(script);
         \\})();
     );
-    try page.turn();
+    // Until the loop is idle, not a fixed 20 ms: the fetch, its task and the
+    // run must all be scheduled, which a loaded host need not do in 20 ms of
+    // wall time (main's gate on chat2: FLAKY, the log empty).
+    try page.settle();
     try page.run(
         \\if (log.join() !== 'ran,load') throw new Error('log: ' + log.join());
     );

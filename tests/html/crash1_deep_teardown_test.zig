@@ -88,7 +88,7 @@ const Page = struct {
     browser: *Browser,
 
     fn open(allocator: std.mem.Allocator) !Page {
-        const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;

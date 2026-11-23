@@ -35,6 +35,13 @@ pub const RequestClient = struct {
     /// only whether there is one is ever read (HTTP-network-or-cache fetch
     /// step 14). Null for any other global: "no-traversable".
     traversable: ?*anyopaque = null,
+    /// A global that is not a Window, whose user agent override its requests
+    /// send (http_fetch.userAgentOverrideOf): a dedicated worker carries a
+    /// copy of its tab's (Chrome's creation-params copy, which
+    /// WorkerFetchContext::PrepareRequest sends). Null for a Window - its
+    /// traversable is read - and where no Browser runs the global. BORROWED
+    /// with the client's lifetime, as the traversable is.
+    user_agent_client: ?*anyopaque = null,
     /// The user agent's cookie jar, as the settings object reaches it.
     /// BORROWED: the Browser that owns it outlives every fetch.
     cookie_jar: ?*CookieJar = null,
@@ -73,6 +80,10 @@ pub const RequestClient = struct {
     /// Fetch" step 10): set only while a service worker controls the
     /// settings object. BORROWED: its Browser outlives every fetch.
     service_worker: ?request_mod.ServiceWorkerRoute = null,
+    /// A Window's document's resources, which Fetch step 11 consumes a
+    /// preload from (InternalRequest.document_resources). BORROWED: asked
+    /// only at a fetch's start. Null for any other global.
+    document_resources: ?request_mod.DocumentResourcesRoute = null,
     /// SRI §3.8.3. BORROWED with the CSP reporter's client lifetime.
     integrity_violation_reporter: ?request_mod.IntegrityViolationReporter = null,
     /// Fetch 3.7's CORP violation reports. BORROWED with the CSP reporter's
@@ -96,6 +107,9 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     if (request.traversable_for_user_prompts == .client) {
         request.traversable_for_user_prompts = if (client.traversable) |t| .{ .traversable = t } else .no_traversable;
     }
+    // Not a step either: a worker client's user agent override, which the
+    // traversable stands for in a Window's request.
+    if (request.user_agent_client == null) request.user_agent_client = client.user_agent_client;
     // 2. If request's origin is "client": set it to request's client's
     //    origin. (One the global does not know yet leaves it "client".)
     if (request.origin == .client) {
@@ -120,6 +134,14 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // Mixed Content 4.3: take the client's answer now; redirects and clones
     // must not ask a later document or retain the settings object.
     request.prohibits_mixed_security_contexts = client.prohibits_mixed_security_contexts;
+
+    // Not a step: whether the client may load local files (scheme fetch
+    // "file", file_fetch.zig) - a client whose document is a file: one. The
+    // referrer source is that document's URL (a srcdoc document's is its
+    // ancestor's, a worker's its creation URL).
+    if (client.referrer_source) |source| {
+        if (std.ascii.startsWithIgnoreCase(source, "file:")) request.local_file_access = true;
+    }
 
     // Referrer Policy "determine request's referrer", step 3's "client" case,
     // resolved here where the client is known; main fetch step 9 takes it
@@ -180,6 +202,8 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // its client's active service worker - one the client has when it is
     // populated.
     if (request.service_worker == null) request.service_worker = client.service_worker;
+    // Fetch step 11 asks the Window client's document's resources.
+    if (request.document_resources == null) request.document_resources = client.document_resources;
     if (request.integrity_violation_reporter == null) request.integrity_violation_reporter = client.integrity_violation_reporter;
     if (request.coep_violation_reporter == null) request.coep_violation_reporter = client.coep_violation_reporter;
 }

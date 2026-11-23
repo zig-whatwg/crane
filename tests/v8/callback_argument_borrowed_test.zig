@@ -1,7 +1,8 @@
 //! A callback-function value the binding converts is BORROWED for the call,
 //! as every argument is: the binding releases its Global when the call
-//! returns, and an impl that keeps the callback takes a hold of its own
-//! (engine.takeCallbackFunction). Lane leaks7, 2026-10-25.
+//! returns, and an impl that keeps the callback keeps a hold of its own
+//! (runtime.BorrowedCallbackFunction.keep, engine.keepCallbackFunction).
+//! Lane leaks7, 2026-10-25; the borrowed type, lane bind1 (2026-11-23).
 //!
 //! The leak: the binding handed a callback-function argument's Global to the
 //! impl, and the take ADOPTED it - so an impl that never took it kept it for
@@ -45,8 +46,34 @@ const interface_mod = v8.interface_mod;
 const conversions = v8.conversions;
 const resolver = interface_mod.overload_resolver;
 
-/// A callback function as codegen types one (callbacks.X = *const fn ...).
-const Callback = *const fn (event: *runtime.Instance) runtime.JSValue;
+/// A callback function as codegen types one (callbacks.X =
+/// runtime.BorrowedCallbackFunction).
+const Callback = runtime.BorrowedCallbackFunction;
+
+/// A borrowed callback over the Global `global`, as the binding makes one.
+fn borrowedOver(global: *anyopaque) Callback {
+    return .{ .function = .{ .handle = .{ .ptr = global } } };
+}
+
+// ============================================================================
+// The protocol's callback types
+// ============================================================================
+
+test "the protocol keeps a callback only through keep: no take operation, no wrapper type" {
+    // Lane bind1: codegen types every callback value as the protocol's
+    // borrowed types, so the transitional take operations - an untyped
+    // `*const anyopaque`, and the opaque CallbackWrapper - are gone.
+    try testing.expect(!@hasDecl(protocol, "takeCallbackFunction"));
+    try testing.expect(!@hasDecl(protocol, "takeCallbackInterface"));
+    try testing.expect(!@hasDecl(protocol, "CallbackWrapper"));
+    try testing.expect(!@hasDecl(runtime, "CallbackWrapper"));
+    try testing.expect(@hasDecl(protocol, "keepCallbackFunction"));
+    try testing.expect(@hasDecl(protocol, "keepCallbackInterface"));
+    // The kept value is the owned type, the borrowed one is not.
+    try testing.expect(@TypeOf(Callback.keep) == fn (Callback) protocol.CallbackFunction);
+    try testing.expect(@TypeOf(runtime.BorrowedCallbackInterface.keep) == fn (runtime.BorrowedCallbackInterface) protocol.CallbackInterface);
+    try testing.expect(Callback != protocol.CallbackFunction);
+}
 
 // ============================================================================
 // The release rule, pinned
@@ -58,20 +85,27 @@ test "every callback-function shape the binding converts is freed with its value
     try testing.expect(cleans(?Callback));
     try testing.expect(cleans(webidl.Opt(Callback)));
     try testing.expect(cleans(webidl.Opt(?Callback)));
-    try testing.expect(cleans(struct { cb: ?Callback = null, n: ?f64 = null }));
+    try testing.expect(cleans(struct {
+        pub const webidl_dictionary = true;
+        cb: ?Callback = null,
+        n: ?f64 = null,
+    }));
     try testing.expect(cleans(union(enum) { domstring: runtime.DOMString, function: Callback }));
     try testing.expect(cleans([]const Callback));
     // The default for a type nobody named stays "nothing to free": freeing
     // what the value does not own is a use-after-free.
     try testing.expect(!cleans(*anyopaque));
-    try testing.expect(!cleans(struct { a: u32 = 0 }));
+    try testing.expect(!cleans(struct {
+        pub const webidl_dictionary = true;
+        a: u32 = 0,
+    }));
 }
 
 test "a callback union's copied arm leaves its handle, its callback arm holds it; a callback sequence never holds the array's" {
     const leaves = interface_mod.conversionLeavesHandle;
     const Arm = union(enum) { domstring: runtime.DOMString, function: Callback };
     var dummy: u64 align(16) = 0;
-    const function: Callback = @ptrCast(@alignCast(&dummy));
+    const function: Callback = borrowedOver(&dummy);
     try testing.expect(leaves(Arm, .{ .domstring = runtime.DOMString.empty }));
     try testing.expect(!leaves(Arm, .{ .function = function }));
     try testing.expect(leaves(webidl.Opt(Arm), webidl.Opt(Arm).passed(.{ .domstring = runtime.DOMString.empty })));
@@ -93,7 +127,10 @@ test "an attribute's callback value is borrowed by the setter" {
     // The `any` shapes stay borrowed, and an unknown type stays handed over.
     try testing.expect(borrowed(runtime.JSValue));
     try testing.expect(!borrowed(*anyopaque));
-    try testing.expect(!borrowed(struct { a: ?*anyopaque = null }));
+    try testing.expect(!borrowed(struct {
+        pub const webidl_dictionary = true;
+        a: ?*anyopaque = null,
+    }));
 }
 
 // ============================================================================
@@ -139,6 +176,7 @@ const Page = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
+            .agent_cluster_cross_origin_isolated = true,
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -252,7 +290,11 @@ const Call = struct {
 
     const Kind = enum { argument, member, union_arm, union_string, sequence };
 
-    const Member = struct { cb: ?Callback = null, n: ?f64 = null };
+    const Member = struct {
+        pub const webidl_dictionary = true;
+        cb: ?Callback = null,
+        n: ?f64 = null,
+    };
     const Arm = union(enum) { domstring: runtime.DOMString, function: Callback };
 
     fn steps(data: ?*anyopaque) void {
@@ -263,7 +305,7 @@ const Call = struct {
     }
 
     fn keep(self: *Call, callback: Callback) void {
-        if (self.take) self.taken = protocol.takeCallbackFunction(@ptrCast(callback));
+        if (self.take) self.taken = callback.keep();
     }
 
     fn once(self: *Call) !void {
@@ -442,7 +484,7 @@ test "the take is a hold of the taker's own: the binding's Global is left to the
 
         fn check(self: *@This()) !void {
             const argument = ffi.v8_Global_Clone(self.function) orelse return error.CloneFailed;
-            const taken = protocol.takeCallbackFunction(@ptrCast(argument));
+            const taken = protocol.keepCallbackFunction(borrowedOver(argument));
             defer taken.release();
             // Not the argument's own Global: that one the binding frees.
             try testing.expect(@intFromPtr(taken.function.value.handle.ptr) != @intFromPtr(argument));
@@ -506,7 +548,7 @@ const Bookkeeping = struct {
             .taken => {},
         }
 
-        const taken = protocol.takeCallbackFunction(@ptrCast(converted));
+        const taken = converted.keep();
         const taken_global: *ffi.Value = @ptrCast(@alignCast(taken.function.value.handle.ptr));
         try testing.expect(taken_global != argument);
         switch (self.shape) {
@@ -577,6 +619,156 @@ test "a take never moves a weak Global: the taker gets one of its own, the box k
 }
 
 // ============================================================================
+// WebIDL's conversions (lane bind1): a callback function value is callable
+// (3.2.19 step 1), a callback interface value an Object (3.2.16 step 1)
+// ============================================================================
+
+/// The conversion of `globalThis.probeValue` to `T`, as the binding converts
+/// an argument: from a Global of its own, freed after. True when it converted
+/// to a value, false when to null.
+fn ConvertProbe(comptime T: type) type {
+    return struct {
+        result: ?anyerror!bool = null,
+
+        fn run(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.result = convert();
+        }
+
+        fn convert() anyerror!bool {
+            const isolate = ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+            const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+            defer ffi.v8_Context_Dispose(context);
+            const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+            defer ffi.v8_Object_Dispose(global);
+            const key = ffi.v8_String_NewFromUtf8(isolate, "probeValue", 10) orelse return error.StringFailed;
+            defer ffi.v8_String_Dispose(key);
+            // The argument's own Global, as `info.get(0)` makes it.
+            const argument = ffi.v8_Object_Get(global, context, @ptrCast(key)) orelse return error.GetFailed;
+            const converted = try interface_mod.convertArgReleasingWith(T, .{}, testing.allocator, isolate, context, argument);
+            defer interface_mod.freeArgument(T, testing.allocator, converted);
+            if (@typeInfo(T) == .optional) return converted != null;
+            return true;
+        }
+    };
+}
+
+fn convertsTo(comptime T: type, page: Page, comptime source: []const u8) anyerror!bool {
+    try page.run("globalThis.probeValue = (" ++ source ++ "); 'ok'");
+    var probe: ConvertProbe(T) = .{};
+    try protocol.runInRealm(page.realm, ConvertProbe(T).run, &probe);
+    return probe.result orelse error.NotRun;
+}
+
+test "a callback function value must be callable: an object or a primitive is a TypeError" {
+    const page = try Page.open();
+    defer page.close();
+    try testing.expect(try convertsTo(Callback, page, "function () {}"));
+    try testing.expect(try convertsTo(Callback, page, "class {}"));
+    try testing.expectError(error.TypeError, convertsTo(Callback, page, "{ handleEvent() {} }"));
+    try testing.expectError(error.TypeError, convertsTo(Callback, page, "5"));
+    // A nullable one: null and undefined are null, anything else converts
+    // as the inner type does.
+    try testing.expect(!try convertsTo(?Callback, page, "null"));
+    try testing.expect(!try convertsTo(?Callback, page, "undefined"));
+    try testing.expectError(error.TypeError, convertsTo(?Callback, page, "'f'"));
+}
+
+test "a callback interface value must be an Object: an object or a function converts, a primitive is a TypeError" {
+    const Interface = runtime.BorrowedCallbackInterface;
+    const page = try Page.open();
+    defer page.close();
+    try testing.expect(try convertsTo(Interface, page, "{ handleEvent() {} }"));
+    // No operation is read at conversion: any object converts.
+    try testing.expect(try convertsTo(Interface, page, "{}"));
+    try testing.expect(try convertsTo(Interface, page, "function () {}"));
+    try testing.expectError(error.TypeError, convertsTo(Interface, page, "5"));
+    try testing.expectError(error.TypeError, convertsTo(Interface, page, "'listener'"));
+    try testing.expectError(error.TypeError, convertsTo(Interface, page, "Symbol()"));
+    // A nullable one (EventListener?): null and undefined are null; a
+    // primitive is still a TypeError - addEventListener(type, 5) throws in
+    // Chrome, Firefox and Safari, and was ignored here as null.
+    try testing.expect(!try convertsTo(?Interface, page, "null"));
+    try testing.expect(!try convertsTo(?Interface, page, "undefined"));
+    try testing.expectError(error.TypeError, convertsTo(?Interface, page, "5"));
+    try testing.expectError(error.TypeError, convertsTo(?Interface, page, "true"));
+}
+
+/// A callback interface argument through the binding's steps: converted,
+/// kept when `keep`, freed. V8's handle bytes after each step.
+const InterfaceCall = struct {
+    object: *ffi.Value,
+    keep: bool,
+    kept: ?protocol.CallbackInterface = null,
+    failed: ?anyerror = null,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *InterfaceCall = @ptrCast(@alignCast(data.?));
+        self.once() catch |err| {
+            self.failed = err;
+        };
+    }
+
+    fn once(self: *InterfaceCall) !void {
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer ffi.v8_Context_Dispose(context);
+        const one = Bookkeeping.handleBytesOfOne(isolate);
+        const bytes0: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+        const T = ?runtime.BorrowedCallbackInterface;
+        const argument = ffi.v8_Global_Clone(self.object) orelse return error.CloneFailed;
+        const converted = try interface_mod.convertArgReleasingWith(T, .{}, testing.allocator, isolate, context, argument);
+        // No wrapper and no handle of the conversion's own: the value is
+        // the argument's Global.
+        try Bookkeeping.expectBytes(isolate, bytes0 + one);
+        if (self.keep) {
+            self.kept = converted.?.keep();
+            // Moved, not copied: still one node.
+            try Bookkeeping.expectBytes(isolate, bytes0 + one);
+            // Kept once: a second keep holds nothing.
+            const again = converted.?.keep();
+            defer again.release();
+            try testing.expect(again.object.value == .undefined);
+        }
+        interface_mod.freeArgument(T, testing.allocator, converted);
+        try Bookkeeping.expectBytes(isolate, if (self.keep) bytes0 + one else bytes0);
+    }
+};
+
+test "an unkept callback interface argument is released when the call returns" {
+    const page = try Page.open();
+    defer page.close();
+    const object = try page.value("({ handleEvent() { return 7; } })");
+    defer object.release();
+    var call: InterfaceCall = .{ .object = @ptrCast(@alignCast(object.value.handle.ptr)), .keep = false };
+    try protocol.runInRealm(page.realm, InterfaceCall.run, &call);
+    if (call.failed) |err| return err;
+}
+
+test "a kept callback interface outlives the call and a collection, and its operation runs" {
+    const page = try Page.open();
+    defer page.close();
+    const object = try page.value("globalThis.calls = 0; globalThis.listener = { handleEvent() { calls++; return 7; } }; listener");
+    var call: InterfaceCall = .{ .object = @ptrCast(@alignCast(object.value.handle.ptr)), .keep = true };
+    try protocol.runInRealm(page.realm, InterfaceCall.run, &call);
+    object.release();
+    if (call.failed) |err| return err;
+    const kept = call.kept orelse return error.NothingKept;
+    defer kept.release();
+    try page.run("delete globalThis.listener; 'ok'");
+    try page.collect();
+    const completion = try protocol.callUserObjectOperation(page.realm, &kept, "handleEvent", .undefined, &.{}, .rethrow);
+    switch (completion) {
+        .normal => |v| v.release(),
+        .throw => |e| {
+            e.release();
+            return error.CallbackThrew;
+        },
+    }
+    try page.run("calls === 1 ? 'ok' : 'calls ' + calls");
+}
+
+// ============================================================================
 // An overloaded constructor's variant
 // ============================================================================
 
@@ -584,11 +776,13 @@ test "a take never moves a weak Global: the taker gets one of its own, the box k
 /// per overload, a struct of its arguments.
 const Overloads = union(enum) {
     string_callback: struct {
+        pub const webidl_arguments = true;
         text: runtime.DOMString,
         callback: Callback,
     },
     /// The control's: the same resolution, nothing kept.
     string_number: struct {
+        pub const webidl_arguments = true;
         text: runtime.DOMString,
         number: f64,
     },
@@ -618,7 +812,7 @@ fn probeCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     };
     defer resolver.freeConstructorOverload(Overloads, overloads, testing.allocator, args);
     if (probe_take) switch (args) {
-        .string_callback => |variant| probe_taken = protocol.takeCallbackFunction(@ptrCast(variant.callback)),
+        .string_callback => |variant| probe_taken = variant.callback.keep(),
         .string_number => {},
     };
 }

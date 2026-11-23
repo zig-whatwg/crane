@@ -39,7 +39,7 @@ fn check(ending: Ending) !void {
 
         fn body(self: *@This()) !void {
             const allocator = std.testing.allocator;
-            var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            var browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;

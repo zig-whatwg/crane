@@ -273,6 +273,10 @@ fn createGlobalScope(registry: *Registry, worklet: *Worklet, outside: runtime.Co
         .api_base_url = outside.documentUrl() orelse "",
         .allocator = outside.allocator,
         .on_realm = onRealm,
+        // HTML "create a new realm" step 5: the worklet's agent cluster is its
+        // owner's ("obtain a worker/worklet agent" step 3), and so is its
+        // cross-origin isolation mode.
+        .agent_cluster_cross_origin_isolated = @import("agent_clusters.zig").crossOriginIsolationMode(outside),
     });
     errdefer engine.destroyWorkletRealm(made.realm);
     const scope = try registry.allocator.create(GlobalScope);

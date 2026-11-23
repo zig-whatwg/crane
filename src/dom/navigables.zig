@@ -100,7 +100,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter, refresh: bool) bool,
     /// The .push_replace apply's step-12 job for `browsing_context` (lane
     /// nav2 F1): the rest of the cross-document navigation `navigation_id`
     /// whose finalize the traversable's queue runs - the entry listed, the
@@ -133,6 +133,10 @@ pub const Implementation = struct {
     /// in flight, read on the Browser's window thread. What a host shows
     /// ("Navigating to <url>", the browser console); null: not installed.
     navigation_url: ?*const fn (record: *anyopaque) []const u8 = null,
+    /// Resume navigable `navigable_id`'s navigations its Browser's navigation
+    /// observer held before their fetch (html_core.navigation.observer,
+    /// N3): each goes on from a task. The window thread.
+    resume_held_navigations: ?*const fn (navigables: *html_core.Navigables, navigable_id: u64) void = null,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -155,6 +159,15 @@ pub fn navigationUrl(record: *anyopaque) ?[]const u8 {
     const impl = implementation.get() orelse return null;
     const url_of = impl.navigation_url orelse return null;
     return url_of(record);
+}
+
+/// Resume navigable `navigable_id`'s navigations held before their fetch
+/// (html_core.navigation.observer.release). Nothing when no owner installed
+/// it.
+pub fn resumeHeldNavigations(navigables: *html_core.Navigables, navigable_id: u64) void {
+    const impl = implementation.get() orelse return;
+    const resume_held = impl.resume_held_navigations orelse return;
+    resume_held(navigables, navigable_id);
 }
 
 /// Choose a navigable for `request.target` from `source_document`'s node
@@ -198,9 +211,14 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 /// by these IDs. True when a population started that will report; false
 /// when none did (nothing to fetch, or a document shown again from the
 /// back/forward cache, which is done when this returns).
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
+///
+/// `refresh`: the reload a declarative refresh to the document's own URL
+/// stands in for (Document.refreshComesDue) - its request's referrer is the
+/// navigable's active document, the one that refreshed, as the navigation
+/// the refresh steps make "using document" would have it.
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter, refresh: bool) bool {
     const impl = implementation.get() orelse return false;
-    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
+    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter, refresh);
 }
 
 /// The .push_replace apply's step-12 job: the commit of the cross-document
@@ -226,7 +244,11 @@ pub const TraversalWaiter = struct {
 /// own to find.)
 pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
     const impl = implementation.get() orelse return null;
-    return impl.find_by_name(current_document, name);
+    const found = impl.find_by_name(current_document, name);
+    // window.open(url, name) and a link's target reach the frame's Window: a
+    // host announces its context now (BrowsingContext.touchedByScript).
+    if (found) |window| if (@import("browser_state.zig").browsingContextOf(window)) |bc| bc.touchedByScript();
+    return found;
 }
 
 /// The owning container's integration for an html_core.BrowsingContext.
@@ -508,9 +530,12 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
     // Its entries, and its descendants', leave the traversable's history.
     if (integration.browsing_context) |bc| {
         if (bc.getTop().joint_history) |history| {
+            // The Browser's allocator, read once: the walk below can end
+            // navigables, and the list outlives none of them.
+            const allocator = bc.allocator;
             var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-            defer tree.deinit(std.heap.page_allocator);
-            bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+            defer tree.deinit(allocator);
+            bc.collectDescendants(allocator, &tree) catch {};
             for (tree.items) |gone| history.removeNavigable(gone.id);
             // A traversal waiting on one of them no longer does (lane nav2
             // C1: the queue's liveness when a navigable goes).
@@ -539,12 +564,35 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             document_lifecycle.destroy(entry.document);
         }
     }
+    // The navigable and every navigable inside it are gone - unloaded, their
+    // documents destroyed: the Browser's navigation observer hears it,
+    // children first (CDP frameDetached).
+    if (integration.browsing_context) |bc| reportDestroyedTree(bc);
     // Its realm ends at a task of its own.
     if (integration.state != .discarded) queueRemovedFrameRealmEnd(container, integration);
     integration.onRemovedFromDocument();
     // Navigation and resources in an already-ready, document.open-created
     // stream both delay the parent. There is no content navigable now.
     if (interfaces.Node.get_ownerDocument(container) catch null) |document| document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+/// html_core.navigation.observer `navigable_destroyed` for `bc` and every
+/// navigable inside it, children first.
+fn reportDestroyedTree(bc: *BrowsingContext) void {
+    const navigables = bc.navigables orelse return;
+    if (navigables.observer == null) return;
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
+    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+    defer tree.deinit(allocator);
+    // collectDescendants lists `bc` itself first: each navigable once.
+    bc.collectDescendants(allocator, &tree) catch {};
+    var i = tree.items.len;
+    while (i > 0) {
+        i -= 1;
+        html_core.navigation.observer.notify(navigables, .{ .navigable_id = tree.items[i].id, .event = .navigable_destroyed });
+    }
 }
 
 /// HTML "destroy a child navigable", for the documents: the active
@@ -560,10 +608,13 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
 /// teardown waits for the global's end (dom.unloading_cleanup). The windows
 /// of the navigables inside it are always discarded with their documents.
 pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.WindowFate) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    defer tree.deinit(allocator);
+    tree.append(allocator, bc) catch return;
+    bc.collectDescendants(allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
         // A document its unload kept for the back/forward cache is not
@@ -614,10 +665,13 @@ pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.Windo
 /// first too - the browsers agree, so their order (golden rule 2). No event
 /// fires and no script runs in either order: the abort is "firing nothing".
 pub fn destroyDocumentsAtBrowserEnd(bc: *BrowsingContext) void {
+    // The Browser's allocator, read once: the walk below can end
+    // navigables, and the list outlives none of them.
+    const allocator = bc.allocator;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    defer tree.deinit(allocator);
+    tree.append(allocator, bc) catch return;
+    bc.collectDescendants(allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
         // A document the back/forward cache keeps: as destroyWindowDocuments.
@@ -662,7 +716,23 @@ pub fn destroyDocumentsAtBrowserEnd(bc: *BrowsingContext) void {
 /// of the retired realm that died in the same collection had been zapped,
 /// and the realm's end read it (fetch/origin/assorted.window.js, SIGSEGV in
 /// v8::Value::IsProxy; crane/c4-removed-frame-retired-realm-gc.html).
-fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameIntegration) void {
+///
+/// A navigation destroys navigables too: "destroy a document and its
+/// descendants" for the document it replaces destroys that document's child
+/// navigables, whose containers stay in the destroyed document - and the
+/// collector frees them with it, later. The navigation hands each one's realm
+/// over here as the removal does (HTMLIFrameElement destroyChildNavigables):
+/// left with its container, the realm ended when the collector freed the
+/// <iframe> element, and a Window script still held through its WindowProxy
+/// was freed then (lane flk4: event-listeners.window.js's "active but not
+/// fully active document" subtest threw "Illegal invocation" 1 run in 11).
+/// The task detaches the realm only if nothing has (engine.detachWindowRealm):
+/// a navigation that replaces the parent's Window detaches the parent's realm
+/// - and every frame realm under it - first, before this task runs; one that
+/// keeps the parent's Window (from its initial about:blank) detaches nothing,
+/// and the frame's realm, never detached, was never collected either
+/// (crane/flk4-navigated-frame-window-survives-gc.html).
+pub fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameIntegration) void {
     const loop = container.ctx.getOptionalEventLoop() orelse return;
     // Every retired realm here was retired with the navigation machinery's
     // `retired_realm_destroy`, whose only input is the realm.
@@ -675,8 +745,12 @@ fn queueRemovedFrameRealmEnd(container: *runtime.Instance, integration: *IFrameI
     loop.queueTask(.{ .callback = endRemovedFrameRealm, .context = data, .drop = null });
 }
 
+/// Detached, unless its parent's detach took it first - a navigation of the
+/// parent's navigable after the removal, before this task - when it is left
+/// as it is: `destroyWindowRealm` here ENDED a detached realm, freeing the
+/// Window of a WindowProxy script may still hold.
 fn endRemovedFrameRealm(data: ?*anyopaque) void {
-    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .navigable_destroyed);
+    engine.detachWindowRealm(@ptrCast(@alignCast(data.?)));
 }
 
 /// A retired realm of a destroyed navigable: its WindowProxy went on to a
@@ -959,7 +1033,7 @@ test "without an installed implementation nothing navigates" {
     followHyperlink(&element, .activation);
     downloadHyperlink(&element, .activation);
     // No population starts.
-    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
+    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }, false));
     // No commit continues.
     try std.testing.expect(!commitNavigation(@ptrCast(&element), 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);

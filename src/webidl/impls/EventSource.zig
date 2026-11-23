@@ -404,8 +404,7 @@ fn abortDocument(document: *runtime.Instance) void {
     }
 }
 fn liveSources(realm: runtime.Context) ?*LiveSources {
-    const agent = realm.agent orelse return null;
-    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
     return &host.event_sources;
 }
 fn closeInRealm(realm: runtime.Context) void {

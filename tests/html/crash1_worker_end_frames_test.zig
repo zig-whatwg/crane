@@ -47,7 +47,7 @@ fn waitWhileChurning(browser: *browser_mod.Browser, source: []const u8) !void {
 }
 
 fn round() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
@@ -98,7 +98,7 @@ test "a dedicated worker's end, while its page adds and removes frames, reads no
 /// html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html,
 /// a popup closing meanwhile).
 fn popupRound() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;

@@ -23,6 +23,23 @@ const signal_stack = @import("signal_stack.zig");
 /// rule and the reads a platform's observer polls (the linux platform's
 /// memory_pressure.zig).
 pub const meminfo = @import("meminfo.zig");
+/// Files a host names by path, per Browser (6.10.3 userFile / userDirectory).
+pub const user_files = @import("user_files.zig");
+/// The remote debugging transport (protocol 6.12): loopback TCP and the
+/// inherited pipe pair.
+const devtools_transport = @import("devtools_transport.zig");
+pub const devtoolsListen = devtools_transport.devtoolsListen;
+pub const devtoolsWakeNew = devtools_transport.devtoolsWakeNew;
+pub const devtoolsWake = devtools_transport.devtoolsWake;
+pub const devtoolsWakeClose = devtools_transport.devtoolsWakeClose;
+pub const devtoolsAccept = devtools_transport.devtoolsAccept;
+pub const devtoolsRead = devtools_transport.devtoolsRead;
+pub const devtoolsReadOrWake = devtools_transport.devtoolsReadOrWake;
+pub const devtoolsWrite = devtools_transport.devtoolsWrite;
+pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
+pub const devtoolsClose = devtools_transport.devtoolsClose;
+pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
+pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
 
 const log = std.log.scoped(.platform);
 
@@ -107,13 +124,24 @@ pub fn defaultDataDirectory(allocator: std.mem.Allocator) Error!?[]u8 {
     }
 }
 
-/// Today's answer everywhere: navigator.language is "en-US"
-/// (src/webidl/impls/Navigator.zig). Reading the OS's list is a later step.
+/// Today's answer everywhere: an en-US user's list as the browsers' majority
+/// gives it - "en-US", then its base language "en" (Chrome's accept-languages
+/// default and Firefox's intl.accept_languages "en-US, en"; Safari reports
+/// "en-US" alone). navigator.language(s) and the default Accept-Language
+/// read it (html.window.host_overrides.platformLanguages, Fetch's step 14).
+/// Reading the OS's list is a later step.
 pub fn preferredLanguages(allocator: std.mem.Allocator) Error![]Str {
-    const list = try allocator.alloc(Str, 1);
-    errdefer allocator.free(list);
-    const tag = try allocator.dupe(u8, "en-US");
-    list[0] = Str.from(tag);
+    const defaults = [_][]const u8{ "en-US", "en" };
+    const list = try allocator.alloc(Str, defaults.len);
+    var made: usize = 0;
+    errdefer {
+        for (list[0..made]) |tag| allocator.free(tag.slice());
+        allocator.free(list);
+    }
+    for (defaults) |text| {
+        list[made] = Str.from(try allocator.dupe(u8, text));
+        made += 1;
+    }
     return list;
 }
 
@@ -364,6 +392,34 @@ fn fileKind(kind: std.Io.File.Kind) platform.FileKind {
         else => .other,
     };
 }
+
+/// A Browser's hold on its profile directory: one live Browser per directory
+/// (docs/instances.md; Chrome's ProcessSingleton keeps a profile's
+/// SingletonLock, Firefox its parent.lock). `<dir>/LOCK`, created when it is
+/// not there, under an exclusive advisory lock (flock(2): released by the
+/// kernel when the holder exits, so a crash leaves no stale lock), taken
+/// without waiting: a directory another live Browser holds is error.Busy.
+pub const ProfileLock = struct {
+    file: std.Io.File,
+
+    pub fn acquire(directory: []const u8) Error!ProfileLock {
+        const io = host.io();
+        const cwd = std.Io.Dir.cwd();
+        cwd.createDirPath(io, directory) catch |err| return fileError(err);
+        var name_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const lock_path = std.fmt.bufPrint(&name_buffer, "{s}/LOCK", .{directory}) catch return error.Io;
+        const file = cwd.createFile(io, lock_path, .{ .truncate = false, .lock = .exclusive, .lock_nonblocking = true }) catch |err| return switch (err) {
+            error.WouldBlock => error.Busy,
+            else => fileError(err),
+        };
+        return .{ .file = file };
+    }
+
+    /// The directory is free again (closing the file drops its lock).
+    pub fn release(self: *ProfileLock) void {
+        self.file.close(host.io());
+    }
+};
 
 pub fn makeDirectoryPath(path: Str) Error!void {
     std.Io.Dir.cwd().createDirPath(host.io(), path.slice()) catch |err| return fileError(err);

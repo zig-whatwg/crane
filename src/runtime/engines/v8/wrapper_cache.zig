@@ -207,10 +207,13 @@ pub const Cell = extern struct {
         /// (see `Cell`; v8_wrapper.cpp kWrapperCellWeakHandle reads it).
         weak_handle: bool = false,
 
-        /// Unused since lane wrap2 (it said whether a full collection traced
-        /// a weak-handle record's anchor; the wrapper's first pass severs
-        /// the anchor in every collection now).
-        _spare: bool = false,
+        /// A world cache's record of a NODE's wrapper (`WrapperCache.world`):
+        /// it holds one counted reference on its node (runtime.lifetime.
+        /// wrapperAcquired), which goes when the record is freed
+        /// (`releaseWorldCount`) - each world's wrapper holds its node as
+        /// every WebKit wrapper holds a Ref. Bit 30, which v8_wrapper.cpp
+        /// reads nothing of (it was `_spare` since lane wrap2).
+        world_counted: bool = false,
 
         /// A full collection's marking reached the record's anchor
         /// (v8_wrapper.cpp PlatformAnchor::Trace, kWrapperCellMarked): written
@@ -381,6 +384,26 @@ fn letGo(entry: *Cell, link: Link) void {
     // Its weak arm ends with it (v8_Object_Dispose releases the arm; a
     // finalizer still queued for it is cancelled).
     v8.v8_Object_Dispose(box);
+}
+
+/// An isolated world's node wrapper's record lets its counted reference go
+/// (`Bits.world_counted`): released while its node is still the one it was
+/// taken on and its teardown has not begun - which let it go or forgot it -
+/// else forgotten, as node_wrappers' `releaseOne` does for the main world's.
+/// Only counts: a tree the release leaves with no hold is queued by the
+/// counts (dom.refcount_teardown). Never inside a collection: `freeCell`'s
+/// callers run at the agent's safe point, a realm's end or a remove.
+fn releaseWorldCount(entry: *Cell) void {
+    entry.bits.world_counted = false;
+    if (slotReissued(entry) or runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+        runtime.lifetime.wrapperForgotten();
+        return;
+    }
+    const node = @import("dom").instance_bridge.getNodeBase(@ptrCast(entry.instance)) orelse {
+        runtime.lifetime.wrapperForgotten();
+        return;
+    };
+    runtime.lifetime.wrapperReleased(node);
 }
 
 /// THE RULE for which wrappers the cache holds by a weak handle, stated once:
@@ -821,6 +844,14 @@ fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 /// `threadlocal`, every agent's caches on the thread in one list.
 pub const Caches = std.ArrayListUnmanaged(*WrapperCache);
 
+/// What an agent's `Caches` list is allocated from: libc's heap. The list is
+/// the agent's (its record's), shared by its realms' caches, and no agent
+/// allocator is in reach where a cache joins or leaves it; it was
+/// std.heap.page_allocator, a page (and on Linux a mapping) for a few
+/// pointers (docs/lessons/architecture-std-heap-page-allocator-maps-a-page-
+/// per-allocation.md).
+const caches_allocator = std.heap.c_allocator;
+
 /// The current agent's live caches; null with no isolate current, or for an
 /// isolate createAgent did not make.
 fn currentCaches() ?*Caches {
@@ -889,7 +920,7 @@ pub fn endAgent(isolate: *v8.Isolate, caches: *Caches) void {
         cache.peers = null;
         cache.registered = false;
     }
-    caches.deinit(std.heap.page_allocator);
+    caches.deinit(caches_allocator);
     caches.* = .empty;
 }
 
@@ -1004,16 +1035,26 @@ fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     finalizeEntry(entry);
 }
 
-/// The stamp of the object a queued finalizer is for (`Cell.fresh`), for the
-/// agent's safe point inside a callback (finalizer_safe_point.zig): 0 - never
-/// fresh - for a finalizer that is not a wrapper cache record's (an
-/// observable array's, an asynchronous iterator's, a promise reaction's).
-/// `data` is what the finalizer was queued with; it has not been cancelled
-/// (the caller checked).
+/// The stamp of the object a queued finalizer is for, for the agent's safe
+/// point inside a callback (finalizer_safe_point.zig): the constructor's
+/// (`Cell.fresh`) when a script-called constructor made it; otherwise the
+/// one its slab generation earns against the callbacks on the stack
+/// (DeferredTeardown.freshSerialOf, lane mem1: whatever made it - a factory
+/// method, the DOM's own algorithms - an object made inside the innermost
+/// callback is fresh for it). The record's own generation is asked, the
+/// instance's when it was wrapped, never its slot's now: a slot freed and
+/// reissued reads another object's. 0 - never fresh - for a finalizer that
+/// is not a wrapper cache record's (an observable array's, an asynchronous
+/// iterator's, a promise reaction's), and for a realm whose agent has no
+/// queue. `data` is what the finalizer was queued with; it has not been
+/// cancelled (the caller checked). The agent's isolate is entered (the
+/// queue's fresh steps), as `deferredQueue` needs.
 pub fn freshStampOf(finalize: v8.WeakCallbackFn, data: ?*anyopaque) u32 {
     if (finalize != &finalizeCollected) return 0;
     const entry: *const Cell = @ptrCast(@alignCast(data orelse return 0));
-    return entry.fresh;
+    if (entry.fresh != 0) return entry.fresh;
+    const queue = entry.cache().deferredQueue() orelse return 0;
+    return queue.freshSerialOf(runtime.SlabAllocator.ownerOf(entry.instance), entry.stamp.generation);
 }
 
 /// v8_Isolate_TakeQueuedFinalizers' two callbacks for a cache's end: the
@@ -1150,6 +1191,11 @@ fn finalizeEntry(entry: *Cell) void {
     }
     const instance = entry.instance;
 
+    // An isolated world's wrapper of a node (`Bits.world_counted`): its
+    // reference goes with the record (`freeCell`), and nothing of the node is
+    // torn down here - its counts decide, as for the main world's wrapper.
+    if (entry.bits.world_counted) return cache.freeCell(entry);
+
     // Replaced or removed before it was collected: nothing of the instance
     // is this record's.
     if (entry.bits.stale) return cache.freeCell(entry);
@@ -1285,6 +1331,13 @@ pub const WrapperCache = struct {
     /// V8 Context (unused currently, kept for future extensions)
     context: *v8.Context,
 
+    /// An isolated world realm's cache (protocol_worlds.zig): it keeps NODE
+    /// wrappers too - the world's, beside the node's own slot, which is the
+    /// main world's (Blink's DOMDataStore of a non-main world) - each record
+    /// holding a counted reference on its node (`Bits.world_counted`). Set
+    /// once, when the world realm is made, before its first wrap.
+    world: bool = false,
+
     /// Whether this cache is on its agent's live caches (`peers`).
     registered: bool = false,
     /// Its agent's live caches (`Caches`, on the agent's record), which it
@@ -1412,6 +1465,21 @@ pub const WrapperCache = struct {
     /// realm's objects are torn down (context_manager.removeContextByKey);
     /// the cache's own end drains what is left.
     finalizers: realm_finalizers.List = .{},
+    /// How many of `finalizers` are the agent's inspector's registrations of
+    /// this realm (protocol_inspector `Registered`: contextCreated, and not
+    /// forgotten): kept by protocol_inspector as each joins and leaves, so
+    /// whether a realm is known to the inspector is read here, on the realm,
+    /// with no lock - the agent registry's (protocol_agents.recordOf) costs
+    /// about 127 ns, paid on every unhandled rejection of a Browser with no
+    /// session, and on every console call and reported exception, before
+    /// (lane tpc). At most one in practice: a realm is
+    /// registered once, in one group.
+    inspector_registrations: u32 = 0,
+    /// How many times protocol_inspector went past that check to find the
+    /// agent's inspector - for a rejection's stack, a console call, a
+    /// reported exception (`mayBeRegistered`; tests read it:
+    /// tests/v8/inspector_bridge_test.zig).
+    inspector_lookups: u64 = 0,
 
     /// The agent's deferred teardown queue (engine.AgentOptions.
     /// deferred_teardown), looked up by the first collected node this cache
@@ -1636,6 +1704,7 @@ pub const WrapperCache = struct {
         // A boxed record's Global, emptied by its collection; an anchored
         // record's reference is empty by now (let go of, or collected).
         letGo(entry, .keep);
+        if (entry.bits.world_counted) releaseWorldCount(entry);
         if (entry.bits.collected) self.pending -= 1;
         // A record freed with its wrapper not found dead (a remove, a
         // replacement, its realm's end): its share of the figure goes with
@@ -1740,6 +1809,9 @@ pub const WrapperCache = struct {
     /// A record the cache holds strongly stays held: its Global is strong.
     fn toWeakHandle(self: *Self, entry: *Cell) void {
         if (entry.bits.boxed or entry.bits.weak_handle or entry.bits.collected or !entry.bits.in_use) return;
+        // An isolated world's node wrapper stays traced (`setConstructed`):
+        // the walk keeps it with its node's tree.
+        if (entry.bits.world_counted) return;
         const was_strong = entry.bits.strong;
         self.dropStrongHandle(entry);
         // Armed weak in the same call, unless the cache keeps the wrapper.
@@ -2277,9 +2349,15 @@ pub const WrapperCache = struct {
             // moved). The SlabAllocator can reuse memory addresses multiple times. If the
             // instance at this address is different from what we cached, we must NOT call
             // onObjectFreed as it would deinit the wrong object.
-            const is_started = runtime.instance_lifecycle.isCleanupStarted(instance);
             const is_reused = slotReissued(entry);
-            if (entry.bits.instance_already_cleaned) {
+            const is_started = !entry.bits.world_counted and !is_reused and runtime.instance_lifecycle.isCleanupStarted(instance);
+            if (entry.bits.world_counted) {
+                // An isolated world's wrapper of a node, at its world realm's
+                // end: the wrapper - script may still hold it - reaches the
+                // node no more, and its reference goes with the record below.
+                // The node is its tree's and its counts', never this sweep's.
+                letGo(entry, .sever);
+            } else if (entry.bits.instance_already_cleaned) {
                 letGo(entry, .sever);
                 skipped_cleaned += 1;
                 // Its teardown began under its live wrapper (markAsCleanedUp),
@@ -2425,7 +2503,7 @@ pub const WrapperCache = struct {
         if (self.registered) return;
         self.isolate = isolate;
         const caches = @import("protocol_agents.zig").cachesOf(isolate) orelse return;
-        caches.append(std.heap.page_allocator, self) catch return;
+        caches.append(caches_allocator, self) catch return;
         self.peers = caches;
         self.registered = true;
         // The anchors' registry, whose weak processing calls the caches',
@@ -2446,7 +2524,7 @@ pub const WrapperCache = struct {
         }
         // The list's memory goes with its last cache (and with its agent,
         // `endAgent`).
-        if (caches.items.len == 0) caches.clearAndFree(std.heap.page_allocator);
+        if (caches.items.len == 0) caches.clearAndFree(caches_allocator);
         self.registered = false;
         self.peers = null;
     }
@@ -2457,7 +2535,7 @@ pub const WrapperCache = struct {
     /// instance was wrapped while it was made returns, instead of binding
     /// the object V8 made for NewTarget (which `set` refuses).
     pub fn existingWrapper(self: *Self, instance: *runtime.Instance) ?*v8.Object {
-        if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
+        if (instance.vtable.counted != null and !self.world) return node_wrappers.wrapperOfInstance(instance);
         const entry = self.cache.get(instance) orelse return null;
         if (entry.bits.instance_already_cleaned or slotReissued(entry)) return null;
         return entry.handle();
@@ -2473,8 +2551,9 @@ pub const WrapperCache = struct {
     /// otherwise
     pub fn get(self: *Self, instance: *runtime.Instance) ?*v8.Object {
         // A node's wrapper is in its own slot, whatever realm asks
-        // (node_wrappers): never in a cache.
-        if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
+        // (node_wrappers): never in a cache - but an isolated world's, which
+        // its world realm's cache keeps (`world`).
+        if (instance.vtable.counted != null and !self.world) return node_wrappers.wrapperOfInstance(instance);
         if (self.cache.get(instance)) |entry| return entry.handle();
         return null;
     }
@@ -2521,7 +2600,8 @@ pub const WrapperCache = struct {
         // wrapped either: the teardown under way frees it.
         if (self.is_tearing_down) return error.CacheTornDown;
         self.register(isolate);
-        if (instance.vtable.counted != null) return self.setNode(instance, wrapper, isolate);
+        const counted = instance.vtable.counted != null;
+        if (counted and !self.world) return self.setNode(instance, wrapper, isolate);
 
         // An instance has ONE wrapper in a realm. One that is live already
         // is never replaced: every edge drawn on it - a traced child, a
@@ -2543,6 +2623,14 @@ pub const WrapperCache = struct {
 
         const entry = try self.allocCell(instance, stamp);
         errdefer self.freeCell(entry);
+        // An isolated world's wrapper of a node takes its own reference on
+        // the node (`Bits.world_counted`), before anything can see the
+        // wrapper - as node_wrappers.adopt's step 1 does for the main
+        // world's. Released when the record is freed, on every path.
+        if (counted) {
+            _ = runtime.lifetime.wrapperAcquired(instance) orelse return error.NotANode;
+            entry.bits.world_counted = true;
+        }
 
         // Store in the map. Rehash first if the tombstones could take half
         // the unused slots - never while a walk reads the slots (`walks`).
@@ -2569,7 +2657,12 @@ pub const WrapperCache = struct {
         // reference otherwise. Anything else (a realm's global) is held by
         // the caller's Global.
         const facts = wrapperFactsOf(instance);
-        if (self.anchors and heldByWeakHandle(facts)) {
+        // An isolated world's node wrapper is always held by a traced
+        // reference: the walk keeps it with its node's tree
+        // (`traceWorldEntry`), which a weak handle would not let it - it
+        // waits for a full collection, as every main-world node wrapper does
+        // since the wrapper redesign.
+        if (self.anchors and !counted and heldByWeakHandle(facts)) {
             // Armed weak from here; `wrapper`, the caller's box, holds the
             // object until this function's end.
             if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
@@ -2608,7 +2701,9 @@ pub const WrapperCache = struct {
         // call: v8_wrapper.cpp, "What the instances behind non-node wrappers
         // hold") - in an agent's realm; a cache of no agent's isolate
         // reports nothing.
-        if (self.registered) noteWrapped(isolate, entry, facts);
+        // (A node's own memory is counted by its Browser - dom_memory - not
+        // here: an isolated world's node wrapper adds nothing to the figure.)
+        if (self.registered and !counted) noteWrapped(isolate, entry, facts);
 
         if (entry.bits.boxed) return wrapper;
         // The record's reference holds the wrapper from here; until here the
@@ -2672,7 +2767,11 @@ pub const WrapperCache = struct {
             // Call GC integration to invoke type-specific deinit - unless
             // another realm's cache still wraps the instance. The wrapper of
             // an instance freed here reaches it no more.
-            if (!wrappedElsewhere(instance, self)) {
+            if (entry.bits.world_counted) {
+                // An isolated world's node wrapper: its reference goes with
+                // the record, the node stays its counts'.
+                letGo(entry, .sever);
+            } else if (!wrappedElsewhere(instance, self)) {
                 letGo(entry, .sever);
                 runtime.gc.onObjectFreed(instance);
             } else letGo(entry, .keep);
@@ -2748,6 +2847,39 @@ pub const WrapperCache = struct {
             return true;
         }
         return false;
+    }
+
+    /// The walk named `instance`'s node (protocol_worlds.traceWorldWrappers,
+    /// in a collection's atomic pause): this world cache's wrapper of it is
+    /// kept - its traced reference traced through the collection's visitor,
+    /// as engine.traceNodeWrapper traces a node's own slot. A record held by
+    /// a weak handle (a wrapper the binding changed) is not: only script
+    /// keeps it. Read-only; nothing allocated.
+    pub fn traceWorldEntry(self: *const Self, instance: *runtime.Instance, visitor: *anyopaque) void {
+        const entry = self.cache.get(instance) orelse return;
+        const bits = entry.bits;
+        if (!bits.in_use or bits.boxed or bits.weak_handle or bits.collected) return;
+        if (entry.wrapper == null) return;
+        // The record's first word IS the TracedReference (`Cell.wrapper`).
+        v8.v8_NodeTracer_TraceSlot(visitor, @ptrCast(entry));
+    }
+
+    /// `instance`, a node, was torn down whatever its counts said (a forced
+    /// realm end's coordinated teardown): this world cache's wrapper of it
+    /// reaches it no more, and its reference is forgotten with the node - as
+    /// node_wrappers.nodeDestroyed ends the main world's. Not while the
+    /// cache is torn down: its sweep severs every record.
+    pub fn worldNodeDestroyed(self: *Self, instance: *runtime.Instance) void {
+        if (self.is_tearing_down or !self.world) return;
+        const kv = self.cache.fetchRemove(instance) orelse return;
+        self.guard.noteRemoval(&self.cache);
+        const entry = kv.value;
+        letGo(entry, .sever);
+        if (entry.bits.world_counted) {
+            entry.bits.world_counted = false;
+            runtime.lifetime.wrapperForgotten();
+        }
+        self.freeCell(entry);
     }
 
     /// Get cache statistics

@@ -253,9 +253,15 @@ pub const CallbackFunction = struct {
     }
 };
 
-/// A callback interface value as the binding converts it today - what
-/// takeCallbackInterface takes. TRANSITIONAL.
-pub const CallbackWrapper = runtime.CallbackWrapper;
+/// A callback function type's value as the binding hands it to an impl:
+/// BORROWED for the call; `keep` (keepCallbackFunction) gives a
+/// CallbackFunction of the caller's own (runtime/engine_types.zig).
+pub const BorrowedCallbackFunction = runtime.BorrowedCallbackFunction;
+
+/// A callback interface type's value as the binding hands it to an impl:
+/// BORROWED for the call; `keep` (keepCallbackInterface) gives a
+/// CallbackInterface of the caller's own.
+pub const BorrowedCallbackInterface = runtime.BorrowedCallbackInterface;
 
 /// WebIDL: a callback interface type's value (3.2.16) - the object, and a
 /// callback context as for CallbackFunction. OWNED: `release` gives the
@@ -547,8 +553,19 @@ pub const AgentOptions = struct {
     from_snapshot: bool,
     /// BORROWED for the agent's life.
     hooks: *const HostHooks,
-    /// Passed to every hook.
+    /// Passed to every hook, BORROWED for the agent's life; handed back by
+    /// `agentHost`. Its type is only its creator's - a Browser's or worker
+    /// host's AgentHost, a test's own struct - so nothing but the code that
+    /// made the agent (and the hooks it installed with it) reads it.
     host: ?*anyopaque = null,
+    /// The embedder's state for the agent (`HostState`: html's AgentHost,
+    /// for every agent a Browser or worker host makes), BORROWED for the
+    /// agent's life and handed back by `hostStateOf` - what the DOM and
+    /// html read when they reach the agent from a realm or a node. Null (a
+    /// test's own agent, whatever its `host`): they find no state, as for an
+    /// agent with no host. html sets it and `host` together, to the same
+    /// AgentHost (dom.agent_hosts.agentOptions).
+    host_state: ?*HostState = null,
     /// What the engine allocates for the agent itself (its caches, what
     /// destroyAgent frees), BORROWED for the agent's life.
     allocator: std.mem.Allocator = std.heap.c_allocator,
@@ -690,43 +707,54 @@ pub const HostHooks = struct {
     agentClusterOf: ?*const fn (host: ?*anyopaque, realm: Context) u64 = null,
     /// HTML 3.2.3 "HTML element constructors" [html_constructor]: the
     /// overridden constructor steps of an [HTMLConstructor] interface (its
-    /// generated `Meta.html_constructor`), split across the seam. The engine
-    /// does step 1 - NewTarget equal to the active function object is a
-    /// TypeError - and rejects a call without `new` (which step 5 also
-    /// would), before calling this; and steps 10-11, 14 and 16 after it, as
-    /// `HTMLConstructed` says. The host does steps 2-9, 12, 13 and 15.
+    /// generated `Meta.html_constructor`), split across the seam - two host
+    /// calls, the engine's steps around them:
     ///
-    /// `realm`: the current realm - the active function object's; its
-    /// global's associated Document is step 4's and step 9.2's. `new_target`:
-    /// NewTarget, BORROWED for the call - compared by identity
-    /// (`sameValue`) with the active custom element constructor map's keys
-    /// and the definitions' constructors. `interface`: the active function
-    /// object's interface identifier ("HTMLElement", "HTMLParagraphElement"),
-    /// static. Runs no script and leaves nothing pending.
+    /// - The engine: step 1 (NewTarget equal to the active function object
+    ///   is a TypeError), and a call without `new` is a TypeError (step 5
+    ///   would make it one).
+    /// - `HTMLConstructorHooks.resolve`, the host: steps 2-8 - the registry,
+    ///   the definition whose constructor is NewTarget, the active function
+    ///   object's check, isValue.
+    /// - `HTMLConstructorHooks.finish`, the host: step 9 (a new element,
+    ///   steps 9.1-9.9) or steps 12, 13 and 15 (the construction stack's last
+    ///   entry, replaced by the already constructed marker), as
+    ///   `HTMLConstructed` says.
+    /// - The engine: the element's wrapper gets the prototype (step 9.1's,
+    ///   and step 14's [[SetPrototypeOf]]) and is the construction's result
+    ///   (steps 9.10 and 16).
     ///
-    /// Errors: `error.TypeError` (steps 5, 7.1, 8.2 and 13) - the engine
-    /// throws a TypeError of `realm`; any other error the engine throws as
-    /// the binding throws a member's.
+    /// THE ADAPTER OWNS the construction's receiver and steps 10-11 -
+    /// Get(NewTarget, "prototype") with the GetFunctionRealm fallback, where
+    /// author script may run (a getter, a Proxy's get trap) - and WHEN it
+    /// does them is the adapter's documented choice (the user, 2026-11-21:
+    /// "I want to make this the responsibility of the js engine protocol"):
+    /// in the spec's order, between `resolve` and `finish` (after every
+    /// check of steps 1-8; for a definition whose construction stack is
+    /// empty, step 9.1's "internally create a new object implementing the
+    /// interface" reads the same prototype at the same point), or before
+    /// `resolve`, where the engine makes a receiver with NewTarget's prototype
+    /// before any constructor steps run. Whichever it is, no author script
+    /// runs between `resolve` and `finish` but those steps' own.
+    ///
+    /// - V8 (engines/v8/binding_plumbing.zig constructHTMLElement): before
+    ///   `resolve`, Chrome's order - V8 reads NewTarget.prototype when it
+    ///   makes an API function's receiver (builtins-api.cc
+    ///   HandleApiCallHelper: ApiNatives::InstantiateObject -> JSFunction::
+    ///   GetDerivedMap), and `resolve` and `finish` run back to back after.
+    ///   custom-elements/HTMLElement-constructor-customized-builtins.html is
+    ///   Chrome's 0/2 (Firefox 160, in spec order, 2/2; Safari 27.2 ships no
+    ///   customized built-ins).
+    /// - JavaScriptCore's C API hands a JSObjectCallAsConstructorCallback no
+    ///   new.target (`html_constructor` is unsupported there); a JS shim that
+    ///   passes new.target to the construct steps - a derived class, whose
+    ///   [[Construct]] makes no receiver - would give it the spec's order
+    ///   (lane blk7's handoff: tmp/plans/lane-blk7-handoff.md).
     ///
     /// Not installed: an [HTMLConstructor] interface constructs as its own
-    /// constructor does (HTMLElement makes a plain element).
-    ///
-    /// Order (V8, as Blink's V8HTMLConstructor::HtmlConstructor): V8 performs
-    /// Get(NewTarget, "prototype") when it makes the receiver, before any of
-    /// these steps runs, so a throwing or side-effecting prototype getter is
-    /// observed before the TypeErrors of steps 1-9, 12 and 13, where the spec
-    /// has it after them.
-    ///
-    /// This single call relies on that: the engine does steps 10-11 -
-    /// Get(NewTarget, "prototype") with the GetFunctionRealm fallback - BEFORE
-    /// it calls the hook, so the hook's steps 2-9, 12, 13 and 15 run with no
-    /// author script between them; and step 15 may come before step 14,
-    /// because [[SetPrototypeOf]] on an ordinary wrapper never throws. An
-    /// engine that does steps 10-11 in spec order, between the decision and
-    /// the construction stack's read (a native QuickJS adapter, say), needs a
-    /// phased hook instead: resolve (steps 1-9), initialize (9.2-9.9),
-    /// take_entry (12-13), commit (15).
-    htmlConstructor: ?*const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructed = null,
+    /// constructor does (HTMLElement makes a plain element), with NewTarget's
+    /// prototype.
+    htmlConstructor: ?HTMLConstructorHooks = null,
     /// WebAssembly Web API 2, "compile a potential WebAssembly response"
     /// [webassembly_streaming], split across the seam as browsers split it
     /// (Blink's WasmResponseExtensions, SpiderMonkey's ConsumeStreamCallback,
@@ -762,22 +790,60 @@ pub const HostHooks = struct {
 /// host's finishWebAssemblyResponse or abortWebAssemblyResponse.
 pub const WebAssemblyResponseCompilation = opaque {};
 
-/// What HostHooks.htmlConstructor hands the engine: the element the
+/// HostHooks.htmlConstructor: the host's two parts of HTML 3.2.3 "HTML
+/// element constructors", in the order HostHooks.htmlConstructor gives.
+pub const HTMLConstructorHooks = struct {
+    /// Steps 2-8. `realm`: the current realm - the active function object's;
+    /// its global's associated Document is step 4's and step 9.2's.
+    /// `new_target`: NewTarget, BORROWED for the call - compared by identity
+    /// (`sameValue`) with the active custom element constructor map's keys
+    /// and the definitions' constructors. `interface`: the active function
+    /// object's interface identifier ("HTMLElement", "HTMLParagraphElement"),
+    /// static. Runs no script and leaves nothing pending.
+    ///
+    /// Errors: `error.TypeError` (steps 5, 7.1 and 8.2) - the engine throws a
+    /// TypeError of `realm`; any other error the engine throws as the binding
+    /// throws a member's.
+    resolve: *const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructorResolution,
+    /// Step 9, or steps 12, 13 and 15, for what `resolve` answered in the
+    /// same construction - in the same `realm`, with the same `interface`;
+    /// the engine's steps 10-11 come before it (between the two calls, or
+    /// before `resolve`: HostHooks.htmlConstructor). Runs no script and
+    /// leaves nothing pending. Errors: `error.TypeError` (step 13), and as `resolve`'s.
+    finish: *const fn (host: ?*anyopaque, realm: Context, resolution: HTMLConstructorResolution, interface: []const u8) Error!HTMLConstructed,
+};
+
+/// What HTMLConstructorHooks.resolve decided (steps 2-8), handed back to
+/// `finish` in the same construction: the host's own records, opaque to the
+/// engine - the registry (step 2-4's) and the definition (step 5's). The
+/// engine keeps the resolution only between those two calls; between them
+/// author script may run (steps 10-11, in an adapter that does them there),
+/// but nothing it does frees either
+/// record before the construction ends - a registry lives while its
+/// document or an entry of the active custom element constructor map holds
+/// it, its definitions while it does, and a collected platform object is
+/// freed from the event loop, never inside script.
+pub const HTMLConstructorResolution = struct {
+    registry: *anyopaque,
+    definition: *anyopaque,
+};
+
+/// What HTMLConstructorHooks.finish hands the engine: the element the
 /// [HTMLConstructor] construction results in.
 pub const HTMLConstructed = union(enum) {
     /// Step 9, the definition's construction stack empty: step 9.1's new
-    /// object implementing the hook's `interface`, steps 9.2-9.9 done. OWNED,
-    /// handed to the engine: it wraps it in the object it made for NewTarget
-    /// - so its prototype is NewTarget's (steps 9.1 and 10-11) - and from
-    /// then the wrapper holds it, as any constructor's result; if the
-    /// wrapping fails the engine destroys it.
+    /// object implementing the hooks' `interface`, steps 9.2-9.9 done. OWNED,
+    /// handed to the engine: it wraps it with the prototype of steps 10-11
+    /// (step 9.1's "internally create a new object implementing the
+    /// interface" given NewTarget), and from then the wrapper holds it, as any
+    /// constructor's result; if the wrapping fails the engine destroys it.
     created: *Instance,
     /// Steps 12, 13 and 15: the construction stack's last entry - the
     /// element being upgraded - BORROWED (the stack and its tree hold it),
     /// its entry already replaced by the already-constructed marker. The
-    /// engine does step 14, [[SetPrototypeOf]] to NewTarget's prototype, on
-    /// its wrapper (the one it has, else a new one made for NewTarget), and
-    /// step 16: that wrapper is the construction's result.
+    /// engine does step 14, [[SetPrototypeOf]] to the prototype of steps
+    /// 10-11, on its wrapper (the one it has, else a new one), and step 16:
+    /// that wrapper is the construction's result.
     upgrading: *Instance,
 };
 
@@ -937,6 +1003,31 @@ pub const WindowRealmOptions = struct {
     /// interface object or member (WebIDL 3.3.13). True, the default, keeps
     /// every construct exposed, as before.
     secure_context: bool = true,
+    /// HTML "create a new realm" step 5: whether the agent cluster of the
+    /// agent the realm is made in has a cross-origin isolation mode other
+    /// than "none" ("logical" or "concrete") - a Window's: its browsing
+    /// context group's mode ("obtain a similar-origin window agent" step 6.2).
+    /// False: once the global object exists, the engine performs
+    /// ! global.[[Delete]]("SharedArrayBuffer") - which succeeds (step 5.3's
+    /// assertion) - so script reaches the constructor only through
+    /// `new WebAssembly.Memory({ shared:true, initial:0, maximum:0 }).buffer.constructor`.
+    /// True: the global keeps it. No default: every caller decides (a
+    /// default would keep the constructor wherever a caller forgot).
+    agent_cluster_cross_origin_isolated: bool,
+    /// For a realm with no `parent` that is not `auxiliary` - a top-level
+    /// traversable the host made: whether it stays the agent's entered realm
+    /// for its life (true, the default: the Browser's first page, as before)
+    /// or is entered only for the calls that run in it, as a frame's and a
+    /// popup's are (false: a tab the host opened beside it - Browser.createTab,
+    /// CDP's Target.createTarget). An engine can exit entered realms only in
+    /// the reverse order of entering them, and two host tabs end in any order:
+    /// every tab after the first is entered per call, so ending one never
+    /// leaves another's context entered under it (lane console's HOST-OPENED
+    /// TABS design, step 1; lane cdph). A navigation's next realm for the same
+    /// tab passes the same value. Ignored for a realm with a parent or an
+    /// auxiliary one (always per call), and by an engine that enters no realm
+    /// for its life.
+    entered_for_life: bool = true,
 };
 
 /// An agent's heap, for the diagnostics tier.
@@ -1127,6 +1218,21 @@ pub const Capabilities = struct {
     /// reaches only through its tree can be lost (no node is wrapped there
     /// today).
     wrapper_tracing: Support,
+    /// The JavaScript domains of the Chrome DevTools Protocol through the
+    /// engine's own inspector (section 4.2b; the user's ruling D3,
+    /// 2026-11-21: V8's inspector, scoped through the engine protocol): an
+    /// engine-neutral contract that speaks CDP JSON at its edge - Runtime,
+    /// Debugger, Profiler and HeapProfiler requests in, their responses and
+    /// events out - with Crane types for sessions and contexts. Native: V8's
+    /// v8_inspector, as Chrome's (Blink hands every method
+    /// V8InspectorSession::canDispatchMethod accepts to V8). Compiled only
+    /// with -Dcdp (build_options.cdp): without it, unsupported on every
+    /// engine. Unsupported: no JavaScript domains - Playwright and Puppeteer
+    /// cannot drive the engine (JavaScriptCore's public C API has no
+    /// inspector; its adapter would bridge to WebKit's Web Inspector protocol
+    /// inside itself once one is public). The console's REPL mode keeps its
+    /// own capability (`repl_mode`) and works without this one.
+    inspector_protocol: Support,
 };
 
 /// The capabilities of the engine this build selected.
@@ -1169,6 +1275,18 @@ fn gate(comptime capability: Capability, comptime operation: []const u8) void {
 /// content main (gin::GetThreadIsolationData().InitializeBeforeThreadCreation()).
 pub inline fn initializeBeforeThreadCreation() void {
     impl.initializeBeforeThreadCreation();
+}
+
+/// The engine's own version string, as the engine reports it (V8:
+/// v8::V8::GetVersion, e.g. "13.1.203.24"): what a host reports as its
+/// JavaScript engine's version - CDP's Browser.getVersion jsVersion and
+/// /json/version's V8-Version (Chrome: content/browser/devtools/protocol/
+/// browser_handler.cc GetVersion and devtools_http_handler.cc, both
+/// V8_VERSION_STRING, the same string). Static: BORROWED for the process's
+/// life. Any thread, before or after `initializeEngine`. NotSupported: an
+/// engine whose public API names no version (JavaScriptCore's C API).
+pub inline fn engineVersion() error{NotSupported}![]const u8 {
+    return impl.engineVersion();
 }
 
 /// Initialize the process-wide engine: platform, flags, snapshot blob. Once,
@@ -1226,6 +1344,23 @@ pub inline fn agentRestoredFromSnapshot(agent: *Agent) bool {
 /// make.
 pub inline fn agentHost(agent: *Agent) ?*anyopaque {
     return impl.agentHost(agent);
+}
+
+/// The embedder's state for an agent (AgentOptions.host_state): html's
+/// AgentHost, which only the DOM's agent_hosts turns a `*HostState` back into
+/// (dom.agent_hosts.ofAgent). A type the protocol names, so that code reaching an
+/// agent from a realm or a node never casts `agentHost`, whose type is only
+/// its creator's (lesson architecture-a-host-pointer-an-agent-was-given-is-
+/// only-its-creators-type.md: a test's agent with a struct of its own as its
+/// host was read as reaction queues).
+pub const HostState = opaque {};
+
+/// The `host_state` `agent` was created with (AgentOptions.host_state),
+/// BORROWED: the embedder's own pointer handed back, no engine handle. Null
+/// when none was given (a test's own agent), once the agent is destroyed,
+/// or for an agent the adapter did not make.
+pub inline fn hostStateOf(agent: *Agent) ?*HostState {
+    return impl.hostStateOf(agent);
 }
 
 /// The deferred teardown queue `agent` was created with
@@ -1352,6 +1487,28 @@ pub inline fn destroyWindowRealm(realm: Context, how: WindowRealmEnd) void {
     impl.destroyWindowRealm(realm, how);
 }
 
+/// HTML "destroy a child navigable", for the realm of the navigable that was
+/// destroyed: what `destroyWindowRealm(realm, .navigable_destroyed)` does to
+/// a frame's realm that is still attached - its script activity stops, the
+/// engine keeps no root into it, and it ends once the collector takes it or
+/// with its page - and NOTHING to a realm that is detached already or has
+/// ended. Idempotent, unlike `destroyWindowRealm`, whose call on a detached
+/// realm is its owner's end and ends it at once.
+///
+/// A navigable is destroyed twice over: its container is removed and then
+/// its container's document is destroyed by a navigation, or a navigation
+/// destroys a document and the collector later frees the <iframe> elements
+/// in it - whose teardown used to end their navigables' realms, so a Window
+/// that script still held through its WindowProxy was freed at whatever
+/// point the collector chose (lane flk4: event-listeners.window.js failed 1
+/// run in 11 with "Illegal invocation"). HTML keeps a Window for as long as
+/// a WindowProxy for it is held, and Chrome 157, Firefox 159 and Safari 27
+/// answer through it after collections (tmp/probes/flk4-navwin,
+/// crane/flk4-navigated-frame-window-survives-gc.html).
+pub inline fn detachWindowRealm(realm: Context) void {
+    impl.detachWindowRealm(realm);
+}
+
 /// A worker's realm, in `agent`. OWNED: `destroyWorkerRealm`.
 pub inline fn createWorkerRealm(agent: *Agent, options: *const WorkerRealmOptions) Error!WorkerRealm {
     return impl.createWorkerRealm(agent, options);
@@ -1431,6 +1588,417 @@ pub inline fn defineBuiltinFunction(realm: Context, function_name: []const u8, l
 /// error.NotSupported.
 pub inline fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const BuiltinFunction) Error!Owned {
     return impl.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
+// ============================================================================
+// 4.2a Isolated worlds (CDP part 1, tmp/plans/cdp-part1-design.md 3.5)
+// ============================================================================
+//
+// Several JavaScript worlds over one DOM - Blink's DOMWrapperWorld model
+// (third_party/blink/renderer/platform/bindings/dom_wrapper_world.h,
+// dom_data_store.h, script_state.h; core/frame/window_proxy_manager.h,
+// local_window_proxy.cc; BSD-3, reproduced, not copied). A WORLD REALM is a
+// realm per (Window realm, world): its own global object, WindowProxy,
+// intrinsics, interface objects and prototypes, over the SAME Window and the
+// same DOM - Blink's ScriptState per (frame, world). The main world is world
+// 0: every Window realm createWindowRealm makes is its main-world realm.
+//
+// - A platform object's relevant realm (`instance.ctx`) is always a
+//   main-world realm: an object made by code in a world belongs to the page
+//   (`document.createElement` from a world makes an element of the page).
+// - A platform object has one wrapper PER WORLD: a conversion chooses the
+//   wrapper by the world of the realm converting it - the world realm of
+//   the object's relevant realm for that world, made on first need. In the
+//   main world nothing changes.
+// - A world realm ends before its main realm does, and whenever its main
+//   realm ends or is detached (navigation, frame removal, page close) -
+//   Blink's WindowProxyManager disposes every world's context with the
+//   frame's. A WindowProxy is kept per (navigable, world) across a
+//   navigation, as the main world's is.
+// - The world's options (a name, universal access - Playwright's utility
+//   world, Blink's isolated world security origin) are the world's, per
+//   agent: the first realm made for a world id records them.
+//
+// No capability: an engine that cannot make world realms answers
+// createWorldRealm with error.NotSupported, and the host has no worlds
+// (no Playwright or Puppeteer utility world).
+
+/// A world's id: 0 is the main world; the host allocates the others.
+pub const WorldId = u32;
+
+/// The main world: every realm createWindowRealm makes.
+pub const main_world: WorldId = 0;
+
+/// `createWorldRealm`'s options.
+pub const WorldRealmOptions = struct {
+    /// The world (never `main_world`).
+    world: WorldId,
+    /// The world's name (CDP's `worldName`; the inspector's context name).
+    /// BORROWED for the call: the engine keeps a copy, recorded with the
+    /// world the first time a realm of it is made.
+    name: []const u8 = "",
+    /// The world may reach every origin's objects: the cross-origin checks
+    /// (HTML IsPlatformObjectSameOrigin) pass for script of this world -
+    /// Blink's isolated world security origin with universal access, which
+    /// CDP's Page.createIsolatedWorld {grantUniveralAccess} sets. Recorded
+    /// with the world, as `name` is.
+    universal_access: bool = false,
+    /// The world's own Content Security Policy (a serialized policy), or
+    /// null: Blink's IsolatedWorldCSP. Null - every DevTools world - and the
+    /// page's policy governs the world's script, as Blink's
+    /// GetContentSecurityPolicyForWorld answers the main world's for an
+    /// isolated world with none; a string, and the world's script is
+    /// checked against it INSTEAD of the page's (Blink's
+    /// ContentSecurityPolicy::ShouldBypassMainWorld: an extension's content
+    /// script world) - "" checks nothing. A world policy's violations are
+    /// reported to no one but a console (Blink's isolated-world CSP
+    /// delegate). BORROWED for the call; recorded with the world.
+    content_security_policy: ?[]const u8 = null,
+};
+
+/// What a world realm is (`worldInfoOf`).
+pub const WorldInfo = struct {
+    world: WorldId,
+    /// BORROWED until the realm ends.
+    name: []const u8,
+    universal_access: bool,
+    /// The world's own policy (WorldRealmOptions.content_security_policy),
+    /// BORROWED until the agent ends; null: the page's governs it.
+    content_security_policy: ?[]const u8 = null,
+    /// The main-world realm whose Window the world realm's global wraps.
+    main: Context,
+};
+
+/// The host's view of an agent's world realms coming and going
+/// (`installWorldObserver`) - for a host that registers each realm with a
+/// debugger (CDP: Runtime.executionContextCreated with auxData {frameId,
+/// isDefault: false, type: "isolated", name}). Called on the agent's
+/// thread, with no script running in the realm; neither may run script.
+pub const WorldObserver = struct {
+    /// `world_realm` was made - by `createWorldRealm`, or on first need, when
+    /// code of the world reached another Window realm's objects. BORROWED.
+    created: *const fn (host: ?*anyopaque, world_realm: Context) void,
+    /// `world_realm` is about to end. BORROWED; it may only be compared
+    /// after the call.
+    destroyed: *const fn (host: ?*anyopaque, world_realm: Context) void,
+};
+
+/// The world realm of `main`'s Window for `options.world` - made from the
+/// engine's snapshot like any Window realm (HTML "create a new realm" with
+/// the existing Window as its global object's platform object, and a new
+/// WindowProxy, or the one the world had for `main`'s navigable before a
+/// navigation), or the one already made. Its settings object, event loop,
+/// Browser, origin and document are `main`'s. It is not entered for its
+/// life; it is entered for each call that runs in it. OWNED by `main`: it
+/// ends with it (`destroyWorldRealms`). Fails when `main` is no live
+/// Window realm, or with error.NotSupported on an engine without worlds.
+pub inline fn createWorldRealm(main: Context, options: *const WorldRealmOptions) Error!Context {
+    return impl.createWorldRealm(main, options);
+}
+
+/// The world realm of `main` for `world` if it was made; null otherwise.
+/// `main` itself for `main_world`.
+pub inline fn worldRealmFor(main: Context, world: WorldId) ?Context {
+    return impl.worldRealmFor(main, world);
+}
+
+/// The world `realm` belongs to: `main_world` for every realm that is no
+/// world realm.
+pub inline fn worldOf(realm: Context) WorldId {
+    return impl.worldOf(realm);
+}
+
+/// The main-world realm of a world realm; `realm` itself for any other.
+pub inline fn mainRealmOf(realm: Context) Context {
+    return impl.mainRealmOf(realm);
+}
+
+/// What `realm` is as a world realm; null for any other realm.
+pub inline fn worldInfoOf(realm: Context) ?WorldInfo {
+    return impl.worldInfoOf(realm);
+}
+
+/// The world realms of `main` that were made and have not ended, in the
+/// order they were made: the first `out.len` of them copied into `out`.
+/// Answers how many there are.
+pub inline fn worldRealmsOf(main: Context, out: []Context) usize {
+    return impl.worldRealmsOf(main, out);
+}
+
+/// End every world realm of `main` (the observer told first). Implied by
+/// `destroyWindowRealm` of `main` - and by the detach it may make - so a
+/// host calls it only to drop its worlds while `main` lives on.
+pub inline fn destroyWorldRealms(main: Context) void {
+    impl.destroyWorldRealms(main);
+}
+
+/// Install (or, with null, remove) `agent`'s world observer. `observer` and
+/// `host` BORROWED until removed or the agent ends.
+pub inline fn installWorldObserver(agent: *Agent, observer: ?*const WorldObserver, host: ?*anyopaque) void {
+    impl.installWorldObserver(agent, observer, host);
+}
+
+// ============================================================================
+// 4.2b Inspector protocol [inspector_protocol] (CDP part 1, design 3.4)
+// ============================================================================
+//
+// The user's ruling D3 (2026-11-21): the Chrome DevTools Protocol's
+// JavaScript domains - Runtime, Debugger, Profiler, HeapProfiler - are the
+// engine's own inspector, "scoped through our js engine protocol": CDP JSON
+// in and out at this edge, Crane's types for sessions and contexts, no
+// engine type crosses. The method-level obligation of an adapter (V8 meets it
+// with v8_inspector, Chrome's own; a JavaScriptCore adapter would bridge to
+// WebKit's Web Inspector protocol inside itself):
+// - every method `inspectorCanDispatch` accepts is answered on the session's
+//   channel with CDP's response for it, and the domains' events are sent
+//   there while enabled - Runtime.executionContextCreated/Destroyed/Cleared
+//   for the contexts the HOST registers (never on its own at a realm's
+//   making: a realm is made before its document commits, and CDP clients drop
+//   a context reported before executionContextsCleared), consoleAPICalled for
+//   `inspectorConsoleMessage`, exceptionThrown/Revoked for
+//   `inspectorExceptionThrown`/`Revoked`, bindingCalled for Runtime.addBinding's
+//   functions (installed in every registered context of the session's group
+//   whose name matches executionContextName);
+// - remote object ids are the session's own; `inspectorWrap` and
+//   `inspectorUnwrap` make and read them, so DOM.describeNode and
+//   DOM.resolveNode (the host's domain) round-trip a node through them;
+// - Runtime.runIfWaitingForDebugger reaches the host's client
+//   (`InspectorClient.runIfWaitingForDebugger`); a pause reaches its
+//   message-loop hooks (with none installed the engine resumes at once:
+//   holding a pause is CDP part 2);
+// - CSP: the inspector's own evaluations are not the page's string
+//   compilations - the host's code generation hook is not asked for them.
+// The inspector is the agent's - one per agent - and the console's REPL mode
+// (`evaluateReplScript`, its own capability) uses it too; that use survives a
+// build without this capability.
+
+/// A session of the agent's inspector: one CDP client's view of one group's
+/// contexts. OWNED: `inspectorDisconnect`.
+pub const InspectorSession = opaque {};
+
+/// A host's group of contexts: what a session sees and what
+/// `inspectorResetGroup` clears - CDP's tab, by its id (Blink: a local root
+/// frame's group). The host's numbering, nonzero; the adapter maps it to the
+/// engine's own group ids.
+pub const InspectorGroup = u64;
+
+/// Where a session's messages go: each a complete CDP message - a response or
+/// an event - as UTF-8 JSON, BORROWED for the call. Called on the agent's
+/// thread from inside the engine (a dispatch, a script that logs, a microtask
+/// checkpoint): the host queues the message and calls no engine operation of
+/// this session from it.
+pub const InspectorChannel = struct {
+    context: ?*anyopaque,
+    send: *const fn (context: ?*anyopaque, message: []const u8) void,
+};
+
+/// A realm the host makes known to the agent's inspector
+/// (`inspectorContextCreated`): Runtime.ExecutionContextDescription.
+pub const InspectorContext = struct {
+    realm: Context,
+    group: InspectorGroup,
+    /// `name`: "" for a main-world realm, the world's name for an isolated
+    /// world (Runtime.addBinding's executionContextName matches it). BORROWED.
+    name: []const u8 = "",
+    /// `origin`. BORROWED.
+    origin: []const u8 = "",
+    /// `auxData`: a JSON object's text - CDP's {"isDefault", "type",
+    /// "frameId"}. BORROWED.
+    aux_data: []const u8 = "",
+    /// The group's default context: Runtime.evaluate with no contextId runs
+    /// there.
+    is_default: bool = false,
+};
+
+/// The host's side of the agent's inspector (`installInspectorClient`).
+pub const InspectorClient = struct {
+    host: ?*anyopaque = null,
+    /// Runtime.runIfWaitingForDebugger reached the inspector for a session of
+    /// `group`: the host releases what it holds (CDP's
+    /// Target.setAutoAttach {waitForDebuggerOnStart}).
+    runIfWaitingForDebugger: ?*const fn (host: ?*anyopaque, group: InspectorGroup) void = null,
+    /// The debugger paused script of `group`: the host runs its message loop
+    /// - dispatching its sessions' messages - until `quitMessageLoopOnPause`.
+    /// Null: the engine resumes at once.
+    runMessageLoopOnPause: ?*const fn (host: ?*anyopaque, group: InspectorGroup) void = null,
+    quitMessageLoopOnPause: ?*const fn (host: ?*anyopaque) void = null,
+    /// The RemoteObject `subtype` the host gives a platform object (V8's
+    /// V8InspectorClient::valueSubtype; Blink's ThreadDebuggerCommonImpl):
+    /// "node", "array", "error", "blob" or "trustedtype" - STATIC text - or
+    /// null for none (the engine's own answer). `instance` BORROWED. Called
+    /// on the agent's thread whenever the inspector describes an object.
+    /// CDP clients make an element handle only for subtype "node".
+    valueSubtype: ?*const fn (host: ?*anyopaque, instance: *Instance) ?[]const u8 = null,
+    /// The RemoteObject `description` of a platform object valueSubtype
+    /// named (descriptionForValueSubtype: a node's "div#id.class",
+    /// "#document"), written into `buffer`; the bytes written, or null for
+    /// the engine's own. `instance` BORROWED.
+    descriptionForValueSubtype: ?*const fn (host: ?*anyopaque, instance: *Instance, buffer: []u8) ?[]const u8 = null,
+};
+
+/// Where an exception the host reports was thrown (`inspectorExceptionThrown`).
+/// BORROWED; lines and columns 1-based, 0 when unknown.
+pub const InspectorExceptionDetails = struct {
+    message: []const u8,
+    url: []const u8 = "",
+    line: u32 = 0,
+    column: u32 = 0,
+    /// Where it happened, captured then (`inspectorCaptureStack`): the
+    /// report's stack trace, and its URL, line, column and script when
+    /// `url` is empty - an unhandled rejection reported after the call that
+    /// rejected returned, as Blink's PromiseRejectHandler captures its
+    /// SourceLocation. An Error exception's own stack still wins. BORROWED.
+    stack: ?*const InspectorStack = null,
+};
+
+/// A JavaScript stack as the agent's inspector captured it
+/// (`inspectorCaptureStack`); OWNED by whoever captured it until
+/// `inspectorReleaseStack`.
+pub const InspectorStack = opaque {};
+
+/// What a remote object id names (`inspectorUnwrap`): the value, OWNED, and
+/// the realm it is of.
+pub const InspectorUnwrapped = struct {
+    value: Owned,
+    realm: Context,
+};
+
+/// Install (or, with null, remove) `agent`'s inspector client. `client`
+/// BORROWED until removed or the agent ends.
+pub inline fn installInspectorClient(agent: *Agent, client: ?*const InspectorClient) void {
+    comptime gate(.inspector_protocol, "installInspectorClient");
+    impl.installInspectorClient(agent, client);
+}
+
+/// A session of `agent`'s inspector in `group`, its messages to `channel`
+/// (BORROWED until disconnected). OWNED: `inspectorDisconnect`.
+pub inline fn inspectorConnect(agent: *Agent, group: InspectorGroup, channel: InspectorChannel) Error!*InspectorSession {
+    comptime gate(.inspector_protocol, "inspectorConnect");
+    return impl.inspectorConnect(agent, group, channel);
+}
+
+/// End a session: nothing more reaches its channel; its remote objects go.
+pub inline fn inspectorDisconnect(session: *InspectorSession) void {
+    comptime gate(.inspector_protocol, "inspectorDisconnect");
+    impl.inspectorDisconnect(session);
+}
+
+/// One CDP request (UTF-8 JSON, BORROWED) for the session - a method
+/// `inspectorCanDispatch` accepts. Its response comes on the channel, now or
+/// later (an awaited promise: at a later microtask checkpoint).
+pub inline fn inspectorDispatch(session: *InspectorSession, message: []const u8) void {
+    comptime gate(.inspector_protocol, "inspectorDispatch");
+    impl.inspectorDispatch(session, message);
+}
+
+/// Whether `method` ("Runtime.evaluate") is one the inspector answers.
+pub inline fn inspectorCanDispatch(method: []const u8) bool {
+    comptime gate(.inspector_protocol, "inspectorCanDispatch");
+    return impl.inspectorCanDispatch(method);
+}
+
+/// Make a realm known to the inspector in its group (a realm known in
+/// another group moves): every session of the group with Runtime enabled gets
+/// Runtime.executionContextCreated. Answers its ExecutionContextId. The realm
+/// is forgotten at its end, or by `inspectorContextDestroyed` /
+/// `inspectorResetGroup`.
+pub inline fn inspectorContextCreated(context: *const InspectorContext) Error!i64 {
+    comptime gate(.inspector_protocol, "inspectorContextCreated");
+    return impl.inspectorContextCreated(context);
+}
+
+/// Forget a registered realm: Runtime.executionContextDestroyed.
+pub inline fn inspectorContextDestroyed(realm: Context) void {
+    comptime gate(.inspector_protocol, "inspectorContextDestroyed");
+    impl.inspectorContextDestroyed(realm);
+}
+
+/// Forget every realm of `group`: Runtime.executionContextsCleared (a
+/// top-level cross-document commit, before its new realms are registered).
+pub inline fn inspectorResetGroup(agent: *Agent, group: InspectorGroup) void {
+    comptime gate(.inspector_protocol, "inspectorResetGroup");
+    impl.inspectorResetGroup(agent, group);
+}
+
+/// A registered realm's ExecutionContextId; null when it is not registered.
+pub inline fn inspectorContextId(realm: Context) ?i64 {
+    comptime gate(.inspector_protocol, "inspectorContextId");
+    return impl.inspectorContextId(realm);
+}
+
+/// The registered realm of ExecutionContextId `id`, if any.
+pub inline fn inspectorRealmOfContextId(agent: *Agent, id: i64) ?Context {
+    comptime gate(.inspector_protocol, "inspectorRealmOfContextId");
+    return impl.inspectorRealmOfContextId(agent, id);
+}
+
+/// `value` (BORROWED; a platform object as its wrapper in `realm`'s world) as
+/// a Runtime.RemoteObject of the session, in `object_group`: its JSON text,
+/// OWNED by `allocator`. `realm` must be registered in the session's group.
+pub inline fn inspectorWrap(session: *InspectorSession, realm: Context, value: JSValue, object_group: []const u8, allocator: std.mem.Allocator) Error![]u8 {
+    comptime gate(.inspector_protocol, "inspectorWrap");
+    return impl.inspectorWrap(session, realm, value, object_group, allocator);
+}
+
+/// The value a remote object id of the session names, and its realm; null
+/// when it names nothing (released, or another session's).
+pub inline fn inspectorUnwrap(session: *InspectorSession, object_id: []const u8) Error!?InspectorUnwrapped {
+    comptime gate(.inspector_protocol, "inspectorUnwrap");
+    return impl.inspectorUnwrap(session, object_id);
+}
+
+/// The Console Standard's Logger step reached the inspector: console
+/// `method` ("log", "warn", "table", ...) called with `args` (BORROWED) in
+/// `realm`. Every session of the realm's group with Runtime enabled gets
+/// Runtime.consoleAPICalled (and later ones, at Runtime.enable, the stored
+/// message), its arguments wrapped and its stack captured by the inspector.
+/// Nothing - one lookup - for an agent with no inspector.
+pub inline fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
+    comptime gate(.inspector_protocol, "inspectorConsoleMessage");
+    impl.inspectorConsoleMessage(realm, method, args);
+}
+
+/// HTML "report an exception" / an unhandled rejection reached the
+/// inspector: Runtime.exceptionThrown to the realm's group, with the stack
+/// of `exception` (BORROWED) or the current one. Answers the exception's id
+/// (for `inspectorExceptionRevoked`), 0 when nothing was reported - no
+/// inspector, or the realm unregistered.
+pub inline fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const InspectorExceptionDetails) u32 {
+    comptime gate(.inspector_protocol, "inspectorExceptionThrown");
+    return impl.inspectorExceptionThrown(realm, exception, details);
+}
+
+/// The running script's stack, as the inspector of `realm`'s agent would
+/// report it, kept for a report made later (`InspectorExceptionDetails.
+/// stack`): HostPromiseRejectionTracker's "reject" runs inside the call
+/// that rejected, after which nothing of it is on the stack. OWNED - release
+/// with `inspectorReleaseStack`. Null when the agent has no inspector (or no
+/// script runs).
+pub inline fn inspectorCaptureStack(realm: Context) ?*InspectorStack {
+    comptime gate(.inspector_protocol, "inspectorCaptureStack");
+    return impl.inspectorCaptureStack(realm);
+}
+
+/// Free a stack `inspectorCaptureStack` captured.
+pub inline fn inspectorReleaseStack(stack: *InspectorStack) void {
+    comptime gate(.inspector_protocol, "inspectorReleaseStack");
+    impl.inspectorReleaseStack(stack);
+}
+
+/// A rejection reported by `inspectorExceptionThrown` got a handler:
+/// Runtime.exceptionRevoked.
+pub inline fn inspectorExceptionRevoked(realm: Context, exception_id: u32, message: []const u8) void {
+    comptime gate(.inspector_protocol, "inspectorExceptionRevoked");
+    impl.inspectorExceptionRevoked(realm, exception_id, message);
+}
+
+/// The running script's stack as CDP's Runtime.StackTrace JSON (at most
+/// `max_frames`, 0: all), OWNED by `allocator`; null when no script runs or
+/// the agent has no inspector (Network initiators, console messages a host
+/// builds itself).
+pub inline fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std.mem.Allocator) Error!?[]u8 {
+    comptime gate(.inspector_protocol, "inspectorStackTrace");
+    return impl.inspectorStackTrace(agent, max_frames, allocator);
 }
 
 // ============================================================================
@@ -1740,27 +2308,23 @@ pub inline fn isConstructor(realm: Context, value: JSValue) bool {
     return impl.isConstructor(realm, value);
 }
 
-/// A callback-function value as the binding converted it - an argument, a
-/// dictionary member, a union arm, a sequence element - taken as a
+/// Keep a callback function value past the call it was converted for: a
 /// CallbackFunction of the caller's own (OWNED: released exactly once) whose
-/// context is the incumbent realm now - the operation being called is
-/// converting its arguments. The value is BORROWED, as every argument is:
-/// the binding releases it when the call returns, whether or not the impl
-/// took it, so an impl that keeps the callback takes it during its call, and
-/// one that does not need it leaves it alone. Taken twice, it gives nothing
-/// the second time (an undefined function). TRANSITIONAL, until codegen
-/// types callback parameters as CallbackFunction.
-pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction {
-    return impl.takeCallbackFunction(argument);
+/// callback context is the incumbent realm now - the conversion's, since a
+/// borrowed value lives only for its call (WebIDL 3.2.19 step 2). Keep at most
+/// once, and only during the call: an adapter may MOVE the binding's hold into
+/// the result (V8 does: no new handle is made), after which `callback` refers
+/// to nothing and a second keep gives an undefined function. The binding
+/// still releases its own (then empty) hold when the call returns.
+pub inline fn keepCallbackFunction(callback: BorrowedCallbackFunction) CallbackFunction {
+    return impl.keepCallbackFunction(callback);
 }
 
-/// A callback-interface argument as the binding hands it over (the
-/// runtime.CallbackWrapper it converted), as a CallbackInterface of its own
-/// (OWNED) whose context is the incumbent realm now. The wrapper is BORROWED,
-/// as every argument is: the binding releases it when the call returns.
-/// TRANSITIONAL, as takeCallbackFunction.
-pub inline fn takeCallbackInterface(argument: *const CallbackWrapper) CallbackInterface {
-    return impl.takeCallbackInterface(argument);
+/// Keep a callback interface value past its call: a CallbackInterface of the
+/// caller's own (OWNED), its callback context the incumbent realm now (WebIDL
+/// 3.2.16 step 2). At most once, during the call, as keepCallbackFunction.
+pub inline fn keepCallbackInterface(callback: BorrowedCallbackInterface) CallbackInterface {
+    return impl.keepCallbackInterface(callback);
 }
 
 // ============================================================================
@@ -2853,7 +3417,10 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 
 /// Inside runtime.lifetime's `traceTree` hook only (`tracer` is the one the
 /// engine passed it): the engine keeps `slot`'s wrapper, if the slot holds
-/// one, as reachable as the wrapper being traced. Allocates nothing, runs
+/// one, as reachable as the wrapper being traced - and the node's wrapper in
+/// each isolated world of its relevant realm (section 4.2a), which the slot
+/// does not hold: the walk names every node it visits, an empty slot
+/// included. Allocates nothing, runs
 /// no script, and no other operation may be called while the hook runs.
 /// V8: `cppgc::Visitor::Trace` of the slot's TracedReference (Blink's
 /// ScriptWrappable::Trace of `wrapper_`); WebKit: `visitor.append` of the

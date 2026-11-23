@@ -520,7 +520,11 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     const document = switch (kind) {
         .html => html: {
             // 5.1-5.3: the final encoding, else the prescan's, else UTF-8.
-            charset = final_encoding orelse sniffing.prescan(bytes) orelse sniffing.utf_8;
+            // The prescan is the browsers' meta scan, as for a navigation's
+            // bytes (html/syntax/charset/xhr.html: all three find a meta in
+            // the head after 1024 bytes and none in a script's contents;
+            // html_core's parser/meta_charset_scan.zig).
+            charset = final_encoding orelse (try @import("html_core").parser.meta_charset_scan.prescan(allocator, bytes)) orelse sniffing.utf_8;
             // A byte order mark decides the decoder, and so the encoding.
             const bom = if (std.mem.startsWith(u8, bytes, "\xEF\xBB\xBF")) sniffing.utf_8 else if (std.mem.startsWith(u8, bytes, "\xFE\xFF")) sniffing.lookup("utf-16be") else if (std.mem.startsWith(u8, bytes, "\xFF\xFE")) sniffing.lookup("utf-16le") else null;
             if (bom) |found| charset = found;

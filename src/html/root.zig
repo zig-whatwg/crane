@@ -169,13 +169,6 @@ pub const WindowProxyError = window.WindowProxyError;
 pub const IFrameIntegration = window.IFrameIntegration;
 pub const IFrameState = window.IFrameState;
 pub const IFrameError = window.IFrameError;
-pub const UIBackend = window.UIBackend;
-pub const StubUIBackend = window.StubUIBackend;
-pub const AnimationFrameScheduler = window.AnimationFrameScheduler;
-pub const FrameTimingBackend = window.FrameTimingBackend;
-pub const StubFrameTimingBackend = window.StubFrameTimingBackend;
-pub const MockFrameTimingBackend = window.MockFrameTimingBackend;
-pub const DOMHighResTimeStamp = window.DOMHighResTimeStamp;
 
 // Navigation & History (§7.2-7.4)
 pub const navigation = @import("navigation/root.zig");

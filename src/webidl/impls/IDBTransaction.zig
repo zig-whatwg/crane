@@ -273,7 +273,7 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .associate_upgrade_request = associateUpgradeRequest, .finish = finishTransaction, .get_the_parent = getParent, .cleanup = cleanupTransaction, .enqueue = enqueueRequest, .enqueue_internal = enqueueInternal, .outcome = transactionOutcome });
+    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .associate_upgrade_request = associateUpgradeRequest, .finish = finishNow, .get_the_parent = getParent, .cleanup = cleanupTransaction, .enqueue = enqueueRequest, .enqueue_internal = enqueueInternal, .outcome = transactionOutcome });
 }
 fn associateUpgradeRequest(instance: *runtime.Instance, request: *runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
@@ -321,16 +321,49 @@ fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransacti
     internal.database_realm = database.ctx;
     engine.traceChild(instance, database, .{ .name = "idb.database" });
 }
-fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
+/// The finish hook (dom.indexeddb.finishTransaction): the steps below, which
+/// cannot wait for a commit the storage sequence is still writing.
+fn finishNow(instance: *runtime.Instance, abort: bool) !bool {
+    return (try finishTransaction(instance, abort)) orelse error.InvalidStateError;
+}
+
+/// ED 5.4 commit / 5.5 abort, then the complete or abort event. Null: the
+/// commit is being written on the Browser's storage sequence (a profile
+/// directory; lane prof2) - the transaction stays committing, and the job
+/// wakes its task when the write is done (IDBTransaction.startCommit), as
+/// Chromium posts complete only once its backing store's commit finished.
+fn finishTransaction(instance: *runtime.Instance, abort: bool) !?bool {
     const realm = instance.ctx;
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const transaction = internal.transaction orelse return error.InvalidStateError;
     // Aborting an upgrade 5.8 and committing 5.4: dispatch after state is finished.
-    const aborted = abort or internal.aborted or transaction.err != null;
+    var aborted = abort or internal.aborted or transaction.err != null;
     internal.aborted = aborted;
     if (internal.finish_event_fired) return !aborted;
     if (transaction.state != .finished) {
-        if (aborted) try transaction.abortForError(transaction.err orelse error.AbortError) else try transaction.commit();
+        if (aborted) try transaction.abortForError(transaction.err orelse error.AbortError) else {
+            // This agent's endpoint, told when the write is done - made only
+            // when the commit goes to the sequence, so a Browser with no
+            // profile directory makes none.
+            const notify = if (transaction.commitsOnSequence()) dom.indexeddb.endpointOf(realm) else null;
+            switch (try transaction.startCommit(notify)) {
+                .writing => return null,
+                .done => {},
+            }
+            // ED 5.4 step 3.1: writing the changes failed, so the commit
+            // aborted the transaction instead - it fires "abort", and (5.5
+            // step 3) the transaction's error is that DOMException: an
+            // UnknownError, or a QuotaExceededError for a full store.
+            if (transaction.err) |err| {
+                aborted = true;
+                internal.aborted = true;
+                if (internal.exception == null) {
+                    internal.exception = try makeException(instance, @errorName(err));
+                    internal.exception_realm = realm;
+                    engine.traceChild(instance, internal.exception.?, .{ .name = "idb.error" });
+                }
+            }
+        }
     }
     if (transaction.mode == .versionchange) dom.indexeddb.endUpgrade(internal.database.?);
     internal.finish_event_fired = true;
@@ -515,6 +548,9 @@ const TransactionTask = struct {
     fn schedule(self: *TransactionTask) !void {
         if (self.queued or self.running or self.cancelled or self.finished) return;
         if (self.backend.state != .finished and !self.backend.canStart()) return;
+        // Its commit is being written on the storage sequence: the job's
+        // task wakes this one when it is done (no task meanwhile).
+        if (self.backend.commitWriting()) return;
         if (!self.realm.hasEngine()) return;
         // A closing worker's loop drops a task before queueTask returns
         // (WorkerEventLoop.queueTask), and the drop's cancel can free this
@@ -597,7 +633,8 @@ const TransactionTask = struct {
         const internal = self.instance.getState(State).own._internal orelse return error.InvalidStateError;
         if (self.pending.items.len == 0) {
             if (self.backend.state == .active) return;
-            _ = try finishTransaction(self.instance, internal.aborted);
+            // Null: the commit is being written; its job wakes this task.
+            _ = (try finishTransaction(self.instance, internal.aborted)) orelse return;
             if (!self.cancelled) self.finished = true;
             return;
         }

@@ -813,6 +813,67 @@ fn dataOf(node: *NodeBase) ?ElementData {
     return element_data.of(instanceOf(node) orelse return null);
 }
 
+/// Selectors 4 3.2.1: whether a featureless element (the shadow host seen
+/// from inside its shadow tree, a scoping root document) is allowed to match
+/// `compound` - all its simple selectors are, and at least one of them can
+/// match it by itself:
+/// - :host, :host() and :scope ("simple selectors it is explicitly defined
+///   to match");
+/// - :is(), :where() and :not() "if their argument selector is allowed to
+///   match it", a list being allowed when one of its complex selectors' subject
+///   compounds is;
+/// - :has() "if and only if the compound selector it's part of contains at
+///   least one other simple selector that's allowed to match it";
+/// - a pseudo-element, which originates from the rest of the compound: alone,
+///   from an implied universal selector, which never matches a featureless
+///   element (`::before` is not the host's, `:host::before` is).
+/// A default namespace (the parser's implicit NamespaceURI) does not prevent
+/// a compound of only :host, :host() and :scope from matching; any other
+/// compound carries the implied universal selector it stands for, and does
+/// not match. Deviation from 3.2.1's "the default namespace does not prevent
+/// the match": Chrome, Firefox and Safari all refuse `:is(:host)` and
+/// `:where(:host)` under a default namespace, the host's own or a foreign
+/// one, and accept `:host` and `:host:host` (css/selectors/
+/// featureless-007.html, wpt.fyi aligned run 2358bd4835) - golden rule 2.
+fn featurelessAllows(compound: *const CompoundSelector) bool {
+    var allowed = false;
+    var namespaced = false;
+    var host_only = true;
+    for (compound.simple_selectors) |*simple| switch (simple.*) {
+        .NamespaceURI => namespaced = true,
+        .PseudoElement => {},
+        .PseudoClass => |pseudo| switch (pseudo.kind) {
+            .Host, .Scope => allowed = true,
+            .Is, .Where, .Not => |list| {
+                if (!featurelessAllowsList(list)) return false;
+                allowed = true;
+                host_only = false;
+            },
+            // Allowed beside another allowed simple selector (`allowed`),
+            // wherever it sits in the compound. featureless-006's
+            // `:not(:has(.nope):host)` fails in all three browsers: Firefox
+            // has no :has() on the host, Safari no :not() on it, and Chrome,
+            // the only one with both, seems to need :has() after :host.
+            // Golden rule 2's mechanism-by-mechanism step finds no majority
+            // for the order, so the spec decides.
+            .Has => host_only = false,
+            else => return false,
+        },
+        else => return false,
+    };
+    if (namespaced and !host_only) return false;
+    return allowed;
+}
+
+/// A selector list is allowed to match a featureless element when one of its
+/// complex selectors is - that is, its subject compound (Selectors 4 3.2.1).
+fn featurelessAllowsList(list: *const SelectorList) bool {
+    for (list.selectors) |*complex| {
+        if (featurelessAllows(&complex.compound)) return true;
+    }
+    return false;
+}
+
 fn isShadowRoot(node: *NodeBase) bool {
     if (node.node_type != DOCUMENT_FRAGMENT_NODE) return false;
     const instance = instanceOf(node) orelse return false;
@@ -891,8 +952,10 @@ const Matcher = struct {
     /// The shadow root whose tree the selector is matched in, and its host.
     shadow_root: ?*NodeBase = null,
     shadow_host: ?*NodeBase = null,
-    /// :has(): the element relative selectors are anchored at.
+    /// :has(): the element relative selectors are anchored at - the
+    /// featureless shadow host itself for a `:host:has()` (`anchor_featureless`).
     anchor: ?*NodeBase = null,
+    anchor_featureless: bool = false,
     /// The query's child indices (querySelector and querySelectorAll; null
     /// for matches() and closest(), which look at one element).
     nth_cache: ?*NthIndexCache = null,
@@ -1026,7 +1089,7 @@ const Matcher = struct {
         const anchor = self.anchor orelse return .not_matched_globally;
         var candidate = self.relatedElement(combinator, subject) orelse return candidateNotFound(combinator);
         while (true) {
-            if (!candidate.featureless and candidate.node == anchor) return .matched;
+            if (candidate.node == anchor and candidate.featureless == self.anchor_featureless) return .matched;
             switch (combinator) {
                 .NextSibling => return .not_matched_restart_from_closest_later_sibling,
                 .Child => return .not_matched_restart_from_closest_descendant,
@@ -1098,13 +1161,15 @@ const Matcher = struct {
     }
 
     /// Selectors 4 3.2.1: a compound matches a featureless element only if
-    /// every simple selector in it is allowed to - here :host and :host(),
-    /// and the logical combinations of them.
+    /// all its simple selectors are allowed to match it (`featurelessAllows`)
+    /// and do - :host and :host(), :scope for its scoping root, the logical
+    /// combinations of allowed selectors, and :has() beside one of those.
     fn matchesFeaturelessCompound(self: *const Matcher, subject: Subject, compound: *const CompoundSelector) bool {
+        if (!featurelessAllows(compound)) return false;
         for (compound.simple_selectors) |*simple| {
             const kind = switch (simple.*) {
-                // Selectors 4 3.2.1: a default namespace never prevents
-                // an otherwise matching featureless host.
+                // featurelessAllows decided whether the default namespace
+                // prevents the match.
                 .NamespaceURI => continue,
                 // CSS Scoping 3.1.1: `:host::before` styles the host's
                 // ::before - the pseudo-element the style engine resolves
@@ -1124,6 +1189,13 @@ const Matcher = struct {
                 // no shadow host.
                 .Host => |argument| if (subject.node.node_type != ELEMENT_NODE) false else if (argument) |list| self.hostMatches(subject.node, list) else true,
                 .Is, .Where => |list| self.matchesList(subject, list),
+                // 3.2.1: "logical combination pseudo-classes, if their
+                // argument selector is allowed to match it" -
+                // featurelessAllows checked that, so `:not(:host(.nope))`
+                // matches the host and `:not(.foo:host)` never does
+                // (css/selectors/featureless-006.html: Chrome and Firefox).
+                .Not => |list| !self.matchesList(subject, list),
+                .Has => |list| self.matchesHostHas(subject, list),
                 // Cascade 6 3.5.1: ":scope ... match[es] the @scope rule's
                 // scoping root, including the featureless shadow host when
                 // that host is the scoping root."
@@ -1133,6 +1205,33 @@ const Matcher = struct {
             if (!ok) return false;
         }
         return true;
+    }
+
+    /// CSS Shadow 1 3.1.1: "the shadow host also appears in its shadow tree,
+    /// with the contents of the shadow tree treated as its children" - a
+    /// `:host:has()` anchors its relative selectors at the featureless host
+    /// and finds them in the host's shadow tree, where the host has no
+    /// siblings (css/selectors/invalidation/host-has-shadow-tree-element-at-
+    /// {subject,nonsubject}-position.html, featureless-006.html: Chrome and
+    /// Safari).
+    fn matchesHostHas(self: *const Matcher, subject: Subject, list: *const SelectorList) bool {
+        const root = self.shadow_root orelse return false;
+        if (self.shadow_host != subject.node) return false;
+        var anchored = self.*;
+        anchored.anchor = subject.node;
+        anchored.anchor_featureless = true;
+        for (list.selectors) |*relative| {
+            switch (relative.initial_combinator orelse .Descendant) {
+                .Descendant, .Child => {
+                    var walk = Walk.init(root);
+                    while (walk.next()) |candidate| {
+                        if (anchored.matchesComplex(.{ .node = candidate }, relative)) return true;
+                    }
+                },
+                .NextSibling, .SubsequentSibling => {},
+            }
+        }
+        return false;
     }
 
     fn matchesSimple(self: *const Matcher, node: *NodeBase, data: ElementData, simple: *const SimpleSelector) bool {
@@ -1291,15 +1390,9 @@ const Matcher = struct {
     /// answer read state that can change without a tree mutation.
     fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: ElementData, kind: PseudoClassKind) bool {
         if (self.state_reads) |reads| {
-            if (kind == .FocusVisible) {
-                // Selectors 4 9.4: modality can change without focus or a
-                // tree mutation. Only focused elements read that state:
-                // the universal UA rule must not make every style volatile.
-                const element = instanceOf(node) orelse return false;
-                if (!focus_matching.matchesFocus(element)) return false;
-                reads.@"volatile" = true;
-                return focus_matching.matchesFocusVisible(element);
-            }
+            // :focus-visible is not volatile: what it reads beyond the tree
+            // and the focused element moves a revision the style engine
+            // pulls (StyleEngine.observeFocusVisible).
             if (!reads.@"volatile" and readsVolatileState(kind, data)) reads.@"volatile" = true;
         }
         return self.matchesPseudoClass(node, data, kind);
@@ -1317,6 +1410,11 @@ const Matcher = struct {
             .FirstChild => previousElementSibling(node) == null,
             .LastChild => nextElementSibling(node) == null,
             .OnlyChild => previousElementSibling(node) == null and nextElementSibling(node) == null,
+            // View Transitions 1 §3.1: the view transition pseudo-element the
+            // style engine resolves (pseudo_target) has no sibling in the
+            // view transition tree. It follows only a named view transition
+            // pseudo-element, whose originating element is `node`.
+            .PseudoElementOnlyChild => if (self.pseudo_target) |wanted| @import("style/hooks.zig").viewTransitionOnlyChild(element, wanted) else false,
             .FirstOfType => self.typeIndex(node, data, false) == 1,
             .LastOfType => self.typeIndex(node, data, true) == 1,
             .OnlyOfType => self.typeIndex(node, data, false) == 1 and self.typeIndex(node, data, true) == 1,
@@ -1416,6 +1514,7 @@ const Matcher = struct {
     fn matchesHas(self: *const Matcher, node: *NodeBase, list: *const SelectorList) bool {
         var anchored = self.*;
         anchored.anchor = node;
+        anchored.anchor_featureless = false;
         for (list.selectors) |*relative| {
             const combinator = relative.initial_combinator orelse .Descendant;
             const simple_chain = relative.combinators.len == 0;
@@ -1762,7 +1861,7 @@ pub fn matchesNth(index: i64, pattern: NthPattern) bool {
 /// shadow root's host's language, its parent element's, then its document's
 /// pragma-set default. HTTP Content-Language is not recorded yet, so the
 /// final fallback is the empty string (unknown).
-fn languageOf(start: *NodeBase) []const u8 {
+pub fn languageOf(start: *NodeBase) []const u8 {
     var current: ?*NodeBase = start;
     while (current) |node| {
         if (node.node_type == ELEMENT_NODE) {

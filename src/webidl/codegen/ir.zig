@@ -8,6 +8,8 @@ const log = std.log.scoped(.ir);
 const types = @import("types.zig");
 const duplicates = @import("duplicates.zig");
 const member_overrides = @import("member_overrides.zig");
+const member_removals = @import("member_removals.zig");
+const include_removals = @import("include_removals.zig");
 const type_registry_mod = @import("type_registry.zig");
 
 // Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
@@ -123,6 +125,10 @@ pub const IR = struct {
     /// The source keys of supplementary files (markSupplementary); owns its
     /// keys.
     supplementary: std.StringHashMap(void),
+
+    /// Which include_removals.zig entries an includes statement matched
+    /// (processIncludes); checkIncludeRemovals fails on one that none did.
+    include_removals_matched: [include_removals.table.len]bool = @splat(false),
 
     allocator: std.mem.Allocator,
 
@@ -281,6 +287,17 @@ pub const IR = struct {
             };
         }
         if (failed) return error.DuplicateDefinition;
+        // member_removals.zig: an entry whose member the IDL no longer
+        // declares is stale - the snapshot update that dropped the member
+        // drops the entry too.
+        for (member_removals.table) |entry| {
+            // Sources without the interface (a test's own IDL) say nothing.
+            if (!self.occurrences.contains(entry.interface)) continue;
+            if (self.declares(entry.interface, entry.member)) continue;
+            // Printed, not logged: the caller reports the error.
+            std.debug.print("  error: member_removals.zig lists {s}.{s}, which the IDL no longer declares: delete the entry\n", .{ entry.interface, entry.member });
+            return error.StaleMemberRemoval;
+        }
         // A setlike declaration stays a declaration: its members are the
         // binding's, never operations (setlike.zig).
     }
@@ -340,6 +357,42 @@ pub const IR = struct {
         trimmed.members = try withMemberScopedExtAttrs(arena, rest.items, partial.extAttrs);
         trimmed.extAttrs = try withoutMemberScopedExtAttrs(arena, partial.extAttrs);
         try merged.mergePartial(self.allocator, trimmed);
+    }
+
+    /// Removed members: the attributes and named operations
+    /// member_removals.zig lists for interface `name`, taken out of `merged`
+    /// once every partial is in (every overload of an operation). `finish`
+    /// fails on an entry the IDL no longer declares.
+    fn removeListedMembers(merged: *Interface, name: []const u8) void {
+        for (member_removals.table) |entry| {
+            if (!std.mem.eql(u8, entry.interface, name)) continue;
+            var i: usize = 0;
+            while (i < merged.members.items.len) {
+                const member_name = replaceableName(merged.members.items[i]) orelse {
+                    i += 1;
+                    continue;
+                };
+                if (std.mem.eql(u8, member_name, entry.member)) {
+                    _ = merged.members.orderedRemove(i);
+                    continue;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    /// Whether some definition or partial of interface `interface` declares
+    /// the attribute or named operation `member`.
+    fn declares(self: *const IR, interface: []const u8, member: []const u8) bool {
+        const list = self.occurrences.get(interface) orelse return false;
+        for (list.items) |occurrence| {
+            if (occurrence.definition != .interface) continue;
+            for (occurrence.definition.interface.members) |candidate| {
+                const candidate_name = replaceableName(candidate) orelse continue;
+                if (std.mem.eql(u8, candidate_name, member)) return true;
+            }
+        }
+        return false;
     }
 
     /// The name member_overrides.zig and the duplicate rule know `member`
@@ -440,6 +493,7 @@ pub const IR = struct {
                     if (i == first or !occurrence.definition.isPartial()) continue;
                     try self.mergeInterfacePartial(&merged, occurrence.definition.interface, key, occurrence.file, &from_supplementary);
                 }
+                removeListedMembers(&merged, key);
                 const def = occurrences[first].definition.interface;
                 const type_kind: TypeKind = if (def.callback) .callback_interface else if (def.mixin) .mixin else .interface;
                 try self.interfaces.put(key, merged);
@@ -545,6 +599,13 @@ pub const IR = struct {
     /// a later add rebuilds the name without its mixins.
     pub fn processIncludes(self: *IR, includes_list: []const types.Includes) !void {
         for (includes_list) |inc| {
+            // An includes statement all three browsers decline
+            // (include_removals.zig, golden rule 2): the interface takes none
+            // of the mixin's members.
+            if (include_removals.indexOf(&include_removals.table, inc.target, inc.mixin)) |i| {
+                self.include_removals_matched[i] = true;
+                continue;
+            }
             // Find the target interface
             const target_iface = self.interfaces.getPtr(inc.target);
             if (target_iface == null) {
@@ -575,6 +636,24 @@ pub const IR = struct {
                 if (inherited.operation) |*op| op.mixin = mixin_name;
                 try target_iface.?.members.append(self.allocator, inherited);
             }
+        }
+    }
+
+    /// After the last processIncludes of a whole source set: an
+    /// include_removals.zig entry no includes statement matched is stale -
+    /// the snapshot update that dropped the statement drops the entry too.
+    /// Sources without the entry's interface or mixin (a test's own IDL)
+    /// say nothing.
+    pub fn checkIncludeRemovals(self: *const IR) !void {
+        const Defined = struct {
+            fn f(ir: *const IR, name: []const u8) bool {
+                return ir.occurrences.contains(name);
+            }
+        };
+        if (include_removals.firstStale(&include_removals.table, &self.include_removals_matched, self, Defined.f)) |entry| {
+            // Printed, not logged: the caller reports the error.
+            std.debug.print("  error: include_removals.zig lists {s} includes {s}, which no includes statement says: delete the entry\n", .{ entry.target, entry.mixin });
+            return error.StaleIncludeRemoval;
         }
     }
 

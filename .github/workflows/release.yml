@@ -33,10 +33,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Build library (cross-compile, no host fallback)
         run: |
@@ -113,10 +111,8 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
 
       - name: Build for macOS arm64
         run: |

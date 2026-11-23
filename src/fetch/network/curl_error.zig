@@ -76,10 +76,15 @@ pub fn mapCurlError(code: curl.CURLcode) NetworkError {
 
     // Connection Reset / Receive Errors
     if (code == curl.CURLE_RECV_ERROR or
-        code == curl.CURLE_SEND_ERROR or
-        code == curl.CURLE_GOT_NOTHING)
+        code == curl.CURLE_SEND_ERROR)
     {
         return NetworkError.ConnectionReset;
+    }
+
+    // No response at all: Chromium's ERR_EMPTY_RESPONSE, told apart from a
+    // reset only for observers (DevTools' errorText); retried as a reset.
+    if (code == curl.CURLE_GOT_NOTHING) {
+        return NetworkError.EmptyResponse;
     }
 
     // Protocol Errors
@@ -118,6 +123,7 @@ pub fn isRetryable(err: NetworkError) bool {
         err == NetworkError.ConnectionTimeout or
         err == NetworkError.RequestTimeout or
         err == NetworkError.ConnectionReset or
+        err == NetworkError.EmptyResponse or
         err == NetworkError.NetworkUnreachable or
         err == NetworkError.HostUnreachable;
 }
@@ -140,6 +146,7 @@ pub fn isConnectionError(err: NetworkError) bool {
     return err == NetworkError.ConnectionRefused or
         err == NetworkError.ConnectionTimeout or
         err == NetworkError.ConnectionReset or
+        err == NetworkError.EmptyResponse or
         err == NetworkError.NetworkUnreachable or
         err == NetworkError.HostUnreachable;
 }
@@ -165,6 +172,10 @@ pub fn getErrorCategoryName(err: NetworkError) []const u8 {
     if (err == NetworkError.NetworkUnreachable) return "network unreachable";
     if (err == NetworkError.HostUnreachable) return "host unreachable";
     if (err == NetworkError.ConnectionReset) return "connection reset";
+    if (err == NetworkError.EmptyResponse) return "empty response";
+    if (err == NetworkError.ContentLengthMismatch) return "content length mismatch";
+    if (err == NetworkError.IncompleteChunkedEncoding) return "incomplete chunked encoding";
+    if (err == NetworkError.InvalidChunkedEncoding) return "invalid chunked encoding";
     if (err == NetworkError.ProtocolError) return "protocol error";
     if (err == NetworkError.OutOfMemory) return "out of memory";
     return "unknown error";
@@ -242,6 +253,12 @@ test "mapCurlError - abort and transfer errors" {
         NetworkError.ConnectionReset,
         mapCurlError(curl.CURLE_SEND_ERROR),
     );
+}
+
+test "mapCurlError - a connection closed with no response is EmptyResponse, retried and failed over as a reset" {
+    try std.testing.expectEqual(NetworkError.EmptyResponse, mapCurlError(curl.CURLE_GOT_NOTHING));
+    try std.testing.expect(isRetryable(NetworkError.EmptyResponse));
+    try std.testing.expect(isConnectionError(NetworkError.EmptyResponse));
 }
 
 test "mapCurlError - protocol and memory errors" {

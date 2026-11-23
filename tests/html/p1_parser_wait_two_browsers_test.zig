@@ -142,7 +142,7 @@ fn loadAndWait(port: u16, together: *Rendezvous) !void {
     const allocator = debug_allocator.allocator();
     errdefer together.failed.store(true, .release);
 
-    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;

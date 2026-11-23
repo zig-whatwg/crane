@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const EncodedVideoChunkInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: enums.EncodedVideoChunkType,
     timestamp: i64,
     duration: ?u64 = null,

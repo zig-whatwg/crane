@@ -9,7 +9,7 @@ const engine = @import("engine");
 const Selected = enum { first, middle, last };
 
 fn run(comptime size: []const u8, comptime expected: Selected, comptime use_source: bool) !void {
-    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     try browser.current_context.?.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });

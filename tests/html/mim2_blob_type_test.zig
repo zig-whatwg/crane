@@ -4,7 +4,7 @@ const Browser = @import("browser").Browser;
 
 fn checkBlobTypes() !void {
     const allocator = std.testing.allocator;
-    const browser = try Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    const browser = try Browser.init(allocator, .{ .snapshot_path = "" });
     defer browser.deinit();
     const context = browser.current_context orelse return error.NoContext;
     const started = try browser.evaluateScript(

@@ -28,7 +28,6 @@ const context_manager = @import("context_manager.zig");
 const current_realm = @import("current_realm.zig");
 const value_construction = @import("value_construction.zig");
 const page_realm = @import("page_realm.zig");
-const callback_interfaces = @import("callback_interfaces.zig");
 const array_buffer_views = @import("array_buffer_views.zig");
 const observable_array = @import("observable_array.zig");
 const webidl_conversions = @import("webidl_conversions.zig");
@@ -40,6 +39,8 @@ const protocol_agents = @import("protocol_agents.zig");
 const protocol_modules = @import("protocol_modules.zig");
 const builtin = @import("builtin");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
+const protocol_inspector = @import("protocol_inspector.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 /// [repl_mode]: console input in REPL mode, through the agent's inspector
 /// session.
@@ -136,6 +137,10 @@ pub const capabilities: engine.Capabilities = .{
     // joinOpaqueRoot / leaveOpaqueRoot / keepOpaqueRoot calls for nodes
     // compile out here (they are the .emulated engines' path).
     .wrapper_tracing = .native,
+    // V8's inspector (protocol_inspector.zig), with -Dcdp only: without it
+    // the per-session machinery compiles out; the REPL's use of the agent's
+    // inspector (repl_mode) stays.
+    .inspector_protocol = if (@import("build_options").cdp) .native else .unsupported,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -216,6 +221,12 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     return protocol_agents.initializeEngine(options);
 }
 
+/// engine.engineVersion: v8::V8::GetVersion, the version of the V8 this
+/// binary links (a static string of V8's).
+pub fn engineVersion() error{NotSupported}![]const u8 {
+    return std.mem.span(ffi.v8_V8_GetVersion());
+}
+
 pub fn deinitializeEngine() void {
     protocol_agents.deinitializeEngine();
 }
@@ -227,7 +238,18 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// The agent ends (its hooks forgotten, the adapter's per-isolate modules
 /// torn down, its garbage collected) before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    // Read before endAgent forgets the agent's record.
+    const entered_for_life = protocol_agents.enteredForLife(isolate);
     protocol_agents.endAgent(agent);
+    // The entry createAgent made for the agent's life, last: every realm's
+    // own entry is gone by now, so it is the thread's current one - an agent
+    // ended out of the order its thread made its agents in would leave
+    // another isolate current under a stale entry.
+    if (entered_for_life) {
+        if (ffi.v8_Isolate_GetCurrent() != isolate) std.debug.panic("destroyAgent: the agent's isolate is not its thread's current one - an isolate entered after it is still entered", .{});
+        ffi.v8_Isolate_Exit(isolate);
+    }
     worker_realm.destroyAgent(agent);
 }
 
@@ -249,6 +271,10 @@ pub fn agentRestoredFromSnapshot(agent: *Agent) bool {
 
 pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
+}
+
+pub fn hostStateOf(agent: *Agent) ?*engine.HostState {
+    return protocol_agents.hostStateOf(agent);
 }
 
 pub fn deferredTeardownOf(agent: *Agent) ?*engine.DeferredTeardown {
@@ -311,6 +337,10 @@ pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     protocol_realms.destroyWindowRealm(realm, how);
 }
 
+pub fn detachWindowRealm(realm: Context) void {
+    protocol_realms.detachWindowRealm(realm);
+}
+
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
     return worker_realm.createWorkerRealm(agent, options.*) catch |err| protocolError(err);
 }
@@ -353,6 +383,118 @@ pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: 
 
 pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!engine.Owned {
     return protocol_realms.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
+// ============================================================================
+// 4.2a Isolated worlds (protocol_worlds.zig)
+// ============================================================================
+
+pub fn createWorldRealm(main: Context, options: *const engine.WorldRealmOptions) Error!Context {
+    return protocol_worlds.createWorldRealm(main, options);
+}
+
+pub fn worldRealmFor(main: Context, world: engine.WorldId) ?Context {
+    return protocol_worlds.worldRealmFor(main, world);
+}
+
+pub fn worldOf(realm: Context) engine.WorldId {
+    return protocol_worlds.worldOf(realm);
+}
+
+pub fn mainRealmOf(realm: Context) Context {
+    return protocol_worlds.mainRealmOf(realm);
+}
+
+pub fn worldInfoOf(realm: Context) ?engine.WorldInfo {
+    return protocol_worlds.worldInfoOf(realm);
+}
+
+pub fn worldRealmsOf(main: Context, out: []Context) usize {
+    return protocol_worlds.worldRealmsOf(main, out);
+}
+
+pub fn destroyWorldRealms(main: Context) void {
+    protocol_worlds.destroyWorldRealms(main);
+}
+
+pub fn installWorldObserver(agent: *Agent, observer: ?*const engine.WorldObserver, host: ?*anyopaque) void {
+    protocol_worlds.installWorldObserver(agent, observer, host);
+}
+
+// ============================================================================
+// 4.2b Inspector protocol [inspector_protocol] (protocol_inspector.zig)
+// ============================================================================
+
+pub fn installInspectorClient(agent: *Agent, client: ?*const engine.InspectorClient) void {
+    protocol_inspector.installInspectorClient(agent, client);
+}
+
+pub fn inspectorConnect(agent: *Agent, group: engine.InspectorGroup, channel: engine.InspectorChannel) Error!*engine.InspectorSession {
+    return protocol_inspector.inspectorConnect(agent, group, channel);
+}
+
+pub fn inspectorDisconnect(session: *engine.InspectorSession) void {
+    protocol_inspector.inspectorDisconnect(session);
+}
+
+pub fn inspectorDispatch(session: *engine.InspectorSession, message: []const u8) void {
+    protocol_inspector.inspectorDispatch(session, message);
+}
+
+pub fn inspectorCanDispatch(method: []const u8) bool {
+    return protocol_inspector.inspectorCanDispatch(method);
+}
+
+pub fn inspectorContextCreated(context: *const engine.InspectorContext) Error!i64 {
+    return protocol_inspector.inspectorContextCreated(context);
+}
+
+pub fn inspectorContextDestroyed(realm: Context) void {
+    protocol_inspector.inspectorContextDestroyed(realm);
+}
+
+pub fn inspectorResetGroup(agent: *Agent, group: engine.InspectorGroup) void {
+    protocol_inspector.inspectorResetGroup(agent, group);
+}
+
+pub fn inspectorContextId(realm: Context) ?i64 {
+    return protocol_inspector.inspectorContextId(realm);
+}
+
+pub fn inspectorRealmOfContextId(agent: *Agent, id: i64) ?Context {
+    return protocol_inspector.inspectorRealmOfContextId(agent, id);
+}
+
+pub fn inspectorWrap(session: *engine.InspectorSession, realm: Context, value: JSValue, object_group: []const u8, allocator: std.mem.Allocator) Error![]u8 {
+    return protocol_inspector.inspectorWrap(session, realm, value, object_group, allocator);
+}
+
+pub fn inspectorUnwrap(session: *engine.InspectorSession, object_id: []const u8) Error!?engine.InspectorUnwrapped {
+    return protocol_inspector.inspectorUnwrap(session, object_id);
+}
+
+pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
+    protocol_inspector.inspectorConsoleMessage(realm, method, args);
+}
+
+pub fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *const engine.InspectorExceptionDetails) u32 {
+    return protocol_inspector.inspectorExceptionThrown(realm, exception, details);
+}
+
+pub fn inspectorExceptionRevoked(realm: Context, exception_id: u32, message: []const u8) void {
+    protocol_inspector.inspectorExceptionRevoked(realm, exception_id, message);
+}
+
+pub fn inspectorCaptureStack(realm: Context) ?*engine.InspectorStack {
+    return protocol_inspector.inspectorCaptureStack(realm);
+}
+
+pub fn inspectorReleaseStack(stack: *engine.InspectorStack) void {
+    protocol_inspector.inspectorReleaseStack(stack);
+}
+
+pub fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std.mem.Allocator) Error!?[]u8 {
+    return protocol_inspector.inspectorStackTrace(agent, max_frames, allocator);
 }
 
 // ============================================================================
@@ -517,8 +659,8 @@ pub fn isConstructor(realm: Context, value: JSValue) bool {
     return worker_realm.isConstructor(value);
 }
 
-pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
-pub const takeCallbackInterface = protocol_callbacks.takeCallbackInterface;
+pub const keepCallbackFunction = protocol_callbacks.keepCallbackFunction;
+pub const keepCallbackInterface = protocol_callbacks.keepCallbackInterface;
 
 // ============================================================================
 // 4.5 ECMAScript values

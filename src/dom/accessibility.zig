@@ -19,6 +19,22 @@ const Instance = runtime.Instance;
 const Allocator = std.mem.Allocator;
 const NodeBase = @import("node_base.zig").NodeBase;
 const spaces = " \t\n\r\x0c";
+const unicode_case = @import("infra").unicode_case;
+
+/// CSS Text 3 capitalize: whether the code point at `index` starts a word -
+/// a letter or number with no word character of a letter or number before
+/// it in the same word.
+fn wordStart(points: []const u21, index: usize) bool {
+    if (!unicode_case.isLetterOrNumber(points[index])) return false;
+    var before = index;
+    while (before > 0) {
+        before -= 1;
+        const cp = points[before];
+        if (!unicode_case.isWordCharacter(cp)) return true;
+        if (unicode_case.isLetterOrNumber(cp)) return false;
+    }
+    return true;
+}
 
 /// The HTML focus algorithm is supplied by the host; DOM does not import
 /// the full HTML implementation or duplicate its focusability rules.
@@ -251,6 +267,17 @@ fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
     return null;
 }
 
+/// The first child of `node` named `name` that is not hidden from the
+/// accessibility tree.
+fn firstVisibleChildNamed(self: *Name, node: *Instance, name: []const u8) anyerror!?*Instance {
+    const base = bridge.getNodeBase(node) orelse return null;
+    var child = base.firstChild();
+    while (child) |at| : (child = at.next_sibling) if (instance(at)) |candidate| if (eq(localName(candidate), name)) {
+        if (!try self.hidden(candidate)) return candidate;
+    };
+    return null;
+}
+
 fn nextInTree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
     if (node.firstChild()) |child| return child;
     var at = node;
@@ -448,7 +475,7 @@ const Name = struct {
         if (base.node_type == NodeBase.TEXT_NODE or base.node_type == NodeBase.CDATA_SECTION_NODE) {
             var value = try interfaces.CharacterData.get_data(node);
             defer value.deinit(node.ctx.allocator);
-            return try self.allocator.dupe(u8, value.asSlice());
+            return try self.renderedText(node, value.asSlice());
         }
         if (base.node_type != NodeBase.ELEMENT_NODE) return "";
         const tag = localName(node);
@@ -495,6 +522,43 @@ const Name = struct {
             if (try effective(self.allocator, node, "aria-placeholder", "ariaPlaceholder")) |value| return value;
         }
         return "";
+    }
+
+    /// AccName 2G: "the textual contents of the current node" are its
+    /// rendered text, so its parent element's text-transform case mapping
+    /// applies - as in Chrome 157, Firefox 160 and Safari 27.2, which read a
+    /// name from content off the laid-out text
+    /// (accname/name/comp_name_from_content.html "heading name from content
+    /// with text-transform:capitalize/lowercase/uppercase"). Each Text maps
+    /// its own code points, capitalize at each word start within it (as
+    /// Blink's LayoutText and WebKit's RenderText map each Text separately).
+    /// OWNED by the walk's allocator.
+    fn renderedText(self: *Name, text_node: *Instance, bytes: []const u8) ![]const u8 {
+        const element = parent(text_node) orelse return try self.allocator.dupe(u8, bytes);
+        const computed = (try style.computedStyle(element, null)) orelse return try self.allocator.dupe(u8, bytes);
+        const case = computed.textTransform().case;
+        if (case == .none) return try self.allocator.dupe(u8, bytes);
+        var points: std.ArrayList(u21) = .empty;
+        defer points.deinit(self.allocator);
+        const view = std.unicode.Wtf8View.init(bytes) catch return try self.allocator.dupe(u8, bytes);
+        var it = view.iterator();
+        while (it.nextCodepoint()) |cp| try points.append(self.allocator, cp);
+        var out: std.ArrayList(u8) = .empty;
+        for (points.items, 0..) |cp, index| {
+            const mode: ?unicode_case.CaseMode = switch (case) {
+                .uppercase => .upper,
+                .lowercase => .lower,
+                .capitalize => if (wordStart(points.items, index)) .title else null,
+                .none => null,
+            };
+            const mapping = if (mode) |m| unicode_case.map(points.items, index, m, "") else unicode_case.Mapping.identity(cp);
+            for (mapping.points[0..mapping.len]) |mapped| {
+                var encoded: [4]u8 = undefined;
+                const length = try std.unicode.wtf8Encode(mapped, &encoded);
+                try out.appendSlice(self.allocator, encoded[0..length]);
+            }
+        }
+        return out.items;
     }
 
     fn append(self: *Name, out: *std.ArrayList(u8), value: []const u8, separate: bool) !void {
@@ -577,7 +641,14 @@ const Name = struct {
                 var out: std.ArrayList(u8) = .empty;
                 const count = try interfaces.NodeList.get_length(list);
                 for (0..count) |i| if (try interfaces.NodeList.call_item(list, @intCast(i))) |label| {
-                    try self.append(&out, try self.text(label, .{ .native_label = true, .relation = walk.relation, .include_hidden = try self.hidden(label) }), true);
+                    // HTML-AAM 3.5.83 (the label note, w3c/html-aam#533): a
+                    // label hidden from the accessibility tree provides no
+                    // name to its labelable element - Chrome 157 and Firefox
+                    // 160 skip it (html-aam/hidden-names.html "Input with
+                    // hidden label", wpt.fyi 4786307730243584,
+                    // 4877168468033536; Safari 27.2 names it).
+                    if (try self.hidden(label)) continue;
+                    try self.append(&out, try self.text(label, .{ .native_label = true, .relation = walk.relation }), true);
                 };
                 if (std.mem.trim(u8, out.items, spaces).len > 0) return out.items;
             }
@@ -608,8 +679,25 @@ const Name = struct {
             if (eq(tag, "img") and attribute(node, "alt") == null and attribute(node, "title") == null) {
                 if (try self.imageCaption(node, walk)) |value| return value;
             }
-            if (oneOf(tag, .{ "fieldset", "table" })) if (firstChildNamed(node, if (eq(tag, "table")) "caption" else "legend")) |label| {
-                const value = try self.text(label, .{ .native_label = true, .relation = walk.relation, .include_hidden = try self.hidden(label) });
+            // HTML-AAM 4.1.5 step 2 / 4.1.11 step 2: the subtree of the
+            // first legend / caption child - and a legend or caption hidden
+            // from the accessibility tree provides no name (the notes of
+            // 3.5.40 and 3.5.22, w3c/html-aam#533). Where a hidden one comes
+            // first, the browsers split by element, and Crane takes each
+            // element's majority (golden rule 2; html-aam/hidden-names.html,
+            // wpt.fyi Chrome 157 4786307730243584, Firefox 160
+            // 4877168468033536, Safari 27.2 6479119966273536): a table takes
+            // its first caption that is not hidden (Chrome and Firefox give
+            // "Visible caption"; Safari names it from the hidden one), and a
+            // fieldset only its first legend, so a hidden first legend leaves
+            // it unnamed (Chrome and Safari give ""; Firefox names it from
+            // the hidden one). Together: Chrome's result.
+            if (eq(tag, "table")) if (try firstVisibleChildNamed(self, node, "caption")) |caption| {
+                const value = try self.text(caption, .{ .native_label = true, .relation = walk.relation });
+                if (std.mem.trim(u8, value, spaces).len > 0) return value;
+            };
+            if (eq(tag, "fieldset")) if (firstChildNamed(node, "legend")) |legend| if (!try self.hidden(legend)) {
+                const value = try self.text(legend, .{ .native_label = true, .relation = walk.relation });
                 if (std.mem.trim(u8, value, spaces).len > 0) return value;
             };
             if (oneOf(tag, .{ "option", "optgroup" })) if (attribute(node, "label")) |value| if (value.len > 0) return value;

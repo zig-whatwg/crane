@@ -20,8 +20,14 @@
 //! a click runs activation behaviour through the normal dispatch), and freed
 //! with releaseIfUnwrapped unless a listener kept it.
 //!
+//! The click count (`detail`) is the input device's: Pointer Events 4 11.1
+//! "implementations MUST maintain the current click count", which the
+//! device reports with each press (`Pointer.click_count`: CDP's clickCount,
+//! Chrome's WebMouseEvent click_count) and which mousedown, mouseup, click
+//! and auxclick carry; a click of count 2 is followed by dblclick (11.4.4).
+//! A host that keeps no count leaves it 1.
+//!
 //! Stated deviations:
-//!   * The click count (`detail`) is always 1: no dblclick.
 //!   * An email or number control is edited through its value, which its
 //!     value sanitization algorithm then applies to: the text a user sees in
 //!     a browser keeps what sanitization strips (visible value vs value).
@@ -39,6 +45,7 @@ const close_watchers = @import("close_watchers.zig");
 const fullscreen = @import("fullscreen.zig");
 const access_keys = @import("access_keys.zig");
 const pointer_capture = dom.pointer_capture;
+const drag_and_drop = @import("drag_and_drop.zig");
 
 const Instance = runtime.Instance;
 const log = std.log.scoped(.user_input);
@@ -372,6 +379,17 @@ pub const PointerType = enum {
     }
 };
 
+/// Where a pointer is, as the embedder reports it: an offset in CSS pixels
+/// from the centre of an element (a WebDriver element origin), or from the
+/// viewport's origin (`origin` the document element). Crane has no layout,
+/// so two positions compare only over the same origin (the drag threshold,
+/// html/drag_and_drop.zig).
+pub const Position = struct {
+    origin: Weak,
+    x: f64,
+    y: f64,
+};
+
 /// A pointer's state, owned by the embedder: what is under it and which
 /// buttons are down.
 pub const Pointer = struct {
@@ -382,6 +400,22 @@ pub const Pointer = struct {
     hit_document: ?Weak = null,
     /// The pressed buttons, as the `buttons` bitmask.
     buttons: u16 = 0,
+    /// The current click count the device reports for its next press
+    /// (Pointer Events 4 11.1: "the number of consecutive clicks of a
+    /// pointing device button within a specific time" - the environment's
+    /// to count: CDP's Input.dispatchMouseEvent clickCount, Chrome's
+    /// WebMouseEvent click_count). The embedder sets it before
+    /// `pointerDown`; 1 for a host that counts nothing. 0 is a press that is
+    /// no click: mousedown and mouseup carry detail 0 and no click follows
+    /// (Blink's MouseEventManager::DispatchMouseClickIfNeeded dispatches only
+    /// while click_count_ > 0).
+    click_count: u32 = 1,
+    /// The count of the last press, which its mouseup and click carry: Blink
+    /// sets the count at the press (EventHandler::HandleMousePressEvent
+    /// SetClickCount) and the release reads it (third_party/blink/renderer/
+    /// core/input/event_handler.cc, mouse_event_manager.cc DispatchMouseEvent:
+    /// "click_count = click_count_" for mouseup, mousedown, click, auxclick).
+    press_click_count: u32 = 1,
     /// Where each button went down: a click goes to the nearest common
     /// inclusive ancestor of that and where it came up.
     down_targets: [5]?Weak = @splat(null),
@@ -426,6 +460,15 @@ pub const Pointer = struct {
     /// The option of a native list box this device last picked without
     /// Shift: a Shift+click's range starts there (select_picker.mouseDown).
     listbox_anchor: ?Weak = null,
+    /// Where the embedder last put the pointer, and where the primary
+    /// button went down (`Position`).
+    position: ?Position = null,
+    press_position: ?Position = null,
+    /// HTML 6.11.5: the node a primary press that was not canceled went down
+    /// on - what a move past the drag threshold may begin to drag - and the
+    /// drag-and-drop operation in progress, OWNED (html/drag_and_drop.zig).
+    drag_press: ?Weak = null,
+    drag: ?*drag_and_drop.DragOperation = null,
 
     /// The orientation the events report: the reported pair, and the other
     /// pair converted from it (Pointer Events 3.1.5); with neither, the
@@ -530,6 +573,21 @@ pub const Pointer = struct {
 /// declared size (getBoundingClientRect, which reads the inline style), else
 /// its width and height attributes, else the extent of its map's areas.
 pub fn hitTest(element: *Instance, x: f64, y: f64) *Instance {
+    // A navigable container's in-view centre is in its content navigable's
+    // viewport, so the hit test goes on in that navigable's active document
+    // - where, with no layout, the element at any point is its root element
+    // (the user's ruling of 2026-10-27 for the WPT runner's no-layout hit
+    // test; tests/wpt_runner/test_driver.zig's viewport origin). Browsers
+    // deliver a click on an iframe inside the frame, which gets the user
+    // activation: fullscreen/api/element-ready-check-allowed-cross-origin.
+    // sub.html (wpt.fyi 2358bd4835: Chrome 157 and Safari 27.2 pass - the
+    // cross-origin frame enters fullscreen; Firefox 160 does not).
+    if (form_associated.isElementNamed(element, "iframe") or form_associated.isElementNamed(element, "frame") or form_associated.isElementNamed(element, "object")) {
+        if (focus.contentDocumentOf(element)) |document| {
+            if (interfaces.Document.get_documentElement(document) catch null) |root| return root;
+        }
+        return element;
+    }
     if (!form_associated.isElementNamed(element, "img")) return element;
     const map = imageMapOf(element) orelse return element;
     const size = imageSize(element, map);
@@ -708,6 +766,9 @@ pub fn pointerMove(pointer: *Pointer, hit: *Instance, modifiers: Modifiers) void
     // element reference when its node document is not the active document);
     // an embedder that passes one all the same moves nothing.
     if (nodeDocument(hit)) |document| if (!isFullyActive(document)) return;
+    // HTML 6.11.5: a drag in progress takes the move, and so does a move
+    // that begins one; the pointer's own events are suppressed.
+    if (drag_and_drop.moved(pointer, hit, modifiers)) return;
     // Pointer Events 3.1.3: process pending pointer capture; the event's
     // target is the pointer capture target override, if set.
     const target = pointerEventTarget(pointer, hit, modifiers, true);
@@ -791,6 +852,13 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit != 0) return;
     const first = pointer.buttons == 0;
+    // The click count of this press: what its mousedown, its mouseup and
+    // its click carry (Blink's SetClickCount at the press).
+    pointer.press_click_count = pointer.click_count;
+    const detail: i32 = @intCast(@min(pointer.press_click_count, std.math.maxInt(i32)));
+    // HTML 6.11.5: what the press would drag, found before its listeners run
+    // (html/drag_and_drop.zig candidateAt).
+    const drag_candidate: ?*Instance = if (button == 0 and first and pointer.pointer_type != .touch) drag_and_drop.candidateAt(hit) else null;
     pointer.buttons |= bit;
     // Pointer Events: the pointer is in the active buttons state, and its
     // active document is the target's (3.1.3, set before the event fires,
@@ -816,7 +884,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     if (!first) {
         // A chorded button press is a pointermove (Pointer Events 4.1.3).
         _ = firePointerEventOnly(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
-        if (!pointer.compatibility_suppressed) _ = fireMouseEvent(capturedOr(pointer, target), "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null);
+        if (!pointer.compatibility_suppressed) _ = fireMouseEvent(capturedOr(pointer, target), "mousedown", modifiers, @intCast(button), pointer.buttons, detail, null);
         return;
     }
     if (!firePointerEventOnly(target, "pointerdown", pointer, modifiers, @intCast(button), 0, null)) {
@@ -830,8 +898,11 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     // events for a particular pointer (including any compatibility mouse
     // events)").
     const down_target = capturedOr(pointer, pointer.currentTarget() orelse return);
-    if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null)) return;
+    if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, detail, null)) return;
     mousedownDefaults(pointer, down_target, button, modifiers, pointer);
+    // HTML 6.11.5: a primary press neither pointerdown nor mousedown
+    // canceled may begin a drag of what it went down on.
+    if (button == 0 and pointer.pointer_type != .touch) drag_and_drop.pressed(pointer, drag_candidate);
 }
 
 /// The element a mouse event of `pointer` goes to now: its capture target,
@@ -969,11 +1040,29 @@ fn commonAncestor(a: *Instance, b: *Instance) ?*Instance {
 pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const bit = buttonBit(button);
     if (pointer.buttons & bit == 0) return;
+    if (pointer.drag != null) {
+        // HTML 6.11.5: the release ends the drag - the drop, or its
+        // failure - and its pointerup, mouseup and click are suppressed.
+        pointer.buttons &= ~bit;
+        const pressed = if (pointer.down_targets[button]) |weak| weak.get() else null;
+        pointer.down_targets[button] = null;
+        if (pointer.buttons == 0) {
+            pointer.compatibility_suppressed = false;
+            if (pressed) |p| if (nodeDocument(p)) |document| dom.pointer_states.set(document, .pointed, null);
+        }
+        _ = drag_and_drop.released(pointer, button, modifiers);
+        return;
+    }
+    if (button == 0) pointer.drag_press = null;
     pointer.buttons &= ~bit;
     const down = if (pointer.down_targets[button]) |weak| weak.get() else null;
     pointer.down_targets[button] = null;
     const suppressed = pointer.compatibility_suppressed;
     if (pointer.buttons == 0) pointer.compatibility_suppressed = false;
+    // The count of the press this release ends (Blink: the release reads
+    // the count its press set).
+    const click_count = pointer.press_click_count;
+    const detail: i32 = @intCast(@min(click_count, std.math.maxInt(i32)));
     const hit = pointer.currentTarget() orelse return;
     const target = pointerEventTarget(pointer, hit, modifiers, true);
     const captured = capturedTarget(pointer, target) != null;
@@ -995,7 +1084,7 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         _ = firePointerEventOnly(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
     }
     const up_target = if (captured) target else pointer.currentTarget() orelse return;
-    if (!suppressed and isReachable(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null)) {
+    if (!suppressed and isReachable(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, detail, null)) {
         if (mouseTargetNow(if (captured) null else pointer, up_target)) |current| @import("forms/select_picker.zig").mouseUp(current, button);
     }
     // 3.3.12.3 step 3: "If ... userEvent was dispatched while the
@@ -1011,12 +1100,83 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         break :blk commonAncestor(pressed, click_up) orelse return;
     };
     if (isInDisabledFormControl(click_target)) return;
-    // The click is a PointerEvent (UI Events 3.5.1.1, Pointer Events 4.2.3).
+    // A press of click count 0 is no click: Blink dispatches click and
+    // auxclick only while click_count_ > 0 (third_party/blink/renderer/
+    // core/input/mouse_event_manager.cc DispatchMouseClickIfNeeded) - what
+    // CDP's Input.dispatchMouseEvent makes of a press without clickCount
+    // (its default 0; content/browser/devtools/protocol/input_handler.cc
+    // "click_count = click_count.value_or(0)").
+    if (click_count == 0) return;
+    // The click is a PointerEvent (UI Events 3.5.1.1, Pointer Events 4.2.3),
+    // its detail the current click count (Pointer Events 4 11.4.2).
     if (button == 0) {
-        _ = firePointerEventOnly(click_target, "click", pointer, modifiers, 0, 1, null);
+        _ = firePointerEventOnly(click_target, "click", pointer, modifiers, 0, detail, null);
+        // Pointer Events 4 11.4.4 dblclick: "MUST dispatch this event when
+        // the primary button of a pointing device is clicked twice over an
+        // element", after the click, whether or not the click was canceled,
+        // at the same target; a MouseEvent whose detail is the click count.
+        // The engines fire it for the click whose count is 2 - Blink
+        // (third_party/blink/renderer/core/events/mouse_event.cc
+        // MouseEvent::DispatchEvent: a trusted click with detail 2 is
+        // followed by a dblclick with its bubbles, cancelable, composed,
+        // view, detail, modifiers, button and buttons; LGPL - the algorithm
+        // reproduced, not the code), Gecko and WebKit alike - and a
+        // secondary button never ("Secondary buttons MUST NOT fire
+        // dblclick events"). At the click's node even when a click listener
+        // removed it (Blink dispatches it at the dispatcher's node), but
+        // never into a document that has gone (`inFullyActiveDocument`:
+        // nothing may be made in a realm with no engine behind it).
+        if (click_count == 2 and inFullyActiveDocument(click_target) != null) {
+            _ = fireMouseEvent(click_target, "dblclick", modifiers, 0, pointer.buttons, detail, null);
+        }
     } else {
-        _ = firePointerEventOnly(click_target, "auxclick", pointer, modifiers, @intCast(button), 1, null);
+        _ = firePointerEventOnly(click_target, "auxclick", pointer, modifiers, @intCast(button), detail, null);
     }
+}
+
+// ============================================================================
+// Wheels (Pointer Events 4 section 12)
+// ============================================================================
+
+/// A wheel's turn as its device reports it (Pointer Events 4 12.1: deltaX,
+/// deltaY and deltaZ in units of `mode`).
+pub const WheelDelta = struct {
+    x: f64 = 0,
+    y: f64 = 0,
+    z: f64 = 0,
+    /// DOM_DELTA_PIXEL (0), DOM_DELTA_LINE (1) or DOM_DELTA_PAGE (2).
+    mode: u32 = 0,
+};
+
+/// `pointer`'s wheel turned over `target`, the element target of the wheel
+/// event transaction (Pointer Events 4 12: "the topmost event target at the
+/// time the first wheel event occurs in the group") - the embedder's hit
+/// test, which pointer capture does not move (capture retargets pointer
+/// events and the compatibility mouse events, section 8; Blink's
+/// EventHandler::HandleWheelEvent hit-tests apart from
+/// EffectiveMouseEventTargetElement). One trusted `wheel` WheelEvent
+/// (12.3): bubbles, composed, and cancelable - a device that waits for its
+/// listeners, as Chrome's blocking wheel dispatch (content/browser/devtools/
+/// protocol/input_handler.cc: DispatchType::kBlocking for CDP's mouseWheel)
+/// - with the modifiers and the pressed buttons, relatedTarget null.
+/// Whether it was not canceled: its default action, scrolling, is the
+/// renderer's (with no layout, nothing scrolls either way). Nothing fires
+/// into a document that has gone (`inFullyActiveDocument`), and a wheel is
+/// no activation-triggering input event (HTML 6.4.2).
+pub fn wheel(pointer: *const Pointer, target: *Instance, delta: WheelDelta, modifiers: Modifiers) bool {
+    if (inFullyActiveDocument(target) == null) return true;
+    const init: dictionaries.WheelEventInit = .{
+        .base = mouseInit(target, .{ .bubbles = true, .cancelable = true, .composed = true }, modifiers, 0, pointer.buttons, 0, null),
+        .deltaX = delta.x,
+        .deltaY = delta.y,
+        .deltaZ = delta.z,
+        .deltaMode = delta.mode,
+    };
+    const event = interfaces.WheelEvent.call_constructor(target.ctx, runtime.DOMString.initInterned("wheel"), webidl.Opt(dictionaries.WheelEventInit).passed(init)) catch |err| {
+        log.debug("wheel not fired: {}", .{err});
+        return true;
+    };
+    return dispatch(target, event);
 }
 
 // ============================================================================
@@ -1145,6 +1305,9 @@ fn implicitlyReleaseCapture(pointer: *Pointer, target: *Instance, modifiers: Mod
 /// session): it is no active pointer of the traversable it was acting on
 /// any more, and holds no capture there. No event fires.
 pub fn pointerGone(pointer: *Pointer) void {
+    // A drag in progress ends with its device, without events.
+    drag_and_drop.abandon(pointer);
+    pointer.drag_press = null;
     const near = liveTarget(pointer.touch_start) orelse liveTarget(pointer.touch_hit) orelse liveTarget(pointer.hit) orelse return;
     const pointers = activePointersOf(near) orelse return;
     if (pointer.pointer_type == .mouse) {
@@ -1531,9 +1694,13 @@ pub const Keyboard = struct {
 /// HTML "when a key event is to be routed in a top-level traversable":
 /// the DOM anchor of the currently focused area of the top-level traversable
 /// `document` is in, the body element or document element standing for a
-/// Document.
+/// Document. Step 2 asserts the traversable has system focus ("key events
+/// are only routed to top-level traversables that have system focus"): the
+/// host that sends a key press to a tab routes it there, focused or not, so
+/// the area is the one the tab designates (html.focus.designatedFocusedArea)
+/// - its currently focused area whenever it has system focus.
 pub fn keyTarget(document: *Instance) ?*Instance {
-    const area = focus.currentlyFocusedArea(document);
+    const area = focus.designatedFocusedArea(document);
     if (isElement(area)) return area;
     return bodyOrDocumentElement(area);
 }
@@ -1664,6 +1831,66 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     defaultKeyDownAction(keyboard, focused, key, modifiers);
 }
 
+/// HTML 4.10.21.2 "Implicit submission", for Enter in `target`. True when
+/// `target` is a field that blocks implicit submission of its form owner
+/// (Enter is then consumed), whatever the steps did:
+/// - the form's default button - its first submit button in tree order -
+///   with activation behaviour and not disabled gets a click event fired at
+///   it ("must cause the user agent to fire a click event at that default
+///   button");
+/// - a disabled default button: nothing ("implicit submission must not
+///   occur");
+/// - no submit button: if the form has more than one field that blocks
+///   implicit submission, nothing; otherwise the form is submitted from the
+///   form itself with userInvolvement "activation".
+/// Crane did none of it (html/semantics/forms/form-submission-0/
+/// implicit-submission.optional.html: Chrome 157, Firefox 160 and Safari
+/// 27.2 pass the two submitting cases).
+fn implicitSubmission(target: *Instance, modifiers: Modifiers) bool {
+    if (!blocksImplicitSubmission(target)) return false;
+    const form = form_associated.formOwner(target) orelse return false;
+    const root = treeRootOf(form);
+    var default_button: ?*Instance = null;
+    var blocking_fields: usize = 0;
+    var node: ?*Instance = root;
+    while (node) |n| : (node = form_associated.nextInTree(n, root, false)) {
+        if (!form_associated.isElement(n)) continue;
+        if (default_button == null and form_associated.isSubmitButton(n)) {
+            if (form_associated.formOwner(n) == form) default_button = n;
+        }
+        if (blocksImplicitSubmission(n) and form_associated.formOwner(n) == form) blocking_fields += 1;
+    }
+    if (default_button) |button| {
+        if (!form_associated.isDisabled(button)) fireSyntheticClick(button, modifiers);
+        return true;
+    }
+    if (blocking_fields > 1) return true;
+    dom.form_submission.submit(form, form, .activation) catch {};
+    return true;
+}
+
+/// "A field that blocks implicit submission of a form element is an input
+/// element whose form owner is that form element and whose type attribute is
+/// in one of the following states: Text, Search, Telephone, URL, Email,
+/// Password, Date, Month, Week, Time, Local Date and Time, Number" - the
+/// element half; the caller compares the form owner.
+fn blocksImplicitSubmission(element: *Instance) bool {
+    if (!form_associated.isInput(element)) return false;
+    var buffer: [32]u8 = undefined;
+    const t = form_associated.inputType(element, &buffer);
+    inline for (.{ "text", "search", "tel", "url", "email", "password", "date", "month", "week", "time", "datetime-local", "number" }) |name| {
+        if (std.mem.eql(u8, t, name)) return true;
+    }
+    return false;
+}
+
+/// The root of `node`'s tree (its shadow root, document or detached subtree).
+fn treeRootOf(node: *Instance) *Instance {
+    var current = node;
+    while (form_associated.parentOf(current)) |parent| current = parent;
+    return current;
+}
+
 /// Release `key`: keyup, then Space's keyboard activation.
 pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
     // As keyDown: no key is routed for a document that is not fully active.
@@ -1727,6 +1954,10 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         focus.navigateSequentially(document, if (modifiers.shift) .backward else .forward);
         return;
     }
+    // HTML 4.10.21.2 implicit submission: Enter in a field that blocks
+    // implicit submission submits its form - the platform convention every
+    // browser follows (the spec leaves the trigger to the user agent).
+    if (isKey(key, "Enter") and !modifiers.ctrl and !modifiers.alt and !modifiers.meta and implicitSubmission(target, modifiers)) return;
     const kind = textControlKind(target);
     // The clipboard shortcuts, in a text control or anywhere else: the
     // Clipboard API's copy, cut and paste actions as the user's own
@@ -1819,12 +2050,27 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             return;
         }
     }
+    // Undo and redo in an editing host: the platform's bindings - Meta+Z and
+    // Meta+Shift+Z where navigator.platform names a Mac, else Ctrl+Z, Ctrl+Y
+    // and Ctrl+Shift+Z (Blink editing_behavior.cc's key table: "Undo",
+    // "Redo") - run the undo and redo commands, announced by a cancelable
+    // beforeinput (historyUndo / historyRedo) at the editing host
+    // (execcommand/root.zig historyByKey).
+    if (historyShortcut(target, key, modifiers)) |redo| {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            execcommand.historyByKey(target, redo);
+            return;
+        }
+    }
     // Home and End in an editing host: the caret moves (Shift: the
     // selection extends) to the start or end of its line - Blink's key
     // bindings MoveToBeginningOfLine / MoveToEndOfLine and their
     // AndModifySelection forms, Selection.modify(..., "lineboundary").
-    // Where a line ends is a read on the renderer (soft wraps); with none,
-    // Selection.modify leaves the caret (TODO(renderer)).
+    // That answers a line that ends at a forced break, a block edge or the
+    // host's edge before any soft wrap could; where a soft wrap could come
+    // first, the line's end is a read on the renderer and the caret stays
+    // (execcommand/visible_position.zig logicalLineBoundary, TODO(renderer)).
     if ((isKey(key, "Home") or isKey(key, "End")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
         const execcommand = @import("execcommand/root.zig");
         if (execcommand.isEditableTarget(target)) {
@@ -2083,6 +2329,44 @@ fn editingShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?EditingSh
     return shortcut;
 }
 
+/// Whether `key` with `modifiers` is the platform's undo (false) or redo
+/// (true) binding, or neither (null): Meta+Z / Meta+Shift+Z where
+/// navigator.platform names a Mac, else Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z.
+fn historyShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?bool {
+    if (!modifiers.ctrl and !modifiers.meta) return null;
+    if (modifiers.alt or (modifiers.ctrl and modifiers.meta)) return null;
+    if (key.key.len != 1) return null;
+    const letter = std.ascii.toLower(key.key[0]);
+    if (letter != 'z' and letter != 'y') return null;
+    const window = viewOf(target) orelse return null;
+    const navigator = interfaces.Window.get_navigator(window) catch return null;
+    var platform = interfaces.Navigator.get_platform(navigator) catch return null;
+    defer platform.deinit(target.ctx.allocator);
+    return historyBinding(platform.asSlice(), letter, modifiers);
+}
+
+fn historyBinding(platform: []const u8, letter: u8, modifiers: Modifiers) ?bool {
+    const mac = std.mem.indexOf(u8, platform, "Mac") != null;
+    if (mac) {
+        if (!modifiers.meta or letter != 'z') return null;
+        return modifiers.shift;
+    }
+    if (!modifiers.ctrl) return null;
+    if (letter == 'y') return if (modifiers.shift) null else true;
+    return modifiers.shift;
+}
+
+test "undo and redo bindings follow navigator platform" {
+    try std.testing.expectEqual(@as(?bool, false), historyBinding("MacIntel", 'z', .{ .meta = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("MacIntel", 'z', .{ .meta = true, .shift = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("MacIntel", 'y', .{ .meta = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("MacIntel", 'z', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, false), historyBinding("Linux x86_64", 'z', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("Win32", 'y', .{ .ctrl = true }));
+    try std.testing.expectEqual(@as(?bool, true), historyBinding("Win32", 'z', .{ .ctrl = true, .shift = true }));
+    try std.testing.expectEqual(@as(?bool, null), historyBinding("Win32", 'z', .{ .meta = true }));
+}
+
 /// Whether `modifiers` is exactly the platform's command modifier: Meta
 /// where navigator.platform names a Mac, Ctrl elsewhere (no Alt, no Shift,
 /// not both).
@@ -2282,6 +2566,41 @@ pub fn pasteIntoTextControl(control: *Instance, text: []const u8) void {
     const kind = textControlKind(control);
     if (kind == .none or !isMutable(control)) return;
     insertText(control, kind, text, "insertFromPaste");
+}
+
+/// HTML 6.11.5 step 4's drop default action into the text control
+/// `control`: `text` goes in as typed text does - at the control's selection,
+/// which the caller put at its end - with beforeinput and input of inputType
+/// insertFromDrop (Input Events 2).
+pub fn dropIntoTextControl(control: *Instance, text: []const u8) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    if (kind == .selection) {
+        var value = getValue(control) orelse return;
+        defer value.deinit(control.ctx.allocator);
+        const end: u32 = @intCast(form_associated.utf16Length(value.asSlice()));
+        dom.form_controls.setEditorSelection(control, .{ .start = end, .end = end, .backward = false });
+    }
+    insertText(control, kind, text, "insertFromDrop");
+}
+
+/// HTML 6.11.5 step 10: a drag began, so the pointer's event stream is
+/// suppressed (Pointer Events 3.1.3.3): pointercancel at its target, the
+/// implicit release of its capture, then pointerout and pointerleave; the
+/// pointer is over nothing until its next move after the drag.
+pub fn suppressPointerStream(pointer: *Pointer, modifiers: Modifiers) void {
+    const hit = pointer.currentTarget() orelse return;
+    const target = capturedOr(pointer, hit);
+    if (isReachable(target)) _ = firePointerEventOnly(target, "pointercancel", pointer, modifiers, -1, 0, null);
+    implicitlyReleaseCapture(pointer, target, modifiers);
+    if (isReachable(target)) {
+        _ = firePointerEventOnly(target, "pointerout", pointer, modifiers, -1, 0, null);
+        var chain: [64]*Instance = undefined;
+        const len = ancestors(target, &chain);
+        for (chain[0..len]) |element| _ = firePointerEventOnly(element, "pointerleave", pointer, modifiers, -1, 0, null);
+    }
+    if (nodeDocument(target)) |document| dom.pointer_states.set(document, .hovered, null);
+    pointer.hit = null;
 }
 
 /// The cut action's removal in the text control `control` (8.2 step

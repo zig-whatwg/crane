@@ -65,7 +65,7 @@ pub const Page = struct {
     /// A page with `body_markup` in its body, collected once, and the live
     /// instance count taken as the baseline.
     pub fn open(body_markup: []const u8) !Page {
-        const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+        const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
         errdefer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;

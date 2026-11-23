@@ -2269,3 +2269,107 @@ why = Its first recorded flake disposition, though it has repeated under sweep l
 pair.1 = base 10/10; tip 10/10
 pair.2 = base 10/10; tip 10/10
 pair.3 = base 10/10; tip 10/10
+
+[cookies/name/name-ctl.html]
+generation = 234
+kind = user-ruling
+why = 65 -> 64: the subtest "Cookie with %xa in name is rejected or modified (HTTP)". Lane net3 (merge a5d83b1b9) made Crane parse HTTP/1 response headers leniently, as browsers do (zig-whatwg/curl fork CURLOPT_HTTP_LENIENT, pinned 8300fa889e5e). The old pass came from libcurl rejecting the whole response; now Crane stores the cookie "test10" exactly as Chrome 157 does, and Chrome 157, Firefox 160 and Safari 27.2 all fail this subtest on the aligned wpt.fyi runs at 2358bd4835. net3's FULL A/B vs generation 233 listed it as one of its 2 losses (+154 / -2).
+date = 2026-11-19
+decision = The user, 2026-11-19 7:46 PM ET: "Accept" (asked whether net3 may merge with its 2 cookie %xa losses, Crane = Chrome, all three browsers fail).
+
+[cookies/value/value-ctl.html]
+generation = 234
+kind = user-ruling
+why = 65 -> 64: the subtest "Cookie with %xa in value is rejected or modified (HTTP)". Lane net3 (merge a5d83b1b9) made Crane parse HTTP/1 response headers leniently, as browsers do (zig-whatwg/curl fork CURLOPT_HTTP_LENIENT, pinned 8300fa889e5e). The old pass came from libcurl rejecting the whole response; now Crane stores the cookie "test10" exactly as Chrome 157 does, and Chrome 157, Firefox 160 and Safari 27.2 all fail this subtest on the aligned wpt.fyi runs at 2358bd4835. net3's FULL A/B vs generation 233 listed it as one of its 2 losses (+154 / -2).
+date = 2026-11-19
+decision = The user, 2026-11-19 7:46 PM ET: "Accept" (asked whether net3 may merge with its 2 cookie %xa losses, Crane = Chrome, all three browsers fail).
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: lanes blk5/blk6/maj5 - 7dab04f47, b10f5516f, 4b2444691, 149054394, f38d4ee97, 34a6ceafa, 79e482573 and others - touched HTMLIFrameElement.zig, main_fetch.zig, http_fetch.zig, performance_timeline.zig): unchanged cause - startTime is the time origin (the navigation's start) and redirectStart the first hop's fetch start, both read from the monotonic clock and coarsened to the 125 us tick with nothing waiting between them, so redirectStart is greater than startTime only when the gap crosses a tick. Lane flk3, a diagnostic production runner of 64e969a54 (a FLK3GAP line in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 1.10, 2026-11-21 10:18 AM ET), the file alone, 60 runs, a fresh process per run: the iframe navigation's gap min 48 / p50 50 / max 217 us, 27 passes of 60 where the tick model (min(gap, 125)/125 per run, summed) predicts 25.2 - and in every one of the 60 runs the result is exactly whether the fetch's tick is later than the navigation's (pass iff crossed, 60/60). Evidence: tmp/plans/flk3-evidence/item3-nav2-sc.txt (each run: result, gap). Chrome and Safari pass through process hops of milliseconds; Firefox fails 2 of 3 (the generation 225 entry).
+tick_us = 125
+gap_us = min 48 / p50 50 / max 217
+pass_rate = 27/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 48-217 us (p50 50) after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 64e969a54
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: lanes blk5/blk6/maj5 touched HTMLIFrameElement.zig, main_fetch.zig, performance_timeline.zig): unchanged cause - on a connection reused from an earlier https file in the runner process every connection time is fetchStart (Fetch "clamp and coarsen connection timing info" step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart > 0 only when the navigation's fetch starts in a later 125 us tick than its time origin, the navigation's start. Lane flk3, a diagnostic production runner of 64e969a54 (a FLK3GAP line in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (2026-11-21 10:20 AM ET): content-encoding.https.html then this file in one fresh process, 30 runs - 22 pass, 8 fail (runs 1, 7, 10, 13, 23, 27, 28, 29: "secureConnectionStart is non-zero"), and each failure is a run whose fetch stayed in its navigation's tick (gaps 21-26 us); the gap over all 30 runs min 20 / p50 22 / max 58 us. The passing runs that did not cross a tick are those that made a fresh TLS handshake (secureConnectionStart past fetchStart whatever the gap) - only a run that reuses the connection can fail, as the generation 228 entry found.
+tick_us = 125
+gap_us = min 20 / p50 22 / max 58
+pass_rate = 22/30
+condition = navigation-timing/content-encoding.https.html first in the same runner process, so the navigation may reuse its connection to web-platform.test:8443 (some runs reuse it, and only those can fail)
+measured_at = 64e969a54
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 236
+kind = timing-bound
+why = Re-measured after the generation 228 entry went STALE (since d9d57fc822e: 4b2444691 touched fetch_event.zig, 68eeaaf6b and c9734fdbe performance_timeline.zig): unchanged cause - the assert that fails, "fetchStart should be marked before the Fetch event handler is called", compares the fetch event dispatch time (Service Workers "Create Fetch Event and Dispatch" step 17.4.12, Navigation Timing's fetchStart under a service worker) with the handler's first performance.now(), dispatched at step 17.4.13 with nothing between, so the two are equal on the 125 us grid unless that gap crosses a tick (lesson spec-compliance-a-strict-order-between-coarse-marks-is-a-bet-on-time.md). Lane flk3, a diagnostic production runner of 64e969a54 (lane flaky7's F7NOW/F7FES/F7STATE marks, never committed; analysis tmp/flaky7/tools/nt_gaps.py) on server1 in a closed, quiet window (2026-11-21 10:21 AM ET), the file alone in a fresh runner process per run: unloaded, fetchStart -> handler min 1 / p50 100 / max 977 us, 44/60 pass (the per-run tick prediction agrees with the result in 57/60); under --load=28 (a 32-runner sweep's load) min 47 / p50 53 / max 92 us, 17/40 pass (agrees 40/40). Evidence: tmp/plans/flk3-evidence/item3-nte.txt. No browser passes the file (the generation 214 entry); nothing to fix without a delay between two spec steps (no invented paths). Its gate exemption is the follows-majority entry in tools/wpt_gate_exemptions.txt (blk5).
+tick_us = 125
+gap_us = min 47 / p50 53 / max 92
+pass_rate = 17/40
+condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 44/60 (gap min 1 / p50 100 / max 977 us)
+measured_at = 64e969a54
+paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[editing/run/underline.html]
+generation = 235
+kind = user-ruling
+why = 2129 -> 2120 (-9): 10 rows lost, 1 gained ("foo<u>ba[r</u>]baz") - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/italic.html]
+generation = 235
+kind = user-ruling
+why = 2068 -> 2062 (-6): 6 rows lost - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/strikethrough.html]
+generation = 235
+kind = user-ruling
+why = 2120 -> 2114 (-6): 7 rows lost, 1 gained ("<strike>fo[o</strike><s>b]ar</s>") - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[editing/run/bold.html]
+generation = 235
+kind = user-ruling
+why = 3030 -> 3025 (-5): 5 rows lost - lane edit3 (merge 38711eede) implemented ruling (b): in CSS mode (styleWithCSS true) the push-down copies the existing b/i/u/strike element or styled span onto each child, as Chrome 157, Firefox 160 and Safari 27.2 all do, over the Editing spec's styled spans (golden rule 2, all three agree). Every lost row is a [["stylewithcss","true"],[<cmd>,""]] "compare innerHTML" subtest listed in tmp/plans/edit3-evidence/ruling-b-losses.txt (28 rows across bold/italic/strikethrough/underline), confirmed by edit3's FULL A/B and targeted editing/ A/B subtest by subtest.
+date = 2026-11-19
+decision = The user, 2026-11-19 5:48 PM ET: "Follow all three browsers" (editing ruling (b): CSS-mode push-down copies; ~30 FFF rows Crane passed become losses).
+
+[html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-navigation-blocked.window.js]
+generation = 235
+kind = user-ruling
+why = 3 -> 0: lane blk5 (merge 5c31228a3, commit 3ae3dcaba) made an about:srcdoc navigation by the frame's parent load the frame's srcdoc content, as Chrome 157 and Safari 27.2 do (Chromium CheckAboutSrcDoc reproduced), which unblocks grandparent_location_aboutsrcdoc (+6). This file then fails all 3 subtests with exactly the assertion Chrome and Safari fail with ('Received message "srcdoc ready" but expected to receive no message'; aligned wpt.fyi runs at 2358bd4835: Chrome 0/3, Safari 0/3, Firefox 3/3); it carries a follows-majority gate entry (matches chrome, safari).
+date = 2026-11-20
+decision = The user, 2026-11-20 5:01 PM ET: "Accept" (keep about:srcdoc-by-parent loading srcdoc content, Chrome + Safari; +6 grandparent / -3 this file).
+
+
+[editing/run/insertparagraph.html]
+generation = 236
+kind = user-ruling
+why = 7167 -> 7166 (-1): the one row lost is editing/run/insertparagraph.html?1-1000 [["insertparagraph",""]] "<table><tbody data-start=0 data-end=1><tr><td>foo<td>bar<tr><td>baz<td>quz</table>" compare innerHTML - lane edit4 (merge 6ad078fcb) implemented ruling B2: insertParagraph with the caret in col/colgroup/tbody/tr puts it in the first cell, as Chrome 157 and Safari 27.2 do, over the Editing spec's row (+4 gained elsewhere). Confirmed row-exact by edit4's subdiff --full and by lane tpw's FULL A/Bs vs generation 235 (window-1 at fc3734701, window-3 at 68027eca4 and the final window at a3a465d25: the same single LOST row).
+date = 2026-11-21
+decision = The user, 2026-11-21 2:12-2:25 PM ET (AskUserQuestion via main, recorded 2:25 PM ET): B2 table-structure insertParagraph - follow Chrome + Safari (first cell); the one spec row is a user-ruling loss.
+
+[navigation-timing/test-timing-reload.html]
+generation = 236
+kind = user-ruling
+why = 21 -> 19 (-2): the subtests "unloadEventStart is different after the reload." and "unloadEventEnd is different after the reload." are created only when the frame's first unloadEventStart/End are not 0; main's dda7baecf (lane maj6, merge ee7b1b9b9: no unload times from a frame's first navigation from its initial about:blank, as Chrome, Firefox and Safari report) makes them 0, so the file now has 19 subtests and passes all 19 - exactly Chrome 158, Firefox 160 and Safari 27.2 (19/19 each, wpt.fyi aligned run a3830cd8f7). The same change takes navigation-timing/test-no-previous-document.html 3 -> 5 and unload-event-same-origin-check.html 4 -> 10.
+date = 2026-11-21
+decision = The user, 2026-11-21 7:24 AM ET (via main, lane maj6): "accept" - the 2 vanished test-timing-reload rows are accepted; main records them as user-ruling losses at the generation containing the merge.
+
+[html/dom/idlharness.https.html]
+generation = 237
+kind = user-ruling
+why = 5996 -> 5978 (-18), all in the ?exclude=(Document|Window|HTML.+) variant: the 18 "SVGSVGElement interface: attribute on*" subtests (onafterprint, onbeforeprint, onbeforeunload, onhashchange, onlanguagechange, onmessage, onmessageerror, onoffline, ononline, onpagehide, onpagereveal, onpageshow, onpageswap, onpopstate, onrejectionhandled, onstorage, onunhandledrejection, onunload), each now failing "The prototype object must have a property". Lane fw2's 3ab57686a (codegen include_removals.zig, merged in 3900cb178) drops SVG 2's "SVGSVGElement includes WindowEventHandlers": Chrome 157, Firefox 159 and Safari 27 expose none of these attributes on <svg> (fw2 probe k-svg), w3c/svgwg#741 is unresolved with no implementer bugs - golden rule 2's last case. Row-exact in generation 237's sweep (main f8e6c08c23) vs generation 236 (main a3a465d256): no other subtest of the file moved; it matches fw2's targeted A/B (318 files, -18, only these rows).
+date = 2026-11-22
+decision = The user, 2026-11-22 ~2:19 PM ET, answered "Accept (Recommended)" (AskUserQuestion via main, recorded in held-files.md 2:19 PM ET): fw2's SVGSVGElement WindowEventHandlers removal merges although html/dom/idlharness.https.html loses these 18 subtests; record them as user-ruling at the first generation with the merge.

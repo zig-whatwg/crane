@@ -94,9 +94,9 @@ fn observerOf(instance: *runtime.Instance) !*performance_timeline.Observer {
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
     const observer = observerOf(instance) catch unreachable;
-    const taken = engine.takeCallbackFunction(@ptrCast(callback));
-    observer.callback = taken;
-    if (engine.traceValues(instance, &.{taken.function.value}, callback_slot)) engine.holdWeakly(taken.function);
+    const kept = callback.keep();
+    observer.callback = kept;
+    if (engine.traceValues(instance, &.{kept.function.value}, callback_slot)) engine.holdWeakly(kept.function);
     return instance;
 }
 

@@ -60,6 +60,19 @@ pub const NotRun = enum {
     node_runner_only,
     /// The project skips it itself (QUnit.skip, Mocha's pending).
     project_skip,
+    /// It fails although Crane does what the browser majority does, by a
+    /// recorded ruling (golden rule 2). Added in fw2.
+    follows_majority,
+    /// It fails although Crane follows the newer spec, as a shipping browser
+    /// does (golden rule 2). Added in fw2.
+    follows_spec,
+    /// A suite that runs on jsdom (React's Jest suite): it asserts behaviour
+    /// jsdom has and all three browsers do not (exclusions.zig). Added in
+    /// react1.
+    jsdom_only,
+    /// A suite that runs on jsdom in Node: it uses a Node API no browser has
+    /// (exclusions.zig). Added in react1.
+    needs_node,
 
     pub fn label(k: NotRun) []const u8 {
         return switch (k) {
@@ -68,6 +81,10 @@ pub const NotRun = enum {
             .needs_node_build => "needs the project's Node build",
             .node_runner_only => "runs only through the project's Node test runner",
             .project_skip => "skipped by the project",
+            .follows_majority => "Crane follows the browser majority",
+            .follows_spec => "Crane follows the newer spec",
+            .jsdom_only => "asserts jsdom's behaviour, which all three browsers differ from",
+            .needs_node => "uses a Node API no browser has",
         };
     }
 };
@@ -456,6 +473,36 @@ test "a not-run record names its kind and reason" {
             "\",\"page\":\"test\",\"module\":\"hx-swap modifiers\",\"name\":\"scrollTarget:window scrolls the window\",\"id\":\"hx-swap modifiers scrollTarget:window scrolls the window\",\"status\":\"NOTRUN\",\"not_run\":\"rendering\",\"reason\":\"asserts window.scrollY: a layout box\"}\n",
         out.written(),
     );
+}
+
+test "a jsdom-only record is written as jsdom_only, read back, and labelled as such" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try writeTest(&out.writer, .{
+        .label = "x",
+        .crane_commit = "c",
+        .console_sha256 = sha_a,
+        .framework = "react",
+        .version = "19.3.1",
+        .suite = "react-jest",
+        .suite_kind = .project,
+        .source_sha256 = sha_b,
+        .page = "jest",
+        .module = "ReactDOMActivity",
+        .name = "hides new portals added to an already hidden tree",
+        .id = "ReactDOMActivity > hides new portals added to an already hidden tree",
+        .status = .NOTRUN,
+        .not_run = .jsdom_only,
+        .reason = "jsdom's CSSOM drops !important",
+    });
+    try testing.expect(std.mem.indexOf(u8, out.written(), "\"not_run\":\"jsdom_only\"") != null);
+    const back = try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqual(NotRun.jsdom_only, back.test_record.not_run.?);
+    try testing.expectEqualStrings("asserts jsdom's behaviour, which all three browsers differ from", NotRun.jsdom_only.label());
+    try testing.expectEqualStrings("uses a Node API no browser has", NotRun.needs_node.label());
 }
 
 test "a page record: one line, byte for byte" {

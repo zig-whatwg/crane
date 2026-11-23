@@ -6,8 +6,6 @@
 # above it. A ratchet - `zig build lint-tombstones`, part of `zig build test`, fails if
 # a count rises or a new key appears. After paying some off, lower it with
 # `zig build lint-tombstones -- --update`. Never raise it by hand.
-src/browser/storage/Storage.zig LocalStorage.data 1
-src/browser/storage/Storage.zig SessionStorage.data 1
 src/dom/agent_cluster_keys.zig HistoricalKeys.groups 1
 src/dom/document_state.zig InternalState.module_map 1
 src/dom/mutation_observer_algorithms.zig MutationObserverAgent.signal_slot_set 1
@@ -24,7 +22,6 @@ src/html/module_script.zig AsyncModuleLoader.pending 1
 src/html/navigation/joint_history.zig JointHistory.update_only 1
 src/html/parser/tokens.zig TagToken.attribute_names 1
 src/html/stylesheet_blocking.zig StylesheetBlockingTracker.pending_stylesheets 1
-src/html/window/animation_frame.zig AnimationFrameScheduler.callbacks 1
 src/html/worklet_host.zig GlobalScope.module_map 1
 src/permissions/storage.zig PermissionStorage.cache 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.directories 1
@@ -36,7 +33,6 @@ src/runtime/engines/v8/protocol_agents.zig agents 1
 src/runtime/engines/v8/shadow_realm.zig ShadowRealmCallbackData.tracked_realms 1
 src/runtime/internal_state.zig Registry.map 1
 src/service_worker/cache/store.zig Storage.handles 1
-src/storage/backends/leveldb.zig LevelDBBackend.cursors 1
 src/storage/backends/memory.zig MemoryBackend.DatabaseState.object_stores 1
 src/storage/backends/memory.zig MemoryBackend.Index.data 1
 src/storage/backends/memory.zig MemoryBackend.ObjectStore.data 1
@@ -44,7 +40,6 @@ src/storage/backends/memory.zig MemoryBackend.ObjectStore.indexes 1
 src/storage/backends/memory.zig MemoryBackend.Transaction.pending_writes 1
 src/storage/backends/memory.zig MemoryBackend.cursors 1
 src/storage/backends/memory.zig MemoryBackend.transactions 1
-src/storage/backends/sqlite.zig SQLiteBackend.cursors 1
 src/storage/indexeddb/database.zig IDBDatabase.connection_names 1
 src/storage/indexeddb/database.zig IDBDatabase.object_stores 1
 src/storage/indexeddb/index_persistence.zig IndexManager.indexes 1

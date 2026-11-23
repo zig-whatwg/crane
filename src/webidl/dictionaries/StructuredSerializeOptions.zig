@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const StructuredSerializeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     transfer: ?[]const runtime.JSValue = null,
 
     /// WebIDL `object` members (or sequences of `object`): a value that is

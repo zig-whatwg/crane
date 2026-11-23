@@ -8,11 +8,17 @@ const GPUQueueDescriptor = @import("GPUQueueDescriptor.zig").GPUQueueDescriptor;
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUDeviceDescriptor = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
     requiredFeatures: ?[]const enums.GPUFeatureName = null,
-    requiredLimits: ?[]const struct { key: runtime.DOMString, value: runtime.JSValue } = null,
+    requiredLimits: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: runtime.JSValue,
+    } = null,
     defaultQueue: ?GPUQueueDescriptor = null,
 
     /// Optional members' IDL default values: a member the value leaves
