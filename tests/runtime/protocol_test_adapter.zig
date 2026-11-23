@@ -698,7 +698,7 @@ pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
 pub fn traceValues(_: *Instance, _: []const JSValue, _: engine.TracedSlot) bool {
     return false;
 }
-/// Never reached (`traceValues` answers false): holds stay strong.
+/// No collector here, so a strong hold is the honest answer: the hold stays strong.
 pub fn holdWeakly(_: Owned) void {}
 /// No engine, no wrappers: no opaque root to keep.
 pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
