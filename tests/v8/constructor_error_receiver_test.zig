@@ -309,6 +309,31 @@ test "Response.json() whose init is rejected frees the response it made" {
     );
 }
 
+// Lane hard1: the heap's leak report at each Browser's end (a full worklist
+// bug-finding sweep) named five more interfaces whose instances outlived
+// their Browser never wrapped (lifecycle flags 0) - TextDecoder 6,860,
+// WebSocket 535, Headers 12, File 8, ExtendableMessageEvent 1. Each
+// constructor made its object, then threw, and its failure path ran the
+// destructor chain only. The old arena freed those blocks wholesale at the
+// Browser's end, so nothing counted them; they grew over a runner's life.
+
+test "a TextDecoder constructor whose label names no encoding frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Encoding 5.1.3 steps 1-2: a label that is no encoding, and one that
+    // is the replacement encoding's, are each a RangeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new TextDecoder('no-such-encoding'); } catch (e) { if (e instanceof RangeError) n++; }
+        \\    try { new TextDecoder('iso-2022-kr'); } catch (e) { if (e instanceof RangeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a constructor that succeeds still hands its receiver to the wrapper cache" {
     const page = try Page.open();
     defer page.close();
