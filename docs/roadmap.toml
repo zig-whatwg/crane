@@ -681,7 +681,7 @@ progress = [
 
 [[infra]]
 id = "v8-pgo"
-title = "V8 built with Crane's own PGO profile (0.1 requirement)"
+title = "V8 built with Crane's own PGO profile (0.2 - moved from 0.1 by the user, 2026-11-22)"
 why = """The user, 2026-11-04: training our own profile-guided optimization for V8 "should \
 be part of the requirements for 0.1 release". Lane v8opt1 built V8 13.1.203 the way \
 Chrome's official build does, with ThinLTO and Chrome 131's own mac-arm profile plus V8's \
