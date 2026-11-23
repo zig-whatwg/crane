@@ -61,6 +61,7 @@
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 
 /// GC finalizer callback - called when JS engine garbage collects an object
 ///
@@ -160,7 +161,6 @@ pub fn releaseStorage(inst: *Instance) void {
 pub fn releaseOwned(child: *Instance) void {
     const instance_lifecycle = @import("instance_lifecycle.zig");
     const cleanup_coordinator = @import("cleanup_coordinator.zig");
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
     const generation = SlabAllocator.generationOf(child);
     if (generation == SlabAllocator.dead_generation) return;
     if (instance_lifecycle.markCleanupStarted(child)) {
@@ -190,7 +190,6 @@ pub fn releaseOwned(child: *Instance) void {
 pub fn releaseSevered(instance: *Instance, generation: u64) void {
     const instance_lifecycle = @import("instance_lifecycle.zig");
     const cleanup_coordinator = @import("cleanup_coordinator.zig");
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
     if (SlabAllocator.generationOf(instance) != generation) return;
     if (!instance_lifecycle.isCleanedUp(instance)) return;
     if (cleanup_coordinator.isContextTearingDown())
@@ -285,12 +284,41 @@ pub const DeferredTeardown = struct {
     /// Debug (`prediction_checks`): the roots predicted dead since the last
     /// `predictionsSettled`.
     predicted_roots: if (prediction_checks) std.ArrayListUnmanaged(PredictedRoot) else void = if (prediction_checks) std.ArrayListUnmanaged(PredictedRoot).empty else {},
+    /// `runFreshTrees` looked at its `fresh_scan_budget` newest items and
+    /// found no tree made inside the innermost callback: it looks again once
+    /// one is queued, or another callback is the innermost.
+    fresh_scan_spent: bool = false,
     /// Totals for tests and diagnostics.
     queued_total: usize = 0,
     freed_total: usize = 0,
+    /// Of `freed_total`, the nodes `runFreshTrees` freed inside callbacks.
+    freed_in_callbacks: usize = 0,
 
     /// Nodes a slice frees at most.
     pub const slice_budget: usize = 512;
+    /// THE IN-TASK BOUND IN BYTES (lane mem1, follow-up A): past
+    /// `max(dying_floor, the live DOM)` of the agent's DOM memory decided dead
+    /// and not yet freed (`ExternalMemory.dying` against `.live`), each safe
+    /// point frees a slice - the binding exit at depth zero any item, the
+    /// binding return into a callback's own script the trees made inside
+    /// that callback (`runFreshTrees`) - as cppgc sweeps a slice per
+    /// allocation while V8's incremental marking runs inside a long task
+    /// (V8 15.7.112.43 src/heap/cppgc/object-allocator.cc ->
+    /// Sweeper::SweepForAllocationIfRunning; heap.cc Heap::
+    /// IncrementalMarkingLimitReached against Heap::GlobalSizeOfObjects,
+    /// which counts the C++ heap). V8 lets a heap grow by at least its
+    /// conservative growing step past what it found alive before it collects
+    /// again (heap-controller.cc MinimumAllocationLimitGrowingStep: 2 MB in
+    /// its low-memory mode, 8 regular): Crane takes the low-memory step,
+    /// memory over time (the user's dm3 ruling). Before this only
+    /// `high_water` nodes bounded a task, and nothing at all bounded one
+    /// inside a callback: 8,000 delete-joins in one timer callback peaked at
+    /// 56.6 MB Zig-side against 5.8 MB spread over 80 callbacks.
+    pub const dying_floor: usize = 2 * 1024 * 1024;
+    /// Items `runFreshTrees` looks at, newest first, per safe point: the
+    /// trees a callback dropped are queued last, so its fresh ones are at the
+    /// tail; past this many it stops looking until a fresh tree is queued.
+    pub const fresh_scan_budget: usize = 64;
     /// Queued nodes past which the safe points that queue items free them.
     pub const high_water: usize = 100_000;
     /// Queued nodes an event loop's turn leaves at most: past it, the turn
@@ -398,12 +426,15 @@ pub const DeferredTeardown = struct {
     pub const FinalizerSteps = struct {
         run: *const fn (data: ?*anyopaque) bool,
         /// Run the FRESH ones only (`runFresh`): those whose object was made
-        /// by a script-called constructor at or after `innermost` on the
-        /// callback clock. One made at or after `outermost` but before
+        /// at or after `innermost` on the callback clock (a script-called
+        /// constructor's stamp, or what `freshSerialOf` answers for its
+        /// slab generation). One made at or after `outermost` but before
         /// `innermost` waits where it is; anything else waits for depth
-        /// zero. Answers whether it could run here (as `run`) and the newest
-        /// stamp it left waiting.
-        run_fresh: *const fn (data: ?*anyopaque, innermost: u32, outermost: u32) Fresh,
+        /// zero. The same for the releases a collection recorded for node
+        /// wrappers it found dead (lane mem1). Answers whether it could run
+        /// here (as `run`) and the newest stamp it left waiting. `queue` is
+        /// the queue asking: its `freshSerialOf` judges each one.
+        run_fresh: *const fn (data: ?*anyopaque, queue: *const DeferredTeardown, innermost: u32, outermost: u32) Fresh,
         data: ?*anyopaque,
 
         pub const Fresh = struct {
@@ -426,8 +457,10 @@ pub const DeferredTeardown = struct {
     /// object was made, so none holds a pointer to it; a pointer some
     /// binding stored in a longer-lived structure since is the question it
     /// already is at depth zero. The adapter stamps the objects its
-    /// script-called constructors make with the clock (`freshStamp`), and a
-    /// stamp at or after the innermost callback's beginning is FRESH.
+    /// script-called constructors make with the clock (`freshStamp`), any
+    /// other object earns a stamp from its slab generation against the
+    /// invocations' entries (`freshSerialOf`), and a stamp at or after the
+    /// innermost callback's beginning is FRESH.
     pub const Callbacks = struct {
         /// The clock: the callback invocations that have begun. It stops at
         /// its last value rather than wrap, and nothing is stamped from then
@@ -445,12 +478,36 @@ pub const DeferredTeardown = struct {
         /// began); 0: none. `leaveCallback` owes a fresh run again when the
         /// callback script returns into is at or before it.
         waiting: u32 = 0,
+        /// The innermost invocation's entry generation: its Browser slab's
+        /// next generation when it began (SlabAllocator.generationNow, read
+        /// by the adapter at the invocation). An object whose slab
+        /// generation is at or above it was made inside that invocation,
+        /// after every native frame below it was suspended - the fresh
+        /// rule's test for trees (`runFreshTrees`). 0: none known, and
+        /// nothing is fresh.
+        entry_generation: u64 = 0,
+        /// The slab `entry_generation` was read from: generations of two
+        /// slabs do not compare, so an object another slab issued is OLD.
+        entry_slab: ?*const SlabAllocator = null,
+        /// The outermost invocation's entry (with `outermost`): an object
+        /// made after it began but before the innermost did waits for the
+        /// outer callback's script (`freshSerialOf`).
+        outermost_entry: Entry = .{},
     };
 
     /// The invocation `enterCallback` found innermost, for `leaveCallback`.
     pub const OuterCallback = struct {
         active: u32,
         depth: u32,
+        entry: Entry = .{},
+    };
+
+    /// Where a callback invocation began in its Browser's allocation order
+    /// (`Callbacks.entry_generation`, `entry_slab`); the default knows
+    /// nothing, and nothing is fresh against it.
+    pub const Entry = struct {
+        slab: ?*const SlabAllocator = null,
+        generation: u64 = 0,
     };
 
     /// The byte an adapter's collector callback sets `Owed.finalizers_mask`
@@ -481,7 +538,6 @@ pub const DeferredTeardown = struct {
         self.books.put_back_bytes += put_back;
         if (!prediction_checks) return;
         const instance_lifecycle = @import("instance_lifecycle.zig");
-        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
         for (self.predicted_roots.items) |root| {
             if (SlabAllocator.generationOf(root.instance) != root.generation) continue;
             if (instance_lifecycle.isCleanupStarted(root.instance)) continue;
@@ -513,6 +569,12 @@ pub const DeferredTeardown = struct {
         /// What the object's tree holds of a Browser's DOM memory, decided
         /// dead by this push (`Dying`); null: nothing of it is counted there.
         dying: ?Dying = null,
+        /// The lowest slab generation in the object's tree
+        /// (dom.tree_teardown.Measure.min_generation): the tree was made
+        /// after any callback that began at a lower generation, and may be
+        /// freed at that callback's safe points (`runFreshTrees`). 0, the
+        /// default, is unknown, and unknown is OLD.
+        min_generation: u64 = 0,
     };
 
     /// The bytes a queued tree holds of a Browser's DOM memory, and that
@@ -562,8 +624,13 @@ pub const DeferredTeardown = struct {
         /// not each item's). A script that drops elements one by one queues
         /// an item an element, up to 100,000 at once, so an item's size is
         /// paid 100,000 times: batch A's first form was 104 bytes
-        /// (tests/runtime/dm2_dying_figure_test.zig pins 88).
+        /// (tests/runtime/dm2_dying_figure_test.zig pins the size).
         dying: usize = 0,
+        /// The request's `min_generation` (0: OLD). 8 bytes more an item -
+        /// 88 to 96, at most 800 KB at 100,000 queued items - for the fresh
+        /// rule, which frees a long callback's own garbage inside it (lane
+        /// mem1): the item had no padding to hold it.
+        min_generation: u64 = 0,
     };
 
     /// How a slice of one item went.
@@ -617,6 +684,7 @@ pub const DeferredTeardown = struct {
             .steps = request.steps,
             .data = request.data,
             .weight = std.math.cast(u32, request.weight) orelse std.math.maxInt(u32),
+            .min_generation = request.min_generation,
         };
         if (request.dying) |dying| {
             if (self.memory == null) self.memory = dying.memory;
@@ -625,8 +693,9 @@ pub const DeferredTeardown = struct {
         self.pushBack(item);
         self.pending += item.weight;
         self.queued_total += 1;
-        // The memory bound: past it, the next safe point frees down to it.
-        if (self.pending > high_water and !self.owed.drain) self.owed.relief = true;
+        // The memory bounds: past one, the next safe points free down to it.
+        if (self.isFresh(item)) self.fresh_scan_spent = false;
+        if (!self.owed.drain and self.overBound()) self.owed.relief = true;
         return true;
     }
 
@@ -653,8 +722,9 @@ pub const DeferredTeardown = struct {
     noinline fn leaveOwing(self: *DeferredTeardown) void {
         if (self.algorithm_depth == 0) {
             self.runOwed();
-        } else if (self.owed.fresh and self.algorithm_depth == self.callback.depth) {
-            self.runFresh();
+        } else if (self.algorithm_depth == self.callback.depth) {
+            if (self.owed.fresh) self.runFresh();
+            if (self.owed.relief) self.runFreshTrees();
         }
     }
 
@@ -666,9 +736,17 @@ pub const DeferredTeardown = struct {
 
     /// A native algorithm calls script (`enterAlgorithm` for a callback
     /// invocation): the clock ticks, and this invocation is the innermost.
-    pub fn enterCallback(self: *DeferredTeardown) OuterCallback {
+    pub fn enterCallback(self: *DeferredTeardown, entry: Entry) OuterCallback {
         self.algorithm_depth += 1;
-        const outer: OuterCallback = .{ .active = self.callback.active, .depth = self.callback.depth };
+        const outer: OuterCallback = .{
+            .active = self.callback.active,
+            .depth = self.callback.depth,
+            .entry = .{ .slab = self.callback.entry_slab, .generation = self.callback.entry_generation },
+        };
+        self.callback.entry_generation = entry.generation;
+        self.callback.entry_slab = entry.slab;
+        if (outer.active == 0) self.callback.outermost_entry = entry;
+        self.fresh_scan_spent = false;
         if (self.callback.serial != std.math.maxInt(u32)) self.callback.serial += 1;
         self.callback.active = self.callback.serial;
         self.callback.depth = self.algorithm_depth;
@@ -684,11 +762,17 @@ pub const DeferredTeardown = struct {
         self.algorithm_depth -|= 1;
         self.callback.active = outer.active;
         self.callback.depth = outer.depth;
+        // What the inner callback made was made inside this one too: a tree
+        // fresh for it is fresh here (a lower entry generation, at or below).
+        self.callback.entry_generation = outer.entry.generation;
+        self.callback.entry_slab = outer.entry.slab;
+        self.fresh_scan_spent = false;
         if (outer.active == 0) {
             // No callback is on the stack: what waited runs with everything
             // else, at depth zero or the pump.
             self.callback.outermost = 0;
             self.callback.waiting = 0;
+            self.callback.outermost_entry = .{};
         } else if (self.callback.waiting >= outer.active) {
             self.owed.fresh = true;
         }
@@ -732,8 +816,16 @@ pub const DeferredTeardown = struct {
         self.owed = .{ .finalizers = owed.finalizers, .fresh = owed.fresh };
         if (owed.drain) {
             self.drainAll();
-        } else if (owed.relief and self.pending > high_water) {
-            _ = self.runSlice(self.pending - high_water + slice_budget);
+        } else if (owed.relief) {
+            // Past high_water, down to it at once (a tree weighs up to the
+            // bound); past the byte bound, a slice a safe point.
+            if (self.pending > high_water) {
+                _ = self.runSlice(self.pending - high_water + slice_budget);
+            } else if (self.overDyingBound()) {
+                _ = self.runSlice(slice_budget);
+                // Still past it: the next safe point frees another slice.
+                if (self.overBound()) self.owed.relief = true;
+            }
         }
         // After the frees: the figure the engine is told is what they left.
         if (owed.report) if (self.report_steps) |steps| steps.run(steps.data);
@@ -772,10 +864,121 @@ pub const DeferredTeardown = struct {
         std.debug.assert(self.algorithm_depth != 0 and self.algorithm_depth == self.callback.depth);
         self.owed.fresh = false;
         const steps = self.finalizer_steps orelse return;
-        const result = steps.run_fresh(steps.data, self.callback.active, self.callback.outermost);
+        const result = steps.run_fresh(steps.data, self, self.callback.active, self.callback.outermost);
         // Not here (as `runFinalizers`): nothing was looked at, and the next
         // exit of this callback looks again.
         if (result.done) self.callback.waiting = result.waiting else self.owed.fresh = true;
+    }
+
+    /// Past a memory bound: `high_water` queued nodes, or the byte bound.
+    fn overBound(self: *const DeferredTeardown) bool {
+        return self.pending > high_water or self.overDyingBound();
+    }
+
+    /// Past the byte bound (`dying_floor`): more of the agent's DOM memory
+    /// decided dead and not yet freed than `max(dying_floor, live)`.
+    fn overDyingBound(self: *const DeferredTeardown) bool {
+        const memory = self.memory orelse return false;
+        return memory.dying > @max(dying_floor, memory.live);
+    }
+
+    /// Whether `item`'s whole tree was made inside the innermost callback on
+    /// the stack: its lowest slab generation at or above that callback's
+    /// entry generation. The ALLOWLIST: an item whose tree no walk vouched
+    /// for (`min_generation` 0), and every item while no callback - or no
+    /// entry generation - is known, is OLD.
+    pub fn isFresh(self: *const DeferredTeardown, item: *const Item) bool {
+        const entry = self.callback.entry_generation;
+        const slab = self.callback.entry_slab orelse return false;
+        if (self.callback.active == 0 or entry == 0) return false;
+        if (item.min_generation == 0 or item.min_generation < entry) return false;
+        // Issued by the slab the entry was read from (its address says).
+        return SlabAllocator.ownerOf(item.instance) == slab;
+    }
+
+    /// The callback clock's stamp an object deserves by the fresh rule,
+    /// whatever made it (lane mem1, follow-up A): `slab` issued it at
+    /// `generation`. The innermost invocation's serial when that generation
+    /// is at or above the invocation's entry - made inside it, after every
+    /// native frame below it was suspended, so its finalizer may run at a
+    /// binding's return into that callback's script; the OUTERMOST
+    /// invocation's when it was made after the outermost began but before
+    /// the innermost did - it waits, at least until script is back in the
+    /// outermost callback (conservative: the invocations between keep no
+    /// entry here, so one made inside a middle callback is not owed a look
+    /// when an inner one returns into it; it runs when a later first pass
+    /// owes one, or back in the outermost); 0 - never fresh, depth zero
+    /// finalizes it - otherwise: made before every callback on the stack,
+    /// generation unknown (`dead_generation`), another slab's (generations
+    /// of two slabs do not compare), no callback on the stack, or once the
+    /// clock has stopped (`freshStamp`: the invocations then share its last
+    /// value, and an outermost serial would compare as innermost). The
+    /// ALLOWLIST: fresh is proven by the two numbers, never assumed.
+    ///
+    /// The constructor stamp (`freshStamp`) knew only the objects a
+    /// script-called constructor made; a factory method's (createRange)
+    /// and the DOM's own (the Ranges and InputEvents editing makes) were
+    /// never fresh and waited for depth zero - 56,000 Ranges after 8,000
+    /// delete-joins in one timer callback. What a fresh finalizer releases
+    /// is no wider for it: a `new Range()` was already fresh, and released
+    /// its references to old nodes at the callback's binding exit.
+    pub fn freshSerialOf(self: *const DeferredTeardown, slab: *const SlabAllocator, generation: u64) u32 {
+        if (self.callback.active == 0 or self.callback.serial == std.math.maxInt(u32)) return 0;
+        if (generation == SlabAllocator.dead_generation) return 0;
+        if (self.callback.entry_slab == slab and self.callback.entry_generation != 0 and generation >= self.callback.entry_generation) return self.callback.active;
+        const outermost = self.callback.outermost_entry;
+        if (outermost.slab == slab and outermost.generation != 0 and generation >= outermost.generation) return self.callback.outermost;
+        return 0;
+    }
+
+    /// THE SAFE POINT INSIDE A CALLBACK, for trees (lane mem1, follow-up
+    /// A): a binding returned into the innermost callback's own script and
+    /// a memory bound is passed. The frames below that callback - the
+    /// native algorithm that invoked it, and everything under that - were
+    /// suspended when it began, before any object made inside it existed,
+    /// so none of them holds such an object: the argument by which the
+    /// queue already runs that callback's FRESH finalizers here
+    /// (`runFresh`). A garbage tree every node of which was made inside the
+    /// callback (`isFresh`) is therefore freed here, a slice at a time -
+    /// newest first, at most `fresh_scan_budget` items looked at per safe
+    /// point - and every other item waits for depth zero or the event loop,
+    /// as before. A pointer some binding stored in a longer-lived structure
+    /// is the question it already is at depth zero. What the frees here let
+    /// go of is queued, never freed inline (a teardown during this slice
+    /// pushes; the slice does not chase it).
+    fn runFreshTrees(self: *DeferredTeardown) void {
+        if (self.slicing) return;
+        std.debug.assert(self.algorithm_depth != 0 and self.algorithm_depth == self.callback.depth);
+        if (!self.overBound()) {
+            self.owed.relief = false;
+            return;
+        }
+        if (self.fresh_scan_spent) return;
+        self.slicing = true;
+        defer self.slicing = false;
+        var freed: usize = 0;
+        while (freed < slice_budget) {
+            // Newest first, looking again from the tail each time: a teardown
+            // may unlink or free any item, so no pointer is kept across one.
+            var at = self.tail;
+            var looked: usize = 0;
+            const found: ?*Item = while (at) |item| : (at = item.prev) {
+                if (looked == fresh_scan_budget) break null;
+                looked += 1;
+                if (self.isFresh(item)) break item;
+            } else null;
+            const item = found orelse {
+                if (freed == 0) self.fresh_scan_spent = true;
+                break;
+            };
+            self.unlink(item);
+            const progress = self.runSteps(item, slice_budget - freed);
+            self.account(item, progress.freed);
+            freed += @max(progress.freed, 1);
+            if (progress.done) self.finish(item) else self.pushBack(item);
+        }
+        self.freed_in_callbacks += freed;
+        if (!self.overBound()) self.owed.relief = false;
     }
 
     /// One slice: items in the order they were queued, until `budget` nodes
@@ -795,7 +998,7 @@ pub const DeferredTeardown = struct {
             freed += @max(progress.freed, 1);
             if (progress.done) self.finish(item) else self.pushFront(item);
         }
-        if (self.owed.relief and self.pending <= high_water) self.owed.relief = false;
+        if (self.owed.relief and !self.overBound()) self.owed.relief = false;
         return freed;
     }
 

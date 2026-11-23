@@ -57,7 +57,17 @@ pub inline fn enterCallback(realm: runtime.Context) Callback {
     const agent = realm.agent orelse return .{ .queue = null };
     const storage = isolate_templates.getTemplateStorage(@ptrCast(@alignCast(agent))) orelse return .{ .queue = null };
     const queue = storage.deferred_teardown orelse return .{ .queue = null };
-    return .{ .queue = queue, .outer = queue.enterCallback() };
+    return .{ .queue = queue, .outer = queue.enterCallback(entryOf(realm)) };
+}
+
+/// Where the callback begins in its Browser's allocation order
+/// (DeferredTeardown.Callbacks.entry_generation): the realm's slab's next
+/// generation now - every object made from here on carries one at or above
+/// it - and that slab; nothing known, so nothing fresh, for a realm with no
+/// scope.
+fn entryOf(realm: runtime.Context) DeferredTeardown.Entry {
+    const scope = realm.browserScope() orelse return .{};
+    return .{ .slab = &scope.slab, .generation = scope.slab.generationNow() };
 }
 
 /// A binding returns into script: at depth zero the queue runs what it owes -

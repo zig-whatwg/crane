@@ -123,8 +123,24 @@ fn deleteJoinKeepsNoStyleObjectPastItsElement(page: Page) !void {
     }
 }
 
+/// On the churn tests' allocator (tests/AGENTS.md, "Tests come first"):
+/// 2,500 joins make and free hundreds of blocks each, and
+/// std.testing.allocator's stack capture at every one made this test take
+/// 60 s on server1 and, on aarch64 macOS, close enough to the launcher's
+/// 300 s that a loaded gate timed it out (chat2, lanes flk4 and mem1,
+/// 2026-11-22: 300.0 s, then two passes alone).
+fn deleteJoinOnAChurnPage() !void {
+    var churn = @import("root").poisoning.ChurnAllocator.init("mem1_kept_edge_teardown_test: 2,500 delete-joins");
+    {
+        const page = try Page.open(churn.allocator());
+        defer page.close();
+        try deleteJoinKeepsNoStyleObjectPastItsElement(page);
+    }
+    try churn.deinit();
+}
+
 test "a delete-join loop past the undo bound keeps no element.style object past its element" {
-    try native_read_page.onPage(deleteJoinKeepsNoStyleObjectPastItsElement);
+    try native_read_page.onFreshThread(deleteJoinOnAChurnPage);
 }
 
 fn editingStyleReadsMakeNoStyleObject(page: Page) !void {
