@@ -643,7 +643,13 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 |---|---|---|
 | `showFilePicker` | `(browser, requester, options: *const FilePickerOptions{ mode: open/open_multiple/save/directory, accept, capture, suggested_name }, reply: Reply(PickedFiles))` | HTML 4.10.5.1.17 File Upload state and "show the picker, if applicable"; showPicker(); File System Access's pickers. Unsupported: none chosen - `cancel` (input), AbortError (File System Access). |
 | `readPickedFile` | `(browser, file: FileToken, offset: u64, length: u32, reply: Reply(Bytes))` | Reading a picked File's bytes (FileReader, Blob.stream) - files stay where the OS keeps them (a document provider on iOS). |
-| `releasePickedFile` | `(browser, file: FileToken) void` | |
+| `releasePickedFile` | `(browser, file: FileToken) void` | A token never released is let go at the Browser's end. |
+| `userFile` | `(browser, path: Str, reply: Reply(PickedFile))` | A file the HOST chose by its path, with no picker: a remote end's DOM.setFileInputFiles (Blink's FileInputType::SetFilesFromPaths), an automation's "set input files". The same PickedFile a picker answers, its token read by `readPickedFile`. Dropped when the path names no regular file. kit/posix/user_files keeps the path and the size and modification time it had; a read of a file gone or changed since drops. |
+| `userDirectory` | `(browser, path: Str, reply: Reply(PickedFiles))` | The regular files under a directory the host chose (an input with webkitdirectory: Blink's SetFilesFromDirectory), each with its token and `relative_path` - the directory's name, then the path under it, '/'-separated (File's webkitRelativePath). kit/posix sorts them by relative path; Chrome lists them in file-system order. |
+
+darwin, linux and the testing platform declare file_picker `.emulated` (kit/posix/user_files, a token table per
+Browser): `userFile` and `userDirectory` answer, `showFilePicker` answers none chosen (no picker UI - an input's
+picker is dismissed with `cancel`). kit/headless, and so a platform built without it, is `.unsupported`.
 
 #### 6.10.4 Screen and system state (required; defaults allowed)
 
