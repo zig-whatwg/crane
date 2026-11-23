@@ -93,6 +93,7 @@ test "a full collection walks the agent's stack roots in its atomic pause withou
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     const realm = try protocol.createWindowRealm(&.{
+        .agent_cluster_cross_origin_isolated = false,
         .agent = agent,
         .allocator = std.heap.c_allocator,
         .from_snapshot = false,
