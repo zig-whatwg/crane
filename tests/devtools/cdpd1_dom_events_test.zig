@@ -229,14 +229,18 @@ test "a modal dialog entering and leaving the top layer is topLayerElementsUpdat
     try h.run("document.getElementById('d').close();");
     try h.settle();
     // In the top layer it has a ::backdrop (the UA's dialog::backdrop),
-    // made and destroyed by the next style recalc each time.
+    // made and destroyed by the next style recalc each time - and Blink keeps
+    // the ::backdrop in the top layer list beside its element, so its coming
+    // and going are top layer changes of their own (Chrome 157's trace).
     try expectEvents(&h, from,
         \\attributeModified 9 open=
+        \\topLayerElementsUpdated
         \\topLayerElementsUpdated
         \\pseudoElementAdded 9 ::backdrop#10/0 backdrop
         \\attributeRemoved 9 open
         \\topLayerElementsUpdated
         \\pseudoElementRemoved 9 10
+        \\topLayerElementsUpdated
         \\
     );
 }
@@ -248,15 +252,18 @@ test "a child frame's new document re-sends its owner: childNodeRemoved, then ch
     // #document 1, HTML 2, HEAD 3, BODY 4, IFRAME#f 5, its #document 6. The
     // owner is sent again at the new document's commit, before its parser
     // ran: Blink's DocumentLoader::DidCommitNavigation calls
-    // probe::DidCommitLoad with the new document still empty.
+    // probe::DidCommitLoad with the new document still empty. Its parser's
+    // first insertion is then the document's count update, as in Chrome
+    // 157's trace (frame-commit) - waited for, so the run never races it.
     try setUp(&h, "data:text/html,<body><iframe id=f></iframe></body>", null);
     const from = h.seen.items.len;
     try h.run("document.getElementById('f').src = 'data:text/html,<p>z';");
-    _ = try h.waitEvent("DOM.childNodeInserted", from);
+    _ = try h.waitEvent("DOM.childNodeCountUpdated", from);
     try expectEvents(&h, from,
         \\attributeModified 5 src=data:text/html,<p>z
         \\childNodeRemoved 4 5
         \\childNodeInserted 4 0 IFRAME#7/0{id=f,src=data:text/html,<p>z}(#document#8/0)
+        \\childNodeCountUpdated 8 1
         \\
     );
 }

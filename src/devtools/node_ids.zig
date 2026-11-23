@@ -62,6 +62,15 @@ pub const NodeIds = struct {
         return self.idOfKey(pseudoKey(element, kind), runtime.SlabAllocator.generationOf(element));
     }
 
+    /// `element`'s pseudo-element of kind `kind` was destroyed (Blink frees
+    /// a removed element's PseudoElements): its id goes, and one made again
+    /// is a new node with a new id, as in Chrome.
+    pub fn forgetPseudo(self: *NodeIds, element: *runtime.Instance, kind: u3) void {
+        const removed = self.by_node.fetchRemove(pseudoKey(element, kind)) orelse return;
+        self.by_node_guard.noteRemoval(&self.by_node);
+        if (self.by_id.remove(removed.value.id)) self.by_id_guard.noteRemoval(&self.by_id);
+    }
+
     fn idOfKey(self: *NodeIds, address: usize, generation: u64) Allocator.Error!i64 {
         if (self.by_node.get(address)) |entry| {
             if (entry.generation == generation) return entry.id;

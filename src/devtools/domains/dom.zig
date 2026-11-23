@@ -102,6 +102,12 @@ pub const State = struct {
     /// update compares with (PseudoElementCreated / Destroyed).
     pseudo_state: std.AutoHashMapUnmanaged(usize, PseudoRecord) = .empty,
     pseudo_state_guard: infra.tombstones.TombstoneGuard = .{},
+    /// The top layer's elements that had a ::backdrop at the last rendering
+    /// update, by name: Blink keeps each ::backdrop in the top layer list
+    /// beside its element (Document::AddToTopLayer(backdrop, element)), so a
+    /// backdrop made or destroyed at the style recalc is a top layer change
+    /// of its own, and its own topLayerElementsUpdated (Chrome 157's trace).
+    backdrops: std.ArrayListUnmanaged(Backdrop) = .empty,
     /// Inside a DOM algorithm's probe (dom_events.zig sets it): nodes built
     /// now take their pseudo-elements from the record only - no style is
     /// resolved in the middle of a tree mutation; the next rendering update
@@ -156,6 +162,8 @@ pub fn sessionEnded(session: *PageSession) void {
     s.pending_adopted = .empty;
     s.pseudo_state.deinit(session.allocator);
     s.pseudo_state = .empty;
+    s.backdrops.deinit(session.allocator);
+    s.backdrops = .empty;
     var stacks = s.creation_stacks.valueIterator();
     while (stacks.next()) |stack| session.allocator.free(stack.json);
     s.creation_stacks.deinit(session.allocator);
@@ -184,6 +192,12 @@ pub fn enable(session: *PageSession, params: D.enable.Params) !D.enable.Result {
     };
     s.include_whitespace = if (params.includeWhitespace) |w| w == .all else false;
     s.enabled = true;
+    // The ::backdrops there already are no change (nothing is sent for what
+    // was in the top layer before the agent was).
+    s.backdrops.clearRetainingCapacity();
+    if (session.arena) |arena| {
+        for (inspectedDocuments(session, arena) catch &.{}) |document| _ = updateBackdrops(session, document);
+    }
     return .{};
 }
 
@@ -1156,7 +1170,7 @@ pub fn didInsertDOMNode(session: *PageSession, node: *runtime.Instance) void {
     const previous_id = if (previous) |p| map.boundId(p) else 0;
     var arena_state = std.heap.ArenaAllocator.init(session.allocator);
     defer arena_state.deinit();
-    const value = buildNode(session, arena_state.allocator(), node, 0, false, .{ .bindings = &map.document, .no_pseudos = true }) catch return;
+    const value = buildNode(session, arena_state.allocator(), node, 0, false, .{ .bindings = &map.document, .no_pseudos = true, .no_assigned_slot = true }) catch return;
     session.emit(D.childNodeInserted, .{ .parentNodeId = parent_id, .previousNodeId = previous_id, .node = value });
     // Its style, and with it its pseudo-elements, at the next rendering
     // update (Blink's insertion schedules a style recalc).
@@ -1185,7 +1199,7 @@ fn domNodeRemoved(session: *PageSession, node: *runtime.Instance) void {
     } else {
         session.emit(D.childNodeRemoved, .{ .parentNodeId = parent_id, .nodeId = map.boundId(node) });
     }
-    unbind(session, map, node);
+    unbindRemoved(session, map, node);
 }
 
 /// DidModifyDOMAttr / DidRemoveDOMAttr: a bound element's attribute was set
@@ -1380,8 +1394,58 @@ pub fn slotAssignmentChanged(session: *PageSession, slot: *runtime.Instance) voi
 /// slot of it the client still has gets DidPerformSlotDistribution -
 /// distributedNodesUpdated with its assigned nodes.
 pub fn renderingUpdated(session: *PageSession, document: *runtime.Instance) void {
+    const changes = updateBackdrops(session, document);
+    // A backdrop made enters the top layer as the recalc makes it, before
+    // its PseudoElementCreated; one destroyed leaves after its
+    // PseudoElementDestroyed (Chrome 157's order).
+    for (0..changes.added) |_| topLayerElementsChanged(session, document);
     updatePseudoElements(session, document);
+    for (0..changes.removed) |_| topLayerElementsChanged(session, document);
     sendDistributions(session, document);
+}
+
+/// A top layer element with a ::backdrop, by name.
+const Backdrop = struct { document: usize, element: usize, generation: u64 };
+
+/// The ::backdrops `document`'s top layer has now, against those it had at
+/// the last rendering update: how many came and went. The record is updated.
+fn updateBackdrops(session: *PageSession, document: *runtime.Instance) struct { added: usize, removed: usize } {
+    const s = &session.states.DOM;
+    var now: std.ArrayListUnmanaged(Backdrop) = .empty;
+    defer now.deinit(session.allocator);
+    if (dom.top_layer.ofDocument(document, false) catch null) |layer| {
+        for (layer.entries.items) |entry| {
+            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            const element = entry.node() orelse continue;
+            if (!dom.style.engine.generatedPseudos(element).backdrop) continue;
+            const named: Backdrop = .{ .document = @intFromPtr(document), .element = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) };
+            if (indexOfBackdrop(now.items, named) == null) now.append(session.allocator, named) catch return .{ .added = 0, .removed = 0 };
+        }
+    }
+    var added: usize = 0;
+    for (now.items) |b| {
+        if (indexOfBackdrop(s.backdrops.items, b) == null) added += 1;
+    }
+    var removed: usize = 0;
+    var i: usize = 0;
+    while (i < s.backdrops.items.len) {
+        const b = s.backdrops.items[i];
+        if (b.document == @intFromPtr(document)) {
+            if (indexOfBackdrop(now.items, b) == null) removed += 1;
+            _ = s.backdrops.swapRemove(i);
+            continue;
+        }
+        i += 1;
+    }
+    s.backdrops.appendSlice(session.allocator, now.items) catch {};
+    return .{ .added = added, .removed = removed };
+}
+
+fn indexOfBackdrop(list: []const Backdrop, b: Backdrop) ?usize {
+    for (list, 0..) |item, i| {
+        if (item.document == b.document and item.element == b.element and item.generation == b.generation) return i;
+    }
+    return null;
 }
 
 /// The style recalc's pseudo-element updates, for the elements the client
@@ -1458,6 +1522,8 @@ fn updatePseudo(session: *PageSession, element: *runtime.Instance, kind: u3) voi
         session.emit(D.pseudoElementAdded, .{ .parentId = parent_id, .pseudoElement = value });
     } else if (!exists and bound != 0) {
         _ = map.forgetPseudo(element, kind);
+        // PseudoElementDestroyed: the PseudoElement is gone, its id with it.
+        if (nodeIds(session)) |ids| ids.forgetPseudo(element, kind);
         session.emit(D.pseudoElementRemoved, .{ .parentId = parent_id, .pseudoElementId = bound });
     }
 }
@@ -1550,6 +1616,17 @@ fn invalidateFrameOwnerElement(session: *PageSession, navigable_id: u64) void {
 /// inner child's, down the tree. A work list, not recursion: a client can
 /// hold a whole document of any depth.
 fn unbind(session: *PageSession, map: *NodeMap, node: *runtime.Instance) void {
+    unbindTree(session, map, node, false);
+}
+
+/// `unbind`, for `node` leaving its tree: Blink destroys a removed element's
+/// PseudoElements, so their backendNodeIds go too and a pseudo-element made
+/// again on reinsertion is a new node (Chrome 157's trace: a new id).
+fn unbindRemoved(session: *PageSession, map: *NodeMap, node: *runtime.Instance) void {
+    unbindTree(session, map, node, true);
+}
+
+fn unbindTree(session: *PageSession, map: *NodeMap, node: *runtime.Instance, removed: bool) void {
     var stack: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer stack.deinit(session.allocator);
     var next: ?*runtime.Instance = node;
@@ -1558,7 +1635,11 @@ fn unbind(session: *PageSession, map: *NodeMap, node: *runtime.Instance) void {
         if (forgotten.id == 0) continue;
         if ((interfaces.Node.get_nodeType(current) catch 0) == 1) {
             // "ForEachSupportedPseudo(element, unbind_pseudo)".
-            for (pseudo_kinds) |pseudo| _ = map.forgetPseudo(current, pseudo.kind);
+            for (pseudo_kinds) |pseudo| {
+                if (map.forgetPseudo(current, pseudo.kind) != 0 and removed) {
+                    if (nodeIds(session)) |ids| ids.forgetPseudo(current, pseudo.kind);
+                }
+            }
             const s = &session.states.DOM;
             if (s.pseudo_state.remove(@intFromPtr(current))) s.pseudo_state_guard.noteRemoval(&s.pseudo_state);
             if (contentNavigableOf(session, current)) |bc| {
@@ -1727,6 +1808,12 @@ const Build = struct {
     /// update adds them: pseudoElementAdded). Not passed to what is built
     /// under it.
     no_pseudos: bool = false,
+    /// The same for its assigned slot: Blink reads AssignedSlotWithoutRecalc,
+    /// and a node just inserted under a shadow host has none until the
+    /// assignment's recalc (Chrome 157's trace: no assignedSlot on the
+    /// childNodeInserted; distributedNodesUpdated follows at the rendering
+    /// update). Not passed to what is built under it.
+    no_assigned_slot: bool = false,
 };
 
 /// The pseudo-elements CDP's DOM.Node lists, in ForEachSupportedPseudo's
@@ -1860,7 +1947,9 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
                 }
             }
             // A slotted element names its slot (AssignedSlotWithoutRecalc).
-            if (assignedSlotOf(node)) |slot| described.assignedSlot = try backendNodeOf(session, arena, slot);
+            if (!build.no_assigned_slot) if (assignedSlotOf(node)) |slot| {
+                described.assignedSlot = try backendNodeOf(session, arena, slot);
+            };
             // Its pseudo-elements (BuildArrayForPseudoElements), which go
             // with it.
             {
@@ -1903,7 +1992,9 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
             described.baseURL = try arena.dupe(u8, base);
             described.xmlVersion = "";
             described.compatibilityMode = compatibilityModeOf(node);
-            if (frameOfDocument(session, node)) |bc| described.frameId = try arena.dupe(u8, session.frameId(bc.id).slice());
+            // No frameId on a document: Blink's BuildObjectForNode names the
+            // frame on a frame owner and on the document element only
+            // (Chrome 157's trace).
         },
         // DOCUMENT_TYPE_NODE
         10 => {
@@ -1939,6 +2030,7 @@ fn buildNode(session: *PageSession, arena: Allocator, node: *runtime.Instance, d
         if (build.bindings != null and force_push_children and depth == 0) depth = 1;
         var under = build;
         under.no_pseudos = false;
+        under.no_assigned_slot = false;
         const children = try buildChildren(session, arena, node, depth, pierce, under);
         // "Push children along with shadow in any case."
         if (children.len != 0 or depth != 0) described.children = children;

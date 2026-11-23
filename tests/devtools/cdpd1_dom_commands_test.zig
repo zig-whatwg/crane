@@ -191,7 +191,9 @@ test "getTopLayerElements answers the top layer's elements, their paths pushed" 
     defer out.deinit(h.allocator);
     try ints(&h, got.object.get("nodeIds").?, &out);
     try testing.expectEqualStrings("7", out.items);
+    // The second update: the ::backdrop entering the top layer beside it.
     try expectEvents(&h, from,
+        \\topLayerElementsUpdated
         \\topLayerElementsUpdated
         \\setChildNodes 4 [DIV#5/1{id=a},P#6/0{id=b},DIALOG#7/0{id=d,open=}[]<::backdrop#8/0 backdrop>]
         \\
