@@ -10,8 +10,14 @@
 //! Holds are native; a wrapper is made only for the root of a tree that leaves
 //! the document while something holds a node in it.
 //!
-//! The counts are the engine's own diagnostics (`wrapper_cache_entries`)
-//! read through the protocol, after two collections.
+//! The counts are the engine's own diagnostics read through the protocol,
+//! after two collections: every live wrapper on this thread, the wrapper
+//! caches' entries (`wrapper_cache_entries`, non-node platform objects) AND
+//! the node wrappers (`node_wrappers`). A node's main-world wrapper lives in the node's
+//! own slot since the wrapper redesign and never enters a cache
+//! (node_wrappers.zig), so on the cache's count alone the wrapper halves of
+//! these tests passed whatever the holds wrapped (lane mem1's audit,
+//! 2026-11-22). The last test checks that the count sees node wrappers.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -43,14 +49,19 @@ fn collect(browser: *browser_mod.Browser) !void {
     try engine.runInRealm(realm, Collect.steps, agent);
 }
 
-fn wrapperEntries(browser: *browser_mod.Browser) !i64 {
+/// Every live wrapper on this thread after two collections: the wrapper
+/// caches' entries and the node wrappers.
+fn liveWrappers(browser: *browser_mod.Browser) !i64 {
     try collect(browser);
     const counters = try engine.diagnosticCounters(testing.allocator);
     defer testing.allocator.free(counters);
+    var cache_entries: ?i64 = null;
+    var node_wrappers: ?i64 = null;
     for (counters) |counter| {
-        if (std.mem.eql(u8, counter.name, "wrapper_cache_entries")) return counter.value;
+        if (std.mem.eql(u8, counter.name, "wrapper_cache_entries")) cache_entries = counter.value;
+        if (std.mem.eql(u8, counter.name, "node_wrappers")) node_wrappers = counter.value;
     }
-    return error.NoWrapperCounter;
+    return (cache_entries orelse return error.NoWrapperCounter) + (node_wrappers orelse return error.NoNodeWrapperCounter);
 }
 
 const small = 1_000;
@@ -88,7 +99,7 @@ fn querySample(count: usize) !i64 {
     var buffer: [64]u8 = undefined;
     const expected = try std.fmt.bufPrint(&buffer, "{d}", .{count});
     try expectScript(browser, "globalThis.kept = document.getElementById('root').querySelectorAll('p'); String(kept.length)", expected);
-    return wrapperEntries(browser);
+    return liveWrappers(browser);
 }
 
 fn noWrapperPerQueriedNode() !void {
@@ -126,7 +137,7 @@ fn observedParseSample(count: usize) !i64 {
     const result = try page.evaluateScriptToString("String(seen > 0 && window.parsed)", testing.allocator);
     defer testing.allocator.free(result);
     try testing.expectEqualStrings("true", result);
-    return wrapperEntries(browser);
+    return liveWrappers(browser);
 }
 
 fn noWrapperPerObservedNode() !void {
@@ -162,7 +173,7 @@ fn removedHeldSubtreeSample(count: usize) !i64 {
         \\document.getElementById('root').innerHTML = '';
         \\String(kept.length)
     , expected);
-    return wrapperEntries(browser);
+    return liveWrappers(browser);
 }
 
 fn oneWrapperPerRescuedTree() !void {
@@ -211,9 +222,9 @@ fn unreadRecordsMakeNoListAndNoRescue() !void {
     }
     // A parsed subtree inserted under an observer: its record holds 200 nodes
     // of the document - no wrapper - and is dropped unread.
-    const wrappers_before = try wrapperEntries(browser);
+    const wrappers_before = try liveWrappers(browser);
     try page.runScript("document.getElementById('dst2').innerHTML = '<b></b>'.repeat(200); mo.disconnect();");
-    const wrappers_after = try wrapperEntries(browser);
+    const wrappers_after = try liveWrappers(browser);
     if (wrappers_after - wrappers_before >= wrapper_slack) {
         std.debug.print("an unread record of 200 inserted nodes left {d} wrappers\n", .{wrappers_after - wrappers_before});
         return error.RescueForUnreadRecord;
@@ -308,7 +319,7 @@ fn retainedAfterDroppedLists(lists: bool) !Retained {
     const native_before = counting.outstanding;
     const arena_before = if (arena) |a| a.stats().bytes_in_use else 0;
     try droppedListsPass(browser, page, script);
-    const wrappers = try wrapperEntries(browser);
+    const wrappers = try liveWrappers(browser);
     // What the rounds left behind: the page's own growth over the run.
     return .{
         .instances = slab.stats().currently_allocated -| instances_before,
@@ -339,4 +350,32 @@ fn droppedListsRetainNothing() !void {
 
 test "1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections" {
     try onFreshThread(droppedListsRetainNothing);
+}
+
+/// The count these tests read sees node wrappers: script that wraps every
+/// node a static list holds raises it by one a node. Without this, a count
+/// that cannot see a node's wrapper - the cache's alone, since the wrapper
+/// redesign - would let their wrapper halves pass whatever the holds wrap.
+fn countSeesNodeWrappers() !void {
+    var markup: std.ArrayListUnmanaged(u8) = .empty;
+    defer markup.deinit(testing.allocator);
+    try markup.appendSlice(testing.allocator, "<!doctype html><body><div id=root>");
+    for (0..small) |_| try markup.appendSlice(testing.allocator, "<p></p>");
+    try markup.appendSlice(testing.allocator, "</div></body>");
+    const browser = try openPage(markup.items);
+    defer browser.deinit();
+    var buffer: [64]u8 = undefined;
+    const expected = try std.fmt.bufPrint(&buffer, "{d}", .{small});
+    try expectScript(browser, "globalThis.kept = document.getElementById('root').querySelectorAll('p'); String(kept.length)", expected);
+    const before = try liveWrappers(browser);
+    try expectScript(browser, "globalThis.all = Array.from(kept); String(all.length)", expected);
+    const after = try liveWrappers(browser);
+    if (after - before < small) {
+        std.debug.print("{d} held nodes wrapped by script: the count went {d} -> {d}\n", .{ small, before, after });
+        return error.CountMissesNodeWrappers;
+    }
+}
+
+test "the wrapper count these tests read sees a node's wrapper: wrapping a static list's 1,000 nodes raises it by 1,000" {
+    try onFreshThread(countSeesNodeWrappers);
 }
