@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const IdleRequestCallback = *const fn (deadline: *runtime.Instance) void;
+/// callback IdleRequestCallback = undefined (IdleDeadline deadline)
+pub const IdleRequestCallback = runtime.BorrowedCallbackFunction;

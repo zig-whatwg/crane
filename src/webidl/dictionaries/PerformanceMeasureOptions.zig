@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const PerformanceMeasureOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     detail: ?runtime.JSValue = null,
     start: ?runtime.JSValue = null,
     duration: ?typedefs.DOMHighResTimeStamp = null,

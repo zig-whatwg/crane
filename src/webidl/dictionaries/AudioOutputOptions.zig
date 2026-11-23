@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AudioOutputOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     deviceId: ?runtime.DOMString = null,
 
     /// Optional members' IDL default values: a member the value leaves

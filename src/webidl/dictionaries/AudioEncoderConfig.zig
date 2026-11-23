@@ -9,6 +9,8 @@ const OpusEncoderConfig = @import("OpusEncoderConfig.zig").OpusEncoderConfig;
 const AacEncoderConfig = @import("AacEncoderConfig.zig").AacEncoderConfig;
 
 pub const AudioEncoderConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     codec: runtime.DOMString,
     sampleRate: u32,
     numberOfChannels: u32,

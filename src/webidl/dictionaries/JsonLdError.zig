@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const JsonLdError = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     code: ?enums.JsonLdErrorCode = null,
     message: ?runtime.USVString = null,
 

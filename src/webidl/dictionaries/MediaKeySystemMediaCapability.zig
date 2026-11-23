@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const MediaKeySystemMediaCapability = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     contentType: ?runtime.DOMString = null,
     encryptionScheme: ?runtime.DOMString = null,
     robustness: ?runtime.DOMString = null,

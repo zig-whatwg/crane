@@ -9,6 +9,7 @@ const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
 
 const Dictionary = struct {
+    pub const webidl_dictionary = true;
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),
 };
 

@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const RTCStats = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     timestamp: typedefs.DOMHighResTimeStamp,
     type: enums.RTCStatsType,
     id: runtime.DOMString,

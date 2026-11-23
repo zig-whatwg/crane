@@ -7,6 +7,8 @@ const enums = @import("enums");
 const KeySystemTrackConfiguration = @import("KeySystemTrackConfiguration.zig").KeySystemTrackConfiguration;
 
 pub const MediaCapabilitiesKeySystemConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     keySystem: runtime.DOMString,
     initDataType: ?runtime.DOMString = null,
     distinctiveIdentifier: ?enums.MediaKeysRequirement = null,

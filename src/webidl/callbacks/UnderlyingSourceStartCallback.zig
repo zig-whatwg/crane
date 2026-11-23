@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSourceStartCallback = *const fn (controller: *runtime.Instance) runtime.JSValue;
+/// callback UnderlyingSourceStartCallback = any (ReadableStreamController controller)
+pub const UnderlyingSourceStartCallback = runtime.BorrowedCallbackFunction;

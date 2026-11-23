@@ -69,6 +69,7 @@ const Presets = enum {
 
 /// A dictionary as codegen emits one.
 const Config = struct {
+    pub const webidl_dictionary = true;
     comments: ?bool = null,
 };
 

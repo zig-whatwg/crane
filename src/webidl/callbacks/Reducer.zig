@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const Reducer = *const fn (accumulator: runtime.JSValue, currentValue: runtime.JSValue, index: u64) runtime.JSValue;
+/// callback Reducer = any (any accumulator, any currentValue, unsigned long long index)
+pub const Reducer = runtime.BorrowedCallbackFunction;

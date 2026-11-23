@@ -7,6 +7,8 @@ const XRDepthStateInit = @import("XRDepthStateInit.zig").XRDepthStateInit;
 const XRDOMOverlayInit = @import("XRDOMOverlayInit.zig").XRDOMOverlayInit;
 
 pub const XRSessionInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     requiredFeatures: ?[]const runtime.DOMString = null,
     optionalFeatures: ?[]const runtime.DOMString = null,
     depthSensing: ?XRDepthStateInit = null,

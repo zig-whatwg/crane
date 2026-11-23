@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const TransformerTransformCallback = *const fn (chunk: runtime.JSValue, controller: *runtime.Instance) runtime.JSValue;
+/// callback TransformerTransformCallback = Promise<undefined> (any chunk, TransformStreamDefaultController controller)
+pub const TransformerTransformCallback = runtime.BorrowedCallbackFunction;

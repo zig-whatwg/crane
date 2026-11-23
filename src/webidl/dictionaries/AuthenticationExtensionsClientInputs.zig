@@ -9,6 +9,8 @@ const HMACGetSecretInput = @import("HMACGetSecretInput.zig").HMACGetSecretInput;
 const AuthenticationExtensionsLargeBlobInputs = @import("AuthenticationExtensionsLargeBlobInputs.zig").AuthenticationExtensionsLargeBlobInputs;
 
 pub const AuthenticationExtensionsClientInputs = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     credentialProtectionPolicy: ?runtime.USVString = null,
     enforceCredentialProtectionPolicy: ?bool = null,
     credBlob: ?runtime.JSValue = null,

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSinkCloseCallback = *const fn () runtime.JSValue;
+/// callback UnderlyingSinkCloseCallback = Promise<undefined> ()
+pub const UnderlyingSinkCloseCallback = runtime.BorrowedCallbackFunction;

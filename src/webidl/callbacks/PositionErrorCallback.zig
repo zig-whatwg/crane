@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const PositionErrorCallback = *const fn (positionError: *runtime.Instance) void;
+/// callback PositionErrorCallback = undefined (GeolocationPositionError positionError)
+pub const PositionErrorCallback = runtime.BorrowedCallbackFunction;

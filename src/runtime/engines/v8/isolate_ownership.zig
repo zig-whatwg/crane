@@ -80,6 +80,8 @@
 //!
 //! ## The hot paths measure the observer too: event loop and CallbackWrapper
 //!
+//! (CallbackWrapper, the per-call callback interface wrapper, was deleted by
+//! lane bind1, 2026-11-23; the record stands.)
 //! `V8EventLoop.runOnce` / `runMicrotasks` and `CallbackWrapper.callN` are genuine
 //! deferred-use sites - each drains or invokes JS with an isolate it has carried
 //! since construction, from Crane's own code. They were instrumented, measured, and

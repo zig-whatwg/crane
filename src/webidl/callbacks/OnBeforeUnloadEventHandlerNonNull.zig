@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const OnBeforeUnloadEventHandlerNonNull = *const fn (event: *runtime.Instance) runtime.DOMString;
+/// callback OnBeforeUnloadEventHandlerNonNull = DOMString? (Event event)
+pub const OnBeforeUnloadEventHandlerNonNull = runtime.BorrowedCallbackFunction;

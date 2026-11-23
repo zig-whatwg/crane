@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const CSSNumericType = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     length: ?i32 = null,
     angle: ?i32 = null,
     time: ?i32 = null,

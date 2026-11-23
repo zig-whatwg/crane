@@ -31,6 +31,8 @@ test "dictionary presence rule preserves only nullable non-null defaults and the
     defer testing.allocator.free(path);
     const output = try std.Io.Dir.cwd().readFileAlloc(testing.io, path, testing.allocator, .limited(65536));
     defer testing.allocator.free(output);
-    try testing.expect(std.mem.indexOf(u8, output, "const webidl") == null);
+    // No import of the webidl module (`const webidl_dictionary`, the
+    // dictionary marker every generated dictionary carries, is no import).
+    try testing.expect(std.mem.indexOf(u8, output, "const webidl = @import") == null);
     try testing.expect(std.mem.indexOf(u8, output, "webidl.Opt") == null);
 }

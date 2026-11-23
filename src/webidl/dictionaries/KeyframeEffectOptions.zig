@@ -8,6 +8,8 @@ const enums = @import("enums");
 const EffectTiming = @import("EffectTiming.zig").EffectTiming;
 
 pub const KeyframeEffectOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from EffectTiming
     base: EffectTiming,
 

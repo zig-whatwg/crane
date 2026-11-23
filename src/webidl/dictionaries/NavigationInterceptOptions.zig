@@ -7,6 +7,8 @@ const enums = @import("enums");
 const callbacks = @import("callbacks");
 
 pub const NavigationInterceptOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     precommitHandler: ?callbacks.NavigationPrecommitHandler = null,
     handler: ?callbacks.NavigationInterceptHandler = null,
     focusReset: ?enums.NavigationFocusReset = null,

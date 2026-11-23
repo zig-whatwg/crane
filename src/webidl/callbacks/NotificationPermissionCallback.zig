@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const NotificationPermissionCallback = *const fn (permission: []const u8) void;
+/// callback NotificationPermissionCallback = undefined (NotificationPermission permission)
+pub const NotificationPermissionCallback = runtime.BorrowedCallbackFunction;

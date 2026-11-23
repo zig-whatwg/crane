@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AuthenticationExtensionsLargeBlobOutputs = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     supported: ?bool = null,
     blob: ?runtime.JSValue = null,
     written: ?bool = null,

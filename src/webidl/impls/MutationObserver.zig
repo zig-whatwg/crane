@@ -276,7 +276,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The callback is invoked with a list of MutationRecord objects as first
 /// argument and the constructed MutationObserver object as second argument.
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
-    std.log.debug("[MutationObserver] call_constructor called with callback={*}", .{@as(?*const anyopaque, @ptrCast(callback))});
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
@@ -285,7 +284,7 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     // function over, and the observer keeps it (OWNED) with its callback
     // context.
     const internal = getInternal(instance);
-    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+    internal.callback = callback.keep();
 
     // Steps 2-3: "Set this's creation index to this's relevant agent's
     // mutation observer counter. Increase this's relevant agent's mutation

@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const CSSStyleSheetInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     baseURL: ?runtime.DOMString = null,
     media: ?runtime.JSValue = null,
     disabled: ?bool = null,

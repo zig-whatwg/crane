@@ -9,6 +9,8 @@ const PaymentCurrencyAmount = @import("PaymentCurrencyAmount.zig").PaymentCurren
 const PaymentShippingOption = @import("PaymentShippingOption.zig").PaymentShippingOption;
 
 pub const PaymentRequestDetailsUpdate = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     @"error": ?runtime.DOMString = null,
     total: ?PaymentCurrencyAmount = null,
     modifiers: ?[]const PaymentDetailsModifier = null,

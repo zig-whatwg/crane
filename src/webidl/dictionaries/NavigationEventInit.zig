@@ -7,6 +7,8 @@ const enums = @import("enums");
 const UIEventInit = @import("UIEventInit.zig").UIEventInit;
 
 pub const NavigationEventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from UIEventInit
     base: UIEventInit,
 

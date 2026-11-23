@@ -182,7 +182,7 @@ fn setUp(
     instance: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*runtime.CallbackWrapper,
+    filter: ?runtime.BorrowedCallbackInterface,
 ) anyerror!void {
     const internal = getInternal(instance);
     // Step 2: Set walker's root and walker's current to root.

@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const AddressInit = @import("AddressInit.zig").AddressInit;
 
 pub const PaymentHandlerResponse = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     methodName: ?runtime.DOMString = null,
     details: ?runtime.JSValue = null,
     payerName: ?runtime.DOMString = null,

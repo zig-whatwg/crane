@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const WebCodecsErrorCallback = *const fn (@"error": *runtime.Instance) void;
+/// callback WebCodecsErrorCallback = undefined (DOMException error)
+pub const WebCodecsErrorCallback = runtime.BorrowedCallbackFunction;

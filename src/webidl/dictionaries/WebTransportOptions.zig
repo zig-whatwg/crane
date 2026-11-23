@@ -8,6 +8,8 @@ const enums = @import("enums");
 const WebTransportHash = @import("WebTransportHash.zig").WebTransportHash;
 
 pub const WebTransportOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     allowPooling: ?bool = null,
     requireUnreliable: ?bool = null,
     headers: ?typedefs.HeadersInit = null,

@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUBufferBinding = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     buffer: *runtime.Instance,
     offset: ?typedefs.GPUSize64 = null,
     size: ?typedefs.GPUSize64 = null,

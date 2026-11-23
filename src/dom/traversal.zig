@@ -20,7 +20,7 @@ pub const NodeIteratorSetUp = *const fn (
     iterator: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*runtime.CallbackWrapper,
+    filter: ?runtime.BorrowedCallbackInterface,
     document: *runtime.Instance,
 ) anyerror!void;
 
@@ -30,7 +30,7 @@ pub const TreeWalkerSetUp = *const fn (
     walker: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*runtime.CallbackWrapper,
+    filter: ?runtime.BorrowedCallbackInterface,
 ) anyerror!void;
 
 pub const NodeIteratorSteps = struct {
@@ -52,13 +52,14 @@ pub fn installTreeWalker(set_up: TreeWalkerSetUp) void {
     tree_walker.install(set_up);
 }
 
-/// Set up a NodeIterator the caller has just created. The iterator owns
-/// `filter` from here on, and releases it when it is freed.
+/// Set up a NodeIterator the caller has just created. The iterator keeps
+/// `filter` (BORROWED for the call) from here on, and releases it when it
+/// is freed.
 pub fn setUpNodeIterator(
     iterator: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*runtime.CallbackWrapper,
+    filter: ?runtime.BorrowedCallbackInterface,
     document: *runtime.Instance,
 ) !void {
     const steps = node_iterator.get() orelse return error.NotSupported;
@@ -71,13 +72,13 @@ pub fn preRemoveNodeIterator(iterator: *runtime.Instance, removed: *runtime.Inst
     steps.pre_remove(iterator, removed);
 }
 
-/// Set up a TreeWalker the caller has just created. The walker owns `filter`
-/// from here on, and releases it when it is freed.
+/// Set up a TreeWalker the caller has just created. The walker keeps `filter`
+/// (BORROWED for the call) from here on, and releases it when it is freed.
 pub fn setUpTreeWalker(
     walker: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*runtime.CallbackWrapper,
+    filter: ?runtime.BorrowedCallbackInterface,
 ) !void {
     const set_up = tree_walker.get() orelse return error.NotSupported;
     return set_up(walker, root, what_to_show, filter);

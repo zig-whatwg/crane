@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const EncodedAudioChunkOutputCallback = *const fn (output: *runtime.Instance, metadata: runtime.JSValue) void;
+/// callback EncodedAudioChunkOutputCallback = undefined (EncodedAudioChunk output, optional EncodedAudioChunkMetadata metadata)
+pub const EncodedAudioChunkOutputCallback = runtime.BorrowedCallbackFunction;

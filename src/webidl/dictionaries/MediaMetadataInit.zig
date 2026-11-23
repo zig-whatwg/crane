@@ -7,6 +7,8 @@ const ChapterInformationInit = @import("ChapterInformationInit.zig").ChapterInfo
 const MediaImage = @import("MediaImage.zig").MediaImage;
 
 pub const MediaMetadataInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     title: ?runtime.DOMString = null,
     artist: ?runtime.DOMString = null,
     album: ?runtime.DOMString = null,

@@ -7,6 +7,8 @@ const enums = @import("enums");
 const MediaKeySystemMediaCapability = @import("MediaKeySystemMediaCapability.zig").MediaKeySystemMediaCapability;
 
 pub const MediaKeySystemConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     label: ?runtime.DOMString = null,
     initDataTypes: ?[]const runtime.DOMString = null,
     audioCapabilities: ?[]const MediaKeySystemMediaCapability = null,

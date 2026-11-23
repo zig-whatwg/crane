@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const WebTransportSendOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     sendGroup: ?*runtime.Instance = null,
     sendOrder: ?i64 = null,
 

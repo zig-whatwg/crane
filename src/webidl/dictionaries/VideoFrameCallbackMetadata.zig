@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const VideoFrameCallbackMetadata = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     presentationTime: typedefs.DOMHighResTimeStamp,
     expectedDisplayTime: typedefs.DOMHighResTimeStamp,
     width: u32,

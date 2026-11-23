@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const LoadDocumentOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     extractAllScripts: ?bool = null,
     profile: ?runtime.USVString = null,
     requestProfile: ?runtime.JSValue = null,

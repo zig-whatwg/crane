@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const LanguageModelToolFunction = *const fn (arguments: []const runtime.JSValue) runtime.JSValue;
+/// callback LanguageModelToolFunction = Promise<DOMString> (any... arguments)
+pub const LanguageModelToolFunction = runtime.BorrowedCallbackFunction;

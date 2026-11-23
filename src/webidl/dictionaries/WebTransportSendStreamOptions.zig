@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const WebTransportSendOptions = @import("WebTransportSendOptions.zig").WebTransportSendOptions;
 
 pub const WebTransportSendStreamOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from WebTransportSendOptions
     base: WebTransportSendOptions,
 

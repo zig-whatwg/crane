@@ -7,6 +7,8 @@ const PayerErrors = @import("PayerErrors.zig").PayerErrors;
 const AddressErrors = @import("AddressErrors.zig").AddressErrors;
 
 pub const PaymentValidationErrors = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     payer: ?PayerErrors = null,
     shippingAddress: ?AddressErrors = null,
     @"error": ?runtime.DOMString = null,

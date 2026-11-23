@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const MockCaptureDeviceConfiguration = @import("MockCaptureDeviceConfiguration.zig").MockCaptureDeviceConfiguration;
 
 pub const MockCameraConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from MockCaptureDeviceConfiguration
     base: MockCaptureDeviceConfiguration,
 

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const NavigationInterceptHandler = *const fn () runtime.JSValue;
+/// callback NavigationInterceptHandler = Promise<undefined> ()
+pub const NavigationInterceptHandler = runtime.BorrowedCallbackFunction;

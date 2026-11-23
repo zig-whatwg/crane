@@ -148,6 +148,7 @@ const TimingToJSON = struct {
 
 /// A dictionary with the same members.
 const TimingDict = struct {
+    pub const webidl_dictionary = true;
     start: ?f64 = null,
     notRestoredReasons: ?*runtime.Instance = null,
     label: ?runtime.DOMString = null,
@@ -304,6 +305,7 @@ fn handleBytesLeftByToV8(comptime T: type, value: T) !i64 {
 }
 
 const Entry = struct {
+    pub const webidl_record_entry = true;
     key: runtime.DOMString,
     value: runtime.DOMString,
 };
@@ -353,6 +355,7 @@ test "a sequence whose later element fails frees the elements before it" {
 /// A dictionary with a required member, as codegen emits one: no `?`, no
 /// default.
 const WithRequired = struct {
+    pub const webidl_dictionary = true;
     label: ?runtime.DOMString = null,
     length: u32,
 };
@@ -388,4 +391,56 @@ test "a required dictionary member that is present converts" {
     defer ffi.v8_Value_Dispose(null_length);
     const from_null = try conv.fromV8Value(WithRequired, testing.allocator, e.isolate, e.context, null_length);
     try testing.expectEqual(@as(u32, 0), from_null.length);
+}
+
+// ===========================================================================
+// record<K, V> members (WebIDL 3.2.23; lane bind1)
+// ===========================================================================
+
+/// A record<DOMString, double> entry, as codegen emits one (marked
+/// `webidl_record_entry`), and a dictionary with a record member, as
+/// AudioWorkletNodeOptions.parameterData is.
+const ParameterEntry = struct {
+    pub const webidl_record_entry = true;
+    key: runtime.DOMString,
+    value: f64,
+};
+const WithRecord = struct {
+    pub const webidl_dictionary = true;
+    parameterData: ?[]const ParameterEntry = null,
+};
+
+test "a record member is the object's own enumerable properties, in order, not a sequence" {
+    defer test_agent.close();
+    const e = try env();
+    // An inherited property and a non-enumerable one are not the record's.
+    const value = try eval("(() => { const o = Object.create({ inherited: 9 }); o.b = 2; o.a = 1; Object.defineProperty(o, 'hidden', { value: 3, enumerable: false }); return { parameterData: o }; })()");
+    defer ffi.v8_Value_Dispose(value);
+    const converted = try conv.fromV8Value(WithRecord, testing.allocator, e.isolate, e.context, value);
+    defer iface.freeArgument(WithRecord, testing.allocator, converted);
+    const entries = converted.parameterData orelse return error.NoRecord;
+    try testing.expectEqual(@as(usize, 2), entries.len);
+    try testing.expectEqualStrings("b", entries[0].key.asSlice());
+    try testing.expectEqual(@as(f64, 2), entries[0].value);
+    try testing.expectEqualStrings("a", entries[1].key.asSlice());
+    try testing.expectEqual(@as(f64, 1), entries[1].value);
+}
+
+test "a record member that is not an Object is a TypeError, and a Symbol key is one" {
+    defer test_agent.close();
+    const e = try env();
+    const number = try eval("({ parameterData: 5 })");
+    defer ffi.v8_Value_Dispose(number);
+    try testing.expectError(error.TypeError, conv.fromV8Value(WithRecord, testing.allocator, e.isolate, e.context, number));
+    // 3.2.23 step 4.2.1: a Symbol key converted to DOMString throws.
+    const symbol = try eval("({ parameterData: { a: 1, [Symbol('s')]: 2 } })");
+    defer ffi.v8_Value_Dispose(symbol);
+    try testing.expectError(error.TypeError, conv.fromV8Value(WithRecord, testing.allocator, e.isolate, e.context, symbol));
+    // An Array is an Object too: its own index keys, not its iteration.
+    const array = try eval("({ parameterData: [7] })");
+    defer ffi.v8_Value_Dispose(array);
+    const from_array = try conv.fromV8Value(WithRecord, testing.allocator, e.isolate, e.context, array);
+    defer iface.freeArgument(WithRecord, testing.allocator, from_array);
+    try testing.expectEqual(@as(usize, 1), from_array.parameterData.?.len);
+    try testing.expectEqualStrings("0", from_array.parameterData.?[0].key.asSlice());
 }

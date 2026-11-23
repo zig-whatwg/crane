@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const SchedulerPostTaskCallback = *const fn () runtime.JSValue;
+/// callback SchedulerPostTaskCallback = any ()
+pub const SchedulerPostTaskCallback = runtime.BorrowedCallbackFunction;

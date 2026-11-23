@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPURenderPassDepthStencilAttachment = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     view: runtime.JSValue,
     depthClearValue: ?f32 = null,
     depthLoadOp: ?enums.GPULoadOp = null,

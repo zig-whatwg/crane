@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const HighlightHitResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     highlight: ?*runtime.Instance = null,
     ranges: ?[]const *runtime.Instance = null,
 

@@ -419,8 +419,8 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 ///
 /// "Queue a microtask to invoke callback with « » and "report"."
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    // The binding hands the callback over: take it before anything can fail.
-    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // The callback is BORROWED for the call: kept before anything can fail.
+    const function = callback.keep();
     const task = instance.ctx.allocator.create(Microtask) catch {
         function.release();
         return error.OutOfMemory;
@@ -553,9 +553,9 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// a Window's are its own operations ([Global]: page_realm's window
 /// operations), which answer first.
 fn setTimer(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue, repeat: bool) anyerror!i32 {
-    // The binding hands a Function over: take it before anything can fail.
+    // The Function is BORROWED for the call: kept before anything can fail.
     const converted: global_settings.TimerHandler = switch (handler) {
-        .function => |function| .{ .function = engine.takeCallbackFunction(@ptrCast(function)) },
+        .function => |function| .{ .function = function.keep() },
         .trusted_script => |trusted| .{ .trusted_script = trusted },
         .domstring => |text| .{ .string = text.asSlice() },
     };

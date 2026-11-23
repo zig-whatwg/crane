@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const MediaImage = @import("MediaImage.zig").MediaImage;
 
 pub const ChapterInformationInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     title: ?runtime.DOMString = null,
     startTime: ?f64 = null,
     artwork: ?[]const MediaImage = null,

@@ -7,6 +7,8 @@ const MediaEncodingConfiguration = @import("MediaEncodingConfiguration.zig").Med
 const MediaCapabilitiesInfo = @import("MediaCapabilitiesInfo.zig").MediaCapabilitiesInfo;
 
 pub const MediaCapabilitiesEncodingInfo = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from MediaCapabilitiesInfo
     base: MediaCapabilitiesInfo,
 
