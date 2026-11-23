@@ -27,7 +27,20 @@ const dom = @import("dom");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 
-const allocator = std.testing.allocator;
+/// The test's allocator: a churn test's (tests/test_runner/poisoning.zig,
+/// `ChurnAllocator`), not std.testing.allocator - 2,500 random trees and
+/// 30,000 dispatches make and free millions of blocks, and the per-allocation
+/// stack capture std.testing.allocator does made this test 164 s on chat2
+/// against 5.0 s on server1 (lane flk4 item 8, 2026-11-23). One per run of
+/// the test, made and deinit'd by it (its deinit, at the test's end, is the
+/// leak check std.testing.allocator's was): a run of the test reads it here,
+/// and the next run in the same process (verify mode runs it ten times in
+/// one) gets a fresh one.
+var churn_of_this_run: ?*@import("root").poisoning.ChurnAllocator = null;
+
+fn allocator() std.mem.Allocator {
+    return churn_of_this_run.?.allocator();
+}
 const Instance = runtime.Instance;
 
 /// Trees to build; each gets `dispatches_per_tree` dispatches.
@@ -120,7 +133,7 @@ const Literal = struct {
     clear_targets: bool = false,
 
     fn deinit(self: *Literal) void {
-        self.path.deinit(allocator);
+        self.path.deinit(allocator());
     }
 };
 
@@ -142,7 +155,7 @@ fn hasActivationBehavior(target: *Instance) bool {
 
 /// "Append to an event path".
 fn appendLiteral(path: *std.ArrayListUnmanaged(Item), invocation_target: *Instance, shadow_adjusted: ?*Instance, related: ?*Instance, touch: [max_touch]*Instance, slot_in_closed_tree: bool) !void {
-    try path.append(allocator, .{
+    try path.append(allocator(), .{
         .invocation_target = invocation_target,
         .in_shadow_tree = isNode(invocation_target) and isShadowRoot(rootOf(invocation_target)),
         .shadow_adjusted_target = shadow_adjusted,
@@ -274,8 +287,8 @@ const Tree = struct {
     }
 
     fn init(self: *Tree, random: std.Random) !void {
-        self.* = .{ .ctx = try runtime.ContextData.init(allocator, .{}), .document = undefined, .detached = undefined };
-        self.document = try interfaces.Document.init(allocator, &self.ctx);
+        self.* = .{ .ctx = try runtime.ContextData.init(allocator(), .{}), .document = undefined, .detached = undefined };
+        self.document = try interfaces.Document.init(allocator(), &self.ctx);
         try dom.document_internals.setContentType(self.document, "text/html");
         try dom.document_internals.setDocumentType(self.document, .html);
         const html = try self.element("html");
@@ -283,8 +296,8 @@ const Tree = struct {
         const body = try self.element("body");
         _ = try interfaces.Node.call_appendChild(html, body);
         self.detached = try self.element("div");
-        try self.nodes.appendSlice(allocator, &.{ self.document, html, body, self.detached });
-        try self.containers.appendSlice(allocator, &.{ body, self.detached });
+        try self.nodes.appendSlice(allocator(), &.{ self.document, html, body, self.detached });
+        try self.containers.appendSlice(allocator(), &.{ body, self.detached });
 
         const names = [_][]const u8{ "a", "b", "c" };
         const count = 6 + random.uintLessThan(usize, 26);
@@ -294,7 +307,7 @@ const Tree = struct {
             if (roll < 15) {
                 const text = try interfaces.Document.call_createTextNode(self.document, runtime.DOMString.initInterned("t"));
                 _ = try interfaces.Node.call_appendChild(parent, text);
-                try self.nodes.append(allocator, text);
+                try self.nodes.append(allocator(), text);
                 continue;
             }
             const name: []const u8 = if (roll < 32) "slot" else if (roll < 42) "x-act" else if (roll < 71) "div" else "span";
@@ -305,17 +318,17 @@ const Tree = struct {
                 try setAttribute(el, "slot", names[random.uintLessThan(usize, names.len)]);
             }
             _ = try interfaces.Node.call_appendChild(parent, el);
-            try self.nodes.append(allocator, el);
-            try self.containers.append(allocator, el);
+            try self.nodes.append(allocator(), el);
+            try self.containers.append(allocator(), el);
             if ((std.mem.eql(u8, name, "div") or std.mem.eql(u8, name, "span")) and random.uintLessThan(u8, 100) < 40) {
                 const shadow = try interfaces.Element.call_attachShadow(el, .{
                     .mode = if (random.boolean()) ._open_ else ._closed_,
                     .slotAssignment = if (random.uintLessThan(u8, 100) < 25) ._manual_ else ._named_,
                 });
                 try dom.node_document.set(shadow, self.document);
-                try self.shadows.append(allocator, shadow);
-                try self.nodes.append(allocator, shadow);
-                try self.containers.append(allocator, shadow);
+                try self.shadows.append(allocator(), shadow);
+                try self.nodes.append(allocator(), shadow);
+                try self.containers.append(allocator(), shadow);
             }
         }
         try self.assignManually(random);
@@ -329,21 +342,21 @@ const Tree = struct {
             if (assignment != ._manual_) continue;
             const host = hostOf(shadow);
             var children: std.ArrayListUnmanaged(*Instance) = .empty;
-            defer children.deinit(allocator);
+            defer children.deinit(allocator());
             var child = interfaces.Node.get_firstChild(host) catch null;
             while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
-                if (isSlottable(c)) try children.append(allocator, c);
+                if (isSlottable(c)) try children.append(allocator(), c);
             }
             for (self.nodes.items) |candidate| {
                 if (!isNode(candidate) or isShadowRoot(candidate)) continue;
                 if (!dom.slot_helpers.isSlot(dom.instance_bridge.getNodeBase(candidate).?)) continue;
                 if (rootOf(candidate) != shadow) continue;
                 var chosen: std.ArrayListUnmanaged(*Instance) = .empty;
-                defer chosen.deinit(allocator);
+                defer chosen.deinit(allocator());
                 for (children.items) |c| {
-                    if (random.boolean()) try chosen.append(allocator, c);
+                    if (random.boolean()) try chosen.append(allocator(), c);
                 }
-                try dom.shadow_dom_algorithms.assign(allocator, candidate, chosen.items);
+                try dom.shadow_dom_algorithms.assign(allocator(), candidate, chosen.items);
             }
         }
     }
@@ -354,9 +367,9 @@ const Tree = struct {
         interfaces.Document.deinit(self.document);
         interfaces.HTMLDivElement.deinit(self.detached);
         for (self.shadows.items) |shadow| interfaces.ShadowRoot.deinit(shadow);
-        self.nodes.deinit(allocator);
-        self.containers.deinit(allocator);
-        self.shadows.deinit(allocator);
+        self.nodes.deinit(allocator());
+        self.containers.deinit(allocator());
+        self.shadows.deinit(allocator());
         self.ctx.deinit();
     }
 };
@@ -398,7 +411,7 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
 
     // The dispatch's path, as EventTarget's dispatch declares it.
     var dispatch_path: dom.event_dispatch.DispatchPath = undefined;
-    dispatch_path.init(allocator);
+    dispatch_path.init(allocator());
     defer dispatch_path.deinit();
     const result = try dom.event_path.build(state, &dispatch_path, d.target, .{
         .event_type = if (d.load) "load" else "ev1",
@@ -438,8 +451,18 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
 }
 
 test "the event path across shadow trees matches DOM 2.9 steps 4-6.11, read literally, on random trees" {
+    var churn = @import("root").poisoning.ChurnAllocator.init("ev1_event_path_differential_test");
+    churn_of_this_run = &churn;
+    defer churn_of_this_run = null;
+    try differential();
+    // The leak check: everything the trees, the dispatches and the runtime
+    // made is freed (the runtime's own end ran in `differential`).
+    try churn.deinit();
+}
+
+fn differential() !void {
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(allocator);
+    runtime.initializeRuntime(allocator());
     defer runtime.deinitializeRuntime();
 
     var cases: usize = 0;

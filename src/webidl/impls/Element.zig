@@ -1091,6 +1091,9 @@ fn lookupName(instance: *runtime.Instance, internal: *const InternalState, name:
 fn handleAttributeChanges(
     instance: *runtime.Instance,
     namespace: ?[]const u8,
+    /// The attribute's namespace prefix: only CDP's attribute events read it
+    /// (the qualified name Blink reports).
+    prefix: ?[]const u8,
     local_name: []const u8,
     old_value: ?[]const u8,
     new_value: ?[]const u8,
@@ -1131,6 +1134,25 @@ fn handleAttributeChanges(
     if (namespace == null and (std.mem.eql(u8, local_name, "form") or std.mem.eql(u8, local_name, "id") or std.mem.eql(u8, local_name, "disabled"))) {
         dom.custom_elements.formAttributeChanged(instance, local_name, old_value, new_value);
     }
+
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's probe::DidModifyDOMAttr / DidRemoveDOMAttr after
+    // Element::AttributeChanged, and for a styled element's style attribute
+    // its DidInvalidateStyleAttr (StyleAttributeChanged).
+    if (dom.inspector_probes.active()) {
+        const styled = if (getInternal(instance)) |internal| isStyledNamespace(internal.data.name.namespace_uri) else false;
+        const cssom_update = styled and namespace == null and std.mem.eql(u8, local_name, "style") and dom.style.inline_style.updatingStyleAttribute(instance);
+        dom.inspector_probes.attributeChanged(instance, namespace, prefix, local_name, old_value, new_value, styled, cssom_update);
+    }
+}
+
+/// Blink's IsStyledElement: an HTML, SVG or MathML element - the elements
+/// whose style attribute is their inline style.
+fn isStyledNamespace(namespace: ?[]const u8) bool {
+    const ns = namespace orelse return false;
+    return std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") or
+        std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") or
+        std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML");
 }
 
 /// The attribute change steps this engine defines, in one place.
@@ -1257,7 +1279,7 @@ fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index:
 
     // Step 3: "Handle attribute changes for attribute with attribute's
     // element, oldValue, and value."
-    handleAttributeChanges(instance, name.namespace_uri, name.local_name, tables.value(old_value), tables.value(new_value));
+    handleAttributeChanges(instance, name.namespace_uri, name.prefix, name.local_name, tables.value(old_value), tables.value(new_value));
 }
 
 fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
@@ -1307,7 +1329,7 @@ fn appendAttribute(
 
     // Step 4: "Handle attribute changes for attribute with element, null, and
     // attribute's value."
-    handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(id));
+    handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, null, tables.value(id));
 }
 
 /// DOM "remove an attribute" - the one at `index`.
@@ -1332,7 +1354,7 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
-    handleAttributeChanges(instance, name.namespace_uri, name.local_name, value, null);
+    handleAttributeChanges(instance, name.namespace_uri, name.prefix, name.local_name, value, null);
 }
 
 /// DOM "set an attribute value": the setter steps of every reflected string
@@ -1429,7 +1451,7 @@ fn handleSetAttributes(instance: *runtime.Instance, internal: *InternalState, sc
         // styleAttributeChangeSteps).
         internal.bits().appending_clone = by_cloning and record.namespace_uri == null and std.mem.eql(u8, record.local_name, "style");
         defer internal.bits().appending_clone = false;
-        handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(entry.value));
+        handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, null, tables.value(entry.value));
     }
 }
 
@@ -2249,7 +2271,7 @@ fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, ind
 
     // Step 6: "Handle attribute changes for oldAttribute with element,
     // oldAttribute's value, and newAttribute's value."
-    handleAttributeChanges(instance, record.namespace_uri, record.local_name, tables.value(old_value), tables.value(new_value));
+    handleAttributeChanges(instance, record.namespace_uri, record.prefix, record.local_name, tables.value(old_value), tables.value(new_value));
 }
 
 /// Operation: scrollTo

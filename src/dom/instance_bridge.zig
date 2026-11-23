@@ -35,6 +35,7 @@
 const std = @import("std");
 const NodeBase = @import("node_base.zig").NodeBase;
 const refcount_audit = @import("refcount_audit.zig");
+const inspector_probes = @import("inspector_probes.zig");
 const runtime = @import("runtime");
 const Hook = @import("hook.zig").Hook;
 
@@ -168,6 +169,11 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     node_base.traces_held = node.vtable.trace_held_nodes != null;
     if (!fresh) return;
     _ = bridge.live.fetchAdd(1, .monotonic);
+    // CDP's DOM agents (dom.inspector_probes; one load while none is
+    // enabled): Blink's Node constructor calls probe::NodeCreated, which an
+    // agent capturing node stack traces answers with the running script's
+    // stack (DOM.setNodeStackTracesEnabled).
+    if (inspector_probes.active()) inspector_probes.nodeCreated(node);
     // The Browser's DOM grew by the node's storage, once per node: its window
     // agent's engine is told (runtime.gc.ExternalMemory).
     scope.dom_memory.add(storageBytes(@ptrCast(@alignCast(instance))));
