@@ -89,7 +89,7 @@ test "tabs opened and closed leave no tab scope behind" {
     try testing.expectEqual(live_before, TabScope.liveCount());
 }
 
-const SessionShed = @import("html").web_storage.TraversableStorageShed;
+const SessionShed = @import("html_core").web_storage.TraversableStorageShed;
 
 test "a tab's session storage shed is its scope's, and ends with the tab" {
     const fixture = try Fixture.start(testing.allocator);

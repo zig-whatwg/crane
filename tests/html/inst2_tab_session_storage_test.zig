@@ -22,7 +22,7 @@ const fixture_mod = @import("inst2_tabs_fixture.zig");
 
 const Fixture = fixture_mod.Fixture;
 const TabScope = runtime.TabScope;
-const Shed = @import("html").web_storage.TraversableStorageShed;
+const Shed = @import("html_core").web_storage.TraversableStorageShed;
 
 /// Tab `bc`'s scope, held by the test (lane tab1: the shed is the tab's,
 /// runtime.TabScope's session_storage slot): `release` it.
