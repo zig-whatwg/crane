@@ -28,11 +28,13 @@ const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.browsing_context);
 const infra = @import("infra");
 const cookiestore = @import("cookiestore");
-const storage = @import("storage");
 const clock = @import("clock");
 
 // Import Origin type from window module
 const Origin = @import("window_proxy.zig").Origin;
+/// A tab's scope (runtime.TabScope), which this layer reaches through dom
+/// (html_core imports no runtime).
+const TabScope = @import("dom").browser_state.TabScope;
 const IFrameIntegration = @import("iframe_integration.zig").IFrameIntegration;
 
 /// Opaque type for runtime.Instance pointer storage.
@@ -170,12 +172,6 @@ pub const Navigables = struct {
     /// simply not found. It was one map per thread (lane gstate4).
     navigations: std.AutoHashMapUnmanaged(u64, *anyopaque) = .empty,
     navigations_guard: infra.tombstones.TombstoneGuard = .{},
-    /// The storage sheds the Browser's traversable navigables hold - session
-    /// storage (Storage 4.3: "A traversable navigable holds a storage shed"),
-    /// by each one's top-level browsing context id; each ends with its
-    /// context's record (`BrowsingContext.deinit`). Window-thread state, as
-    /// this list is: sessionStorage is [Exposed=Window].
-    traversable_storage: storage.TraversableStorageSheds,
     /// The Browser's navigation observer - its one slot, which the Browser
     /// sets to its own dispatcher (src/html/navigation/observer.zig): told
     /// each navigation milestone of these navigables, on the window thread.
@@ -196,6 +192,12 @@ pub const Navigables = struct {
     /// Page.windowOpen). One slot, which the Browser sets to its own
     /// dispatcher.
     window_open: ?@import("../navigation/window_open.zig").Hook = null,
+    /// Whether a tab made from now on starts with system focus (HTML 6.6.2;
+    /// runtime.TabScope.system_focus): every tab does, unless the Browser's
+    /// host narrowed focus to its active tab (BrowserConfig.focus =
+    /// .active_tab), whose Browser grants it to the tab it is about to make
+    /// active and moves it with activateTab.
+    tab_system_focus: bool = true,
     /// The Browser's hook for a child navigable whose initial about:blank
     /// script reached for the first time (`BrowsingContext.touchedByScript`):
     /// a host announces its main world context then, as Blink makes it
@@ -203,7 +205,7 @@ pub const Navigables = struct {
     frame_touched: ?FrameTouched = null,
 
     pub fn init(allocator: Allocator) Navigables {
-        return .{ .allocator = allocator, .traversable_storage = .init(allocator) };
+        return .{ .allocator = allocator };
     }
 
     /// The list's end, with its Browser's scope: the retired contexts are
@@ -221,10 +223,7 @@ pub const Navigables = struct {
         self.integrations.deinit(self.allocator);
         // A navigation ends with its integration, before its Browser does.
         self.navigations.deinit(self.allocator);
-        // The storage sheds of traversables whose records outlived the list
-        // (the contexts above, freed by their own ends, took theirs).
-        self.traversable_storage.deinit();
-        self.* = .{ .allocator = self.allocator, .traversable_storage = .init(self.allocator) };
+        self.* = .{ .allocator = self.allocator };
     }
 
     /// `integration` joins this list (once) - the list of its browsing
@@ -396,8 +395,9 @@ pub const WindowRect = struct {
 /// A window's state (CDP Browser.WindowState).
 pub const WindowState = enum { normal, minimized, maximized, fullscreen };
 
-/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible".
-pub const SystemVisibility = enum { visible, hidden };
+/// HTML 7.3.1.1 "system visibility state": "hidden" or "visible" - a
+/// traversable's, which its tab holds (runtime.TabScope.system_visibility).
+pub const SystemVisibility = TabScope.Visibility;
 
 /// A viewport's size in CSS pixels (CSSOM View innerWidth/innerHeight are
 /// `long`).
@@ -421,6 +421,18 @@ pub const BrowsingContext = struct {
     /// auxiliary context. Null only once the list ended first (a context its
     /// owner never freed before its Browser's end).
     navigables: ?*Navigables,
+
+    /// The tab this context belongs to (runtime.TabScope: docs/instances.md
+    /// rule 2), a COUNTED reference: a top-level context's own - it is the
+    /// tab's record, and makes its scope on first use (`tabScope`) and closes
+    /// it at its end - or, for a child, its parent's tab, taken when it was
+    /// made, so a frame's context names its tab for life, even after its
+    /// parent link is cut (`releaseChildren`, `discard`).
+    tab: ?*TabScope = null,
+
+    /// Whether `tab` is this context's own: it is a top-level traversable's
+    /// record, whose end is the tab's.
+    owns_tab: bool = false,
 
     /// The opener browsing context (§7.1)
     /// The browsing context that opened this one via window.open() or similar.
@@ -510,15 +522,6 @@ pub const BrowsingContext = struct {
     /// iframe navigates, and every document keeps its own active set.
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#popup-sandboxing-flag-set
     popup_sandboxing_flags: SandboxingFlagSet = .empty,
-
-    /// HTML 7.3.1.1: a traversable navigable's system visibility state -
-    /// whether its window is minimized, its tab in the background, the page
-    /// covered by a system element. "Determined by the user agent, including
-    /// its initial value upon creation" (HTML 6.2): the platform's
-    /// (`systemVisibility` when the traversable is made, `visibility_changed`
-    /// after). Kept on the top-level traversable - every traversable is one -
-    /// and read for any navigable through `traversableSystemVisibility`.
-    system_visibility: SystemVisibility = .visible,
 
     /// A top-level traversable's viewport size in CSS pixels, as the
     /// platform's window reports it (`window_rect_changed(tab, rect)`: a
@@ -751,6 +754,8 @@ pub const BrowsingContext = struct {
         // creator's top-level browsing context's virtual group ID.
         ctx.virtual_browsing_context_group_id = parent_ctx.getTop().virtual_browsing_context_group_id;
         ctx.cross_origin_isolation_mode = parent_ctx.cross_origin_isolation_mode;
+        // A child navigable is of its parent's tab, for life.
+        if (parent_ctx.tabScope()) |tab| ctx.tab = tab.retain();
         try parent_ctx.children.append(parent_ctx.allocator, ctx);
         return ctx;
     }
@@ -917,8 +922,26 @@ pub const BrowsingContext = struct {
         self.active_document = null;
         self.active_window = null;
 
-        // Its traversal queue's items go first (each destroyed once; a waiter
-        // that completes later finds no queue): they may name its history.
+        // The tab's end, when this is its record: its state ends in its
+        // order (runtime.TabScope.Slot) - the traversal queue's items first
+        // (each destroyed once; a waiter that completes later finds no
+        // queue), for they may name its history; then the history, the frame
+        // clock and the session storage shed (Storage 4.3: a traversable
+        // navigable holds it; HTML "destroy a top-level traversable" step 5
+        // removes the traversable) - this record is the last of the
+        // traversable: freed once its owner released it and no Window holds
+        // it, so no Storage reads the shed any more. A frame's context lets its
+        // tab go. Its own session history - an orphaned child's, made when
+        // its parent link was already cut - is freed here, in the same order.
+        if (self.tab) |tab| {
+            self.tab = null;
+            if (self.owns_tab) {
+                self.traversal_queue = null;
+                self.joint_history = null;
+                tab.close();
+            }
+            tab.release();
+        }
         if (self.traversal_queue) |queue| {
             self.traversal_queue = null;
             queue.deinit();
@@ -929,17 +952,7 @@ pub const BrowsingContext = struct {
             self.allocator.destroy(history);
             self.joint_history = null;
         }
-        if (self.navigables) |navigables| {
-            // Its traversable's storage shed - session storage - goes with
-            // it, as its session history just did (Storage 4.3: a
-            // traversable navigable holds it; HTML "destroy a top-level
-            // traversable" step 5 removes the traversable). This record is
-            // the last of the traversable: freed once its owner released it
-            // and no Window holds it, so no Storage reads the shed any more
-            // (storage.TraversableStorageSheds). A frame's context has none.
-            navigables.traversable_storage.discard(self.id);
-            navigables.remove(self);
-        }
+        if (self.navigables) |navigables| navigables.remove(self);
 
         self.allocator.destroy(self);
     }
@@ -956,6 +969,7 @@ pub const BrowsingContext = struct {
         const queue = try top.allocator.create(TraversalQueue);
         queue.* = TraversalQueue.init(top.allocator, navigables, top.id, schedule);
         top.traversal_queue = queue;
+        top.handToTab(.traversal_queue, TraversalQueue, queue);
         return queue;
     }
 
@@ -967,7 +981,47 @@ pub const BrowsingContext = struct {
         const history = try top.allocator.create(JointHistory);
         history.* = JointHistory.init(top.allocator);
         top.joint_history = history;
+        top.handToTab(.session_history, JointHistory, history);
         return history;
+    }
+
+    /// The tab this context belongs to (`tab`): a top-level context's own,
+    /// made on first use - the session history and traversal queue it
+    /// already has go into it - or a child's, its parent's when it was made.
+    /// Null only out of memory.
+    pub fn tabScope(self: *BrowsingContext) ?*TabScope {
+        if (self.tab) |tab| return tab;
+        // A child made before its parent had a tab, or by `init` alone: its
+        // parent's, from now on.
+        if (self.parent) |parent| {
+            const tab = parent.tabScope() orelse return null;
+            self.tab = tab.retain();
+            return tab;
+        }
+        // A top-level traversable: this record is the tab's.
+        const tab = TabScope.create(self.allocator, self.id) catch return null;
+        self.tab = tab;
+        self.owns_tab = true;
+        // Its system focus from the start - its pages hear only a change.
+        const focused = if (self.navigables) |list| list.tab_system_focus else true;
+        tab.system_focus = focused;
+        tab.focus_reported = focused;
+        // What the record made before its tab is the tab's now: it ends with
+        // the tab, in the tab's order.
+        if (self.traversal_queue) |queue| _ = tab.put(.traversal_queue, TraversalQueue, queue);
+        if (self.joint_history) |history| _ = tab.put(.session_history, JointHistory, history);
+        return tab;
+    }
+
+    /// `value`, just made on this top-level record (the session history, its
+    /// traversal queue), goes to the tab it is the record of, which ends it;
+    /// the record keeps it as a BORROWED alias. An orphaned child - its
+    /// parent link cut, no tab of its own - keeps owning what it made.
+    fn handToTab(self: *BrowsingContext, comptime slot: TabScope.Slot, comptime T: type, value: *T) void {
+        if (self.tab != null and !self.owns_tab) return;
+        const tab = self.tabScope() orelse return;
+        if (tab.get(slot, T) == value) return;
+        _ = tab.put(slot, T, value);
     }
 
     /// The session history of this context's traversable, with an entry for
@@ -1087,8 +1141,17 @@ pub const BrowsingContext = struct {
         hook.touched(hook.context, self.id);
     }
 
+    /// HTML 7.3.1.1: the system visibility state of this navigable's
+    /// traversable navigable - whether its window is minimized, its tab in
+    /// the background, the page covered by a system element. "Determined by
+    /// the user agent, including its initial value upon creation" (HTML
+    /// 6.2): the platform's (`systemVisibility` when the traversable is made,
+    /// `visibility_changed` after), which its tab holds
+    /// (runtime.TabScope.system_visibility). Visible for a context of no tab
+    /// (out of memory).
     pub fn traversableSystemVisibility(self: *BrowsingContext) SystemVisibility {
-        return self.getTop().system_visibility;
+        const tab = self.tabScope() orelse return .visible;
+        return tab.system_visibility;
     }
 
     /// The viewport size of this navigable's top-level traversable - a

@@ -29,9 +29,9 @@
 //! try local.setItem("key", "value");
 //! const value = local.getItem("key"); // "value"
 //!
-//! // Get sessionStorage for a top-level traversable, among the Browser's
-//! // traversable storage sheds (its navigables')
-//! var session = try storage.getSessionStorage(allocator, sheds, context_id, key);
+//! // Get sessionStorage in a top-level traversable's storage shed (its
+//! // tab's: runtime.TabScope's session_storage slot)
+//! var session = try storage.getSessionStorage(allocator, shed, key);
 //! defer session.deinit();
 //! ```
 //!
@@ -500,19 +500,16 @@ pub fn getLocalStorage(
 /// session storage shed
 /// HTML Standard § 12.2.2 - sessionStorage getter
 ///
-/// `browsing_context_id` names the top-level traversable whose shed it is
-/// (Storage 4.3: every traversable navigable has one), among `sheds` - its
-/// Browser's (html.window.Navigables); `key` picks the shelf in it, as
-/// `getLocalStorage`'s does.
+/// `shed` is the top-level traversable's (Storage 4.3: every traversable
+/// navigable has one) - its tab's (runtime.TabScope); `key` picks the shelf
+/// in it, as `getLocalStorage`'s does.
 pub fn getSessionStorage(
     allocator: std.mem.Allocator,
-    sheds: *storage_standard.TraversableStorageSheds,
-    browsing_context_id: u64,
+    shed: *storage_standard.StorageShed,
     key: storage_standard.StorageKey,
 ) StorageError!Storage {
     const proxy_map_result = storage_standard.obtainSessionStorageBottleMap(
-        sheds,
-        browsing_context_id,
+        shed,
         key,
         .sessionStorage,
     ) catch return error.OutOfMemory;
@@ -524,9 +521,9 @@ pub fn getSessionStorage(
 }
 
 /// Storage "legacy-clone a traversable storage shed", steps 1.1-1.3: the
-/// opener's top-level traversable's session storage shed copied into the new
-/// traversable `new_top`'s. Called only for a NEW traversable, before it has
-/// script or storage proxies.
+/// opener's top-level traversable's session storage shed, `source`, copied
+/// into `target`, the NEW traversable's - empty: made for its tab before it
+/// has script or storage proxies.
 ///
 /// Every shelf is copied under its own storage key - origin, top-level site,
 /// ancestor bit - so a document of the popup reads a copy only where its own
@@ -537,13 +534,12 @@ pub fn getSessionStorage(
 /// area by its StorageKey alike). Nothing is published until every
 /// allocation succeeds; no storage event is generated. The copied shed owns
 /// every string independently.
-pub fn cloneSessionStorage(sheds: *storage_standard.TraversableStorageSheds, opener_top: u64, new_top: u64) std.mem.Allocator.Error!void {
-    std.debug.assert(opener_top != new_top);
-    const allocator = sheds.allocator;
+pub fn cloneSessionStorage(source: *const storage_standard.StorageShed, target: *storage_standard.StorageShed) std.mem.Allocator.Error!void {
+    std.debug.assert(source != target);
+    const allocator = target.allocator;
     // HTML's caller supplies an empty new traversable. Reusing a named
     // popup never enters this algorithm or replaces a live shed.
-    std.debug.assert(!sheds.contains(new_top));
-    const source = sheds.existing(opener_top) orelse return;
+    std.debug.assert(target.shelves.count() == 0);
 
     var copy = storage_standard.StorageShed.init(allocator, .session);
     errdefer copy.deinit();
@@ -559,9 +555,10 @@ pub fn cloneSessionStorage(sheds: *storage_standard.TraversableStorageSheds, ope
         copy.shelves.putAssumeCapacityNoClobber(key, shelf);
     }
 
-    // The only allocation in publishing comes before the move. The new shed
-    // is a value in the map; its shelves stay in their own allocation.
-    try sheds.publish(new_top, copy);
+    // Nothing failed: the copy is the new traversable's. Its shelves stay in
+    // their own allocation.
+    target.deinit();
+    target.* = copy;
 }
 
 fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standard.StorageBottle) std.mem.Allocator.Error!storage_standard.StorageShelf {

@@ -101,9 +101,9 @@ pub const getBucketFileSystem = standard.getBucketFileSystem;
 /// The user agent's storage shed and bucket file systems: one per Browser, a
 /// supplement of its scope (docs/instances.md).
 pub const UserAgentStorage = standard.UserAgentStorage;
-/// The storage sheds of a Browser's traversable navigables (session
-/// storage): its navigables', on its window thread.
-pub const TraversableStorageSheds = standard.TraversableStorageSheds;
+/// A traversable navigable's storage shed (session storage), which its tab
+/// holds: on its Browser's window thread.
+pub const initTraversableStorageShed = standard.initTraversableStorageShed;
 /// A Browser's profile directory, as its local storage persists there
 /// (the user's ruling D6, 2026-11-21).
 pub const profile = @import("profile.zig");

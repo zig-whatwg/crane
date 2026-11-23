@@ -1000,6 +1000,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
+        // Its realm lets its tab go (`carryTab`).
+        dropTab(instance);
+
         // The browsing context it shows and does not own: held until now
         // (BrowsingContext.window_holds), released below, once nothing of
         // the Window reads it any more.
@@ -1150,6 +1153,8 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
     existing_bc.holdForWindow();
+    // Its realm is of the tab this browsing context is of, from now on.
+    carryTab(instance, existing_bc);
 
     // Mark that we DON'T own this browsing context - iframe cleanup will free it
     // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
@@ -1175,7 +1180,35 @@ fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
     // Still read by this Window until its end: held, as any Window holds the
     // context it shows and does not own (BrowsingContext.window_holds).
     internal.browsing_context.holdForWindow();
+    // Its realm is of the tab this top-level context is the record of.
+    carryTab(instance, internal.browsing_context);
     return @ptrCast(internal.browsing_context);
+}
+
+/// The Window's realm carries the tab of `bc`, the browsing context the
+/// Window shows from now on (runtime.ContextData.tab_scope; docs/instances.md
+/// rule 2: "a realm will carry its Browser's scope and its Tab's scope") - a
+/// counted reference, given back at the Window's end (`dropTab`). Called
+/// where a Window's browsing context becomes final: a frame's and a popup's
+/// as they replace the one Window.init made, a page's as its host takes it.
+fn carryTab(instance: *runtime.Instance, bc: *BrowsingContext) void {
+    const realm = instance.ctx;
+    const tab = bc.tabScope() orelse return;
+    if (realm.tab_scope) |held| {
+        if (held == tab) return;
+        held.release();
+    }
+    realm.tab_scope = tab.retain();
+}
+
+/// The Window ends: its realm is of no tab from here on - the engine keeps a
+/// realm's record past its end (an inert one), which must name no tab that
+/// may be freed.
+fn dropTab(instance: *runtime.Instance) void {
+    const realm = instance.ctx;
+    const held = realm.tab_scope orelse return;
+    realm.tab_scope = null;
+    held.release();
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the
@@ -2082,24 +2115,24 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // origin framed under another top-level site does not. A popup's
     // traversable starts with a copy of its opener's shed
     // (`newTopLevelTraversable`).
-    const context_id = internal.browsing_context.getTop().id;
     // "Obtain a session storage bottle map" step 1: "obtain a storage key"
     // with the environment - failure, a SecurityError, for an opaque origin;
     // a file: document's key is the browsers' (dom.global_settings
     // storageKeyOf).
     const key = (try @import("dom").global_settings.storageKeyOf(instance)) orelse return error.SecurityError;
 
-    // The traversable's shed is one of its Browser's navigables' (Storage
-    // 4.3: "A traversable navigable holds a storage shed"): a realm no
-    // Browser made has none - "the user agent is configured to not allow"
+    // The traversable's shed is its tab's (Storage 4.3: "A traversable
+    // navigable holds a storage shed"; runtime.TabScope), which the
+    // Window's realm carries: a realm of no tab - no Browser made it, or its
+    // tab closed - has none: "the user agent is configured to not allow"
     // storage.
-    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.SecurityError;
+    const shed = @import("dom").browser_state.sessionStorageShedOf(instance.ctx) orelse return error.SecurityError;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, &navigables.traversable_storage, context_id, key) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, shed, key) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -4013,11 +4046,17 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The owner list holds the integration before storage is published, so
     // an append failure cannot leave an unreachable tab's copied shelves.
     if (!noopener) if (integration.browsing_context) |created_bc| {
-        // The traversables' sheds are their Browser's navigables' (Storage
-        // 4.3: each traversable navigable holds its own).
-        if (@import("dom").browser_state.navigablesOf(window.ctx)) |navigables| {
-            web_storage.web_storage.cloneSessionStorage(&navigables.traversable_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
-        }
+        // The traversables' sheds are their tabs' (Storage 4.3: each
+        // traversable navigable holds its own): the opener's tab's, when it
+        // has one, copied into the new tab's.
+        const browser_state = @import("dom").browser_state;
+        if (internal.browsing_context.tabScope()) |opener_tab| if (opener_tab.get(.session_storage, web_storage.TraversableStorageShed)) |source| {
+            if (created_bc.tabScope()) |new_tab| if (new_tab != opener_tab) {
+                if (browser_state.sessionStorageShedIn(new_tab)) |copy| {
+                    web_storage.web_storage.cloneSessionStorage(source, copy) catch {};
+                }
+            };
+        };
     };
     // Steps 8.5-8.6: a named target names the new navigable.
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {

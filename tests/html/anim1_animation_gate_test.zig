@@ -13,7 +13,7 @@ fn settle(page: helpers.Page) !void {
     var turns: usize = 0;
     while (turns < 100) : (turns += 1) {
         _ = try page.browser.runEventLoopBlocking(5);
-        if (page.browser.event_loop.?.frames.timer_id == null) return;
+        if (!page.browser.event_loop.?.renderingArmed()) return;
     }
     return error.FramesNeverSettled;
 }
@@ -35,7 +35,7 @@ fn styleAttributeOpensTheGate() !void {
     try page.run("div.style.animationName = 'spin';");
     try std.testing.expect(dom.style.engine.declaresAnimations(document));
     try std.testing.expect(counts.version.rendering_watch);
-    try std.testing.expect(page.browser.event_loop.?.frames.timer_id != null);
+    try std.testing.expect(page.browser.event_loop.?.renderingArmed());
 }
 
 test "a style attribute that declares an animation opens the gate and watches the document" {
