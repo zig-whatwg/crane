@@ -60,3 +60,4 @@ sweep-ace97d9c1e server1 linux-x86_64 32 fonts=5da6d39cdd3d38c0
 sweep-838c54a8f8 server1 linux-x86_64 32 fonts=5da6d39cdd3d38c0
 sweep-84b5286c7d server1 linux-x86_64 32 fonts=5da6d39cdd3d38c0
 sweep-a3a465d256 server1 linux-x86_64 32 fonts=5da6d39cdd3d38c0
+sweep-f8e6c08c23 server1 linux-x86_64 32 fonts=5da6d39cdd3d38c0
