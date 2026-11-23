@@ -24,4 +24,11 @@ test {
     _ = @import("tpf_streamed_document_test.zig");
     _ = @import("tpf_console_webcompat_test.zig");
     _ = @import("tpf_rejection_report_test.zig");
+    _ = @import("mcp1_local_link_test.zig");
+    _ = @import("mcp1_pages_test.zig");
+    _ = @import("mcp1_console_test.zig");
+    _ = @import("mcp1_script_test.zig");
+    _ = @import("mcp1_exception_text_test.zig");
+    _ = @import("mcp1_network_test.zig");
+    _ = @import("mcp1_input_test.zig");
 }

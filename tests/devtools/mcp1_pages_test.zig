@@ -55,6 +55,11 @@ test "list_pages, new_page, select_page, navigate_page and close_page answer as 
     try testing.expect(r.is_error);
     try testing.expectEqualStrings("Navigating to chrome: URLs is not allowed.", r.text);
 
+    // The schema, strictly (ToolHandler's zod.object(schema).strict()).
+    r = try h.tool("navigate_page", "{\"pageId\":\"1\",\"type\":\"sideways\",\"bogus\":1}");
+    try testing.expect(r.is_error);
+    try testing.expectEqualStrings("Input validation error: Invalid arguments for tool navigate_page: pageId: Invalid input: expected number, received string, type: Invalid option: expected one of \"url\"|\"back\"|\"forward\"|\"reload\", Unrecognized key: \"bogus\"", r.text);
+
     r = try h.tool("navigate_page", "{\"pageId\":7,\"type\":\"reload\"}");
     try testing.expect(r.is_error);
     try testing.expectEqualStrings("No page found", r.text);

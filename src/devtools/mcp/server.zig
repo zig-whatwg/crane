@@ -34,6 +34,8 @@ pub const McpServer = struct {
         errdefer session.destroy();
         const tools_json = try tools.listJson(allocator);
         errdefer allocator.free(tools_json);
+        // The input schemas each call is checked against.
+        session.schemas = try std.json.parseFromSlice(std.json.Value, allocator, tools_json, .{});
         self.* = .{
             .allocator = allocator,
             .link = link,

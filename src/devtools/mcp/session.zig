@@ -13,6 +13,8 @@ const Client = client_mod.Client;
 const LocalLink = @import("../server.zig").LocalLink;
 const collectors = @import("collectors.zig");
 const console = @import("console.zig");
+const network = @import("network.zig");
+const keyboard_mod = @import("keyboard.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -91,6 +93,10 @@ pub const Page = struct {
     main_context_id: ?i64 = null,
     /// ConsoleCollector: console messages and uncaught errors.
     console: collectors.Collector(console.Message) = .{ .max_per_navigation = console.max_per_navigation },
+    /// NetworkCollector: the requests.
+    network: network.Collector = .{},
+    /// Puppeteer's page.keyboard: the keys held.
+    keyboard: keyboard_mod.Keyboard = .{},
 
     fn deinit(self: *Page, allocator: Allocator) void {
         allocator.free(self.target_id);
@@ -102,6 +108,8 @@ pub const Page = struct {
         if (self.main_frame_id) |id| allocator.free(id);
         self.clearDialog(allocator);
         self.console.deinit(allocator);
+        self.network.deinit(allocator);
+        self.keyboard.deinit(allocator);
         self.main_world_contexts.deinit(allocator);
     }
 
@@ -135,6 +143,9 @@ pub const Session = struct {
     next_isolated_context: u32 = 1,
     /// The wait a tool's action runs under (wait.zig), if any.
     watch: ?*Watch = null,
+    /// The tools' definitions (tools/list's array), parsed: the input
+    /// schemas calls are checked against (validate.zig).
+    schemas: ?std.json.Parsed(std.json.Value) = null,
 
     /// Attach to the browser behind `link` as Puppeteer's connect does.
     pub fn create(allocator: Allocator, link: *LocalLink) !*Session {
@@ -164,6 +175,7 @@ pub const Session = struct {
             self.allocator.free(e.value_ptr.*);
         }
         self.isolated_contexts.deinit(self.allocator);
+        if (self.schemas) |*parsed| parsed.deinit();
         self.allocator.destroy(self);
     }
 
@@ -360,6 +372,7 @@ pub const Session = struct {
                 page.main_frame_id = copy;
             }
             try page.console.split(self.allocator, null);
+            try page.network.split(self.allocator, page.mainFrameId());
             if (self.watch) |w| if (w.page == page) {
                 w.loaded_new_document = true;
                 w.navigation_started = true;
@@ -401,6 +414,16 @@ pub const Session = struct {
         }
         if (std.mem.eql(u8, method, "Log.entryAdded")) {
             if (try console.fromLogEntry(self.allocator, p)) |message| try page.console.add(self.allocator, message);
+            return;
+        }
+        if (std.mem.startsWith(u8, method, "Network.")) {
+            const name = method["Network.".len..];
+            if (std.mem.eql(u8, name, "requestWillBeSent")) return page.network.requestWillBeSent(self.allocator, p);
+            if (std.mem.eql(u8, name, "requestWillBeSentExtraInfo")) return page.network.requestWillBeSentExtraInfo(self.allocator, p);
+            if (std.mem.eql(u8, name, "responseReceived")) return page.network.responseReceived(self.allocator, p);
+            if (std.mem.eql(u8, name, "responseReceivedExtraInfo")) return page.network.responseReceivedExtraInfo(self.allocator, p);
+            if (std.mem.eql(u8, name, "loadingFinished")) return page.network.loadingFinished(p);
+            if (std.mem.eql(u8, name, "loadingFailed")) return page.network.loadingFailed(self.allocator, p);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.exceptionThrown")) {

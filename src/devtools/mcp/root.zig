@@ -17,6 +17,9 @@ pub const console = @import("console.zig");
 pub const wait = @import("wait.zig");
 pub const url_check = @import("url_check.zig");
 pub const text = @import("text.zig");
+pub const network = @import("network.zig");
+pub const keyboard = @import("keyboard.zig");
+pub const validate = @import("validate.zig");
 pub const server = @import("server.zig");
 
 test {

@@ -17,6 +17,7 @@ const Session = session_mod.Session;
 const Page = session_mod.Page;
 const Response = @import("response.zig").Response;
 const url_check = @import("url_check.zig");
+const validate = @import("validate.zig");
 
 /// A tool's run: `page` is the one `pageId` named (null for a browser-wide
 /// tool). It writes its answer into `response`, or fails with `ctx.fail`.
@@ -54,10 +55,12 @@ pub const Context = struct {
 const pages = @import("tools/pages.zig");
 const console_tools = @import("tools/console.zig");
 const script = @import("tools/script.zig");
+const network_tools = @import("tools/network.zig");
+const input_tools = @import("tools/input.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list);
 
 /// The tools/list JSON array for `all`, from the copied definitions.
 pub fn listJson(allocator: Allocator) ![]u8 {
@@ -93,6 +96,14 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
     // Whatever came since the last call is recorded first.
     _ = try session.client.pump(0);
     try session.initPages();
+    // ToolHandler: the arguments against the tool's schema, strictly.
+    if (session.schemas) |parsed| for (parsed.value.array.items) |definition| {
+        if (!std.mem.eql(u8, definition.object.get("name").?.string, name)) continue;
+        const schema = definition.object.get("inputSchema") orelse break;
+        if (schema != .object) break;
+        if (try validate.check(arena, name, schema.object, arguments)) |message| return errorResult(arena, message);
+        break;
+    };
     var ctx: Context = .{ .session = session, .arena = arena };
     var response: Response = .init(arena);
     var page: ?*Page = null;
