@@ -272,3 +272,51 @@ test "WrapperCache.set refuses to replace a live wrapper, keeping it and its edg
     try page.collect();
     try page.expect("String(e.expando === 1 && e.data === 'a')", "true");
 }
+
+// The test above makes its instance a Text node, whose main-world wrapper lives in the
+// node's own slot since the wrapper redesign: `set` hands it to
+// node_wrappers.adopt, which refuses for its own reason. The refusal in the
+// cache's own map - a non-node object's entry - had no test left (lane mem1's
+// audit, 2026-11-22). A Headers object's wrapper is the cache's.
+test "WrapperCache.set refuses to replace a live non-node wrapper in the cache's own map, keeping it and its expando" {
+    const no_hooks: protocol.HostHooks = .{};
+    const page = try Page.open(&no_hooks, null);
+    defer page.close();
+    try page.expect("globalThis.e = new Headers([['a', 'b']]); e.expando = 1; 'ok'", "ok");
+    const headers = try page.instance("e");
+
+    const Replace = struct {
+        page: Page,
+        instance: *runtime.Instance,
+        result: ?anyerror = null,
+        fn steps(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            const other = self.page.value("({})") catch |err| {
+                self.result = err;
+                return;
+            };
+            defer other.release();
+            const storage = self.instance.ctx.getV8WrapperCacheStorage() orelse {
+                self.result = error.NoCache;
+                return;
+            };
+            const cache: *v8.WrapperCache = @ptrCast(@alignCast(storage));
+            // A Global of our own for the cache to take - it must not.
+            const handle = ffi.v8_Global_Clone(@ptrCast(other.value.handle.ptr)) orelse {
+                self.result = error.NoHandle;
+                return;
+            };
+            _ = cache.set(self.instance, @ptrCast(handle), @ptrCast(@alignCast(self.page.agent))) catch |err| {
+                ffi.v8_Global_Dispose(handle);
+                self.result = err;
+                return;
+            };
+            self.result = error.Replaced;
+        }
+    };
+    var replace: Replace = .{ .page = page, .instance = headers };
+    try protocol.runInRealm(page.realm, Replace.steps, &replace);
+    try std.testing.expectEqual(@as(?anyerror, error.AlreadyWrapped), replace.result);
+    try page.collect();
+    try page.expect("String(e.expando === 1 && e.get('a') === 'b')", "true");
+}
