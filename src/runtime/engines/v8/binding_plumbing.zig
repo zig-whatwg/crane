@@ -2208,8 +2208,7 @@ pub fn convertReturnValue(
     /// isolated-world flag gates the conversion across worlds (two loads).
     gate_realm: ?runtime.Context,
 ) !?*v8.Value {
-    // Suppress unused parameter warning - allocator used only in recursive calls
-    _ = allocator;
+    // `allocator` is only passed on, to the recursive calls below.
 
     // `owned` answers whether the handle returned is the binding's to
     // release once the caller has set it as the call's result
