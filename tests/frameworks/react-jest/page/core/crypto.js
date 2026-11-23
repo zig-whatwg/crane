@@ -1,7 +1,8 @@
 'use strict';
 
-// Node's crypto in the browser page: the browser's Web Crypto random sources. Hashing (createHash)
-// has no synchronous browser equivalent, so it fails and says so.
+// Node's crypto in the browser page: the browser's Web Crypto random sources, and Node's synchronous
+// hashes (createHash: React Refresh's Babel plugin hashes hook signatures with sha1) from the pinned
+// browser package create-hash, as browserify gives them. Web Crypto's digest is asynchronous only.
 
 const {native} = __reactJestPage;
 
@@ -20,6 +21,6 @@ module.exports = {
     const {Buffer} = require('buffer');
     return Buffer.from(native.crypto.getRandomValues(new Uint8Array(n)));
   },
-  createHash: unavailable('createHash'),
+  createHash: algorithm => require('create-hash/browser')(algorithm),
   createHmac: unavailable('createHmac'),
 };

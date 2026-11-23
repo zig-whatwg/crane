@@ -21,10 +21,9 @@ module.exports = async function runTest(ctx) {
 
   const testSource = fs.readFileSync(testPath, 'utf8');
   const docblockPragmas = docblock.parse(docblock.extract(testSource));
-  if (docblockPragmas['jest-environment']) {
-    throw new Error(`${testPath} names its own environment (${docblockPragmas['jest-environment']}); only React's jsdom environment runs in the page`);
-  }
-  const testEnvironment = projectConfig.testEnvironment;
+  // The server resolved the docblock's @jest-environment as jest-runner does (resolveTestEnvironment).
+  const testEnvironment = session.testEnvironments[testPath];
+  if (!testEnvironment) throw new Error(`${testPath}: not a file whose environment the page runs`);
   const cacheFS = new Map([[testPath, testSource]]);
   const transformer = makeTransformer(call);
   const resolver = makeResolver(call);
@@ -167,24 +166,68 @@ module.exports = async function runTest(ctx) {
   return result;
 };
 
-// What survives the trip to the server: errors as Jest's worker sends them (message and stack).
+// What survives the trip to the server: plain data, errors as Jest's worker sends them (message and
+// stack), anything else - a DOM node or event a matcher kept in failureDetails - as its description.
+// A walk of its own, not JSON.stringify's: that reads `toJSON` from every object, and a DOM
+// interface's toJSON on an object that only inherits from it throws.
 function toJson(value) {
+  const plain = new Set([Object.prototype, Array.prototype, null]);
   const seen = new WeakSet();
-  return JSON.parse(
-    JSON.stringify(value, (_k, v) => {
-      if (v instanceof Error) {
-        const o = {message: v.message, stack: v.stack, name: v.name};
-        for (const k of Object.keys(v)) o[k] = v[k];
-        return o;
+  const describe = v => {
+    try {
+      return Object.prototype.toString.call(v);
+    } catch {
+      return '[unserializable]';
+    }
+  };
+  const walk = (v, depth) => {
+    if (v === null || typeof v === 'string' || typeof v === 'boolean') return v;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (v === undefined || typeof v === 'function') return undefined;
+    if (typeof v === 'bigint' || typeof v === 'symbol') return String(v);
+    if (depth > 64) return '[too deep]';
+    if (seen.has(v)) return '[Circular]';
+    let proto;
+    try {
+      proto = Object.getPrototypeOf(v);
+    } catch {
+      return '[unserializable]';
+    }
+    if (v instanceof Error) {
+      const o = {};
+      for (const k of ['message', 'stack', 'name']) {
+        try {
+          o[k] = String(v[k]);
+        } catch {}
       }
-      if (typeof v === 'bigint') return String(v);
-      if (v && typeof v === 'object') {
-        if (seen.has(v)) return '[Circular]';
-        seen.add(v);
+      for (const k of Object.keys(v)) {
+        try {
+          const x = v[k];
+          o[k] = x !== null && typeof x === 'object' ? describe(x) : walk(x, depth + 1);
+        } catch {}
       }
-      return v;
-    })
-  );
+      return o;
+    }
+    if (!plain.has(proto)) return describe(v);
+    seen.add(v);
+    if (Array.isArray(v)) return v.map(x => {
+      const w = walk(x, depth + 1);
+      return w === undefined ? null : w;
+    });
+    const o = {};
+    for (const k of Object.keys(v)) {
+      let x;
+      try {
+        x = v[k];
+      } catch {
+        continue;
+      }
+      const w = walk(x, depth + 1);
+      if (w !== undefined) o[k] = w;
+    }
+    return o;
+  };
+  return walk(value, 0);
 }
 
 // @jest/transform's ScriptTransformer, on the server. jest-runtime clears its own transform cache on

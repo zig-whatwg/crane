@@ -57,13 +57,36 @@
       return v;
     });
   }
+  // Every question the page asks the server has one answer for the whole run (the checkout, the
+  // resolver's maps and the transform do not change), so each is asked once. The server sends, with an
+  // answer, the answers it can tell the page will ask next - for a module, the resolution, mock lookup
+  // and transform of each module it requires, and theirs (server.mjs prefetch) - so a file costs tens of
+  // round trips instead of thousands. A key is the route and the body as encode() writes it.
+  const answers = new Map();
+  const callStats = new Map();
   function call(route, body) {
-    const xhr = new native.XMLHttpRequest();
-    xhr.open('POST', '/__react_jest/' + route, false);
-    xhr.setRequestHeader('content-type', 'application/json');
-    xhr.send(encode(body));
-    if (xhr.status !== 200) throw new Error(`react-jest server: ${route} answered ${xhr.status}`);
-    const out = native.JSON.parse(xhr.responseText);
+    const key = route + '\0' + encode(body);
+    let out = answers.get(key);
+    const st = callStats.get(route) || {n: 0, asked: 0, ms: 0};
+    st.n++;
+    if (out === undefined) {
+      const t0 = native.performance.now();
+      const xhr = new native.XMLHttpRequest();
+      xhr.open('POST', '/__react_jest/' + route, false);
+      xhr.setRequestHeader('content-type', 'application/json');
+      if (runId) xhr.setRequestHeader('x-react-jest-run', runId);
+      xhr.send(encode(body));
+      if (xhr.status !== 200) throw new Error(`react-jest server: ${route} answered ${xhr.status}`);
+      out = native.JSON.parse(xhr.responseText);
+      if (out.prefetch) {
+        for (const [k, v] of out.prefetch) if (!answers.has(k)) answers.set(k, v);
+        delete out.prefetch;
+      }
+      answers.set(key, out);
+      st.asked++;
+      st.ms += native.performance.now() - t0;
+    }
+    callStats.set(route, st);
     if (out.error) throw revive(out.error);
     return out;
   }
@@ -72,8 +95,9 @@
     for (const k of Object.keys(e)) if (k !== 'message' && k !== 'stack' && k !== 'name') error[k] = e[k];
     return error;
   }
+  // Not `keepalive`: a keepalive request's body is limited to 64 KiB, and a file's result is larger.
   function postAsync(route, body) {
-    return native.fetch('/__react_jest/' + route, {method: 'POST', headers: {'content-type': 'application/json'}, body: encode(body), keepalive: true});
+    return native.fetch('/__react_jest/' + route, {method: 'POST', headers: {'content-type': 'application/json'}, body: encode(body)});
   }
   function log(line) {
     postAsync('log', {runId, line: String(line)}).catch(() => {});
@@ -206,6 +230,15 @@
     log,
     nodeGlobals,
     makeRequire: filename => makeRequire(filename, null),
+    runNodeModule(module, content, filename) {
+      module.filename = filename;
+      module.id = module.id || filename;
+      module.path = dirname(filename);
+      module.require = makeRequire(filename, module);
+      const fn = compile(content, filename)(proc, nodeGlobals.Buffer, globalThis, nodeGlobals.setImmediate, nodeGlobals.clearImmediate, pageApi);
+      fn.call(module.exports, module.exports, module.require, module, filename, module.path);
+      module.loaded = true;
+    },
     get session() {
       return session;
     },
@@ -311,6 +344,7 @@
         postCase: body => postAsync('case', {runId, ...body}).catch(() => {}),
         postResult: result => postAsync('result', {runId, result}),
       });
+      log('calls: ' + [...callStats].map(([r, st]) => `${r} ${st.n} (${st.asked} asked, ${Math.round(st.ms)} ms)`).join(', '));
       return result ? 'finished' : 'no result';
     } catch (e) {
       log('run failed: ' + (e && e.stack || e));

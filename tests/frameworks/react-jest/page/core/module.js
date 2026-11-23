@@ -17,6 +17,12 @@ class Module {
     this.paths = [];
   }
 }
+// Node's own compile of a module's source (React's react-server-dom-webpack node-register wraps it):
+// the source in Node's wrapper, run with Node's require for its file - the page's loader, which is
+// what Node's own loader is outside Jest's runtime.
+Module.prototype._compile = function _compile(content, filename) {
+  page.runNodeModule(this, content, filename);
+};
 Module.builtinModules = page.session.builtinModules;
 Module.isBuiltin = name => {
   const n = String(name);

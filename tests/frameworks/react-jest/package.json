@@ -6,6 +6,7 @@
   "dependencies": {
     "assert": "2.1.0",
     "buffer": "6.0.3",
+    "create-hash": "1.2.0",
     "events": "3.3.0",
     "path-browserify": "1.0.1",
     "playwright-core": "1.56.1",

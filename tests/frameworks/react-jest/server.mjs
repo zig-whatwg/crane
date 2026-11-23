@@ -96,6 +96,7 @@ function environmentOf(testPath) {
   return resolveTestEnvironment({...projectConfig, requireResolveFunction: m => reactRequire.resolve(m), testEnvironment: custom});
 }
 const jsdomEnvironments = new Set([projectConfig.testEnvironment, reactRequire.resolve('jest-environment-jsdom')]);
+const pageEnvironments = new Map(); // test path -> its environment, for the files the page runs
 
 // --- what the page may ask -----------------------------------------------------------------------
 // The page's stand-ins for Node's core modules: a browser package, or the harness's own module.
@@ -192,6 +193,100 @@ function transformCall({filename, options, json}) {
   return {code: r.code, sourceMapPath: r.sourceMapPath ?? null};
 }
 
+// --- answers, and the answers the page will ask for next -------------------------------------------
+// Every question has one answer for the whole run, so answers are kept (across files too). With an
+// answer the server sends what the page will ask next, keyed as page/boot.js keys its questions
+// (route + encode(body)):
+// - what an earlier file asked after this same question, in its order (a file's module loading is a
+//   long sequence that most files share: React, React DOM, internal-test-utils, Jest's matchers), and
+// - for a module outside the test, Node's resolution and source of each module it requires.
+// A guess the page never asks for costs only bytes; a question the page asks differently is asked.
+const answerable = new Set(['fs', 'node-resolve', 'outer-source', 'resolver', 'transform']);
+const memo = new Map(); // key -> {answer, size}
+function encodeKey(value) {
+  return JSON.stringify(value, (_k, v) => {
+    if (v instanceof Map) return {__map: [...v]};
+    if (v instanceof Set) return {__set: [...v]};
+    if (v === undefined) return {__undefined: true};
+    if (typeof v === 'function') return undefined;
+    return v;
+  });
+}
+function answer(route, body, key = route + '\0' + encodeKey(body)) {
+  const kept = memo.get(key);
+  if (kept) return kept.answer;
+  let out;
+  try {
+    switch (route) {
+      case 'fs': out = {value: fsCall(body)}; break;
+      case 'node-resolve': out = nodeResolve(body); break;
+      case 'outer-source': out = outerSource(body); break;
+      case 'resolver': out = resolverCall(body); break;
+      case 'transform': out = transformCall(body); break;
+    }
+  } catch (e) {
+    out = {error: errorJson(e)};
+  }
+  memo.set(key, {answer: out, size: key.length + JSON.stringify(out).length});
+  return out;
+}
+
+const requirePattern = /\brequire\s*\(\s*(['"])([^'"\n\\]+)\1\s*\)/g;
+function staticRequires(code) {
+  const out = new Set();
+  for (const m of code.matchAll(requirePattern)) out.add(m[2]);
+  return out;
+}
+const prefetchBudget = 8 * 1024 * 1024;
+const prefetchState = new Map(); // run id -> {sent: Set<key>, asked: key[]}
+const firstAsked = new Map(); // key -> {asked: the asking run's key list, at: its index there}
+function prefetchFor(run, route, body, out, key) {
+  let state = prefetchState.get(run);
+  if (!state) {
+    state = {sent: new Set(), asked: []};
+    prefetchState.set(run, state);
+  }
+  state.sent.add(key);
+  const list = [];
+  let bytes = 0;
+  const push = k => {
+    if (state.sent.has(k)) return;
+    const kept = memo.get(k);
+    if (!kept) return;
+    state.sent.add(k);
+    bytes += kept.size;
+    list.push([k, kept.answer]);
+  };
+  const earlier = firstAsked.get(key);
+  if (earlier) {
+    for (let i = earlier.at + 1; i < earlier.asked.length && bytes < prefetchBudget; i++) push(earlier.asked[i]);
+  } else {
+    firstAsked.set(key, {asked: state.asked, at: state.asked.length});
+  }
+  state.asked.push(key);
+  if (route === 'outer-source' && typeof out.code === 'string') {
+    const queue = [[body.path, out.code]];
+    const visited = new Set([body.path]);
+    while (queue.length > 0 && bytes < prefetchBudget) {
+      const [file, code] = queue.shift();
+      for (const request of staticRequires(code)) {
+        const rb = {from: path.dirname(file), request};
+        const rk = 'node-resolve\0' + encodeKey(rb);
+        const r = answer('node-resolve', rb, rk);
+        push(rk);
+        if (typeof r.path !== 'string' || visited.has(r.path)) continue;
+        visited.add(r.path);
+        const sb = {path: r.path};
+        const sk = 'outer-source\0' + encodeKey(sb);
+        const src = answer('outer-source', sb, sk);
+        push(sk);
+        if (typeof src.code === 'string') queue.push([r.path, src.code]);
+      }
+    }
+  }
+  return list;
+}
+
 const pageHtml = '<!DOCTYPE html><html><head><script src="/__react_jest/boot.js"></script></head><body></body></html>';
 
 // --- runs -----------------------------------------------------------------------------------------
@@ -241,6 +336,9 @@ function sessionJson() {
     projectConfig,
     globalConfig,
     testRunner: projectConfig.testRunner,
+    // Each file's environment, as jest-runner picks it (its @jest-environment docblock, else the
+    // project's): React's ReactJSDOMEnvironment, or jest-environment-jsdom named as `jsdom`.
+    testEnvironments: Object.fromEntries(pageEnvironments),
     sourceMapSupport: reactRequire.resolve('source-map-support', {paths: [path.dirname(reactRequire.resolve('jest-runner'))]}),
   });
   return session;
@@ -260,15 +358,20 @@ async function handle(req, res) {
     if (req.method === 'GET' && url.pathname === '/__react_jest/session') return send(200, sessionJson());
     if (req.method === 'POST' && url.pathname.startsWith('/__react_jest/')) {
       const route = url.pathname.slice('/__react_jest/'.length);
-      const body = JSON.parse(await readBody(req), revive);
+      const text = await readBody(req);
+      const body = JSON.parse(text, revive);
       let out;
-      try {
+      if (answerable.has(route)) {
+        // The page keys a question by the very text it sends (page/boot.js call()).
+        const key = route + '\0' + text;
+        out = answer(route, body, key);
+        const run = req.headers['x-react-jest-run'];
+        if (run) {
+          const prefetch = prefetchFor(run, route, body, out, key);
+          if (prefetch.length > 0) out = {...out, prefetch};
+        }
+      } else {
         switch (route) {
-          case 'fs': out = {value: fsCall(body)}; break;
-          case 'node-resolve': out = nodeResolve(body); break;
-          case 'outer-source': out = outerSource(body); break;
-          case 'resolver': out = resolverCall(body); break;
-          case 'transform': out = transformCall(body); break;
           case 'case': {
             const r = runs.get(body.runId);
             if (r) r.cases.push(body);
@@ -293,8 +396,6 @@ async function handle(req, res) {
           default:
             return send(404, '{}');
         }
-      } catch (e) {
-        out = {error: errorJson(e)};
       }
       return send(200, JSON.stringify(out));
     }
@@ -402,7 +503,10 @@ async function run() {
   for (const f of all) {
     if (only && !only.test(path.relative(reactRoot, f))) continue;
     const env = environmentOf(f);
-    if (jsdomEnvironments.has(env)) selected.push(f);
+    if (jsdomEnvironments.has(env)) {
+      selected.push(f);
+      pageEnvironments.set(f, env);
+    }
     else skipped.push([f, env]);
   }
   const out = path.resolve(args.out);
@@ -442,7 +546,21 @@ async function run() {
       outcomes.push(line);
       console.log(`[${outcomes.length}/${selected.length}] ${line}`);
       runs.delete(r.runId);
+      prefetchState.delete(r.runId);
     }
+  }
+  // A warm-up file first, its result discarded: the server learns the sequence of questions a file's
+  // module loading asks (prefetchFor), so the files after it load their modules in tens of round trips;
+  // without it the first files of a run spend seconds of their first test's timeout loading React.
+  if (selected.length > 0) {
+    const r = startRun(selected[0]);
+    const logPath = path.join(out, 'console', 'warm-up.log');
+    try {
+      await (browser === 'crane' ? runInCrane(r, logPath, timeoutMs) : runInChrome(r, logPath, timeoutMs));
+    } catch {}
+    runs.delete(r.runId);
+    prefetchState.delete(r.runId);
+    console.log(`warm-up ${path.relative(reactRoot, selected[0])}: ${r.result ? 'finished' : 'unfinished'} (not counted)`);
   }
   await Promise.all(Array.from({length: parallel}, worker));
   if (chromeBrowser) await chromeBrowser.close();
