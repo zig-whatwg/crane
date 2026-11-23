@@ -259,14 +259,21 @@ pub const Bits = packed struct(u64) {
     kind: Kind = .listener,
     /// An event handler's value (`kind` handler only).
     value: HandlerValue = .none,
-    _: u2 = 0,
+    /// A signal holds abort steps naming this listener ("add an event
+    /// listener" step 6): its owner takes them off the signal when the
+    /// listener leaves the list, however it leaves (EventTarget's signal
+    /// records, lane leak3). A bit here, not the signal: most listeners
+    /// have none.
+    abort_steps: bool = false,
+    _: u1 = 0,
 };
 
 /// One event listener (DOM 2.7), 32 bytes, BY VALUE: what the list hands
 /// out is a copy, so no reader holds a pointer into storage that moves.
 ///
 /// Its signal is not kept: only "add an event listener" reads it (step 6
-/// gives the signal abort steps naming the listener's id). Its removed flag
+/// gives the signal abort steps naming the listener's id; `Bits.abort_steps`
+/// says it did, so the steps can leave the signal with the listener). Its removed flag
 /// is not kept either: a listener the spec removes leaves the list at once,
 /// and dispatch's clone (`Cursor`) holds only listeners still in it - the
 /// two ways the spec's "whose removed is false" is read.

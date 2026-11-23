@@ -96,9 +96,14 @@ fn isJoiningScript(cp: u21) bool {
     return false;
 }
 
-/// Validate contextual rules for a label
-pub fn validateContext(label: []const u8) !void {
-    var codepoints = infra.List(u21).init(std.heap.page_allocator);
+/// Validate contextual rules for a label. `allocator` holds the label's
+/// code points for the call: a label's are on the stack, a longer one's the
+/// caller's (std.heap.page_allocator mapped a page per call: docs/lessons/
+/// architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
+pub fn validateContext(allocator: std.mem.Allocator, label: []const u8) !void {
+    var buffer: [64 * @sizeOf(u21)]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&buffer, allocator);
+    var codepoints = infra.List(u21).init(fallback.allocator());
     defer codepoints.deinit();
 
     // Decode to codepoints

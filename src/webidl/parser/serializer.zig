@@ -7,6 +7,7 @@ const host = @import("host");
 const AST = ast.AST;
 
 pub fn writeToFile(ast_val: AST, filepath: []const u8) !void {
+    // page-allocator: an arena's backing - it asks for whole chunks, once per file this build-time IDL tool writes.
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
