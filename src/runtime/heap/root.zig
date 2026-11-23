@@ -928,6 +928,53 @@ pub const Engine = struct {
         return @ptrCast(ptr);
     }
 
+    pub const InstanceBlocks = struct {
+        slot: *[instance_slot_bytes]u8,
+        state: [*]u8,
+    };
+
+    /// An Instance slot and its State block in one call, the objects lock
+    /// taken once: `allocInstance` and `alloc` (for `target`, `size`,
+    /// `alignment`) together, as Instance.init asks for them (lane hard1's
+    /// P1, cut 4: two calls and two locks were part of the core's 17 ns a
+    /// pair). Both come back as those calls make them. A failure gives back
+    /// what was made.
+    pub fn allocInstanceWith(self: *Engine, target: Target, size: usize, alignment: usize, site: ?*const Site, return_address: usize) Error!InstanceBlocks {
+        if (alignment > span_bytes) @panic("heap: an alignment past a span");
+        const bytes = classes.requestBytes(size, alignment);
+        if (bytes > max_block_bytes) return error.OutOfMemory;
+        switch (target) {
+            .node => |kind| {
+                const k: usize = if (random_buckets == 1) 0 else self.randomBucket(site);
+                const class = classes.classOf(size, alignment);
+                const bi: u16 = if (class) |c| nodeBucket(kind, k, c) else largeBucket(.node, runOf(bytes));
+                const thread = std.Thread.getCurrentId();
+                if (!self.onNodeThread(0, thread)) return error.OutOfMemory;
+                const state = try self.allocIn(&self.node, bi, size, site, return_address);
+                std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+                defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+                const slot = self.allocIn(&self.objects, instance_bucket, instance_fill_bytes, null, 0) catch |err| {
+                    // `free`'s bucket for a node block: its class, or its run's.
+                    const want: u16 = if (class) |c| @intCast(c) else bi;
+                    self.freeIn(&self.node, @intFromPtr(state) - self.heap.window_base, want, false, size, thread);
+                    return err;
+                };
+                return .{ .slot = @ptrCast(slot), .state = state };
+            },
+            .objects => {
+                const bi: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.objects, runOf(bytes));
+                std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+                defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+                const slot = try self.allocIn(&self.objects, instance_bucket, instance_fill_bytes, null, 0);
+                const state = self.allocIn(&self.objects, bi, size, site, return_address) catch |err| {
+                    self.freeIn(&self.objects, @intFromPtr(slot) - self.heap.window_base, instance_bucket, true, instance_fill_bytes, null);
+                    return err;
+                };
+                return .{ .slot = @ptrCast(slot), .state = state };
+            },
+        }
+    }
+
     fn allocIn(self: *Engine, p: *Partition, bi: u16, size: usize, site: ?*const Site, return_address: usize) Error![*]u8 {
         const b = &self.buckets(p.id)[bi];
         var index = b.current;
@@ -1043,6 +1090,38 @@ pub const Engine = struct {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
         self.freeIn(&self.objects, offset, instance_bucket, true, instance_fill_bytes, null);
+    }
+
+    /// `free` of a State block, then `freeInstance` of its slot, the objects
+    /// lock taken once (`allocInstanceWith`'s counterpart). Each is
+    /// validated as those calls validate it, in that order.
+    pub fn freeInstanceWith(self: *Engine, slot: *[instance_slot_bytes]u8, state: [*]u8, size: usize, alignment: usize) void {
+        const thread = std.Thread.getCurrentId();
+        // The State block, validated before anything is freed.
+        const address = @intFromPtr(state);
+        const state_at: ?struct { pid: PartitionId, offset: usize, want: u16 } = at: {
+            const offset = self.offsetOf(address) orelse {
+                self.violation(.other_heap, address);
+                break :at null;
+            };
+            const pid = self.partitionOfOffset(offset) orelse {
+                self.violation(.invalid_free, address);
+                break :at null;
+            };
+            const bytes = classes.requestBytes(size, alignment);
+            const want: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
+            break :at .{ .pid = pid, .offset = offset, .want = want };
+        };
+        if (state_at) |at| if (at.pid == .node and self.onNodeThread(address, thread))
+            self.freeIn(&self.node, at.offset, at.want, false, size, thread);
+        const slot_address = @intFromPtr(slot);
+        const slot_offset = self.offsetOf(slot_address);
+        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        if (state_at) |at| if (at.pid == .objects) self.freeIn(&self.objects, at.offset, at.want, false, size, thread);
+        const offset = slot_offset orelse return self.violation(.other_heap, slot_address);
+        if (self.partitionOfOffset(offset) != .objects) return self.violation(.invalid_free, slot_address);
+        self.freeIn(&self.objects, offset, instance_bucket, true, instance_fill_bytes, thread);
     }
 
     fn offsetOf(self: *Engine, address: usize) ?usize {

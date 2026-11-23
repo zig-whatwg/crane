@@ -117,6 +117,42 @@ pub const SlabAllocator = struct {
         return inst;
     }
 
+    /// `alloc`, and its State - a `StateType`, ZEROED, made as
+    /// ArenaAllocator.create makes one - in one heap call
+    /// (heap.Engine.allocInstanceWith: one lock, not two). What
+    /// Instance.init makes.
+    pub fn allocWithState(self: *SlabAllocator, vtable: *const VTable, comptime StateType: type) !*Instance {
+        if (@sizeOf(StateType) == 0) {
+            const inst = try self.alloc(vtable);
+            inst.state = @ptrFromInt(@alignOf(StateType));
+            return inst;
+        }
+        const e = try self.engine();
+        const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+        const blocks = try e.allocInstanceWith(comptime ArenaAllocator.targetOf(StateType), @sizeOf(StateType), @alignOf(StateType), heap.Site.of(StateType), @returnAddress());
+        const slot: *Slot = @ptrCast(@alignCast(blocks.slot));
+        const generation = @atomicRmw(u64, &self.next_generation, .Add, 1, .monotonic);
+        slot.storeStamp(generation & generation_mask);
+        const inst = slot.asInstance();
+        inst.* = .{
+            .vtable = vtable,
+            .state = @ptrCast(@alignCast(blocks.state)),
+            .ctx = undefined, // Caller will set this
+        };
+        return inst;
+    }
+
+    /// `free`, and the State block of `size`/`alignment` it points to, in
+    /// one heap call (heap.Engine.freeInstanceWith): runtime.gc.releaseStorage.
+    pub fn freeWithState(self: *SlabAllocator, inst: *Instance, size: usize, alignment: usize) void {
+        if (size == 0) return self.free(inst);
+        const state: [*]u8 = @ptrCast(inst.state);
+        const slot: *Slot = @ptrCast(inst);
+        slot.storeStamp((slot.loadStamp() & ~generation_mask) | dead_generation);
+        const e = self.engine() catch @panic("SlabAllocator.freeWithState: an Instance of a scope that never had a heap");
+        e.freeInstanceWith(@ptrCast(slot), state, size, alignment);
+    }
+
     /// Raise the generation counter to at least `seed` (never back).
     pub fn seedGenerations(self: *SlabAllocator, seed: u64) void {
         _ = @atomicRmw(u64, &self.next_generation, .Max, seed, .monotonic);
