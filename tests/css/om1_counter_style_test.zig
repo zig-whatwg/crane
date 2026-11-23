@@ -3,6 +3,14 @@ const std = @import("std");
 const css = @import("css");
 const a = std.testing.allocator;
 
+/// Allocation-failure sweeps run on a churn test's allocator
+/// (tests/test_runner/poisoning.zig, `checkAllAllocationFailures`): the same
+/// sweep as std.testing's, every injected failure required to be released,
+/// without std.testing.allocator's per-allocation stack capture, which made
+/// these sweeps 13-34x slower on aarch64 macOS than on server1 (lane flk4
+/// item 8, 2026-11-23).
+const sweep = @import("root").poisoning.checkAllAllocationFailures;
+
 fn cases(allocator: std.mem.Allocator) anyerror!void {
     if (comptime !@hasDecl(css, "counter_style_descriptors")) return std.testing.expect(false);
     var parsed = (try css.rules.parseRule(allocator, "@counter-style foo { system: cyclic; symbols: a b; }")) orelse return error.TestUnexpectedResult;
@@ -46,7 +54,7 @@ fn cases(allocator: std.mem.Allocator) anyerror!void {
 }
 
 test "counter descriptor CSSOM rulings and mutation are allocation-safe" {
-    try std.testing.checkAllAllocationFailures(a, cases, .{});
+    try sweep("om1_counter_style_test", cases, .{});
 }
 
 fn systems(allocator: std.mem.Allocator) anyerror!void {
@@ -72,7 +80,7 @@ fn systems(allocator: std.mem.Allocator) anyerror!void {
 }
 
 test "counter descriptor setters preserve a defined system and its algorithm" {
-    try std.testing.checkAllAllocationFailures(a, systems, .{});
+    try sweep("om1_counter_style_test", systems, .{});
 }
 
 fn mathCases() anyerror!void {
@@ -188,7 +196,7 @@ fn mathCases() anyerror!void {
         }
     };
     // Q98/Q99: inject every site per independent row, without replaying earlier rows.
-    for (cases_list) |case| try std.testing.checkAllAllocationFailures(a, Operation.run, .{case});
+    for (cases_list) |case| try sweep("om1_counter_style_test", Operation.run, .{case});
 }
 
 test "counter integer math follows browser range and context rulings without invented inputs" {
