@@ -334,6 +334,26 @@ test "a TextDecoder constructor whose label names no encoding frees what it made
     );
 }
 
+test "a WebSocket constructor whose url or protocols it rejects frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // WebSockets 3.1 constructor steps 3 (the url does not parse), 6 (no
+    // ws/wss scheme), 7 (a fragment) and 9 (a protocol twice): each a
+    // "SyntaxError" DOMException, thrown after "this" was made.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 16; i++) {
+        \\    try { new WebSocket('ws://['); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ftp://example.test/'); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ws://example.test/#'); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ws://example.test/', ['a', 'a']); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a constructor that succeeds still hands its receiver to the wrapper cache" {
     const page = try Page.open();
     defer page.close();
