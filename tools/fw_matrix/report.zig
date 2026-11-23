@@ -1515,7 +1515,11 @@ test "what is not run: tests golden rule 2 decides, by kind and framework, apart
     try testing.expect(std.mem.indexOf(u8, h, "following a ruling 2 tests") != null);
     try testing.expect(std.mem.indexOf(u8, h, "<strong>Crane follows the browsers or the newer spec.</strong>") != null);
     try testing.expect(std.mem.indexOf(u8, h, "The browser majority, by a recorded ruling: 1 test (React 1).") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "The newer spec, which a shipping browser follows: 1 test (Angular 1).") != null);
+    // A follows-spec test is the spec's answer a shipping browser gives: a newer spec (Angular's) or a choice the
+    // spec leaves to the implementation (React's FragmentRefs side), so the sentence says "the spec" (the
+    // integrator, 2026-11-23 1:18 AM ET).
+    try testing.expect(std.mem.indexOf(u8, h, " The spec, which a shipping browser follows: 1 test (Angular 1).") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "The newer spec, which") == null);
     // Not rendering: that bullet counts none of them.
     try testing.expect(std.mem.indexOf(u8, h, "Not run for this reason") == null);
 }
