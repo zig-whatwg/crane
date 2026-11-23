@@ -804,11 +804,49 @@ progress = []
   status = "todo"
 
 [[infra]]
+id = "cdp-live-dom"
+title = "Chrome DevTools Protocol: the live DOM, in full (0.1 requirement)"
+why = """The user, 2026-11-22 10:42 PM ET: "we need the live dom over cdp fully in scope for 0.1". \
+Part 1 sends a snapshot (DOM.getDocument, requestChildNodes -> setChildNodes, describeNode, \
+getOuterHTML, querySelector/All, resolveNode, documentUpdated at a commit); a connected client \
+(Chrome DevTools' Elements panel, Puppeteer/Playwright handles) sees no change the page makes \
+after that. Chromium's InspectorDOMAgent (third_party/blink/renderer/core/inspector/\
+inspector_dom_agent.cc) is the reference; no geometry (the renderer is 0.2)."""
+done_when = """Every DOM-domain event Chrome sends for a mutation is sent, in Chrome's order and \
+shape, to every enabled session: childNodeInserted / childNodeRemoved / childNodeCountUpdated \
+(for parents the client has or has not requested), attributeModified / attributeRemoved, \
+characterDataModified, inlineStyleInvalidated, shadowRootPushed / shadowRootPopped, \
+pseudoElementAdded / pseudoElementRemoved, distributedNodesUpdated, topLayerElementsUpdated, \
+documentUpdated, setChildNodes for pushed paths; and every DOM-domain command that needs no \
+geometry works: getAttributes, setAttributeValue / setAttributesAsText / removeAttribute, \
+setNodeValue, setNodeName, removeNode, setOuterHTML, moveTo / copyTo, undo / redo / \
+markUndoableState, performSearch / getSearchResults / discardSearchResults, requestNode, \
+pushNodeByPathToFrontend, pushNodesByBackendIdsToFrontend, getFlattenedDocument, focus, \
+setFileInputFiles, getNodeStackTraces / setNodeStackTracesEnabled, collectClassNamesFromSubtree, \
+getTopLayerElements, getContainerForNode, getQueryingDescendantsForContainer, getFrameOwner. \
+Proven by a trace against Chrome 157 for the same page script (mutation by mutation, ids and \
+order equal) and by Chrome DevTools' own Elements panel connected to Crane staying live; costs \
+nothing when no session has DOM enabled (cost pair within the bar)."""
+progress = []
+
+  [[infra.items]]
+  name = "DOM mutation events to enabled sessions, Chrome's order and shape"
+  status = "todo"
+
+  [[infra.items]]
+  name = "DOM editing, search and node-push commands (no geometry)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Chrome DevTools frontend connected: Elements panel live (test)"
+  status = "todo"
+
+[[infra]]
 id = "cdp-part-2"
 title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
 why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
 punted framework suites need."""
-done_when = """DOMSnapshot, full DOM/CSS, Storage, Emulation beyond the basics, Debugger, \
+done_when = """DOMSnapshot, the CSS domain, Storage, Emulation beyond the basics, Debugger, \
 Profiler, Tracing and the remaining domains Puppeteer/Playwright/chromedp users rely on."""
 progress = []
 
