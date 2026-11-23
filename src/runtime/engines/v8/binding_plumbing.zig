@@ -773,9 +773,10 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
         if (err == conv.ConversionError.ExceptionPending) {
             return;
         }
-        // Throw proper DOMException for WebIDL errors
+        // Throw proper DOMException for WebIDL errors, its message the
+        // impl's text for this operation (runtime.exception_text)
         if (frame.functionContext()) |realm| {
-            interface.throwMemberError(isolate, realm, err);
+            interface.throwMemberErrorFor(isolate, realm, err, .{ .kind = .operation, .interface_name = self.interface_name, .member_name = self.operation_name });
         } else {
             conv.throwError(isolate, @errorName(err));
         }
