@@ -5276,8 +5276,8 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // docs/platform-protocol.md section 11: everything platform-specific goes
     // through the platform protocol (`@import("platform")`). Outside
-    // src/platform/ there is no OS API and no libcurl, mbedTLS, SQLite or
-    // LevelDB identifier. tools/lint_platform_boundary.zig counts every such
+    // src/platform/ there is no OS API and no identifier of a library the
+    // platform owns. tools/lint_platform_boundary.zig counts every such
     // reference per file and key and fails if any rises above
     // tools/platform_boundary_baseline.txt or a new pair appears; the baseline
     // only goes down (`zig build lint-platform -- --update`).
@@ -5333,7 +5333,7 @@ pub fn build(b: *std.Build) void {
         "--engine=" ++ engine_build.lint_words,
         "--platform=" ++ platform_build.lint_words,
         "--target=" ++ platform_build.lint_target_words,
-        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
+        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,jpeg,expat,nanosvg",
     };
     const lint_build_module = b.createModule(.{
         .root_source_file = b.path("tools/lint_build_neutral.zig"),
