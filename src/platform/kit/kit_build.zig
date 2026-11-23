@@ -5,6 +5,7 @@
 //! root build.zig (the user, 2026-11-12: no engine or platform code in
 //! build.zig):
 //!
+//!   curl/curl_build.zig                  libcurl, with the mbedTLS, zlib and nghttp2 it links
 //!   brotli/brotli_build.zig              Brotli, the RFC 7932 codec
 //!   image_codecs/image_codecs_build.zig  the testing image codecs (libjpeg-turbo, Expat, NanoSVG)
 //!
@@ -17,6 +18,7 @@
 const std = @import("std");
 
 /// The parts' build files.
+pub const curl = @import("curl/curl_build.zig");
 pub const brotli = @import("brotli/brotli_build.zig");
 pub const image_codecs = @import("image_codecs/image_codecs_build.zig");
 
