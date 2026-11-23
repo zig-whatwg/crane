@@ -439,6 +439,12 @@ pub const NetError = enum(u8) {
     internet_disconnected,
     invalid_http_response,
     content_decoding_failed,
+    /// net_error_list.h: the connection closed short of the Content-Length,
+    /// a chunked body cut before its last chunk, a chunked body whose
+    /// framing does not parse.
+    content_length_mismatch,
+    incomplete_chunked_encoding,
+    invalid_chunked_encoding,
 
     /// The reason of a network failure the backend reports (Chromium's
     /// MapSystemError: ENETUNREACH is ERR_INTERNET_DISCONNECTED, EHOSTUNREACH
@@ -461,6 +467,9 @@ pub const NetError = enum(u8) {
             error.EmptyResponse => .empty_response,
             error.ProtocolError => .invalid_http_response,
             error.ContentDecodingFailed => .content_decoding_failed,
+            error.ContentLengthMismatch => .content_length_mismatch,
+            error.IncompleteChunkedEncoding => .incomplete_chunked_encoding,
+            error.InvalidChunkedEncoding => .invalid_chunked_encoding,
             error.OutOfMemory, error.Unknown => .failed,
         };
     }
@@ -486,6 +495,9 @@ pub const NetError = enum(u8) {
             .internet_disconnected => "net::ERR_INTERNET_DISCONNECTED",
             .invalid_http_response => "net::ERR_INVALID_HTTP_RESPONSE",
             .content_decoding_failed => "net::ERR_CONTENT_DECODING_FAILED",
+            .content_length_mismatch => "net::ERR_CONTENT_LENGTH_MISMATCH",
+            .incomplete_chunked_encoding => "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+            .invalid_chunked_encoding => "net::ERR_INVALID_CHUNKED_ENCODING",
         };
     }
 };
