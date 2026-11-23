@@ -347,6 +347,15 @@ pub const ContextData = struct {
     /// every Window's timers in it.
     active_timers: native_timer.TimerIdMap(*anyopaque) = .empty,
 
+    /// The next id this global's timer initialization steps give out (HTML
+    /// 8.6 step 2: "an implementation-defined integer that is greater than
+    /// zero and does not already exist in global's map of active timers"):
+    /// each global counts its own from 1, wrapping past the greatest `long`
+    /// - as Blink's DOMTimerCoordinator, Gecko's TimeoutManager and WebKit's
+    /// ScriptExecutionContext count per global, and a worker's global here
+    /// does (html.worker_host takeTimerId).
+    next_timer_id: i32 = 1,
+
     /// The realm's own platform objects of each kind that something must
     /// reach as a whole - HTML "destroy a document" step 5's MessagePorts,
     /// "abort a document"'s fetches - each list kept by the object's owner

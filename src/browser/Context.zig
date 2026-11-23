@@ -256,6 +256,49 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     try std.testing.expectEqual(@as(usize, 1), TimerMap.of(&realm).count());
 }
 
+test "each window's timer ids are its own, from 1 (HTML 8.6 step 2; Blink, Gecko and WebKit count per global)" {
+    // Lane tab1 (the instances design's 6.3.1: "ids may coincide across
+    // tabs and clearTimeout(id) in one tab never clears the other's"). Two
+    // windows on one agent's loop - its one timer manager - each give out 1,
+    // 2, ... for setTimeout and setInterval alike, as Blink's
+    // DOMTimerCoordinator, Gecko's TimeoutManager and WebKit's
+    // ScriptExecutionContext each count per global; the manager's own ids
+    // stay behind them.
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    var other = try runtime.ContextData.init(allocator, .{});
+    defer other.deinit();
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    realm.timer = manager.timerInterface();
+    other.timer = manager.timerInterface();
+    const first = try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false);
+    const second = try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true);
+    const elsewhere = try initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 1), first);
+    try std.testing.expectEqual(@as(i32, 2), second);
+    try std.testing.expectEqual(@as(i32, 1), elsewhere);
+    // The same id names each window's own timer: clearing one leaves the
+    // other armed.
+    clearTimer(&realm, 1);
+    try std.testing.expect(TimerMap.of(&realm).get(1) == null);
+    try std.testing.expect(TimerMap.of(&other).get(1) != null);
+    // Past the greatest `long` the count wraps to 1, skipping ids still in
+    // the map (step 2: "does not already exist in global's map").
+    realm.next_timer_id = std.math.maxInt(i32);
+    const last = try initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, std.math.maxInt(i32)), last);
+    const wrapped = try initializeTimer(&realm, .{ .function = .{ .number = 5 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 1), wrapped);
+    const skipped = try initializeTimer(&realm, .{ .function = .{ .number = 6 } }, 10, &.{}, false);
+    try std.testing.expectEqual(@as(i32, 3), skipped);
+    for ([_]i32{ 2, last, wrapped, skipped }) |id| clearTimer(&realm, id);
+    clearTimer(&other, 1);
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&realm).count());
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&other).count());
+}
+
 test "a queued timer's task owns its record: suspension skips it, clearing releases its handles, its task or drop frees it" {
     // The ownership rule at WindowTimerData, state .queued, without a Window:
     // what timerFired does on a Window's event loop - the native timer has

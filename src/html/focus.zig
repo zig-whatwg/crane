@@ -371,6 +371,13 @@ pub fn currentlyFocusedArea(document: *Instance) *Instance {
     return designatedAreaOf(candidate) orelse candidate;
 }
 
+/// The user agent decided `traversable`'s tab gains (`focused`) or loses
+/// system focus (HTML 6.6.2). (Red-run stub: flips the tab's state only.)
+pub fn setSystemFocus(traversable: *dom.browser_state.BrowsingContext, focused: bool) void {
+    const tab = traversable.tabScope() orelse return;
+    tab.system_focus = focused;
+}
+
 /// HTML "has focus steps" for `document`.
 pub fn hasFocus(document: *Instance) bool {
     var candidate = topLevelDocumentOf(document);
