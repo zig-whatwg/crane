@@ -3323,7 +3323,7 @@ pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
 /// own holds strong. A caller that keeps each value itself pairs this with
 /// `holdWeakly`: the hold says WHICH value, the edge KEEPS it.
 ///
-/// Refcount decision D7 (tmp/plans/refcount-design.md 3): WebKit's
+/// Refcount decision D7 (docs/refcount-design.md 3): WebKit's
 /// JSEventListener holds its function weakly (`JSC::Weak<JSC::JSObject>
 /// m_jsFunction`) and marks it from the target's wrapper
 /// (EventTarget::visitJSEventListeners -> visitJSFunctionInGCThread), and its

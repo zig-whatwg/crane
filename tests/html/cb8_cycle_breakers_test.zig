@@ -1,4 +1,4 @@
-//! Refcount step 8, the cycle breakers (lane rc8; tmp/plans/refcount-design.md
+//! Refcount step 8, the cycle breakers (lane rc8; docs/refcount-design.md
 //! section 3 and step 8, decision D7): what must STILL hold once listeners,
 //! event handlers and observer callbacks are values traced from their
 //! target's (observer's) wrapper instead of strong roots.

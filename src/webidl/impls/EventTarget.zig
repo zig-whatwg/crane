@@ -155,7 +155,7 @@ fn callbackOf(listener: Listener) engine.CallbackInterface {
 
 // ----------------------------------------------------------------------------
 // The list's values, traced from the target's wrapper (refcount step 8,
-// decision D7; tmp/plans/refcount-design.md 3, "event listener closure
+// decision D7; docs/refcount-design.md 3, "event listener closure
 // capturing its node").
 //
 // A listener's callback and an event handler's compiled function are held
