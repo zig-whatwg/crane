@@ -50,8 +50,14 @@ test "list_network_requests and get_network_request: a document, its subresource
     r = try h.tool("get_network_request", "{\"pageId\":1,\"reqid\":1}");
     try testing.expect(!r.is_error);
     try testing.expect(std.mem.startsWith(u8, r.text, try std.fmt.allocPrint(a, "## Request {s}\nStatus: 200\n### Request Headers\n", .{root})));
-    try testing.expect(std.mem.indexOf(u8, r.text, "\n### Response Headers\n") != null);
-    try testing.expect(std.mem.indexOf(u8, r.text, "\n- content-type:text/html\n") != null);
+    // The response's headers by name, as Chrome's CDP gives them (its
+    // Network.Headers are a base::Value::Dict, sorted): the site sends
+    // Content-Type, Content-Length, Cache-Control, Connection.
+    const sorted = try std.fmt.allocPrint(a, "\n### Response Headers\n- cache-control:no-store\n- connection:close\n- content-length:{d}\n- content-type:text/html\n### Response Body\n", .{Site.index_html.len});
+    if (std.mem.indexOf(u8, r.text, sorted) == null) {
+        std.log.err("got: {s}", .{r.text});
+        return error.TestUnexpectedResult;
+    }
     try testing.expect(std.mem.endsWith(u8, r.text, "\n### Response Body\n" ++ Site.index_html));
 
     r = try h.tool("get_network_request", "{\"pageId\":1,\"reqid\":99}");
