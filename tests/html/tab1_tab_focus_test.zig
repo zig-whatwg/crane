@@ -111,3 +111,66 @@ test "focus emulation: a tab without system focus answers as focused while a Dev
     try fixture.waitFor(host, "log.length === 9");
     try fixture.expect(host, "[document.hasFocus(), log.slice(6).join()].join()", "false,blur,focusout,window-blur");
 }
+
+const window_log =
+    \\globalThis.log = [];
+    \\addEventListener('focus', e => { if (e.target === window) log.push('window-focus'); });
+    \\addEventListener('blur', e => { if (e.target === window) log.push('window-blur'); });
+    \\true
+;
+
+test "a host that narrows focus: only the tab it activates has system focus, and its pages hear each move" {
+    // The ruling's rendering host (BrowserConfig.focus = .active_tab): the
+    // first page is the active tab; a tab the host opens in the foreground
+    // takes the focus, one in the background or a page's popup does not;
+    // activateTab moves it; the active tab's close gives it to the tab
+    // activeTab() answers next (the first open one), as a browser activates
+    // a neighbour.
+    const fixture = try Fixture.startWith(testing.allocator, .active_tab);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    try fixture.run(host, window_log);
+    try fixture.expect(host, "document.hasFocus()", "true");
+
+    const id = try fixture.browser.createTab(.{});
+    const opened = fixture.tab(id) orelse return error.NoSuchTab;
+    try fixture.waitFor(host, "log.join() === 'window-blur'");
+    try fixture.expect(host, "document.hasFocus()", "false");
+    try fixture.expect(opened, "document.hasFocus()", "true");
+
+    try fixture.browser.activateTab(host.id);
+    try fixture.waitFor(host, "log.join() === 'window-blur,window-focus'");
+    try fixture.expect(host, "document.hasFocus()", "true");
+    try fixture.expect(opened, "document.hasFocus()", "false");
+
+    // A background tab and a page's popup start without it.
+    const background = try fixture.browser.createTab(.{ .background = true });
+    const background_bc = fixture.tab(background) orelse return error.NoSuchTab;
+    try fixture.expect(background_bc, "document.hasFocus()", "false");
+    const popup = try fixture.openTab("globalThis.p = window.open('/page.html', 'p1'); true", "/page.html");
+    try fixture.expect(popup, "document.hasFocus()", "false");
+    try fixture.expect(host, "[document.hasFocus(), log.length].join()", "true,2");
+
+    // The active tab closes: the first open tab - the host's - has it.
+    try fixture.browser.activateTab(id);
+    try fixture.waitFor(host, "log.length === 3");
+    try fixture.browser.closeTab(id, .{});
+    try fixture.waitFor(host, "log.length === 4");
+    try fixture.expect(host, "[document.hasFocus(), log.join()].join()", "true,window-blur,window-focus,window-blur,window-focus");
+}
+
+test "a host that does not narrow focus: every tab has system focus, whatever it activates" {
+    // Headless Chrome's model (the default): activateTab - CDP
+    // Target.activateTarget, BiDi browsingContext.activate - changes only
+    // what activeTab answers.
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const id = try fixture.browser.createTab(.{});
+    const opened = fixture.tab(id) orelse return error.NoSuchTab;
+    try fixture.browser.activateTab(host.id);
+    try fixture.turn(20);
+    try fixture.expect(host, "document.hasFocus()", "true");
+    try fixture.expect(opened, "document.hasFocus()", "true");
+    try testing.expectEqual(@as(?u64, host.id), fixture.browser.activeTab());
+}

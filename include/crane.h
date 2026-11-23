@@ -185,7 +185,16 @@ typedef struct {
     bool answers_dialogs;       /* the embedder answers every dialog
                                    (crane_tab_answer_dialog); false: the
                                    platform's dialog does */
+    uint32_t focus_mode;        /* crane_focus_mode: which tabs have
+                                   system focus (document.hasFocus(),
+                                   :focus) */
 } crane_browser_options_t;
+
+typedef enum {
+    CRANE_FOCUS_EVERY_TAB = 0,  /* every tab, as headless Chrome (default) */
+    CRANE_FOCUS_ACTIVE_TAB = 1  /* only the tab crane_tab_activate names:
+                                   an embedder showing one tab at a time */
+} crane_focus_mode;
 
 /* A Browser on a thread of its own, sharing nothing with any other. */
 crane_status crane_browser_create(const crane_browser_options_t *options, crane_browser_t **out);

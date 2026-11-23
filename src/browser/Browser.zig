@@ -122,6 +122,12 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// Which tabs have system focus (HTML 6.6.2; the user's ruling
+    /// 2026-11-19, "Host decides, headless default"): every one, as headless
+    /// Chrome's (the default), or only the tab the host activates - a host
+    /// that renders narrows focus to the tab it shows, through
+    /// `activateTab`.
+    focus: FocusModel = .every_tab,
     /// Whether a platform object's freed state - its State block, and a
     /// node's NodeBase released at its teardown - is overwritten with the
     /// poison byte (runtime.ArenaAllocator.poison_freed), so a read after the
@@ -153,6 +159,9 @@ pub const BrowserConfig = struct {
     platform: platform.PlatformBrowserOptions = .{},
 
     pub const HttpCacheConfig = @import("fetch").network.NetworkContext.HttpCacheConfig;
+
+    /// `focus`: every tab has system focus, or only the active one.
+    pub const FocusModel = enum { every_tab, active_tab };
 
     pub const Proxy = union(enum) {
         /// The process's proxy settings (curl reads http_proxy, https_proxy

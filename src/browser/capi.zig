@@ -168,7 +168,14 @@ pub const BrowserOptions = extern struct {
     /// (crane_tab_answer_dialog after CRANE_EVENT_DIALOG_OPENING); false:
     /// the platform's dialog answers. Read when struct_size covers it.
     answers_dialogs: bool = false,
+    /// A FocusMode: every tab has system focus (the default, as headless
+    /// Chrome), or only the tab crane_tab_activate names - an embedder that
+    /// shows one tab at a time narrows focus to it (BrowserConfig.focus).
+    /// Read when struct_size covers it.
+    focus_mode: u32 = 0,
 };
+
+pub const FocusMode = enum(u32) { every_tab = 0, active_tab = 1 };
 
 pub const TabInfo = extern struct {
     id: u64,
@@ -460,6 +467,10 @@ pub export fn crane_browser_create(options: ?*const BrowserOptions, out: ?*?*CBr
     self.* = .{ .host = undefined, .on_event = o.on_event, .event_context = o.event_context, .answers_dialogs = o.answers_dialogs };
     var config: BrowserConfig = .{ .accept_insecure_certs = o.accept_insecure_certs };
     const failed: ?Status = blk: {
+        config.focus = switch (std.enums.fromInt(FocusMode, o.focus_mode) orelse break :blk .invalid_argument) {
+            .every_tab => .every_tab,
+            .active_tab => .active_tab,
+        };
         // Kept for the Browser's life, as every string the options borrow.
         config.profile_dir = self.keep(o.profile_dir) catch break :blk .out_of_memory;
         config.user_agent = self.keep(o.user_agent) catch break :blk .out_of_memory;

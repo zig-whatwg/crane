@@ -74,3 +74,31 @@ test "a profile directory through the C ABI: held while its Browser lives, refus
     const tab = try openTab(next, page.ptr);
     try expectEvaluation(next, tab, "localStorage.getItem('kept')", "{\"type\":\"string\",\"value\":\"across Browsers\"}");
 }
+
+fn expectFocus(handle: ?*capi.Handle, tab: u64, comptime focused: []const u8) !void {
+    try expectEvaluation(handle, tab, "document.hasFocus()", "{\"type\":\"boolean\",\"value\":" ++ focused ++ "}");
+}
+
+test "focus_mode through the C ABI: an embedder that narrows focus gives it to the tab it activates" {
+    try testing.expectEqual(capi.Status.ok, capi.crane_process_init(null));
+    var handle: ?*capi.Handle = null;
+    const options: capi.BrowserOptions = .{ .struct_size = @sizeOf(capi.BrowserOptions), .focus_mode = @backingInt(capi.FocusMode.active_tab) };
+    try testing.expectEqual(capi.Status.ok, capi.crane_browser_create(&options, &handle));
+    defer capi.crane_browser_destroy(handle);
+    var infos: ?[*]capi.TabInfo = null;
+    var count: usize = 0;
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_list(handle, &infos, &count));
+    const first = infos.?[0].id;
+    capi.crane_tab_info_free(infos, count);
+    try expectFocus(handle, first, "true");
+    var second: u64 = 0;
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_create(handle, null, false, &second));
+    try expectFocus(handle, second, "true");
+    try expectFocus(handle, first, "false");
+    try testing.expectEqual(capi.Status.ok, capi.crane_tab_activate(handle, first));
+    try expectFocus(handle, first, "true");
+    try expectFocus(handle, second, "false");
+    // An unknown mode is refused.
+    var refused: ?*capi.Handle = null;
+    try testing.expectEqual(capi.Status.invalid_argument, capi.crane_browser_create(&.{ .struct_size = @sizeOf(capi.BrowserOptions), .focus_mode = 7 }, &refused));
+}
