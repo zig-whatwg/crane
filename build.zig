@@ -11,8 +11,10 @@ const test_suites = @import("tools/test_suites.zig");
 /// 2026-11-12: "the valid flags should be in the js engine protocol"). The protocol's build file lists the adapters
 /// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
-/// The build side of the platform protocol: the extra kit parts each
-/// platform's adapter declares, with the system libraries they link.
+/// THE BUILD SIDE OF THE PLATFORM PROTOCOL (docs/platform-protocol.md 10): the list of platform adapters
+/// and the protocol's own options, and what each adapter declares in its own build file - the systems it
+/// answers for, the extra kit parts it builds in and the system libraries they link. This file names no
+/// platform.
 const platform_build = @import("src/platform/platform_build_protocol.zig");
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
@@ -2494,128 +2496,9 @@ fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget,
     return translate.createModule();
 }
 
-/// The platform a module graph is built for (docs/platform-protocol.md 1.1):
-/// a built-in one, or `external` - the implementation -Dplatform-module names.
-const Platform = enum {
-    darwin,
-    linux,
-    testing,
-    external,
-
-    /// The platform a target gets by default: darwin for macOS and iOS, linux
-    /// for Linux; null where Crane has no built-in platform (pass
-    /// -Dplatform-module).
-    fn ofTarget(target: std.Build.ResolvedTarget) ?Platform {
-        return switch (target.result.os.tag) {
-            .macos, .ios => .darwin,
-            .linux => .linux,
-            else => null,
-        };
-    }
-};
-
-/// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
-/// Capabilities fields. The facade checks the names again at compile time;
-/// this list only makes a typo fail before any compile starts.
-const platform_capability_names = [_][]const u8{
-    "image_decoding",
-    "image_encoding",
-    "font_decoding",
-    "brotli",
-    "deflate_decoding",
-    "persistent_storage",
-    "file_urls",
-    "system_trust_store",
-    "http2",
-    "http3",
-    "thread_qos",
-    "resident_memory",
-    "layout",
-    "os_permissions",
-    "simple_dialogs",
-    "printing",
-    "file_picker",
-    "windows",
-    "media_decoding",
-    "pdf_viewer",
-    "webcodecs",
-    "media_capabilities",
-    "encrypted_media",
-    "camera",
-    "microphone",
-    "screen_capture",
-    "audio_output",
-    "speech_synthesis",
-    "speech_recognition",
-    "clipboard",
-    "notifications",
-    "push",
-    "background_sync",
-    "background_fetch",
-    "geolocation",
-    "sensors",
-    "device_orientation",
-    "usb",
-    "hid",
-    "serial",
-    "bluetooth",
-    "nfc",
-    "midi",
-    "gamepad",
-    "payment",
-    "webauthn",
-    "identity_credentials",
-    "share",
-    "contacts",
-    "fullscreen",
-    "pointer_lock",
-    "keyboard_lock",
-    "wake_lock",
-    "idle_detection",
-    "battery",
-    "vibration",
-    "badging",
-    "eyedropper",
-    "local_fonts",
-    "keyboard_map",
-    "screen_details",
-    "presentation",
-    "remote_playback",
-    "picture_in_picture",
-    "media_session",
-    "network_information",
-    "compute_pressure",
-    "device_posture",
-    "virtual_keyboard",
-    "protocol_handlers",
-    "address_space",
-    "devtools_transport",
-};
-
-/// The link-plan items -Dplatform-static may name (contract section 10): a
-/// platform compiles the kit's static implementation of each instead of
-/// linking the system library. `all` names every one.
-const platform_static_items = [_][]const u8{ "sqlite", "zlib", "brotli", "crypto", "trust_store", "curl", "nghttp2", "all" };
-
-/// A comma-separated option as a list of names, each checked against `valid`.
-fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []const []const u8) []const []const u8 {
-    const text = value orelse return &.{};
-    var names: std.ArrayList([]const u8) = .empty;
-    var it = std.mem.tokenizeScalar(u8, text, ',');
-    while (it.next()) |raw| {
-        const name = std.mem.trim(u8, raw, " ");
-        for (valid) |v| {
-            if (std.mem.eql(u8, v, name)) break;
-        } else {
-            std.debug.print("Error: -D{s} names '{s}', which is not one of: ", .{ option, name });
-            for (valid, 0..) |v, i| std.debug.print("{s}{s}", .{ if (i == 0) "" else ", ", v });
-            std.debug.print("\n", .{});
-            std.process.exit(1);
-        }
-        names.append(b.allocator, b.dupe(name)) catch @panic("OOM");
-    }
-    return names.items;
-}
+/// The platform a module graph is built for: a listed adapter or a third
+/// party's (platform_build.Platform).
+const Platform = platform_build.Platform;
 
 /// `list` with `capability` added when it is not there already.
 fn withCapability(b: *std.Build, list: []const []const u8, capability: []const u8) []const []const u8 {
@@ -3188,9 +3071,14 @@ pub fn build(b: *std.Build) void {
     // same artifacts. A runner graph whose C libraries differ in mode or
     // sanitizer builds its own (runnerGraph); none is ever written to by
     // another graph (checkLinkedC, at the end of build()).
-    const platform_without_asked = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    //
+    // The platform protocol's own options - -Dplatform-without,
+    // -Dplatform-module, -Dplatform, -Dplatform-static - and the platform
+    // they choose, declared by its build side (docs/platform-protocol.md
+    // 1.1): the names each takes are the protocol's lists.
+    const chosen_platform = platform_build.choose(b, target);
     // -Dcdp=false compiles the remote end's transport out of the platform too.
-    const platform_without = if (enable_cdp) platform_without_asked else withCapability(b, platform_without_asked, "devtools_transport");
+    const platform_without = if (enable_cdp) chosen_platform.without else withCapability(b, chosen_platform.without, "devtools_transport");
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
@@ -3214,19 +3102,7 @@ pub fn build(b: *std.Build) void {
 
     // The library, the CLI and the iOS build use the target's platform; the WPT
     // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
-    // Step 0 binds no platform yet, so both graphs are today's modules.
-    // The platform protocol's build options (docs/platform-protocol.md 1.1).
-    const platform_module_path = b.option([]const u8, "platform-module", "A third-party platform: the root file of an implementation of src/platform/protocol.zig");
-    const platform_choice = b.option(Platform, "platform", "The platform: darwin, linux or testing (default: from the target)");
-    const target_platform: Platform = if (platform_module_path != null) .external else platform_choice orelse Platform.ofTarget(target) orelse {
-        std.debug.print("Error: no built-in platform for {s}; pass -Dplatform-module=<path>\n", .{@tagName(target.result.os.tag)});
-        std.process.exit(1);
-    };
-    if (platform_choice == .external and platform_module_path == null) {
-        std.debug.print("Error: -Dplatform=external needs -Dplatform-module=<path>\n", .{});
-        std.process.exit(1);
-    }
-    const platform_static = optionList(b, "platform-static", b.option([]const u8, "platform-static", "Link-plan items to compile statically instead of linking the system library (comma-separated, or all)"), &platform_static_items);
+    const target_platform: Platform = chosen_platform.platform;
     const module_config: ModuleConfig = .{
         .optimize = optimize,
         .build_options = build_options,
@@ -3242,8 +3118,8 @@ pub fn build(b: *std.Build) void {
         .image_codecs = image_codecs,
         .public_platform = target_platform,
         .platform_without = platform_without,
-        .platform_static = platform_static,
-        .platform_module = platform_module_path,
+        .platform_static = chosen_platform.static,
+        .platform_module = chosen_platform.module_path,
         .tables = addGeneratedTables(b),
         .impl_names = implModuleNames(b),
     };
