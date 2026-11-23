@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dom/nodes/moveBefore/ - Crane WPT Results</title>
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="../../../fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../../../fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../../site.css">
+<link rel="icon" href="data:,">
+<script src="../../../site.js" defer></script>
+</head>
+<body>
+<div class="frame">
+<main class="doc" id="main">
+<header class="head head-page">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../dom/"><code>dom/</code></a></li><li><a href="../../../dom/nodes/"><code>nodes/</code></a></li><li aria-current="page"><code>moveBefore/</code></li></ol></nav>
+<h1 class="page-title"><code>dom/<wbr>nodes/<wbr>moveBefore/</code></h1>
+<div class="figures" role="group" aria-label="dom/nodes/moveBefore/">
+<p class="figures-main"><span class="fg-pass">159</span><span class="fg-of"> / 164</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>55</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+</div>
+<p class="figures-ref"><span class="ref-name">Chrome</span> <b>156</b> / 164 WPT subtests passing on the same files, <span class="blk">2 blocking</span></p>
+</header>
+<div class="boxes">
+<aside class="box conf" aria-label="Conformance of dom/nodes/moveBefore/">
+<div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">55 files</span></div>
+<div class="conf-body">
+<div class="meter" role="img" aria-label="52 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, 1 exempt, of 55 files"><span class="m-clean" style="width:94.545%"></span><span class="m-partial" style="width:3.636%"></span><span class="m-exempt" style="width:1.818%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>52</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>1</dd></div></dl>
+</div>
+</aside>
+<div class="box tests">
+<div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">55 test files here</span></div>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="Node-moveBefore.html" data-gate="clean" data-pass="32" data-of="32" data-failed="0" data-ref-pass="32" data-ref-of="32"><summary><span class="tf-name"><code>Node-<wbr>moveBefore.<wbr>html</code></span><span class="tf-n"><b>32</b> / 32<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>32</b> / 32</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>32</b> / 32 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/Node-moveBefore.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>Node-<wbr>moveBefore.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>If node is a host-including inclusive ancestor of parent, then throw a HierarchyRequestError DOMException.</li><li>If node is not a DocumentFragment, DocumentType, Element, Text, ProcessingInstruction, or Comment node, then throw a HierarchyRequestError DOMException.</li><li>If node is a Text node and parent is a document, then throw a HierarchyRequestError DOMException.</li><li>If node is a doctype and parent is not a document, then throw a HierarchyRequestError DOMException.</li><li>If node is a DocumentFragment with multiple elements and parent is a document, then throw a HierarchyRequestError DOMException.</li><li>If node is a DocumentFragment with an element and parent is a document with another element, then throw a HierarchyRequestError DOMException.</li><li>If node is an Element and parent is a document with another element, then throw a HierarchyRequestError DOMException.</li><li>If node is a doctype and parent is a document with another doctype, then throw a HierarchyRequestError DOMException.</li><li>If node is a doctype and parent is a document with an element, then throw a HierarchyRequestError DOMException.</li><li>Calling moveBefore with a non-Node first argument must throw TypeError.</li><li>Calling moveBefore with second argument missing, or other than Node, null, or undefined, must throw TypeError.</li><li>moveBefore() method does not exist on non-ParentNode Nodes</li><li>moveBefore() on disconnected parent throws a HierarchyRequestError</li><li>moveBefore() with disconnected target node throws a HierarchyRequestError</li><li>moveBefore() on a cross-document target node throws a HierarchyRequestError</li><li>moveBefore() into a Document throws a HierarchyRequestError</li><li>moveBefore() CharacterData into a Document</li><li>moveBefore() with node being an inclusive ancestor of parent throws a HierarchyRequestError</li><li>moveBefore() with a non-{Element, CharacterData} throws a HierarchyRequestError</li><li>moveBefore with an Element or CharacterData succeeds</li><li>moveBefore on a paragraph&#39;s Text node child</li><li>moveBefore with reference child whose parent is NOT the destination parent (context node) throws a NotFoundError.</li><li>moveBefore() returns undefined</li><li>Moving a node before itself should not move the node</li><li>Moving a node from a disconnected container to a disconnected new parent without a shared ancestor throws a HIERARCHY_REQUEST_ERR</li><li>Moving a node from a disconnected container to a disconnected new parent in the same tree succeeds</li><li>Moving a node from a disconnected container to a disconnected new parent in the same tree succeeds,also across shadow-roots</li><li>Moving a node from disconnected-&gt;connected throws a HIERARCHY_REQUEST_ERR</li><li>Moving a node from connected-&gt;disconnected throws a HIERARCHY_REQUEST_ERR</li><li>No custom element callbacks are run during disconnected moveBefore()</li><li>Invalid node hierarchy with null old parent does not crash</li><li>Move disconnected iframe does not crash</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="continue-css-animation-left.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>continue-<wbr>css-<wbr>animation-<wbr>left.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/continue-css-animation-left.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>continue-<wbr>css-<wbr>animation-<wbr>left.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Node.moveBefore should preserve CSS animation state (left)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="continue-css-animation-transform.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>continue-<wbr>css-<wbr>animation-<wbr>transform.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/continue-css-animation-transform.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>continue-<wbr>css-<wbr>animation-<wbr>transform.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Node.moveBefore should preserve CSS animation state (transform)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="continue-css-transition-left-pseudo.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>continue-<wbr>css-<wbr>transition-<wbr>left-<wbr>pseudo.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/continue-css-transition-left-pseudo.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>continue-<wbr>css-<wbr>transition-<wbr>left-<wbr>pseudo.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Node.moveBefore should preserve CSS transition state on pseudo-elements (left)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="continue-css-transition-transform-pseudo.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>continue-<wbr>css-<wbr>transition-<wbr>transform-<wbr>pseudo.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/continue-css-transition-transform-pseudo.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>continue-<wbr>css-<wbr>transition-<wbr>transform-<wbr>pseudo.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Node.moveBefore should preserve CSS transition state on pseudo-elements (transform)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="css-animation-commit-styles.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>css-<wbr>animation-<wbr>commit-<wbr>styles.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/css-animation-commit-styles.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>css-<wbr>animation-<wbr>commit-<wbr>styles.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Calling commitStyles after Node.moveBefore should commit mid-transition value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="css-transition-cross-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>css-<wbr>transition-<wbr>cross-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/css-transition-cross-document.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>css-<wbr>transition-<wbr>cross-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving a transition across documents should reset its state</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="css-transition-to-disconnected-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>css-<wbr>transition-<wbr>to-<wbr>disconnected-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/css-transition-to-disconnected-document.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>css-<wbr>transition-<wbr>to-<wbr>disconnected-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving an element with a transition to a disconnected document should reset the transitionm state</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="custom-element-move-reactions.html" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>custom-<wbr>element-<wbr>move-<wbr>reactions.<wbr>html</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/custom-element-move-reactions.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>custom-<wbr>element-<wbr>move-<wbr>reactions.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>the disconnected/connected callbacks should be called when no other callback is defined</li><li>the element should stay connected during the callbacks</li><li>When connectedMoveCallback is defined, it is called instead of disconnectedCallback/connectedCallback</li><li>Reactions to atomic move are called in order of element, not in order of operation</li><li>When connectedCallback is not defined, no crash</li><li>When disconnectedCallback is not defined, no crash</li><li>connectedMove runs when custom element is nested within a shadow root</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="fieldset-child-blur-event.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>fieldset-<wbr>child-<wbr>blur-<wbr>event.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/fieldset-child-blur-event.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>fieldset-<wbr>child-<wbr>blur-<wbr>event.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>The &#39;blur&#39; event is not fired on children of HTMLFieldSetElement during moveBefore()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="fieldset-child-date-input-blur-event.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>fieldset-<wbr>child-<wbr>date-<wbr>input-<wbr>blur-<wbr>event.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/fieldset-child-date-input-blur-event.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>fieldset-<wbr>child-<wbr>date-<wbr>input-<wbr>blur-<wbr>event.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Neither &#39;blur&#39; nor &#39;focusout&#39; is fired on a focused &lt;input type=date&gt; child of HTMLFieldSetElement during moveBefore()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="fire-focusin-focusout.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="0" data-ref-of="5"><summary><span class="tf-name"><code>fire-<wbr>focusin-<wbr>focusout.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/fire-focusin-focusout.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>fire-<wbr>focusin-<wbr>focusout.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Don&#39;t fire focusin/out when reparenting focused element directly</li><li>Don&#39;t fire focusin/out when reparenting an element that has focus within</li><li>Don&#39;t fire focusin/out when moving to the same parent</li><li>Don&#39;t fire focusin and then correct when moving to an inert subtree</li><li>Don&#39;t fire focusin and then correct when moving to a tree that is made inert using style</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-preserve.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>focus-<wbr>preserve.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/focus-preserve.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>focus-<wbr>preserve.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>moveBefore() preserves focus when the focused element remains focusable</li><li>moveBefore() preserves focus and a backward selection in a text input</li><li>Focus is fixed up after moveBefore() moves the focused element into an inert subtree</li><li>Focus is fixed up after moveBefore() moves the focused element into a hidden parent</li><li>Focus is fixed up after moveBefore() moves an ancestor of the focused element into a hidden parent</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-within.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>focus-<wbr>within.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/focus-within.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>focus-<wbr>within.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>focus-within should be updated when reparenting focused element directly</li><li>focus-within should be updated when reparenting an element that has focus within</li><li>focus-within should remain the same when moving to the same parent</li><li>:focus-within should be eventually up to date when moving to an inert subtree</li><li>:focus-within should be eventually up to date when moving to a subtree that would become inert via style</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="form-associated-custom-element-reset.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>form-<wbr>associated-<wbr>custom-<wbr>element-<wbr>reset.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/form-associated-custom-element-reset.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>form-<wbr>associated-<wbr>custom-<wbr>element-<wbr>reset.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Moving a non-form ID match updates custom control form owners in a document</li><li>Moving a non-form ID match updates custom control form owners in a shadow tree</li><li>Moving an ancestor of an ID match across a shadow boundary updates custom control form owners in both trees</li><li>Moving a custom control without an ID across a shadow boundary resets its form owner</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="fullscreen-preserve.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>fullscreen-<wbr>preserve.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/fullscreen-preserve.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>fullscreen-<wbr>preserve.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Document#fullscreenElement</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="hover-style-update.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>hover-<wbr>style-<wbr>update.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/hover-style-update.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>hover-<wbr>style-<wbr>update.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Element loses hover when moved to different position</li><li>Hover works immediately after moved</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-document-preserve.window.js" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>iframe-<wbr>document-<wbr>preserve.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/iframe-document-preserve.window.js"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>iframe-<wbr>document-<wbr>preserve.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>moveBefore(): about:blank iframe&#39;s document is preserved</li><li>moveBefore(): simple same-origin document is preserved</li><li>moveBefore(): cross-origin iframe is preserved: remove new parent</li><li>moveBefore(): cross-origin iframe is preserved: remove self</li><li>moveBefore(): cross-origin iframe is preserved: remove self via replaceChildren()</li><li>moveBefore(): cross-origin iframe is preserved: remove self via innerHTML</li><li>window.frames ordering does not change due to moveBefore()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="listed-form-element-reset.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>listed-<wbr>form-<wbr>element-<wbr>reset.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/listed-form-element-reset.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>listed-<wbr>form-<wbr>element-<wbr>reset.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Listed form element form owner is reset when a new form is moved closer before the listed element</li><li>Moving a non-form ID match updates form owners in a document</li><li>Moving a non-form ID match updates form owners in a shadow tree</li><li>Moving an ancestor of an ID match across a shadow boundary updates form owners in both trees</li><li>Moving an input without an ID across a shadow boundary resets its form owner</li><li>Moving an ancestor without an ID across a shadow boundary resets a descendant input&#39;s form owner</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="live-range-updates.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>live-<wbr>range-<wbr>updates.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/live-range-updates.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>live-<wbr>range-<wbr>updates.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>moveBefore still results in range startContainer snapping up to parent when startContainer is moved</li><li>moveBefore still causes range startContainer to snap up to parent, when startContainer ancestor is moved</li><li>moveBefore still causes range endContainer to snap up to parent, when endContainer ancestor is moved</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="modal-dialog.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>modal-<wbr>dialog.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/modal-dialog.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>modal-<wbr>dialog.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>when reparenting a modal dialog, the dialog should stay modal</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-child-list-selector-invalidation.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>moveBefore-<wbr>child-<wbr>list-<wbr>selector-<wbr>invalidation.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-child-list-selector-invalidation.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>child-<wbr>list-<wbr>selector-<wbr>invalidation.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>:has(&gt; .marked) on the old and new parents</li><li>:empty on the old and new parents when moving an element</li><li>:empty on the old and new parents when moving a Text node</li><li>:first-child on siblings in the old and new parents</li><li>:last-child on siblings in the old and new parents</li><li>:nth-child(2) on later siblings in the old and new parents</li><li>:nth-last-child(2) on earlier siblings in the old and new parents</li><li>.a + .b on the next siblings in the old and new parents</li><li>:first-child when reordering children of the same parent</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-custom-element-registry.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>moveBefore-<wbr>custom-<wbr>element-<wbr>registry.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-custom-element-registry.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>custom-<wbr>element-<wbr>registry.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>An element with the global registry keeps it when moved into a shadow root with a scoped registry</li><li>An element with a scoped registry keeps it when moved out of its shadow root</li><li>An element with a scoped registry keeps it when moved into a shadow root with a different scoped registry</li><li>An element with the global registry isn&#39;t upgraded by a scoped registry when moved into its shadow root</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-dir.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>dir.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-dir.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>dir.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() correctly updates the computed dir for moved nodes</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-disconnected-id-map.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>moveBefore-<wbr>disconnected-<wbr>id-<wbr>map.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-disconnected-id-map.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>disconnected-<wbr>id-<wbr>map.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>moveBefore() of an element with an id in a disconnected tree leaves the document&#39;s id map alone</li><li>moveBefore() of an element with a name in a disconnected tree leaves the document&#39;s name maps alone</li><li>moveBefore() into a shadow tree inside a disconnected tree adds the element to the shadow root&#39;s id map</li><li>moveBefore() out of a shadow tree inside a disconnected tree removes the element from the shadow root&#39;s id map</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-id-map.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>moveBefore-<wbr>id-<wbr>map.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-id-map.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>id-<wbr>map.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>moveBefore() correctly updates id map when moving into shadow root</li><li>moveBefore() correctly updates window map when moving id-mapped element into shadow root</li><li>moveBefore() correctly updates id map when moving between shadow roots</li><li>moveBefore() correctly updates id map when swapping elements with duplicate ids</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-image-map.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>moveBefore-<wbr>image-<wbr>map.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-image-map.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>image-<wbr>map.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-71a481b869ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">An image stops using a map that is moved into a shadow root</span></summary><pre class="msg">assert_equals: the image uses the map before the move expected Element node &lt;area shape=&quot;rect&quot; coords=&quot;0,0,100,100&quot; href=&quot;#map1&quot;&gt;&lt;/area&gt; but got null</pre></details><a class="self" href="#s-71a481b869ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2d35420cfd19"><details><summary><span class="mark">FAIL</span><span class="sub-name">An image moved into a shadow root uses a map in the shadow root</span></summary><pre class="msg">assert_equals: the image uses the map in its new tree expected Element node &lt;area shape=&quot;rect&quot; coords=&quot;0,0,100,100&quot; href=&quot;#map2&quot;&gt;&lt;/area&gt; but got null</pre></details><a class="self" href="#s-2d35420cfd19" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>An area whose image was moved into a shadow root is no longer focusable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-into-display-none.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>into-<wbr>display-<wbr>none.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-into-display-none.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>into-<wbr>display-<wbr>none.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>both assertions read span.getBoundingClientRect().width - before the move (&gt; 0) and after moving the span into a display:none parent (0); with no renderer the span has no box, so the first reads 0 and the test stops there (Chrome 157 and Firefox 160 pass 1/1; Safari 27.2 has no moveBefore)</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>assert_greater_than: expected a number greater than 0 but got 0</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-2cad358de49d"><details><summary><span class="mark">FAIL</span><span class="sub-name">moveBefore() into a display: none parent stops rendering the moved node</span></summary><pre class="msg">assert_greater_than: expected a number greater than 0 but got 0</pre></details><a class="self" href="#s-2cad358de49d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-lang.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>lang.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-lang.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>lang.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() correctly updates the computed lang for moved nodes</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-name-map.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>moveBefore-<wbr>name-<wbr>map.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-name-map.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>name-<wbr>map.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>moveBefore() correctly updates name map when moving into shadow root</li><li>moveBefore() correctly updates window map</li><li>moveBefore() correctly updates name map ordering in document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-nodeiterator.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>nodeiterator.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-nodeiterator.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>nodeiterator.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() runs NodeIterator pre-remove steps</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-optgroup.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>moveBefore-<wbr>optgroup.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-optgroup.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>optgroup.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Moving an optgroup between selects moves its options with it</li><li>An optgroup moved out of a select can be inserted into another select</li><li>An optgroup moved out of a select renders like one inserted outside a select</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-option-recalc-style.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>option-<wbr>recalc-<wbr>style.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-option-recalc-style.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>option-<wbr>recalc-<wbr>style.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() of an option element between two selects</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-radio-groups.html" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>moveBefore-<wbr>radio-<wbr>groups.<wbr>html</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-radio-groups.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>radio-<wbr>groups.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>A radio moved into a shadow root leaves the document&#39;s radio button group</li><li>A radio moved into a shadow root joins the shadow root&#39;s radio button group</li><li>A radio moved out of a shadow root joins the document&#39;s radio button group</li><li>Required radio group validity is updated when the checked radio moves to another tree</li><li>A required radio moved into a group with a checked radio matches :valid</li><li>A required radio moved into a group without a checked radio matches :invalid</li><li>Radios with a form owner stay in the form&#39;s group when moved into a shadow root</li><li>A radio moved within the same tree stays in its radio button group</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-selector-matching.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>moveBefore-<wbr>selector-<wbr>matching.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-selector-matching.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>selector-<wbr>matching.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() should invalidate target when descendant selector changes</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-shadow-boundary-id-change.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>moveBefore-<wbr>shadow-<wbr>boundary-<wbr>id-<wbr>change.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>shadow-<wbr>boundary-<wbr>id-<wbr>change.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Changing the id of an element moved into a shadow root only updates the shadow root&#39;s id map</li><li>Changing the id of an element moved out of a shadow root updates the document&#39;s id and name maps</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-shadow-host-id-map.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>moveBefore-<wbr>shadow-<wbr>host-<wbr>id-<wbr>map.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-shadow-host-id-map.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>shadow-<wbr>host-<wbr>id-<wbr>map.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>moveBefore() of a shadow host leaves the id map of its shadow tree alone</li><li>moveBefore() of an ancestor of a shadow host leaves the id map of its shadow tree alone</li><li>moveBefore() of a &lt;select&gt; element leaves the document&#39;s id and name maps alone</li><li>moveBefore() of a &lt;details&gt; element leaves the document&#39;s id and name maps alone</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="moveBefore-shadow-root.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="1" data-ref-of="3"><summary><span class="tf-name"><code>moveBefore-<wbr>shadow-<wbr>root.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/moveBefore-shadow-root.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>moveBefore-<wbr>shadow-<wbr>root.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-0dbc2d406794"><details><summary><span class="mark">FAIL</span><span class="sub-name">moveBefore() into ShadowRoot, shadow host, and &lt;slot&gt; invalidates style and detaches unslotted elements</span></summary><pre class="msg">assert_greater_than: expected a number greater than 0 but got 0</pre></details><a class="self" href="#s-0dbc2d406794" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0ad2cd287391"><details><summary><span class="mark">FAIL</span><span class="sub-name">moveBefore() preserves active fallback state and invalidates style across same-task slot roundtrips</span></summary><pre class="msg">assert_greater_than: expected a number greater than 0 but got 0</pre></details><a class="self" href="#s-0ad2cd287391" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() is allowed in ShadowRoots (i.e., connected DocumentFragments)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="mutation-observer-moved-subtree.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>mutation-<wbr>observer-<wbr>moved-<wbr>subtree.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/mutation-observer-moved-subtree.window.js"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>mutation-<wbr>observer-<wbr>moved-<wbr>subtree.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>A subtree moved out of an observed subtree by moveBefore() is observed until mutation observers are notified</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="mutation-observer.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>mutation-<wbr>observer.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/mutation-observer.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>mutation-<wbr>observer.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>[Connected move] MutationObserver removal + insertion is tracked by moveBefore()</li><li>[Disconnected move] MutationObserver removal + insertion is tracked by moveBefore()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="nonce.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>nonce.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/nonce.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>nonce.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Element nonce content attribute is not cleared after move</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="object-crash-regression.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>object-<wbr>crash-<wbr>regression.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/object-crash-regression.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>object-<wbr>crash-<wbr>regression.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving an object element does not crash</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="pointer-events.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>pointer-<wbr>events.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/pointer-events.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>pointer-<wbr>events.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Pointer capture should not be released when moving</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="popover-preserve.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>popover-<wbr>preserve.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/popover-preserve.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>popover-<wbr>preserve.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>when reparenting an open popover, it shouldn&#39;t be closed automatically</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="preserve-render-blocking-script.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>preserve-<wbr>render-<wbr>blocking-<wbr>script.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/preserve-render-blocking-script.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>preserve-<wbr>render-<wbr>blocking-<wbr>script.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>A moved script should keep its render-blocking state</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="preserve-render-blocking-style.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>preserve-<wbr>render-<wbr>blocking-<wbr>style.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/preserve-render-blocking-style.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>preserve-<wbr>render-<wbr>blocking-<wbr>style.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>A moved script should keep its render-blocking state</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="relevant-mutations.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>relevant-<wbr>mutations.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/relevant-mutations.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>relevant-<wbr>mutations.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Moving &lt;source&gt; out of &lt;picture&gt; triggers a relevant mutation on sibling &lt;img&gt;</li><li>Moving &lt;img&gt; into a &lt;picture&gt; triggers a relevant mutation on the &lt;img&gt;, loading &lt;source&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="role-updates-after-move.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>role-<wbr>updates-<wbr>after-<wbr>move.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/role-updates-after-move.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>role-<wbr>updates-<wbr>after-<wbr>move.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>header elements role should become sectionheader when moved into a section</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script-move-before.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>script-<wbr>move-<wbr>before.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/script-move-before.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>script-<wbr>move-<wbr>before.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Synchronous script execution in HTMLScriptElement during moveBefore should be blocked</li><li>Synchronous script execution in SVGScriptElement during moveBefore should be blocked</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="select-option-optgroup.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>select-<wbr>option-<wbr>optgroup.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/select-option-optgroup.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>select-<wbr>option-<wbr>optgroup.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Option selectedness is updated on option and optgroup DOM moves</li><li>Selected index is updated when an option moves within the same select</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="slotchange-events.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>slotchange-<wbr>events.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/slotchange-events.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>slotchange-<wbr>events.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Moving default content into a slot fires &#39;slotchange&#39; event</li><li>Moving default content out of a slot fires &#39;slotchange&#39; event</li><li>Moving a slottable into and out out of a custom element fires &#39;slotchange&#39; event</li><li>Moving a slot runs the assign slottables algorithm</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="style-applies.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>style-<wbr>applies.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/style-applies.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>style-<wbr>applies.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving a style inside the document should not affect whether it&#39;s applied</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="stylesheet-cascade-order.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>stylesheet-<wbr>cascade-<wbr>order.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/stylesheet-cascade-order.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>stylesheet-<wbr>cascade-<wbr>order.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving loaded link stylesheets updates their cascade order</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="stylesheet-no-refetch.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>stylesheet-<wbr>no-<wbr>refetch.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/stylesheet-no-refetch.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>stylesheet-<wbr>no-<wbr>refetch.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Moving a loaded link stylesheet preserves its resource</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="throws-exception.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>throws-<wbr>exception.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/dom/nodes/moveBefore/throws-exception.html"><code>dom/<wbr>nodes/<wbr>moveBefore/<wbr>throws-<wbr>exception.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moveBefore() on a cross-document target node</li></ol></details>
+</div>
+</div>
+</details>
+</div>
+</div>
+</div>
+<footer class="foot">
+<p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
+</footer>
+</main>
+<nav class="toc" aria-labelledby="toc-title">
+<p class="toc-title" id="toc-title">Contents</p>
+<ol class="toc-list">
+<li class="toc-front"><a href="../../../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
+<li class="toc-front"><a href="../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
+<li class="toc-front"><a href="../../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
+<li class="toc-suite"><a href="../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
+<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
+<li class="toc-suite"><a href="../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="82 test files">82</span></a></li>
+<li class="toc-suite"><a href="../../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
+<li class="toc-suite"><a href="../../../compression/"><span class="secno">6</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
+<li class="toc-suite"><a href="../../../console/"><span class="secno">7</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../../content-security-policy/"><span class="secno">8</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="883 test files">883</span></a></li>
+<li class="toc-suite"><a href="../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
+<li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
+<li class="toc-suite"><a href="../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,318 test files">2,318</span></a></li>
+<li class="toc-suite"><a href="../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
+<li class="toc-suite"><a href="../../../dom/" aria-current="page"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
+<li class="toc-suite"><a href="../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
+<li class="toc-suite"><a href="../../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
+<li class="toc-suite"><a href="../../../ecmascript/"><span class="secno">17</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
+<li class="toc-suite"><a href="../../../editing/"><span class="secno">18</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
+<li class="toc-suite"><a href="../../../encoding/"><span class="secno">19</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
+<li class="toc-suite"><a href="../../../eventsource/"><span class="secno">20</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
+<li class="toc-suite"><a href="../../../fetch/"><span class="secno">21</span><span class="toc-name">fetch/</span><span class="toc-count" title="311 test files">311</span></a></li>
+<li class="toc-suite"><a href="../../../fullscreen/"><span class="secno">22</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
+<li class="toc-suite"><a href="../../../hr-time/"><span class="secno">23</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../../../html-aam/"><span class="secno">24</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
+<li class="toc-suite"><a href="../../../html/"><span class="secno">25</span><span class="toc-name">html/</span><span class="toc-count" title="3,018 test files">3,018</span></a></li>
+<li class="toc-suite"><a href="../../../mathml/"><span class="secno">26</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
+<li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">27</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../../../mixed-content/"><span class="secno">28</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../../../navigation-api/"><span class="secno">29</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
+<li class="toc-suite"><a href="../../../navigation-timing/"><span class="secno">30</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
+<li class="toc-suite"><a href="../../../page-visibility/"><span class="secno">31</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
+<li class="toc-suite"><a href="../../../performance-timeline/"><span class="secno">32</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
+<li class="toc-suite"><a href="../../../permissions/"><span class="secno">33</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../../quirks/"><span class="secno">34</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../../referrer-policy/"><span class="secno">35</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
+<li class="toc-suite"><a href="../../../resize-observer/"><span class="secno">36</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../../resource-timing/"><span class="secno">37</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
+<li class="toc-suite"><a href="../../../sanitizer-api/"><span class="secno">38</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
+<li class="toc-suite"><a href="../../../screen-orientation/"><span class="secno">39</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
+<li class="toc-suite"><a href="../../../selection/"><span class="secno">40</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
+<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">41</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
+<li class="toc-suite"><a href="../../../shadow-dom/"><span class="secno">42</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
+<li class="toc-suite"><a href="../../../streams/"><span class="secno">43</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../../subresource-integrity/"><span class="secno">44</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
+<li class="toc-suite"><a href="../../../trusted-types/"><span class="secno">45</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
+<li class="toc-suite"><a href="../../../upgrade-insecure-requests/"><span class="secno">46</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
+<li class="toc-suite"><a href="../../../url/"><span class="secno">47</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../../../urlpattern/"><span class="secno">48</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../../user-timing/"><span class="secno">49</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../../wai-aria/"><span class="secno">50</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
+<li class="toc-suite"><a href="../../../wasm/"><span class="secno">51</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
+<li class="toc-suite"><a href="../../../web-animations/"><span class="secno">52</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
+<li class="toc-suite"><a href="../../../web-locks/"><span class="secno">53</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../../webidl/"><span class="secno">54</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../../../webmessaging/"><span class="secno">55</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
+<li class="toc-suite"><a href="../../../websockets/"><span class="secno">56</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
+<li class="toc-suite"><a href="../../../webstorage/"><span class="secno">57</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../../../workers/"><span class="secno">58</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
+<li class="toc-suite"><a href="../../../xhr/"><span class="secno">59</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
+<li class="toc-back"><a href="../../../#history"><span class="secno">60</span><span class="toc-name">Revision history</span></a></li>
+</ol>
+</nav>
+</div>
+</body>
+</html>

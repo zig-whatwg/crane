@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>service-workers/cache-storage/ - Crane WPT Results</title>
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="../../fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../../fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../site.css">
+<link rel="icon" href="data:,">
+<script src="../../site.js" defer></script>
+</head>
+<body>
+<div class="frame">
+<main class="doc" id="main">
+<header class="head head-page">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../service-workers/"><code>service-<wbr>workers/</code></a></li><li aria-current="page"><code>cache-<wbr>storage/</code></li></ol></nav>
+<h1 class="page-title"><span class="secno">41.1</span><code>service-<wbr>workers/<wbr>cache-<wbr>storage/</code></h1>
+<div class="figures" role="group" aria-label="service-workers/cache-storage/">
+<p class="figures-main"><span class="fg-pass">603</span><span class="fg-of"> / 603</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>15</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+</div>
+<p class="figures-ref"><span class="ref-name">Chrome</span> <b>586</b> / 603 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
+</header>
+<div class="boxes">
+<aside class="box conf" aria-label="Conformance of service-workers/cache-storage/">
+<div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">15 files</span></div>
+<div class="conf-body">
+<div class="meter" role="img" aria-label="15 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 15 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>15</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+</div>
+</aside>
+<div class="box tests">
+<div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">15 test files here</span></div>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cache-abort.https.any.js" data-gate="clean" data-pass="36" data-of="36" data-failed="0" data-ref-pass="36" data-ref-of="36"><summary><span class="tf-name"><code>cache-<wbr>abort.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>36</b> / 36<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>36</b> / 36</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>36</b> / 36 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-abort.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>abort.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-abort.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>put() on an already-aborted request should reject with AbortError</li><li>put() synchronously followed by abort should reject with AbortError</li><li>put() followed by abort after headers received should reject with AbortError</li><li>add() on an already-aborted request should reject with AbortError</li><li>add() synchronously followed by abort should reject with AbortError</li><li>add() followed by abort after headers received should reject with AbortError</li><li>addAll() on an already-aborted request should reject with AbortError</li><li>addAll() synchronously followed by abort should reject with AbortError</li><li>addAll() followed by abort after headers received should reject with AbortError</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-abort.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>put() on an already-aborted request should reject with AbortError</li><li>put() synchronously followed by abort should reject with AbortError</li><li>put() followed by abort after headers received should reject with AbortError</li><li>add() on an already-aborted request should reject with AbortError</li><li>add() synchronously followed by abort should reject with AbortError</li><li>add() followed by abort after headers received should reject with AbortError</li><li>addAll() on an already-aborted request should reject with AbortError</li><li>addAll() synchronously followed by abort should reject with AbortError</li><li>addAll() followed by abort after headers received should reject with AbortError</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-abort.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>put() on an already-aborted request should reject with AbortError</li><li>put() synchronously followed by abort should reject with AbortError</li><li>put() followed by abort after headers received should reject with AbortError</li><li>add() on an already-aborted request should reject with AbortError</li><li>add() synchronously followed by abort should reject with AbortError</li><li>add() followed by abort after headers received should reject with AbortError</li><li>addAll() on an already-aborted request should reject with AbortError</li><li>addAll() synchronously followed by abort should reject with AbortError</li><li>addAll() followed by abort after headers received should reject with AbortError</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-abort.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>put() on an already-aborted request should reject with AbortError</li><li>put() synchronously followed by abort should reject with AbortError</li><li>put() followed by abort after headers received should reject with AbortError</li><li>add() on an already-aborted request should reject with AbortError</li><li>add() synchronously followed by abort should reject with AbortError</li><li>add() followed by abort after headers received should reject with AbortError</li><li>addAll() on an already-aborted request should reject with AbortError</li><li>addAll() synchronously followed by abort should reject with AbortError</li><li>addAll() followed by abort after headers received should reject with AbortError</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-add.https.any.js" data-gate="clean" data-pass="96" data-of="96" data-failed="0" data-ref-pass="92" data-ref-of="96"><summary><span class="tf-name"><code>cache-<wbr>add.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>96</b> / 96<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>92</b> / 96</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>92</b> / 96 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-add.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>add.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-add.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>Cache.add called with no arguments</li><li>Cache.add called with relative URL specified as a string</li><li>Cache.add called with non-HTTP/HTTPS URL</li><li>Cache.add called with Request object</li><li>Cache.add called with POST request</li><li>Cache.add called twice with the same Request object</li><li>Cache.add with request with null body (not consumed)</li><li>Cache.add with 206 response</li><li>Cache.addAll with 206 response</li><li>Cache.addAll with opaque-filtered 206 response</li><li>Cache.add with request that results in a status of 404</li><li>Cache.add with request that results in a status of 500</li><li>Cache.addAll with no arguments</li><li>Cache.addAll with a mix of valid and undefined arguments</li><li>Cache.addAll with an empty array</li><li>Cache.addAll with string URL arguments</li><li>Cache.addAll with Request arguments</li><li>Cache.addAll with a mix of succeeding and failing requests</li><li>Cache.addAll called with the same Request object specified twice</li><li>Cache.addAll should reject when entries differ only by fragment</li><li>Cache.addAll should succeed when entries differ by vary header</li><li>Cache.addAll should reject when entries are duplicate by vary header</li><li>Cache.addAll should succeed when an entry matches an earlier entry only under its own vary header</li><li>Cache.addAll should reject when an entry matches an earlier entry under the earlier entry&#39;s vary header</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-add.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>Cache.add called with no arguments</li><li>Cache.add called with relative URL specified as a string</li><li>Cache.add called with non-HTTP/HTTPS URL</li><li>Cache.add called with Request object</li><li>Cache.add called with POST request</li><li>Cache.add called twice with the same Request object</li><li>Cache.add with request with null body (not consumed)</li><li>Cache.add with 206 response</li><li>Cache.addAll with 206 response</li><li>Cache.addAll with opaque-filtered 206 response</li><li>Cache.add with request that results in a status of 404</li><li>Cache.add with request that results in a status of 500</li><li>Cache.addAll with no arguments</li><li>Cache.addAll with a mix of valid and undefined arguments</li><li>Cache.addAll with an empty array</li><li>Cache.addAll with string URL arguments</li><li>Cache.addAll with Request arguments</li><li>Cache.addAll with a mix of succeeding and failing requests</li><li>Cache.addAll called with the same Request object specified twice</li><li>Cache.addAll should reject when entries differ only by fragment</li><li>Cache.addAll should succeed when entries differ by vary header</li><li>Cache.addAll should reject when entries are duplicate by vary header</li><li>Cache.addAll should succeed when an entry matches an earlier entry only under its own vary header</li><li>Cache.addAll should reject when an entry matches an earlier entry under the earlier entry&#39;s vary header</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-add.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>Cache.add called with no arguments</li><li>Cache.add called with relative URL specified as a string</li><li>Cache.add called with non-HTTP/HTTPS URL</li><li>Cache.add called with Request object</li><li>Cache.add called with POST request</li><li>Cache.add called twice with the same Request object</li><li>Cache.add with request with null body (not consumed)</li><li>Cache.add with 206 response</li><li>Cache.addAll with 206 response</li><li>Cache.addAll with opaque-filtered 206 response</li><li>Cache.add with request that results in a status of 404</li><li>Cache.add with request that results in a status of 500</li><li>Cache.addAll with no arguments</li><li>Cache.addAll with a mix of valid and undefined arguments</li><li>Cache.addAll with an empty array</li><li>Cache.addAll with string URL arguments</li><li>Cache.addAll with Request arguments</li><li>Cache.addAll with a mix of succeeding and failing requests</li><li>Cache.addAll called with the same Request object specified twice</li><li>Cache.addAll should reject when entries differ only by fragment</li><li>Cache.addAll should succeed when entries differ by vary header</li><li>Cache.addAll should reject when entries are duplicate by vary header</li><li>Cache.addAll should succeed when an entry matches an earlier entry only under its own vary header</li><li>Cache.addAll should reject when an entry matches an earlier entry under the earlier entry&#39;s vary header</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-add.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>Cache.add called with no arguments</li><li>Cache.add called with relative URL specified as a string</li><li>Cache.add called with non-HTTP/HTTPS URL</li><li>Cache.add called with Request object</li><li>Cache.add called with POST request</li><li>Cache.add called twice with the same Request object</li><li>Cache.add with request with null body (not consumed)</li><li>Cache.add with 206 response</li><li>Cache.addAll with 206 response</li><li>Cache.addAll with opaque-filtered 206 response</li><li>Cache.add with request that results in a status of 404</li><li>Cache.add with request that results in a status of 500</li><li>Cache.addAll with no arguments</li><li>Cache.addAll with a mix of valid and undefined arguments</li><li>Cache.addAll with an empty array</li><li>Cache.addAll with string URL arguments</li><li>Cache.addAll with Request arguments</li><li>Cache.addAll with a mix of succeeding and failing requests</li><li>Cache.addAll called with the same Request object specified twice</li><li>Cache.addAll should reject when entries differ only by fragment</li><li>Cache.addAll should succeed when entries differ by vary header</li><li>Cache.addAll should reject when entries are duplicate by vary header</li><li>Cache.addAll should succeed when an entry matches an earlier entry only under its own vary header</li><li>Cache.addAll should reject when an entry matches an earlier entry under the earlier entry&#39;s vary header</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-api-nested-worker.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cache-<wbr>api-<wbr>nested-<wbr>worker.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-api-nested-worker.https.html"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>api-<wbr>nested-<wbr>worker.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Cache API in nested worker</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-delete.https.any.js" data-gate="clean" data-pass="36" data-of="36" data-failed="0" data-ref-pass="36" data-ref-of="36"><summary><span class="tf-name"><code>cache-<wbr>delete.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>36</b> / 36<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>36</b> / 36</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>36</b> / 36 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-delete.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>delete.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Cache.delete with no arguments</li><li>Cache.delete called with a string URL</li><li>Cache.delete called with a Request object</li><li>Cache.delete called with a HEAD request</li><li>Cache.delete supports ignoreVary</li><li>Cache.delete with a non-existent entry</li><li>Cache.delete with ignoreSearch option (request with search parameters)</li><li>Cache.delete with ignoreSearch option (when it is specified as false)</li><li>Cache.delete with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Cache.delete with no arguments</li><li>Cache.delete called with a string URL</li><li>Cache.delete called with a Request object</li><li>Cache.delete called with a HEAD request</li><li>Cache.delete supports ignoreVary</li><li>Cache.delete with a non-existent entry</li><li>Cache.delete with ignoreSearch option (request with search parameters)</li><li>Cache.delete with ignoreSearch option (when it is specified as false)</li><li>Cache.delete with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Cache.delete with no arguments</li><li>Cache.delete called with a string URL</li><li>Cache.delete called with a Request object</li><li>Cache.delete called with a HEAD request</li><li>Cache.delete supports ignoreVary</li><li>Cache.delete with a non-existent entry</li><li>Cache.delete with ignoreSearch option (request with search parameters)</li><li>Cache.delete with ignoreSearch option (when it is specified as false)</li><li>Cache.delete with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Cache.delete with no arguments</li><li>Cache.delete called with a string URL</li><li>Cache.delete called with a Request object</li><li>Cache.delete called with a HEAD request</li><li>Cache.delete supports ignoreVary</li><li>Cache.delete with a non-existent entry</li><li>Cache.delete with ignoreSearch option (request with search parameters)</li><li>Cache.delete with ignoreSearch option (when it is specified as false)</li><li>Cache.delete with a string that cannot construct a Request</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-keys-attributes-for-service-worker.https.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>cache-<wbr>keys-<wbr>attributes-<wbr>for-<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-keys-attributes-for-service-worker.https.html"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>keys-<wbr>attributes-<wbr>for-<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Request.IsReloadNavigation should persist.</li><li>Request.IsHistoryNavigation should persist.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-keys.https.any.js" data-gate="clean" data-pass="68" data-of="68" data-failed="0" data-ref-pass="64" data-ref-of="68"><summary><span class="tf-name"><code>cache-<wbr>keys.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>68</b> / 68<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>64</b> / 68</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>64</b> / 68 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-keys.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>keys.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-keys.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 17</span></h3>
+<details class="passing"><summary>17 passing subtests</summary><ol class="pass-list"><li>Cache.keys() called on an empty cache</li><li>Cache.keys with no matching entries</li><li>Cache.keys with URL</li><li>Cache.keys with Request</li><li>Cache.keys with new Request</li><li>Cache.keys with ignoreSearch option (request with no search parameters)</li><li>Cache.keys with ignoreSearch option (request with search parameters)</li><li>Cache.keys supports ignoreMethod</li><li>Cache.keys supports ignoreVary</li><li>Cache.keys with URL containing fragment</li><li>Cache.keys with string fragment &quot;http&quot; as query</li><li>Cache.keys without parameters</li><li>Cache.keys with explicitly undefined request</li><li>Cache.keys with explicitly undefined request and empty options</li><li>Cache.keys without parameters and VARY entries</li><li>Cache.keys with a HEAD Request</li><li>Cache.keys with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-keys.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 17</span></h3>
+<details class="passing"><summary>17 passing subtests</summary><ol class="pass-list"><li>Cache.keys() called on an empty cache</li><li>Cache.keys with no matching entries</li><li>Cache.keys with URL</li><li>Cache.keys with Request</li><li>Cache.keys with new Request</li><li>Cache.keys with ignoreSearch option (request with no search parameters)</li><li>Cache.keys with ignoreSearch option (request with search parameters)</li><li>Cache.keys supports ignoreMethod</li><li>Cache.keys supports ignoreVary</li><li>Cache.keys with URL containing fragment</li><li>Cache.keys with string fragment &quot;http&quot; as query</li><li>Cache.keys without parameters</li><li>Cache.keys with explicitly undefined request</li><li>Cache.keys with explicitly undefined request and empty options</li><li>Cache.keys without parameters and VARY entries</li><li>Cache.keys with a HEAD Request</li><li>Cache.keys with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-keys.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 17</span></h3>
+<details class="passing"><summary>17 passing subtests</summary><ol class="pass-list"><li>Cache.keys() called on an empty cache</li><li>Cache.keys with no matching entries</li><li>Cache.keys with URL</li><li>Cache.keys with Request</li><li>Cache.keys with new Request</li><li>Cache.keys with ignoreSearch option (request with no search parameters)</li><li>Cache.keys with ignoreSearch option (request with search parameters)</li><li>Cache.keys supports ignoreMethod</li><li>Cache.keys supports ignoreVary</li><li>Cache.keys with URL containing fragment</li><li>Cache.keys with string fragment &quot;http&quot; as query</li><li>Cache.keys without parameters</li><li>Cache.keys with explicitly undefined request</li><li>Cache.keys with explicitly undefined request and empty options</li><li>Cache.keys without parameters and VARY entries</li><li>Cache.keys with a HEAD Request</li><li>Cache.keys with a string that cannot construct a Request</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-keys.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 17</span></h3>
+<details class="passing"><summary>17 passing subtests</summary><ol class="pass-list"><li>Cache.keys() called on an empty cache</li><li>Cache.keys with no matching entries</li><li>Cache.keys with URL</li><li>Cache.keys with Request</li><li>Cache.keys with new Request</li><li>Cache.keys with ignoreSearch option (request with no search parameters)</li><li>Cache.keys with ignoreSearch option (request with search parameters)</li><li>Cache.keys supports ignoreMethod</li><li>Cache.keys supports ignoreVary</li><li>Cache.keys with URL containing fragment</li><li>Cache.keys with string fragment &quot;http&quot; as query</li><li>Cache.keys without parameters</li><li>Cache.keys with explicitly undefined request</li><li>Cache.keys with explicitly undefined request and empty options</li><li>Cache.keys without parameters and VARY entries</li><li>Cache.keys with a HEAD Request</li><li>Cache.keys with a string that cannot construct a Request</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-match.https.any.js" data-gate="clean" data-pass="100" data-of="100" data-failed="0" data-ref-pass="100" data-ref-of="100"><summary><span class="tf-name"><code>cache-<wbr>match.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>100</b> / 100<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>100</b> / 100</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>100</b> / 100 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-match.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>match.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-match.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<details class="passing"><summary>25 passing subtests</summary><ol class="pass-list"><li>Cache.match with no matching entries</li><li>Cache.match with URL</li><li>Cache.match with Request</li><li>Cache.match with multiple cache hits</li><li>Cache.match with new Request</li><li>Cache.match with HEAD</li><li>Cache.match with ignoreSearch option (request with no search parameters)</li><li>Cache.match with ignoreSearch option (request with search parameter)</li><li>Cache.match supports ignoreMethod</li><li>Cache.match supports ignoreVary</li><li>Cache.match does not support cacheName option</li><li>Cache.match with URL containing fragment</li><li>Cache.match with string fragment &quot;http&quot; as query</li><li>Cache.match with responses containing &quot;Vary&quot; header</li><li>Cache.match with Request and Response objects with different URLs</li><li>Cache.match invoked multiple times for the same Request/Response</li><li>Cache.match blob should be sliceable</li><li>Cache.match with POST Request</li><li>Cache.match with a non-2xx Response</li><li>Cache.match with a network error Response</li><li>Cache produces large Responses that can be cloned and read correctly.</li><li>cors-exposed header should be stored correctly.</li><li>MIME type should be set from content-header correctly.</li><li>MIME type should reflect Content-Type headers of response.</li><li>Cache.match ignores vary headers on opaque response.</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-match.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<details class="passing"><summary>25 passing subtests</summary><ol class="pass-list"><li>Cache.match with no matching entries</li><li>Cache.match with URL</li><li>Cache.match with Request</li><li>Cache.match with multiple cache hits</li><li>Cache.match with new Request</li><li>Cache.match with HEAD</li><li>Cache.match with ignoreSearch option (request with no search parameters)</li><li>Cache.match with ignoreSearch option (request with search parameter)</li><li>Cache.match supports ignoreMethod</li><li>Cache.match supports ignoreVary</li><li>Cache.match does not support cacheName option</li><li>Cache.match with URL containing fragment</li><li>Cache.match with string fragment &quot;http&quot; as query</li><li>Cache.match with responses containing &quot;Vary&quot; header</li><li>Cache.match with Request and Response objects with different URLs</li><li>Cache.match invoked multiple times for the same Request/Response</li><li>Cache.match blob should be sliceable</li><li>Cache.match with POST Request</li><li>Cache.match with a non-2xx Response</li><li>Cache.match with a network error Response</li><li>Cache produces large Responses that can be cloned and read correctly.</li><li>cors-exposed header should be stored correctly.</li><li>MIME type should be set from content-header correctly.</li><li>MIME type should reflect Content-Type headers of response.</li><li>Cache.match ignores vary headers on opaque response.</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-match.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<details class="passing"><summary>25 passing subtests</summary><ol class="pass-list"><li>Cache.match with no matching entries</li><li>Cache.match with URL</li><li>Cache.match with Request</li><li>Cache.match with multiple cache hits</li><li>Cache.match with new Request</li><li>Cache.match with HEAD</li><li>Cache.match with ignoreSearch option (request with no search parameters)</li><li>Cache.match with ignoreSearch option (request with search parameter)</li><li>Cache.match supports ignoreMethod</li><li>Cache.match supports ignoreVary</li><li>Cache.match does not support cacheName option</li><li>Cache.match with URL containing fragment</li><li>Cache.match with string fragment &quot;http&quot; as query</li><li>Cache.match with responses containing &quot;Vary&quot; header</li><li>Cache.match with Request and Response objects with different URLs</li><li>Cache.match invoked multiple times for the same Request/Response</li><li>Cache.match blob should be sliceable</li><li>Cache.match with POST Request</li><li>Cache.match with a non-2xx Response</li><li>Cache.match with a network error Response</li><li>Cache produces large Responses that can be cloned and read correctly.</li><li>cors-exposed header should be stored correctly.</li><li>MIME type should be set from content-header correctly.</li><li>MIME type should reflect Content-Type headers of response.</li><li>Cache.match ignores vary headers on opaque response.</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-match.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<details class="passing"><summary>25 passing subtests</summary><ol class="pass-list"><li>Cache.match with no matching entries</li><li>Cache.match with URL</li><li>Cache.match with Request</li><li>Cache.match with multiple cache hits</li><li>Cache.match with new Request</li><li>Cache.match with HEAD</li><li>Cache.match with ignoreSearch option (request with no search parameters)</li><li>Cache.match with ignoreSearch option (request with search parameter)</li><li>Cache.match supports ignoreMethod</li><li>Cache.match supports ignoreVary</li><li>Cache.match does not support cacheName option</li><li>Cache.match with URL containing fragment</li><li>Cache.match with string fragment &quot;http&quot; as query</li><li>Cache.match with responses containing &quot;Vary&quot; header</li><li>Cache.match with Request and Response objects with different URLs</li><li>Cache.match invoked multiple times for the same Request/Response</li><li>Cache.match blob should be sliceable</li><li>Cache.match with POST Request</li><li>Cache.match with a non-2xx Response</li><li>Cache.match with a network error Response</li><li>Cache produces large Responses that can be cloned and read correctly.</li><li>cors-exposed header should be stored correctly.</li><li>MIME type should be set from content-header correctly.</li><li>MIME type should reflect Content-Type headers of response.</li><li>Cache.match ignores vary headers on opaque response.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-matchAll.https.any.js" data-gate="clean" data-pass="64" data-of="64" data-failed="0" data-ref-pass="56" data-ref-of="64"><summary><span class="tf-name"><code>cache-<wbr>matchAll.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>64</b> / 64<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>56</b> / 64</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>56</b> / 64 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-matchAll.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>matchAll.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-matchAll.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Cache.matchAll with no matching entries</li><li>Cache.matchAll with URL</li><li>Cache.matchAll with Request</li><li>Cache.matchAll with new Request</li><li>Cache.matchAll with HEAD</li><li>Cache.matchAll with ignoreSearch option (request with no search parameters)</li><li>Cache.matchAll with ignoreSearch option (request with search parameters)</li><li>Cache.matchAll supports ignoreMethod</li><li>Cache.matchAll supports ignoreVary</li><li>Cache.matchAll with URL containing fragment</li><li>Cache.matchAll with string fragment &quot;http&quot; as query</li><li>Cache.matchAll without parameters</li><li>Cache.matchAll with explicitly undefined request</li><li>Cache.matchAll with explicitly undefined request and empty options</li><li>Cache.matchAll with responses containing &quot;Vary&quot; header</li><li>Cache.matchAll with multiple vary pairs</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-matchAll.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Cache.matchAll with no matching entries</li><li>Cache.matchAll with URL</li><li>Cache.matchAll with Request</li><li>Cache.matchAll with new Request</li><li>Cache.matchAll with HEAD</li><li>Cache.matchAll with ignoreSearch option (request with no search parameters)</li><li>Cache.matchAll with ignoreSearch option (request with search parameters)</li><li>Cache.matchAll supports ignoreMethod</li><li>Cache.matchAll supports ignoreVary</li><li>Cache.matchAll with URL containing fragment</li><li>Cache.matchAll with string fragment &quot;http&quot; as query</li><li>Cache.matchAll without parameters</li><li>Cache.matchAll with explicitly undefined request</li><li>Cache.matchAll with explicitly undefined request and empty options</li><li>Cache.matchAll with responses containing &quot;Vary&quot; header</li><li>Cache.matchAll with multiple vary pairs</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-matchAll.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Cache.matchAll with no matching entries</li><li>Cache.matchAll with URL</li><li>Cache.matchAll with Request</li><li>Cache.matchAll with new Request</li><li>Cache.matchAll with HEAD</li><li>Cache.matchAll with ignoreSearch option (request with no search parameters)</li><li>Cache.matchAll with ignoreSearch option (request with search parameters)</li><li>Cache.matchAll supports ignoreMethod</li><li>Cache.matchAll supports ignoreVary</li><li>Cache.matchAll with URL containing fragment</li><li>Cache.matchAll with string fragment &quot;http&quot; as query</li><li>Cache.matchAll without parameters</li><li>Cache.matchAll with explicitly undefined request</li><li>Cache.matchAll with explicitly undefined request and empty options</li><li>Cache.matchAll with responses containing &quot;Vary&quot; header</li><li>Cache.matchAll with multiple vary pairs</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-matchAll.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Cache.matchAll with no matching entries</li><li>Cache.matchAll with URL</li><li>Cache.matchAll with Request</li><li>Cache.matchAll with new Request</li><li>Cache.matchAll with HEAD</li><li>Cache.matchAll with ignoreSearch option (request with no search parameters)</li><li>Cache.matchAll with ignoreSearch option (request with search parameters)</li><li>Cache.matchAll supports ignoreMethod</li><li>Cache.matchAll supports ignoreVary</li><li>Cache.matchAll with URL containing fragment</li><li>Cache.matchAll with string fragment &quot;http&quot; as query</li><li>Cache.matchAll without parameters</li><li>Cache.matchAll with explicitly undefined request</li><li>Cache.matchAll with explicitly undefined request and empty options</li><li>Cache.matchAll with responses containing &quot;Vary&quot; header</li><li>Cache.matchAll with multiple vary pairs</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-put.https.any.js" data-gate="clean" data-pass="108" data-of="108" data-failed="0" data-ref-pass="108" data-ref-of="108"><summary><span class="tf-name"><code>cache-<wbr>put.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>108</b> / 108<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>108</b> / 108</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>108</b> / 108 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-put.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>put.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-put.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<details class="passing"><summary>27 passing subtests</summary><ol class="pass-list"><li>Cache.put called with simple Request and Response</li><li>Cache.put called with Request and Response from fetch()</li><li>Cache.put with Request without a body</li><li>Cache.put with Response without a body</li><li>Cache.put with a Response containing an empty URL</li><li>Cache.put with an empty response body</li><li>Cache.put with synthetic 206 response</li><li>Cache.put with HTTP 206 response</li><li>Cache.put with opaque-filtered HTTP 206 response</li><li>Cache.put with HTTP 500 response</li><li>Cache.put called twice with matching Requests and different Responses</li><li>Cache.put called multiple times with request URLs that differ only by a fragment</li><li>Cache.put with a string request</li><li>Cache.put with an invalid response</li><li>Cache.put with a non-HTTP/HTTPS request</li><li>Cache.put with a relative URL</li><li>Cache.put with a non-GET request</li><li>Cache.put with a null response</li><li>Cache.put with a POST request</li><li>Cache.put with a used response body</li><li>getReader() after Cache.put</li><li>Cache.put with a VARY:* Response</li><li>Cache.put with an embedded VARY:* Response</li><li>Cache.put with a VARY:* opaque response should not reject</li><li>Cache.put should store Response.redirect() correctly</li><li>Cache.put called with simple Request and blob Response</li><li>Cache.put called with simple Request and form data Response</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-put.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<details class="passing"><summary>27 passing subtests</summary><ol class="pass-list"><li>Cache.put called with simple Request and Response</li><li>Cache.put called with Request and Response from fetch()</li><li>Cache.put with Request without a body</li><li>Cache.put with Response without a body</li><li>Cache.put with a Response containing an empty URL</li><li>Cache.put with an empty response body</li><li>Cache.put with synthetic 206 response</li><li>Cache.put with HTTP 206 response</li><li>Cache.put with opaque-filtered HTTP 206 response</li><li>Cache.put with HTTP 500 response</li><li>Cache.put called twice with matching Requests and different Responses</li><li>Cache.put called multiple times with request URLs that differ only by a fragment</li><li>Cache.put with a string request</li><li>Cache.put with an invalid response</li><li>Cache.put with a non-HTTP/HTTPS request</li><li>Cache.put with a relative URL</li><li>Cache.put with a non-GET request</li><li>Cache.put with a null response</li><li>Cache.put with a POST request</li><li>Cache.put with a used response body</li><li>getReader() after Cache.put</li><li>Cache.put with a VARY:* Response</li><li>Cache.put with an embedded VARY:* Response</li><li>Cache.put with a VARY:* opaque response should not reject</li><li>Cache.put should store Response.redirect() correctly</li><li>Cache.put called with simple Request and blob Response</li><li>Cache.put called with simple Request and form data Response</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-put.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<details class="passing"><summary>27 passing subtests</summary><ol class="pass-list"><li>Cache.put called with simple Request and Response</li><li>Cache.put called with Request and Response from fetch()</li><li>Cache.put with Request without a body</li><li>Cache.put with Response without a body</li><li>Cache.put with a Response containing an empty URL</li><li>Cache.put with an empty response body</li><li>Cache.put with synthetic 206 response</li><li>Cache.put with HTTP 206 response</li><li>Cache.put with opaque-filtered HTTP 206 response</li><li>Cache.put with HTTP 500 response</li><li>Cache.put called twice with matching Requests and different Responses</li><li>Cache.put called multiple times with request URLs that differ only by a fragment</li><li>Cache.put with a string request</li><li>Cache.put with an invalid response</li><li>Cache.put with a non-HTTP/HTTPS request</li><li>Cache.put with a relative URL</li><li>Cache.put with a non-GET request</li><li>Cache.put with a null response</li><li>Cache.put with a POST request</li><li>Cache.put with a used response body</li><li>getReader() after Cache.put</li><li>Cache.put with a VARY:* Response</li><li>Cache.put with an embedded VARY:* Response</li><li>Cache.put with a VARY:* opaque response should not reject</li><li>Cache.put should store Response.redirect() correctly</li><li>Cache.put called with simple Request and blob Response</li><li>Cache.put called with simple Request and form data Response</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-put.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<details class="passing"><summary>27 passing subtests</summary><ol class="pass-list"><li>Cache.put called with simple Request and Response</li><li>Cache.put called with Request and Response from fetch()</li><li>Cache.put with Request without a body</li><li>Cache.put with Response without a body</li><li>Cache.put with a Response containing an empty URL</li><li>Cache.put with an empty response body</li><li>Cache.put with synthetic 206 response</li><li>Cache.put with HTTP 206 response</li><li>Cache.put with opaque-filtered HTTP 206 response</li><li>Cache.put with HTTP 500 response</li><li>Cache.put called twice with matching Requests and different Responses</li><li>Cache.put called multiple times with request URLs that differ only by a fragment</li><li>Cache.put with a string request</li><li>Cache.put with an invalid response</li><li>Cache.put with a non-HTTP/HTTPS request</li><li>Cache.put with a relative URL</li><li>Cache.put with a non-GET request</li><li>Cache.put with a null response</li><li>Cache.put with a POST request</li><li>Cache.put with a used response body</li><li>getReader() after Cache.put</li><li>Cache.put with a VARY:* Response</li><li>Cache.put with an embedded VARY:* Response</li><li>Cache.put with a VARY:* opaque response should not reject</li><li>Cache.put should store Response.redirect() correctly</li><li>Cache.put called with simple Request and blob Response</li><li>Cache.put called with simple Request and form data Response</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-storage-keys.https.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>cache-<wbr>storage-<wbr>keys.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-storage-keys.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>storage-<wbr>keys.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-keys.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>CacheStorage keys</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-keys.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>CacheStorage keys</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-keys.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>CacheStorage keys</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-keys.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>CacheStorage keys</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-storage-match.https.any.js" data-gate="clean" data-pass="44" data-of="44" data-failed="0" data-ref-pass="44" data-ref-of="44"><summary><span class="tf-name"><code>cache-<wbr>storage-<wbr>match.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>44</b> / 44<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>44</b> / 44</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>44</b> / 44 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-storage-match.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>storage-<wbr>match.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-match.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>CacheStorageMatch with no cache name provided</li><li>CacheStorageMatch from one of many caches</li><li>CacheStorageMatch from one of many caches by name</li><li>CacheStorageMatch a string request</li><li>CacheStorageMatch a HEAD request</li><li>CacheStorageMatch with no cached entry</li><li>CacheStorageMatch with no caches available but name provided</li><li>CacheStorageMatch with empty cache name provided</li><li>CacheStorageMatch supports ignoreSearch</li><li>Cache.match supports ignoreMethod</li><li>CacheStorageMatch supports ignoreVary</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-match.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>CacheStorageMatch with no cache name provided</li><li>CacheStorageMatch from one of many caches</li><li>CacheStorageMatch from one of many caches by name</li><li>CacheStorageMatch a string request</li><li>CacheStorageMatch a HEAD request</li><li>CacheStorageMatch with no cached entry</li><li>CacheStorageMatch with no caches available but name provided</li><li>CacheStorageMatch with empty cache name provided</li><li>CacheStorageMatch supports ignoreSearch</li><li>Cache.match supports ignoreMethod</li><li>CacheStorageMatch supports ignoreVary</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-match.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>CacheStorageMatch with no cache name provided</li><li>CacheStorageMatch from one of many caches</li><li>CacheStorageMatch from one of many caches by name</li><li>CacheStorageMatch a string request</li><li>CacheStorageMatch a HEAD request</li><li>CacheStorageMatch with no cached entry</li><li>CacheStorageMatch with no caches available but name provided</li><li>CacheStorageMatch with empty cache name provided</li><li>CacheStorageMatch supports ignoreSearch</li><li>Cache.match supports ignoreMethod</li><li>CacheStorageMatch supports ignoreVary</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage-match.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>CacheStorageMatch with no cache name provided</li><li>CacheStorageMatch from one of many caches</li><li>CacheStorageMatch from one of many caches by name</li><li>CacheStorageMatch a string request</li><li>CacheStorageMatch a HEAD request</li><li>CacheStorageMatch with no cached entry</li><li>CacheStorageMatch with no caches available but name provided</li><li>CacheStorageMatch with empty cache name provided</li><li>CacheStorageMatch supports ignoreSearch</li><li>Cache.match supports ignoreMethod</li><li>CacheStorageMatch supports ignoreVary</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cache-storage.https.any.js" data-gate="clean" data-pass="40" data-of="40" data-failed="0" data-ref-pass="40" data-ref-of="40"><summary><span class="tf-name"><code>cache-<wbr>storage.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>40</b> / 40<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>40</b> / 40</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>40</b> / 40 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/cache-storage.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>storage.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>CacheStorage.open</li><li>CacheStorage.delete dooms, but does not delete immediately</li><li>CacheStorage.open with an empty name</li><li>CacheStorage.open with no arguments</li><li>CacheStorage.has with existing cache</li><li>CacheStorage.has with nonexistent cache</li><li>CacheStorage.open with existing cache</li><li>CacheStorage.delete with existing cache</li><li>CacheStorage.delete with nonexistent cache</li><li>CacheStorage names are DOMStrings not USVStrings</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>CacheStorage.open</li><li>CacheStorage.delete dooms, but does not delete immediately</li><li>CacheStorage.open with an empty name</li><li>CacheStorage.open with no arguments</li><li>CacheStorage.has with existing cache</li><li>CacheStorage.has with nonexistent cache</li><li>CacheStorage.open with existing cache</li><li>CacheStorage.delete with existing cache</li><li>CacheStorage.delete with nonexistent cache</li><li>CacheStorage names are DOMStrings not USVStrings</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>CacheStorage.open</li><li>CacheStorage.delete dooms, but does not delete immediately</li><li>CacheStorage.open with an empty name</li><li>CacheStorage.open with no arguments</li><li>CacheStorage.has with existing cache</li><li>CacheStorage.has with nonexistent cache</li><li>CacheStorage.open with existing cache</li><li>CacheStorage.delete with existing cache</li><li>CacheStorage.delete with nonexistent cache</li><li>CacheStorage names are DOMStrings not USVStrings</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-storage.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>CacheStorage.open</li><li>CacheStorage.delete dooms, but does not delete immediately</li><li>CacheStorage.open with an empty name</li><li>CacheStorage.open with no arguments</li><li>CacheStorage.has with existing cache</li><li>CacheStorage.has with nonexistent cache</li><li>CacheStorage.open with existing cache</li><li>CacheStorage.delete with existing cache</li><li>CacheStorage.delete with nonexistent cache</li><li>CacheStorage names are DOMStrings not USVStrings</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="common.https.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>common.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/common.https.window.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>common.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Window sees cache puts by Worker</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="credentials.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>credentials.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/credentials.https.html"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>credentials.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Cache API matching includes credentials</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="sandboxed-iframes.https.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>sandboxed-<wbr>iframes.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/cache-storage/sandboxed-iframes.https.html"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>sandboxed-<wbr>iframes.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Sandboxed iframe with allow-same-origin is allowed access</li><li>Sandboxed iframe without allow-same-origin is denied access</li></ol></details>
+</div>
+</div>
+</details>
+</div>
+</div>
+</div>
+<footer class="foot">
+<p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
+</footer>
+</main>
+<nav class="toc" aria-labelledby="toc-title">
+<p class="toc-title" id="toc-title">Contents</p>
+<ol class="toc-list">
+<li class="toc-front"><a href="../../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
+<li class="toc-front"><a href="../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
+<li class="toc-front"><a href="../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
+<li class="toc-suite"><a href="../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
+<li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
+<li class="toc-suite"><a href="../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="82 test files">82</span></a></li>
+<li class="toc-suite"><a href="../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
+<li class="toc-suite"><a href="../../compression/"><span class="secno">6</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
+<li class="toc-suite"><a href="../../console/"><span class="secno">7</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../content-security-policy/"><span class="secno">8</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="883 test files">883</span></a></li>
+<li class="toc-suite"><a href="../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
+<li class="toc-suite"><a href="../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
+<li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,318 test files">2,318</span></a></li>
+<li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
+<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
+<li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
+<li class="toc-suite"><a href="../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
+<li class="toc-suite"><a href="../../ecmascript/"><span class="secno">17</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
+<li class="toc-suite"><a href="../../editing/"><span class="secno">18</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
+<li class="toc-suite"><a href="../../encoding/"><span class="secno">19</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
+<li class="toc-suite"><a href="../../eventsource/"><span class="secno">20</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
+<li class="toc-suite"><a href="../../fetch/"><span class="secno">21</span><span class="toc-name">fetch/</span><span class="toc-count" title="311 test files">311</span></a></li>
+<li class="toc-suite"><a href="../../fullscreen/"><span class="secno">22</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
+<li class="toc-suite"><a href="../../hr-time/"><span class="secno">23</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../../html-aam/"><span class="secno">24</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">25</span><span class="toc-name">html/</span><span class="toc-count" title="3,018 test files">3,018</span></a></li>
+<li class="toc-suite"><a href="../../mathml/"><span class="secno">26</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
+<li class="toc-suite"><a href="../../mimesniff/"><span class="secno">27</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../../mixed-content/"><span class="secno">28</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../../navigation-api/"><span class="secno">29</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
+<li class="toc-suite"><a href="../../navigation-timing/"><span class="secno">30</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
+<li class="toc-suite"><a href="../../page-visibility/"><span class="secno">31</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
+<li class="toc-suite"><a href="../../performance-timeline/"><span class="secno">32</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
+<li class="toc-suite"><a href="../../permissions/"><span class="secno">33</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../quirks/"><span class="secno">34</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../referrer-policy/"><span class="secno">35</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
+<li class="toc-suite"><a href="../../resize-observer/"><span class="secno">36</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../resource-timing/"><span class="secno">37</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
+<li class="toc-suite"><a href="../../sanitizer-api/"><span class="secno">38</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
+<li class="toc-suite"><a href="../../screen-orientation/"><span class="secno">39</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
+<li class="toc-suite"><a href="../../selection/"><span class="secno">40</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
+<li class="toc-suite"><a href="../../service-workers/" aria-current="page"><span class="secno">41</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
+<li class="toc-suite"><a href="../../shadow-dom/"><span class="secno">42</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
+<li class="toc-suite"><a href="../../streams/"><span class="secno">43</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../subresource-integrity/"><span class="secno">44</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
+<li class="toc-suite"><a href="../../trusted-types/"><span class="secno">45</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
+<li class="toc-suite"><a href="../../upgrade-insecure-requests/"><span class="secno">46</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
+<li class="toc-suite"><a href="../../url/"><span class="secno">47</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../../urlpattern/"><span class="secno">48</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../user-timing/"><span class="secno">49</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../wai-aria/"><span class="secno">50</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
+<li class="toc-suite"><a href="../../wasm/"><span class="secno">51</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
+<li class="toc-suite"><a href="../../web-animations/"><span class="secno">52</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
+<li class="toc-suite"><a href="../../web-locks/"><span class="secno">53</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../webidl/"><span class="secno">54</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../../webmessaging/"><span class="secno">55</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
+<li class="toc-suite"><a href="../../websockets/"><span class="secno">56</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
+<li class="toc-suite"><a href="../../webstorage/"><span class="secno">57</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../../workers/"><span class="secno">58</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
+<li class="toc-suite"><a href="../../xhr/"><span class="secno">59</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
+<li class="toc-back"><a href="../../#history"><span class="secno">60</span><span class="toc-name">Revision history</span></a></li>
+</ol>
+</nav>
+</div>
+</body>
+</html>
