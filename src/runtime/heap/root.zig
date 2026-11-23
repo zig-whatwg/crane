@@ -314,6 +314,10 @@ const Bucket = struct {
     /// life.
     live: u32 = 0,
     issued: usize = 0,
+    /// The most blocks live at once over the heap's life: `live`'s high-water
+    /// mark. Not the spans' slots: a slot the quarantine holds or the magazine
+    /// caches is no live block, yet keeps its span's slot taken.
+    live_peak: u32 = 0,
     /// The live blocks' requests' bytes, and every request's over the
     /// heap's life.
     requested: usize = 0,
@@ -1037,6 +1041,7 @@ pub const Engine = struct {
             b.fresh += 1;
         }
         b.live += 1;
+        if (b.live > b.live_peak) b.live_peak = b.live;
         b.issued += 1;
         b.requested += size;
         b.requested_total += size;
@@ -1254,6 +1259,7 @@ pub const Engine = struct {
         std.debug.assert(slotGet(map, slot) == .cached);
         slotSet(map, slot, .allocated);
         b.live += 1;
+        if (b.live > b.live_peak) b.live_peak = b.live;
         b.issued += 1;
         b.requested += size;
         b.requested_total += size;
@@ -1767,11 +1773,11 @@ pub const Engine = struct {
     }
 
     /// Instance slots issued over the heap's life, and alive now.
-    pub fn instanceCounts(self: *Engine) struct { issued: usize, live: usize, capacity: usize } {
+    pub fn instanceCounts(self: *Engine) struct { issued: usize, live: usize, peak: usize, capacity: usize } {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
         const b = &self.objects_buckets[instance_bucket];
-        return .{ .issued = b.issued, .live = b.live, .capacity = @as(usize, b.spans) * b.slots };
+        return .{ .issued = b.issued, .live = b.live, .peak = b.live_peak, .capacity = @as(usize, b.spans) * b.slots };
     }
 
     /// A test's choice of configuration, before the heap issues anything.

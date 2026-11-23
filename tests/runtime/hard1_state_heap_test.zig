@@ -543,3 +543,26 @@ test "M4: idle decommit drains the magazine first, so a span its blocks kept ope
     try testing.expect(after.objects.committed_span_bytes <= start.objects.committed_span_bytes);
     try testing.expect(after.objects.spans_decommitted >= 1);
 }
+
+test "S1: the slab's peak is the most Instances live at once, not the slots the quarantine kept taken" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    const count = 2 * runtime.SlabAllocator.slots_per_span;
+    const made = try testing.allocator.alloc(*runtime.Instance, count);
+    defer testing.allocator.free(made);
+    // In one task: two spans' worth made and freed (the quarantine holds their
+    // slots to the task's end), then as many again.
+    engine.beginTask();
+    for (made) |*instance| instance.* = try scope.slab.alloc(&slot_vtable);
+    for (made) |instance| scope.slab.free(instance);
+    for (made) |*instance| instance.* = try scope.slab.alloc(&slot_vtable);
+    const stats = scope.slab.stats();
+    // Never more than `count` alive at once - though twice as many slots
+    // were taken.
+    try testing.expectEqual(@as(usize, count), stats.peak_allocated);
+    try testing.expect(stats.total_capacity >= 2 * count);
+    for (made) |instance| scope.slab.free(instance);
+    engine.endTask();
+    try testing.expectEqual(@as(usize, count), scope.slab.stats().peak_allocated);
+}

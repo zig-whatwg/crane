@@ -243,6 +243,7 @@ pub const SlabAllocator = struct {
             .total_allocated = counts.issued,
             .total_freed = counts.issued - counts.live,
             .currently_allocated = counts.live,
+            .peak_allocated = counts.peak,
             .total_capacity = counts.capacity,
         };
     }
@@ -251,9 +252,13 @@ pub const SlabAllocator = struct {
         total_allocated: usize = 0,
         total_freed: usize = 0,
         currently_allocated: usize = 0,
+        /// The most Instances live at once over the Browser's life.
+        peak_allocated: usize = 0,
         /// Slots in the spans the Browser's Instances have taken: they never
-        /// leave the Instance bucket, so this is the high-water mark of live
-        /// Instances, rounded up to a span.
+        /// leave the Instance bucket. Since lane hard1 not the high-water
+        /// mark of live Instances (`peak_allocated` is): a slot the
+        /// quarantine holds through a task, or a bucket's magazine caches,
+        /// is no live Instance but keeps its span's slot taken.
         total_capacity: usize = 0,
     };
 
