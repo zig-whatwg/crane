@@ -31,4 +31,5 @@ test {
     _ = @import("mcp1_exception_text_test.zig");
     _ = @import("mcp1_network_test.zig");
     _ = @import("mcp1_input_test.zig");
+    _ = @import("mcp1_title_test.zig");
 }
