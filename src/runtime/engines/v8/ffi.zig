@@ -3290,6 +3290,18 @@ pub extern fn v8_Isolate_SetNodeWrapperTracing(
 /// `wrapper_`.
 pub extern fn v8_NodeTracer_TraceSlot(visitor: *anyopaque, slot: *anyopaque) void;
 
+/// engine.TracedHold on V8 (v8_wrapper.cpp, "engine.TracedHold"): a box with
+/// one TracedReference<Value> of `source`'s value (BORROWED) - no root in a
+/// full collection, a root in a young one - or null.
+pub extern fn v8_TracedHold_New(source: *Value) ?*anyopaque;
+/// The hold ends: on the agent's thread, outside a collection.
+pub extern fn v8_TracedHold_Dispose(hold: ?*anyopaque) void;
+/// Whether the collector took the hold's value.
+pub extern fn v8_TracedHold_IsEmpty(hold: ?*anyopaque) bool;
+/// engine.traceHeld: the visitor of a collection's atomic pause keeps the
+/// hold's value.
+pub extern fn v8_Tracer_TraceHeld(visitor: *anyopaque, hold: ?*anyopaque) void;
+
 /// tests/v8: the MarkingType newAgentCppHeap gives every agent's C++ heap
 /// (cppgc::Heap::MarkingType: 0 kAtomic, 1 kIncremental, 2
 /// kIncrementalAndConcurrent) - kAtomic, which keeps every C++ Trace, and so

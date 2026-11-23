@@ -605,6 +605,28 @@ pub fn keepCallbackFunction(callback: engine.BorrowedCallbackFunction) engine.Ca
     return .{ .function = .{ .value = function }, .context = incumbentRealm(isolate) };
 }
 
+/// engine.keepCallbackFunctionTraced: the function's value in a traced hold
+/// (v8_TracedHold_New: a TracedReference its owner traces, no root), with its
+/// callback context the incumbent realm now. The binding's Global stays the
+/// binding's, released when the call returns; no realm tag - a traced value
+/// roots nothing, so a detached realm has nothing to weaken. A value with no
+/// handle gives an empty hold.
+pub fn keepCallbackFunctionTraced(callback: engine.BorrowedCallbackFunction) engine.TracedCallback {
+    return keptTraced(callback.function);
+}
+
+/// engine.keepCallbackInterfaceTraced, as keepCallbackFunctionTraced.
+pub fn keepCallbackInterfaceTraced(callback: engine.BorrowedCallbackInterface) engine.TracedCallback {
+    return keptTraced(callback.object);
+}
+
+fn keptTraced(value: JSValue) engine.TracedCallback {
+    const handle = support.handleOf(value) orelse return .{ .hold = .{}, .context = null };
+    const hold: engine.TracedHold = .{ .handle = ffi.v8_TracedHold_New(handle) };
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .hold = hold, .context = null };
+    return .{ .hold = hold, .context = incumbentRealm(isolate) };
+}
+
 /// A borrowed callback interface value, kept as keepCallbackFunction keeps a
 /// function (WebIDL 3.2.16 step 2).
 pub fn keepCallbackInterface(callback: engine.BorrowedCallbackInterface) engine.CallbackInterface {

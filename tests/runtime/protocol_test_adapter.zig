@@ -708,6 +708,26 @@ pub fn keepOpaqueRoot(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 /// No wrapper tracing: no collector consults the host (the wrapper
 /// redesign's P5, design 3.3).
 pub fn traceNodeWrapper(_: *Tracer, _: *const NodeWrapperSlot) void {}
+
+/// engine.TracedHold (refcount step 8). The test adapter traces no values: a hold would
+/// be a strong one, kept until released - with no engine linked there is no
+/// value to keep, so the hold is empty and reads undefined.
+pub fn keepCallbackFunctionTraced(_: engine.BorrowedCallbackFunction) engine.TracedCallback {
+    return .{ .hold = .{}, .context = null };
+}
+pub fn keepCallbackInterfaceTraced(_: engine.BorrowedCallbackInterface) engine.TracedCallback {
+    return .{ .hold = .{}, .context = null };
+}
+pub fn tracedHoldValue(_: engine.TracedHold) JSValue {
+    return JSValue.jsUndefined;
+}
+pub fn tracedHoldIsEmpty(_: engine.TracedHold) bool {
+    return true;
+}
+pub fn releaseTracedHold(_: engine.TracedHold) void {}
+/// No collector tracing (the holds are strong): nothing to trace.
+pub fn traceHeld(_: *Tracer, _: engine.TracedHold) void {}
+pub fn traceWrapperOf(_: *Tracer, _: *Instance) void {}
 pub fn traceVisitOnce(_: *Tracer, _: *const anyopaque) bool {
     return true;
 }

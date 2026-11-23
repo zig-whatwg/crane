@@ -39,6 +39,7 @@ const protocol_worlds = @import("protocol_worlds.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
 const Instance = engine.Instance;
+const Tracer = @import("node_wrappers.zig").Tracer;
 const TracedSlot = engine.TracedSlot;
 
 /// The private key of `slot`: one namespace, apart from the binding's
@@ -297,6 +298,52 @@ pub fn traceValues(owner: *Instance, values: []const engine.JSValue, slot: Trace
 fn ownCacheOf(owner: *Instance) ?*const WrapperCache {
     const storage = owner.ctx.getV8WrapperCacheStorage() orelse return null;
     return @ptrCast(@alignCast(storage));
+}
+
+/// engine.TracedHold's value on V8: the box read through the Global<Value>
+/// readers (v8_wrapper.cpp, "engine.TracedHold": one location word each) -
+/// BORROWED; undefined once the collector took it.
+pub fn tracedHoldValue(hold: engine.TracedHold) engine.JSValue {
+    const handle = hold.handle orelse return engine.JSValue.jsUndefined;
+    if (ffi.v8_TracedHold_IsEmpty(handle)) return engine.JSValue.jsUndefined;
+    return engine.JSValue.fromHandle(handle);
+}
+
+/// engine.TracedHold.isEmpty on V8.
+pub fn tracedHoldIsEmpty(hold: engine.TracedHold) bool {
+    return ffi.v8_TracedHold_IsEmpty(hold.handle);
+}
+
+/// engine.TracedHold.release on V8: the box's TracedReference reset and freed.
+pub fn releaseTracedHold(hold: engine.TracedHold) void {
+    ffi.v8_TracedHold_Dispose(hold.handle);
+}
+
+/// engine.traceHeld on V8: the visitor of the collection's atomic pause
+/// traces the hold's TracedReference.
+pub fn traceHeld(tracer: *Tracer, hold: engine.TracedHold) void {
+    ffi.v8_Tracer_TraceHeld(tracer.visitor, hold.handle);
+}
+
+/// engine.traceWrapperOf on V8: a node's wrapper through its slot (and its
+/// world wrappers, `traceNodeWrapper`); any other instance's wrapper through
+/// the record its realm's cache keeps it by, and each isolated world's
+/// (protocol_worlds.traceWorldWrappers' rule) - read-only lookups, in the
+/// atomic pause. A record held by a weak Global (its wrapper was born
+/// modified) is not traceable: its wrapper lives by script.
+pub fn traceWrapperOf(tracer: *Tracer, instance: *Instance) void {
+    if (instance.vtable.counted != null) {
+        const slot = @import("node_wrappers.zig").slotOfInstance(instance) orelse return;
+        @import("node_wrappers.zig").traceNodeWrapper(tracer, slot);
+        return;
+    }
+    // The record's traced reference (WrapperCache.traceWorldEntry reads any
+    // cache's record so - not only a world's).
+    if (instance.ctx.getV8WrapperCacheStorage()) |storage| {
+        const cache: *const WrapperCache = @ptrCast(@alignCast(storage));
+        cache.traceWorldEntry(instance, tracer.visitor);
+    }
+    if (tracer.registry.worlds) |worlds| protocol_worlds.traceWorldWrappers(worlds, instance, tracer.visitor);
 }
 
 /// engine.holdWeakly: the hold's Global becomes a phantom handle V8 resets

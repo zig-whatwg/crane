@@ -661,6 +661,13 @@ pub fn isConstructor(realm: Context, value: JSValue) bool {
 
 pub const keepCallbackFunction = protocol_callbacks.keepCallbackFunction;
 pub const keepCallbackInterface = protocol_callbacks.keepCallbackInterface;
+pub const keepCallbackFunctionTraced = protocol_callbacks.keepCallbackFunctionTraced;
+pub const keepCallbackInterfaceTraced = protocol_callbacks.keepCallbackInterfaceTraced;
+pub const tracedHoldValue = protocol_tracing.tracedHoldValue;
+pub const tracedHoldIsEmpty = protocol_tracing.tracedHoldIsEmpty;
+pub const releaseTracedHold = protocol_tracing.releaseTracedHold;
+pub const traceHeld = protocol_tracing.traceHeld;
+pub const traceWrapperOf = protocol_tracing.traceWrapperOf;
 
 // ============================================================================
 // 4.5 ECMAScript values

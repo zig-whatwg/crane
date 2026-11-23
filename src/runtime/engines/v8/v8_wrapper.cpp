@@ -6085,6 +6085,62 @@ extern "C" void v8_NodeTracer_TraceSlot(cppgc::Visitor* visitor, void* slot) {
     visitor->Trace(*static_cast<const TracedReference<Object>*>(slot));
 }
 
+// ---- engine.TracedHold (refcount step 8: values traced from their owner at
+// collection time, Blink's TraceWrapperV8Reference) ----
+//
+// A hold is a heap box holding one TracedReference<Value>: no root in a full
+// collection - the value lives while a trace reaches the hold (traceHeld, from
+// its owner's anchor or the walk) and is cleared by V8 when none does - and a
+// root in a young-generation one (made non-droppable, the TracedReference
+// default), so a scavenge never takes a held listener. Made and disposed on
+// the agent's thread, never inside the collector; no lock, no realm tag.
+// Blink: TraceWrapperV8Reference (platform/bindings/trace_wrapper_v8_reference.h)
+// in V8EventListener / CallbackInterfaceBase, traced from the target.
+//
+// The box is read as a BORROWED value through the Global<Value> operations
+// that only read it (Get, IsEmpty: v8_Global_Clone, the comparisons, the
+// binding's return of a getter's value): a TracedReference and a Global are
+// one IndirectHandleBase each - one `location_` word - and both read the slot
+// it names. Nothing that writes a Global's node (its class id flags, SetWeak,
+// Reset) is ever given a hold's box: only v8_TracedHold_Dispose ends one.
+static_assert(sizeof(TracedReference<Value>) == sizeof(Global<Value>),
+              "a traced hold's box is read through the Global<Value> readers: one location word each");
+
+/// A hold of `source`'s value (BORROWED), or null when `source` is empty or
+/// not on a live isolate.
+extern "C" void* v8_TracedHold_New(Global<Value>* source) {
+    if (!source || source->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope scope(isolate);
+    Local<Value> value = source->Get(isolate);
+    if (value.IsEmpty()) return nullptr;
+    return new TracedReference<Value>(isolate, value);
+}
+
+/// The hold ends (its owner let the value go, or is torn down): on the
+/// agent's thread, outside a collection.
+extern "C" void v8_TracedHold_Dispose(void* hold) {
+    if (!hold) return;
+    auto* traced = static_cast<TracedReference<Value>*>(hold);
+    traced->Reset();
+    delete traced;
+}
+
+/// Whether the collector took the hold's value (no trace reached it in a
+/// full collection) - or it never had one.
+extern "C" bool v8_TracedHold_IsEmpty(void* hold) {
+    return !hold || static_cast<TracedReference<Value>*>(hold)->IsEmpty();
+}
+
+/// engine.traceHeld on V8: in the atomic pause, the walk's or an anchor's
+/// visitor keeps the hold's value.
+extern "C" void v8_Tracer_TraceHeld(cppgc::Visitor* visitor, void* hold) {
+    if (!hold) return;
+    visitor->Trace(*static_cast<const TracedReference<Value>*>(hold));
+}
+
+
 /// Whether `box`'s object can be a node's wrapper: an API object (made from a
 /// template), which Object::Wrap can point at an anchor - the binding's
 /// always is; asked before the wrap takes the count.
