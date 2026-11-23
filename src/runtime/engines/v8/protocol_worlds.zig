@@ -214,6 +214,14 @@ pub fn realmMayHaveWorlds(realm: Context) bool {
     return scope.isolated_worlds_active.load(.monotonic);
 }
 
+/// `realmMayHaveWorlds` for `instance`'s Browser, read from the instance's
+/// address (BrowserScope.ofInstance: its slab's owner) - no realm read, so a
+/// wrap asks it before anything else of the instance (the wrapper cache's
+/// own tests wrap instances with no realm).
+pub inline fn instanceMayHaveWorlds(instance: *const engine.Instance) bool {
+    return runtime.BrowserScope.ofInstance(instance).isolated_worlds_active.load(.monotonic);
+}
+
 /// The world of the realm converting a value now: the current context's
 /// (V8 enters a function's creation context while its callback runs, so
 /// inside a binding it is the realm of the running function) - 0 with no

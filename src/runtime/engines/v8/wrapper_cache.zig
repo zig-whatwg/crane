@@ -2719,7 +2719,7 @@ pub const WrapperCache = struct {
         self.drawDeferredEdges(instance, entry.stamp.generation, wrapper);
         // The traced values sets its wrapper in another world keeps
         // (refcount step 8, option (c)): one load while no world exists.
-        if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.drawTracedValuesOnWrap(self, instance, wrapper);
+        if (protocol_worlds.instanceMayHaveWorlds(instance)) protocol_worlds.drawTracedValuesOnWrap(self, instance, wrapper);
         // (A holder of nodes was bound to its HolderAnchor with the wrapper -
         // platform_anchor.bind - so a collection that keeps this wrapper
         // keeps the wrappers of what it holds for script: the redesign's P6,
@@ -2770,7 +2770,7 @@ pub const WrapperCache = struct {
         self.drawDeferredEdges(instance, generation, adopted.handle);
         // The traced values sets its wrapper in an isolated world keeps
         // (refcount step 8, option (c)): one load while no world exists.
-        if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.drawTracedValuesOnWrap(self, instance, adopted.handle);
+        if (protocol_worlds.instanceMayHaveWorlds(instance)) protocol_worlds.drawTracedValuesOnWrap(self, instance, adopted.handle);
         return adopted.handle;
     }
 
