@@ -209,3 +209,34 @@ test "a tab's animation frames are its own: closing another tab leaves them runn
     try fixture.run(host, "globalThis.after_close = frames_seen; true");
     try fixture.waitFor(host, "frames_seen >= after_close + 3");
 }
+
+const interfaces = @import("interfaces");
+const dom = @import("dom");
+
+test "one tab's end leaves another tab's pending mutation observers to be notified" {
+    // DOM 4.3: the pending mutation observers are the similar-origin window
+    // agent's, which every tab of a Browser shares. A host-opened tab's end
+    // (Context.deinit) reset the whole agent's (resetAgent): an observer of
+    // another tab with a record not yet delivered lost it, never notified.
+    const fixture = try Fixture.start(testing.allocator);
+    defer fixture.stop();
+    const host = try fixture.hostTab();
+    const realm = fixture_mod.activeRealm(host) orelse return error.NoRealm;
+    try fixture.run(host, "globalThis.seen = []; globalThis.observer = new MutationObserver(records => seen.push(records.length)); observer.observe(document.body, { attributes: true }); true");
+    const id = try fixture.browser.createTab(.{});
+    _ = fixture.tab(id) orelse return error.NoSuchTab;
+
+    // A mutation in the host's tab from outside script: its record waits for
+    // the agent's notify microtask.
+    const document: *runtime.Instance = @ptrCast(@alignCast(host.getActiveDocument() orelse return error.NoDocument));
+    const body = (try interfaces.Document.get_body(document)) orelse return error.NoBody;
+    try interfaces.Element.call_setAttribute(body, runtime.DOMString.initInterned("data-mutated"), .{ .domstring = runtime.DOMString.initInterned("1") });
+    const agent = dom.mutation_observer_algorithms.agentOf(realm) orelse return error.NoAgentState;
+    try testing.expectEqual(@as(usize, 1), agent.pending_observers.len);
+
+    // The other tab ends: the host tab's observer is still pending...
+    try fixture.browser.closeTab(id, .{});
+    try testing.expectEqual(@as(usize, 1), agent.pending_observers.len);
+    // ...and is notified at the next checkpoint.
+    try fixture.waitFor(host, "seen.join() === '1'");
+}
