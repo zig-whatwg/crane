@@ -84,6 +84,10 @@ statement, the workload says so: that is its browser equivalent.
 | `events.dispatch` | `dispatchEvent` to a target 10 deep, a capture and a bubble listener per level | |
 | `events.add-remove-listener` | `addEventListener` + `removeEventListener` | |
 | `events.custom-event` | `new CustomEvent` with a detail, dispatched to one listener | |
+| `observers.mutation-construct` | `new MutationObserver(fn)`, `observe` and `disconnect`: a callback converted and kept per op (from lane bind1, 2026-11-23) | |
+| `observers.mutation-deliver` | 20,000 MutationObserver deliveries one after another, each callback making the next mutation | |
+| `observers.resize-construct` | `new ResizeObserver(fn)`, `observe` and `disconnect` (observations are the rendering steps', so none is delivered) | |
+| `observers.intersection-construct` | `new IntersectionObserver(fn)`, `observe` and `disconnect`, as above | |
 | `parser.inner-html-large` | a 300 KB document body through `innerHTML` | |
 | `parser.dom-parser` | the same document through `DOMParser` | |
 | `parser.document-write` | the same document in 400 `document.write` calls into a document a script opened | |
