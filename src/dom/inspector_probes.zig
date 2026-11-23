@@ -28,7 +28,11 @@
 //! (Element::DidAddAttribute, DidModifyAttribute, DidRemoveAttribute); data
 //! after its children changed steps (CharacterData::DidModifyData); a shadow
 //! root once attached (Element::AttachShadowRootInternal); the top layer
-//! when its members change (Document::AddToTopLayer, RemoveFromTopLayer).
+//! when its members change (Document::AddToTopLayer, RemoveFromTopLayer);
+//! a document's title when its title element or that element's text changes
+//! (HTMLTitleElement / SVGTitleElement ChildrenChanged, InsertedInto,
+//! RemovedFrom), behind a gate of its own: the Browsers adopted, since a
+//! target's title needs no DOM agent.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -68,6 +72,31 @@ pub fn enabledAgentCount() u32 {
     return enabled_agents.load(.acquire);
 }
 
+// The title probe's gate: how many Browsers src/devtools has adopted. A
+// target's info carries its page's title whether or not a DOM agent is
+// enabled (Blink reports every title the page sets to its WebContents,
+// probe or none), so this probe opens with the Browser's adoption, not with
+// DOM.enable.
+// process-wide: a gate counting the Browsers the CDP remote end has adopted in any thread (BrowserSide install / uninstall); atomic increments and decrements, acquire reads, never a pointer: a stale open read only costs a sink lookup that finds no sink
+var adopted_browsers: std.atomic.Value(u32) = .init(0);
+
+/// Whether any Browser is adopted by the CDP remote end: the one check at
+/// the title probe's sites.
+pub inline fn titlesObserved() bool {
+    return adopted_browsers.load(.acquire) != 0;
+}
+
+/// A Browser was adopted (BrowserSide.install).
+pub fn browserAdopted() void {
+    _ = adopted_browsers.fetchAdd(1, .acq_rel);
+}
+
+/// A Browser was let go (BrowserSide.uninstall).
+pub fn browserReleased() void {
+    const before = adopted_browsers.fetchSub(1, .acq_rel);
+    std.debug.assert(before != 0);
+}
+
 /// An attribute's qualified name, as a probe reports it: Blink's
 /// QualifiedName::ToString is "prefix:localName", or the local name.
 pub const AttributeName = struct {
@@ -97,6 +126,9 @@ pub const VTable = struct {
     rendering_updated: *const fn (context: *anyopaque, document: *runtime.Instance) void,
     /// A Document's or ShadowRoot's adoptedStyleSheets changed.
     did_modify_adopted_style_sheets: *const fn (context: *anyopaque, owner: *runtime.Instance) void,
+    /// `document`'s title may have changed (behind `titlesObserved`, not
+    /// `active`): its title element, or that element's text, changed.
+    title_may_have_changed: *const fn (context: *anyopaque, document: *runtime.Instance) void,
 };
 
 /// A Browser's probe sink: its scope's `.inspector_probes` table.
@@ -244,6 +276,18 @@ pub noinline fn didModifyAdoptedStyleSheets(owner: *runtime.Instance) void {
     sink.vtable.did_modify_adopted_style_sheets(sink.context, owner);
 }
 
+/// The title element of `node`'s document - an HTML title element, or the
+/// SVG title child of an SVG document element - was inserted, removed, or
+/// had its children changed (HTML "the title element"; Blink's
+/// HTMLTitleElement and SVGTitleElement ChildrenChanged / InsertedInto /
+/// RemovedFrom -> Document::SetTitleElement / UpdateTitle -> the frame's
+/// DidReceiveTitle): the document's title may differ now. `document` is the
+/// node's document while it is still in it.
+pub noinline fn titleMayHaveChanged(document: *runtime.Instance) void {
+    const sink = sinkOf(document) orelse return;
+    sink.vtable.title_may_have_changed(sink.context, document);
+}
+
 test "the gate is closed while no agent is enabled, and counts agents" {
     const before = enabledAgentCount();
     agentEnabled();
@@ -252,4 +296,15 @@ test "the gate is closed while no agent is enabled, and counts agents" {
     agentDisabled();
     try std.testing.expectEqual(before, enabledAgentCount());
     try std.testing.expectEqual(before != 0, active());
+}
+
+test "the title probe's gate opens with an adopted Browser, apart from the DOM agents' gate" {
+    const agents = enabledAgentCount();
+    const before = adopted_browsers.load(.acquire);
+    browserAdopted();
+    try std.testing.expect(titlesObserved());
+    try std.testing.expectEqual(agents, enabledAgentCount());
+    browserReleased();
+    try std.testing.expectEqual(before, adopted_browsers.load(.acquire));
+    try std.testing.expectEqual(before != 0, titlesObserved());
 }

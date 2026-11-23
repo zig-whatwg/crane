@@ -82,6 +82,7 @@ src/dom/indexeddb.zig records 1 G H decl:5aa0c591d1a18137
 src/dom/indexeddb.zig requests 1 G H decl:6740d2e3e96e2e48
 src/dom/indexeddb.zig stores 1 G H decl:62e176784ecc77da
 src/dom/indexeddb.zig transactions 1 G H decl:767da84fdc7ee6d5
+src/dom/inspector_probes.zig adopted_browsers 1 G P-res decl:6160991ba0a1e2bb
 src/dom/inspector_probes.zig enabled_agents 1 G P-res decl:6160991ba0a1e2bb
 src/dom/instance_bridge.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/intersection_targets.zig implementation 1 G H decl:ff436fb405f84ffb
