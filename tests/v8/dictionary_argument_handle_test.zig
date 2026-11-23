@@ -164,22 +164,22 @@ const Probe = struct {
 
     /// NavigateEvent.intercept(optional NavigationInterceptOptions)'s
     /// conversion path: an operation whose dictionary has callback members.
-    /// A callback it is given is taken over and given back, as
-    /// Navigation's interceptHook takes each into its handler lists.
+    /// A callback it is given is kept and released, as Navigation's
+    /// interceptHook keeps each in its handler lists.
     pub fn call_static_intercept(instance: *runtime.Instance, options: webidl.Opt(InterceptShaped)) anyerror!void {
         _ = instance;
         if (!options.was_passed) return;
-        if (options.value.precommitHandler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
-        if (options.value.handler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
+        if (options.value.precommitHandler) |handler| handler.keep().release();
+        if (options.value.handler) |handler| handler.keep().release();
     }
 };
 
 /// dictionaries.NavigationInterceptOptions' callback members (callbacks.
-/// NavigationPrecommitHandler, NavigationInterceptHandler): function
-/// pointers, codegen's type for a callback function.
+/// NavigationPrecommitHandler, NavigationInterceptHandler):
+/// runtime.BorrowedCallbackFunction, codegen's type for a callback function.
 const InterceptShaped = struct {
-    precommitHandler: ?*const fn (controller: *runtime.Instance) runtime.JSValue = null,
-    handler: ?*const fn () runtime.JSValue = null,
+    precommitHandler: ?runtime.BorrowedCallbackFunction = null,
+    handler: ?runtime.BorrowedCallbackFunction = null,
 };
 
 test "a dictionary whose members are callback functions is copied" {

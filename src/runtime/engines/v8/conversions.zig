@@ -25,7 +25,6 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const interface_mod = @import("interface.zig");
-const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
@@ -35,22 +34,6 @@ const value_operations = @import("value_operations.zig");
 const protocol_engine = @import("engine");
 const protocol_support = @import("protocol_support.zig");
 const protocol_conversions = @import("protocol_conversions.zig");
-const Hook = @import("process").Hook;
-
-/// What a callback-interface argument's wrapper is allocated from: a
-/// general-purpose allocator, since the binding makes and frees one per call
-/// (the page allocator it used spent a whole page on each). The same for
-/// every Browser and never written in production; a test overrides it with
-/// `std.testing.allocator` to see that none outlives its call.
-pub var callback_allocator: Hook(std.mem.Allocator) = .init(std.heap.c_allocator);
-
-/// Release a callback interface argument (`*runtime.CallbackWrapper`) the
-/// binding converted, once the call it was converted for has returned: the
-/// wrapper, the argument's handle it took over, and its context handle.
-pub fn releaseCallbackWrapper(argument: *runtime.CallbackWrapper) void {
-    const wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(argument));
-    wrapper.deinit();
-}
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -1945,8 +1928,8 @@ pub fn fromV8Value(
 pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
     const Child = @typeInfo(T).optional.child;
     if (!v8.v8_Value_IsObject(value)) return null;
-    if (Child == runtime.BorrowedCallbackFunction) return borrowedCallbackFunction(value);
-    return callbackFunctionValue(Child, value);
+    comptime std.debug.assert(Child == runtime.BorrowedCallbackFunction);
+    return borrowedCallbackFunction(value);
 }
 
 /// A callback function type's value (WebIDL 3.2.19 step 2): the function the
@@ -1956,19 +1939,6 @@ pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) Convers
 /// when an impl keeps it (engine.keepCallbackFunction).
 fn borrowedCallbackFunction(value: *v8.Value) runtime.BorrowedCallbackFunction {
     return .{ .function = .{ .handle = .{ .ptr = @ptrCast(value) } } };
-}
-
-/// The transitional callback representation is the untagged Global address,
-/// never a callable Zig function. BORROWED: the binding frees it with the
-/// value, and a consumer that keeps it takes a hold of its own through the
-/// protocol (takeCallbackFunction).
-fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
-    const address: usize = @intFromPtr(value);
-    std.debug.assert(std.mem.isAligned(address, @alignOf(@typeInfo(T).pointer.child)));
-    comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
-    var function_value: T = undefined;
-    @memcpy(std.mem.asBytes(&function_value), std.mem.asBytes(&address));
-    return function_value;
 }
 
 /// `fromV8Value`, where `T`'s interface-typed positions convert to
@@ -2377,25 +2347,12 @@ fn convertValueAs(
             break :blk null;
         };
 
-        // Callback function types: *anyopaque (for unions like TimerHandler)
-        // The "Function" callback is generated as *anyopaque to hold V8 GlobalHandle pointers.
-        // These match JavaScript functions that need to be stored for later invocation.
+        // A callback function arm (runtime.BorrowedCallbackFunction): a
+        // callable goes to it (WebIDL 3.2.25 step 10), and is held there by
+        // its own Global.
         const function_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                // A callback function arm (runtime.BorrowedCallbackFunction)
                 if (field.type == runtime.BorrowedCallbackFunction) break :blk i;
-                // Check for *anyopaque (used for callback.Function)
-                if (field.type == *anyopaque) {
-                    break :blk i;
-                }
-                // Also check for *const fn(...) for backwards compatibility with other callbacks
-                const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .one) {
-                    const child_info = @typeInfo(field_info.pointer.child);
-                    if (child_info == .@"fn") {
-                        break :blk i;
-                    }
-                }
             }
             break :blk null;
         };
@@ -2503,25 +2460,10 @@ fn convertValueAs(
         // string it stringifies to.
         if (function_idx != null and v8.v8_Value_IsFunction(value)) {
             if (function_idx) |idx| {
-                // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
-                // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
-                // Handle the different callback pointer types
-                const FieldType = fields[idx].type;
-                if (FieldType == runtime.BorrowedCallbackFunction) {
-                    // 3.2.19: the callable's own Global, BORROWED for the
-                    // call (freed with the union, interface.freeConvertedArg).
-                    return @unionInit(T, fields[idx].name, borrowedCallbackFunction(value));
-                } else if (FieldType == *anyopaque) {
-                    // For *anyopaque (callbacks.Function), tag so we can identify it later as GlobalHandle
-                    const tagged = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
-                    return @unionInit(T, fields[idx].name, @constCast(tagged));
-                } else {
-                    // For typed function pointer fields (*const fn(...)), do NOT tag the pointer.
-                    // Tagged pointers have low bits set which violates Zig's alignment requirements
-                    // for function pointers. The union variant type already tells us what it is.
-                    const ptr_value: usize = @intFromPtr(value);
-                    return @unionInit(T, fields[idx].name, @ptrFromInt(ptr_value));
-                }
+                // 3.2.19: the callable's own Global (the binding's argument
+                // Global, or the member's Get handle), BORROWED for the call
+                // and freed with the union (interface.freeConvertedArg).
+                return @unionInit(T, fields[idx].name, borrowedCallbackFunction(value));
             }
         } else if (v8.v8_Value_IsString(value)) {
             if (string_idx) |idx| {
@@ -2762,55 +2704,6 @@ fn convertValueAs(
                 "(interface_arguments, constructor_interface_arguments, interface_members)",
         );
         return convertToInterface(I, value);
-    }
-
-    // Handle function pointers (callbacks)
-    //
-    // CRITICAL: V8 callback persistence fix
-    //
-    // When JavaScript passes a callback function (e.g., `new WritableStream({ start: fn })`),
-    // the V8 value is a Local<Function> that's only valid within the current HandleScope.
-    // If we just store the Local handle pointer, it becomes invalid when the HandleScope ends
-    // (typically when the constructor returns).
-    //
-    // The fix: Create a V8 Global handle immediately during dictionary extraction.
-    // Global handles persist until explicitly disposed, surviving HandleScope destruction.
-    //
-    // A callback function type is a Zig function-pointer type until codegen
-    // types callback parameters as engine.CallbackFunction (the protocol's
-    // TRANSITIONAL note on takeCallbackFunction): the value holds the
-    // function's Global<Value>* and is never called. It is BORROWED for the
-    // call, as every converted value is: the binding frees the Global with
-    // the value (interface.freeConvertedArg), and a consumer that keeps the
-    // callback takes a hold of its own (takeCallbackFunction, which moves the
-    // function out of this Global).
-    if (type_info == .pointer) {
-        const child_info = @typeInfo(type_info.pointer.child);
-        if (child_info == .@"fn") {
-            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a
-            // Global<Value>* of the binding's (the C++ side made it from the
-            // argument's Local), so it is the value as it is - still the
-            // binding's to free.
-            if (!v8.v8_Value_IsFunction(value)) {
-                return ConversionError.TypeError;
-            }
-
-            // UNTAGGED. A value of a pointer type must be aligned for it - a
-            // function is 4-aligned on aarch64 - and it once carried
-            // `.global_handle` in its low bits. That is illegal behaviour, and
-            // an optimized build acted on it: with the impl's untag inlined
-            // after a parameter of this type, LLVM took the low bits as zero
-            // and dropped the untag, so a ReleaseSafe runner disposed and
-            // cloned Global* + 1 (the alignment trap in v8_Global_Clone, under
-            // EventTarget.innerInvoke, on every event handler it ran). The
-            // Global from `new` is 16-aligned, so the plain address is a value
-            // the type may hold; the union path below already stored its
-            // function-pointer arms this way.
-            //
-            // A byte copy, since no pointer cast turns a Value* into a function
-            // pointer; both are one machine word.
-            return callbackFunctionValue(T, value);
-        }
     }
 
     // Handle webidl.Opt (Optional wrapper type)
@@ -3188,37 +3081,6 @@ fn convertValueAs(
         return TaggedPointer.init(@ptrCast(@constCast(value)), .local_value).toConstPtr();
     }
 
-    // Callback interface types (EventListener, NodeFilter, XPathNSResolver):
-    // the argument as this adapter's CallbackWrapper, which the engine-neutral
-    // `*runtime.CallbackWrapper` names opaquely. BORROWED by the impl for the
-    // call: the binding releases it when the call returns
-    // (`releaseCallbackWrapper`), and an impl that keeps the callback takes a
-    // CallbackInterface of its own (takeCallbackInterface).
-    if (T == *runtime.CallbackWrapper) {
-        const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator.get(),
-            isolate,
-            context,
-            value,
-            "handleEvent", // Default method name for callback interfaces
-        ) catch return ConversionError.TypeError;
-        return @ptrCast(wrapper orelse return ConversionError.TypeError);
-    }
-    if (T == ?*runtime.CallbackWrapper) {
-        // Optional callback - null/undefined is valid
-        if (v8.v8_Value_IsNullOrUndefined(value)) {
-            return null;
-        }
-        const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator.get(),
-            isolate,
-            context,
-            value,
-            "handleEvent",
-        ) catch return ConversionError.TypeError;
-        return if (wrapper) |w| @ptrCast(w) else null;
-    }
-
     // Handle pointer types that might be generated by codegen for buffer sources
     // This catches things like *ArrayBuffer, *TypedArray, etc.
     if (type_info == .pointer and type_info.pointer.size == .one) {
@@ -3447,15 +3309,16 @@ pub fn toV8Record(
     return object;
 }
 
-/// ALLOWLIST: the raw function-pointer conversion's value IS its input Global
-/// on success (freed with the value, interface.freeConvertedArg), and holds
-/// nothing when it fails. Unknown pointer and aggregate types remain false;
-/// nullable callbacks have the same rule.
+/// ALLOWLIST: a callback value's conversion (runtime.BorrowedCallbackFunction,
+/// BorrowedCallbackInterface) IS its input Global on success (freed with the
+/// value, interface.freeConvertedArg), and holds nothing when it fails.
+/// Unknown pointer and aggregate types remain false; nullable callbacks have
+/// the same rule.
 pub fn callbackConversionAdoptsInput(comptime T: type) bool {
     if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) return true;
     const info = @typeInfo(T);
     if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
-    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
+    return false;
 }
 
 /// Whether `T` is a dictionary as toV8Value converts one: a struct that is

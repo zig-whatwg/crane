@@ -708,7 +708,6 @@ fn deinitWindow(window: *runtime.Instance) void {
 /// entry knows its Window and its global's anchor.
 pub fn removeContextByKey(key: usize) void {
     const state = currentRealms() orelse return;
-    const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
     // The garbage this realm's trees left - trees whose counts reached zero
     // (refcount step 7, dom.refcount_teardown; a collected wrapper's
@@ -741,10 +740,6 @@ pub fn removeContextByKey(key: usize) void {
         // reactions that have not run and the asynchronous iterators still
         // alive end, and their host data with them (realm_finalizers.zig).
         if (@import("realm_finalizers.zig").listOf(&entry.runtime_ctx)) |finalizers| finalizers.drain();
-        // The callbacks this context's script registered hold handles into it
-        // - one listener is enough to keep the whole page alive - and nothing
-        // else releases them, since its EventTargets are never torn down.
-        @import("callback_registry.zig").cleanupForContext(raw_addr);
         if (entry.owns_context) {
             // A pointer, not a copy - `clearV8WrapperCacheStorage` below has to
             // land on the entry's own ContextData, which is what every Instance

@@ -56,6 +56,26 @@ fn borrowedOver(global: *anyopaque) Callback {
 }
 
 // ============================================================================
+// The protocol's callback types
+// ============================================================================
+
+test "the protocol keeps a callback only through keep: no take operation, no wrapper type" {
+    // Lane bind1: codegen types every callback value as the protocol's
+    // borrowed types, so the transitional take operations - an untyped
+    // `*const anyopaque`, and the opaque CallbackWrapper - are gone.
+    try testing.expect(!@hasDecl(protocol, "takeCallbackFunction"));
+    try testing.expect(!@hasDecl(protocol, "takeCallbackInterface"));
+    try testing.expect(!@hasDecl(protocol, "CallbackWrapper"));
+    try testing.expect(!@hasDecl(runtime, "CallbackWrapper"));
+    try testing.expect(@hasDecl(protocol, "keepCallbackFunction"));
+    try testing.expect(@hasDecl(protocol, "keepCallbackInterface"));
+    // The kept value is the owned type, the borrowed one is not.
+    try testing.expect(@TypeOf(Callback.keep) == fn (Callback) protocol.CallbackFunction);
+    try testing.expect(@TypeOf(runtime.BorrowedCallbackInterface.keep) == fn (runtime.BorrowedCallbackInterface) protocol.CallbackInterface);
+    try testing.expect(Callback != protocol.CallbackFunction);
+}
+
+// ============================================================================
 // The release rule, pinned
 // ============================================================================
 

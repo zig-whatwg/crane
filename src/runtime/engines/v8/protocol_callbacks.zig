@@ -29,8 +29,6 @@ const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
 const realm_entry = @import("realm_entry.zig");
 const context_manager = @import("context_manager.zig");
-const callback_interfaces = @import("callback_interfaces.zig");
-const V8CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
 const support = @import("protocol_support.zig");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_worlds = @import("protocol_worlds.zig");
@@ -591,19 +589,6 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     return finish(try body.result, entered.context(), callback_realm.realm, behavior);
 }
 
-/// A callback-function value as the binding converted it (the Global the
-/// conversion made, BORROWED for the call), taken as a hold of the caller's
-/// own (OWNED: callback_interfaces.takeCallbackFunction moves the function
-/// out of the binding's Global, which the binding still frees), with its
-/// callback context: the incumbent realm now - the operation is converting
-/// its arguments. A value taken already gives undefined.
-pub fn takeCallbackFunction(argument: *const anyopaque) engine.CallbackFunction {
-    const function = callback_interfaces.takeCallbackFunction(argument);
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .function = .{ .value = function }, .context = null };
-    tagWithCurrentRealm(isolate, function);
-    return .{ .function = .{ .value = function }, .context = incumbentRealm(isolate) };
-}
-
 /// A borrowed callback function value (the binding's Global, BORROWED for the
 /// call: an argument's, or a dictionary member's, union arm's or sequence
 /// element's own Get handle), kept as a CallbackFunction of the caller's own:
@@ -653,20 +638,4 @@ fn tagWithCurrentRealm(isolate: *ffi.Isolate, value: JSValue) void {
     defer ffi.v8_Context_Dispose(current);
     const key = context_manager.keyOf(current) orelse return;
     ffi.v8_Global_TagRealm(handle, key);
-}
-
-/// A callback-interface argument as the binding hands it over (the
-/// runtime.CallbackWrapper it converted - this adapter's CallbackWrapper):
-/// its object as a Global of the caller's own, with its callback context as
-/// for takeCallbackFunction. The wrapper is the call's; the binding releases
-/// it.
-pub fn takeCallbackInterface(argument: *const engine.CallbackWrapper) engine.CallbackInterface {
-    const wrapper: *const V8CallbackWrapper = @ptrCast(@alignCast(argument));
-    const held = wrapper.callback_object_global orelse wrapper.callback_function_global;
-    const object: JSValue = if (held) |global|
-        (if (ffi.v8_Global_Clone(global.ptr)) |clone| realm_entry.owned(clone) else JSValue.jsUndefined)
-    else
-        JSValue.jsUndefined;
-    tagWithCurrentRealm(wrapper.isolate, object);
-    return .{ .object = .{ .value = object }, .context = incumbentRealm(wrapper.isolate) };
 }

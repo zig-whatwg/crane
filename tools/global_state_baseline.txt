@@ -171,7 +171,6 @@ src/runtime/browser_scope.zig live_scopes 1 G P-res decl:224489c067b5c8fe
 src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G H decl:1fe1b0ac7507f38b
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
-src/runtime/engines/v8/conversions.zig callback_allocator 1 G H decl:03dd2ac876c8f64c
 src/runtime/engines/v8/external_references.zig runtime_ref_count 1 G P-const decl:3796f88280404836
 src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:015c834d8ed6a3bf
 src/runtime/engines/v8/isolate_ownership.zig check_count 1 G D decl:224489c067b5c8fe

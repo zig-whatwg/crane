@@ -425,14 +425,8 @@ pub fn isConstructor(_: Context, _: JSValue) bool {
 /// The binding's callback-function value is BORROWED for the call; the take
 /// is a hold of the caller's own, released once. No engine is linked, so
 /// there is no binding value to take: undefined, nothing to release.
-pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
-    return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
-}
-pub fn takeCallbackInterface(_: *const engine.CallbackWrapper) engine.CallbackInterface {
-    return .{ .object = .{ .value = JSValue.jsUndefined }, .context = null };
-}
 // No engine to hold a function in: the kept value is undefined, with no
-// callback context, as the take entries above answer.
+// callback context.
 pub fn keepCallbackFunction(_: engine.BorrowedCallbackFunction) engine.CallbackFunction {
     return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
 }

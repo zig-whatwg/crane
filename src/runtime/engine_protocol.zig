@@ -263,10 +263,6 @@ pub const BorrowedCallbackFunction = runtime.BorrowedCallbackFunction;
 /// CallbackInterface of the caller's own.
 pub const BorrowedCallbackInterface = runtime.BorrowedCallbackInterface;
 
-/// A callback interface value as the binding converts it today - what
-/// takeCallbackInterface takes. TRANSITIONAL.
-pub const CallbackWrapper = runtime.CallbackWrapper;
-
 /// WebIDL: a callback interface type's value (3.2.16) - the object, and a
 /// callback context as for CallbackFunction. OWNED: `release` gives the
 /// object back.
@@ -2310,29 +2306,6 @@ pub inline fn isCallable(realm: Context, value: JSValue) bool {
 /// has one when its target does, revoked or not.
 pub inline fn isConstructor(realm: Context, value: JSValue) bool {
     return impl.isConstructor(realm, value);
-}
-
-/// A callback-function value as the binding converted it - an argument, a
-/// dictionary member, a union arm, a sequence element - taken as a
-/// CallbackFunction of the caller's own (OWNED: released exactly once) whose
-/// context is the incumbent realm now - the operation being called is
-/// converting its arguments. The value is BORROWED, as every argument is:
-/// the binding releases it when the call returns, whether or not the impl
-/// took it, so an impl that keeps the callback takes it during its call, and
-/// one that does not need it leaves it alone. Taken twice, it gives nothing
-/// the second time (an undefined function). TRANSITIONAL, until codegen
-/// types callback parameters as CallbackFunction.
-pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction {
-    return impl.takeCallbackFunction(argument);
-}
-
-/// A callback-interface argument as the binding hands it over (the
-/// runtime.CallbackWrapper it converted), as a CallbackInterface of its own
-/// (OWNED) whose context is the incumbent realm now. The wrapper is BORROWED,
-/// as every argument is: the binding releases it when the call returns.
-/// TRANSITIONAL, as takeCallbackFunction.
-pub inline fn takeCallbackInterface(argument: *const CallbackWrapper) CallbackInterface {
-    return impl.takeCallbackInterface(argument);
 }
 
 /// Keep a callback function value past the call it was converted for: a

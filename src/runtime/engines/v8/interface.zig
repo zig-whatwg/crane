@@ -272,12 +272,8 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // context.
         if (T == *runtime.Instance) break :blk false;
 
-        // A callback interface converts to a CallbackWrapper, which keeps a
-        // context handle of its own (callback_wrapper.initFunction/initObject);
-        // a callback function or interface value (runtime.Borrowed*) is its
-        // own argument handle, and never reads the context. None keeps the
-        // caller's.
-        if (T == *runtime.CallbackWrapper) break :blk false;
+        // A callback function or interface value (runtime.Borrowed*) is its
+        // own argument handle, and never reads the context: it keeps none.
         if (isCallbackValueType(T)) break :blk false;
 
         // Buffer sources are made without the context: a BufferSource, an
@@ -456,12 +452,11 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argHandleIsCopied(T)) return true;
     if (T == runtime.JSValue) return true;
     if (argumentHandleIsKeptInValue(T)) return true;
-    // A callback function member - a function pointer, codegen's type for a
-    // callback function - holds the handle Get made for IT: conv.fromV8Value's
-    // function-pointer branch makes that Global the value, freed with the
-    // dictionary (freeConvertedArg), and an impl that keeps the callback takes
-    // a hold of its own (engine.takeCallbackFunction). Never the
-    // dictionary's. QueuingStrategy's `size` (`?callbacks.QueuingStrategySize`)
+    // A callback function or interface member (runtime.Borrowed*) holds the
+    // handle Get made for IT: conv.fromV8Value makes that Global the value,
+    // freed with the dictionary (freeConvertedArg), and an impl that keeps
+    // the callback keeps a hold of its own (`keep`). Never the dictionary's.
+    // QueuingStrategy's `size` (`?callbacks.QueuingStrategySize`)
     // made every strategy keep its argument's handle: one Global per
     // `new WritableStream(sink, strategy)`, `new ReadableStream(...)` and
     // TransformStream strategy (lane leaks2). Blink's bindings read the
@@ -491,14 +486,8 @@ fn memberHandleIsSafe(comptime T: type) bool {
 /// arm's or element's own Get handle - a value BORROWED for the call, freed
 /// with it (`freeConvertedArg`). An impl that keeps it keeps a hold of its
 /// own (`keep`, which moves the function out of this Global).
-/// TRANSITIONAL: also a pointer to a Zig function, the shape codegen gave a
-/// callback function before (`callbacks.X = *const fn (...) R`), which the
-/// function-pointer branch converts the same way.
-/// Not `*anyopaque` (a union's Function arm), which stays unknown here.
 pub fn isCallbackValueType(comptime T: type) bool {
-    if (T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface) return true;
-    const info = @typeInfo(T);
-    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
+    return T == runtime.BorrowedCallbackFunction or T == runtime.BorrowedCallbackInterface;
 }
 
 /// A callback value or its nullable form: what conv.fromV8Value converts by
@@ -528,17 +517,10 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
     };
 }
 
-/// The Global a callback value holds: a borrowed value's handle, or a
-/// function pointer's address, untagged (conversions.zig stores it as the
-/// function pointer's value).
+/// The Global a callback value holds: its handle.
 fn callbackValueGlobal(comptime T: type, value: T) ?*v8.Value {
     comptime std.debug.assert(isCallbackValueType(T));
-    const held: runtime.JSValue = if (T == runtime.BorrowedCallbackFunction)
-        value.function
-    else if (T == runtime.BorrowedCallbackInterface)
-        value.object
-    else
-        return @ptrFromInt(@intFromPtr(value));
+    const held: runtime.JSValue = if (T == runtime.BorrowedCallbackFunction) value.function else value.object;
     return switch (held) {
         .handle => |h| @ptrCast(@alignCast(h.ptr)),
         else => null,
@@ -710,12 +692,12 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
 /// A callback function and its nullable form are borrowed too, as every
 /// callback-function value is (`needsArgCleanup`): the value IS the handle,
 /// and the setter that keeps it - an event handler IDL attribute's
-/// (EventTarget.setEventHandler), a callback attribute's - takes a hold of
-/// its own (engine.takeCallbackFunction), which moves the function out. Every
-/// such setter was read for that (lane leaks7, 2026-10-25): the event handler
-/// attributes go through dom.event_handlers to setEventHandler, which takes;
-/// the other callback attributes (WebGPU's, MediaSession's) are stubs that
-/// read nothing.
+/// (EventTarget.setEventHandler), a callback attribute's - keeps a hold of
+/// its own (`keep`, engine.keepCallbackFunction), which moves the function
+/// out. Every such setter was read for that (lane leaks7, 2026-10-25): the
+/// event handler attributes go through dom.event_handlers to
+/// setEventHandler, which keeps; the other callback attributes (WebGPU's,
+/// MediaSession's) are stubs that read nothing.
 ///
 /// An ALLOWLIST: a buffer source, a dictionary or sequence that merely
 /// contains an `any`, and every type nobody named answer FALSE - the value
@@ -1771,7 +1753,7 @@ pub fn getOptionalValueType(comptime T: type) ?type {
 /// Check if a converted argument type needs to be freed after use.
 /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
 /// JSValue types may contain owned strings that need cleanup.
-/// CallbackWrapper types are the call's: released once it returns.
+/// Callback values are the call's: released once it returns.
 /// Struct types (dictionaries) may contain string fields that need cleanup.
 pub fn needsArgCleanup(comptime T: type) bool {
     @setEvalBranchQuota(10000);
@@ -1795,18 +1777,14 @@ pub fn needsArgCleanup(comptime T: type) bool {
     if (T == runtime.DOMString) return true;
     // JSValue may contain owned strings
     if (T == runtime.JSValue) return true;
-    // CallbackWrapper - the call's; a method that keeps the callback
-    // (addEventListener) takes its own CallbackInterface first.
-    if (T == *runtime.CallbackWrapper) return true;
-    // A callback function (codegen's function-pointer type) - the Global
-    // its conversion made, BORROWED for the call as a CallbackWrapper is: an
-    // impl that keeps the callback takes a hold of its own
-    // (engine.takeCallbackFunction), and the binding frees this one with the
-    // value - an argument, a dictionary member, a union arm, a sequence
-    // element. Before, the take adopted it and the binding freed nothing, so
-    // every impl that never took its callback kept it for the agent's life:
-    // `new ResizeObserver(fn)`, `canvas.toBlob(fn)`, `new Observable(fn)`
-    // (lane leaks7).
+    // A callback function or interface value (runtime.Borrowed*) - the
+    // Global its conversion made, BORROWED for the call: an impl that keeps
+    // the callback keeps a hold of its own (`keep`), and the binding frees
+    // this one with the value - an argument, a dictionary member, a union
+    // arm, a sequence element. Before lane leaks7 the take adopted it and the
+    // binding freed nothing, so every impl that never took its callback kept
+    // it for the agent's life: `new ResizeObserver(fn)`, `canvas.toBlob(fn)`,
+    // `new Observable(fn)`.
     if (isCallbackValueType(T)) return true;
     // Generic slice types (sequences) - allocated by fromV8Sequence
     // This handles []const JSValue, []const DOMString, etc.
@@ -1823,7 +1801,6 @@ pub fn needsArgCleanup(comptime T: type) bool {
         if (Child == []const u8) return true;
         if (Child == runtime.DOMString) return true;
         if (Child == runtime.JSValue) return true;
-        if (Child == *runtime.CallbackWrapper) return true;
         // Recurse for nested optionals or other wrapper types
         if (needsArgCleanup(Child)) return true;
     }
@@ -1891,19 +1868,13 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
             },
             else => {}, // Other variants don't need cleanup here
         }
-    } else if (T == *runtime.CallbackWrapper) {
-        // A callback interface argument is the call's, like every
-        // argument: the impl borrowed it, and one that keeps the
-        // callback (addEventListener) took a CallbackInterface of its
-        // own. Its wrapper goes now.
-        conv.releaseCallbackWrapper(arg);
     } else if (comptime isCallbackValueType(T)) {
-        // A callback function is the call's too: the value IS the Global
-        // its conversion made (conv.fromV8Value's function-pointer branch,
-        // untagged). An impl that keeps the callback took a hold of its own,
-        // which moved the function out and left this Global empty
-        // (engine.takeCallbackFunction); either way it goes now - an emptied
-        // one without the general dispose's registry lookups.
+        // A callback function or interface value is the call's, like every
+        // argument: the value IS the Global its conversion made. An impl
+        // that keeps the callback kept a hold of its own, which moved the
+        // object out and left this Global empty (engine.keepCallbackFunction,
+        // keepCallbackInterface); either way it goes now - an emptied one
+        // without the general dispose's registry lookups.
         v8.v8_Global_DisposeCallbackValue(callbackValueGlobal(T, arg));
     } else if (@typeInfo(T) == .optional) {
         // Handle all optional types by recursively freeing the inner value

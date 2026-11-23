@@ -2078,7 +2078,8 @@ pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 
 /// The value `global` holds, MOVED into a Global of the caller's own: no V8
 /// handle is made, and `global` is left empty, still its owner's to dispose.
-/// Null for null/empty. engine.takeCallbackFunction's move.
+/// Null for null/empty. engine.keepCallbackFunction's (and
+/// keepCallbackInterface's) move.
 pub extern fn v8_Global_TakeOver(global: ?*Value) ?*Value;
 
 /// The binding's Global for a callback-function value, when its call is over:

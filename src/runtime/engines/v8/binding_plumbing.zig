@@ -712,10 +712,9 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // call before.
     //
     // The current context is the conversion's to keep when converting one of
-    // the arguments may make the engine keep it (`conv.fromV8Value` stores it
-    // into a persistent `runtime.CallbackWrapper` for callback-typed
-    // parameters, so `createElement(DOMString)` is transient while
-    // `setTimeout(TimerHandler, ...)` is not). `typeRetainsContext` is an
+    // the arguments may make the engine keep it (a callback interface's
+    // wrapper kept a context handle of its own until lane bind1; an unknown
+    // type still may). `typeRetainsContext` is an
     // ALLOWLIST of provably inert types and answers "retains" for anything it
     // does not recognise. That direction matters: written as a blocklist,
     // this exact check released a context `setTimeout` still needed and
@@ -1472,19 +1471,11 @@ pub fn finishGetter(
             // ?EventHandlerNonNull): the value is BORROWED - the
             // holder's own Global (an event handler map's), which is
             // what setReturnValue reads. Null is JavaScript null.
-            // TRANSITIONAL: a function pointer's value is the
-            // Global's address (conversions.zig, UNTAGGED - a tag in
-            // a function pointer's low bits is illegal behaviour an
-            // optimized build acts on).
             if (result) |function_value| {
-                if (comptime @typeInfo(PayloadType).optional.child == runtime.BorrowedCallbackFunction) {
-                    break :comptime_convert switch (function_value.function) {
-                        .handle => |h| @ptrCast(@alignCast(h.ptr)),
-                        else => v8.v8_Null(isolate_inner) orelse unreachable,
-                    };
-                }
-                const address: usize = @intFromPtr(function_value);
-                break :comptime_convert @ptrFromInt(address);
+                break :comptime_convert switch (function_value.function) {
+                    .handle => |h| @ptrCast(@alignCast(h.ptr)),
+                    else => v8.v8_Null(isolate_inner) orelse unreachable,
+                };
             } else {
                 break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
             }
@@ -1748,14 +1739,7 @@ pub fn isUnionResult(comptime T: type) bool {
 
 pub fn isOptionalCallbackType(comptime T: type) bool {
     const type_info = @typeInfo(T);
-    if (type_info != .optional) return false;
-    if (type_info.optional.child == runtime.BorrowedCallbackFunction) return true;
-
-    const child_info = @typeInfo(type_info.optional.child);
-    if (child_info != .pointer) return false;
-
-    const ptr_child_info = @typeInfo(child_info.pointer.child);
-    return ptr_child_info == .@"fn";
+    return type_info == .optional and type_info.optional.child == runtime.BorrowedCallbackFunction;
 }
 
 // ============================================================================
