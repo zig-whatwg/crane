@@ -6050,13 +6050,15 @@ pub fn build(b: *std.Build) void {
     // it.
     //
     // The words it looks for, a list per class. An engine's words are its
-    // adapter's own, from the engine protocol's list of adapters. Until the
-    // platform protocol's build file supplies the rest the same way, they are
-    // spelled here - and counted like every other line of this file.
+    // adapter's own, from the engine protocol's list of adapters, and a
+    // platform's from the platform protocol's; what a branch on the target's
+    // system looks like is the platform protocol's too. Until the kit's
+    // build file supplies the libraries' the same way, they are spelled
+    // here - and counted like every other line of this file.
     const lint_build_words = [_][]const u8{
         "--engine=" ++ engine_build.lint_words,
-        "--platform=darwin,linux,macos,word:ios,iphoneos,xcrun,homebrew,.testing",
-        "--target=os.tag,isDarwin,.abi ==",
+        "--platform=" ++ platform_build.lint_words,
+        "--target=" ++ platform_build.lint_target_words,
         "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
     };
     const lint_build_module = b.createModule(.{
