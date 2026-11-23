@@ -214,7 +214,9 @@ pub fn structuredSerializeInternal(
         return existing;
     }
 
-    // Create the serialized value
+    // Create the serialized value. Every error return below lets this
+    // errdefer free it - none frees it itself (that was a double free on each
+    // throwing path: symbol, function, detached and shared buffers).
     const serialized = try allocator.create(SerializedValue);
     errdefer allocator.destroy(serialized);
 
@@ -251,7 +253,6 @@ pub fn structuredSerializeInternal(
 
         // Step 5: Symbol - throw DataCloneError
         .symbol => {
-            allocator.destroy(serialized);
             return CloneError.DataCloneError;
         },
 
@@ -291,33 +292,19 @@ pub fn structuredSerializeInternal(
         // Step 13: ArrayBuffer
         .array_buffer => |ab| {
             if (ab.detached) {
-                allocator.destroy(serialized);
                 return CloneError.DetachedBuffer;
             }
             if (ab.shared) {
-                if (for_storage) {
-                    allocator.destroy(serialized);
-                    return CloneError.DataCloneError;
-                }
-                // SharedArrayBuffer handling
-                if (ab.max_byte_length) |max_len| {
-                    serialized.type = .growable_shared_array_buffer;
-                    serialized.data = .{
-                        .growable_shared_array_buffer = .{
-                            .data = try allocator.dupe(u8, ab.data),
-                            .byte_length_data = undefined, // Would need real shared state
-                            .max_byte_length = max_len,
-                            .agent_cluster = 0, // Would need real agent cluster ID
-                        },
-                    };
-                } else {
-                    serialized.type = .shared_array_buffer;
-                    serialized.data = .{ .shared_array_buffer = .{
-                        .data = try allocator.dupe(u8, ab.data),
-                        .byte_length = ab.data.len,
-                        .agent_cluster = 0,
-                    } };
-                }
+                // Step 14.1: a SharedArrayBuffer is serialized as its shared
+                // data block itself, never a copy, restricted to the
+                // surrounding agent's agent cluster (steps 14.1.4 and 26) -
+                // which a storage serialization cannot carry. This walker has
+                // no shared memory to carry yet, so every SharedArrayBuffer
+                // fails as DataCloneError, as one that may not cross does (it
+                // used to yield a copy with an undefined length cell and
+                // agent cluster 0).
+                // TODO(jsc walker): SharedArrayBuffer through the SharedMemory sidecar (docs/engine-protocol.md, Structured serialization)
+                return CloneError.DataCloneError;
             } else {
                 // Regular ArrayBuffer - deep copy
                 if (ab.max_byte_length) |max_len| {
@@ -501,7 +488,6 @@ pub fn structuredSerializeInternal(
 
         // Step 21: Function - throw DataCloneError
         .function => {
-            allocator.destroy(serialized);
             return CloneError.DataCloneError;
         },
 

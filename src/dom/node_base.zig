@@ -236,7 +236,7 @@ pub const NodeBase = extern struct {
     /// parent), the rest is the count of references held through `Ref`, in
     /// units of `rc_one`. A node is born with one reference, its creator's.
     /// Maintained only through src/dom/refcount.zig; nothing reads it for
-    /// lifetime yet (tmp/plans/refcount-design.md, steps 2 to 6: shadow mode).
+    /// lifetime yet (docs/refcount-design.md, steps 2 to 6: shadow mode).
     /// Non-atomic: nodes belong to one agent's thread.
     rc: u32 = rc_one,
 
@@ -364,7 +364,7 @@ pub const NodeBase = extern struct {
     pub const ClickInProgress = *align(1:7:1) bool;
 
     // ========================================================================
-    // Reference counting (tmp/plans/refcount-design.md section 1)
+    // Reference counting (docs/refcount-design.md section 1)
     // ========================================================================
 
     /// One reference in `rc`'s units (WebKit `s_refCountIncrement`).

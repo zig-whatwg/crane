@@ -276,9 +276,6 @@ pub const link_types = @import("link_types.zig");
 pub const parser_script_execution = @import("parser_script_execution.zig");
 pub const ParserScriptContext = parser_script_execution.ParserScriptContext;
 
-/// Event utilities for firing events during script processing
-pub const event_utils = @import("event_utils.zig");
-
 /// Structure command implementations with DOM integration
 /// (Used by execCommand for list, paragraph, link, and media commands)
 pub const structure_commands = @import("structure_commands.zig");
@@ -343,13 +340,6 @@ pub const user_input = @import("user_input.zig");
 
 /// ScriptRunner type for coordinating script execution
 pub const ScriptRunner = script_runner.ScriptRunner;
-
-/// Extract error information from a JavaScript exception
-/// Re-exported from event_utils for convenience
-pub const extractErrorInfo = event_utils.extractErrorInfo;
-
-/// Error information structure
-pub const ErrorInfo = event_utils.ErrorInfo;
 
 test {
     std.testing.refAllDecls(@This());

@@ -527,6 +527,8 @@ INCLUDE = [
     ('html/webappapis/timers/',                   'setTimeout/setInterval and their clamping'),
     ('html/webappapis/microtask-queuing/',        'queueMicrotask and microtask ordering'),
     ('html/webappapis/structured-clone/',         'postMessage payloads'),
+    ('html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/',
+     'SharedArrayBuffer across postMessage, BroadcastChannel, workers, history and IndexedDB: cross-origin isolation and agent clusters (roadmap audit 2026-11-22; lane flk4 swept it first)'),
     ('html/webappapis/scripting/',                'onX handlers, error reporting'),
     ('html/webappapis/atob/',                     'base64'),
     ('html/webappapis/dynamic-markup-insertion/', 'innerHTML, document.write'),
