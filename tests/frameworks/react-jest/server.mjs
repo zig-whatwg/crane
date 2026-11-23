@@ -10,7 +10,8 @@
 //
 //   node server.mjs run --react=<React checkout> --browser=crane --console=<repl> --out=<dir>
 //   node server.mjs run --react=<React checkout> --browser=chrome --chrome=<executable> --out=<dir>
-//       [--files=<regexp>] [--parallel=<n>] [--file-timeout-ms=<ms>]
+//       [--exclusions=<list>] [--files=<regexp>] [--test-name=<regexp>] [--parallel=<n>] [--file-timeout-ms=<ms>]
+//       [--init=<script>]   (Chrome: a diagnosis script run in each page first)
 //   node server.mjs serve --react=<React checkout>          (the page at http://localhost/, by hand)
 //
 // The run writes <out>/jest.json, Jest's own `--json` shape (@jest/test-result's formatTestResults),
@@ -54,8 +55,29 @@ const harnessRequire = createRequire(path.join(harnessDir, 'package.json'));
 // --- Jest's configuration, the files it selects, its resolver and transformer -----------------
 const configPath = './scripts/jest/config.source.js';
 const {readConfigs} = reactRequire('jest-config');
+// The suite's exclusion list (tools/fw_matrix/excluded/react-19.3.1-jest.txt, --exclusions): its tests
+// never run, in any column - they become Jest's own filter, testNamePattern, a negative lookahead over
+// their full names (Jest's: describe blocks and the test joined by spaces; the list joins them by
+// " > "), as the other suites' lists become QUnit's and Mocha's own filters; its [file:] entries are
+// files not run at all. --test-name=<regexp> (Jest's -t, for a diagnosis) replaces the filter.
+function readExclusions(file) {
+  const tests = [];
+  const files = new Set();
+  if (!file) return {tests, files};
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    const m = /^\[(.*)\]\s*$/.exec(line);
+    if (!m) continue;
+    if (m[1].startsWith('file:')) files.add(path.join(reactRoot, m[1].slice('file:'.length)));
+    else tests.push(m[1].split(' > ').join(' '));
+  }
+  return {tests, files};
+}
+const exclusions = readExclusions(args.exclusions && path.resolve(args.exclusions));
+const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+const exclusionPattern = exclusions.tests.length > 0 ? `^(?!(?:${exclusions.tests.map(escapeRegExp).join('|')})$)` : null;
+const testNamePattern = args['test-name'] ?? exclusionPattern;
 const {globalConfig, configs} = await readConfigs(
-  {$0: 'jest', _: [], ci: true, config: configPath},
+  {$0: 'jest', _: [], ci: true, config: configPath, ...(testNamePattern ? {testNamePattern} : {})},
   [reactRoot]
 );
 if (configs.length !== 1) throw new Error(`expected one project, got ${configs.length}`);
@@ -484,6 +506,8 @@ async function runInChrome(r, logPath, timeoutMs) {
   }
   const browserContext = await chromeBrowser.newContext();
   const page = await browserContext.newPage();
+  // --init=<file>: a diagnosis script run in the page before the harness (Chrome only; never in a run of record).
+  if (args.init) await page.addInitScript({path: args.init});
   const lines = [];
   page.on('console', m => lines.push(`[${m.type()}] ${m.text()}`));
   page.on('pageerror', e => lines.push(`[pageerror] ${e.stack || e}`));
@@ -513,6 +537,10 @@ async function run() {
   const skipped = [];
   for (const f of all) {
     if (only && !only.test(path.relative(reactRoot, f))) continue;
+    if (exclusions.files.has(f)) {
+      skipped.push([f, 'excluded (the exclusion list)']);
+      continue;
+    }
     const env = environmentOf(f);
     if (jsdomEnvironments.has(env)) {
       selected.push(f);
@@ -580,7 +608,9 @@ async function run() {
   const json = testResult.formatTestResults(aggregated);
   fs.writeFileSync(path.join(out, 'jest.json'), JSON.stringify(json));
   fs.writeFileSync(path.join(out, 'files.txt'), outcomes.sort().join('\n') + '\n');
-  fs.writeFileSync(path.join(out, 'not-run.txt'), skipped.map(([f, e]) => `${path.relative(reactRoot, f)}\t${path.relative(reactRoot, e)}`).join('\n') + '\n');
+  fs.writeFileSync(path.join(out, 'not-run.txt'), skipped.map(([f, e]) => `${path.relative(reactRoot, f)}\t${e.startsWith('/') ? path.relative(reactRoot, e) : e}`).join('\n') + '\n');
+  // The filter, for React's own `yarn test` (the jsdom column): --testNamePattern="$(cat ...)".
+  if (exclusionPattern) fs.writeFileSync(path.join(out, 'test-name-pattern.txt'), exclusionPattern);
   console.log(`done in ${Math.round((Date.now() - started) / 1000)} s: ${aggregated.numPassedTests} passed, ${aggregated.numFailedTests} failed, ${aggregated.numPendingTests} skipped, ${aggregated.numRuntimeErrorTestSuites} files did not run; ${skipped.length} files with another environment not run`);
   process.exit(0);
 }

@@ -58,8 +58,14 @@ On a host with React 19.3.1 checked out and installed (`yarn install --frozen-lo
 (`.nvmrc`), this directory's packages (`npm ci`), and React's environment:
 
     NODE_ENV=development RELEASE_CHANNEL=experimental CI=true \
-      node server.mjs run --react=<react> --browser=crane --console=<repl> --out=<dir> [--files=<regexp>]
+      node server.mjs run --react=<react> --browser=crane --console=<repl> --out=<dir> \
+        --exclusions=<tools/fw_matrix/excluded/react-19.3.1-jest.txt> [--files=<regexp>]
     ... --browser=chrome --chrome=<Chrome for Testing> ...
+
+With `--exclusions=tools/fw_matrix/excluded/react-19.3.1-jest.txt`, the suite's exclusion list becomes Jest's
+own filter before anything runs: its tests are a negative lookahead in `testNamePattern` (Jest's `-t`), its
+`[file:]` entries files not run, so an excluded test runs in no column - the run writes the pattern to
+`<dir>/test-name-pattern.txt` for React's own `yarn test` (the jsdom column) to take as `--testNamePattern`.
 
 Crane gets a fresh release console per file (`repl http://localhost/`, then
 `await __reactJest.run(<file>)` typed into its console), as Jest gives each file a fresh environment;

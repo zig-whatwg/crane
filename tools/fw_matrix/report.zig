@@ -104,6 +104,10 @@ pub const rendering_statement =
 pub const jsdom_only_statement =
     "React's own Jest suite runs on jsdom, a stand-in browser in Node. A test that asserts something jsdom does and Chrome, Firefox and Safari all do differently (a style serialization jsdom drops, a property jsdom lacks, jsdom's own internals) fails in every real browser, so it counts in neither column.";
 
+/// Why a needs-node test counts in no column.
+pub const needs_node_statement =
+    "A few of React's Jest tests use an API only Node has - AsyncLocalStorage carrying a request across an await, which no browser has yet - so they cannot pass in any browser and count in neither column.";
+
 pub const rulings_statement =
     "Some tests fail in Crane because Crane does what the browser majority does, or what the newer spec says and a shipping browser does, where the test expects another browser's behaviour. Like rendering tests, they are counted in neither column.";
 
@@ -775,6 +779,7 @@ fn writeNotCounted(w: W, nc: NotCounted, todomvc: bool) !void {
         .{ .n = nc.of(.rendering), .one = "needs a renderer", .many = "need a renderer" },
         .{ .n = nc.of(.follows_majority) + nc.of(.follows_spec), .one = "follows a ruling", .many = "follow a ruling" },
         .{ .n = nc.of(.jsdom_only), .one = "asserts jsdom's behaviour", .many = "assert jsdom's behaviour" },
+        .{ .n = nc.of(.needs_node), .one = "needs a Node API", .many = "need a Node API" },
         .{ .n = nc.of(.project_skip), .one = skipped, .many = skipped },
         .{ .n = nc.of(.needs_server), .one = "needs the project's test server", .many = "need the project's test server" },
         .{ .n = nc.of(.needs_node_build), .one = "needs the project's Node build", .many = "need the project's Node build" },
@@ -869,9 +874,10 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
     const majority = sumOver(suites, .project, countOf(.follows_majority));
     const newer_spec = sumOver(suites, .project, countOf(.follows_spec));
     const jsdom_only = sumOver(suites, .project, countOf(.jsdom_only));
+    const needs_node = sumOver(suites, .project, countOf(.needs_node));
     try w.writeAll("<details class=\"fold fw-sec\" id=\"not-run\">\n<summary><h2><span class=\"secno\">3</span>What is not run, and why</h2><span class=\"fold-meta\">");
     var parts: u32 = 0;
-    for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ majority + newer_spec, "following a ruling" }, .{ jsdom_only, "asserting jsdom&#39;s behaviour" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
+    for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ majority + newer_spec, "following a ruling" }, .{ jsdom_only, "asserting jsdom&#39;s behaviour" }, .{ needs_node, "needing a Node API" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
         if (parts > 0) try w.writeAll(" &middot; ");
         parts += 1;
         try w.print("{s} ", .{p[1]});
@@ -914,6 +920,15 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
         try html.plural(w, jsdom_only, "test", "tests");
         _ = try perFramework(arena, w, suites, countOf(.jsdom_only));
         try w.writeAll(", each listed with what Chrome, Firefox and Safari do in the project&#39;s exclusion list (<code>tools/fw_matrix/excluded/</code>).</li>\n");
+    }
+    // A test of a jsdom-run suite that needs Node itself.
+    if (needs_node > 0) {
+        try w.writeAll("<li><strong>Node APIs.</strong> ");
+        try html.text(w, needs_node_statement);
+        try w.writeAll(" Not counted for this reason: ");
+        try html.plural(w, needs_node, "test", "tests");
+        _ = try perFramework(arena, w, suites, countOf(.needs_node));
+        try w.writeAll(", each listed with the API in the project&#39;s exclusion list (<code>tools/fw_matrix/excluded/</code>).</li>\n");
     }
     // The frameworks that wait, and their suites.
     var waiting: u32 = 0;

@@ -70,6 +70,9 @@ pub const NotRun = enum {
     /// jsdom has and all three browsers do not (exclusions.zig). Added in
     /// react1.
     jsdom_only,
+    /// A suite that runs on jsdom in Node: it uses a Node API no browser has
+    /// (exclusions.zig). Added in react1.
+    needs_node,
 
     pub fn label(k: NotRun) []const u8 {
         return switch (k) {
@@ -81,6 +84,7 @@ pub const NotRun = enum {
             .follows_majority => "Crane follows the browser majority",
             .follows_spec => "Crane follows the newer spec",
             .jsdom_only => "asserts jsdom's behaviour, which all three browsers differ from",
+            .needs_node => "uses a Node API no browser has",
         };
     }
 };
@@ -498,6 +502,7 @@ test "a jsdom-only record is written as jsdom_only, read back, and labelled as s
     const back = try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"));
     try testing.expectEqual(NotRun.jsdom_only, back.test_record.not_run.?);
     try testing.expectEqualStrings("asserts jsdom's behaviour, which all three browsers differ from", NotRun.jsdom_only.label());
+    try testing.expectEqualStrings("uses a Node API no browser has", NotRun.needs_node.label());
 }
 
 test "a page record: one line, byte for byte" {

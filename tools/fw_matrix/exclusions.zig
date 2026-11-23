@@ -4,7 +4,7 @@
 //!
 //!     [<id>]
 //!     kind      = rendering | needs-server | needs-node-build | node-runner-only
-//!                 | follows-majority | follows-spec | jsdom-only
+//!                 | follows-majority | follows-spec | jsdom-only | needs-node
 //!     why       = <why it is not run>
 //!     assertion = <the assertion that needs layout>   (rendering: required)
 //!     ruling    = <the ruling or issue that decides it>  (follows-*: required)
@@ -22,6 +22,9 @@
 //! the integrator's criterion, 2026-11-22: where the browsers split it is not
 //! jsdom-only, it gets golden rule 2 like any other. Its `browsers` says what
 //! Chrome, Firefox and Safari do, with the probe or run that showed it.
+//! `needs-node` names a test of such a suite that uses a Node API no browser
+//! has (Node's AsyncLocalStorage carrying a request across an await): jsdom
+//! has nothing to do with it, Node does (the integrator, 2026-11-22).
 //!
 //! `<id>` is the name the framework's own filter matches: QUnit
 //! "<module>: <test name>" (QUnit's `fullName` in Test.valid), Mocha the
@@ -49,6 +52,7 @@ pub const Kind = enum {
     follows_majority,
     follows_spec,
     jsdom_only,
+    needs_node,
 
     pub fn notRun(k: Kind) journal.NotRun {
         return switch (k) {
@@ -59,6 +63,7 @@ pub const Kind = enum {
             .follows_majority => .follows_majority,
             .follows_spec => .follows_spec,
             .jsdom_only => .jsdom_only,
+            .needs_node => .needs_node,
         };
     }
 
@@ -76,6 +81,7 @@ pub const Kind = enum {
             .{ "follows-majority", .follows_majority },
             .{ "follows-spec", .follows_spec },
             .{ "jsdom-only", .jsdom_only },
+            .{ "needs-node", .needs_node },
         };
         for (names) |n| if (std.mem.eql(u8, s, n[0])) return n[1];
         return null;
@@ -356,6 +362,24 @@ test "parse: a test that asserts jsdom's behaviour, which all three browsers dif
     try testing.expectError(error.MissingBrowsers, parse(a, "[m: t]\nkind = jsdom-only\nwhy = w\n", &f));
     // `browsers` belongs to jsdom-only alone.
     try testing.expectError(error.BrowsersOutsideJsdomOnly, parse(a, "[m: t]\nkind = follows-majority\nwhy = w\nruling = r\nbrowsers = b\n", &f));
+}
+
+test "parse: a test that uses a Node API no browser has is needs-node" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: ParseFailure = .{};
+    const entries = try parse(a,
+        \\[ReactFlightDOM > should support float methods when rendering in Fiber]
+        \\kind   = needs-node
+        \\why    = Flight's hints after an await need Node's AsyncLocalStorage to carry the request across it; no browser propagates async context
+        \\source = packages/react-server-dom-webpack/src/__tests__/ReactFlightDOM-test.js:1697
+        \\
+    , &f);
+    try testing.expectEqual(Kind.needs_node, entries[0].kind);
+    try testing.expectEqual(journal.NotRun.needs_node, entries[0].kind.notRun());
+    // Not a ruling kind and no browsers line: the API it needs is its reason.
+    try testing.expectError(error.BrowsersOutsideJsdomOnly, parse(a, "[m: t]\nkind = needs-node\nwhy = w\nbrowsers = b\n", &f));
 }
 
 test "parse refuses what would exclude without a reason" {
