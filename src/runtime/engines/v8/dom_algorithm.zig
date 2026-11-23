@@ -34,6 +34,9 @@ const DeferredTeardown = runtime.gc.DeferredTeardown;
 /// A DOM algorithm begins: the agent's queue, its depth raised, or null (an
 /// isolate createAgent did not make, or after its agent's end).
 pub inline fn enter(isolate: *v8.Isolate) ?*DeferredTeardown {
+    // A binding call begins: an exception text an earlier call recorded is
+    // not this call's (runtime.exception_text).
+    runtime.exception_text.beginBindingCall();
     const storage = isolate_templates.getTemplateStorage(isolate) orelse return null;
     const queue = storage.deferred_teardown orelse return null;
     queue.enterAlgorithm();

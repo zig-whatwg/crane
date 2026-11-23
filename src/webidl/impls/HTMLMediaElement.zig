@@ -225,15 +225,34 @@ pub const InternalState = struct {
                     self.cancel();
                     return;
                 };
-                // With an event loop the stable-state wait is a task
-                // (awaitSelection), queued now, right behind the error task,
-                // as the algorithm reaches step 11 (Chromium starts its
-                // load_timer_ when the source fails, not after its error
-                // event). Without one, the error task awaits the microtask.
-                if (self.hasEventLoop()) self.awaitSelection(self.load.generation) catch {
-                    self.cancel();
-                    return;
-                };
+                // Step 11 awaits a stable state. With no <source> left after
+                // the pointer, the search loop reaches step 18 (waiting) in
+                // that stable state - a microtask, before the error task runs
+                // - so the source's error handler reads NETWORK_NO_SOURCE:
+                // Chrome 157, Firefox 159 and Safari 27 all do (lane flk4's
+                // probe, tmp/probes/flk4-media, 2026-11-23; Chromium's
+                // HTMLMediaElement::WaitForSourceChange runs as the source
+                // fails). With another <source> after it, the selection is a
+                // task (awaitSelection), queued now right behind the error
+                // task, as the algorithm reaches step 11: in the failed
+                // source's handler networkState is still NETWORK_LOADING in
+                // all three, and currentSrc is still the FAILED source in
+                // Chrome and Safari (Chromium's load_timer_, started as the
+                // source fails, takes the next candidate after the error
+                // event) - Firefox, with the spec's microtask, already
+                // reports the next source there; Crane follows the two
+                // (golden rule 2). Without an event loop, the error task
+                // awaits the microtask.
+                if (self.hasEventLoop()) {
+                    const queued = if (sourceAfterPointer(self) == null)
+                        self.activity.stable(self.load.generation, stable)
+                    else
+                        self.awaitSelection(self.load.generation);
+                    queued catch {
+                        self.cancel();
+                        return;
+                    };
+                }
             },
             .dedicated_failure => {
                 self.activity.queuePlay(@backingInt(Kind.failure), self.load.generation, "error", &self.pending_play, "NotSupportedError") catch {
@@ -884,6 +903,14 @@ fn setCursor(self: *InternalState, before: ?*runtime.Instance, after: ?*runtime.
     const instance = self.activity.instance orelse return;
     if (before) |node| engine.traceChild(instance, node, .{ .name = "sourceBefore" }) else engine.forgetTracedChild(instance, .{ .name = "sourceBefore" });
     if (after) |node| engine.traceChild(instance, node, .{ .name = "sourceAfter" }) else engine.forgetTracedChild(instance, .{ .name = "sourceAfter" });
+}
+/// The <source> the search loop would take next - the first one after the
+/// pointer - without moving the pointer (nextSource moves it).
+fn sourceAfterPointer(self: *InternalState) ?*runtime.Instance {
+    const instance = self.activity.instance orelse return null;
+    var cursor = if (self.before) |link| (if (link.isLive() and parent(link.instance) == instance) child(link.instance, false) else child(instance, true)) else child(instance, true);
+    while (cursor) |node| : (cursor = child(node, false)) if (isSource(node)) return node;
+    return null;
 }
 fn nextSource(self: *InternalState) ?*runtime.Instance {
     const instance = self.activity.instance orelse return null;

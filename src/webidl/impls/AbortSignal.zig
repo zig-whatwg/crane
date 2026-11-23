@@ -143,11 +143,30 @@ fn removeAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) void {
     }
 }
 
+/// DOM § 3.3 "remove an algorithm from an AbortSignal", for an owner that
+/// frees the algorithm's context once it is off the signal
+/// (dom.abort_algorithms.removeListed): whether `ctx`'s algorithm was still
+/// in signal's abort algorithms. Not while the abort steps walk them: they
+/// took the list first (`runAbortSteps`), and the walk runs what it took.
+/// From the end: an owner removes its most recent algorithms most often (a
+/// listener added and removed again), and each `ctx` is listed once.
+fn removeListedAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) bool {
+    const internal = getInternal(instance) orelse return false;
+    var i = internal.abort_algorithms.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (internal.abort_algorithms.items[i].ctx != ctx) continue;
+        _ = internal.abort_algorithms.orderedRemove(i);
+        return true;
+    }
+    return false;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Nobody can hold a signal to add an algorithm to before one exists.
-    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal, .signal_abort = signalAbortHook });
+    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .remove_listed = removeListedAlgorithm, .create_dependent = createDependentAbortSignal, .signal_abort = signalAbortHook });
 }
 
 /// AbortSignal's own construction steps: the generated chain runs
@@ -215,6 +234,16 @@ pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) an
     return createDependentAbortSignal(instance.ctx, list);
 }
 
+// The default reasons' messages: DOM leaves them to the implementation. Probed
+// 2026-11-22 (lane react1): abort() - Chrome "signal is aborted without reason",
+// Firefox "The operation was aborted. ", Safari "The operation was aborted.";
+// golden rule 2 with all three differing, mechanism by mechanism (the wording
+// Firefox's and Safari's, no trailing space Chrome's and Safari's): Safari's
+// string. timeout() - Chrome "signal timed out", Firefox and Safari "The
+// operation timed out.": theirs. tests/wpt/crane/react1-abort-reason-messages.html.
+const default_abort_message = "The operation was aborted.";
+const default_timeout_message = "The operation timed out.";
+
 /// End the pending-activity hold `call_static_timeout` took on `signal`.
 fn releasePendingActivity(signal: *runtime.Instance) void {
     engine.releasePlatformObject(signal);
@@ -228,7 +257,7 @@ fn releasePendingActivity(signal: *runtime.Instance) void {
 pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const signal = try newSignal(instance.ctx);
     const internal = getInternal(signal).?;
-    const kept = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", "signal is aborted without reason");
+    const kept = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", default_abort_message);
     defer kept.release();
     keepReason(signal, internal, kept.value);
     internal.aborted = true;
@@ -304,7 +333,7 @@ const TimeoutTask = struct {
     /// DOMException.
     fn abortTimedOut(data: ?*anyopaque) void {
         const signal: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
-        const reason = engine.createDOMException(signal.ctx, "TimeoutError", "signal timed out") catch return;
+        const reason = engine.createDOMException(signal.ctx, "TimeoutError", default_timeout_message) catch return;
         defer reason.release();
         signalAbortWith(signal, reason.value);
     }
@@ -370,7 +399,7 @@ pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplErr
     if (internal.aborted) return;
     // Step 2: Set signal's abort reason to reason if it is given; otherwise
     // to a new "AbortError" DOMException.
-    const owned = reasonOrDefault(instance, reason, "AbortError", "signal is aborted without reason") catch return error.OutOfMemory;
+    const owned = reasonOrDefault(instance, reason, "AbortError", default_abort_message) catch return error.OutOfMemory;
     defer owned.release();
     signalAbortWith(instance, owned.value);
 }

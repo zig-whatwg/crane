@@ -130,6 +130,12 @@ const Record = struct {
 /// `threadlocal`, every agent's on the thread in one list.
 pub const Records = std.ArrayListUnmanaged(Record);
 
+/// What an agent's `Records` list is allocated from: libc's heap, as the
+/// agent's wrapper cache list (wrapper_cache `caches_allocator`) - no agent
+/// allocator is in reach where a realm joins or leaves it; it was
+/// std.heap.page_allocator, a page for a few records.
+const records_allocator = std.heap.c_allocator;
+
 /// The worker realms of the agent whose isolate this is; null for an isolate
 /// createAgent did not make, which makes no realm.
 fn recordsOf(isolate: *ffi.Isolate) ?*Records {
@@ -144,7 +150,7 @@ fn take(realm: runtime.Context) ?Record {
         const taken = records.swapRemove(i);
         // The list's memory goes with its last record (and with the agent,
         // `endAgent`).
-        if (records.items.len == 0) records.clearAndFree(std.heap.page_allocator);
+        if (records.items.len == 0) records.clearAndFree(records_allocator);
         return taken;
     }
     return null;
@@ -154,7 +160,7 @@ fn take(realm: runtime.Context) ?Record {
 /// realm still on it was not destroyed before its agent; the context manager
 /// tore it down with the agent's realms.
 pub fn endAgent(records: *Records) void {
-    records.deinit(std.heap.page_allocator);
+    records.deinit(records_allocator);
     records.* = .empty;
 }
 
@@ -258,7 +264,7 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
         ffi.v8_Context_Dispose(context);
         return EngineError.OperationFailed;
     };
-    records.append(std.heap.page_allocator, .{
+    records.append(records_allocator, .{
         .realm = realm,
         .isolate = isolate,
         .context = context,
@@ -548,7 +554,11 @@ fn builtinCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer ffi.v8_Context_Dispose(context);
 
-    const allocator = std.heap.page_allocator;
+    // The arguments' values live for this call. No realm allocator is in
+    // reach of a builtin's callback (its data names the function only):
+    // libc's, never std.heap.page_allocator's page per string argument
+    // (docs/lessons/architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
+    const allocator = std.heap.c_allocator;
     const argc: usize = @intCast(@max(info.length(), 0));
     var handles_buf: [8]*ffi.Value = undefined;
     var values_buf: [8]runtime.JSValue = undefined;

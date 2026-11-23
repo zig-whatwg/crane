@@ -2559,6 +2559,16 @@ fn convertValueAs(
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {
+                            // OWNED (v8_wrapper.cpp: a `new Global<String>`),
+                            // and the string arm's conversion copies its
+                            // characters (fromV8String: WriteUtf8 into its
+                            // own buffer), keeping nothing of it. Left
+                            // undisposed, every setTimeout({ toString() }) -
+                            // TimerHandler's string arm - leaked 16 bytes and
+                            // a global handle for the agent's life (`leaks
+                            // --atExit`, lane mem1; lane flk4, 2026-11-22:
+                            // tests/v8/flk4_union_tostring_handle_test.zig).
+                            defer v8.v8_String_Dispose(str_value);
                             const StringFieldType = fields[str_idx].type;
                             if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
                                 return @unionInit(T, fields[str_idx].name, str_converted);
@@ -2992,6 +3002,8 @@ fn convertValueAs(
             return ConversionError.TypeError;
         }
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // OWNED; fromV8String copies its characters and keeps nothing of it.
+        defer v8.v8_String_Dispose(string);
         return try fromV8String(allocator, isolate, context, string);
     }
     if (T == runtime.Any) return fromV8Any(value);
@@ -3211,8 +3223,10 @@ pub fn byteStringToV8(comptime T: type, isolate: *v8.Isolate, value: T) Conversi
     if (T != []const u8 and T != []u8) @compileError("ByteString result must be a byte slice");
     if (value.len > std.math.maxInt(c_int)) return ConversionError.StringError;
     var small: [256]u16 = undefined;
-    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.page_allocator.alloc(u16, value.len);
-    defer if (value.len > small.len) std.heap.page_allocator.free(units);
+    // A longer one's code units on libc's heap: no allocator is in reach of
+    // a return conversion, and std.heap.page_allocator mapped a page per call.
+    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.c_allocator.alloc(u16, value.len);
+    defer if (value.len > small.len) std.heap.c_allocator.free(units);
     for (value, units) |byte, *unit| unit.* = byte;
     return v8.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(units.len)) orelse ConversionError.StringError;
 }
@@ -4659,11 +4673,29 @@ pub fn throwWebIDLErrorFromContext(
     context: *v8.Context,
     error_name: []const u8,
 ) void {
+    throwWebIDLErrorFromContextFor(isolate, context, error_name, null);
+}
+
+/// `throwWebIDLErrorFromContext` for the error of the binding member
+/// `member`: a DOMException's message is the text the impl recorded with the
+/// error (runtime.exception_text: taken here, and the record cleared whatever
+/// the error), in Chrome's shape for the member ("Failed to execute 'op' on
+/// 'Interface': <text>"; exception_text.message says why Chrome's), or the
+/// text alone with no member; with no text, the error's name, as before.
+pub fn throwWebIDLErrorFromContextFor(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    error_name: []const u8,
+    member: ?runtime.exception_text.Member,
+) void {
+    const text = runtime.exception_text.take(error_name);
     if (isDOMExceptionName(error_name)) {
+        var buf: [512]u8 = undefined;
+        const message = if (text) |t| (if (member) |m| runtime.exception_text.message(&buf, m, t) else t) else error_name;
         // Use the specified context's DOMException constructor
         // This is critical for cross-origin errors: throwing in the caller's
         // context allows the caller's try/catch to catch the exception.
-        throwDOMExceptionFromContext(isolate, context, error_name, error_name);
+        throwDOMExceptionFromContext(isolate, context, error_name, message);
     } else if (std.mem.eql(u8, error_name, "TypeError")) {
         throwTypeErrorFromContext(isolate, context, "TypeError");
     } else if (std.mem.eql(u8, error_name, "NotEnoughArguments")) {
@@ -4728,6 +4760,8 @@ pub fn toConsoleValue(
     // String
     if (v8.v8_Value_IsString(value)) {
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // OWNED; its characters are copied below and nothing keeps it.
+        defer v8.v8_String_Dispose(string);
 
         // Get string length
         const length = v8.v8_String_Utf8Length(string);

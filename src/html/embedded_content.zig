@@ -1013,7 +1013,7 @@ pub fn isBeingRendered(element: *runtime.Instance) bool {
                 if (!std.ascii.eqlIgnoreCase(hidden, "until-found")) return false;
             }
             if (attributeValue(current, "style")) |style| {
-                if (inlineDisplayIsNone(style)) return false;
+                if (inlineDisplayIsNone(runtime.allocatorOf(current), style)) return false;
             }
         }
         node = interfaces.Node.get_parentNode(current) catch return true;
@@ -1024,9 +1024,11 @@ pub fn isBeingRendered(element: *runtime.Instance) bool {
 /// Whether the declarations of an inline style attribute `style` make
 /// `display` `none` - the last `display` declaration, an `!important` one
 /// over any that is not (CSS Cascade's order within one declaration block).
-fn inlineDisplayIsNone(style: []const u8) bool {
+/// `allocator` holds the parse for the call: the element's Browser's
+/// (std.heap.page_allocator mapped pages for it on every call: docs/lessons/
+/// architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
+fn inlineDisplayIsNone(allocator: std.mem.Allocator, style: []const u8) bool {
     if (std.ascii.findIgnoreCase(style, "display") == null) return false;
-    const allocator = std.heap.page_allocator;
     const text = std.mem.concat(allocator, u8, &.{ "x{", style, "}" }) catch return false;
     defer allocator.free(text);
     var parsed = css.rules.parseStyleSheetContents(allocator, text) catch return false;
@@ -1058,8 +1060,9 @@ fn inlineDisplayIsNone(style: []const u8) bool {
 /// child navigables has it as its container.
 fn showsNavigable(object: *runtime.Instance) bool {
     const document = (interfaces.Node.get_ownerDocument(object) catch null) orelse return false;
-    var children = dom.navigables.childNavigablesOf(document, std.heap.page_allocator);
-    defer children.deinit(std.heap.page_allocator);
+    const allocator = runtime.allocatorOf(document);
+    var children = dom.navigables.childNavigablesOf(document, allocator);
+    defer children.deinit(allocator);
     for (children.items) |child| {
         if (child.container == object) return true;
     }
@@ -1073,19 +1076,19 @@ fn globalOf(realm: runtime.Context) ?*runtime.Instance {
 
 test "an inline style's display is none: the last declaration, an important one over the rest" {
     const testing = std.testing;
-    try testing.expect(inlineDisplayIsNone("display: none"));
-    try testing.expect(inlineDisplayIsNone("color: red; DISPLAY:NONE;"));
-    try testing.expect(!inlineDisplayIsNone("display: none; display: block"));
-    try testing.expect(inlineDisplayIsNone("display: none !important; display: block"));
-    try testing.expect(!inlineDisplayIsNone("width: 0px; height: 0px"));
-    try testing.expect(!inlineDisplayIsNone("display: inline"));
-    try testing.expect(!inlineDisplayIsNone(""));
+    try testing.expect(inlineDisplayIsNone(testing.allocator, "display: none"));
+    try testing.expect(inlineDisplayIsNone(testing.allocator, "color: red; DISPLAY:NONE;"));
+    try testing.expect(!inlineDisplayIsNone(testing.allocator, "display: none; display: block"));
+    try testing.expect(inlineDisplayIsNone(testing.allocator, "display: none !important; display: block"));
+    try testing.expect(!inlineDisplayIsNone(testing.allocator, "width: 0px; height: 0px"));
+    try testing.expect(!inlineDisplayIsNone(testing.allocator, "display: inline"));
+    try testing.expect(!inlineDisplayIsNone(testing.allocator, ""));
 }
 
 test "inline display keeps declarations after discarded rules" {
-    try std.testing.expect(inlineDisplayIsNone("color: red; @x; display: none"));
-    try std.testing.expect(inlineDisplayIsNone("display: block; :invalid {} display: none"));
-    try std.testing.expect(!inlineDisplayIsNone("display: none; @x; display: block"));
-    try std.testing.expect(inlineDisplayIsNone("display: none !important; @x; display: block"));
-    try std.testing.expect(!inlineDisplayIsNone("display: block !important; @x; display: none"));
+    try std.testing.expect(inlineDisplayIsNone(std.testing.allocator, "color: red; @x; display: none"));
+    try std.testing.expect(inlineDisplayIsNone(std.testing.allocator, "display: block; :invalid {} display: none"));
+    try std.testing.expect(!inlineDisplayIsNone(std.testing.allocator, "display: none; @x; display: block"));
+    try std.testing.expect(inlineDisplayIsNone(std.testing.allocator, "display: none !important; @x; display: block"));
+    try std.testing.expect(!inlineDisplayIsNone(std.testing.allocator, "display: block !important; @x; display: none"));
 }

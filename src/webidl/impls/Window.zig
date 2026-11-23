@@ -3970,8 +3970,9 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, current: *html_core.B
     const internal = getInternal(window) orelse return null;
     const document = internal.document orelse return null;
     const navigables = @import("dom").navigables;
-    var documents = navigables.inclusiveDescendantDocuments(document, std.heap.page_allocator);
-    defer documents.deinit(std.heap.page_allocator);
+    const allocator = runtime.allocatorOf(document);
+    var documents = navigables.inclusiveDescendantDocuments(document, allocator);
+    defer documents.deinit(allocator);
     const group = current.getTop().virtual_group_id;
     for (documents.items) |entry| {
         const bc = entry.browsing_context orelse internal.browsing_context;
