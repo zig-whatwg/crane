@@ -1,0 +1,12 @@
+# Testing: A comptime-known stub turns a red Zig test into a compile error
+
+**Date**: 2026-11-23
+**Lesson**: To see a Zig test fail before the code it tests exists, stub the code with a WRONG, non-empty value of the right shape and write the test so nothing it checks is evaluated at compile time; an empty or zero stub of a comptime-known constant makes the whole test file fail to compile, and no test runs.
+
+**Why**: A build file's declarations are comptime constants: a list of names, a table of bindings, a string built from the list. A test that indexes such a constant, slices it, or loops over it beside another array is analysed against the stub's value at compile time. With an empty stub, `list[list.len - 1]` is an integer overflow, `for (expected, rows)` is a length mismatch and `rows[i]` is "indexing into empty slice" - each a compile error, which stops every test in the file, including the ones that would have failed for the right reason. A red run then proves only that the file does not compile.
+
+**What Happened**: Lane bp1 (build migration batch P1) wrote the platform build protocol's tests first, against stubs: an empty capability list, an empty conformance table, an empty help text, a `defaultFor` that answers null. The first red run on chat2 did not compile: `capability_names[capability_names.len - 1]` overflowed and `for (expected, conformance)` had lengths 8 and 0. The second, with the loop written over indices, failed on `conformance[i]` ("indexing into empty slice is not allowed"). The third stubbed the table with one wrong row and read the last name through a function that returns an error for an empty list: 1 test passed (a pin of an enum the stub left alone) and 6 failed, each on its own assertion.
+
+**Fix**: (1) Stub a list or table with one wrong element, not zero, and a string with a wrong non-empty value. (2) In the test, compare lengths first with `expectEqual`, then index inside a loop over the expected values with a runtime index (`for (expected, 0..) |row, i| { const got = table[i]; ... }`), never `for (expected, table)`. (3) Reach "the last element" through a small function that returns an error for an empty slice. (4) Keep the stub variant out of the tree: a script that rewrites the file (lane bp1's `.bp1/stub.py`), run, then restore the real file once the remote job has synced.
+
+**Takeaway**: **A red run must reach the assertions: stub with a wrong value of the right shape, and keep the test's indexing at run time, or the red is only "does not compile".**

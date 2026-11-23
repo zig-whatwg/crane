@@ -11,8 +11,10 @@ const test_suites = @import("tools/test_suites.zig");
 /// 2026-11-12: "the valid flags should be in the js engine protocol"). The protocol's build file lists the adapters
 /// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
-/// The build side of the platform protocol: the extra kit parts each
-/// platform's adapter declares, with the system libraries they link.
+/// THE BUILD SIDE OF THE PLATFORM PROTOCOL (docs/platform-protocol.md 10): the list of platform adapters
+/// and the protocol's own options, and what each adapter declares in its own build file - the systems it
+/// answers for, the extra kit parts it builds in and the system libraries they link. This file names no
+/// platform.
 const platform_build = @import("src/platform/platform_build_protocol.zig");
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
@@ -2494,128 +2496,9 @@ fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget,
     return translate.createModule();
 }
 
-/// The platform a module graph is built for (docs/platform-protocol.md 1.1):
-/// a built-in one, or `external` - the implementation -Dplatform-module names.
-const Platform = enum {
-    darwin,
-    linux,
-    testing,
-    external,
-
-    /// The platform a target gets by default: darwin for macOS and iOS, linux
-    /// for Linux; null where Crane has no built-in platform (pass
-    /// -Dplatform-module).
-    fn ofTarget(target: std.Build.ResolvedTarget) ?Platform {
-        return switch (target.result.os.tag) {
-            .macos, .ios => .darwin,
-            .linux => .linux,
-            else => null,
-        };
-    }
-};
-
-/// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
-/// Capabilities fields. The facade checks the names again at compile time;
-/// this list only makes a typo fail before any compile starts.
-const platform_capability_names = [_][]const u8{
-    "image_decoding",
-    "image_encoding",
-    "font_decoding",
-    "brotli",
-    "deflate_decoding",
-    "persistent_storage",
-    "file_urls",
-    "system_trust_store",
-    "http2",
-    "http3",
-    "thread_qos",
-    "resident_memory",
-    "layout",
-    "os_permissions",
-    "simple_dialogs",
-    "printing",
-    "file_picker",
-    "windows",
-    "media_decoding",
-    "pdf_viewer",
-    "webcodecs",
-    "media_capabilities",
-    "encrypted_media",
-    "camera",
-    "microphone",
-    "screen_capture",
-    "audio_output",
-    "speech_synthesis",
-    "speech_recognition",
-    "clipboard",
-    "notifications",
-    "push",
-    "background_sync",
-    "background_fetch",
-    "geolocation",
-    "sensors",
-    "device_orientation",
-    "usb",
-    "hid",
-    "serial",
-    "bluetooth",
-    "nfc",
-    "midi",
-    "gamepad",
-    "payment",
-    "webauthn",
-    "identity_credentials",
-    "share",
-    "contacts",
-    "fullscreen",
-    "pointer_lock",
-    "keyboard_lock",
-    "wake_lock",
-    "idle_detection",
-    "battery",
-    "vibration",
-    "badging",
-    "eyedropper",
-    "local_fonts",
-    "keyboard_map",
-    "screen_details",
-    "presentation",
-    "remote_playback",
-    "picture_in_picture",
-    "media_session",
-    "network_information",
-    "compute_pressure",
-    "device_posture",
-    "virtual_keyboard",
-    "protocol_handlers",
-    "address_space",
-    "devtools_transport",
-};
-
-/// The link-plan items -Dplatform-static may name (contract section 10): a
-/// platform compiles the kit's static implementation of each instead of
-/// linking the system library. `all` names every one.
-const platform_static_items = [_][]const u8{ "sqlite", "zlib", "brotli", "crypto", "trust_store", "curl", "nghttp2", "all" };
-
-/// A comma-separated option as a list of names, each checked against `valid`.
-fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []const []const u8) []const []const u8 {
-    const text = value orelse return &.{};
-    var names: std.ArrayList([]const u8) = .empty;
-    var it = std.mem.tokenizeScalar(u8, text, ',');
-    while (it.next()) |raw| {
-        const name = std.mem.trim(u8, raw, " ");
-        for (valid) |v| {
-            if (std.mem.eql(u8, v, name)) break;
-        } else {
-            std.debug.print("Error: -D{s} names '{s}', which is not one of: ", .{ option, name });
-            for (valid, 0..) |v, i| std.debug.print("{s}{s}", .{ if (i == 0) "" else ", ", v });
-            std.debug.print("\n", .{});
-            std.process.exit(1);
-        }
-        names.append(b.allocator, b.dupe(name)) catch @panic("OOM");
-    }
-    return names.items;
-}
+/// The platform a module graph is built for: a listed adapter or a third
+/// party's (platform_build.Platform).
+const Platform = platform_build.Platform;
 
 /// `list` with `capability` added when it is not there already.
 fn withCapability(b: *std.Build, list: []const []const u8, capability: []const u8) []const []const u8 {
@@ -2650,8 +2533,6 @@ const ModuleConfig = struct {
     static_libcurl: ?StaticLibcurl,
     brotli: ?BrotliLibraries,
     image_codecs: ?*std.Build.Step.Compile,
-    /// The graph whose modules are registered by name for dependent packages.
-    public_platform: Platform,
     /// -Dplatform-without, -Dplatform-static and -Dplatform-module.
     platform_without: []const []const u8,
     platform_static: []const []const u8,
@@ -3188,9 +3069,14 @@ pub fn build(b: *std.Build) void {
     // same artifacts. A runner graph whose C libraries differ in mode or
     // sanitizer builds its own (runnerGraph); none is ever written to by
     // another graph (checkLinkedC, at the end of build()).
-    const platform_without_asked = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    //
+    // The platform protocol's own options - -Dplatform-without,
+    // -Dplatform-module, -Dplatform, -Dplatform-static - and the platform
+    // they choose, declared by its build side (docs/platform-protocol.md
+    // 1.1): the names each takes are the protocol's lists.
+    const chosen_platform = platform_build.choose(b, target);
     // -Dcdp=false compiles the remote end's transport out of the platform too.
-    const platform_without = if (enable_cdp) platform_without_asked else withCapability(b, platform_without_asked, "devtools_transport");
+    const platform_without = if (enable_cdp) chosen_platform.without else withCapability(b, chosen_platform.without, "devtools_transport");
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
@@ -3212,21 +3098,13 @@ pub fn build(b: *std.Build) void {
         break :check run;
     } else null;
 
-    // The library, the CLI and the iOS build use the target's platform; the WPT
-    // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
-    // Step 0 binds no platform yet, so both graphs are today's modules.
-    // The platform protocol's build options (docs/platform-protocol.md 1.1).
-    const platform_module_path = b.option([]const u8, "platform-module", "A third-party platform: the root file of an implementation of src/platform/protocol.zig");
-    const platform_choice = b.option(Platform, "platform", "The platform: darwin, linux or testing (default: from the target)");
-    const target_platform: Platform = if (platform_module_path != null) .external else platform_choice orelse Platform.ofTarget(target) orelse {
-        std.debug.print("Error: no built-in platform for {s}; pass -Dplatform-module=<path>\n", .{@tagName(target.result.os.tag)});
-        std.process.exit(1);
-    };
-    if (platform_choice == .external and platform_module_path == null) {
-        std.debug.print("Error: -Dplatform=external needs -Dplatform-module=<path>\n", .{});
-        std.process.exit(1);
-    }
-    const platform_static = optionList(b, "platform-static", b.option([]const u8, "platform-static", "Link-plan items to compile statically instead of linking the system library (comma-separated, or all)"), &platform_static_items);
+    // The library, the CLI and the other products use the target's platform,
+    // whose graph registers its modules by name for dependent packages; the
+    // test tiers use the tests' (platform_build.tests_platform), in a private
+    // graph - the same one when the target's platform is the tests' own; a
+    // WPT runner, the one its build names (runnerGraph). docs/platform-
+    // protocol.md 1.1.
+    const target_platform: Platform = chosen_platform.platform;
     const module_config: ModuleConfig = .{
         .optimize = optimize,
         .build_options = build_options,
@@ -3240,15 +3118,14 @@ pub fn build(b: *std.Build) void {
         .static_libcurl = static_libcurl,
         .brotli = brotli,
         .image_codecs = image_codecs,
-        .public_platform = target_platform,
         .platform_without = platform_without,
-        .platform_static = platform_static,
-        .platform_module = platform_module_path,
+        .platform_static = chosen_platform.static,
+        .platform_module = chosen_platform.module_path,
         .tables = addGeneratedTables(b),
         .impl_names = implModuleNames(b),
     };
-    const crane_graph = addCraneModules(b, target, target_platform, module_config);
-    const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
+    const crane_graph = addCraneModules(b, target, target_platform, module_config, true);
+    const testing_graph = if (target_platform == platform_build.tests_platform) crane_graph else addCraneModules(b, target, platform_build.tests_platform, module_config, false);
 
     // The WPT runner's two builds (tests/wpt_runner/build_mode.zig
     // `RunnerBuild`; the user, 2026-11-09: "I want our WPT to only ever run
@@ -3313,7 +3190,7 @@ pub fn build(b: *std.Build) void {
         .module_config = module_config,
         .target_platform = target_platform,
         .shared = crane_graph,
-        .testing = testing_graph,
+        .tests = testing_graph,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .brotli_enabled = brotli_enabled,
@@ -3325,7 +3202,7 @@ pub fn build(b: *std.Build) void {
         .module_config = module_config,
         .target_platform = target_platform,
         .shared = crane_graph,
-        .testing = testing_graph,
+        .tests = testing_graph,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .brotli_enabled = brotli_enabled,
@@ -4593,22 +4470,13 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&addSuiteRun(b, launch, retained_old_platform, "retained_old_platform", null).step);
 
-        // The contract against every built-in platform (the directory's
-        // executable above binds `testing`), and once with capabilities
+        // The contract against every built-in platform but the tests' own
+        // (the directory's executable above binds it), and with capabilities
         // compiled out: tests/platform/protocol_conformance_test.zig, each its
         // own small executable - the facade, one platform, the kit, nothing
-        // of the engine.
-        const conformance_bindings = [_]struct { name: []const u8, platform: Platform, without: []const []const u8 }{
-            .{ .name = "darwin", .platform = .darwin, .without = &.{} },
-            .{ .name = "linux", .platform = .linux, .without = &.{} },
-            .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
-            .{ .name = "testing_without_brotli_and_deflate_decoding", .platform = .testing, .without = &.{ "brotli", "deflate_decoding" } },
-            .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
-            .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
-            .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
-            .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
-        };
-        for (conformance_bindings) |binding| {
+        // of the engine. The bindings are the protocol's
+        // (platform_build.conformance).
+        for (platform_build.conformance) |binding| {
             const bound = platformBinding(b, target, .{
                 .platform = binding.platform,
                 .brotli = brotli,
@@ -4637,9 +4505,9 @@ pub fn build(b: *std.Build) void {
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
-            // The font operations on darwin and linux (decision 20):
+            // A built-in platform's own font operations (decision 20):
             // tests/platform/font_adapters.zig, bound to each.
-            if ((binding.platform == .darwin or binding.platform == .linux) and binding.without.len == 0) {
+            if (binding.fonts_and_media) {
                 const font_adapters = b.addTest(.{
                     .name = b.fmt("platform_fonts_{s}", .{binding.name}),
                     .root_module = b.createModule(.{
@@ -4653,9 +4521,9 @@ pub fn build(b: *std.Build) void {
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
                 check_target_step.dependOn(&font_adapters.step);
-                // Media decoding on darwin and linux (lane wptcfg, D4): the
-                // directory's tests/platform/media_decoding_test.zig, bound to
-                // each - the three default platforms share kit/media_decoding.
+                // And its media decoding (lane wptcfg, D4): the directory's
+                // tests/platform/media_decoding_test.zig, bound to each - the
+                // built-in platforms share kit/media_decoding.
                 const media_decoding = b.addTest(.{
                     .name = b.fmt("platform_media_{s}", .{binding.name}),
                     .root_module = b.createModule(.{
@@ -4669,7 +4537,7 @@ pub fn build(b: *std.Build) void {
             }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
-            if (std.mem.eql(u8, binding.name, "darwin")) {
+            if (binding.kit_tests) {
                 for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
                     const kit_tests = b.addTest(.{ .name = name, .root_module = module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
@@ -5989,6 +5857,17 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&addSuiteRun(b, launch, build_side_tests, build_test.suite, null).step);
     }
 
+    // The build side of the platform protocol: its own file's tests - the
+    // list and -Dplatform's values, each target's default platform, the
+    // names its options take, the conformance bindings and the lint's words -
+    // std-only.
+    const platform_build_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/platform_build_protocol.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, platform_build_tests, "platform-build-protocol", null).step);
+
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
     // ========================================================================
@@ -6182,13 +6061,15 @@ pub fn build(b: *std.Build) void {
     // it.
     //
     // The words it looks for, a list per class. An engine's words are its
-    // adapter's own, from the engine protocol's list of adapters. Until the
-    // platform protocol's build file supplies the rest the same way, they are
-    // spelled here - and counted like every other line of this file.
+    // adapter's own, from the engine protocol's list of adapters, and a
+    // platform's from the platform protocol's; what a branch on the target's
+    // system looks like is the platform protocol's too. Until the kit's
+    // build file supplies the libraries' the same way, they are spelled
+    // here - and counted like every other line of this file.
     const lint_build_words = [_][]const u8{
         "--engine=" ++ engine_build.lint_words,
-        "--platform=darwin,linux,macos,word:ios,iphoneos,xcrun,homebrew,.testing",
-        "--target=os.tag,isDarwin,.abi ==",
+        "--platform=" ++ platform_build.lint_words,
+        "--target=" ++ platform_build.lint_target_words,
         "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
     };
     const lint_build_module = b.createModule(.{
@@ -7521,8 +7402,9 @@ const RunnerGraphContext = struct {
     target_platform: Platform,
     /// The target platform's public graph, in -Doptimize's mode.
     shared: CraneModules,
-    /// The testing platform's graph, in -Doptimize's mode.
-    testing: CraneModules,
+    /// The tests' platform's graph (platform_build.tests_platform), in
+    /// -Doptimize's mode.
+    tests: CraneModules,
     use_system_curl: bool,
     enable_http2: bool,
     brotli_enabled: bool,
@@ -7539,24 +7421,25 @@ const RunnerGraphContext = struct {
 /// modules by name, once (docs/lessons/workflow-a-second-graph-of-the-target-
 /// platform-must-be-private.md).
 fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_build_mode.Build, ctx: RunnerGraphContext) CraneModules {
-    const platform: Platform = switch (runner.platform) {
-        .console => ctx.target_platform,
-        .testing => .testing,
-    };
-    const existing = if (platform == .testing) ctx.testing else ctx.shared;
+    // The console's graph is the target platform's; the other one a runner
+    // build may name, the tests' platform's (build_mode.zig `PlatformGraph`).
+    const console = runner.platform == .console;
+    const platform: Platform = if (console) ctx.target_platform else platform_build.tests_platform;
+    const existing = if (console) ctx.shared else ctx.tests;
     if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
     var config = ctx.module_config;
-    // Any platform but the graph's own.
-    config.public_platform = if (platform == .testing) .darwin else .testing;
     config.optimize = runner.modes.crane_modules;
     config.brotli = buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
     config.image_codecs = buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
     config.static_libcurl = buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null);
-    return addCraneModules(b, target, platform, config);
+    // A private graph (`public` false).
+    return addCraneModules(b, target, platform, config, false);
 }
 
-fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig) CraneModules {
-    const public = platform == config.public_platform;
+/// Every Crane module, for `platform`. `public`: the graph registers its
+/// modules by name, for dependent packages - the target platform's own
+/// graph, and only that one (a name is registered once).
+fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig, public: bool) CraneModules {
     const optimize = config.optimize;
     const build_options = config.build_options;
     const debug_options = config.debug_options;
