@@ -24,9 +24,12 @@
 //! `processFetchResult` from a task. `fetch` is those same two around the
 //! blocking fetch, so what a response does to the XHR is written once.
 //!
-//! There is no incremental read yet, so the body arrives as ONE chunk. That
-//! gets event order and the final counts right and the number of intermediate
-//! `progress` events wrong; see the header of `send.zig`.
+//! An asynchronous request's body is read as it arrives: the impl's
+//! `PendingFetch` reads the response's body pipe from a task each time it has
+//! news, one `processBodyChunk` per piece, which fires `progress` at most
+//! once per ~50 ms window (`response.zig`'s throttle). A blocking fetch - a
+//! synchronous request, or a realm with no event loop - has its body whole
+//! when it returns, so nothing is left to read.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

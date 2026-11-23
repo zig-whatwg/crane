@@ -1,6 +1,6 @@
 //! Reference counting's structural rules, and node state's exits, as a ratchet: `zig build
 //! lint-refcount` (and so `zig build test`) fails when src/ breaks them more
-//! than tools/refcount_baseline.txt records (tmp/plans/refcount-design.md,
+//! than tools/refcount_baseline.txt records (docs/refcount-design.md,
 //! section 7 step 2; src/dom/refcount.zig).
 //!
 //! 1. `parent-write`: every `<expr>.parent_node = <expr>` assignment outside
@@ -535,7 +535,7 @@ pub fn main(init: std.process.Init) !void {
             \\A node's parent link changes through NodeBase's one setter, which keeps the
             \\count word's parent bit and every ancestor's `subtree_holds` in step; node
             \\state never holds a counted reference to a node (a native cycle): use WeakRef
-            \\or a raw pointer. tmp/plans/refcount-design.md sections 1.3 and 7. A node's
+            \\or a raw pointer. docs/refcount-design.md sections 1.3 and 7. A node's
             \\own state has an exit for an orphan: a block of the runtime arena, and a
             \\teardown sweep for what it owns (src/dom/orphan_states.zig).
             \\
