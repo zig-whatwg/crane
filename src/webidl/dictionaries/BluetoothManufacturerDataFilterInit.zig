@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const BluetoothDataFilterInit = @import("BluetoothDataFilterInit.zig").BluetoothDataFilterInit;
 
 pub const BluetoothManufacturerDataFilterInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from BluetoothDataFilterInit
     base: BluetoothDataFilterInit,
 

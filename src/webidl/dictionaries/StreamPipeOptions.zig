@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const StreamPipeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     preventClose: ?bool = null,
     preventAbort: ?bool = null,
     preventCancel: ?bool = null,

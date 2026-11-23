@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const URLPatternInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     protocol: ?runtime.USVString = null,
     username: ?runtime.USVString = null,
     password: ?runtime.USVString = null,

@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const FilePickerOptions = @import("FilePickerOptions.zig").FilePickerOptions;
 
 pub const SaveFilePickerOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from FilePickerOptions
     base: FilePickerOptions,
 

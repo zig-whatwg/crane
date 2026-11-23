@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 
 pub const UnderlyingSink = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     start: ?callbacks.UnderlyingSinkStartCallback = null,
     write: ?callbacks.UnderlyingSinkWriteCallback = null,
     close: ?callbacks.UnderlyingSinkCloseCallback = null,

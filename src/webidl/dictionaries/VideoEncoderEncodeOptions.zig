@@ -9,6 +9,8 @@ const VideoEncoderEncodeOptionsForAvc = @import("VideoEncoderEncodeOptionsForAvc
 const VideoEncoderEncodeOptionsForVp9 = @import("VideoEncoderEncodeOptionsForVp9.zig").VideoEncoderEncodeOptionsForVp9;
 
 pub const VideoEncoderEncodeOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     keyFrame: ?bool = null,
     av1: ?VideoEncoderEncodeOptionsForAv1 = null,
     avc: ?VideoEncoderEncodeOptionsForAvc = null,

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const AudioDataOutputCallback = *const fn (output: *runtime.Instance) void;
+/// callback AudioDataOutputCallback = undefined (AudioData output)
+pub const AudioDataOutputCallback = runtime.BorrowedCallbackFunction;

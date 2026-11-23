@@ -1231,25 +1231,33 @@ test "protocol: prepare to run a callback makes the callback context the incumbe
     try std.testing.expectEqual(@as(?runtime.Context, other), recorded_incumbent);
 }
 
-var taken: ?protocol.CallbackFunction = null;
+var kept: ?protocol.CallbackFunction = null;
 
-/// A binding taking a callback-function argument: the conversion's Global,
-/// tagged as the binding tags it, handed to takeCallbackFunction - which
-/// takes a hold of its own - and freed when the call returns, as the binding
-/// frees it (interface.freeConvertedArg).
-fn takeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+/// A binding taking a callback-function argument: its Global converted as
+/// the binding converts it (a runtime.BorrowedCallbackFunction over it), kept
+/// by the impl - a hold of its own - and freed when the call returns, as the
+/// binding frees it (interface.freeConvertedArg).
+fn keepArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(context);
     const argument = info.get(0);
-    defer ffi.v8_Value_Dispose(argument);
-    taken = protocol.takeCallbackFunction(v8.pointer_tag.tagPointer(@ptrCast(argument), .global_handle));
+    const converted = v8.conversions.fromV8Value(runtime.BorrowedCallbackFunction, allocator, isolate, context, argument) catch {
+        ffi.v8_Value_Dispose(argument);
+        return;
+    };
+    defer v8.interface_mod.freeConvertedArg(runtime.BorrowedCallbackFunction, allocator, converted);
+    kept = converted.keep();
 }
 
-test "protocol: a taken callback function or interface records the incumbent realm as its context" {
+test "protocol: a kept callback function or interface records the incumbent realm as its context" {
     defer test_agent.close();
     const ctx = try realm();
     const here = try hostedRealm();
-    try installNative("takeArgument", takeArgument);
-    try std.testing.expectEqual(@as(i32, 1), try evalInt("takeArgument(function (x) { return x + 1; }); 1"));
-    const function = taken orelse return error.NothingTaken;
+    try installNative("keepArgument", keepArgument);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("keepArgument(function (x) { return x + 1; }); 1"));
+    const function = kept orelse return error.NothingKept;
+    kept = null;
     defer function.release();
     try std.testing.expectEqual(@as(?runtime.Context, here), function.context);
     const called = try protocol.invokeCallbackFunction(ctx, &function, .undefined, &.{runtime.JSValue.fromNumber(2)}, .rethrow);
@@ -1257,16 +1265,16 @@ test "protocol: a taken callback function or interface records the incumbent rea
     try std.testing.expectEqual(@as(i32, 3), int32Of(called.normal));
 
     // A callback interface value as the binding converts it (a
-    // runtime.CallbackWrapper), taken; the wrapper is the call's, released
-    // as the binding releases it.
+    // runtime.BorrowedCallbackInterface over the argument's Global), kept;
+    // the converted value is the call's, freed as the binding frees it.
     const listener = try Made.of("({ handleEvent(x) { return x * 3; } })");
     defer listener.deinit();
     // The conversion takes the Global it is given (the binding's argument
     // handle): hand it one of its own.
     const argument = ffi.v8_Global_Clone(listener.handle) orelse return error.CloneFailed;
-    const wrapper = try v8.conversions.fromV8Value(*runtime.CallbackWrapper, allocator, test_isolate.?, test_context.?, argument);
-    defer v8.conversions.releaseCallbackWrapper(wrapper);
-    const interface = protocol.takeCallbackInterface(wrapper);
+    const converted = try v8.conversions.fromV8Value(runtime.BorrowedCallbackInterface, allocator, test_isolate.?, test_context.?, argument);
+    const interface = converted.keep();
+    v8.interface_mod.freeConvertedArg(runtime.BorrowedCallbackInterface, allocator, converted);
     defer interface.release();
     try std.testing.expectEqual(@as(?runtime.Context, here), interface.context);
     const result = try protocol.callUserObjectOperation(ctx, &interface, "handleEvent", .undefined, &.{runtime.JSValue.fromNumber(2)}, .rethrow);

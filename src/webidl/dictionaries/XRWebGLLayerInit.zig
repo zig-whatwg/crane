@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const XRWebGLLayerInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     antialias: ?bool = null,
     depth: ?bool = null,
     stencil: ?bool = null,

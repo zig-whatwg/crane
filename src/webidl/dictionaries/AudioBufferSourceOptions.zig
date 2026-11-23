@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const AudioBufferSourceOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     buffer: ?*runtime.Instance = null,
     detune: ?f32 = null,
     loop: ?bool = null,

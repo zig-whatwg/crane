@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUComputePassTimestampWrites = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     querySet: *runtime.Instance,
     beginningOfPassWriteIndex: ?typedefs.GPUSize32 = null,
     endOfPassWriteIndex: ?typedefs.GPUSize32 = null,

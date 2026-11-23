@@ -7,6 +7,8 @@ const enums = @import("enums");
 const RTCSentRtpStreamStats = @import("RTCSentRtpStreamStats.zig").RTCSentRtpStreamStats;
 
 pub const RTCOutboundRtpStreamStats = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from RTCSentRtpStreamStats
     base: RTCSentRtpStreamStats,
 
@@ -29,12 +31,20 @@ pub const RTCOutboundRtpStreamStats = struct {
     framesEncoded: ?u32 = null,
     keyFramesEncoded: ?u32 = null,
     qpSum: ?u64 = null,
-    psnrSum: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
+    psnrSum: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: f64,
+    } = null,
     psnrMeasurements: ?u64 = null,
     totalEncodeTime: ?f64 = null,
     totalPacketSendDelay: ?f64 = null,
     qualityLimitationReason: ?enums.RTCQualityLimitationReason = null,
-    qualityLimitationDurations: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
+    qualityLimitationDurations: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: f64,
+    } = null,
     qualityLimitationResolutionChanges: ?u32 = null,
     nackCount: ?u32 = null,
     firCount: ?u32 = null,

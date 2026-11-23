@@ -8,6 +8,8 @@ const AuthenticationExtensionsClientOutputsJSON = @import("AuthenticationExtensi
 const AuthenticatorAttestationResponseJSON = @import("AuthenticatorAttestationResponseJSON.zig").AuthenticatorAttestationResponseJSON;
 
 pub const RegistrationResponseJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     id: runtime.DOMString,
     rawId: typedefs.Base64URLString,
     response: AuthenticatorAttestationResponseJSON,

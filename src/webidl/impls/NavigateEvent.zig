@@ -234,11 +234,8 @@ pub fn get_sourceElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// the rest records into the navigation that fired it.
 pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationInterceptOptions)) anyerror!void {
     const opts: dictionaries.NavigationInterceptOptions = if (options.was_passed) options.value else .{};
-    // The binding hands the dictionary's callbacks over: steps 4.2-9 take
-    // them on every path, and a throw before those releases them (each kept
-    // its Get's Global - lane leaks6).
-    var handed_over = false;
-    defer if (!handed_over) releaseHandlers(opts);
+    // The dictionary's callbacks are BORROWED for the call: steps 4.2-9 keep
+    // what they store, and the binding releases its own when this returns.
     // Step 1: "Perform shared checks given this."
     try sharedChecks(instance);
     const own = instance.getState(State).own;
@@ -253,10 +250,9 @@ pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionar
     // "InvalidStateError" DOMException."
     if (opts.precommitHandler != null and !(try interfaces.Event.get_cancelable(instance))) return error.InvalidStateError;
     // Steps 4.2-9.
-    handed_over = true;
     try dom.navigation_api.intercept(instance, .{
-        .precommit_handler = if (opts.precommitHandler) |h| @ptrCast(h) else null,
-        .handler = if (opts.handler) |h| @ptrCast(h) else null,
+        .precommit_handler = opts.precommitHandler,
+        .handler = opts.handler,
         .focus_reset = if (opts.focusReset) |f| switch (f) {
             ._after_transition_ => .after_transition,
             ._manual_ => .manual,
@@ -266,13 +262,6 @@ pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionar
             ._manual_ => .manual,
         } else null,
     });
-}
-
-/// Release the callbacks an intercept() options dictionary handed over, for
-/// a throw before the navigation's steps took them.
-fn releaseHandlers(opts: dictionaries.NavigationInterceptOptions) void {
-    if (opts.precommitHandler) |h| engine.takeCallbackFunction(@ptrCast(h)).release();
-    if (opts.handler) |h| engine.takeCallbackFunction(@ptrCast(h)).release();
 }
 
 /// scroll(): "1. Perform shared checks given this." Steps 2-3 read the

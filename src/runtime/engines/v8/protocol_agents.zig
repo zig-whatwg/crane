@@ -25,7 +25,6 @@ const young_generation = @import("young_generation.zig");
 const navigation_collection = @import("navigation_collection.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
-const callback_registry = @import("callback_registry.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
 const protocol_realms = @import("protocol_realms.zig");
@@ -277,12 +276,6 @@ pub const AgentRecord = struct {
     /// frees this agent's realms and no other's. It was a threadlocal, which
     /// the thread's host agent's end took down whole.
     realms: context_manager.Realms = .{},
-    /// The agent's callback wrappers not yet freed (callback_registry.Live),
-    /// so that a realm's end can release the handles its script's callbacks
-    /// hold. Read and written on the agent's own thread only, through its
-    /// end; its storage goes with the record (removeAgent). It was a
-    /// `threadlocal`, every agent's on the thread in one set.
-    callbacks: callback_registry.Live = .empty,
     /// The agent's module records alive, by identity hash
     /// (protocol_modules.Records), for the callbacks V8 hands a module - a
     /// Link's referrer, import.meta. Read and written on the agent's own
@@ -467,17 +460,6 @@ pub fn preparedScriptsOf(isolate: *ffi.Isolate) ?*u32 {
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.prepared_scripts;
-}
-
-/// The callback wrappers of the agent whose isolate this is
-/// (callback_registry.Live), until the agent's record goes - through its end,
-/// while its realms end; null for an isolate createAgent did not make.
-/// Called on the agent's own thread only.
-pub fn callbacksOf(isolate: *ffi.Isolate) ?*callback_registry.Live {
-    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
-    defer std.Io.Threaded.mutexUnlock(&agents_lock);
-    const record = agents.get(isolate) orelse return null;
-    return &record.callbacks;
 }
 
 /// The module records of the agent whose isolate this is
@@ -1182,7 +1164,6 @@ fn removeAgent(isolate: *ffi.Isolate) void {
     };
     std.debug.assert(record.ending);
     @import("protocol_worlds.zig").endAgent(isolate, &record.worlds);
-    callback_registry.endAgent(&record.callbacks);
     protocol_modules.endAgent(&record.modules);
     worker_realm.endAgent(&record.worker_realms);
     @import("wrapper_cache.zig").endAgent(isolate, &record.caches);

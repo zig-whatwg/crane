@@ -10,6 +10,8 @@ const PublicKeyCredentialCreationOptions = @import("PublicKeyCredentialCreationO
 const FederatedCredentialInit = @import("FederatedCredentialInit.zig").FederatedCredentialInit;
 
 pub const CredentialCreationOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     mediation: ?enums.CredentialMediationRequirement = null,
     signal: ?*runtime.Instance = null,
     password: ?typedefs.PasswordCredentialInit = null,

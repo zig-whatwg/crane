@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const InputDeviceCapabilitiesInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     firesTouchEvents: ?bool = null,
     pointerMovementScrolls: ?bool = null,
 

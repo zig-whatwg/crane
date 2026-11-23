@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const TransformerFlushCallback = *const fn (controller: *runtime.Instance) runtime.JSValue;
+/// callback TransformerFlushCallback = Promise<undefined> (TransformStreamDefaultController controller)
+pub const TransformerFlushCallback = runtime.BorrowedCallbackFunction;

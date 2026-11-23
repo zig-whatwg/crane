@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const StaticRangeInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     startContainer: *runtime.Instance,
     startOffset: u32,
     endContainer: *runtime.Instance,

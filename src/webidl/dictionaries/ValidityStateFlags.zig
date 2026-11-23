@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const ValidityStateFlags = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     valueMissing: ?bool = null,
     typeMismatch: ?bool = null,
     patternMismatch: ?bool = null,

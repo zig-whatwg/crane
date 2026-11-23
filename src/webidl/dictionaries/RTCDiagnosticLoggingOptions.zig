@@ -5,5 +5,11 @@
 const runtime = @import("runtime");
 
 pub const RTCDiagnosticLoggingOptions = struct {
-    metadata: ?[]const struct { key: runtime.DOMString, value: runtime.DOMString } = null,
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
+    metadata: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: runtime.DOMString,
+    } = null,
 };

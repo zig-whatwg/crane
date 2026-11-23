@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const CurrentUserDetailsOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     rpId: runtime.DOMString,
     userId: typedefs.Base64URLString,
     name: runtime.DOMString,

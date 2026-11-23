@@ -416,12 +416,11 @@ pub fn extractHighWaterMark(strategy: dictionaries.QueuingStrategy, default_hwm:
 }
 
 /// ExtractSizeAlgorithm(strategy). `size` is the dictionary's callback
-/// member, which the conversion layer made for this call and nothing else
-/// releases - so it is taken over here (engine.takeCallbackFunction), and
-/// the algorithm keeps its own handle in the callback's realm.
+/// member, BORROWED for the call: it is kept here (`keep`) for its callback
+/// context, and the algorithm keeps its own handle in the callback's realm.
 pub fn extractSizeAlgorithm(strategy: dictionaries.QueuingStrategy) js.Error!SizeAlgorithm {
     const size = strategy.size orelse return .one;
-    const callback = engine.takeCallbackFunction(@ptrCast(size));
+    const callback = size.keep();
     defer callback.release();
     // The callback context - the incumbent realm when it was converted - or
     // the realm of the constructor running now.

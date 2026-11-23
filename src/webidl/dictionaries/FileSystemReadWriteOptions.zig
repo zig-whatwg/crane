@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const FileSystemReadWriteOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     at: ?u64 = null,
 
     /// [EnforceRange] members: converted with that branch of ConvertToInt.

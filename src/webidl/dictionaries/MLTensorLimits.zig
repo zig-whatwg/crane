@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const MLRankRange = @import("MLRankRange.zig").MLRankRange;
 
 pub const MLTensorLimits = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     dataTypes: ?typedefs.MLDataTypeList = null,
     rankRange: ?MLRankRange = null,
 };

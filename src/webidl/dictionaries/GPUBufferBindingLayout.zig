@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPUBufferBindingLayout = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?enums.GPUBufferBindingType = null,
     hasDynamicOffset: ?bool = null,
     minBindingSize: ?typedefs.GPUSize64 = null,

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const LockGrantedCallback = *const fn (lock: ?*runtime.Instance) runtime.JSValue;
+/// callback LockGrantedCallback = Promise<any> (Lock? lock)
+pub const LockGrantedCallback = runtime.BorrowedCallbackFunction;

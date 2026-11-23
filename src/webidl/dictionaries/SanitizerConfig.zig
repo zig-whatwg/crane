@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const SanitizerConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     elements: ?[]const typedefs.SanitizerElementWithAttributes = null,
     removeElements: ?[]const typedefs.SanitizerElement = null,
     replaceWithChildrenElements: ?[]const typedefs.SanitizerElement = null,

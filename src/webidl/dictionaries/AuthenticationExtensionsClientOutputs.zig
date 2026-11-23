@@ -10,6 +10,8 @@ const AuthenticationExtensionsPaymentOutputs = @import("AuthenticationExtensions
 const AuthenticationExtensionsLargeBlobOutputs = @import("AuthenticationExtensionsLargeBlobOutputs.zig").AuthenticationExtensionsLargeBlobOutputs;
 
 pub const AuthenticationExtensionsClientOutputs = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     credBlob: ?bool = null,
     getCredBlob: ?runtime.JSValue = null,
     hmacCreateSecret: ?bool = null,

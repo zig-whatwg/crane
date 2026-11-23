@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const NavigationPreloadState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     enabled: ?bool = null,
     headerValue: ?runtime.ByteString = null,
 

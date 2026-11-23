@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const HandwritingHintsQueryResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     recognitionType: ?[]const enums.HandwritingRecognitionType = null,
     inputType: ?[]const enums.HandwritingInputType = null,
     textContext: ?bool = null,

@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const FlacEncoderConfig = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     blockSize: ?u32 = null,
     compressLevel: ?u32 = null,
 

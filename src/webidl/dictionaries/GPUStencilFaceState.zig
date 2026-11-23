@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const GPUStencilFaceState = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     compare: ?enums.GPUCompareFunction = null,
     failOp: ?enums.GPUStencilOperation = null,
     depthFailOp: ?enums.GPUStencilOperation = null,

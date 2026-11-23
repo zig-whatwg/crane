@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const IdentityProviderAccount = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     id: runtime.USVString,
     name: ?runtime.USVString = null,
     email: ?runtime.USVString = null,

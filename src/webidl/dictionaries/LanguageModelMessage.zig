@@ -7,6 +7,8 @@ const enums = @import("enums");
 const LanguageModelMessageContent = @import("LanguageModelMessageContent.zig").LanguageModelMessageContent;
 
 pub const LanguageModelMessage = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     role: enums.LanguageModelMessageRole,
     content: runtime.JSValue,
     prefix: ?bool = null,

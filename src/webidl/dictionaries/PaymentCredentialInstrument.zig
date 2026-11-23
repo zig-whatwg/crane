@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const PaymentCredentialInstrument = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     displayName: runtime.USVString,
     icon: runtime.USVString,
     iconMustBeShown: ?bool = null,

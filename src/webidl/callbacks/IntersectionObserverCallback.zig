@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const IntersectionObserverCallback = *const fn (entries: runtime.JSValue, observer: *runtime.Instance) void;
+/// callback IntersectionObserverCallback = undefined (sequence<IntersectionObserverEntry> entries, IntersectionObserver observer)
+pub const IntersectionObserverCallback = runtime.BorrowedCallbackFunction;

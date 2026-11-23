@@ -7,6 +7,8 @@ const BluetoothLEScanFilterInit = @import("BluetoothLEScanFilterInit.zig").Bluet
 const PermissionDescriptor = @import("PermissionDescriptor.zig").PermissionDescriptor;
 
 pub const BluetoothLEScanPermissionDescriptor = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from PermissionDescriptor
     base: PermissionDescriptor,
 

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const LaunchConsumer = *const fn (params: *runtime.Instance) runtime.JSValue;
+/// callback LaunchConsumer = any (LaunchParams params)
+pub const LaunchConsumer = runtime.BorrowedCallbackFunction;

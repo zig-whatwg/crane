@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const EncodedVideoChunkOutputCallback = *const fn (chunk: *runtime.Instance, metadata: runtime.JSValue) void;
+/// callback EncodedVideoChunkOutputCallback = undefined (EncodedVideoChunk chunk, optional EncodedVideoChunkMetadata metadata)
+pub const EncodedVideoChunkOutputCallback = runtime.BorrowedCallbackFunction;

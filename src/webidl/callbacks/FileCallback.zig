@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const FileCallback = *const fn (file: *runtime.Instance) void;
+/// callback FileCallback = undefined (File file)
+pub const FileCallback = runtime.BorrowedCallbackFunction;

@@ -51,7 +51,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// registerAnimator(name, animatorCtor) - CSS Animation Worklet,
 /// "Registering an Animator Definition".
 pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMString, animatorCtor: callbacks.AnimatorInstanceConstructor) anyerror!void {
-    const constructor = engine.takeCallbackFunction(@ptrCast(animatorCtor));
+    const constructor = animatorCtor.keep();
     defer constructor.release();
     const realm = instance.ctx;
     const ctor = constructor.function.value;

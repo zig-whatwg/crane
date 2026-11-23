@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const VideoEncoderEncodeOptionsForAv1 = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     quantizer: ?u16 = null,
 
     /// Optional members whose IDL type is nullable: a present null is the

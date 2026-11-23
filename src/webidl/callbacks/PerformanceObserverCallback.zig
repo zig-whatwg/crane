@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const PerformanceObserverCallback = *const fn (entries: *runtime.Instance, observer: *runtime.Instance, options: runtime.JSValue) void;
+/// callback PerformanceObserverCallback = undefined (PerformanceObserverEntryList entries, PerformanceObserver observer, optional PerformanceObserverCallbackOptions options)
+pub const PerformanceObserverCallback = runtime.BorrowedCallbackFunction;

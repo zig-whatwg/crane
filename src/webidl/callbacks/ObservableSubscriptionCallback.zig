@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ObservableSubscriptionCallback = *const fn (value: runtime.JSValue) void;
+/// callback ObservableSubscriptionCallback = undefined (any value)
+pub const ObservableSubscriptionCallback = runtime.BorrowedCallbackFunction;

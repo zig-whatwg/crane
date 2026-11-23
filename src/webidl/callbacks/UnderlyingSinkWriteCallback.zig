@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const UnderlyingSinkWriteCallback = *const fn (chunk: runtime.JSValue, controller: *runtime.Instance) runtime.JSValue;
+/// callback UnderlyingSinkWriteCallback = Promise<undefined> (any chunk, WritableStreamDefaultController controller)
+pub const UnderlyingSinkWriteCallback = runtime.BorrowedCallbackFunction;

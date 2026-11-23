@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const URLPatternComponentResult = @import("URLPatternComponentResult.zig").URLPatternComponentResult;
 
 pub const URLPatternResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     inputs: ?[]const typedefs.URLPatternInput = null,
     protocol: ?URLPatternComponentResult = null,
     username: ?URLPatternComponentResult = null,

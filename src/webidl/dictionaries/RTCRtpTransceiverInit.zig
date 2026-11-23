@@ -7,6 +7,8 @@ const enums = @import("enums");
 const RTCRtpEncodingParameters = @import("RTCRtpEncodingParameters.zig").RTCRtpEncodingParameters;
 
 pub const RTCRtpTransceiverInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     direction: ?enums.RTCRtpTransceiverDirection = null,
     streams: ?[]const *runtime.Instance = null,
     sendEncodings: ?[]const RTCRtpEncodingParameters = null,

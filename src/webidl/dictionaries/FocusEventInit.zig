@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const UIEventInit = @import("UIEventInit.zig").UIEventInit;
 
 pub const FocusEventInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from UIEventInit
     base: UIEventInit,
 
