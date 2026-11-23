@@ -29,7 +29,7 @@ fn settle(page: helpers.Page) !void {
     var turns: usize = 0;
     while (turns < 100) : (turns += 1) {
         _ = try page.browser.runEventLoopBlocking(5);
-        if (page.browser.event_loop.?.frames.timer_id == null) return;
+        if (!page.browser.event_loop.?.renderingArmed()) return;
     }
     return error.FramesNeverSettled;
 }
@@ -110,7 +110,11 @@ fn watchArmsFiresOnceAndRestsUnarmed() !void {
     defer page.close();
     try settle(page);
     const document = page.browser.current_context.?.document_instance.?;
-    const frames = &page.browser.event_loop.?.frames;
+    // The page's tab's frame clock (each tab has its own; this page is the
+    // Browser's one tab), made by its load's frames.
+    const clocks = page.browser.event_loop.?.frame_clocks.items;
+    try std.testing.expectEqual(@as(usize, 1), clocks.len);
+    const frames = clocks[0];
     const counts = dom.refcount.documentCounts(document) orelse return error.NoCounts;
     // Unarmed: nothing focused, a mutation asks for no frame.
     try std.testing.expect(!counts.version.rendering_watch);

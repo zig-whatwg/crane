@@ -1169,6 +1169,12 @@ pub const EventLoop = struct {
     /// and no later than the next rendering opportunity the frame clock is
     /// armed for (computeDeadline's nextRenderDeadline, exact: the frame
     /// timer itself counts whole milliseconds).
+    /// Whether a rendering opportunity is armed: one of the loop's tabs'
+    /// frame clocks has its timer armed (rendering.nextRenderDeadlineOf).
+    pub fn renderingArmed(self: *const Self) bool {
+        return rendering.nextRenderDeadlineOf(self) != null;
+    }
+
     fn nextTimerDueNs(self: *Self, now: i64) ?i64 {
         const render = rendering.nextRenderDeadlineOf(self);
         const mgr = self.timer_manager orelse return render;
