@@ -1027,16 +1027,26 @@ fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     finalizeEntry(entry);
 }
 
-/// The stamp of the object a queued finalizer is for (`Cell.fresh`), for the
-/// agent's safe point inside a callback (finalizer_safe_point.zig): 0 - never
-/// fresh - for a finalizer that is not a wrapper cache record's (an
-/// observable array's, an asynchronous iterator's, a promise reaction's).
-/// `data` is what the finalizer was queued with; it has not been cancelled
-/// (the caller checked).
+/// The stamp of the object a queued finalizer is for, for the agent's safe
+/// point inside a callback (finalizer_safe_point.zig): the constructor's
+/// (`Cell.fresh`) when a script-called constructor made it; otherwise the
+/// one its slab generation earns against the callbacks on the stack
+/// (DeferredTeardown.freshSerialOf, lane mem1: whatever made it - a factory
+/// method, the DOM's own algorithms - an object made inside the innermost
+/// callback is fresh for it). The record's own generation is asked, the
+/// instance's when it was wrapped, never its slot's now: a slot freed and
+/// reissued reads another object's. 0 - never fresh - for a finalizer that
+/// is not a wrapper cache record's (an observable array's, an asynchronous
+/// iterator's, a promise reaction's), and for a realm whose agent has no
+/// queue. `data` is what the finalizer was queued with; it has not been
+/// cancelled (the caller checked). The agent's isolate is entered (the
+/// queue's fresh steps), as `deferredQueue` needs.
 pub fn freshStampOf(finalize: v8.WeakCallbackFn, data: ?*anyopaque) u32 {
     if (finalize != &finalizeCollected) return 0;
     const entry: *const Cell = @ptrCast(@alignCast(data orelse return 0));
-    return entry.fresh;
+    if (entry.fresh != 0) return entry.fresh;
+    const queue = entry.cache().deferredQueue() orelse return 0;
+    return queue.freshSerialOf(runtime.SlabAllocator.ownerOf(entry.instance), entry.stamp.generation);
 }
 
 /// v8_Isolate_TakeQueuedFinalizers' two callbacks for a cache's end: the

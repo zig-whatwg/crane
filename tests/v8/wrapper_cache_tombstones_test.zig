@@ -11,9 +11,11 @@
 //! the tombstones had taken the free slots, every miss walked the whole table.
 //! gc_bench's append/remove (100,000 elements made, appended, removed and
 //! dropped) left ~90,000 collected nodes on the deferred teardown queue, and
-//! the realm's end asked the cache about each one (`wrappedAgain`), so
+//! the realm's end asked the cache about each one (then `wrappedAgain`), so
 //! Browser.deinit took 1.5 s in some runs and 3 s in others, as the table's
-//! history fell.
+//! history fell. (That was before the wrapper redesign: a node's wrapper now
+//! lives in the node's own slot and never enters the cache - node_wrappers.zig
+//! - so the churn these tests make is non-node objects': TextEncoders.)
 //!
 //! WebKit's WTF::HashTable counts deleted buckets toward its expand threshold
 //! and rehashes in place when the live keys are few (HashTable.h
@@ -264,7 +266,7 @@ test "wrappers put and taken out, round after round, at addresses never used bef
 test "an entry read from the cache before an insert rehashes it is the entry the cache answers for its instance after" {
     // A rehash moves the map's slots, never the entries: each record is the
     // cache's pool's, and the map holds pointers to them. So a record read
-    // before - by finalizeEntry, wrappedAgain, or any `get` - still answers
+    // before - by finalizeEntry, or any `get` - still answers
     // for its instance after an insert rehashed.
     const page = try Page.open(null);
     defer page.close();
@@ -360,12 +362,22 @@ test "an insert made while a walk over the cache is under way does not rehash it
 
 test "a page that makes and drops wrapped elements leaves its realm's end cheap misses for every node it queued" {
     // gc_bench's append/remove, shortened: each round makes elements,
-    // appends each to a connected host and removes it again, and drops it;
-    // V8 collects their wrappers (unlinkCollected takes each entry out) and
-    // the deferred teardown queue keeps the nodes - so every round's keys are
-    // new. The realm's end then asks the cache about every queued node
-    // (drainDeferred -> wrappedAgain): each a miss.
+    // appends each to a connected host and removes it again, and drops it,
+    // and makes and drops as many TextEncoders; V8 collects their wrappers
+    // and the deferred teardown queue keeps the collected nodes - so every
+    // round's keys are new. The realm's end then drains every queued node
+    // (drainDeferred).
+    //
+    // The TextEncoders are what puts the cache's table under this churn
+    // now: a node's wrapper lives in the node's own slot since the wrapper
+    // redesign and never enters the cache (node_wrappers.zig), so the
+    // elements alone left the table at 8 slots, 1 live, 0 tombstones (lane
+    // mem1's measurement, 2026-11-22) - the test had stopped testing it. A
+    // non-node object's record is the cache's, and the collection that finds
+    // its wrapper dead takes the entry out (unlinkCollected): 2,048 removals
+    // a round, at addresses never seen before.
     const rounds = 24;
+    const per_round = 2048;
 
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
@@ -375,16 +387,30 @@ test "a page that makes and drops wrapped elements leaves its realm's end cheap 
 
     try page.run("globalThis.doc = new Document(); globalThis.host = doc.appendChild(doc.createElement('div'));");
     for (0..rounds) |_| {
-        try page.run("for (let i = 0; i < 2048; i++) { const e = doc.createElement('div'); host.appendChild(e); void host.removeChild(e); }");
+        try page.run(std.fmt.comptimePrint("for (let i = 0; i < {d}; i++) {{ const e = doc.createElement('div'); host.appendChild(e); void host.removeChild(e); void new TextEncoder(); }}", .{per_round}));
         page.collect();
     }
 
-    // The shape: the collected nodes wait on the queue, alive.
-    try testing.expect(queue.pendingNodes() >= rounds * 1024);
+    // The queue keeps the last round's nodes whole: no binding returned
+    // after its collection. It no longer keeps every round's: since lane
+    // mem1's byte bound, a binding's return at depth zero frees a slice once
+    // what the queue holds dead passes max(2 MB, the live DOM), so the
+    // earlier rounds' nodes went during the rounds after them.
+    try testing.expect(queue.pendingNodes() >= per_round);
+    const counts = tombstones.slotCounts(&cache.cache);
+    // The table took this churn: the last round's removals came after its
+    // last insert, and the guard rehashes only before an insert, so they
+    // all stand as tombstones now: 2,048 of a 4,096-slot table on server1
+    // (lane mem1, 2026-11-22). The floor is half a round's, for a record whose
+    // wrapper a collection did not find dead yet (no removal).
+    const standing = counts.capacity - counts.live - counts.free;
+    if (standing < per_round / 2) {
+        std.debug.print("capacity {d}, live {d}, free {d}: {d} tombstones after the last round\n", .{ counts.capacity, counts.live, counts.free, standing });
+        return error.TestExpectedTheTableToTakeTheChurn;
+    }
     // Checked after the last collection, not at an insert: its removals
     // made tombstones of live slots, so "half the unused slots free" no
     // longer applies - the tenth that the last insert left free does.
-    const counts = tombstones.slotCounts(&cache.cache);
     if (!tenthFree(counts)) {
         std.debug.print("capacity {d}, live {d}, free {d}, mean miss probe {d:.1}\n", .{ counts.capacity, counts.live, counts.free, meanMissProbe(&cache.cache) });
         return error.TestExpectedATenthFree;

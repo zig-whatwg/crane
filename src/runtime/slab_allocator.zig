@@ -230,7 +230,8 @@ pub const SlabAllocator = struct {
     /// occupant of that address ever carried, with no lifecycle flags.
     fn issue(self: *SlabAllocator, slot: *Slot, vtable: *const VTable) *Instance {
         slot.storeStamp(self.next_generation & generation_mask);
-        self.next_generation += 1;
+        // Atomic for `generationNow`, which reads it without the lock.
+        @atomicStore(u64, &self.next_generation, self.next_generation + 1, .monotonic);
 
         const inst = slot.asInstance();
         inst.* = Instance{
@@ -241,6 +242,19 @@ pub const SlabAllocator = struct {
 
         self.total_allocated += 1;
         return inst;
+    }
+
+    /// The generation the next Instance this allocator issues will carry:
+    /// every one issued after this reading carries one at or above it, every
+    /// one issued before carries one below. Read without the lock - an atomic
+    /// load, for the agent's callback entry (dom_algorithm.enterCallback),
+    /// the hottest place that asks; a reading taken while another thread of
+    /// the Browser issues is either value, and either bounds this thread's
+    /// own allocations correctly. runtime.gc.DeferredTeardown's fresh rule
+    /// reads it: an object whose generation is at or above the reading taken
+    /// when the innermost callback began was made inside that callback.
+    pub fn generationNow(self: *const SlabAllocator) u64 {
+        return @atomicLoad(u64, &self.next_generation, .monotonic);
     }
 
     /// The generation stamped on the slot holding `inst`, or `dead_generation`
@@ -543,4 +557,20 @@ test "slot_bytes is the stride of a slab's slots" {
     try testing.expectEqual(SlabAllocator.slot_bytes, distance);
     slab_allocator.free(b);
     slab_allocator.free(a);
+}
+
+test "generationNow: every Instance issued after a reading carries a generation at or above it, every one before, below" {
+    var slab_allocator = SlabAllocator.init(testing.allocator);
+    defer slab_allocator.deinit();
+    const before = try slab_allocator.alloc(&test_vtable);
+    const reading = slab_allocator.generationNow();
+    const after = try slab_allocator.alloc(&test_vtable);
+    try testing.expect(SlabAllocator.generationOf(before) < reading);
+    try testing.expect(SlabAllocator.generationOf(after) >= reading);
+    // A reissued slot is issued after the reading too.
+    slab_allocator.free(before);
+    const reissued = try slab_allocator.alloc(&test_vtable);
+    try testing.expect(SlabAllocator.generationOf(reissued) >= reading);
+    slab_allocator.free(reissued);
+    slab_allocator.free(after);
 }
