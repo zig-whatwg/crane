@@ -40,6 +40,9 @@ pub const browser_target = @import("browser_target.zig");
 pub const fetch_observer = @import("fetch_observer.zig");
 pub const fetch_interception = @import("fetch_interception.zig");
 pub const network_resources = @import("network_resources.zig");
+/// The DOM agents' sink: the DOM's probes to every DOM-enabled session
+/// (dom_events.zig).
+pub const dom_events = @import("dom_events.zig");
 
 /// The remote end's server: the devtools thread, its listener, pipe and
 /// connections (server.zig).
