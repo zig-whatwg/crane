@@ -2347,12 +2347,12 @@ pub const Context = struct {
     pub fn deinit(self: *Context) void {
         log.debug("[Context.deinit] {s}", .{self.url});
 
-        // The page's agent's pending mutation observers and signal slots go
-        // while their nodes live - the page is every window of the Browser's
-        // agent - so that nothing accumulates across navigations. The agent's
-        // only (AgentHost.mutation_observers): another Browser's on the thread
-        // is its own.
-        if (self.realm) |realm| mutation_observer_algorithms.resetAgent(realm);
+        // The page's pending mutation observers and signal slots leave its
+        // agent's sets while their nodes live, so that nothing accumulates
+        // across navigations - the page's tab's only: the Browser's other
+        // tabs share the agent (AgentHost.mutation_observers), and theirs are
+        // still notified.
+        if (self.realm) |realm| mutation_observer_algorithms.resetPage(realm);
 
         // (Instance lifecycle flags live in each instance's slab slot and go
         // with it: nothing of the page's to clear here.)
