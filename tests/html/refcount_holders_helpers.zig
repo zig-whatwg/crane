@@ -1,4 +1,4 @@
-//! Shared by the refcount step-5 holder tests (lane rc5; tmp/plans/refcount-
+//! Shared by the refcount step-5 holder tests (lane rc5; docs/refcount-
 //! design.md section 7, step 5): a page on a thread of its own, a node read
 //! from script, two collections with a task turn between, and the count
 //! check. SHADOW MODE: the counts decide nothing yet (frees are still the

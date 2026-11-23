@@ -60,7 +60,7 @@ pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
     const algorithm = hooks.read().set_host orelse return error.InvalidStateError;
     try algorithm(fragment, element);
     // The contents' holds count in the template's chain from here on (the
-    // host-including chain of tmp/plans/refcount-design.md 1.4).
+    // host-including chain of docs/refcount-design.md 1.4).
     if (instance_bridge.getNodeBase(fragment)) |content| {
         if (instance_bridge.getNodeBase(element)) |template| refcount.hostAttached(content, template);
     }

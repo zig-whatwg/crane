@@ -1,4 +1,4 @@
-//! Refcount step 6: the zombie audit (tmp/plans/refcount-design.md section 7
+//! Refcount step 6: the zombie audit (docs/refcount-design.md section 7
 //! step 6; decision D10: zero reports is the gate for step 7, the switch).
 //!
 //! Until step 7 the counts decide nothing: the old model (a tree's root

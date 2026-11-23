@@ -1,5 +1,5 @@
 //! The reference counting types (lane rc12, step 2 of
-//! tmp/plans/refcount-design.md): the count word, `subtree_holds` (decision D1
+//! docs/refcount-design.md): the count word, `subtree_holds` (decision D1
 //! as arithmetic), `Ref`, `GCReachableRef`, `WeakRef`, the Debug ledger (D9:
 //! these tests run it in `.log` mode where they provoke a violation, so the
 //! violation is counted instead of fatal) and the underflow checks.
@@ -87,7 +87,7 @@ test "NodeBase keeps the counts in 8 bytes, and no `holds` chain (step 9b)" {
     // list carried in safe builds): the sibling links are the children, 112 in
     // every build. Lane perf2 batch 6 took the allocator copy (16: an owner
     // word names it) and last_child (8: the first child's previous link): 88.
-    // Step 9b of tmp/plans/refcount-design.md deletes `holds` (the wrapper
+    // Step 9b of docs/refcount-design.md deletes `holds` (the wrapper
     // redesign's P6, lane wr1 batch 6: holders trace their nodes): 80.
     try testing.expect(!@hasField(NodeBase, "holds"));
     // Lane nm1: 88 with the node document's generation (it was Node's own
