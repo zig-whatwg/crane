@@ -915,6 +915,7 @@ needs-renderer with the CDP call each lacks; the element-input path without geom
 from the design's options before it is built; what the tools need from cdp-part-2 moves into 0.1 here."""
 progress = [
   "decided 2026-11-23 10:24 AM ET (the user) - built into Crane, not Google's Node server: slim, compiled in with CDP, for devices such as the iPhone",
+  "decided 2026-11-23 12:51 PM ET (the user, option 1) - element input by uid is element-targeted trusted input (WebDriver's element-origin path, Crane's user_input pipeline): Chrome's events, order, isTrusted, focus and :hover; no approximate geometry in 0.1 (that is roadmap approx-layout, 0.2). Design tmp/plans/mcp1-design.md pins chrome-devtools-mcp v1.13.0",
 ]
 
   [[infra.items]]
