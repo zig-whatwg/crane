@@ -191,6 +191,37 @@ pub const Row = struct {
     /// It cannot run yet: the protocol its test runner drives the browser
     /// with, which Crane does not speak.
     waits: ?manifest.Protocol = null,
+    /// Crane's tests in neither count (section 3's lists), by why: what the
+    /// row says under its rates (`writeNotCounted`).
+    not_counted: NotCounted = .{},
+};
+
+/// A row's tests that its latest runs did not run - listed, with their
+/// reason, in section 3, and in neither count - by why.
+pub const NotCounted = struct {
+    n: [kind_count]u32 = @splat(0),
+
+    const kind_count = std.meta.fieldNames(journal.NotRun).len;
+
+    pub fn of(self: NotCounted, kind: journal.NotRun) u32 {
+        return self.n[@backingInt(kind)];
+    }
+
+    pub fn total(self: NotCounted) u32 {
+        var t: u32 = 0;
+        for (self.n) |x| t += x;
+        return t;
+    }
+
+    /// Add run `r`'s: its tests not run, and the ones its framework counted
+    /// as pending without naming them (project skips, as section 3 counts).
+    fn addRun(self: *NotCounted, r: Run) void {
+        inline for (comptime std.meta.fieldNames(journal.NotRun)) |name| {
+            const kind = @field(journal.NotRun, name);
+            self.n[@backingInt(kind)] += countKind(r, kind);
+        }
+        for (r.pages) |p| self.n[@backingInt(journal.NotRun.project_skip)] += p.unnamed_pending orelse 0;
+    }
 };
 
 /// The first section's frameworks, or (a manifest without that list) one per
@@ -237,6 +268,7 @@ pub fn chartRows(arena: Allocator, m: manifest.Manifest, suites: []const SuiteRu
                 var c = row.crane orelse journal.Counts{};
                 c.merge(r.counts);
                 row.crane = c;
+                row.not_counted.addRun(r);
             }
             if (s.chrome) |r| {
                 var c = row.chrome orelse journal.Counts{};
@@ -262,6 +294,7 @@ pub fn chartRows(arena: Allocator, m: manifest.Manifest, suites: []const SuiteRu
             var c = todo.crane orelse journal.Counts{};
             c.merge(r.counts);
             todo.crane = c;
+            todo.not_counted.addRun(r);
         }
         if (s.chrome) |r| {
             var c = todo.chrome orelse journal.Counts{};
@@ -462,6 +495,8 @@ const style =
     \\.fw .fr-rate { text-align: right; white-space: nowrap; font: 400 0.8rem/1.2 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
     \\.fw .fr-rate b { margin-right: 0.4rem; font: 650 1rem/1.2 var(--sans); color: var(--ink); }
     \\.fw .fr-bar.g .fr-rate b { font-weight: 500; color: var(--ink-2); }
+    \\.fw .fr-note { margin-top: 0.35rem; text-align: right; font: 400 0.76rem/1.35 var(--sans); color: var(--ink-2); }
+    \\.fw .fr-note a, .fw .fr-rate a { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 0.15em; }
     \\.fw .fr-diff { text-align: right; white-space: nowrap; font: 650 0.95rem/1.2 var(--sans); font-variant-numeric: tabular-nums; }
     \\.fw .fr-diff small { display: block; margin-top: 0.1rem; font: 400 0.7rem/1.2 var(--sans); color: var(--ink-2); }
     \\.fw .fr-diff.even { color: var(--ink-2); font-weight: 500; }
@@ -577,8 +612,9 @@ fn writeRates(arena: Allocator, w: W, rows: []const Row) !void {
                 try w.writeAll("</span></span></div>");
                 continue;
             };
-            try w.print("<span class=\"meter\"></span><span class=\"fr-rate\">{s}</span></div>", .{if (i == 0) "no run yet" else "no run"});
+            try w.print("<span class=\"meter\"></span><span class=\"fr-rate\">{s}</span></div>", .{noRate(maybe, i == 0)});
         }
+        try writeNotCounted(w, r.not_counted, std.mem.eql(u8, r.id, "todomvc"));
         try w.writeAll("</div>");
         try diffCell(w, r.crane, r.chrome, "div", true);
         try w.writeAll("</div>\n");
@@ -712,6 +748,49 @@ fn appRate(w: W, pass: u32, ran: u32) !void {
     if (pass < ran and whole == 100) return w.writeAll("&gt;99%");
     if (pass > 0 and whole == 0) return w.writeAll("&lt;1%");
     try w.print("{d}%", .{whole});
+}
+
+/// A rate cell with no rate: no run (Crane's "yet"), or a run that counts
+/// nothing - every test it has is on section 3's lists - linked there.
+fn noRate(counts: ?journal.Counts, crane: bool) []const u8 {
+    if (counts) |c| if (c.errored() == 0 and c.rendering + c.not_run + c.project_skip > 0) return "<a href=\"#not-run\">none counted</a>";
+    return if (crane) "no run yet" else "no run";
+}
+
+/// Under a row's rates: how many of its tests are in neither count, and why,
+/// linked to section 3 - "8 not run: need a renderer", or by why when there
+/// is more than one reason ("21 not run: 15 need a renderer, 6 follow a
+/// ruling"). A rate that leaves tests out says so on its own row. Nothing
+/// when every test counts.
+fn writeNotCounted(w: W, nc: NotCounted, todomvc: bool) !void {
+    const total = nc.total();
+    if (total == 0) return;
+    const Part = struct { n: u32, one: []const u8, many: []const u8 };
+    const skipped = if (todomvc) "skipped by the apps' spec" else "skipped by the project";
+    const parts = [_]Part{
+        .{ .n = nc.of(.rendering), .one = "needs a renderer", .many = "need a renderer" },
+        .{ .n = nc.of(.follows_majority) + nc.of(.follows_spec), .one = "follows a ruling", .many = "follow a ruling" },
+        .{ .n = nc.of(.project_skip), .one = skipped, .many = skipped },
+        .{ .n = nc.of(.needs_server), .one = "needs the project's test server", .many = "need the project's test server" },
+        .{ .n = nc.of(.needs_node_build), .one = "needs the project's Node build", .many = "need the project's Node build" },
+        .{ .n = nc.of(.node_runner_only), .one = "runs only through the project's Node runner", .many = "run only through the project's Node runner" },
+    };
+    var reasons: u32 = 0;
+    for (parts) |p| reasons += @intFromBool(p.n > 0);
+    try w.writeAll("<div class=\"fr-note\"><a href=\"#not-run\">");
+    try html.num(w, total);
+    try w.writeAll(" not run: ");
+    var k: u32 = 0;
+    for (parts) |p| if (p.n > 0) {
+        if (k > 0) try w.writeAll(", ");
+        k += 1;
+        if (reasons > 1) {
+            try html.num(w, p.n);
+            try w.writeByte(' ');
+        }
+        try html.text(w, if (p.n == 1) p.one else p.many);
+    };
+    try w.writeAll("</a></div>");
 }
 
 fn countKind(r: Run, kind: journal.NotRun) u32 {
@@ -1428,6 +1507,38 @@ test "the chart's axis is one linear 0-100% scale: a rate's length is the rate, 
     }
 }
 
+test "a row that leaves tests out says how many and why, linked to section 3; a run that counts nothing says none counted" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    var one: NotCounted = .{};
+    one.n[@backingInt(journal.NotRun.rendering)] = 8;
+    try writeNotCounted(&out.writer, one, false);
+    try testing.expectEqualStrings("<div class=\"fr-note\"><a href=\"#not-run\">8 not run: need a renderer</a></div>", out.written());
+    out.clearRetainingCapacity();
+    var mixed: NotCounted = .{};
+    mixed.n[@backingInt(journal.NotRun.rendering)] = 15;
+    mixed.n[@backingInt(journal.NotRun.follows_majority)] = 4;
+    mixed.n[@backingInt(journal.NotRun.follows_spec)] = 2;
+    mixed.n[@backingInt(journal.NotRun.project_skip)] = 1;
+    try writeNotCounted(&out.writer, mixed, false);
+    try testing.expectEqualStrings("<div class=\"fr-note\"><a href=\"#not-run\">22 not run: 15 need a renderer, 6 follow a ruling, 1 skipped by the project</a></div>", out.written());
+    out.clearRetainingCapacity();
+    var app_skips: NotCounted = .{};
+    app_skips.n[@backingInt(journal.NotRun.project_skip)] = 45;
+    try writeNotCounted(&out.writer, app_skips, true);
+    try testing.expectEqualStrings("<div class=\"fr-note\"><a href=\"#not-run\">45 not run: skipped by the apps&#39; spec</a></div>", out.written());
+    out.clearRetainingCapacity();
+    try writeNotCounted(&out.writer, .{}, false);
+    try testing.expectEqualStrings("", out.written());
+    // React's: every test it ran is listed - none counted, not "no run".
+    try testing.expectEqualStrings("<a href=\"#not-run\">none counted</a>", noRate(.{ .rendering = 26, .not_run = 1 }, true));
+    try testing.expectEqualStrings("<a href=\"#not-run\">none counted</a>", noRate(.{ .rendering = 26, .not_run = 1 }, false));
+    try testing.expectEqualStrings("no run yet", noRate(null, true));
+    try testing.expectEqualStrings("no run", noRate(null, false));
+    // A run whose tests all timed out is no "none counted".
+    try testing.expectEqualStrings("no run yet", noRate(.{ .timeout = 3 }, true));
+}
+
 test "one page in the site's frame: headline, rates, TodoMVC, what is not run and the method closed, the rail; no subpage, no failure name, every rate from the journals" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
@@ -1464,6 +1575,8 @@ test "one page in the site's frame: headline, rates, TodoMVC, what is not run an
     // green-and-red meter, Chrome's beside it, the difference in red.
     try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fr-bar\"><span class=\"fr-who\">Crane</span><span class=\"meter\" title=\"Crane: 997 / 1,000 passed (99.7%)\"><span class=\"m-clean\" style=\"width:99.70%\"></span><span class=\"m-fail\" style=\"width:0.30%\"></span></span><span class=\"fr-rate\"><b>99.7%</b><span class=\"fr-n\">997 / 1,000</span></span></div>") != null);
     try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fr-diff ratio-bad\" data-v=\"-0.21\">&minus;0.2</div>") != null);
+    // Angular's rate leaves out its one rendering test, and its row says so.
+    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fr-note\"><a href=\"#not-run\">1 not run: needs a renderer</a></div>") != null);
     try testing.expect(std.mem.indexOf(u8, h, "<span class=\"meter\"></span><span class=\"fr-rate\">no run</span>") != null);
     // A framework that waits: the site's grey block mark and its reason.
     try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"gate g-block\">Can&#39;t run yet &middot; waits for CDP</span>"));

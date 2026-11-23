@@ -345,7 +345,8 @@ fn navigationEvent(out: *Event, strings: *CallStrings, milestone: *const host_ev
         .dom_content_loaded => out.kind = @backingInt(EventKind.dom_content_loaded),
         .load => out.kind = @backingInt(EventKind.load),
         .stopped_loading => out.kind = @backingInt(EventKind.stopped_loading),
-        .navigable_created, .navigable_destroyed => return false,
+        // The request's start is DevTools' (its command hold), no C event.
+        .navigable_created, .navigable_destroyed, .request_started => return false,
     }
     return true;
 }

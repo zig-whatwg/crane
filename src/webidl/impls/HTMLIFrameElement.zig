@@ -1505,8 +1505,8 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
             // request ready to commit belongs to its RenderFrameHost
             // (TransferNavigationRequestOwnership) and commits, and Gecko
             // swaps the document in at the response, leaving no such gap.
-            // Its commit's "deactivate a document" step 5.2 then ends the
-            // navigation that replaced it (commitAfterFinalize).
+            // The navigation that replaced it goes on and commits after it,
+            // as Chrome's does (commitAfterFinalize's step 5.2 deviation).
             const committing = if (navigationById(integration.navigables, old)) |record| record.committing else false;
             if (!queued_javascript and !committing) endNavigation(integration.navigables, old);
         },
@@ -2176,6 +2176,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 /// (`resumeHeldNavigations`). A traversal's or reload's population is never
 /// held - the apply running it waits for it.
 fn startFetchUnlessHeld(record: *Navigation) void {
+    // Its request starts - past beforeunload, before the hold below: the
+    // observer hears it (Chrome's DidStartNavigation, which comes before
+    // the DevTools throttle's WillStartRequest; CDP holds a page's commands
+    // from here, devtools/held_commands.zig). Only a navigation that
+    // reported its start: it reports its commit or its end too.
+    if (record.started_reported) if (record.integration.browsing_context) |bc| {
+        observer.notify(record.navigables, .{ .navigable_id = bc.id, .navigation_id = record.id, .event = .request_started });
+    };
     if (record.traversal_entry == 0) if (record.integration.browsing_context) |bc| {
         if (observer.holds(record.navigables, bc.id)) {
             record.held = true;
@@ -3718,20 +3726,45 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     if (waiter) |w| listBeforeUnload(integration, record, response, w);
 
     // "Deactivate a document for a cross-document navigation" step 5.2: the
-    // ongoing navigation is null - new navigations may start. One that
-    // started while this commit waited on the queue replaced it as the
-    // ongoing navigation: set directly to null, it ends here (the spec's own
-    // next check of it would abort it; its record must not outlive being the
-    // ongoing one) - unless it is mature too, its own finalize queued behind
-    // this one: that commits next, as the spec's would.
+    // ongoing navigation is null - new navigations may start. Deviation, by
+    // golden rule 2 (lane fw2, 2026-11-22): a navigation that started while
+    // this commit waited on the queue, and so replaced it as the ongoing
+    // navigation, is NOT ended here - it goes on and commits after this
+    // one. The spec's step 5.2 (with apply the history step 8.4's
+    // push/replace "traversal" write, apply_history_step.zig) would abort
+    // it. The browsers do not:
+    // - Chrome: a navigation ready to commit belongs to its RenderFrameHost
+    //   (NavigationRequest::ReadyToCommitNavigation ->
+    //   FrameTreeNode::TransferNavigationRequestOwnership);
+    //   FrameTreeNode::TakeNavigationRequest for the newer one resets only
+    //   the frame tree node's own request; RenderFrameHostManager::
+    //   GetFrameHostForNavigation queues it behind a pending commit
+    //   (kBlockedByPendingCommit, crbug 838348) and the commit does not
+    //   cancel it (CommitPendingIfNecessary) - the newer one commits after.
+    //   Noam Rosenthal, whatwg/html#12832: "it only works in blink because we
+    //   don't actually cancel the navigation when deactivating the page".
+    // - Firefox: the newer one cancels the older at its start
+    //   (nsDocShell::InternalLoad -> Stop(STOP_NETWORK)); it is the one that
+    //   commits. Andreas Farre, whatwg/html#12861: Gecko passes "mainly
+    //   because we don't implement step 19 of #navigate".
+    // - Safari: a race (FrameLoader::continueLoadAfterNavigationPolicy ->
+    //   stopAllLoaders stops the older; transitionToCommitted -> closeURL ->
+    //   stopCheck drops the newer).
+    // So the newer navigation commits in Chrome and Firefox - the majority -
+    // and Chrome's mechanism (the older commits, the newer goes on) is the
+    // majority's of the two mechanisms where one exists (the newer one's
+    // start does not cancel a navigation ready to commit: Chrome, Safari).
+    // whatwg/html#12942 (open, 2026-11-04) deletes step 5.2 and the
+    // push/replace write; revisit when it merges or closes. WPT's nearest,
+    // overlapping-navigations-and-traversals/same-document-nav-cross-
+    // document-nav.html, passes in all three. Probed: tmp/plans/lane-fw2-
+    // handoff.md.
     switch (integration.ongoing_navigation) {
-        .id => |other| if (other != record.id) {
-            const mature = if (navigationById(record.navigables, other)) |later| later.committing else false;
-            if (!mature) endNavigation(record.navigables, other);
+        .id => |other| if (other == record.id) {
+            integration.ongoing_navigation = .none;
         },
-        else => {},
+        else => integration.ongoing_navigation = .none,
     }
-    integration.ongoing_navigation = .none;
 
     // Step 5.3: "Unload a document and its descendants", in its realm. HTML
     // "unload a document" steps 11 and 13 time its unload event for the new

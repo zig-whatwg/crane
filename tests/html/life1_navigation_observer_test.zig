@@ -122,6 +122,17 @@ const Recorder = struct {
         navigables.observer = .{ .context = self, .notify = notify, .hold_first_navigation = hold };
     }
 
+    /// Take the recorder off the Browser's navigables. Deferred right after
+    /// `observe`, it runs before the recorder's deinit and the Browser's: a
+    /// test that fails while a navigation is in flight then tears the Browser
+    /// down (aborting that navigation, and telling the observer) with no
+    /// observer left to append into a freed list.
+    fn stop(self: *Recorder, browser: *browser_mod.Browser) void {
+        const navigables = dom.browser_state.existingNavigablesIn(browser.scope) orelse return;
+        const current = navigables.observer orelse return;
+        if (current.context == @as(*anyopaque, self)) navigables.observer = null;
+    }
+
     /// The tags heard for navigable `id`, in order.
     fn tagsOf(self: *const Recorder, id: u64, out: []Tag) []Tag {
         var n: usize = 0;
@@ -154,13 +165,17 @@ fn hostNavigationMilestones() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
 
     try page.loadHTML("<!doctype html><title>two</title><script>document.addEventListener('DOMContentLoaded', () => {});</script>", .{ .base_url = "http://example.test/two" });
     try until(browser, "document.title === 'two' && document.readyState === 'complete'");
     var buffer: [16]Tag = undefined;
     const tags = recorder.tagsOf(tab, &buffer);
-    try testing.expectEqualSlices(Tag, &.{ .started, .ready_to_commit, .committed, .dom_content_loaded, .load, .stopped_loading }, tags);
+    // request_started: Chrome's DidStartNavigation point, after beforeunload
+    // (Navigator::Navigate runs it first) and before the DevTools throttle
+    // that holds a target waiting for the debugger (observer.zig).
+    try testing.expectEqualSlices(Tag, &.{ .started, .request_started, .ready_to_commit, .committed, .dom_content_loaded, .load, .stopped_loading }, tags);
     // One navigation id from start to commit (CDP's loaderId), and the URL.
     const started = recorder.first(tab, .started).?;
     try testing.expect(started.navigation_id != 0);
@@ -181,6 +196,7 @@ fn sameDocumentMilestones() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
 
     try page.runScript("location.hash = 'x'; history.pushState(null, '', '/pushed'); history.replaceState(null, '', '/replaced');");
@@ -204,6 +220,7 @@ fn frameCreatedAndDestroyed() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
 
     try page.runScript("globalThis.f = document.createElement('iframe'); document.body.append(f);");
@@ -234,6 +251,7 @@ fn nestedFramesDestroyedOnce() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
 
     // A frame with a frame inside it (srcdoc, so the inner one is made as
     // the outer's document parses).
@@ -272,6 +290,7 @@ fn heldUntilReleased() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
 
     // The tab is paused (CDP waitForDebuggerOnStart): its navigation starts,
@@ -280,14 +299,16 @@ fn heldUntilReleased() !void {
     try browser.navigateInPlace("data:text/html,<title>released</title>");
     _ = try browser.runEventLoopBlocking(100);
     var buffer: [16]Tag = undefined;
-    try testing.expectEqualSlices(Tag, &.{.started}, recorder.tagsOf(tab, &buffer));
+    // Its request has started (Chrome's DidStartNavigation comes before the
+    // TargetHandler throttle that holds it at WillStartRequest), its fetch not.
+    try testing.expectEqualSlices(Tag, &.{ .started, .request_started }, recorder.tagsOf(tab, &buffer));
     try expectEval(page, "document.title", "one");
     // Released (Runtime.runIfWaitingForDebugger): it goes on.
     recorder.held = null;
     const navigables = dom.browser_state.existingNavigablesIn(browser.scope) orelse return error.NoNavigables;
     observer.release(navigables, tab);
     try until(browser, "document.title === 'released'");
-    try testing.expectEqualSlices(Tag, &.{ .started, .ready_to_commit, .committed, .dom_content_loaded, .load, .stopped_loading }, recorder.tagsOf(tab, &buffer));
+    try testing.expectEqualSlices(Tag, &.{ .started, .request_started, .ready_to_commit, .committed, .dom_content_loaded, .load, .stopped_loading }, recorder.tagsOf(tab, &buffer));
 }
 
 test "a held navigation waits before its fetch until the observer releases it" {
@@ -358,6 +379,7 @@ fn hostNavigationReferrer() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
 
     var url_buf: [128]u8 = undefined;
@@ -388,6 +410,7 @@ fn contextNavigateReturnsItsId() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
     // The host's navigation of its page: the id it started is the one its
     // milestones carry (CDP Page.navigate's loaderId).
@@ -415,6 +438,7 @@ fn bfcacheRestoreIsCommitted() !void {
     var recorder: Recorder = .{};
     defer recorder.deinit();
     try recorder.observe(browser);
+    defer recorder.stop(browser);
     const tab = browser.hostTraversableId() orelse return error.NoTab;
     try page.runScript("history.back();");
     try until(browser, "document.title === 'one'");
