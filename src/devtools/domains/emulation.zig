@@ -229,7 +229,10 @@ fn mediaChanged(bc: *frames.BrowsingContext) void {
 /// then; in a narrowed Browser a tab in the background answers as focused
 /// (html.focus.setFocusEmulation, counted once per session).
 pub fn setFocusEmulationEnabled(session: *PageSession, params: E.setFocusEmulationEnabled.Params) !E.setFocusEmulationEnabled.Result {
-    const bc = tabOf(session) orelse return session.fail("Target is not a page");
+    // A session whose tab is not there (yet) has nothing to emulate for: it
+    // succeeds, as the command always did - Playwright awaits it on every
+    // page it attaches to.
+    const bc = tabOf(session) orelse return .{};
     if (params.enabled == session.states.Emulation.focus_emulated) return .{};
     session.states.Emulation.focus_emulated = params.enabled;
     @import("html").focus.setFocusEmulation(bc, params.enabled);
