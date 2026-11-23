@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const ConstrainDOMStringParameters = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     exact: ?runtime.JSValue = null,
     ideal: ?runtime.JSValue = null,
 

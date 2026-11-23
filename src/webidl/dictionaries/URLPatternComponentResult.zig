@@ -5,6 +5,12 @@
 const runtime = @import("runtime");
 
 pub const URLPatternComponentResult = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     input: ?runtime.USVString = null,
-    groups: ?[]const struct { key: runtime.USVString, value: runtime.JSValue } = null,
+    groups: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.USVString,
+        value: runtime.JSValue,
+    } = null,
 };

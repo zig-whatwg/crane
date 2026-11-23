@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const LayoutConstraintsOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     availableInlineSize: ?f64 = null,
     availableBlockSize: ?f64 = null,
     fixedInlineSize: ?f64 = null,

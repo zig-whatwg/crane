@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const ObservableInspectorAbortHandler = *const fn (value: runtime.JSValue) void;
+/// callback ObservableInspectorAbortHandler = undefined (any value)
+pub const ObservableInspectorAbortHandler = runtime.BorrowedCallbackFunction;

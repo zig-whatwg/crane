@@ -22,7 +22,7 @@ fn store(allocator: std.mem.Allocator, ctx: runtime.Context) !void {
     defer interfaces.EventTarget.deinit(target);
     try dom.event_handlers.setRaw(target, "click", .{ .body = "return 1", .url = "https://handler.test/first" });
     try dom.event_handlers.setRaw(target, "click", .{ .body = "return 2", .url = "https://handler.test/second" });
-    try dom.event_handlers.set(?*const fn () void, target, "click", null);
+    try dom.event_handlers.set(dom.event_handlers.HandlerValue, target, "click", null);
     try dom.event_handlers.setRaw(target, "resize", .{ .body = "return 3", .url = "https://handler.test/third" });
     dom.event_handlers.eraseAll(target);
     try dom.event_handlers.setRaw(target, "click", .{ .body = "return 4", .url = "https://handler.test/teardown" });

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const AnimatorInstanceConstructor = *const fn (options: runtime.JSValue, state: runtime.JSValue) runtime.JSValue;
+/// callback AnimatorInstanceConstructor = any (any options, optional any state)
+pub const AnimatorInstanceConstructor = runtime.BorrowedCallbackFunction;

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const DecodeSuccessCallback = *const fn (decodedData: *runtime.Instance) void;
+/// callback DecodeSuccessCallback = undefined (AudioBuffer decodedData)
+pub const DecodeSuccessCallback = runtime.BorrowedCallbackFunction;

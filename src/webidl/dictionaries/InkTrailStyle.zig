@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const InkTrailStyle = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     color: runtime.DOMString,
     diameter: f64,
 };

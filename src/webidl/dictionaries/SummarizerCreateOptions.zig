@@ -7,6 +7,8 @@ const callbacks = @import("callbacks");
 const SummarizerCreateCoreOptions = @import("SummarizerCreateCoreOptions.zig").SummarizerCreateCoreOptions;
 
 pub const SummarizerCreateOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     // Inherited from SummarizerCreateCoreOptions
     base: SummarizerCreateCoreOptions,
 

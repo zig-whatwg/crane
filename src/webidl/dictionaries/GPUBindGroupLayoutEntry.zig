@@ -11,6 +11,8 @@ const GPUBufferBindingLayout = @import("GPUBufferBindingLayout.zig").GPUBufferBi
 const GPUSamplerBindingLayout = @import("GPUSamplerBindingLayout.zig").GPUSamplerBindingLayout;
 
 pub const GPUBindGroupLayoutEntry = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     binding: typedefs.GPUIndex32,
     visibility: typedefs.GPUShaderStageFlags,
     buffer: ?GPUBufferBindingLayout = null,

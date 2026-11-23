@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const AuthenticatorAssertionResponseJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     clientDataJSON: typedefs.Base64URLString,
     authenticatorData: typedefs.Base64URLString,
     signature: typedefs.Base64URLString,

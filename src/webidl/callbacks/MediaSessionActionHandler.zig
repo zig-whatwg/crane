@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const MediaSessionActionHandler = *const fn (details: runtime.JSValue) void;
+/// callback MediaSessionActionHandler = undefined (MediaSessionActionDetails details)
+pub const MediaSessionActionHandler = runtime.BorrowedCallbackFunction;

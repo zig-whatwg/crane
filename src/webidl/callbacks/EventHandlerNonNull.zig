@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const EventHandlerNonNull = *const fn (event: *runtime.Instance) runtime.JSValue;
+/// callback EventHandlerNonNull = any (Event event)
+pub const EventHandlerNonNull = runtime.BorrowedCallbackFunction;

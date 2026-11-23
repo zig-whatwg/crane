@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const RsaOtherPrimesInfo = @import("RsaOtherPrimesInfo.zig").RsaOtherPrimesInfo;
 
 pub const JsonWebKey = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     kty: ?runtime.DOMString = null,
     use: ?runtime.DOMString = null,
     key_ops: ?[]const runtime.DOMString = null,

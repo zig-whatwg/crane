@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const SpatialNavigationSearchOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     candidates: ?[]const *runtime.Instance = null,
     container: ?*runtime.Instance = null,
 

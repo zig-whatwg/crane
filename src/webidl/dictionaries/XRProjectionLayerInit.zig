@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const XRProjectionLayerInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     textureType: ?enums.XRTextureType = null,
     colorFormat: ?typedefs.GLenum = null,
     depthFormat: ?typedefs.GLenum = null,

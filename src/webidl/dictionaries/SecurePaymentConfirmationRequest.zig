@@ -10,6 +10,8 @@ const PublicKeyCredentialParameters = @import("PublicKeyCredentialParameters.zig
 const PaymentEntityLogo = @import("PaymentEntityLogo.zig").PaymentEntityLogo;
 
 pub const SecurePaymentConfirmationRequest = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     challenge: typedefs.BufferSource,
     rpId: runtime.USVString,
     credentialIds: []const typedefs.BufferSource,

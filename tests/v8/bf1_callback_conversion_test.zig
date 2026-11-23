@@ -4,7 +4,8 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 const engine = @import("engine");
 const test_process = @import("test_process.zig");
-const Callback = ?*const fn () void;
+/// A nullable callback function, as codegen types one.
+const Callback = ?@import("runtime").BorrowedCallbackFunction;
 
 fn checkStrict() !void {
     test_process.start();

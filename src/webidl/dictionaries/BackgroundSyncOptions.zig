@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const BackgroundSyncOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     minInterval: ?u64 = null,
 
     /// Optional members' IDL default values: a member the value leaves

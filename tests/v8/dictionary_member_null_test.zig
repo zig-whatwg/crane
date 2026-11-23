@@ -84,6 +84,7 @@ const Kind = enum { a };
 
 /// A dictionary as codegen emits one: every optional member `?T = null`.
 const Shaped = struct {
+    pub const webidl_dictionary = true;
     text: ?runtime.DOMString = null,
     flag: ?bool = null,
     count: ?u32 = null,

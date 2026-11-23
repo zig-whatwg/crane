@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const LanguageModelPromptOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     responseConstraint: ?runtime.JSValue = null,
     omitResponseConstraintInput: ?bool = null,
     signal: ?*runtime.Instance = null,

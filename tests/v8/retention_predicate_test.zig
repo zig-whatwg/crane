@@ -93,6 +93,7 @@ test "a dictionary of inert members is inert" {
     // Dictionary conversion converts member by member with the same rules, and
     // the context is used only while it does.
     const RequestInitShaped = struct {
+        pub const webidl_dictionary = true;
         method: ?[]const u8 = null,
         headers: ?union(enum) { pairs: []const []const []const u8, record: []const runtime.DOMString } = null,
         signal: ?*runtime.Instance = null,
@@ -124,32 +125,47 @@ test "a sequence is as inert as its element" {
 }
 
 test "one member that may keep the context makes the whole dictionary retain" {
-    const WithUnknown = struct { a: ?bool = null, p: ?*anyopaque = null };
+    const WithUnknown = struct {
+        pub const webidl_dictionary = true;
+        a: ?bool = null,
+        p: ?*anyopaque = null,
+    };
     try std.testing.expect(retains(WithUnknown));
-    const Nested = struct { inner: ?struct { x: u32, h: union(enum) { s: runtime.DOMString, f: *anyopaque } } = null };
+    const Nested = struct {
+        pub const webidl_dictionary = true;
+        inner: ?struct {
+            pub const webidl_dictionary = true;
+            x: u32,
+            h: union(enum) { s: runtime.DOMString, f: *anyopaque },
+        } = null,
+    };
     try std.testing.expect(retains(Nested));
 }
 
-test "callbacks are inert: a callback wrapper keeps its own copy of the context" {
-    // conv.fromV8Value makes a CallbackWrapper for a callback interface, and
-    // the wrapper takes a context handle of its own, released with it - the
-    // caller's is never stored. Before, the wrapper kept the caller's pointer
-    // without owning it, so neither the binding nor context teardown could
-    // release it, and every element listener or on* handler pinned its page.
-    try std.testing.expect(!retains(*runtime.CallbackWrapper));
-    try std.testing.expect(!retains(?*runtime.CallbackWrapper));
-    const WithCallback = struct { a: ?bool = null, cb: ?*runtime.CallbackWrapper = null };
+test "callback interfaces are inert: the value is its own handle, the context is not kept" {
+    // conv.fromV8Value makes a callback interface value of the argument's
+    // own Global (runtime.BorrowedCallbackInterface); the caller's context is
+    // never stored. (Until lane bind1 it made a CallbackWrapper holding a
+    // context handle of its own.)
+    try std.testing.expect(!retains(runtime.BorrowedCallbackInterface));
+    try std.testing.expect(!retains(?runtime.BorrowedCallbackInterface));
+    const WithCallback = struct {
+        pub const webidl_dictionary = true;
+        a: ?bool = null,
+        cb: ?runtime.BorrowedCallbackInterface = null,
+    };
     try std.testing.expect(!retains(WithCallback));
 }
 
-test "callback functions are inert: the conversion tags the value handle, not the context" {
-    // A callback function converts to its own argument handle, tagged as a
-    // Global; the context is not read. An impl that needs a context for a
-    // callback takes it from the instance, never from the binding's handle.
-    const Callback = *const fn () callconv(.c) void;
+test "callback functions are inert: the conversion keeps the value handle, not the context" {
+    // A callback function converts to its own argument handle; the context
+    // is not read. An impl that needs a context for a callback takes it from
+    // the instance, never from the binding's handle.
+    const Callback = runtime.BorrowedCallbackFunction;
     try std.testing.expect(!retains(Callback));
     try std.testing.expect(!retains(?Callback));
     const UnderlyingSourceShaped = struct {
+        pub const webidl_dictionary = true;
         type: ?runtime.DOMString = null,
         start: ?Callback = null,
     };
@@ -222,13 +238,16 @@ test "argHandleIsCopied - JSValue is NOT, it keeps the pointer" {
     try std.testing.expect(!copied(?runtime.JSValue));
 }
 
-test "argHandleIsCopied - function pointers adopt the handle outright" {
-    // conversions.zig is explicit: "The value is already a Global<Value>* from
-    // v8_FunctionCallbackInfo_GetArgument. We don't need to create another
-    // Global - just use this one directly." Ownership transfers to the callback
-    // wrapper, which disposes it later.
-    const FnPtr = *const fn () callconv(.c) void;
-    try std.testing.expect(!copied(FnPtr));
+test "argHandleIsCopied - a callback value IS its argument's handle, never copied" {
+    // The value is the Global v8_FunctionCallbackInfo_GetArgument made, freed
+    // with the value (freeConvertedArg). A struct with one JSValue field, so
+    // the dictionary rule would call it copied and release the handle at
+    // conversion: it is named first.
+    try std.testing.expect(!copied(runtime.BorrowedCallbackFunction));
+    try std.testing.expect(!copied(?runtime.BorrowedCallbackFunction));
+    try std.testing.expect(!copied(runtime.BorrowedCallbackInterface));
+    // An unknown pointer keeps the conservative answer.
+    try std.testing.expect(!copied(*const fn () callconv(.c) void));
 }
 
 test "argHandleIsCopied - an Instance pointer is copied: it comes from the wrapper, not the handle" {
@@ -259,15 +278,24 @@ test "argHandleIsCopied - a dictionary reads each member through its own handle"
     // never the dictionary's. Members are still held to the rule so that an
     // unknown pointer keeps the conservative answer.
     const RequestInitShaped = struct {
+        pub const webidl_dictionary = true;
         method: ?[]const u8 = null,
         signal: ?*runtime.Instance = null,
         window: ?runtime.JSValue = null,
         keepalive: ?bool = null,
         issuers: ?[]const runtime.DOMString = null,
-        reporting: ?struct { a: bool, b: bool } = null,
+        reporting: ?struct {
+            pub const webidl_dictionary = true;
+            a: bool,
+            b: bool,
+        } = null,
     };
     try std.testing.expect(copied(RequestInitShaped));
-    const WithUnknownPointer = struct { a: ?bool = null, b: ?*anyopaque = null };
+    const WithUnknownPointer = struct {
+        pub const webidl_dictionary = true;
+        a: ?bool = null,
+        b: ?*anyopaque = null,
+    };
     try std.testing.expect(!copied(WithUnknownPointer));
 }
 
@@ -385,7 +413,10 @@ test "anyHandleIsKeptOnlyAsHandle - an unknown type, or one that merely contains
     try std.testing.expect(!anyShape([]const runtime.JSValue));
     const Shape = union(enum) { value: runtime.JSValue, text: runtime.DOMString };
     try std.testing.expect(!anyShape(Shape));
-    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    const Dictionary = struct {
+        pub const webidl_dictionary = true;
+        detail: ?runtime.JSValue = null,
+    };
     try std.testing.expect(!anyShape(Dictionary));
     try std.testing.expect(!anyShape(runtime.DOMString));
 }
@@ -430,11 +461,12 @@ test "setterValueLeavesHandle - an object any is the handle itself: kept" {
 
 test "setterValueLeavesHandle - a null EventHandler made nothing; a function is kept" {
     // typedefs.EventHandler, reconstructed: `?EventHandlerNonNull`, a
-    // function pointer (the typedefs module is not this test's import).
-    const EventHandler = ?*const fn (event: *runtime.Instance) runtime.JSValue;
+    // runtime.BorrowedCallbackFunction (the typedefs module is not this
+    // test's import).
+    const EventHandler = ?runtime.BorrowedCallbackFunction;
     try std.testing.expect(leaves(EventHandler, null));
-    var dummy: u64 = 0;
-    const function: EventHandler = @ptrCast(@alignCast(&dummy));
+    var dummy: u64 align(16) = 0;
+    const function: EventHandler = .{ .function = .{ .handle = .{ .ptr = &dummy } } };
     try std.testing.expect(!leaves(EventHandler, function));
 }
 
@@ -453,7 +485,10 @@ test "setterValueLeavesHandle - an unknown type defaults to KEPT" {
     try std.testing.expect(!leaves(SomethingNew, .{ .a = 0, .b = @ptrCast(&dummy) }));
     const Shape = union(enum) { value: runtime.JSValue, text: runtime.DOMString };
     try std.testing.expect(!leaves(Shape, .{ .text = runtime.DOMString.empty }));
-    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    const Dictionary = struct {
+        pub const webidl_dictionary = true;
+        detail: ?runtime.JSValue = null,
+    };
     try std.testing.expect(!leaves(Dictionary, .{}));
 }
 
@@ -485,15 +520,16 @@ test "setterValueIsBorrowed - a union whose only non-copied arm is `object` is b
 test "setterValueIsBorrowed - a callback function is borrowed; the map keeps a hold of its own" {
     // typedefs.EventHandler, reconstructed: `?EventHandlerNonNull`. Its
     // conversion's value IS the argument's Global, BORROWED for the setter
-    // since lane leaks7: the event handler map takes a hold of its own
-    // (engine.takeCallbackFunction moves the function out), and the binding
-    // releases its Global once the setter has returned.
-    const EventHandler = ?*const fn (event: *runtime.Instance) runtime.JSValue;
+    // since lane leaks7: the event handler map keeps a hold of its own
+    // (`keep` moves the function out), and the binding releases its Global
+    // once the setter has returned.
+    const EventHandler = ?runtime.BorrowedCallbackFunction;
     try std.testing.expect(borrowed(EventHandler));
-    try std.testing.expect(borrowed(*const fn () callconv(.c) void));
-    // Not named, so handed over: a callback interface's wrapper, and a union
-    // arm nobody typed.
-    try std.testing.expect(!borrowed(*runtime.CallbackWrapper));
+    try std.testing.expect(borrowed(runtime.BorrowedCallbackFunction));
+    try std.testing.expect(borrowed(runtime.BorrowedCallbackInterface));
+    // Not named, so handed over: an unknown pointer, and a union arm nobody
+    // typed.
+    try std.testing.expect(!borrowed(*const fn () callconv(.c) void));
     const TimerHandlerShaped = union(enum) { domstring: runtime.DOMString, function: *anyopaque };
     try std.testing.expect(!borrowed(TimerHandlerShaped));
 }
@@ -522,7 +558,10 @@ test "setterValueIsBorrowed - an unknown type, or one that merely contains an an
     try std.testing.expect(!borrowed(SomethingNew));
     try std.testing.expect(!borrowed(*anyopaque));
     try std.testing.expect(!borrowed([]const runtime.JSValue));
-    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    const Dictionary = struct {
+        pub const webidl_dictionary = true;
+        detail: ?runtime.JSValue = null,
+    };
     try std.testing.expect(!borrowed(Dictionary));
     // A JSValue arm not named `object` (CryptoKeyID's `bigint`) is not a
     // reference to the argument's object.
@@ -582,4 +621,41 @@ test "unionValueIsOwned - an any or object member answers by its arm: a primitiv
     const Shape = union(enum) { value: runtime.JSValue, opaque_member: *anyopaque };
     try std.testing.expect(unionOwned(Shape, .{ .value = runtime.JSValue.jsNull }));
     try std.testing.expect(unionOwned(Shape, .{ .value = runtime.JSValue.fromStringRef("x") }));
+}
+
+// ===========================================================================
+// A dictionary is a struct that SAYS so (lane bind1)
+// ===========================================================================
+//
+// "Any struct without Meta is a dictionary" misfired twice: argHandleIsCopied
+// called a borrowed callback (a struct holding its argument's handle) a copied
+// dictionary and would have released the handle under the impl, and the union
+// conversion took it for TimerHandler's dictionary arm. Dictionary detection
+// is positive now: codegen writes `pub const webidl_dictionary = true` into
+// every generated dictionary, and every rule tests that marker.
+
+test "a plain struct holding a JSValue is not a dictionary: no rule takes it for one" {
+    const isDictionary = v8.interface_mod.isDictionaryType;
+    const Plain = struct { value: runtime.JSValue };
+    const Marked = struct {
+        pub const webidl_dictionary = true;
+        value: ?runtime.JSValue = null,
+    };
+    try std.testing.expect(!isDictionary(Plain));
+    try std.testing.expect(isDictionary(Marked));
+    // Its handle is never released at conversion as a copied dictionary's.
+    try std.testing.expect(!copied(Plain));
+    try std.testing.expect(copied(Marked));
+    // Never walked member by member: an unknown type keeps the context.
+    try std.testing.expect(retains(Plain));
+    try std.testing.expect(!retains(Marked));
+    // Never freed member by member.
+    try std.testing.expect(!v8.interface_mod.needsArgCleanup(Plain));
+    try std.testing.expect(v8.interface_mod.needsArgCleanup(Marked));
+    // The callback values are structs and no dictionaries; every generated
+    // dictionary says it is one.
+    try std.testing.expect(!isDictionary(runtime.BorrowedCallbackFunction));
+    try std.testing.expect(!isDictionary(runtime.BorrowedCallbackInterface));
+    try std.testing.expect(isDictionary(v8.conversions.generated_dictionaries.QueuingStrategy));
+    try std.testing.expect(isDictionary(v8.conversions.generated_dictionaries.EventInit));
 }

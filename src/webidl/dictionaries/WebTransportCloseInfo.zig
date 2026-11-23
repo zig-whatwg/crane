@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const WebTransportCloseInfo = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     closeCode: ?u32 = null,
     reason: ?runtime.USVString = null,
 

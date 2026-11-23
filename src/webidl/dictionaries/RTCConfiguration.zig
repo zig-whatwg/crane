@@ -7,6 +7,8 @@ const enums = @import("enums");
 const RTCIceServer = @import("RTCIceServer.zig").RTCIceServer;
 
 pub const RTCConfiguration = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     iceServers: ?[]const RTCIceServer = null,
     iceTransportPolicy: ?enums.RTCIceTransportPolicy = null,
     bundlePolicy: ?enums.RTCBundlePolicy = null,

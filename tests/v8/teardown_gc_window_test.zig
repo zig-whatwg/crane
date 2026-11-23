@@ -9,6 +9,10 @@
 //! wrapper unreferenced, and its finalizer (wrapper_cache finalizeEntry) freed
 //! an instance whose teardown had "not started": the element's deinit ran
 //! again, under itself. So the teardown takes the mark FIRST.
+//! (Since the wrapper redesign a node's main-world wrapper never enters a wrapper cache
+//! - node_wrappers.zig - and its end is the node wrapper registry's release,
+//! not finalizeEntry; the mark-first rule these tests pin is the same: lane
+//! mem1's audit, 2026-11-22.)
 //!
 //! A node with a parent is its tree's whatever the mark says (treeOwns); the
 //! root the parser's adapter frees (dom.node_creation.destroyUninserted) is

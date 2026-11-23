@@ -2,6 +2,7 @@
 
 **Date**: 2026-10-29
 **Lesson**: A passing exception assertion does not prove that execution reached the intended operation.
+**Status** (2026-11-23, lane bind1): seen again from the binding side. A dictionary's record<K, V> member was converted as a sequence, so every plain object was rejected. That TypeError let 56 subtests of file-system-access/showPicker-errors pass, although the pickers checked nothing. Fixing the record conversion (WebIDL 3.2.23) turned those passes into 56 losses. The remedy was not to keep the wrong throw. The expected TypeErrors and SecurityErrors come from steps that run before the part Crane cannot do (the prompt), so implementing those steps in spec order brought the file from 4 to 69 of 71, above base's 60. When the accidental passes are throws the spec also requires earlier on the same path, implement those steps.
 
 **Why**: A TypeError from reading an absent API satisfies the same exception class as a deliberate validation error. Adding the API can expose that accidental pass as a conformance loss, even when the implemented behavior follows shipping browsers or the specification.
 

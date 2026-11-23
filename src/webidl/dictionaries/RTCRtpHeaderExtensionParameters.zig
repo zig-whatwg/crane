@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const RTCRtpHeaderExtensionParameters = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     uri: runtime.DOMString,
     id: u16,
     encrypted: ?bool = null,

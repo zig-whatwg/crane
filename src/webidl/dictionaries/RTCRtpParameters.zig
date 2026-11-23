@@ -8,6 +8,8 @@ const RTCRtcpParameters = @import("RTCRtcpParameters.zig").RTCRtcpParameters;
 const RTCRtpCodecParameters = @import("RTCRtpCodecParameters.zig").RTCRtpCodecParameters;
 
 pub const RTCRtpParameters = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     headerExtensions: []const RTCRtpHeaderExtensionParameters,
     rtcp: RTCRtcpParameters,
     codecs: []const RTCRtpCodecParameters,

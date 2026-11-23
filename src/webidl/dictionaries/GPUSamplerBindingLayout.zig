@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const GPUSamplerBindingLayout = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?enums.GPUSamplerBindingType = null,
 
     /// Optional members' IDL default values: a member the value leaves

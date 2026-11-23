@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const FileSystemEntryCallback = *const fn (entry: *runtime.Instance) void;
+/// callback FileSystemEntryCallback = undefined (FileSystemEntry entry)
+pub const FileSystemEntryCallback = runtime.BorrowedCallbackFunction;

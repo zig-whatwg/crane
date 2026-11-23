@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const GPUTexelCopyBufferLayout = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     offset: ?typedefs.GPUSize64 = null,
     bytesPerRow: ?typedefs.GPUSize32 = null,
     rowsPerImage: ?typedefs.GPUSize32 = null,

@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const RTCPeerConnectionErrorCallback = *const fn (@"error": *runtime.Instance) void;
+/// callback RTCPeerConnectionErrorCallback = undefined (DOMException error)
+pub const RTCPeerConnectionErrorCallback = runtime.BorrowedCallbackFunction;

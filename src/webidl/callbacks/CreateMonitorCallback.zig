@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const CreateMonitorCallback = *const fn (monitor: *runtime.Instance) void;
+/// callback CreateMonitorCallback = undefined (CreateMonitor monitor)
+pub const CreateMonitorCallback = runtime.BorrowedCallbackFunction;

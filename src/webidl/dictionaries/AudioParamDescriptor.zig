@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const AudioParamDescriptor = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     name: runtime.DOMString,
     defaultValue: ?f32 = null,
     minValue: ?f32 = null,

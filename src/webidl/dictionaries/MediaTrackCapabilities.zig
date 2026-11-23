@@ -8,6 +8,8 @@ const DoubleRange = @import("DoubleRange.zig").DoubleRange;
 const MediaSettingsRange = @import("MediaSettingsRange.zig").MediaSettingsRange;
 
 pub const MediaTrackCapabilities = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     width: ?ULongRange = null,
     height: ?ULongRange = null,
     aspectRatio: ?DoubleRange = null,

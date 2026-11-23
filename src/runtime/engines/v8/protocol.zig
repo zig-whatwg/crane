@@ -28,7 +28,6 @@ const context_manager = @import("context_manager.zig");
 const current_realm = @import("current_realm.zig");
 const value_construction = @import("value_construction.zig");
 const page_realm = @import("page_realm.zig");
-const callback_interfaces = @import("callback_interfaces.zig");
 const array_buffer_views = @import("array_buffer_views.zig");
 const observable_array = @import("observable_array.zig");
 const webidl_conversions = @import("webidl_conversions.zig");
@@ -660,8 +659,8 @@ pub fn isConstructor(realm: Context, value: JSValue) bool {
     return worker_realm.isConstructor(value);
 }
 
-pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
-pub const takeCallbackInterface = protocol_callbacks.takeCallbackInterface;
+pub const keepCallbackFunction = protocol_callbacks.keepCallbackFunction;
+pub const keepCallbackInterface = protocol_callbacks.keepCallbackInterface;
 
 // ============================================================================
 // 4.5 ECMAScript values

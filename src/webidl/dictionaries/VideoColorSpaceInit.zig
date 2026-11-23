@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const VideoColorSpaceInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     primaries: ?enums.VideoColorPrimaries = null,
     transfer: ?enums.VideoTransferCharacteristics = null,
     matrix: ?enums.VideoMatrixCoefficients = null,

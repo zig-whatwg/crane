@@ -66,8 +66,8 @@ pub const AgentHost = struct {
     /// DOM 4.3: the agent's mutation observer microtask queued flag, its
     /// pending mutation observers and its signal slots
     /// (dom.mutation_observer_algorithms, found from a realm with `agentOf`).
-    /// Read and written on the agent's thread only; emptied by its page's end
-    /// (`resetAgent`). It was one per thread.
+    /// Read and written on the agent's thread only; a page's end takes its
+    /// own tab's out (`resetPage`). It was one per thread.
     mutation_observers: dom.mutation_observer_algorithms.MutationObserverAgent,
     /// HTML timer initialization steps, step 3: the nesting level of the task
     /// the agent's event loop is running, when it is a timer's (its "timer

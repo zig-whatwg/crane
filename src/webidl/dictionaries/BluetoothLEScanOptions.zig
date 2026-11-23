@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const BluetoothLEScanFilterInit = @import("BluetoothLEScanFilterInit.zig").BluetoothLEScanFilterInit;
 
 pub const BluetoothLEScanOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     filters: ?[]const BluetoothLEScanFilterInit = null,
     keepRepeatedDevices: ?bool = null,
     acceptAllAdvertisements: ?bool = null,

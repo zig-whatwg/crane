@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const ViewTimelineOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     subject: ?*runtime.Instance = null,
     axis: ?enums.ScrollAxis = null,
     inset: ?runtime.JSValue = null,

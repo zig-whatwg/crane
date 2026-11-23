@@ -6,9 +6,15 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const PushSubscriptionJSON = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     endpoint: ?runtime.USVString = null,
     expirationTime: ?typedefs.EpochTimeStamp = null,
-    keys: ?[]const struct { key: runtime.DOMString, value: runtime.USVString } = null,
+    keys: ?[]const struct {
+        pub const webidl_record_entry = true;
+        key: runtime.DOMString,
+        value: runtime.USVString,
+    } = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

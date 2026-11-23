@@ -8,6 +8,8 @@ const VideoFrameMetadata = @import("VideoFrameMetadata.zig").VideoFrameMetadata;
 const DOMRectInit = @import("DOMRectInit.zig").DOMRectInit;
 
 pub const VideoFrameInit = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     duration: ?u64 = null,
     timestamp: ?i64 = null,
     alpha: ?enums.AlphaOption = null,

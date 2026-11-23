@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const GetHTMLOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     serializableShadowRoots: ?bool = null,
     shadowRoots: ?[]const *runtime.Instance = null,
 

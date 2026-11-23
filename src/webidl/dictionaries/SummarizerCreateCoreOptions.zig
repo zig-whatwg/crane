@@ -6,6 +6,8 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const SummarizerCreateCoreOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     type: ?enums.SummarizerType = null,
     format: ?enums.SummarizerFormat = null,
     length: ?enums.SummarizerLength = null,

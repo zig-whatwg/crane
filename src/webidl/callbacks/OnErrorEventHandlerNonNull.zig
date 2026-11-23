@@ -4,4 +4,5 @@
 
 const runtime = @import("runtime");
 
-pub const OnErrorEventHandlerNonNull = *const fn (event: runtime.JSValue, source: runtime.DOMString, lineno: u32, colno: u32, @"error": runtime.JSValue) runtime.JSValue;
+/// callback OnErrorEventHandlerNonNull = any ((Event or DOMString) event, optional DOMString source, optional unsigned long lineno, optional unsigned long colno, optional any error)
+pub const OnErrorEventHandlerNonNull = runtime.BorrowedCallbackFunction;

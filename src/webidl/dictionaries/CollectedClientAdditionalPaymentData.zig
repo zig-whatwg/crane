@@ -8,6 +8,8 @@ const PaymentCredentialInstrument = @import("PaymentCredentialInstrument.zig").P
 const PaymentEntityLogo = @import("PaymentEntityLogo.zig").PaymentEntityLogo;
 
 pub const CollectedClientAdditionalPaymentData = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     rpId: runtime.USVString,
     topOrigin: runtime.USVString,
     payeeName: ?runtime.USVString = null,

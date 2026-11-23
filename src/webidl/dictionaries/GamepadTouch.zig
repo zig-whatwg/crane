@@ -5,6 +5,8 @@
 const runtime = @import("runtime");
 
 pub const GamepadTouch = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     touchId: ?u32 = null,
     surfaceId: ?u8 = null,
     position: ?*runtime.Instance = null,

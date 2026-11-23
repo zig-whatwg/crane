@@ -104,7 +104,7 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// NotSupportedError used to drop it, one Global for the agent's life (lane
 /// leaks2).
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    return worker_host.requestAnimationFrame(instance.ctx, engine.takeCallbackFunction(@ptrCast(callback)));
+    return worker_host.requestAnimationFrame(instance.ctx, callback.keep());
 }
 
 /// Operation: cancelAnimationFrame

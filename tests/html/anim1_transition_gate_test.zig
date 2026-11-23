@@ -14,7 +14,7 @@ fn settle(page: helpers.Page) !void {
     var turns: usize = 0;
     while (turns < 100) : (turns += 1) {
         _ = try page.browser.runEventLoopBlocking(5);
-        if (page.browser.event_loop.?.frames.timer_id == null) return;
+        if (!page.browser.event_loop.?.renderingArmed()) return;
     }
     return error.FramesNeverSettled;
 }
@@ -32,7 +32,7 @@ fn noDeclarationNoFrame() !void {
         \\div.setAttribute('style', 'opacity: 0.25; color: green');
     );
     try std.testing.expect(!dom.style.engine.declaresAnimations(document));
-    try std.testing.expect(page.browser.event_loop.?.frames.timer_id == null);
+    try std.testing.expect(!page.browser.event_loop.?.renderingArmed());
 }
 
 test "a document that declares no transition gets no step-16 update and asks for no frame" {
@@ -56,12 +56,12 @@ fn styleAttributeOpensTheGate() !void {
     try page.run("div.style.transition = 'opacity 1s';");
     try std.testing.expect(dom.style.engine.declaresAnimations(document));
     try std.testing.expect(counts.version.rendering_watch);
-    try std.testing.expect(page.browser.event_loop.?.frames.timer_id != null);
+    try std.testing.expect(page.browser.event_loop.?.renderingArmed());
     // After that frame the watch is armed again: the next mutation asks.
     try settle(page);
     try std.testing.expect(counts.version.rendering_watch);
     try page.run("div.style.opacity = '0';");
-    try std.testing.expect(page.browser.event_loop.?.frames.timer_id != null);
+    try std.testing.expect(page.browser.event_loop.?.renderingArmed());
 }
 
 test "a style attribute that declares a transition opens the gate and watches the document" {

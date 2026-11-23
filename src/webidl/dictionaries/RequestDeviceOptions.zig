@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const BluetoothLEScanFilterInit = @import("BluetoothLEScanFilterInit.zig").BluetoothLEScanFilterInit;
 
 pub const RequestDeviceOptions = struct {
+    /// A WebIDL dictionary (the binding's dictionary rules read this marker).
+    pub const webidl_dictionary = true;
     filters: ?[]const BluetoothLEScanFilterInit = null,
     exclusionFilters: ?[]const BluetoothLEScanFilterInit = null,
     optionalServices: ?[]const typedefs.BluetoothServiceUUID = null,
