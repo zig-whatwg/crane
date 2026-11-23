@@ -25,6 +25,8 @@
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
+/// A service worker realm has an event loop; these tests drive none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -64,6 +66,25 @@ const no_hooks: protocol.HostHooks = .{};
 const Page = struct {
     agent: *protocol.Agent,
     realm: runtime.Context,
+    /// A service worker's realm (`openServiceWorker`), not a window's.
+    worker: bool = false,
+
+    /// A service worker realm of its own agent: what [Exposed=ServiceWorker]
+    /// interfaces are constructed in.
+    fn openServiceWorker() !Page {
+        try setup();
+        const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+        errdefer protocol.destroyAgent(agent);
+        const made = try protocol.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
+            .url = "https://example.test/sw.js",
+            .timer = null,
+            .event_loop = inline_task_loop.eventLoop(),
+            .global = .service,
+            .allocator = std.heap.c_allocator,
+        });
+        return .{ .agent = agent, .realm = made.realm, .worker = true };
+    }
 
     fn open() !Page {
         try setup();
@@ -82,7 +103,9 @@ const Page = struct {
     }
 
     fn close(self: Page) void {
-        protocol.destroyWindowRealm(self.realm, .global_detached);
+        if (self.worker) {
+            protocol.destroyWorkerRealm(self.realm, null, null);
+        } else protocol.destroyWindowRealm(self.realm, .global_detached);
         protocol.destroyAgent(self.agent);
     }
 
@@ -382,6 +405,24 @@ test "a File constructor whose bits are no sequence frees what it made" {
         \\  for (let i = 0; i < 32; i++) {
         \\    try { new File('abc', 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
         \\    try { new File({ length: 1, 0: 'a' }, 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "an ExtendableMessageEvent constructor whose source it rejects frees what it made" {
+    // [Exposed=ServiceWorker]: constructed in a service worker's realm.
+    const page = try Page.openServiceWorker();
+    defer page.close();
+    // A source that is no Client, ServiceWorker or MessagePort is a
+    // TypeError, after the event and its data were made.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new ExtendableMessageEvent('message', { source: {} }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new ExtendableMessageEvent('message', { source: 5 }); } catch (e) { if (e instanceof TypeError) n++; }
         \\  }
         \\  return String(n);
         \\})()
