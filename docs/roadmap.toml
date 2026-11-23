@@ -842,6 +842,25 @@ progress = []
   status = "todo"
 
 [[infra]]
+id = "blob-file-sources"
+title = "File-backed Blob sources (0.1 requirement)"
+why = """The user, 2026-11-23 3:24 AM ET: "yes keep file blobs". A File chosen from the host (CDP \
+DOM.setFileInputFiles today, a real picker later) must keep its path and read at read time, as the File \
+API's snapshot state and Blink's BlobDataHandle / FileStreamReader do: a missing file fails the read with \
+NotFoundError, one modified since its snapshot with NotReadableError. Crane's Blob holds bytes in memory \
+and every consumer reads them infallibly (found by lane cdpd1)."""
+done_when = """BlobData has a file source (platform token, snapshot size and mtime, range); slices keep \
+ranges; new Blob([file]) references instead of copying; every consumer (Blob methods, FileReader, \
+FileReaderSync, fetch bodies, Request/Response, XHR send, WebSocket send, blob: URLs, FormData/multipart, \
+structured clone, IndexedDB, createImageBitmap) materializes through one fallible step and maps the failure \
+as its spec says; WPT FileAPI/ fetch/ xhr/ websockets/ IndexedDB/ lose nothing; leaks --atExit clean."""
+progress = []
+
+  [[infra.items]]
+  name = "File-backed sources, fallible materialize, every consumer moved"
+  status = "todo"
+
+[[infra]]
 id = "cdp-part-2"
 title = "Chrome DevTools Protocol, part 2: the rest of the protocol (0.2)"
 why = """The user, 2026-11-21: CDP split in two; part 2 (0.2) is the breadth beyond what the \
