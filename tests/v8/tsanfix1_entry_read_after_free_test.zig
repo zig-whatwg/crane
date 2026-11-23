@@ -19,6 +19,17 @@
 //! are freed by their counts, not by the cache's sweep, and only the Event
 //! and the AbortController take the sweep's gc.onObjectFreed branch this
 //! test was written for (lane mem1's audit, 2026-11-22).
+//!
+//! THE CLASS IT GUARDS: no read of a freed slot in the sweep. Not the order
+//! of the free and the wrapper's end: that order no longer matters, because
+//! letting the wrapper go (wrapper_cache `letGo`) touches only the record and
+//! the V8 wrapper, never the instance or its slot. Reverting it - free first,
+//! then letGo - keeps this test green, and there is no read for
+//! ThreadSanitizer to catch either (lane mem1, 2026-11-23). What fails it is
+//! the read: put the original bug's `instance_bridge.getNodeBase(instance)`
+//! back after `gc.onObjectFreed(instance)` in that branch and it reads
+//! "expected 0, found 4" (the READBACK experiment, lane mem1; the
+//! integrator's ruling, 2026-11-23 7:32 AM ET: this guard, no ordering test).
 
 const std = @import("std");
 const testing = std.testing;
