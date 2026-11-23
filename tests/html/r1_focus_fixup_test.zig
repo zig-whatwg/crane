@@ -95,8 +95,9 @@ fn idleWithNothingFocused() !void {
     while (turns < 10) : (turns += 1) _ = try page.browser.runEventLoopBlocking(20);
     // Mutations of a document with nothing focused ask for no frame.
     try page.run("for (let i = 0; i < 100; i++) document.body.appendChild(document.createElement('p'));");
+    // No tab's frame clock is armed (each tab's is on the loop's list).
     const loop = page.browser.event_loop.?;
-    try std.testing.expect(loop.frames.timer_id == null);
+    for (loop.frame_clocks.items) |frames| try std.testing.expect(frames.timer_id == null);
 }
 
 test "mutations of a document with nothing focused ask for no frame" {
