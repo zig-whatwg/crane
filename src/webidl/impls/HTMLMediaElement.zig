@@ -597,7 +597,18 @@ pub const InternalState = struct {
         defer other.deinit(allocator);
         // Steps 1-2: the cues of the hidden and showing tracks - current
         // when they start at or before the current playback position and end
-        // after it, other otherwise.
+        // after it, other otherwise. While readyState is HAVE_NOTHING no cue
+        // is current: the active flag is unset whenever readyState goes back
+        // to HAVE_NOTHING (4.8.11.11.1), and Chrome and Safari collect no
+        // current cue until there is media data (Blink's
+        // CueTimeline::TimeMarchesOn and WebKit's
+        // HTMLMediaElement::updateActiveTextTrackCues test
+        // readyState != HAVE_NOTHING before collecting the overlapping cues;
+        // read at chromium and WebKit main, 2026-11-23). No newer spec is
+        // involved: golden rule 2, the two-browser majority
+        // (track-element/track-active-cues.html: no cue is active when the
+        // media fails to load).
+        const no_data = self.load.ready == .nothing;
         if (self.text_tracks) |list| {
             const tracks = try interfaces.TextTrackList.get_length(list);
             for (0..tracks) |track_index| {
@@ -617,7 +628,7 @@ pub const InternalState = struct {
                         .start = try interfaces.TextTrackCue.get_startTime(cue),
                         .end = try interfaces.TextTrackCue.get_endTime(cue),
                     };
-                    if (tracked.start <= position and tracked.end > position) {
+                    if (!no_data and tracked.start <= position and tracked.end > position) {
                         try current.append(allocator, tracked);
                     } else try other.append(allocator, tracked);
                 }
