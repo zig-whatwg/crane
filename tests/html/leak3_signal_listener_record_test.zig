@@ -21,8 +21,9 @@
 //!   fired, a target collected while its signal lives: the Browser
 //!   allocator's live bytes stay flat over thousands, and the signal's abort
 //!   algorithms with them;
-//! - kept until the signal aborts: no page each (the process footprint,
-//!   against the same listeners added with no signal);
+//! - kept until the signal aborts: no page each - the process's minor page
+//!   faults (every build) and its footprint (not under ThreadSanitizer),
+//!   against the same listeners added with no signal;
 //! - removed by an earlier abort algorithm while the signal's own abort walk
 //!   holds the record: the walk still runs it, once, and it is freed once
 //!   (std.testing.allocator under every Browser here).
@@ -266,12 +267,28 @@ fn mappings() ?usize {
     return lines;
 }
 
+/// The process's minor page faults so far: each first touch of a page the
+/// process has not touched yet (getrusage's ru_minflt, every thread). A
+/// record on its own page is one each; records sharing an allocator's pages
+/// are one per page of them. Exact where the footprint is not: a
+/// ThreadSanitizer build commits its shadow and metadata memory in steps of
+/// megabytes, but faults only on the pages touched.
+fn minorFaults() usize {
+    const usage = std.posix.getrusage(std.posix.rusage.SELF);
+    return @intCast(usage.minflt);
+}
+
+/// What one kept batch cost.
+const Cost = struct { bytes: usize, faults: usize, maps: ?usize };
+
 /// 4,000 listeners added with `options`, ten to a fresh target, kept: the
-/// footprint's rise, and the mappings', over the adding alone. Ten a target:
-/// "add an event listener" step 5 compares each with every listener its
-/// target has, so one target of 4,000 would time the comparisons.
-fn keptListenersCost(page: Page, options: []const u8) !struct { bytes: usize, maps: ?usize } {
+/// footprint's rise, the minor faults', and the mappings', over the adding
+/// alone. Ten a target: "add an event listener" step 5 compares each with
+/// every listener its target has, so one target of 4,000 would time the
+/// comparisons.
+fn keptListenersCost(page: Page, options: []const u8) !Cost {
     const before = footprint();
+    const faults_before = minorFaults();
     const maps_before = mappings();
     var script_buf: [512]u8 = undefined;
     const script = try std.fmt.bufPrint(&script_buf,
@@ -285,13 +302,30 @@ fn keptListenersCost(page: Page, options: []const u8) !struct { bytes: usize, ma
         \\0
     , .{options});
     try page.run(script);
+    const faults_after = minorFaults();
     const after = footprint();
     const maps_after = mappings();
     return .{
         .bytes = after -| before,
+        .faults = faults_after -| faults_before,
         .maps = if (maps_before) |b| (maps_after orelse b) -| b else null,
     };
 }
+
+/// Whether the footprint can be read for this: not under ThreadSanitizer,
+/// whose shadow and metadata mappings move the process footprint in
+/// multi-megabyte steps (seen: +13,620 KiB on a 4,000-listener batch that
+/// allocated well under 1 MiB, and +0 KiB on its control); the page faults
+/// are asserted in every build.
+const footprint_is_measured = !builtin.sanitize_thread;
+
+/// The extra first-touch faults 4,000 kept signal listeners may cost over
+/// their control batch: half of one per listener. Measured on Linux
+/// (server1): a page each (the bug) +4,042, a record each +470. Under
+/// ThreadSanitizer every heap page touched also faults its shadow - a page
+/// each +12,406, a record each +1,628 to +1,805 - so the limit there is three
+/// halves of one per listener.
+const fault_limit: usize = if (builtin.sanitize_thread) 6000 else 2000;
 
 fn keptListenersCostNoPageEach() !void {
     var counting: CountingAllocator = .{ .child = testing.allocator };
@@ -310,11 +344,17 @@ fn keptListenersCostNoPageEach() !void {
     const plain = try keptListenersCost(page, "{ passive: false }");
     const signal = try keptListenersCost(page, "{ signal: controller.signal }");
     const extra = signal.bytes -| plain.bytes;
-    std.debug.print("leak3: 4,000 kept listeners: footprint +{d} KiB with no signal, +{d} KiB with one (mappings +{?d} / +{?d})\n", .{ plain.bytes / 1024, signal.bytes / 1024, plain.maps, signal.maps });
-    // A page each is 16 MiB (Linux) to 64 MiB (macOS) here; a record, its
-    // index entry and its abort algorithm about 100 B each - 0.4 MiB.
-    if (extra > 4 * MiB) return error.PagePerSignalListener;
-    if (signal.maps) |maps| if (maps > 500) return error.MappingPerSignalListener;
+    const extra_faults = signal.faults -| plain.faults;
+    std.debug.print("leak3: 4,000 kept listeners: footprint +{d} KiB with no signal, +{d} KiB with one; minor faults +{d} / +{d}; mappings +{?d} / +{?d}\n", .{ plain.bytes / 1024, signal.bytes / 1024, plain.faults, signal.faults, plain.maps, signal.maps });
+    // A page each is a first-touch fault each: 4,000 or more here. A record,
+    // its index entry and its abort algorithm, about 100 B each, share an
+    // allocator's pages: about 100 pages, and the lists' growth.
+    if (extra_faults > fault_limit) return error.PagePerSignalListener;
+    // And 16 MiB (Linux) to 64 MiB (macOS) of footprint, against 0.4 MiB.
+    if (footprint_is_measured and extra > 4 * MiB) return error.FootprintPerSignalListener;
+    // The mappings are printed, never asserted: Linux merges adjacent
+    // anonymous mappings, so a page per listener added +11 to +120 of them
+    // over 4,000 (lane leak3's red runs), not 4,000.
 
     // Abort: every kept signal listener goes, and its record with it (the
     // testing allocator under the Browser finds any left at its end).
