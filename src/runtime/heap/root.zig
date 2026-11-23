@@ -259,7 +259,11 @@ comptime {
     if (map_words * 8 != browser_heap.slot_map_bytes) @compileError("a slot map is slot_map_bytes");
 }
 
-const SlotState = enum(u2) { free = 0, allocated = 1, quarantined = 2 };
+/// A slot's state, two bits in its span's slot map. `cached`: released (past
+/// the quarantine, if it went there) and held in its bucket's magazine for
+/// the next allocation - still free state, out of the block: a free of it is
+/// a double free (`Engine.freeIn`), and the span counts it as used.
+const SlotState = enum(u2) { free = 0, allocated = 1, quarantined = 2, cached = 3 };
 
 /// The tiers a bucket's spans are found in, lowest address first.
 const Tier = enum(u2) {
@@ -317,6 +321,13 @@ const Bucket = struct {
     /// Of `issued`, the slots issued for the first time (the rest were
     /// freed before: reissues).
     fresh: usize = 0,
+    /// The magazine: the blocks released last, reissued first (`Engine.
+    /// release`, `Engine.allocIn`) - a pool chunk of `magazine_depth` block
+    /// offsets (window offset / 16), `no_chunk` until the bucket first
+    /// releases one; how many it holds; the engine's clock at its last push.
+    mag: u32 = no_chunk,
+    mag_count: u16 = 0,
+    mag_since: u32 = 0,
     // The partition's figures (PartitionStats' live and total counts) are
     // these, summed when asked (`Engine.stats`): one bucket's line is what
     // an allocation and a free touch, never a second line of totals (lane
@@ -330,6 +341,24 @@ const Bucket = struct {
 /// bucket. K = 1 ships (the integrator's call 4, 2026-11-23) unless batch
 /// A's measurement of 2 and 4 is within the bar; a variant is this constant.
 pub const random_buckets: usize = 1;
+
+/// A bucket's magazine: the blocks it released last, reissued first, with no
+/// span search, tier flip or slot-map scan (lane hard1's P1: those were the
+/// core's 26 ns a pair against 8.5 for the old LIFO lists; lowest-address-
+/// first itself measured nothing). Chromium's ThreadCache has the same
+/// place - after the scheduler-loop quarantine, before the slot spans
+/// (partition_alloc/thread_cache.h, ThreadCache::MaybePutInCache, Chromium
+/// 461c62b66d7c) - so delayed reuse is the quarantine's as before; unlike
+/// it, the magazine keeps the free state out of the block (offsets in a side
+/// array, design 3.4). It relaxes lowest-address-first within its depth
+/// only; idle decommit and pressure drain it (`drainMagazines`), and the
+/// bug-finding run, which retires a span the moment it empties, bypasses it.
+/// 0 turns it off.
+pub const magazine_depth: usize = 32;
+
+comptime {
+    if (magazine_depth * @sizeOf(u32) > 256) @compileError("a magazine is one pool chunk");
+}
 
 /// Buckets: node = 3 kinds x K x classes, then the large runs; objects =
 /// classes, the Instance slots, then the large runs.
@@ -978,6 +1007,7 @@ pub const Engine = struct {
 
     fn allocIn(self: *Engine, p: *Partition, bi: u16, size: usize, site: ?*const Site, return_address: usize) Error![*]u8 {
         const b = &self.buckets(p.id)[bi];
+        if (magazine_depth != 0 and b.mag_count != 0) return self.popMagazine(p, b, size, site, return_address);
         var index = b.current;
         if (index == no_span or self.entry(index).used == self.entry(index).slots) {
             index = self.lowest(p, b, .room) orelse released: {
@@ -1176,8 +1206,98 @@ pub const Engine = struct {
         return self.quarantine.thread.load(.monotonic) == (thread orelse std.Thread.getCurrentId());
     }
 
-    /// The slot is free again: its span may have room, or be empty.
+    /// The slot is free again: into its bucket's magazine, or back to its
+    /// span (`releaseSlot`).
     fn release(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize) void {
+        if (magazine_depth != 0 and b.kind != .large and !self.config.retire_freed_spans and
+            self.pushMagazine(p, b, index, slot)) return;
+        self.releaseSlot(p, b, index, slot, self.now_ms.load(.monotonic));
+    }
+
+    inline fn magazineOf(self: *Engine, p: *const Partition, b: *const Bucket) [*]u32 {
+        return @ptrFromInt(self.heap.window_base + p.pool_base + @as(usize, b.mag) * @sizeOf(Chunk));
+    }
+
+    /// Hold a released slot in its bucket's magazine, `cached`. False: the
+    /// magazine is full, or there is none (its chunk could not be had) - the
+    /// caller releases the slot to its span. A full magazine takes nothing
+    /// more rather than give its older half back (Chromium's ThreadCache
+    /// does that, ClearBucket): a burst of frees - a collection's finalizers,
+    /// a task's purge - then pays one span release per block, not a push and
+    /// a later release (lane hard1's P1: +7 ns a pair in the batch rows).
+    fn pushMagazine(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize) bool {
+        if (b.mag_count == magazine_depth) return false;
+        if (b.mag == no_chunk) b.mag = self.poolAlloc(p, @sizeOf(Chunk)) catch return false;
+        const mag = self.magazineOf(p, b);
+        slotSet(self.slotMap(index), slot, .cached);
+        mag[b.mag_count] = @intCast((index * span_bytes + slot * b.block_bytes) / 16);
+        b.mag_count += 1;
+        b.mag_since = self.now_ms.load(.monotonic);
+        return true;
+    }
+
+    /// A cached block back to its span, as released at `since`.
+    fn releaseCached(self: *Engine, p: *Partition, b: *Bucket, at: u32, since: u32) void {
+        const offset = @as(usize, at) * 16;
+        const index = offset / span_bytes;
+        self.releaseSlot(p, b, index, (offset - index * span_bytes) / b.block_bytes, since);
+    }
+
+    /// The magazine's last block, issued as `allocIn` issues one: verified
+    /// against its free's fill, zeroed, counted.
+    fn popMagazine(self: *Engine, p: *Partition, b: *Bucket, size: usize, site: ?*const Site, return_address: usize) [*]u8 {
+        b.mag_count -= 1;
+        const offset = @as(usize, self.magazineOf(p, b)[b.mag_count]) * 16;
+        const index = offset / span_bytes;
+        const slot = (offset - index * span_bytes) / b.block_bytes;
+        const map = self.slotMap(index);
+        std.debug.assert(slotGet(map, slot) == .cached);
+        slotSet(map, slot, .allocated);
+        b.live += 1;
+        b.issued += 1;
+        b.requested += size;
+        b.requested_total += size;
+        const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
+        const checked = if (b.kind == .instance) instance_fill_bytes else size;
+        self.verifyFreed(block[0..checked], false);
+        const e = self.entry(index);
+        if (e.sites != 0) {
+            const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
+            sites[slot] = if (site) |s| @intFromPtr(s) else return_address | site_return_tag;
+        }
+        return block;
+    }
+
+    /// Every magazine of the partition back to its spans: what idle
+    /// decommit and pressure ask first, so no span is kept open by blocks
+    /// nothing uses. Each span is aged from its bucket's last release.
+    fn drainMagazines(self: *Engine, p: *Partition) void {
+        if (magazine_depth == 0) return;
+        for (self.buckets(p.id)) |*b| {
+            if (b.mag_count == 0) continue;
+            const mag = self.magazineOf(p, b);
+            for (mag[0..b.mag_count]) |at| self.releaseCached(p, b, at, b.mag_since);
+            b.mag_count = 0;
+        }
+    }
+
+    /// Whether `ptr` is in its bucket's magazine (a test's question).
+    pub fn inMagazine(self: *Engine, ptr: *const anyopaque) bool {
+        const offset = (self.offsetOf(@intFromPtr(ptr)) orelse return false);
+        const pid = self.partitionOfOffset(offset) orelse return false;
+        const p = self.partition(pid);
+        const index = offset / span_bytes;
+        const e = self.entry(index);
+        if (e.state != .active) return false;
+        const b = &self.buckets(pid)[e.bucket];
+        const mag = if (b.mag == no_chunk) return false else self.magazineOf(p, b);
+        for (mag[0..b.mag_count]) |at| if (@as(usize, at) * 16 == offset) return true;
+        return false;
+    }
+
+    /// The slot is free in its span again: the span may have room, or be
+    /// empty (aged from `since`).
+    fn releaseSlot(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize, since: u32) void {
         const e = self.entry(index);
         slotSet(self.slotMap(index), slot, .free);
         if (slot < e.hint) e.hint = @intCast(slot);
@@ -1188,7 +1308,7 @@ pub const Engine = struct {
             if (b.current == no_span or index < b.current) b.current = @intCast(index);
         }
         if (e.used == 0) {
-            e.empty_since = self.now_ms.load(.monotonic);
+            e.empty_since = since;
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
             // The bug-finding run makes it inaccessible at once - unless it
@@ -1406,9 +1526,13 @@ pub const Engine = struct {
     pub fn decommitAged(self: *Engine, now_ms: u32, min_age_ms: u32, budget: usize) DecommitResult {
         var result: DecommitResult = .{};
         const on_owner = if (self.node.owner) |owner| owner == std.Thread.getCurrentId() else true;
-        if (on_owner) self.decommitIn(&self.node, now_ms, min_age_ms, budget, &result);
+        if (on_owner) {
+            self.drainMagazines(&self.node);
+            self.decommitIn(&self.node, now_ms, min_age_ms, budget, &result);
+        }
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        self.drainMagazines(&self.objects);
         self.decommitIn(&self.objects, now_ms, min_age_ms, budget, &result);
         return result;
     }

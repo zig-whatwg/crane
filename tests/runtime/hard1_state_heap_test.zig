@@ -463,3 +463,83 @@ test "the final sweep's nodes are released by the scope's end: State block and s
     try testing.expectEqual(@as(usize, 0), scope.arena.stats().live_blocks);
     scope.slab.free(other);
 }
+
+// The magazine (heap.magazine_depth; lane hard1's P1, the integrator's
+// 9:24 AM ET call): a bucket's blocks released last are reissued first, with
+// no span search, past the quarantine as before.
+
+test "M1: a block released outside a task is the next one issued, from its bucket's magazine, ahead of a lower free slot" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    const low = try scope.arena.create(EventState);
+    const mid = try scope.arena.create(EventState);
+    const high = try scope.arena.create(EventState);
+    try testing.expect(@intFromPtr(low) < @intFromPtr(high));
+    scope.arena.destroy(EventState, low);
+    scope.arena.destroy(EventState, high);
+    try testing.expect(engine.inMagazine(high));
+    // Last released, first reissued: the lower free slot waits.
+    const again = try scope.arena.create(EventState);
+    try testing.expectEqual(@intFromPtr(high), @intFromPtr(again));
+    try testing.expect(!engine.inMagazine(again));
+    scope.arena.destroy(EventState, again);
+    scope.arena.destroy(EventState, mid);
+}
+
+test "M2: a free of a block in the magazine is a double free, and the block never gets two owners" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    engine.checks = .report;
+    const event = try scope.arena.create(EventState);
+    scope.arena.destroy(EventState, event);
+    try testing.expect(engine.inMagazine(event));
+    scope.arena.destroy(EventState, event);
+    try testing.expectEqual(@as(?heap.Violation, .double_free), engine.takeViolation());
+    const one = try scope.arena.create(EventState);
+    const two = try scope.arena.create(EventState);
+    try testing.expect(one != two);
+    try testing.expect(!engine.inMagazine(one) and !engine.inMagazine(two));
+    scope.arena.destroy(EventState, one);
+    scope.arena.destroy(EventState, two);
+}
+
+test "M3: a block reissued from the magazine is verified: a write after its free is caught, and it is issued zeroed" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    engine.checks = .report;
+    const event = try scope.arena.create(EventState);
+    scope.arena.destroy(EventState, event);
+    try testing.expect(engine.inMagazine(event));
+    // A pointer kept past the free writes through it while the magazine holds it.
+    event.words[5] = 0xdead_beef;
+    const again = try scope.arena.create(EventState);
+    try testing.expectEqual(@intFromPtr(event), @intFromPtr(again));
+    try testing.expectEqual(@as(?heap.Violation, .write_after_free), engine.takeViolation());
+    try testing.expectEqual(@as(u64, 0), again.words[5]);
+    scope.arena.destroy(EventState, again);
+}
+
+test "M4: idle decommit drains the magazine first, so a span its blocks kept open goes back with the rest" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    engine.setNow(1_000);
+    const start = engine.stats();
+    // One block of the largest class has a span of its own.
+    const big = try scope.arena.create(BigState);
+    scope.arena.destroy(BigState, big);
+    try testing.expect(engine.inMagazine(big));
+    // The magazine keeps the span in use: nothing to age yet.
+    try testing.expect(engine.stats().objects.spans_empty == start.objects.spans_empty);
+    // Idle, past the age: drained, then decommitted in the same pass - aged
+    // from the release, not from the drain.
+    const r = engine.decommitAged(2_500, heap.decommit_age_ms, std.math.maxInt(usize));
+    try testing.expect(r.decommitted >= 1);
+    try testing.expect(!engine.inMagazine(big));
+    const after = engine.stats();
+    try testing.expect(after.objects.committed_span_bytes <= start.objects.committed_span_bytes);
+    try testing.expect(after.objects.spans_decommitted >= 1);
+}
