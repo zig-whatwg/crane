@@ -2533,8 +2533,6 @@ const ModuleConfig = struct {
     static_libcurl: ?StaticLibcurl,
     brotli: ?BrotliLibraries,
     image_codecs: ?*std.Build.Step.Compile,
-    /// The graph whose modules are registered by name for dependent packages.
-    public_platform: Platform,
     /// -Dplatform-without, -Dplatform-static and -Dplatform-module.
     platform_without: []const []const u8,
     platform_static: []const []const u8,
@@ -3100,8 +3098,12 @@ pub fn build(b: *std.Build) void {
         break :check run;
     } else null;
 
-    // The library, the CLI and the iOS build use the target's platform; the WPT
-    // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
+    // The library, the CLI and the other products use the target's platform,
+    // whose graph registers its modules by name for dependent packages; the
+    // test tiers use the tests' (platform_build.tests_platform), in a private
+    // graph - the same one when the target's platform is the tests' own; a
+    // WPT runner, the one its build names (runnerGraph). docs/platform-
+    // protocol.md 1.1.
     const target_platform: Platform = chosen_platform.platform;
     const module_config: ModuleConfig = .{
         .optimize = optimize,
@@ -3116,15 +3118,14 @@ pub fn build(b: *std.Build) void {
         .static_libcurl = static_libcurl,
         .brotli = brotli,
         .image_codecs = image_codecs,
-        .public_platform = target_platform,
         .platform_without = platform_without,
         .platform_static = chosen_platform.static,
         .platform_module = chosen_platform.module_path,
         .tables = addGeneratedTables(b),
         .impl_names = implModuleNames(b),
     };
-    const crane_graph = addCraneModules(b, target, target_platform, module_config);
-    const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
+    const crane_graph = addCraneModules(b, target, target_platform, module_config, true);
+    const testing_graph = if (target_platform == platform_build.tests_platform) crane_graph else addCraneModules(b, target, platform_build.tests_platform, module_config, false);
 
     // The WPT runner's two builds (tests/wpt_runner/build_mode.zig
     // `RunnerBuild`; the user, 2026-11-09: "I want our WPT to only ever run
@@ -3189,7 +3190,7 @@ pub fn build(b: *std.Build) void {
         .module_config = module_config,
         .target_platform = target_platform,
         .shared = crane_graph,
-        .testing = testing_graph,
+        .tests = testing_graph,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .brotli_enabled = brotli_enabled,
@@ -3201,7 +3202,7 @@ pub fn build(b: *std.Build) void {
         .module_config = module_config,
         .target_platform = target_platform,
         .shared = crane_graph,
-        .testing = testing_graph,
+        .tests = testing_graph,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .brotli_enabled = brotli_enabled,
@@ -7397,8 +7398,9 @@ const RunnerGraphContext = struct {
     target_platform: Platform,
     /// The target platform's public graph, in -Doptimize's mode.
     shared: CraneModules,
-    /// The testing platform's graph, in -Doptimize's mode.
-    testing: CraneModules,
+    /// The tests' platform's graph (platform_build.tests_platform), in
+    /// -Doptimize's mode.
+    tests: CraneModules,
     use_system_curl: bool,
     enable_http2: bool,
     brotli_enabled: bool,
@@ -7415,24 +7417,25 @@ const RunnerGraphContext = struct {
 /// modules by name, once (docs/lessons/workflow-a-second-graph-of-the-target-
 /// platform-must-be-private.md).
 fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_build_mode.Build, ctx: RunnerGraphContext) CraneModules {
-    const platform: Platform = switch (runner.platform) {
-        .console => ctx.target_platform,
-        .testing => .testing,
-    };
-    const existing = if (platform == .testing) ctx.testing else ctx.shared;
+    // The console's graph is the target platform's; the other one a runner
+    // build may name, the tests' platform's (build_mode.zig `PlatformGraph`).
+    const console = runner.platform == .console;
+    const platform: Platform = if (console) ctx.target_platform else platform_build.tests_platform;
+    const existing = if (console) ctx.shared else ctx.tests;
     if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
     var config = ctx.module_config;
-    // Any platform but the graph's own.
-    config.public_platform = if (platform == .testing) .darwin else .testing;
     config.optimize = runner.modes.crane_modules;
     config.brotli = buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
     config.image_codecs = buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
     config.static_libcurl = buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null);
-    return addCraneModules(b, target, platform, config);
+    // A private graph (`public` false).
+    return addCraneModules(b, target, platform, config, false);
 }
 
-fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig) CraneModules {
-    const public = platform == config.public_platform;
+/// Every Crane module, for `platform`. `public`: the graph registers its
+/// modules by name, for dependent packages - the target platform's own
+/// graph, and only that one (a name is registered once).
+fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig, public: bool) CraneModules {
     const optimize = config.optimize;
     const build_options = config.build_options;
     const debug_options = config.debug_options;
