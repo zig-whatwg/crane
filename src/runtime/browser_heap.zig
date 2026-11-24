@@ -120,6 +120,22 @@ pub const super_page_bytes: u64 = 2 * MiB;
 /// run-time value: the deep review's Z12). H2's spans are max(16 KiB, page).
 pub const super_page_guard_bytes: u64 = @max(16 * KiB, std.heap.page_size_max);
 
+/// The span engine's span (src/runtime/heap/): max(16 KiB, the largest
+/// page this target may run with), so a span is whole pages on every host
+/// and a super page's guard is exactly one span (allocator-hardening design
+/// 7, batch A item 1; [B1] F18).
+pub const span_bytes: u64 = super_page_guard_bytes;
+
+/// One span-table entry (heap.SpanEntry).
+pub const span_entry_bytes: u64 = 32;
+
+/// One span's slot map: 2 bits per 16-byte slot.
+pub const slot_map_bytes: u64 = span_bytes / 16 * 2 / 8;
+
+/// The most blocks a quarantine may hold: the largest cap (the bug-finding
+/// run's 8 MiB) over the smallest class (16 B).
+pub const quarantine_entries_max: u64 = 8 * MiB / 16;
+
 /// Where a part of the window is, as offsets from its base.
 pub const Part = struct {
     offset: u64,
@@ -153,12 +169,26 @@ pub const Layout = struct {
     /// The metadata window: after the objects range's first (guard) super
     /// page, outside [0, cage).
     metadata: Part,
-    /// The heap header: one guard span into the metadata window.
+    /// The heap header: one guard span into the metadata window. The span
+    /// engine's own state (src/runtime/heap/) follows it, in the rest of
+    /// that super page.
     header_offset: u64,
-    /// The span table and free bitmaps of the node and satellite pools
-    /// (H2), at fixed offsets of the metadata window.
+    /// The span table (one `span_entry_bytes` entry per `span_bytes` of the
+    /// window's lower half: the cage, the metadata and the objects range)
+    /// and the slot maps (`slot_map_bytes` per span: 2 bits per 16-byte
+    /// slot), at fixed offsets of the metadata window - out of line, so no
+    /// freed or overflowed block can reach the allocator's state
+    /// (allocator-hardening design 3.3; PartitionAlloc 4c10aff2ca6a).
     span_table: Part,
     bitmaps: Part,
+    /// The span engine's bump pools, one per pointer partition (node,
+    /// objects): each bucket's chunks of span lists, and the allocation
+    /// sites a recording heap keeps per slot.
+    meta_pools: Part,
+    meta_pool_bytes: u64,
+    /// The window agent's quarantine (design 3.5): one word per held block,
+    /// room for the largest cap any build has.
+    quarantine: Part,
     /// The Browser's tables (Table), each `table_bytes`, after the bitmaps.
     tables: Part,
     table_bytes: u64,
@@ -188,6 +218,9 @@ pub fn layoutFor(comptime g: Geometry) Layout {
         .header_offset = 0,
         .span_table = .{ .offset = 0, .bytes = 0 },
         .bitmaps = .{ .offset = 0, .bytes = 0 },
+        .meta_pools = .{ .offset = 0, .bytes = 0 },
+        .meta_pool_bytes = 0,
+        .quarantine = .{ .offset = 0, .bytes = 0 },
         .tables = .{ .offset = 0, .bytes = 0 },
         .table_bytes = 0,
         .objects = .{ .offset = 0, .bytes = 0 },
@@ -211,15 +244,24 @@ pub fn layoutFor(comptime g: Geometry) Layout {
         .pointer32 => unreachable,
     };
     const metadata_offset = c + super_page_bytes;
-    // One span-table entry (32 B) per smallest span (16 KiB) of the cage, and
-    // one bit per 16-B slot of it.
-    const span_table_bytes = std.mem.alignForward(u64, (c / (16 * KiB)) * 32, super_page_bytes);
-    const bitmap_bytes = std.mem.alignForward(u64, c / 16 / 8, super_page_bytes);
+    // The spans the engine can open lie in the window's lower half: the
+    // cage, then (full profile) the objects range. One span-table entry per
+    // span of it, and one slot map: 2 bits per 16-B slot.
+    const spanned = switch (g.profile) {
+        .full => window / 2,
+        .small => c,
+        .pointer32 => unreachable,
+    };
+    const span_table_bytes = std.mem.alignForward(u64, (spanned / span_bytes) * span_entry_bytes, super_page_bytes);
+    const bitmap_bytes = std.mem.alignForward(u64, (spanned / span_bytes) * slot_map_bytes, super_page_bytes);
     const span_table: Part = .{ .offset = metadata_offset + super_page_bytes, .bytes = span_table_bytes };
     const bitmaps: Part = .{ .offset = span_table.end(), .bytes = bitmap_bytes };
     const table_bytes = metadata_bytes / 16;
+    const meta_pool_bytes = std.mem.alignForward(u64, metadata_bytes / 16, super_page_bytes);
+    const meta_pools: Part = .{ .offset = bitmaps.end(), .bytes = 2 * meta_pool_bytes };
+    const quarantine: Part = .{ .offset = meta_pools.end(), .bytes = std.mem.alignForward(u64, quarantine_entries_max * 8, super_page_bytes) };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
-    const tables: Part = .{ .offset = bitmaps.end(), .bytes = table_bytes * table_count };
+    const tables: Part = .{ .offset = quarantine.end(), .bytes = table_bytes * table_count };
     if (tables.end() > metadata_offset + metadata_bytes) @compileError("the metadata window is too small for its parts");
     const cage_alone_end = metadata_offset + metadata_bytes + super_page_bytes;
     const objects: Part, const bytes: Part = switch (g.profile) {
@@ -242,6 +284,9 @@ pub fn layoutFor(comptime g: Geometry) Layout {
         .header_offset = metadata_offset + super_page_guard_bytes,
         .span_table = span_table,
         .bitmaps = bitmaps,
+        .meta_pools = meta_pools,
+        .meta_pool_bytes = meta_pool_bytes,
+        .quarantine = quarantine,
         .tables = tables,
         .table_bytes = table_bytes,
         .objects = objects,
@@ -556,6 +601,8 @@ pub const BrowserHeap = extern struct {
     /// every Browser.
     generation_seed: u64,
     /// Bytes this heap has committed and not retired (stats; oss R24).
+    /// Atomic: the node partition commits on the window agent's thread, the
+    /// objects partition on any thread of the Browser.
     committed_bytes: usize,
 
     pub const magic_value: u64 = 0x4352_414e_4548_5031; // "CRANEHP1"
@@ -708,7 +755,17 @@ pub const BrowserHeap = extern struct {
     /// (platform.commitPages).
     pub fn commit(heap: *BrowserHeap, window_offset: usize, length: usize) PageError!void {
         try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
-        heap.committed_bytes += length;
+        _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
+    }
+
+    /// Commit again a part `decommit` gave back (or `retire` made
+    /// inaccessible): its pages count in the footprint again (darwin's
+    /// MADV_FREE_REUSE, lesson architecture-macos-recommit-needs-madv-free-
+    /// reuse) and `committed_bytes` does not count them twice - a retired
+    /// part is counted again, a decommitted one never stopped counting.
+    pub fn recommit(heap: *BrowserHeap, window_offset: usize, length: usize, was_retired: bool) PageError!void {
+        try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
+        if (was_retired) _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
     }
 
     /// Give a committed part's memory back, keeping it accessible
@@ -728,7 +785,7 @@ pub const BrowserHeap = extern struct {
     pub fn retire(heap: *BrowserHeap, window_offset: usize, length: usize) PageError!void {
         try heap.decommit(window_offset, length);
         try heap.platform.protect(heap.reserved, heap.rangeOffset(window_offset, length), length, .none);
-        heap.committed_bytes -|= length;
+        _ = @atomicRmw(usize, &heap.committed_bytes, .Sub, length, .monotonic);
     }
 
     /// The address of a window offset (no check: the layout's constants).

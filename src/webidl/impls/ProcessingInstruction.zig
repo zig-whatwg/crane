@@ -95,7 +95,12 @@ fn untrackLive(instance: *runtime.Instance) void {
 }
 
 /// dom.teardown_sweeps: free the state of every PI of `scope`'s Browser
-/// still alive - its set holds its own PIs only.
+/// still alive - its set holds its own PIs only - and return its block, as
+/// the PI's own teardown does (`deinitOwn`). The old state arena freed the
+/// block wholesale at the Browser's end; the span engine frees per block,
+/// and its leak report named 76 of them in the full worklist (lane hard1,
+/// tests/html/hard1_orphan_side_blocks_test.zig). The PI's State block and
+/// slot go after it, at the scope's end (BrowserScope.releaseSweptNodes).
 fn sweepLive(scope: *runtime.BrowserScope) void {
     const set = browser_object_lists.existingIn(scope, .processing_instructions) orelse return;
     var it = set.iterator();
@@ -103,6 +108,8 @@ fn sweepLive(scope: *runtime.BrowserScope) void {
         if (getInternal(instance.*)) |internal| {
             internal.deinit(instance.*);
             internal.target = "";
+            runtime.arenaOf(instance.*).destroy(InternalState, internal);
+            if (instance.*.stateAs(State)) |state| state.own._internal = null;
         }
     }
     set.clear();

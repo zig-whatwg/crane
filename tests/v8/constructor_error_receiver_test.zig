@@ -25,6 +25,8 @@
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
+/// A service worker realm has an event loop; these tests drive none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -64,6 +66,25 @@ const no_hooks: protocol.HostHooks = .{};
 const Page = struct {
     agent: *protocol.Agent,
     realm: runtime.Context,
+    /// A service worker's realm (`openServiceWorker`), not a window's.
+    worker: bool = false,
+
+    /// A service worker realm of its own agent: what [Exposed=ServiceWorker]
+    /// interfaces are constructed in.
+    fn openServiceWorker() !Page {
+        try setup();
+        const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+        errdefer protocol.destroyAgent(agent);
+        const made = try protocol.createWorkerRealm(agent, &.{
+            .agent_cluster_cross_origin_isolated = true,
+            .url = "https://example.test/sw.js",
+            .timer = null,
+            .event_loop = inline_task_loop.eventLoop(),
+            .global = .service,
+            .allocator = std.heap.c_allocator,
+        });
+        return .{ .agent = agent, .realm = made.realm, .worker = true };
+    }
 
     fn open() !Page {
         try setup();
@@ -82,7 +103,9 @@ const Page = struct {
     }
 
     fn close(self: Page) void {
-        protocol.destroyWindowRealm(self.realm, .global_detached);
+        if (self.worker) {
+            protocol.destroyWorkerRealm(self.realm, null, null);
+        } else protocol.destroyWindowRealm(self.realm, .global_detached);
         protocol.destroyAgent(self.agent);
     }
 
@@ -303,6 +326,103 @@ test "Response.json() whose init is rejected frees the response it made" {
         \\  let n = 0;
         \\  for (let i = 0; i < 64; i++) {
         \\    try { Response.json({ a: 1 }, { status: 99 }); } catch (e) { if (e instanceof RangeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+// Lane hard1: the heap's leak report at each Browser's end (a full worklist
+// bug-finding sweep) named five more interfaces whose instances outlived
+// their Browser never wrapped (lifecycle flags 0) - TextDecoder 6,860,
+// WebSocket 535, Headers 12, File 8, ExtendableMessageEvent 1. Each
+// constructor made its object, then threw, and its failure path ran the
+// destructor chain only. The old arena freed those blocks wholesale at the
+// Browser's end, so nothing counted them; they grew over a runner's life.
+
+test "a TextDecoder constructor whose label names no encoding frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Encoding 5.1.3 steps 1-2: a label that is no encoding, and one that
+    // is the replacement encoding's, are each a RangeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new TextDecoder('no-such-encoding'); } catch (e) { if (e instanceof RangeError) n++; }
+        \\    try { new TextDecoder('iso-2022-kr'); } catch (e) { if (e instanceof RangeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a WebSocket constructor whose url or protocols it rejects frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // WebSockets 3.1 constructor steps 3 (the url does not parse), 6 (no
+    // ws/wss scheme), 7 (a fragment) and 9 (a protocol twice): each a
+    // "SyntaxError" DOMException, thrown after "this" was made.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 16; i++) {
+        \\    try { new WebSocket('ws://['); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ftp://example.test/'); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ws://example.test/#'); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new WebSocket('ws://example.test/', ['a', 'a']); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a Headers constructor whose init it rejects frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Fetch "fill": a sequence item that is not a pair, and a header name
+    // that is not a header name, are each a TypeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new Headers([['a']]); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new Headers({ 'a b': 'c' }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a File constructor whose bits are no sequence frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // File API "process blob parts", run by the constructor steps as for a
+    // Blob: not an Object, and no @@iterator, are each a TypeError.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new File('abc', 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new File({ length: 1, 0: 'a' }, 'f.txt'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "an ExtendableMessageEvent constructor whose source it rejects frees what it made" {
+    // [Exposed=ServiceWorker]: constructed in a service worker's realm.
+    const page = try Page.openServiceWorker();
+    defer page.close();
+    // A source that is no Client, ServiceWorker or MessagePort is a
+    // TypeError, after the event and its data were made.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new ExtendableMessageEvent('message', { source: {} }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new ExtendableMessageEvent('message', { source: 5 }); } catch (e) { if (e instanceof TypeError) n++; }
         \\  }
         \\  return String(n);
         \\})()

@@ -96,13 +96,9 @@ pub const Page = struct {
 /// Every live Window in the Browser's slab, into `list` (testing.allocator).
 pub fn windows(browser: *browser_mod.Browser, list: *std.ArrayListUnmanaged(*runtime.Instance)) !void {
     list.clearRetainingCapacity();
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (std.mem.eql(u8, instance.vtable.name, "Window")) try list.append(testing.allocator, instance);
-        }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        if (std.mem.eql(u8, instance.vtable.name, "Window")) try list.append(testing.allocator, instance);
     }
 }
 

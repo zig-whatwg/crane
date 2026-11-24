@@ -984,7 +984,14 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
 
     // "This": made first, so its relevant settings object answers step 1.
     const instance = try WebSocket.init(ctx.allocator, ctx);
-    errdefer WebSocket.deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step (the SyntaxErrors of steps 3, 6, 7 and 9) frees it whole.
+    // Its own deinit is its destructor, not a free, and left its slot and
+    // State until the Browser ended (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    // Nothing below registers it anywhere before its last step that can
+    // fail: the poll token, the keep-alive and the realm's list come after.
+    errdefer runtime.gc.releaseOwned(instance);
 
     // Steps 1-2. Parse url against this's relevant settings object's API base
     // URL. With no base, which is what this passed, every relative url - "",

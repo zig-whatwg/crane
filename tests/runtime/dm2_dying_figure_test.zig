@@ -74,22 +74,25 @@ fn runFake(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.Progres
 const fake_steps: DeferredTeardown.Steps = .{ .run = runFake };
 
 const Fixture = struct {
-    slab: SlabAllocator,
+    /// The scope whose slab the fixture's instances come from: made with
+    /// the fixture, which does not move once it has made one (`f` is a
+    /// test's local).
+    scope: runtime.BrowserScope,
     queue: DeferredTeardown,
     memory: ExternalMemory = .{},
 
     fn init() Fixture {
-        return .{ .slab = SlabAllocator.init(testing.allocator), .queue = DeferredTeardown.init(testing.allocator) };
+        return .{ .scope = runtime.BrowserScope.init(testing.allocator), .queue = DeferredTeardown.init(testing.allocator) };
     }
 
     fn deinit(self: *Fixture) void {
         self.queue.deinit();
-        self.slab.deinit();
+        self.scope.deinit();
     }
 
     /// Queue `tree` as a garbage tree whose queueing summed `summed` bytes.
     fn push(self: *Fixture, tree: *FakeTree, summed: usize, owner: ?*const anyopaque) !*Instance {
-        const instance = try self.slab.alloc(&vtable);
+        const instance = try self.scope.slab.alloc(&vtable);
         try testing.expect(self.queue.push(.{
             .instance = instance,
             .generation = SlabAllocator.generationOf(instance),
@@ -390,7 +393,7 @@ test "a weight beyond what an item can carry is clamped, and the memory bound st
     var f = Fixture.init();
     defer f.deinit();
     var tree = FakeTree.make(&f.memory, 10, 100);
-    const instance = try f.slab.alloc(&vtable);
+    const instance = try f.scope.slab.alloc(&vtable);
     try testing.expect(f.queue.push(.{
         .instance = instance,
         .generation = SlabAllocator.generationOf(instance),
@@ -426,7 +429,7 @@ test "an item with no dying bytes run inside another tree's teardown does not pa
     outer.other_owner = &realms[1];
     outer.during = endOtherRealmAndLook;
     _ = try f.push(&outer, outer.bytes(), &realms[0]);
-    const inner_instance = try f.slab.alloc(&vtable);
+    const inner_instance = try f.scope.slab.alloc(&vtable);
     try testing.expect(f.queue.push(.{
         .instance = inner_instance,
         .generation = SlabAllocator.generationOf(inner_instance),

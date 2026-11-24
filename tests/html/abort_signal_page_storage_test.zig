@@ -40,15 +40,11 @@ const Counts = struct {
 /// slot was never returned still counts.
 fn countsOf(browser: *browser_mod.Browser) Counts {
     var counts: Counts = .{};
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            const name = instance.vtable.name;
-            if (std.mem.eql(u8, name, "AbortSignal")) counts.signals += 1;
-            if (std.mem.eql(u8, name, "AbortController")) counts.controllers += 1;
-        }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        const name = instance.vtable.name;
+        if (std.mem.eql(u8, name, "AbortSignal")) counts.signals += 1;
+        if (std.mem.eql(u8, name, "AbortController")) counts.controllers += 1;
     }
     return counts;
 }
