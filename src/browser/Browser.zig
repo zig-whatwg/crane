@@ -349,19 +349,29 @@ pub const Browser = struct {
         // has no objects range: its objects partition shares the cage
         // (runtime.heap.Engine.init; the integrator's ruling, 2026-11-23).
         if (scope.heap) |reserved| if (reserved.rung != .full) log.info("the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
+        // The Browser's general memory (allocator-hardening batch B): from
+        // here on its agent, its realms, its tables and its states allocate
+        // from its heap's objects and bytes partitions, where the rung has
+        // them (runtime.heap.general); a smaller rung keeps the host's
+        // allocator (design 4.2). The host's allocator keeps only the
+        // Browser's own record and its scope, made before and ended after.
+        if (scope.heap) |reserved| if (reserved.general_pools) {
+            scope.general = runtime.heap.general.allocatorOf(try scope.heapEngine());
+        };
+        const memory = scope.generalAllocator();
 
-        const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
-        agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
+        const agent_host = try memory.create(@import("html").agent_host.AgentHost);
+        agent_host.* = @import("html").agent_host.AgentHost.init(memory);
         errdefer {
             agent_host.deinit();
-            allocator.destroy(agent_host);
+            memory.destroy(agent_host);
         }
         // The agent's host and host state: the Browser's AgentHost.
         const agent = engine.createAgent(@import("dom").agent_hosts.agentOptions(agent_host, .{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &window_agent_hooks,
-            .allocator = allocator,
+            .allocator = memory,
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &agent_host.deferred_teardown,
@@ -379,7 +389,7 @@ pub const Browser = struct {
         // one read-only heap per process; the engine says so at warn), and
         // its realms are then made afresh rather than failing a restore each.
         const restored = engine.agentRestoredFromSnapshot(agent);
-        return initBrowserWithAgent(allocator, agent, agent_host, restored, config, scope, browser_clock);
+        return initBrowserWithAgent(memory, agent, agent_host, restored, config, scope, browser_clock);
     }
 
     /// Complete browser initialization with its agent.
@@ -457,9 +467,10 @@ pub const Browser = struct {
         // The back/forward cache, on the Browser's loop, as configured.
         (try scope.of(@import("back_forward_cache.zig").BackForwardCache)).configure(event_loop, config.back_forward_cache_size, config.back_forward_cache_ttl_seconds);
 
-        // Allocate browser struct
-        const browser = try allocator.create(Browser);
-        errdefer allocator.destroy(browser);
+        // The Browser's own record: the host's, as its scope is (ended after
+        // the heap).
+        const browser = try scope.allocator.create(Browser);
+        errdefer scope.allocator.destroy(browser);
 
         browser.* = Browser{
             .allocator = allocator,
@@ -647,13 +658,16 @@ pub const Browser = struct {
         // it), then its slab and arena - every platform object of this
         // Browser, and none of another's - and last its heap's reservation.
         // Its platform state ends first.
+        // The host's allocator made the scope and this record; everything
+        // else of the Browser is its heap's, ended with the scope.
+        const host_allocator = self.scope.allocator;
+        self.known_tabs.deinit(self.allocator);
         @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
-        self.allocator.destroy(self.scope);
+        host_allocator.destroy(self.scope);
 
-        self.known_tabs.deinit(self.allocator);
         self.initialized = false;
-        self.allocator.destroy(self);
+        host_allocator.destroy(self);
     }
 
     /// Navigation options

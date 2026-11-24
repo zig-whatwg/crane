@@ -277,7 +277,7 @@ pub fn layoutFor(comptime g: Geometry) Layout {
     // of slot maps alone for 32 GiB), so the upper half stays reserved and
     // unused (lane hard1-b; H1 had placed bytes there before any span lived
     // in it).
-    const pools_bytes = window / 2 - cage_alone_end;
+    const pools_bytes = if (g.profile == .full and cage_alone_end < window / 2) window / 2 - cage_alone_end else 0;
     const objects_bytes = std.mem.alignBackward(u64, pools_bytes / 2, super_page_bytes);
     const objects: Part, const bytes: Part = switch (g.profile) {
         .full => .{

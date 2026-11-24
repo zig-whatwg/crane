@@ -54,7 +54,18 @@ pub const BrowserScope = struct {
     pub const Heap = browser_heap;
 
     /// Thread-safe: supplements are made on whichever thread first asks.
+    /// The HOST's allocator: what the scope was made with - its own lists,
+    /// its heap's reservation record - and, in a scope with no general
+    /// allocator, its Browser's general memory too.
     allocator: Allocator,
+    /// The Browser's general allocator (allocator-hardening batch B): its
+    /// heap's objects and bytes partitions (heap.general), which its realms,
+    /// agents, tables, supplements and states allocate from. Set once, by
+    /// Browser.init, when its heap's rung has general pools; null in a scope
+    /// made without a Browser (a unit test's, the standalone runtime's),
+    /// whose general memory stays on `allocator` - so std.testing.
+    /// allocator's leak check still sees those tests' memory.
+    general: ?Allocator = null,
     /// The Browser's heap - one reservation of address space (`Heap`) -
     /// once `reserveHeap` made it: a Browser's at its start, any other
     /// scope's at its first object (`heapEngine`).
@@ -121,6 +132,9 @@ pub const BrowserScope = struct {
     tables: [table_count]std.atomic.Value(?*anyopaque) = @splat(.init(null)),
     /// How each made table ends, and the order they were made in.
     table_ends: [table_count]?*const fn (ptr: *anyopaque, allocator: Allocator) void = @splat(null),
+    /// The allocator each table was made with (`general` or `allocator`,
+    /// whichever the scope had then), which its end frees with.
+    table_allocators: [table_count]Allocator = undefined,
     table_order: [table_count]u8 = undefined,
     tables_made: usize = 0,
 
@@ -214,6 +228,8 @@ pub const BrowserScope = struct {
         key: []const u8,
         ptr: *anyopaque,
         destroy: *const fn (ptr: *anyopaque, allocator: Allocator) void,
+        /// What it was made with, which it ends with.
+        allocator: Allocator,
     };
 
     /// A scope with no object, supplement or table yet. Its slab records the
@@ -365,7 +381,7 @@ pub const BrowserScope = struct {
         while (i > 0) {
             i -= 1;
             const supplement = supplements.items[i];
-            supplement.destroy(supplement.ptr, self.allocator);
+            supplement.destroy(supplement.ptr, supplement.allocator);
         }
         supplements.deinit(self.allocator);
 
@@ -374,7 +390,7 @@ pub const BrowserScope = struct {
             t -= 1;
             const index = self.table_order[t];
             const ptr = self.tables[index].swap(null, .acq_rel) orelse continue;
-            if (self.table_ends[index]) |end| end(ptr, self.allocator);
+            if (self.table_ends[index]) |end| end(ptr, self.table_allocators[index]);
             self.table_ends[index] = null;
         }
         self.tables_made = 0;
@@ -384,9 +400,23 @@ pub const BrowserScope = struct {
         if (self.heap) |heap| {
             if (self.engine.load(.acquire)) |engine| {
                 const swept = self.releaseSweptNodes(engine);
-                if (self.heap_leak_count_out) |out| out.* = engine.leakReport({}, struct {
-                    fn line(_: void, _: heap_engine.LeakLine) void {}
-                }.line);
+                if (self.heap_leak_count_out) |out| {
+                    out.* = engine.leakReport({}, struct {
+                        fn line(_: void, _: heap_engine.LeakLine) void {}
+                    }.line);
+                } else if (self.general != null and @import("builtin").is_test) {
+                    // A test whose Browser leaked general memory fails, as it
+                    // did while std.testing.allocator saw that memory
+                    // (allocator-hardening design 10.2: "the pools' leak
+                    // report fails the test scope"); a test that leaks on
+                    // purpose takes the count instead (`heap_leak_count_out`).
+                    _ = engine.leakReport({}, struct {
+                        fn line(_: void, l: heap_engine.LeakLine) void {
+                            if (!l.general) return;
+                            std.log.scoped(.heap).err("heap leak: {d} general block(s) of {d} B ({t}) alive at the Browser's end, made at 0x{x}", .{ l.count, l.block_bytes, l.partition, l.return_address });
+                        }
+                    }.line);
+                }
                 if (self.report_heap_leaks and engine.config.record_sites) {
                     if (swept != 0) std.log.scoped(.heap).warn("heap swept: {d} node(s) released at the Browser's end, after the final sweep (held past every realm's end: refcount_teardown.agentEnded's count)", .{swept});
                     reportHeapLeaks(engine);
@@ -520,6 +550,24 @@ pub const BrowserScope = struct {
         standalone_scope = scope;
     }
 
+    /// The allocator the Browser's general memory comes from: its heap's
+    /// (`general`) once Browser.init set it, else the host's.
+    pub inline fn generalAllocator(self: *const BrowserScope) Allocator {
+        return self.general orelse self.allocator;
+    }
+
+    /// Whether `allocator` allocates this Browser's general memory: the
+    /// host's where the scope has no general allocator; else any general
+    /// allocator over this scope's heap (heap.general.engineOf), so a block
+    /// made through one agent's may be freed through another's.
+    pub fn isGeneralAllocator(self: *const BrowserScope, allocator: Allocator) bool {
+        if (self.general) |general| {
+            const engine = heap_engine.general.engineOf(allocator) orelse return false;
+            return engine == heap_engine.general.engineOf(general).?;
+        }
+        return allocator.ptr == self.allocator.ptr and allocator.vtable == self.allocator.vtable;
+    }
+
     /// This scope's `T`, made on first use.
     pub fn of(self: *BrowserScope, comptime T: type) Allocator.Error!*T {
         const key = @typeName(T);
@@ -527,9 +575,10 @@ pub const BrowserScope = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (find(self, key)) |ptr| return @ptrCast(@alignCast(ptr));
         try self.supplements.ensureUnusedCapacity(self.allocator, 1);
-        const made = try self.allocator.create(T);
-        made.* = T.init(self.allocator);
-        self.supplements.appendAssumeCapacity(.{ .key = key, .ptr = made, .destroy = Destroy(T).destroy });
+        const allocator = self.generalAllocator();
+        const made = try allocator.create(T);
+        made.* = T.init(allocator);
+        self.supplements.appendAssumeCapacity(.{ .key = key, .ptr = made, .destroy = Destroy(T).destroy, .allocator = allocator });
         return made;
     }
 
@@ -559,9 +608,11 @@ pub const BrowserScope = struct {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.tables[index].load(.acquire)) |ptr| return @ptrCast(@alignCast(ptr));
-        const made = try self.allocator.create(T);
-        made.* = T.init(self.allocator);
+        const allocator = self.generalAllocator();
+        const made = try allocator.create(T);
+        made.* = T.init(allocator);
         self.table_ends[index] = Destroy(T).destroy;
+        self.table_allocators[index] = allocator;
         self.table_order[self.tables_made] = index;
         self.tables_made += 1;
         self.tables[index].store(made, .release);

@@ -52,6 +52,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const browser_heap = @import("../browser_heap.zig");
 pub const classes = @import("classes.zig");
+/// The general allocator over the objects and bytes partitions (batch B).
+pub const general = @import("general.zig");
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
@@ -537,6 +539,9 @@ pub const LeakLine = struct {
     type_name: ?[]const u8,
     /// The allocation's return address, where it was made untyped.
     return_address: usize,
+    /// General memory (batch B): a bytes block, a huge block, or an objects
+    /// block the general allocator made.
+    general: bool = false,
 };
 
 /// A site: a typed allocation names its type; an untyped one its return
@@ -551,6 +556,9 @@ pub const Site = struct {
     }
 };
 const site_return_tag: usize = @as(usize, 1) << (@bitSizeOf(usize) - 1);
+/// An untyped site the general allocator recorded (batch B): its blocks are
+/// general memory, whose leak a test build fails on (BrowserScope's end).
+const site_general_tag: usize = @as(usize, 1) << (@bitSizeOf(usize) - 2);
 
 pub const Engine = struct {
     magic: u64 = magic_value,
@@ -1166,7 +1174,7 @@ pub const Engine = struct {
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
         if (bytes > max_block_bytes) return self.allocHuge(p, bytes);
         const bi: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
-        return self.allocIn(p, bi, size, null, return_address);
+        return self.allocIn(p, bi, size, null, return_address | site_general_tag);
     }
 
     /// Free a general block: validated as a State block's free is (its
@@ -1986,7 +1994,7 @@ pub const Engine = struct {
             // Huge blocks (batch B): one line per partition, by count.
             if (p.stats.huge_blocks != 0) {
                 total += p.stats.huge_blocks;
-                report(context, .{ .partition = pid, .block_bytes = p.stats.huge_bytes / p.stats.huge_blocks, .count = p.stats.huge_blocks, .type_name = null, .return_address = 0 });
+                report(context, .{ .partition = pid, .block_bytes = p.stats.huge_bytes / p.stats.huge_blocks, .count = p.stats.huge_blocks, .type_name = null, .return_address = 0, .general = true });
             }
         }
         return total;
@@ -2035,10 +2043,11 @@ pub const Engine = struct {
                 .block_bytes = b.block_bytes,
                 .count = count,
                 .type_name = if (typed) @as(*const Site, @ptrFromInt(site)).name else null,
-                .return_address = if (typed) 0 else site & ~site_return_tag,
+                .return_address = if (typed) 0 else site & ~(site_return_tag | site_general_tag),
+                .general = p.id == .bytes or (!typed and site & site_general_tag != 0),
             });
         }
-        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0 });
+        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0, .general = p.id == .bytes });
     }
 
     /// Instance slots issued over the heap's life, and alive now.
