@@ -20,6 +20,7 @@
 //! - Works with DedicatedWorker and SharedWorker
 
 const std = @import("std");
+const mimesniff = @import("mimesniff");
 const Allocator = std.mem.Allocator;
 
 const types = @import("types.zig");
@@ -745,36 +746,14 @@ pub fn isValidWorkerScriptType(content_type: []const u8, worker_type: WorkerType
     return false;
 }
 
-/// Check if a MIME type is a JavaScript MIME type
-fn isJavaScriptMimeType(mime_type: []const u8) bool {
-    // Get the essence (type/subtype without parameters)
-    const essence = blk: {
-        if (std.mem.indexOf(u8, mime_type, ";")) |pos| {
-            break :blk mime_type[0..pos];
-        }
-        break :blk mime_type;
-    };
-
-    // Trim whitespace
-    const trimmed = std.mem.trim(u8, essence, " \t");
-
-    // Check against known JavaScript MIME types
-    const js_types = [_][]const u8{
-        "text/javascript",
-        "application/javascript",
-        "application/x-javascript",
-        "text/ecmascript",
-        "application/ecmascript",
-        "text/jscript",
-    };
-
-    for (js_types) |js_type| {
-        if (std.ascii.eqlIgnoreCase(trimmed, js_type)) {
-            return true;
-        }
-    }
-
-    return false;
+/// Whether a Content-Type value's essence is a JavaScript MIME type: MIME
+/// Sniffing §4.6, an ASCII case-insensitive essence match against its one
+/// list (mimesniff.predicates). A list of this file's own lacked
+/// text/javascript1.0-1.5, text/livescript, text/x-ecmascript,
+/// text/x-javascript and application/x-ecmascript (lane core1, B15).
+fn isJavaScriptMimeType(content_type: []const u8) bool {
+    const essence = if (std.mem.indexOfScalar(u8, content_type, ';')) |pos| content_type[0..pos] else content_type;
+    return mimesniff.predicates.isJavaScriptMimeTypeEssenceMatch(std.mem.trim(u8, essence, " \t"));
 }
 
 // ============================================================================
