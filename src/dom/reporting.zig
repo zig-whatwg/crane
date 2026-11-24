@@ -193,7 +193,8 @@ pub fn endRegistrations(environment: runtime.Context) void {
 pub const Observer = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
-    callback: ?engine.CallbackFunction = null,
+    /// A TRACED hold (refcount step 8): the observer's holder anchor keeps it.
+    callback: ?engine.TracedCallback = null,
     types: std.ArrayListUnmanaged([]u8) = .empty,
     buffered: bool = false,
     queue: std.ArrayListUnmanaged(*Record) = .empty,
@@ -363,7 +364,10 @@ const ObserverTask = struct {
         const active = try engine.retainValue(realm, .{ .instance = self.link.instance });
         defer active.release();
         const observer = self.observer;
-        const callback = observer.callback orelse return;
+        const traced = observer.callback orelse return;
+        // A collected callback (no trace reached its observer) is not called.
+        if (traced.hold.isEmpty()) return;
+        const callback = traced.asFunction();
         // The reports are made in the callback's realm and world (WebIDL
         // invoke steps 5 and 10: dom.callback_sequences), not the observer's.
         const records = try observer.takeRecords(callback_sequences.argumentRealm(realm, &callback));

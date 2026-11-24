@@ -803,7 +803,7 @@ fn printCensus(label: []const u8, before: *const Reading, after: *const Reading,
 const CensusCase = enum { div_detached, div_in_document, div_two_attributes, text_detached, parsed_span, parsed_div_two_attributes, parsed_span_with_text };
 
 fn makeNodes(page: *Page, case: CensusCase, n: usize) !void {
-    const no_options: @import("webidl").Opt(runtime.JSValue) = .{ .was_passed = false, .value = undefined };
+    const no_options: @typeInfo(@TypeOf(interfaces.Document.call_createElement)).@"fn".param_types[2].? = .{ .was_passed = false, .value = undefined };
     switch (case) {
         .div_detached => for (0..n) |_| {
             _ = try interfaces.Document.call_createElement(page.document, str("div"), no_options);

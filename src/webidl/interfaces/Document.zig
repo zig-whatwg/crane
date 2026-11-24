@@ -25,9 +25,10 @@ const HTMLCollection = @import("interfaces").HTMLCollection;
 const HTMLHeadElement = @import("interfaces").HTMLHeadElement;
 const FontMetrics = @import("interfaces").FontMetrics;
 const NodeIterator = @import("interfaces").NodeIterator;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
+const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const Text = @import("interfaces").Text;
 const GeometryNode = @import("typedefs").GeometryNode;
+const DOMPointInit = @import("dictionaries").DOMPointInit;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const XPathExpression = @import("interfaces").XPathExpression;
@@ -42,14 +43,14 @@ const FragmentDirective = @import("interfaces").FragmentDirective;
 const Comment = @import("interfaces").Comment;
 const NamedFlowMap = @import("interfaces").NamedFlowMap;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
-const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
+const BooleanOrImportNodeOptions = @import("typedefs").BooleanOrImportNodeOptions;
 const DOMImplementation = @import("interfaces").DOMImplementation;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
+const DOMStringOrElementCreationOptions = @import("typedefs").DOMStringOrElementCreationOptions;
 const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
 const XPathNSResolver = @import("interfaces").XPathNSResolver;
 const DocumentType = @import("interfaces").DocumentType;
@@ -62,7 +63,6 @@ const FontFaceSet = @import("interfaces").FontFaceSet;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const CDATASection = @import("interfaces").CDATASection;
 const DocumentTimeline = @import("interfaces").DocumentTimeline;
@@ -78,9 +78,8 @@ const Attr = @import("interfaces").Attr;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
-const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
-const DOMPoint = @import("interfaces").DOMPoint;
 const Observable = @import("interfaces").Observable;
+const DOMPoint = @import("interfaces").DOMPoint;
 const CaretPosition = @import("interfaces").CaretPosition;
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const SVGSVGElement = @import("interfaces").SVGSVGElement;
@@ -2242,7 +2241,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(DOMStringOrElementCreationOptions)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         // [NewObject] - Caller owns the returned object
@@ -2293,7 +2292,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(DOMStringOrElementCreationOptions)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         // [NewObject] - Caller owns the returned object
@@ -2313,7 +2312,7 @@ pub const Document = struct {
         return try DocumentImpl.call_hasRedemptionRecord(instance, issuer);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(ViewTransitionUpdateCallbackOrStartViewTransitionOptions)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
@@ -2476,7 +2475,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(BooleanOrImportNodeOptions)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         // [NewObject] - Caller owns the returned object

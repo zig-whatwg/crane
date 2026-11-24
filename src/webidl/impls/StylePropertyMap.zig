@@ -29,7 +29,7 @@ pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) any
     return dom.style.typed_om.mapDelete(instance, property);
 }
 
-pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
+pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const typedefs.CSSStyleValueOrUSVString) anyerror!void {
     return dom.style.typed_om.mapSet(instance, property, values, true);
 }
 
@@ -37,6 +37,6 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     return dom.style.typed_om.mapClear(instance);
 }
 
-pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
+pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const typedefs.CSSStyleValueOrUSVString) anyerror!void {
     return dom.style.typed_om.mapSet(instance, property, values, false);
 }

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollectionOrElement = @import("typedefs").HTMLCollectionOrElement;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLAllCollection = struct {
@@ -185,11 +185,11 @@ pub const HTMLAllCollection = struct {
         }
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?HTMLCollectionOrElement {
         return try HTMLAllCollectionImpl.call_namedItem(instance, name);
     }
 
-    pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?runtime.JSValue {
+    pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?HTMLCollectionOrElement {
         return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex);
     }
 

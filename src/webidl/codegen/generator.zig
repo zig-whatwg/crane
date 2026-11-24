@@ -2990,6 +2990,13 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
 fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.DictionaryMember) bool {
     if (member.required or !member.idlType.nullable) return false;
     if (std.mem.eql(u8, dictionary_name, "ShadowRootInit") and std.mem.eql(u8, member.name, "customElementRegistry")) return true;
+    // DOM "flatten element creation options" asks whether the member EXISTS
+    // (steps 3.1-3.2: "If options["customElementRegistry"] exists, then set
+    // registry to it" - an explicit null is the null registry, not the
+    // document's - and a present one with `is` is a NotSupportedError).
+    // While Document.createElement read the object by hand it saw that; the
+    // typed dictionary must carry it (lane bind1 batch B, B5).
+    if (std.mem.eql(u8, dictionary_name, "ElementCreationOptions") and std.mem.eql(u8, member.name, "customElementRegistry")) return true;
     // A dictionary the platform RETURNS whose steps set a nullable member to
     // null: the object script gets has the property, valued null (WebIDL
     // 3.2.18 converts every present member). getComputedTiming() (Web

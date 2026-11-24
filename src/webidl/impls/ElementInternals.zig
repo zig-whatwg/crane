@@ -1083,17 +1083,22 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: setFormValue
-pub fn call_setFormValue(instance: *runtime.Instance, value: ?typedefs.FileOrUSVStringOrFormData, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
+pub fn call_setFormValue(instance: *runtime.Instance, value: ?typedefs.FileOrUSVStringOrFormData, state: webidl.Opt(?typedefs.FileOrUSVStringOrFormData)) anyerror!void {
     const realm = instance.ctx;
     const allocator = realm.allocator;
-    const had_engine = realm.hasEngine();
-    // WebIDL operation steps 2.1.5–2.1.8: convert every argument before
-    // running HTML's method steps. This conversion can run author script.
-    const converted_state = if (state.was_passed) try convertStateValue(realm, state.value) else null;
-    defer if (converted_state) |converted| {
-        if (converted == .usvstring) allocator.free(converted.usvstring);
-    };
-    if (had_engine and !realm.hasEngine()) return error.InvalidStateError;
+    // WebIDL operation steps 2.1.5–2.1.8: every argument is converted
+    // before HTML's method steps run - `state` too, by the binding (WebIDL
+    // 3.2.25: a File or FormData is that member, anything else the
+    // USVString; its ToString can run author script). The converted
+    // arguments are the binding's: what is kept is copied below.
+    const converted_state: ?typedefs.FileOrUSVStringOrFormData = if (state.was_passed) state.value else null;
+    // That conversion can run script. A realm whose engine went meanwhile
+    // (the collector took a detached frame's realm: `engineGone()`) takes no
+    // further step, as when this impl converted `state` itself. Unreachable
+    // today and untested - the receiver's wrapper keeps its realm for the
+    // whole call, and a realm ends only in a queued task: see
+    // Document.call_createElement's guard and the run it cites.
+    if (realm.engineGone()) return error.InvalidStateError;
     _ = try formAssociatedTarget(instance);
     const internal = try getInternal(instance);
     var submission = try copyControlValue(instance, value);
@@ -1152,19 +1157,6 @@ fn copyControlValue(instance: *runtime.Instance, value: ?typedefs.FileOrUSVStrin
     errdefer prepared.releaseRoot();
     if (supplied == .form_data) try appendDataEntries(prepared.value.form_data.instance, supplied.form_data);
     return prepared;
-}
-
-fn convertStateValue(realm: runtime.Context, value: ?runtime.JSValue) !?typedefs.FileOrUSVStringOrFormData {
-    const given = value orelse return null;
-    switch (engine.typeOf(realm, given)) {
-        .null, .undefined => return null,
-        else => {},
-    }
-    if (engine.convertToPlatformObject(realm, given)) |object| {
-        if (object.stateAs(interfaces.File.State) != null) return .{ .file = object };
-        if (object.stateAs(interfaces.FormData.State) != null) return .{ .form_data = object };
-    }
-    return .{ .usvstring = try engine.convertToUSVString(realm, given, realm.allocator) };
 }
 
 fn appendDataEntries(destination: *runtime.Instance, source: *runtime.Instance) !void {
