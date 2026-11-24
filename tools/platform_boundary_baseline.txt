@@ -384,8 +384,6 @@ src/html/external_script_loader.zig host.@import 1
 src/html/external_script_loader.zig host.cwd 1
 src/html/external_script_loader.zig host.io 1
 src/html/navigation/joint_history.zig extern.getentropy 1
-src/html/navigator/navigator_concurrent_hardware.zig std.Thread.getCpuCount 1
-src/html/navigator/navigator_id.zig builtin.os.tag 2
 src/html/web_locks/registry.zig extern.getentropy 1
 src/html/window/browsing_context.zig clock.@import 1
 src/html/window/browsing_context.zig clock.monotonicNanos 1

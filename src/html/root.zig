@@ -190,31 +190,19 @@ pub const WorkerError = workers.WorkerError;
 pub const WorkerLocation = workers.WorkerLocation;
 pub const WorkerNavigator = workers.WorkerNavigator;
 
-// Navigator (§8.8)
-pub const navigator = @import("navigator/root.zig");
+// Navigator (§8.8): the Navigator object and the APIs it exposes are the
+// impls (src/webidl/impls/Navigator.zig, NavigatorID.zig, ...); what stays
+// here is HTML's "PDF viewing support", which the NavigatorPlugins family's
+// impls and navigation's document type read.
+pub const navigator = struct {
+    /// HTML "PDF viewing support": PDF viewer supported, and the fixed plugin
+    /// and mime type lists.
+    pub const pdf_viewer = @import("navigator/pdf_viewer.zig");
 
-// Re-export commonly used navigator types
-pub const Navigator = navigator.Navigator;
-pub const NavigatorBackend = navigator.NavigatorBackend;
-pub const NavigatorId = navigator.NavigatorId;
-pub const NavigatorLanguage = navigator.NavigatorLanguage;
-pub const NavigatorOnLine = navigator.NavigatorOnLine;
-pub const NavigatorConcurrentHardware = navigator.NavigatorConcurrentHardware;
-pub const NavigatorContentUtils = navigator.NavigatorContentUtils;
-pub const NavigatorCookies = navigator.NavigatorCookies;
-pub const NavigatorPlugins = navigator.NavigatorPlugins;
-
-// Hardware APIs (various specs via Navigator)
-pub const Geolocation = navigator.geolocation.Geolocation;
-pub const MediaDevices = navigator.media_devices.MediaDevices;
-pub const Clipboard = navigator.clipboard.Clipboard;
-pub const CredentialsContainer = navigator.credentials.CredentialsContainer;
-pub const Bluetooth = navigator.bluetooth.Bluetooth;
-pub const USB = navigator.usb.USB;
-pub const Serial = navigator.serial.Serial;
-pub const HID = navigator.hid.HID;
-pub const BatteryManager = navigator.battery.BatteryManager;
-pub const NavigatorStorageManager = navigator.storage_manager.StorageManager;
+    test {
+        std.testing.refAllDecls(@This());
+    }
+};
 
 // Web Storage (§12)
 pub const web_storage = @import("web_storage/root.zig");
