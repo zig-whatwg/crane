@@ -125,32 +125,6 @@ fn coarsenToResolution(timestamp_ns: clock.Nanoseconds, resolution_ns: clock.Nan
     return @divFloor(timestamp_ns, resolution_ns) * resolution_ns;
 }
 
-/// Coarsen time with optional jitter
-///
-/// This variant adds random jitter within the resolution window
-/// for additional protection against timing attacks. The jitter
-/// is deterministic based on the timestamp to maintain consistency
-/// for the same input.
-///
-/// Note: This is an implementation-defined enhancement beyond the
-/// basic spec requirements.
-pub fn coarsenTimeWithJitter(
-    timestamp_ns: clock.Nanoseconds,
-    cross_origin_isolated: bool,
-    seed: u64,
-) clock.Nanoseconds {
-    const resolution = getResolution(cross_origin_isolated);
-    const base = coarsenToResolution(timestamp_ns, resolution);
-
-    // Add deterministic jitter based on seed
-    // The jitter is always positive and less than resolution
-    var prng = std.Random.DefaultPrng.init(seed);
-    const random = prng.random();
-    const jitter_ns: clock.Nanoseconds = @intCast(random.intRangeAtMost(u64, 0, @intCast(resolution - 1)));
-
-    return base + jitter_ns;
-}
-
 /// Check if a timestamp has been properly coarsened
 ///
 /// Useful for debugging and testing to verify coarsening is applied.
