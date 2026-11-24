@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
 const GPUQueueDescriptor = @import("GPUQueueDescriptor.zig").GPUQueueDescriptor;
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
@@ -17,7 +18,7 @@ pub const GPUDeviceDescriptor = struct {
     requiredLimits: ?[]const struct {
         pub const webidl_record_entry = true;
         key: runtime.DOMString,
-        value: runtime.JSValue,
+        value: typedefs.GPUSize64OrUndefined,
     } = null,
     defaultQueue: ?GPUQueueDescriptor = null,
 

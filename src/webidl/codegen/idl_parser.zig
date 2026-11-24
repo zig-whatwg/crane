@@ -1102,6 +1102,17 @@ pub const Parser = struct {
         };
     }
 
+    /// Whether a token's text is a word - an identifier or a keyword - rather
+    /// than punctuation.
+    fn isWordToken(lexeme: []const u8) bool {
+        return lexeme.len > 0 and (std.ascii.isAlphanumeric(lexeme[0]) or lexeme[0] == '_');
+    }
+
+    /// Whether `text` ends with a word character.
+    fn endsWithWord(text: []const u8) bool {
+        return text.len > 0 and (std.ascii.isAlphanumeric(text[text.len - 1]) or text[text.len - 1] == '_');
+    }
+
     /// Parse a simple (non-union) type
     fn parseSimpleType(self: *Parser) !types.IDLType {
         // Handle keywords like "undefined", "any"
@@ -1194,6 +1205,12 @@ pub const Parser = struct {
                         try self.advance();
                     }
                 } else {
+                    // Two words in a row keep a space between them -
+                    // "unsigned long", "(USVString or sequence<USVString>)" -
+                    // so the text reads back as the type it was.
+                    if (isWordToken(self.current_token.lexeme) and endsWithWord(generic_content.items)) {
+                        try generic_content.append(self.allocator, ' ');
+                    }
                     try generic_content.appendSlice(self.allocator, self.current_token.lexeme);
                     // Add space after commas for readability
                     if (self.current_token.type == .comma) {
@@ -1275,6 +1292,11 @@ pub const Parser = struct {
                             try self.advance();
                         }
                     } else {
+                        // Two words in a row keep a space between them (as
+                        // in a record's text).
+                        if (isWordToken(self.current_token.lexeme) and endsWithWord(inner_type_str.items)) {
+                            try inner_type_str.append(self.allocator, ' ');
+                        }
                         try inner_type_str.appendSlice(self.allocator, self.current_token.lexeme);
                         try self.advance();
                     }

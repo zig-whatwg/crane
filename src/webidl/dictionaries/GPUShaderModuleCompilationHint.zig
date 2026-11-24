@@ -3,15 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const enums = @import("enums");
+const typedefs = @import("typedefs");
 
 pub const GPUShaderModuleCompilationHint = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
     entryPoint: runtime.USVString,
-    layout: ?runtime.JSValue = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"layout"};
+    layout: ?typedefs.GPUPipelineLayoutOrGPUAutoLayoutMode = null,
 };

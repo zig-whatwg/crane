@@ -102,7 +102,7 @@ pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(dicti
 }
 
 /// Getter for textureBindingViewDimension
-pub fn get_textureBindingViewDimension(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_textureBindingViewDimension(instance: *runtime.Instance) anyerror!typedefs.GPUTextureViewDimensionOrUndefined {
     _ = instance;
     return error.NotImplemented;
 }

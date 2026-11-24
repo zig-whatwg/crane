@@ -28,7 +28,6 @@ const CanvasTextDrawingStyles = @import("mixins").CanvasTextDrawingStyles;
 const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const CanvasFontVariantCaps = @import("enums").CanvasFontVariantCaps;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const TextMetrics = @import("interfaces").TextMetrics;
 const ImageData = @import("interfaces").ImageData;
@@ -39,6 +38,7 @@ const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
 const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
 const CanvasPattern = @import("interfaces").CanvasPattern;
+const UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit = @import("typedefs").UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasTextRendering = @import("enums").CanvasTextRendering;
 const Path2D = @import("interfaces").Path2D;
@@ -563,7 +563,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
 
     pub const call_getTransform = mixins.CanvasTransform.call_getTransform;
 
-    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit)) anyerror!void {
         return try OffscreenCanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 

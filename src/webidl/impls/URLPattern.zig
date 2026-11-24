@@ -372,7 +372,7 @@ fn convertComponentResult(
     for (component.groups, groups_array) |group, *entry| {
         entry.* = .{
             .key = try scratch.dupe(u8, group.name),
-            .value = if (group.value) |value| runtime.JSValue.fromStringRef(try scratch.dupe(u8, value)) else .{ .undefined = {} },
+            .value = if (group.value) |value| .{ .usvstring = try scratch.dupe(u8, value) } else .undefined,
         };
     }
 

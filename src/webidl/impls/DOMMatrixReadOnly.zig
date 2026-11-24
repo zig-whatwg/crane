@@ -116,42 +116,21 @@ fn create(ctx: runtime.Context, matrix: geometry.Matrix) !*runtime.Instance {
     return instance;
 }
 
-/// A sequence<unrestricted double> as it converts (WebIDL 3.2.21), item by
-/// item; a sequence longer than 16 is no matrix whatever its tail, so the
-/// rest is converted (it may run script) but not kept.
-const NumberSequence = struct {
-    realm: runtime.Context,
-    values: [16]f64 = undefined,
-    len: usize = 0,
-
-    fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
-        const self: *NumberSequence = @ptrCast(@alignCast(data.?));
-        const number = try engine.convertToUnrestrictedDouble(self.realm, item);
-        if (self.len < self.values.len) self.values[self.len] = number;
-        self.len += 1;
-    }
-};
-
 /// Geometry 6.3, the DOMMatrixReadOnly(init) and DOMMatrix(init)
 /// constructors, for `init` a (DOMString or sequence<unrestricted double>):
 /// the abstract matrix they make.
-fn matrixFromInit(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !geometry.Matrix {
+fn matrixFromInit(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !geometry.Matrix {
     // If init is omitted: a 2d matrix with the sequence [1, 0, 0, 1, 0, 0].
-    if (!init_data.was_passed or engine.typeOf(ctx, init_data.value) == .undefined) return geometry.Matrix.identity;
-    const value = init_data.value;
-    // WebIDL 3.2.24: an object with @@iterator is the sequence member.
-    if (engine.typeOf(ctx, value) == .object) {
-        var sequence: NumberSequence = .{ .realm = ctx };
-        if (try engine.iterate(ctx, value, NumberSequence.each, &sequence)) {
-            // If init is a sequence with 6 elements: create a 2d matrix; with
-            // 16 elements: create a 3d matrix. Otherwise throw a TypeError.
-            if (sequence.len > sequence.values.len) return error.TypeError;
-            return geometry.Matrix.fromSequence(sequence.values[0..sequence.len]);
-        }
-    }
-    // Otherwise it is the DOMString member.
-    const text = try engine.convertToDOMString(ctx, value, ctx.allocator);
-    defer ctx.allocator.free(text);
+    if (!init_data.was_passed) return geometry.Matrix.identity;
+    // `init` is (DOMString or sequence<unrestricted double>), converted by
+    // the binding (WebIDL 3.2.25: an object with @@iterator is the sequence).
+    const text = switch (init_data.value) {
+        // If init is a sequence with 6 elements: create a 2d matrix; with 16
+        // elements: create a 3d matrix. Otherwise throw a TypeError.
+        .double_sequence => |values| return geometry.Matrix.fromSequence(values),
+        .domstring => |string| string.asSlice(),
+    };
+
     // 1. If current global object is not a Window object, then throw a
     //    TypeError exception.
     if (!ctx.isWindow()) return error.TypeError;
@@ -164,7 +143,7 @@ fn matrixFromInit(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) 
 }
 
 /// Geometry 6.3, the DOMMatrixReadOnly(init) constructor.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !*runtime.Instance {
     return create(ctx, try matrixFromInit(ctx, init_data));
 }
 

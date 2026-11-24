@@ -37,9 +37,9 @@ pub const MediaTrackConstraintSet = struct {
     saturation: ?typedefs.ConstrainDouble = null,
     sharpness: ?typedefs.ConstrainDouble = null,
     focusDistance: ?typedefs.ConstrainDouble = null,
-    pan: ?runtime.JSValue = null,
-    tilt: ?runtime.JSValue = null,
-    zoom: ?runtime.JSValue = null,
+    pan: ?typedefs.BooleanOrConstrainDouble = null,
+    tilt: ?typedefs.BooleanOrConstrainDouble = null,
+    zoom: ?typedefs.BooleanOrConstrainDouble = null,
     torch: ?typedefs.ConstrainBoolean = null,
     gestureReactions: ?typedefs.ConstrainBoolean = null,
     faceFraming: ?typedefs.ConstrainBoolean = null,
@@ -52,8 +52,4 @@ pub const MediaTrackConstraintSet = struct {
     cursor: ?typedefs.ConstrainDOMString = null,
     restrictOwnAudio: ?typedefs.ConstrainBoolean = null,
     suppressLocalAudioPlayback: ?typedefs.ConstrainBoolean = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{ "pan", "tilt", "zoom" };
 };

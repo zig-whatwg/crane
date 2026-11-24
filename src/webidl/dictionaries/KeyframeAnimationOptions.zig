@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffset;
+const typedefs = @import("typedefs");
 const KeyframeEffectOptions = @import("KeyframeEffectOptions.zig").KeyframeEffectOptions;
 
 pub const KeyframeAnimationOptions = struct {
@@ -14,13 +14,9 @@ pub const KeyframeAnimationOptions = struct {
 
     id: ?runtime.DOMString = null,
     timeline: ?*runtime.Instance = null,
-    rangeStart: ?runtime.JSValue = null,
-    rangeEnd: ?runtime.JSValue = null,
+    rangeStart: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
+    rangeEnd: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
     trigger: ?*runtime.Instance = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{ "rangeStart", "rangeEnd" };
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

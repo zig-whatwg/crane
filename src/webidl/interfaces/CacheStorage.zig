@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const Cache = @import("interfaces").Cache;
 const MultiCacheQueryOptions = @import("dictionaries").MultiCacheQueryOptions;
 const RequestInfo = @import("typedefs").RequestInfo;
+const ResponseOrUndefined = @import("typedefs").ResponseOrUndefined;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CacheStorage = struct {

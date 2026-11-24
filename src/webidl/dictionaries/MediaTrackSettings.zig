@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const Point2D = @import("Point2D.zig").Point2D;
 
 pub const MediaTrackSettings = struct {
@@ -16,7 +17,7 @@ pub const MediaTrackSettings = struct {
     resizeMode: ?runtime.DOMString = null,
     sampleRate: ?u32 = null,
     sampleSize: ?u32 = null,
-    echoCancellation: ?runtime.JSValue = null,
+    echoCancellation: ?typedefs.BooleanOrDOMString = null,
     autoGainControl: ?bool = null,
     noiseSuppression: ?bool = null,
     latency: ?f64 = null,
@@ -59,8 +60,4 @@ pub const MediaTrackSettings = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "aspectRatio", "frameRate", "latency", "exposureCompensation", "exposureTime", "colorTemperature", "iso", "brightness", "contrast", "saturation", "sharpness", "focusDistance", "pan", "tilt", "zoom", "screenPixelRatio" };
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"echoCancellation"};
 };

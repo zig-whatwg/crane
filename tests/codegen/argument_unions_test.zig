@@ -1,8 +1,12 @@
-//! A union argument with a later argument is converted by the binding, in
-//! argument order, through a named union typedef (src/webidl/codegen/
-//! argument_unions.zig) - when the binding converts its members faithfully.
-//! The last argument, and a union with a member the binding cannot take
-//! faithfully, stay `runtime.JSValue` for the impl to convert.
+//! Every inline union, in every position, is converted by the binding
+//! through a named union typedef (src/webidl/codegen/argument_unions.zig,
+//! `nameEveryUnion`; lane bind1 batch B, B2): arguments - the last and a
+//! variadic one included -, return types, attributes, dictionary members,
+//! callbacks, sequence and record elements. Until
+//! B2 only a union argument followed by another, whose members a shape-
+//! driven conversion took "faithfully", was named; the rest reached the
+//! impl as `runtime.JSValue`. The positions an impl still converts by hand
+//! are listed in `unions_converted_by_impl`, a table that only shrinks.
 
 const std = @import("std");
 const codegen = @import("codegen");
@@ -90,25 +94,63 @@ test "the interface and the impl stub take the named union, in its argument's pl
     }
 }
 
-test "the last argument, and a union the binding cannot take faithfully, stay JSValue" {
+test "the last argument, a dictionary with a union member and a sequence arm are named too" {
     var out = try Generated.init();
     defer out.deinit();
     const text = try out.read("interfaces/Thing.zig");
     defer testing.allocator.free(text);
-    // Nothing follows it: the impl converts it first thing.
-    try expectIn(text, "interfaces/Thing.zig", "call_last(instance: *runtime.Instance, first: runtime.DOMString, data: runtime.JSValue)");
-    // A dictionary with a union member leaves it to the impl, later than
-    // WebIDL converts it.
-    try expectIn(text, "interfaces/Thing.zig", "call_unionDictionary(instance: *runtime.Instance, data: runtime.JSValue, after: ");
-    // The binding's union path takes only an Array for a sequence arm.
-    try expectIn(text, "interfaces/Thing.zig", "call_sequenceArm(instance: *runtime.Instance, data: runtime.JSValue, after: ");
+    try expectIn(text, "interfaces/Thing.zig", "call_last(instance: *runtime.Instance, first: runtime.DOMString, data: BufferSourceOrPlain)");
+    try expectIn(text, "interfaces/Thing.zig", "call_unionDictionary(instance: *runtime.Instance, data: DOMStringOrWithUnion, after: ");
+    try expectIn(text, "interfaces/Thing.zig", "call_sequenceArm(instance: *runtime.Instance, data: DOMStringOrSequenceOfDOMString, after: ");
+    try expectNotIn(text, "interfaces/Thing.zig", "runtime.JSValue");
     const typedefs_root = try out.read("typedefs/root.zig");
     defer testing.allocator.free(typedefs_root);
-    try expectNotIn(typedefs_root, "typedefs/root.zig", "WithUnion");
-    try expectNotIn(typedefs_root, "typedefs/root.zig", "OrSequence");
     // A Trusted Types union is named too, in every position
     // (trusted_type_unions_test.zig).
     try expectIn(typedefs_root, "typedefs/root.zig", "pub const TrustedHTMLOrDOMString = ");
+}
+
+test "every other position is named: attribute, return, variadic, sequence and record elements, callbacks, dictionary members" {
+    var out = try Generated.init();
+    defer out.deinit();
+    const text = try out.read("interfaces/Thing.zig");
+    defer testing.allocator.free(text);
+    try expectIn(text, "interfaces/Thing.zig", "get_both(instance: *runtime.Instance) anyerror!DOMStringOrLong");
+    try expectIn(text, "interfaces/Thing.zig", "set_both(instance: *runtime.Instance, value: DOMStringOrLong)");
+    try expectIn(text, "interfaces/Thing.zig", "call_produce(instance: *runtime.Instance) anyerror!DOMStringOrPlain");
+    try expectIn(text, "interfaces/Thing.zig", "call_variadic(instance: *runtime.Instance, items: []const DOMStringOrLong)");
+    // A record's value union, kept as text by the parser, is named too.
+    const record = try out.read("dictionaries/WithRecord.zig");
+    defer testing.allocator.free(record);
+    try expectIn(record, "dictionaries/WithRecord.zig", "value: typedefs.DOMStringOrSequenceOfDOMString");
+    const callback = try out.read("callbacks/Notify.zig");
+    defer testing.allocator.free(callback);
+    try expectIn(callback, "callbacks/Notify.zig", "callback Notify = undefined (DOMStringOrLong value)");
+    const dictionary = try out.read("dictionaries/WithUnion.zig");
+    defer testing.allocator.free(dictionary);
+    try expectIn(dictionary, "dictionaries/WithUnion.zig", "start: ?typedefs.DOMStringOrLong");
+    const sequence = try out.read("dictionaries/WithSequence.zig");
+    defer testing.allocator.free(sequence);
+    try expectIn(sequence, "dictionaries/WithSequence.zig", "items: ?[]const typedefs.DOMStringOrLong");
+    const nullable = try out.read("dictionaries/WithNullable.zig");
+    defer testing.allocator.free(nullable);
+    try expectIn(nullable, "dictionaries/WithNullable.zig", "typedefs.DOMStringOrLong");
+}
+
+test "the IndexedDB source attributes, and only they, keep the object itself" {
+    const table = codegen.argument_unions.object_identity_attributes;
+    try testing.expectEqual(@as(usize, 2), table.len);
+    try testing.expectEqualStrings("IDBCursor", table[0][0]);
+    try testing.expectEqualStrings("source", table[0][1]);
+    try testing.expectEqualStrings("IDBRequest", table[1][0]);
+    try testing.expectEqualStrings("source", table[1][1]);
+}
+
+test "the positions an impl still converts by hand only shrink, and are none when batch B is done" {
+    // Lane bind1 batch B: each B5 commit moves one area onto its typed
+    // unions and lowers this count; batch B is done at zero (main,
+    // 2026-11-23 12:39 PM ET).
+    try testing.expectEqual(@as(usize, 48), codegen.argument_unions.unions_converted_by_impl.len);
 }
 
 test "unionName joins the member names in upper camel case" {

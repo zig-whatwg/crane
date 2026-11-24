@@ -63,6 +63,7 @@ const DeferredRequestInit = @import("dictionaries").DeferredRequestInit;
 const Navigation = @import("interfaces").Navigation;
 const WindowPostMessageOptions = @import("dictionaries").WindowPostMessageOptions;
 const CrashReportContext = @import("interfaces").CrashReportContext;
+const EventOrUndefined = @import("typedefs").EventOrUndefined;
 const EventHandler = @import("typedefs").EventHandler;
 const Fence = @import("interfaces").Fence;
 const QueryOptions = @import("dictionaries").QueryOptions;
@@ -1750,7 +1751,7 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_event(instance: *runtime.Instance) anyerror!EventOrUndefined {
         return try WindowImpl.get_event(instance);
     }
 

@@ -60,7 +60,7 @@ counters. Guessing at ownership here has shipped use-after-frees twice.
 **A change's cost is a pair, read by one command** (docs/performance.md, "A lane's
 cost pair"): the tip against its base, both consoles built in the lane's own
 mirror, in a timed window on chat.local - a default pass for time and
-instructions, and a memory-only pass with `MallocLargeCache=0` on both sides and
+instructions, and a memory-only pass with `MallocLargeCache=0 MallocMaxMagazines=1` on both sides and
 ALWAYS `--collected` (so that a memory row over the bar can be cleared by its
 collected figure as well as by its levels), then `perf_bench cost --default=<D>
 --memory=<M>`. Its verdict is AGENTS.md's 3% rule, and its table, with every

@@ -64,17 +64,20 @@ pub fn reportErrorInfo(global: *runtime.Instance, info: *const runtime.ErrorInfo
 /// MainThreadDebugger::ExceptionThrown, which ExecutionContext::
 /// DispatchErrorEvent calls when no handler canceled the error event
 /// (third_party/blink/renderer/core/execution_context/execution_context.cc).
-/// A muted error is its sanitized message alone, as the error event's. Nothing
-/// where the engine has no inspector protocol (-Dcdp=false) or the realm is
-/// registered with no inspector.
+/// A muted error's detailed message is its sanitized one, as the error
+/// event's. Nothing where the engine has no inspector protocol (-Dcdp=false)
+/// or the realm is registered with no inspector.
 fn reportToInspector(realm: runtime.Context, info: *const runtime.ErrorInfo, options: ReportOptions) void {
     if (engine.capabilities.inspector_protocol != .unsupported) {
         const hide = options.muted or options.omit_error;
         const value: runtime.JSValue = if (hide) runtime.JSValue.jsUndefined else info.error_value orelse runtime.JSValue.jsUndefined;
+        // Blink passes "Uncaught" as the message (exceptionDetails.text) and
+        // the error event's console message as the detailed one
+        // (MainThreadDebugger::ExceptionThrown, main_thread_debugger.cc).
         const details: engine.InspectorExceptionDetails = if (options.muted)
-            .{ .message = "Script error." }
+            .{ .message = "Uncaught", .detailed_message = "Script error." }
         else
-            .{ .message = info.message, .url = info.filename, .line = info.lineno, .column = info.colno };
+            .{ .message = "Uncaught", .detailed_message = info.message, .url = info.filename, .line = info.lineno, .column = info.colno };
         _ = engine.inspectorExceptionThrown(realm, value, &details);
     }
 }

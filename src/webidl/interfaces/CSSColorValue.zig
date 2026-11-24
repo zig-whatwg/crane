@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSColorValueOrCSSStyleValue = @import("typedefs").CSSColorValueOrCSSStyleValue;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -169,7 +170,7 @@ pub const CSSColorValue = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!runtime.JSValue {
+    pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!CSSColorValueOrCSSStyleValue {
         return try CSSColorValueImpl.call_static_parse(instance, cssText);
     }
 };

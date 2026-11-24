@@ -14,7 +14,7 @@ pub const SFrameTransformErrorEventInit = struct {
     base: EventInit,
 
     errorType: enums.SFrameTransformErrorEventType,
-    frame: runtime.JSValue,
+    frame: typedefs.RTCEncodedVideoFrameOrRTCEncodedAudioFrame,
     keyID: ?typedefs.CryptoKeyID = null,
 
     /// Optional members whose IDL type is nullable: a present null is the
