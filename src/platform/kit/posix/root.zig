@@ -442,6 +442,80 @@ pub fn writeFileAtomic(path: Str, bytes: Bytes) Error!void {
     };
 }
 
+/// The errno of a failed libc call, as the protocol's Error.
+fn errnoError(e: std.posix.E) Error {
+    return switch (e) {
+        .NOENT, .NOTDIR => error.NotFound,
+        // O_NOFOLLOW at a symbolic link: ELOOP (Linux and macOS).
+        .ACCES, .PERM, .ROFS, .LOOP => error.AccessDenied,
+        .EXIST => error.AlreadyExists,
+        .NOSPC, .DQUOT => error.NoSpace,
+        .NOMEM => error.OutOfMemory,
+        .BUSY => error.Busy,
+        else => error.Io,
+    };
+}
+
+fn lastErrno() std.posix.E {
+    return @fromBackingInt(@intCast(std.c._errno().*));
+}
+
+/// `path` with a terminating zero, in `buffer`.
+fn pathZ(buffer: []u8, path: []const u8) Error![:0]const u8 {
+    if (path.len + 1 > buffer.len) return error.Io;
+    @memcpy(buffer[0..path.len], path);
+    buffer[path.len] = 0;
+    return buffer[0..path.len :0];
+}
+
+pub fn writeFilePrivate(path: Str, bytes: Bytes) Error!void {
+    var path_buffer: [std.fs.max_path_bytes + 1]u8 = undefined;
+    const z = try pathZ(&path_buffer, path.slice());
+    const flags: std.c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true, .NOFOLLOW = true, .CLOEXEC = true };
+    const fd = std.c.open(z, flags, @as(c_uint, 0o600));
+    if (fd < 0) return errnoError(lastErrno());
+    defer _ = std.c.close(fd);
+    const data = bytes.slice();
+    var written: usize = 0;
+    while (written < data.len) {
+        const n = std.c.write(fd, data.ptr + written, data.len - written);
+        if (n < 0) {
+            const e = lastErrno();
+            if (e == .INTR) continue;
+            return errnoError(e);
+        }
+        written += @intCast(n);
+    }
+}
+
+pub fn realPath(allocator: std.mem.Allocator, path: Str) Error![]u8 {
+    var path_buffer: [std.fs.max_path_bytes + 1]u8 = undefined;
+    const z = try pathZ(&path_buffer, path.slice());
+    var out: [std.fs.max_path_bytes]u8 = undefined;
+    const resolved = std.c.realpath(z, &out) orelse {
+        const e = lastErrno();
+        // A path through a file is not a missing one: only ENOENT is
+        // NotFound here, so a caller walking up to the nearest existing
+        // ancestor (chrome-devtools-mcp resolveCanonicalPath) stops at it.
+        if (e == .NOTDIR) return error.Io;
+        return errnoError(e);
+    };
+    return allocator.dupe(u8, std.mem.span(resolved));
+}
+
+pub fn tempDirectory(allocator: std.mem.Allocator) Error![]u8 {
+    var dir: []const u8 = "/tmp";
+    for ([_][*:0]const u8{ "TMPDIR", "TMP", "TEMP" }) |name| {
+        const value = std.c.getenv(name) orelse continue;
+        const text = std.mem.span(value);
+        if (text.len == 0) continue;
+        dir = text;
+        break;
+    }
+    if (dir.len > 1 and dir[dir.len - 1] == '/') dir = dir[0 .. dir.len - 1];
+    return allocator.dupe(u8, dir);
+}
+
 pub fn deleteFile(path: Str) Error!void {
     std.Io.Dir.cwd().deleteFile(host.io(), path.slice()) catch |err| return fileError(err);
 }
