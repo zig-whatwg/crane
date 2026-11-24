@@ -454,22 +454,9 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
             run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
             run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
         }
-        // Line numbers in a race report: on macOS the debug information
-        // stays in the object files, and ThreadSanitizer's symbolizer (atos)
-        // reads a dSYM bundle beside the binary - without one a report names
-        // functions with `<null>` lines (lane tlaunch1; checked on
-        // chat.local, lane tsan1). The bundle lands beside the cached
-        // executable the launcher runs; cached like the executable.
-        if (test_exe.rootModuleTarget().os.tag.isDarwin() and b.graph.host.result.os.tag.isDarwin()) {
-            const dsym = b.addSystemCommand(&.{"dsymutil"});
-            dsym.setName(b.fmt("dsymutil {s}", .{name}));
-            dsym.addArtifactArg(test_exe);
-            dsym.expectExitCode(0);
-            // Its warnings about objects without debug information (the
-            // engine's prebuilt archives) are not the build's diagnostics.
-            _ = dsym.captureStdErr(.{});
-            run.step.dependOn(&dsym.step);
-        }
+        // Line numbers in a race report: what the test executable's OS
+        // side packages beside it (platform_build.afterTestBuild).
+        platform_build.afterTestBuild(b, test_exe, run, name);
     }
     if (many_browsers) {
         run.addArg("--many-browsers");

@@ -31,6 +31,7 @@
 //!   pub fn forwarded(b: *std.Build, options: Options) []const []const u8
 //!   pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC
 //!   pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void
+//!   pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void
 //!
 //! and, asked of the adapter a graph binds:
 //!
@@ -120,6 +121,7 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "forwarded", fn (*std.Build, A.Options) []const []const u8);
     conforms(who, A, "prepareC", fn (std.Build.ResolvedTarget) ?kit.PrepareC);
     conforms(who, A, "linkArtifact", fn (*std.Build.Module, std.Build.ResolvedTarget) void);
+    conforms(who, A, "afterTestBuild", fn (*std.Build, *std.Build.Step.Compile, *std.Build.Step.Run, []const u8) void);
     conforms(who, A, "bind", fn (*std.Build.Module, std.Build.ResolvedTarget, BindRequest) void);
     // hasdecl: A is each listed adapter's build file (`adapters`), whose
     // `facts` is pub - this check exists to fail the configure when it is not.
@@ -190,6 +192,17 @@ pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget)
     inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
         const A = @field(adapters, name);
         if (A.ownsTarget(target.result)) return A.linkArtifact(module, target);
+    }
+}
+
+/// What a test executable's run (`run`, the launcher's) needs beside the
+/// executable for its reports - debug information packaged as the
+/// executable's OS keeps it - as the adapter that answers for the
+/// executable's target says.
+pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |adapter| {
+        const A = @field(adapters, adapter);
+        if (A.ownsTarget(test_exe.rootModuleTarget())) return A.afterTestBuild(b, test_exe, run, name);
     }
 }
 

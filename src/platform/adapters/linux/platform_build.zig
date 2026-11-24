@@ -56,3 +56,8 @@ pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget)
 pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: platform_build.BindRequest) void {
     _ = .{ impl, target, request };
 }
+
+/// A test executable's debug information needs nothing beside it.
+pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void {
+    _ = .{ b, test_exe, run, name };
+}

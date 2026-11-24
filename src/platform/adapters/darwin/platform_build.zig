@@ -189,3 +189,24 @@ pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: 
         impl.linkFramework("CoreFoundation", .{});
     }
 }
+
+/// What a race report needs beside a test executable for its lines, built
+/// for a darwin target on a darwin machine (the root build asks it for a
+/// ThreadSanitizer run). On macOS the debug information stays in the object
+/// files, and ThreadSanitizer's symbolizer (atos) reads a dSYM bundle beside
+/// the binary - without one a report names functions with `<null>` lines
+/// (lane tlaunch1; checked on chat.local, lane tsan1). The bundle lands
+/// beside the cached executable the launcher runs; cached like the
+/// executable.
+pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void {
+    if (test_exe.rootModuleTarget().os.tag.isDarwin() and b.graph.host.result.os.tag.isDarwin()) {
+        const dsym = b.addSystemCommand(&.{"dsymutil"});
+        dsym.setName(b.fmt("dsymutil {s}", .{name}));
+        dsym.addArtifactArg(test_exe);
+        dsym.expectExitCode(0);
+        // Its warnings about objects without debug information (the
+        // engine's prebuilt archives) are not the build's diagnostics.
+        _ = dsym.captureStdErr(.{});
+        run.step.dependOn(&dsym.step);
+    }
+}
