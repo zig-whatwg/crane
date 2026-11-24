@@ -16,6 +16,7 @@ pub const protocol_version = "1.3";
 /// The devtools-protocol package the definitions are pinned at (specs/devtools-protocol/PIN.md).
 pub const package_version = "0.0.1717327";
 
+pub const Accessibility = @import("Accessibility.zig");
 pub const Audits = @import("Audits.zig");
 pub const Browser = @import("Browser.zig");
 pub const DOM = @import("DOM.zig");

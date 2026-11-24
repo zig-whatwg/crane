@@ -3,6 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const storage = @import("storage");
+const typedefs = @import("typedefs");
 const Key = storage.indexeddb.IDBKey;
 pub const Result = union(enum) { key: Key, invalid_value, invalid_type };
 const Seen = struct {
@@ -211,20 +212,28 @@ pub const Path = struct {
         }
     }
 };
-pub fn keyPath(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) !Path {
-    // WebIDL's string/sequence union: object iterables select sequence.
-    if (engine.typeOf(realm, value) == .object) {
-        if (try engine.convertToSequenceOfDOMStrings(realm, value, allocator)) |paths| {
+/// A key path argument or dictionary member, (DOMString or
+/// sequence<DOMString>), as a stored path of its own strings. The binding
+/// converted the union (WebIDL 3.2.25: an Object with @@iterator is the
+/// sequence, anything else the DOMString) before the method's steps, and
+/// frees it when the call returns: every string is copied.
+pub fn keyPath(value: typedefs.DOMStringOrSequenceOfDOMString, allocator: std.mem.Allocator) !Path {
+    switch (value) {
+        .domstring => |text| return .{ .allocator = allocator, .value = .{ .single = try allocator.dupe(u8, text.asSlice()) } },
+        .domstring_sequence => |parts| {
+            const paths = try allocator.alloc([]const u8, parts.len);
+            var made: usize = 0;
             errdefer {
-                for (paths) |path| allocator.free(path);
+                for (paths[0..made]) |path| allocator.free(path);
                 allocator.free(paths);
             }
+            for (parts) |part| {
+                paths[made] = try allocator.dupe(u8, part.asSlice());
+                made += 1;
+            }
             return .{ .allocator = allocator, .value = .{ .array = paths } };
-        }
+        },
     }
-    const path = try engine.convertToDOMString(realm, value, allocator);
-    errdefer allocator.free(path);
-    return .{ .allocator = allocator, .value = .{ .single = path } };
 }
 
 /// ED 4.5/4.6 keyPath: each handle keeps one mutable Array for a list path.

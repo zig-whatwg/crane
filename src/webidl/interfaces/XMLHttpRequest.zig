@@ -15,7 +15,6 @@ const Document = @import("interfaces").Document;
 const XMLHttpRequestResponseType = @import("enums").XMLHttpRequestResponseType;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ByteString = @import("typedefs").ByteString;
-const XMLHttpRequestBodyInit = @import("typedefs").XMLHttpRequestBodyInit;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const XMLHttpRequestUpload = @import("interfaces").XMLHttpRequestUpload;
 const USVString = @import("typedefs").USVString;
@@ -23,6 +22,7 @@ const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
+const DocumentOrXMLHttpRequestBodyInit = @import("typedefs").DocumentOrXMLHttpRequestBodyInit;
 const PrivateToken = @import("dictionaries").PrivateToken;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -390,7 +390,7 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
     }
 
-    pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?DocumentOrXMLHttpRequestBodyInit)) anyerror!void {
         return try XMLHttpRequestImpl.call_send(instance, body);
     }
 

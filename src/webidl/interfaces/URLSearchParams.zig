@@ -10,6 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString = @import("typedefs").SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -189,7 +190,7 @@ pub const URLSearchParams = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try URLSearchParamsImpl.call_constructor(ctx, init_data);
     }

@@ -139,29 +139,25 @@ pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Insta
 /// Creates a new transaction on the database.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: typedefs.DOMStringOrSequenceOfDOMString, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
     const allocator = instance.ctx.allocator;
-    // WebIDL union conversion precedes the method algorithm.
-    var converted: ?[][]u8 = null;
-    if (engine.typeOf(instance.ctx, storeNames) == .object) converted = try engine.convertToSequenceOfDOMStrings(instance.ctx, storeNames, allocator);
-    if (converted == null) {
-        const name = try engine.convertToDOMString(instance.ctx, storeNames, allocator);
-        errdefer allocator.free(name);
-        const names = try allocator.alloc([]u8, 1);
-        names[0] = name;
-        converted = names;
-    }
-    defer {
-        for (converted.?) |name| allocator.free(name);
-        allocator.free(converted.?);
-    }
+    // storeNames is (DOMString or sequence<DOMString>), converted by the
+    // binding before the method's steps (WebIDL 3.2.25: an Object with
+    // @@iterator - an Array, a DOMStringList - is the sequence). The names
+    // are borrowed for the call.
+    const one_name = [_]runtime.DOMString{if (storeNames == .domstring) storeNames.domstring else runtime.DOMString.empty};
+    const names: []const runtime.DOMString = switch (storeNames) {
+        .domstring => &one_name,
+        .domstring_sequence => |sequence| sequence,
+    };
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     // Steps 1-2: live upgrade and close-pending checks.
     if (internal.database.version_change_transaction != null or internal.database.closed) return error.InvalidStateError;
     var scope: std.ArrayList([]const u8) = .empty;
     defer scope.deinit(allocator);
-    // Step 3: set of unique converted names, retaining the converted allocation.
-    for (converted.?) |name| {
+    // Step 3: the set of unique names, borrowed from the converted argument.
+    for (names) |entry| {
+        const name = entry.asSlice();
         var duplicate = false;
         for (scope.items) |existing| if (std.mem.eql(u8, existing, name)) {
             duplicate = true;
@@ -205,8 +201,7 @@ pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMStri
     // Convert the dictionary's nullable string/sequence union before running
     // the method. Native 4.4 steps 1-8 then apply validation in spec order.
     const converted = if (options.wasPassed()) options.value else dictionaries.IDBObjectStoreParameters{};
-    const key_path = converted.keyPath orelse runtime.JSValue.jsNull;
-    var path: ?dom.indexeddb_keys.Path = if (key_path.isNullOrUndefined()) null else try dom.indexeddb_keys.keyPath(instance.ctx, key_path, instance.ctx.allocator);
+    var path: ?dom.indexeddb_keys.Path = if (converted.keyPath) |key_path| try dom.indexeddb_keys.keyPath(key_path, instance.ctx.allocator) else null;
     defer if (path) |*owned| owned.deinit();
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const backend_options = storage.indexeddb.database.IDBObjectStoreParameters{

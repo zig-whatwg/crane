@@ -11,6 +11,17 @@
 //! {mode: null})`). A nullable member - listed by codegen in
 //! `nullable_members` - keeps null as null.
 //!
+//! A member whose type is a union converts a present null by the union
+//! (WebIDL 3.2.25: step 4 to its dictionary member, step 15 to its string
+//! member - "null" -, step 17 to its numeric member - 0 -, step 18 to
+//! boolean - false -, else step 20's TypeError), as Chrome, Firefox and
+//! Safari do (lane bind1 B5, probe tmp/probes/bind1-nullmember, 2026-11-23:
+//! `new Response('', {headers: null})` is a TypeError, `performance.measure(
+//! 'm', {start: null})` names the mark "null", `new IntersectionObserver(f,
+//! {threshold: null})` has thresholds [0], in all three). It read as not
+//! present once B2 typed such members: while they were runtime.JSValue the
+//! impl saw the null (`jsvalue_union_members`).
+//!
 //! The predicate's default is pinned: a member the converter cannot convert
 //! null for by its own rule keeps reading null as not present.
 
@@ -18,6 +29,7 @@ const std = @import("std");
 const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const interfaces = @import("interfaces");
@@ -101,6 +113,129 @@ const Shaped = struct {
     /// (`interface_members`): without it the member could not convert.
     pub const interface_members = .{.{ "object", "Node" }};
 };
+
+/// Unions as codegen emits them (typedefs, each with its arms table), and a
+/// dictionary whose members they type.
+const TextOrNumber = union(enum) {
+    domstring: runtime.DOMString,
+    double: f64,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "domstring", .kind = .string },
+        .{ .field = "double", .kind = .numeric },
+    };
+};
+const NumberOrList = union(enum) {
+    double: f64,
+    double_sequence: []const f64,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "double", .kind = .numeric },
+        .{ .field = "double_sequence", .kind = .{ .sequence = null } },
+    };
+};
+const FlagOrList = union(enum) {
+    boolean: bool,
+    double_sequence: []const f64,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "boolean", .kind = .boolean },
+        .{ .field = "double_sequence", .kind = .{ .sequence = null } },
+    };
+};
+const Inner = struct {
+    pub const webidl_dictionary = true;
+    count: ?u32 = null,
+};
+const OptionsOrFlag = union(enum) {
+    inner: Inner,
+    boolean: bool,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "inner", .kind = .dictionary },
+        .{ .field = "boolean", .kind = .boolean },
+    };
+};
+const Unioned = struct {
+    pub const webidl_dictionary = true;
+    text_or_number: ?TextOrNumber = null,
+    number_or_list: ?NumberOrList = null,
+    flag_or_list: ?FlagOrList = null,
+    options_or_flag: ?OptionsOrFlag = null,
+    nullable_union: ?TextOrNumber = null,
+
+    pub const nullable_members = .{"nullable_union"};
+};
+
+test "a present null on a union member converts by the union: the predicate" {
+    try testing.expect(comptime conversions.presentNullConvertsByType(Unioned, field(Unioned, "text_or_number")));
+    try testing.expect(comptime conversions.presentNullConvertsByType(Unioned, field(Unioned, "number_or_list")));
+    try testing.expect(comptime conversions.presentNullConvertsByType(Unioned, field(Unioned, "flag_or_list")));
+    try testing.expect(comptime conversions.presentNullConvertsByType(Unioned, field(Unioned, "options_or_flag")));
+    // A nullable union member's null is null.
+    try testing.expect(!comptime conversions.presentNullConvertsByType(Unioned, field(Unioned, "nullable_union")));
+    // The generated ones: RequestInit's `HeadersInit headers` converts null
+    // by the union; `BodyInit? body` is nullable.
+    try testing.expect(comptime conversions.presentNullConvertsByType(dictionaries.RequestInit, field(dictionaries.RequestInit, "headers")));
+    try testing.expect(!comptime conversions.presentNullConvertsByType(dictionaries.RequestInit, field(dictionaries.RequestInit, "body")));
+}
+
+test "a union member's null is its string member's \"null\" (step 15, before the numeric member's 0)" {
+    defer test_agent.close();
+    const e = try env();
+    const object = try eval("({ text_or_number: null })");
+    defer ffi.v8_Value_Dispose(object);
+    var unioned = try conversions.fromV8Value(Unioned, testing.allocator, e.isolate, e.context, object);
+    defer if (unioned.text_or_number) |*member| member.domstring.deinit(testing.allocator);
+    try testing.expect(unioned.text_or_number != null);
+    try testing.expect(unioned.text_or_number.? == .domstring);
+    try testing.expectEqualStrings("null", unioned.text_or_number.?.domstring.asSlice());
+}
+
+test "a union member's null is its numeric member's 0 (step 17), else boolean's false (step 18)" {
+    defer test_agent.close();
+    const e = try env();
+    const object = try eval("({ number_or_list: null, flag_or_list: null })");
+    defer ffi.v8_Value_Dispose(object);
+    const unioned = try conversions.fromV8Value(Unioned, testing.allocator, e.isolate, e.context, object);
+    try testing.expect(unioned.number_or_list != null);
+    try testing.expectEqual(@as(f64, 0), unioned.number_or_list.?.double);
+    try testing.expect(unioned.flag_or_list != null);
+    try testing.expectEqual(false, unioned.flag_or_list.?.boolean);
+}
+
+test "a union member's null is its dictionary member, empty (step 4)" {
+    defer test_agent.close();
+    const e = try env();
+    const object = try eval("({ options_or_flag: null })");
+    defer ffi.v8_Value_Dispose(object);
+    const unioned = try conversions.fromV8Value(Unioned, testing.allocator, e.isolate, e.context, object);
+    try testing.expect(unioned.options_or_flag != null);
+    try testing.expect(unioned.options_or_flag.? == .inner);
+    try testing.expect(unioned.options_or_flag.?.inner.count == null);
+}
+
+test "a nullable union member's null is null, and undefined is not present for every union member" {
+    defer test_agent.close();
+    const e = try env();
+    const object = try eval("({ nullable_union: null, text_or_number: undefined, number_or_list: undefined, flag_or_list: undefined, options_or_flag: undefined })");
+    defer ffi.v8_Value_Dispose(object);
+    const unioned = try conversions.fromV8Value(Unioned, testing.allocator, e.isolate, e.context, object);
+    try testing.expect(unioned.nullable_union == null);
+    try testing.expect(unioned.text_or_number == null);
+    try testing.expect(unioned.number_or_list == null);
+    try testing.expect(unioned.flag_or_list == null);
+    try testing.expect(unioned.options_or_flag == null);
+}
+
+test "RequestInit {headers: null} is a TypeError: null is no sequence and no record (step 20)" {
+    defer test_agent.close();
+    const e = try env();
+    const object = try eval("({ headers: null })");
+    defer ffi.v8_Value_Dispose(object);
+    try testing.expectError(error.TypeError, conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, object));
+    // Absent stays absent.
+    const absent = try eval("({ headers: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const init = try conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(init.headers == null);
+}
 
 test "a present null converts by type only for a non-nullable member with a scalar or sequence type - the default is not present" {
     defer test_agent.close();

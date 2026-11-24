@@ -43,6 +43,11 @@ pub const adapters = .{
     .testing = @import("adapters/testing/platform_build.zig"),
 };
 
+/// The kit's build side: the C libraries the platform kit builds and links,
+/// its options and its C header translations (kit/kit_build.zig). Every
+/// platform composes the kit, so the root build reaches it here.
+pub const kit = @import("kit/kit_build.zig");
+
 /// The platform a module graph is built for (docs/platform-protocol.md 1.1):
 /// a listed adapter, by its -Dplatform name, or `external` - the
 /// implementation -Dplatform-module names. The values -Dplatform takes: the

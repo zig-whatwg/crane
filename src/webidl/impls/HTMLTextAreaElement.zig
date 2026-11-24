@@ -140,6 +140,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     internal.raw_value = null;
     internal.last_user_edit = false;
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-textarea-raw-value
@@ -243,6 +244,7 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(instance.ctx.allocator, edit.text);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // HTML 4.10.19.3–4: script value/setRangeText writes clear this marker.
     internal.last_user_edit = true;
     const previous_selection = internal.selection;
@@ -627,6 +629,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         const end = form_associated.utf16Length(now);
         internal.selection = .{ .start = end, .end = end, .direction = .none };
         dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+        if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     }
 }
 
@@ -678,6 +681,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(allocator, result.value);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // 14. Set the selection range with selection start and selection end.
     try setSelectionRange(instance, result.selection_start, result.selection_end, null);
 }

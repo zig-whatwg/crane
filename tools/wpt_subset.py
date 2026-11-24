@@ -78,6 +78,26 @@ INCLUDE = [
     ('accname/',              'accessible-name computation from DOM and style'),
     ('html-aam/',             'HTML accessible names and semantic roles'),
     ('wai-aria/',             'ARIA reflection, roles and accessibility tree properties'),
+    # Lane a11y1's survey (the integrator, 2026-11-24 7:27 AM ET: "add ALL 12"): the computed role and
+    # label files outside these three directories, by the scope line (merged spec, at least one browser
+    # ships, not tentative, no geometry). wpt.fyi Chrome 158.0.8127.36 / Firefox 160.0.1 / Safari 27.2,
+    # Crane main 187de50e1 at its WPT pin: core-aam roles-contextual 7/8 8/8 8/8, Crane 8/8; dpub-aam
+    # roles 39/39 39/39 0/39, Crane 37/39; graphics-aria 3/3 0/3 3/3, Crane 3/3; svg-aam
+    # comp_host_language_label 18/18 x3, Crane 10/18; comp_label 4/4 x3, Crane 4/4; comp_labelledby 9/9 x3,
+    # Crane 8/9; roles 4/4 x3, Crane 0/4; roles-generic 9/9 x3, Crane 9/9; css-display
+    # display-contents-role-and-label 112/112 x3, Crane 111/112; popover-minimum-role 2/2 2/2 0/2, Crane 0/2.
+    # Crane's 18 failures there (and html-aam/table-roles.html el-th-in-row) are the red list of the
+    # role-unification batch (roadmap); the accname alt_counter files are follows-majority
+    # (tools/wpt_gate_exemptions.txt).
+    ('core-aam/role/roles-contextual.html', 'computed roles in context (Core-AAM)'),
+    ('dpub-aam/role/roles.html', 'DPUB-ARIA computed roles'),
+    ('graphics-aria/graphics-roles.html', 'WAI-ARIA Graphics computed roles'),
+    ('svg-aam/name/', 'SVG accessible names (SVG-AAM): comp_host_language_label, comp_label, comp_labelledby'),
+    ('svg-aam/role/', 'SVG computed roles (SVG-AAM): roles, roles-generic'),
+    ('css/css-display/accessibility/display-contents-role-and-label.html',
+     'display: contents keeps an element\'s role and label (computed role and label, no box)'),
+    ('html/semantics/popovers/popover-minimum-role.html',
+     'a popover\'s minimum role (HTML-AAM): computed role only; the rest of html/semantics/popovers/ stays out'),
     ('mathml/relations/html5-tree/', 'MathML DOM integration, focus, hyperlinks and attributes; no MathML layout'),
     ('svg/struct/scripted/autofocus-attribute.svg', 'SVG autofocus candidate from row 111; XML-format runner pending row 113'),
 
@@ -896,8 +916,9 @@ EXCLUDE = [
     # 2026-10-21 proposal: exclude measured boxes and coordinate hit-testing,
     # not style reads used only to flush. Mixed files retain their functional
     # subtests; the proposal evidence names their layout-only subtests.
-    ('accname/name/comp_name_from_content_alt_counter_invalidation.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
-    ('accname/name/comp_name_from_content_alt_counter_multi_instance.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
+    # The accname alt_counter files are in since 2026-11-24 (lane a11y1, the integrator): Crane's result
+    # equals Firefox 160's and Safari 27.2's subtest by subtest (follows-majority in
+    # tools/wpt_gate_exemptions.txt); only Chrome names an alt counter.
     ('css/cssom/caretPositionFromPoint', 'asserts caret offsets from hit-tested viewport coordinates'),
     # css/css-properties-values-api/animation/ is back in (2026-11-01): it was out
     # from 2026-10-25 only until an animation engine was planned, and the user
@@ -1675,9 +1696,18 @@ def walk(node, prefix=()):
             yield '/'.join(path), len(value) - 1
 
 
+# Files a directory exclusion leaves out that are in by name, each with the one
+# exclusion it is exempt from (lane a11y1, the integrator 2026-11-24).
+EXCLUSION_EXCEPTIONS = {
+    'html/semantics/popovers/popover-minimum-role.html': 'html/semantics/popovers/',
+}
+
+
 def excluded(path):
     for pattern, _ in EXCLUDE:
         if pattern in path or path.startswith(pattern.lstrip('/')):
+            if EXCLUSION_EXCEPTIONS.get(path) == pattern:
+                continue
             # Explicitly reviewed tentative files do not waive any other
             # exclusion (geometry, unsupported formats, hardware, etc.).
             if pattern in ('/tentative/', '.tentative.') and any(
