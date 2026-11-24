@@ -186,7 +186,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
     // Create URLSearchParams instance - pass empty init_data for now
     const query_params_instance = try URLSearchParamsInterface.call_constructor(
         ctx,
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     );
     // Freed whole if a later step fails (its deinit alone is a destructor).
     errdefer runtime.gc.releaseOwned(query_params_instance);
@@ -842,7 +842,7 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
     // Create URLSearchParams instance
     const query_params_instance = try URLSearchParamsInterface.call_constructor(
         ctx,
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     );
     // Freed whole if a later step fails (its deinit alone is a destructor).
     errdefer runtime.gc.releaseOwned(query_params_instance);

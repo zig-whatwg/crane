@@ -336,80 +336,29 @@ pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(r
     performance_timeline.clearEntries(try timeline(instance), .measure, name);
 }
 
-/// A `(DOMString or DOMHighResTimeStamp)` value, converted.
+/// A `(DOMString or DOMHighResTimeStamp)` value - a mark's name or a
+/// timestamp - BORROWED from the union the binding converted (WebIDL 3.2.25:
+/// a Number is the restricted double, a TypeError when not finite; anything
+/// else ToString) or from a string of the caller's.
 const MarkValue = union(enum) {
-    name: []u8,
+    name: []const u8,
     timestamp: f64,
 
-    fn deinit(self: MarkValue, allocator: std.mem.Allocator) void {
-        switch (self) {
-            .name => |n| allocator.free(n),
-            .timestamp => {},
-        }
+    fn of(value: typedefs.DOMStringOrDOMHighResTimeStamp) MarkValue {
+        return switch (value) {
+            .domstring => |name| .{ .name = name.asSlice() },
+            .domhigh_res_time_stamp => |timestamp| .{ .timestamp = timestamp },
+        };
     }
 };
 
-/// WebIDL's union conversion for `(DOMString or DOMHighResTimeStamp)`: a
-/// Number is the (restricted) double, anything else ToString.
-fn convertMarkValue(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) !MarkValue {
-    if (engine.typeOf(realm, value) == .number) {
-        const number = try engine.convertToUnrestrictedDouble(realm, value);
-        if (!std.math.isFinite(number)) return error.TypeError;
-        return .{ .timestamp = number };
-    }
-    return .{ .name = try engine.convertToDOMString(realm, value, allocator) };
-}
-
-/// PerformanceMeasureOptions, as measure() reads it: each member converted,
-/// `detail` held until the measure is made.
-const MeasureOptions = struct {
-    detail: ?engine.Owned = null,
-    duration: ?f64 = null,
-    end: ?MarkValue = null,
-    start: ?MarkValue = null,
-
-    fn deinit(self: *MeasureOptions, allocator: std.mem.Allocator) void {
-        if (self.detail) |detail| detail.release();
-        if (self.end) |end| end.deinit(allocator);
-        if (self.start) |start| start.deinit(allocator);
-    }
-
-    fn anyExists(self: *const MeasureOptions) bool {
-        return self.detail != null or self.duration != null or self.end != null or self.start != null;
-    }
-};
-
-/// The dictionary conversion of `object` to PerformanceMeasureOptions:
-/// members in lexicographic order (detail, duration, end, start), each Get
-/// once; undefined is "not present"; what a getter throws propagates.
-fn convertMeasureOptions(realm: runtime.Context, object: runtime.JSValue, allocator: std.mem.Allocator) !MeasureOptions {
-    var options: MeasureOptions = .{};
-    errdefer options.deinit(allocator);
-    if (engine.typeOf(realm, object) != .object) return options;
-    {
-        const detail = try engine.getProperty(realm, object, "detail");
-        if (engine.typeOf(realm, detail.value) == .undefined) detail.release() else options.detail = detail;
-    }
-    {
-        const duration = try engine.getProperty(realm, object, "duration");
-        defer duration.release();
-        if (engine.typeOf(realm, duration.value) != .undefined) {
-            const number = try engine.convertToUnrestrictedDouble(realm, duration.value);
-            if (!std.math.isFinite(number)) return error.TypeError;
-            options.duration = number;
-        }
-    }
-    {
-        const end = try engine.getProperty(realm, object, "end");
-        defer end.release();
-        if (engine.typeOf(realm, end.value) != .undefined) options.end = try convertMarkValue(realm, end.value, allocator);
-    }
-    {
-        const start = try engine.getProperty(realm, object, "start");
-        defer start.release();
-        if (engine.typeOf(realm, start.value) != .undefined) options.start = try convertMarkValue(realm, start.value, allocator);
-    }
-    return options;
+/// Whether at least one member of `options` is present (User Timing 2.1.3
+/// step 1: "startOrMeasureOptions is a PerformanceMeasureOptions object and
+/// at least one of start, end, duration, and detail exist"). A member
+/// present as null exists: `detail: null` is the value null, and `start:
+/// null` the mark named "null".
+fn anyMemberExists(options: *const dictionaries.PerformanceMeasureOptions) bool {
+    return options.detail != null or options.duration != null or options.end != null or options.start != null;
 }
 
 /// User Timing 3.2 "convert a name to a timestamp".
@@ -454,28 +403,28 @@ fn convertMarkToTimestamp(instance: *runtime.Instance, mark: MarkValue) !f64 {
 }
 
 /// Operation: measure (User Timing 2.1.3)
-pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
+pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(typedefs.DOMStringOrPerformanceMeasureOptions), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     const allocator = instance.ctx.allocator;
     const realm = engine.currentRealm() orelse instance.ctx;
 
-    // The union `(DOMString or PerformanceMeasureOptions)`, default {}:
-    // undefined, null and any object convert to the dictionary, anything
-    // else to a string.
-    var options: ?MeasureOptions = null;
-    var start_name: ?[]u8 = null;
-    defer if (options) |*o| o.deinit(allocator);
-    defer if (start_name) |n| allocator.free(n);
+    // The union `(DOMString or PerformanceMeasureOptions)`, default {},
+    // converted by the binding before these steps (WebIDL 3.2.25: undefined,
+    // null and any Object are the dictionary - its members read in
+    // lexicographic order, each Get once - anything else the DOMString). It
+    // is the binding's, freed when this returns: nothing of it is kept.
+    const no_options: dictionaries.PerformanceMeasureOptions = .{};
+    var options: ?*const dictionaries.PerformanceMeasureOptions = null;
+    var start_name: ?[]const u8 = null;
     if (!startOrMeasureOptions.was_passed) {
-        options = .{};
-    } else switch (engine.typeOf(realm, startOrMeasureOptions.value)) {
-        .undefined, .null => options = .{},
-        .object => options = try convertMeasureOptions(realm, startOrMeasureOptions.value, allocator),
-        else => start_name = try engine.convertToDOMString(realm, startOrMeasureOptions.value, allocator),
+        options = &no_options;
+    } else switch (startOrMeasureOptions.value) {
+        .performance_measure_options => |*given| options = given,
+        .domstring => |name| start_name = name.asSlice(),
     }
 
     // 1. A PerformanceMeasureOptions with at least one member present.
-    if (options) |*o| {
-        if (o.anyExists()) {
+    if (options) |o| {
+        if (anyMemberExists(o)) {
             // 1.1.
             if (endMark.was_passed) return error.TypeError;
             // 1.2.
@@ -488,17 +437,13 @@ pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString,
     // 2. end time.
     const end_time: f64 = blk: {
         // 2.1.
-        if (endMark.was_passed) {
-            const copy = try allocator.dupe(u8, endMark.value.asSlice());
-            defer allocator.free(copy);
-            break :blk try convertMarkToTimestamp(instance, .{ .name = copy });
-        }
-        if (options) |*o| {
+        if (endMark.was_passed) break :blk try convertMarkToTimestamp(instance, .{ .name = endMark.value.asSlice() });
+        if (options) |o| {
             // 2.2.
-            if (o.end) |end| break :blk try convertMarkToTimestamp(instance, end);
+            if (o.end) |end| break :blk try convertMarkToTimestamp(instance, .of(end));
             // 2.3.
             if (o.start != null and o.duration != null) {
-                const start = try convertMarkToTimestamp(instance, o.start.?);
+                const start = try convertMarkToTimestamp(instance, .of(o.start.?));
                 const duration = try convertMarkToTimestamp(instance, .{ .timestamp = o.duration.? });
                 break :blk start + duration;
             }
@@ -509,13 +454,13 @@ pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString,
 
     // 3. start time.
     const start_time: f64 = blk: {
-        if (options) |*o| {
+        if (options) |o| {
             // 3.1.
-            if (o.start) |start| break :blk try convertMarkToTimestamp(instance, start);
+            if (o.start) |start| break :blk try convertMarkToTimestamp(instance, .of(start));
             // 3.2.
             if (o.duration != null and o.end != null) {
                 const duration = try convertMarkToTimestamp(instance, .{ .timestamp = o.duration.? });
-                const end = try convertMarkToTimestamp(instance, o.end.?);
+                const end = try convertMarkToTimestamp(instance, .of(o.end.?));
                 break :blk end - duration;
             }
         }
@@ -531,9 +476,9 @@ pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString,
     // a SharedArrayBuffer, which a non-isolated realm does not have.
     var detail: ?engine.Owned = null;
     defer if (detail) |d| d.release();
-    if (options) |*o| {
+    if (options) |o| {
         if (o.detail) |source| {
-            const record = try engine.structuredSerializeForStorage(realm, source.value, allocator);
+            const record = try engine.structuredSerializeForStorage(realm, source, allocator);
             defer allocator.free(record);
             detail = try engine.structuredDeserialize(realm, record);
         }

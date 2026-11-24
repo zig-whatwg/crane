@@ -625,11 +625,21 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// (webmessaging/with-options/null-transfer.html), and MessageEventInit's
 /// `{ports: null}` made an event with no ports.
 ///
+/// A member whose type is a union codegen describes converts null by the
+/// union (WebIDL 3.2.25: step 4 a dictionary member, 15 "null", 17 the
+/// number 0, 18 false, else a TypeError), as Chrome, Firefox and Safari do:
+/// `{headers: null}` for a RequestInit or ResponseInit is a TypeError,
+/// `performance.measure("m", {start: null})` names the mark "null", and an
+/// IntersectionObserverInit's `{threshold: null}` is [0] in all three
+/// (probe tmp/probes/bind1-nullmember, 2026-11-23). Such members read null
+/// as not present once lane bind1's B2 typed them (187de50e1): while they
+/// were runtime.JSValue the impl saw the null (`jsvalue_union_members`).
+///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence
-/// is its own), and a type this converter leaves to the impl - a union, a
-/// dictionary, a callback - which keeps reading a present null as not
-/// present.
+/// is its own), and a type this converter leaves to the impl - a
+/// dictionary, a callback, a buffer source, a union with no arms table -
+/// which keeps reading a present null as not present.
 pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
@@ -643,6 +653,15 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
         const Payload = info.optional.child;
         if (Payload == runtime.DOMString or Payload == runtime.USVString or Payload == runtime.ByteString) return true;
         if (Payload == *runtime.Instance) return true;
+        // A union codegen describes (one with an arms table): null converts
+        // by WebIDL 3.2.25 - step 4 to its dictionary member, 15 to its
+        // string member ("null"), 17 to its numeric member (0), 18 to
+        // boolean (false), else step 20's TypeError (`unionFromValue`;
+        // HeadersInit's own converter throws it for a non-Object).
+        // hasdecl: every union codegen emits declares `pub const arms`
+        // (union_arms.writeArms); runtime.JSValue, a DOMString and the
+        // buffer source unions declare none and keep the default.
+        if (@typeInfo(Payload) == .@"union" and @hasDecl(Payload, "arms")) return true;
         return switch (@typeInfo(Payload)) {
             .bool, .int, .float, .@"enum" => true,
             // A sequence<T>, FrozenArray<T> or record<K, V> (a slice of
