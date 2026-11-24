@@ -74,8 +74,11 @@ pub const Target = struct {
     /// OWNED.
     url: []u8,
     /// OWNED; empty until the page has a title (then targetInfo.title is
-    /// the URL, as Chrome's when a page has none).
+    /// `display_url`, as Chrome's when a page has none).
     title: []u8,
+    /// OWNED: `url` as Chrome shows it for a page with no title
+    /// (`displayUrl`), kept with `url` by `setUrl`.
+    display_url: []u8 = &.{},
     /// Whether the tab has committed a document the remote end heard of
     /// (`navigated`): before it, Chrome reports the title "" - and a new
     /// tab's tab target the URL "" (vue-e2e protocol log l.2-18, l.103).
@@ -206,20 +209,153 @@ pub const Session = struct {
 /// The TargetInfo of `target` (Target domain). Its slices borrow from it.
 /// Chrome 157's (vue-e2e protocol log l.2-18, lane cdpr's G15): the title
 /// is "" until the tab commits, then the document's title or, with none,
-/// the URL (WebContents::GetTitle's fallback); a page target names no
-/// parentId (Chrome sets it for a frame or worker target under a page, not
-/// for a tab's page).
+/// the URL as Chrome displays it (WebContents::GetTitle's fallback,
+/// `displayUrl`); a page target names no parentId (Chrome sets it for a
+/// frame or worker target under a page, not for a tab's page).
 pub fn targetInfo(target: *const Target) protocol.Target.TargetInfo {
     return .{
         .targetId = target.id.slice(),
         .type = target.type.name(),
-        .title = if (target.title.len != 0) target.title else if (target.committed) target.url else "",
+        .title = shownTitle(target),
         .url = target.url,
         .attached = target.attached_sessions != 0,
         .openerId = if (target.opener) |*o| o.slice() else null,
         .canAccessOpener = target.opener != null and target.opened_by_page,
         .browserContextId = target.context.id.slice(),
     };
+}
+
+/// The title a target shows: its document's, else - once it has
+/// committed - its URL as Chrome displays it, else "".
+pub fn shownTitle(target: *const Target) []const u8 {
+    if (target.title.len != 0) return target.title;
+    return if (target.committed) target.display_url else "";
+}
+
+/// Replace `target`'s URL (OWNED by `allocator`) and its display form.
+pub fn setUrl(allocator: Allocator, target: *Target, url: []const u8) Allocator.Error!void {
+    const copy = try allocator.dupe(u8, url);
+    errdefer allocator.free(copy);
+    const shown = try displayUrl(allocator, url);
+    allocator.free(target.url);
+    allocator.free(target.display_url);
+    target.url = copy;
+    target.display_url = shown;
+}
+
+/// Chrome's kMaxTitleChars (content/public/common/content_constants.h).
+const max_title_chars = 4 * 1024;
+
+/// What Chrome shows as the title of a page that has none: Chromium's
+/// NavigationEntryImpl::GetTitleForDisplay
+/// (content/browser/renderer_host/navigation_entry_impl.cc) over
+/// url_formatter::FormatUrl(url) with its defaults
+/// (components/url_formatter/url_formatter.cc, FormatUrlWithAdjustments:
+/// kFormatUrlOmitDefaults - no username and password, no "http://" unless
+/// the host starts with "ftp.", no "/" after a bare hostname - and
+/// UnescapeRule::SPACES, "%20" shown as a space in the path, query and
+/// fragment); a file: URL shows its file name; then gfx::ElideString to
+/// kMaxTitleChars. Chromium, tag 157.0.8103.78, BSD-3-Clause: the
+/// algorithm, reproduced, not its code. Measured against Chrome for Testing
+/// 157 by tests/devtools/mcp1_target_title_test.zig ("127.0.0.1:<port>/
+/// frame.html", "data:text/html,<p>x</p>", "about:blank").
+/// TODO(mcp1): FormatUrl's IDNToUnicodeWithAdjustments - a punycode host
+/// Chrome deems safe is shown in Unicode; Crane shows it as serialized.
+pub fn displayUrl(allocator: Allocator, url: []const u8) Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    const colon = std.mem.indexOfScalar(u8, url, ':') orelse {
+        try out.appendSlice(allocator, url);
+        return elide(allocator, &out);
+    };
+    const scheme = url[0..colon];
+    var rest = url[colon + 1 ..];
+    var standard = false;
+    if (std.mem.startsWith(u8, rest, "//")) {
+        standard = true;
+        const authority_end = std.mem.indexOfAny(u8, rest[2..], "/?#") orelse rest.len - 2;
+        var authority = rest[2 .. 2 + authority_end];
+        const after = rest[2 + authority_end ..];
+        // kFormatUrlOmitUsernamePassword.
+        if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
+        // kFormatUrlOmitHTTP: not for a host that would read as ftp.
+        const omit_scheme = std.mem.eql(u8, scheme, "http") and !std.ascii.startsWithIgnoreCase(authority, "ftp.");
+        if (!omit_scheme) {
+            try out.appendSlice(allocator, scheme);
+            try out.appendSlice(allocator, "://");
+        }
+        try out.appendSlice(allocator, authority);
+        rest = after;
+        // kFormatUrlOmitTrailingSlashOnBareHostname (CanStripTrailingSlash):
+        // a standard, non-file URL whose path is "/" with no query or ref.
+        if (std.mem.eql(u8, rest, "/") and !std.mem.eql(u8, scheme, "file") and !std.mem.eql(u8, scheme, "filesystem")) rest = "";
+    } else {
+        try out.appendSlice(allocator, scheme);
+        try out.append(allocator, ':');
+    }
+    // UnescapeRule::SPACES over the rest.
+    var i: usize = 0;
+    while (i < rest.len) {
+        if (i + 2 < rest.len and rest[i] == '%' and rest[i + 1] == '2' and rest[i + 2] == '0') {
+            try out.append(allocator, ' ');
+            i += 3;
+            continue;
+        }
+        try out.append(allocator, rest[i]);
+        i += 1;
+    }
+    // A file: URL's file name: after the last "/" before its query or ref.
+    if (standard and std.mem.eql(u8, scheme, "file")) {
+        const text = out.items;
+        const last = std.mem.indexOfAny(u8, text, "?#") orelse text.len;
+        if (std.mem.lastIndexOfScalar(u8, text[0..last], '/')) |slash| {
+            const name = try allocator.dupe(u8, text[slash + 1 ..]);
+            out.deinit(allocator);
+            out = .fromOwnedSlice(name);
+        }
+    }
+    return elide(allocator, &out);
+}
+
+/// gfx::ElideString(text, kMaxTitleChars): a longer text keeps its first
+/// and last characters around "..." (the URL text is ASCII).
+fn elide(allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error![]u8 {
+    if (out.items.len <= max_title_chars) return out.toOwnedSlice(allocator);
+    const right = (max_title_chars - 3) / 2;
+    const left = right + (max_title_chars - 3) % 2;
+    const text = out.items;
+    const elided = try std.mem.concat(allocator, u8, &.{ text[0..left], "...", text[text.len - right ..] });
+    out.deinit(allocator);
+    return elided;
+}
+
+test "displayUrl: a titleless page's URL as Chrome shows it" {
+    const cases = [_][2][]const u8{
+        .{ "http://127.0.0.1:64983/frame.html", "127.0.0.1:64983/frame.html" },
+        .{ "http://example.com/", "example.com" },
+        .{ "http://example.com/?q", "example.com/?q" },
+        .{ "https://example.com/", "https://example.com" },
+        .{ "http://user:pass@example.com/a", "example.com/a" },
+        .{ "http://ftp.example.com/", "http://ftp.example.com" },
+        .{ "http://example.com/a%20b?c%20d#e%20f", "example.com/a b?c d#e f" },
+        .{ "data:text/html,<p>x</p>", "data:text/html,<p>x</p>" },
+        .{ "data:text/html,a%20b", "data:text/html,a b" },
+        .{ "about:blank", "about:blank" },
+        .{ "file:///Users/me/page.html?x=/y#z", "page.html?x=/y#z" },
+        .{ "file:///", "" },
+    };
+    for (cases) |c| {
+        const shown = try displayUrl(std.testing.allocator, c[0]);
+        defer std.testing.allocator.free(shown);
+        try std.testing.expectEqualStrings(c[1], shown);
+    }
+    const run: [5000]u8 = @splat('x');
+    const long = "http://a.test/" ++ run;
+    const shown = try displayUrl(std.testing.allocator, long);
+    defer std.testing.allocator.free(shown);
+    try std.testing.expectEqual(@as(usize, max_title_chars), shown.len);
+    try std.testing.expect(std.mem.startsWith(u8, shown, "a.test/xx"));
+    try std.testing.expectEqualStrings("...", shown[2047..2050]);
 }
 
 test "Filter: the default excludes browser and tab; a given filter decides by its first match" {

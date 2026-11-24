@@ -69,10 +69,11 @@ const console_tools = @import("tools/console.zig");
 const script = @import("tools/script.zig");
 const network_tools = @import("tools/network.zig");
 const input_tools = @import("tools/input.zig");
+const snapshot_tools = @import("tools/snapshot.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list);
 
 /// The tools/list JSON array for `all`, from the copied definitions.
 pub fn listJson(allocator: Allocator) ![]u8 {

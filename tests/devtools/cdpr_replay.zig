@@ -294,14 +294,16 @@ pub const Site = struct {
 
     /// `/streamed.html`: a document whose body outlives its commit, as
     /// React's SSR and Next.js stream theirs - chunked, its first chunk
-    /// with the head, its last `streamed_gap_ms` later.
-    fn answerStreamed(stream: std.Io.net.Stream) !void {
+    /// with the head, its last `streamed_gap_ms` later. `content_type`:
+    /// `/streamed-charset.html` names its encoding (lane mcp1: a parser
+    /// that knows the encoding up front decodes the first chunk at once).
+    fn answerStreamed(stream: std.Io.net.Stream, content_type: []const u8) !void {
         var output: [1024]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
         const out = &writer.interface;
         const first = "<!doctype html><title>streamed</title><p id=first>first</p>";
         const last = "<p id=last>last</p>";
-        try out.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{x}\r\n{s}\r\n", .{ first.len, first });
+        try out.print("HTTP/1.1 200 OK\r\nContent-Type: {s}\r\nTransfer-Encoding: chunked\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{x}\r\n{s}\r\n", .{ content_type, first.len, first });
         try out.flush();
         std.Io.sleep(std.testing.io, .fromMilliseconds(streamed_gap_ms), .awake) catch {};
         try out.print("{x}\r\n{s}\r\n0\r\n\r\n", .{ last.len, last });
@@ -327,7 +329,8 @@ pub const Site = struct {
             target = if (std.mem.indexOfScalar(u8, authority, '/')) |slash| authority[slash..] else "/";
         }
         const path = if (std.mem.indexOfScalar(u8, target, '?')) |q| target[0..q] else target;
-        if (std.mem.eql(u8, path, "/streamed.html")) return answerStreamed(stream);
+        if (std.mem.eql(u8, path, "/streamed.html")) return answerStreamed(stream, "text/html");
+        if (std.mem.eql(u8, path, "/streamed-charset.html")) return answerStreamed(stream, "text/html; charset=utf-8");
         const page: struct { status: u16 = 200, content_type: []const u8 = "text/html", body: []const u8 } =
             if (std.mem.eql(u8, path, "/"))
                 .{ .body = index_html }
