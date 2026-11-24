@@ -142,12 +142,21 @@ test "a traced hold nobody traces is cleared by a full collection, and reads emp
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();
-    const held = try page.heldFunction();
-    defer held.release();
-    try testing.expect(!held.hold.isEmpty());
+    // Many holds, so a word the collector finds on the native stack (a
+    // conservative scan keeps what it names) cannot decide the test.
+    var holds: [200]engine.TracedCallback = undefined;
+    for (&holds) |*held| held.* = try page.heldFunction();
+    defer for (holds) |held| held.release();
+    for (holds) |held| try testing.expect(!held.hold.isEmpty());
     page.fullGC();
-    try testing.expect(held.hold.isEmpty());
-    try testing.expect(held.hold.value().isUndefined());
+    var cleared: usize = 0;
+    for (holds) |held| {
+        if (!held.hold.isEmpty()) continue;
+        cleared += 1;
+        try testing.expect(held.hold.value().isUndefined());
+    }
+    std.debug.print("untraced holds cleared by a full collection: {d} of {d}\n", .{ cleared, holds.len });
+    try testing.expect(cleared >= holds.len - 8);
 }
 
 test "a held value survives scavenges: a traced hold is a root in a young-generation collection" {
