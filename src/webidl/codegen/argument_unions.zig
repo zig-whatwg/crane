@@ -186,8 +186,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // fs
     // idb
     // media
-    .{ "MediaStreamConstraints", "audio", "" },
-    .{ "MediaStreamConstraints", "video", "" },
     // performance
     // popover
     // sanitizer (html/sanitizer.zig, parser_options.zig)
