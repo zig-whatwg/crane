@@ -584,23 +584,6 @@ fn prefixedAttribute(comptime property: []const u8, comptime lowercase_first: bo
     return result[0..length];
 }
 
-/// CSSOM "CSS property to IDL attribute": each hyphen and the letter after
-/// it become that letter uppercased.
-fn camelCased(allocator: std.mem.Allocator, property: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(allocator);
-    var upper = false;
-    for (property) |c| {
-        if (c == '-') {
-            upper = true;
-            continue;
-        }
-        try out.append(allocator, if (upper) std.ascii.toUpper(c) else c);
-        upper = false;
-    }
-    return out.toOwnedSlice(allocator);
-}
-
 comptime {
     _ = log;
 }
