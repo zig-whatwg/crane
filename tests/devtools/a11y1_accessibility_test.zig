@@ -184,3 +184,22 @@ test "getPartialAXTree: the node alone without relatives; a display:none node's 
     try testing.expectEqualStrings("notRendered", stand_in.object.get("ignoredReasons").?.array.items[0].object.get("name").?.string);
     try testing.expectEqual(title, stand_in.object.get("backendDOMNodeId").?.integer);
 }
+
+// A display: contents control whose style reads per-element state (a
+// formish element matched against :checked) is resolved again on every
+// style read, so the style a first read borrowed is gone after the next
+// (engine.zig computedStyle: "Borrowed: valid until the next style read of
+// the element"). Its object is still built and not hidden: the bug-finding
+// runner's crash on css/css-display/accessibility/display-contents-role-and-label.html.
+test "getPartialAXTree: a display:contents button whose style is resolved on every read is a button, not hidden" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    try h.load("data:text/html,<!doctype html><style>:checked{outline:1px solid}</style><button style=display:contents>Go</button>");
+    const button = try backendOf(&h, "document.querySelector('button')");
+    const nodes = (try h.call("Accessibility.getPartialAXTree", try fmt(&h, "{{\"backendNodeId\":{d},\"fetchRelatives\":false}}", .{button}))).object.get("nodes").?;
+    const object = nodes.array.items[0];
+    try testing.expectEqualStrings("button", str(object, "role.value").?);
+    try testing.expect(!object.object.get("ignored").?.bool);
+    try testing.expectEqualStrings("Go", str(object, "name.value").?);
+}
