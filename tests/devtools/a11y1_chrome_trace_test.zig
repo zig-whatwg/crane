@@ -269,6 +269,26 @@ const pages = [_]Page{
         },
     },
     .{
+        // SVG (lane a11y1's role batch): SVG-AAM's inclusion (a <title> or
+        // <desc> child, a display:contents <g>), links by href and
+        // xlink:href, an <a>'s xlink:title, <image>, and white space runs
+        // between 60 comments (svg-aam/role/roles.html's shape, whose white
+        // space decisions once took the tree past the harness timeout).
+        .label = "svg",
+        .html = "<!doctype html><html lang=en><head><title>SVG</title></head><body>" ++
+            "<svg xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n  " ++
+            "<a href=\"#\" aria-label=label>x</a>\n  <a xlink:href=\"#\" aria-label=label>x</a>\n  " ++
+            "<a href=\"#\" xlink:title=\"circle link label\"><circle cx=10 cy=10 r=5></circle></a>\n  " ++
+            "<!-- n/a: element 0 -->\n  <!-- n/a: element 1 -->\n  <!-- n/a: element 2 -->\n  <!-- n/a: element 3 -->\n  <!-- n/a: element 4 -->\n  <!-- n/a: element 5 -->\n  <!-- n/a: element 6 -->\n  <!-- n/a: element 7 -->\n  <!-- n/a: element 8 -->\n  <!-- n/a: element 9 -->\n  <!-- n/a: element 10 -->\n  <!-- n/a: element 11 -->\n  <!-- n/a: element 12 -->\n  <!-- n/a: element 13 -->\n  <!-- n/a: element 14 -->\n  <!-- n/a: element 15 -->\n  <!-- n/a: element 16 -->\n  <!-- n/a: element 17 -->\n  <!-- n/a: element 18 -->\n  <!-- n/a: element 19 -->\n  <!-- n/a: element 20 -->\n  <!-- n/a: element 21 -->\n  <!-- n/a: element 22 -->\n  <!-- n/a: element 23 -->\n  <!-- n/a: element 24 -->\n  <!-- n/a: element 25 -->\n  <!-- n/a: element 26 -->\n  <!-- n/a: element 27 -->\n  <!-- n/a: element 28 -->\n  <!-- n/a: element 29 -->\n  <!-- n/a: element 30 -->\n  <!-- n/a: element 31 -->\n  <!-- n/a: element 32 -->\n  <!-- n/a: element 33 -->\n  <!-- n/a: element 34 -->\n  <!-- n/a: element 35 -->\n  <!-- n/a: element 36 -->\n  <!-- n/a: element 37 -->\n  <!-- n/a: element 38 -->\n  <!-- n/a: element 39 -->\n  <!-- n/a: element 40 -->\n  <!-- n/a: element 41 -->\n  <!-- n/a: element 42 -->\n  <!-- n/a: element 43 -->\n  <!-- n/a: element 44 -->\n  <!-- n/a: element 45 -->\n  <!-- n/a: element 46 -->\n  <!-- n/a: element 47 -->\n  <!-- n/a: element 48 -->\n  <!-- n/a: element 49 -->\n  <!-- n/a: element 50 -->\n  <!-- n/a: element 51 -->\n  <!-- n/a: element 52 -->\n  <!-- n/a: element 53 -->\n  <!-- n/a: element 54 -->\n  <!-- n/a: element 55 -->\n  <!-- n/a: element 56 -->\n  <!-- n/a: element 57 -->\n  <!-- n/a: element 58 -->\n  <!-- n/a: element 59 -->\n  " ++
+            "<g fill=white aria-label=label><circle cx=40 cy=40 r=25></circle></g>\n  " ++
+            "<g style=\"display: contents\"><title>group label</title><circle cx=20 cy=20 r=10></circle></g>\n  " ++
+            "<image aria-label=label href=\"data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==\"></image>\n" ++
+            "</svg></body></html>",
+        .steps = &.{
+            .{ .label = "full", .action = full },
+        },
+    },
+    .{
         .label = "enabled",
         .html = "<!doctype html><html lang=en><head><title>Enabled</title></head><body><main><h1>Top</h1><p>para <a href=\"/l\">link</a></p><input id=v aria-label=Val value=a></main></body></html>",
         .steps = &.{

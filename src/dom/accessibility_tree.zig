@@ -167,6 +167,12 @@ pub const Tree = struct {
     label_targets: std.StringHashMapUnmanaged(void) = .empty,
     /// Each block's line items, made once (renderedText's line edges).
     line_items: address_map.AddressHashMapUnmanaged(*Instance, []const LineItem) = .empty,
+    /// Whether each white space Text has a LayoutText, as decided: the
+    /// decision reads the previous in-flow sibling's, so a run of white space
+    /// siblings (an SVG between comments) must decide each once, not again
+    /// for every later one - svg-aam/role/roles.html's 60 comment-separated
+    /// runs took the tree past the harness timeout without this.
+    whitespace_layout: address_map.AddressHashMapUnmanaged(*Instance, bool) = .empty,
 
     /// Build `document`'s tree (Blink: UpdateAXForAllDocuments, then the
     /// root's descendants walked).
@@ -416,7 +422,6 @@ pub const Tree = struct {
     /// Whether `text` has a LayoutText: its parent renders children and
     /// Blink's layout tree builder makes one for it.
     fn hasLayoutText(self: *Tree, text: *Instance) !bool {
-        _ = self;
         const p = a11y.parent(text) orelse return false;
         if (bridge.getNodeBase(p).?.node_type != NodeBase.ELEMENT_NODE) return false;
         if (!rendersChildren(p)) return false;
@@ -426,7 +431,7 @@ pub const Tree = struct {
         const bytes = value.asSlice();
         if (bytes.len == 0) return false;
         if (std.mem.trim(u8, bytes, spaces).len != 0) return true;
-        return whitespaceNeedsLayout(text, p);
+        return whitespaceNeedsLayout(self, text, p);
     }
 
     /// IsLayoutTextRelevantForAccessibility for a Text with a LayoutText:
@@ -2731,8 +2736,15 @@ fn isPositioned(element: *Instance) !bool {
 /// none unless it follows text that does not end in white space; preserved
 /// breaks always make one; otherwise one follows inline content that is not
 /// a <br> or text ending in white space, or starts an inline parent.
-fn whitespaceNeedsLayout(text: *Instance, parent_element: *Instance) bool {
-    const prev = previousInFlow(text);
+fn whitespaceNeedsLayout(tree: *Tree, text: *Instance, parent_element: *Instance) bool {
+    if (tree.whitespace_layout.get(text)) |known| return known;
+    const result = whitespaceNeedsLayoutOnce(tree, text, parent_element);
+    tree.whitespace_layout.put(tree.arena, text, result) catch {};
+    return result;
+}
+
+fn whitespaceNeedsLayoutOnce(tree: *Tree, text: *Instance, parent_element: *Instance) bool {
+    const prev = previousInFlow(tree, text);
     if (!canHaveWhitespaceChildren(parent_element)) {
         const p = prev orelse return false;
         if (!isText(p)) return false;
@@ -2780,7 +2792,7 @@ fn endsWithWhitespace(text: *Instance) bool {
 /// The previous in-flow sibling with a layout object: an element with a
 /// box that is not out of flow, a display: contents element, or a text
 /// that has a LayoutText (white space that made none is skipped).
-fn previousInFlow(n: *Instance) ?*Instance {
+fn previousInFlow(tree: *Tree, n: *Instance) ?*Instance {
     var at = (bridge.getNodeBase(n) orelse return null).previousSibling();
     var depth: usize = 0;
     while (at) |current| : (at = current.previousSibling()) {
@@ -2800,7 +2812,7 @@ fn previousInFlow(n: *Instance) ?*Instance {
             depth += 1;
             if (depth > 8) return null;
             const p = a11y.parent(s) orelse return null;
-            if (whitespaceNeedsLayout(s, p)) return s;
+            if (whitespaceNeedsLayout(tree, s, p)) return s;
         }
     }
     return null;
