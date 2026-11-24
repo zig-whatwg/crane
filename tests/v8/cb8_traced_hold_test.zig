@@ -340,6 +340,106 @@ test "a hold its owner releases after the agent's end reads empty and is release
     }
 }
 
+// A node that keeps values for script (a listener, a registered observer) must
+// keep its wrapper through young-generation collections: the walk that traces
+// those values enters held subtrees only, and a node whose unmodified wrapper
+// a scavenge dropped is not held. The first trace-time build (e1c26d48d) marked
+// such a node's wrapper with a private property - and, for a node with no
+// wrapper yet, kept the mark waiting in a strong v8::Global until the node was
+// wrapped: 32 bytes of V8's handles, a map entry and a key for every node
+// REMOVED under a subtree MutationObserver (DOM "remove" step 15 gives each a
+// transient registered observer). Now the node's wrapper slot is simply not
+// droppable (engine.keepNodeWrapperInYoungCollections), decided where the node
+// is marked if it has a wrapper and where it is wrapped if not: nothing is
+// made for an unwrapped node, and nothing is written on a wrapper.
+
+const subtree_observer =
+    \\globalThis.t = {};
+    \\t.doc = new Document().implementation.createHTMLDocument("");
+    \\t.p = t.doc.body.appendChild(t.doc.createElement("p"));
+    \\t.observer = new MutationObserver(() => {});
+    \\t.observer.observe(t.doc.body, { childList: true, subtree: true });
+    \\0
+;
+
+test "a node removed under a subtree observer costs no V8 handle: nothing waits for a wrapper it may never get" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    (try page.evaluate(subtree_observer)).release();
+    // Whatever the first removals make once (templates, the record queue).
+    (try page.evaluate("for (let i = 0; i < 8; i++) t.p.textContent = 'w' + i; 0")).release();
+    const removals = 2000;
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    // Each pass removes a Text node no script ever saw; the observer's queue
+    // keeps it (its record's removedNodes), unwrapped.
+    (try page.evaluate("for (let i = 0; i < 2000; i++) t.p.textContent = 'x' + i; 0")).release();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    const per_node = @as(f64, @floatFromInt(after -| before)) / @as(f64, removals);
+    std.debug.print("V8 handle bytes per node removed under a subtree observer: {d:.2} (before {d}, after {d})\n", .{ per_node, before, after });
+    try testing.expect(per_node < 0.5);
+}
+
+test "a listener's node keeps its wrapper through young collections, and its listeners through a full one" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    (try page.evaluate(subtree_observer)).release();
+    // The control: 200 elements script let go of, nothing kept on them - a
+    // scavenge drops their unmodified wrappers.
+    try page.minorGC(2);
+    const control_before = ffi.v8_test_NodeWrappers_Dropped(page.isolate());
+    (try page.evaluate("(() => { for (let i = 0; i < 200; i++) t.doc.body.appendChild(t.doc.createElement('i')); })(); 0")).release();
+    try page.minorGC(4);
+    const control = ffi.v8_test_NodeWrappers_Dropped(page.isolate()) - control_before;
+    // 200 elements with a listener each, script holding none of them.
+    (try page.evaluate(
+        \\t.fired = 0;
+        \\(() => { for (let i = 0; i < 200; i++) t.doc.body.appendChild(t.doc.createElement('b')).addEventListener('x', () => { t.fired++; }); })();
+        \\0
+    )).release();
+    const before = ffi.v8_test_NodeWrappers_Dropped(page.isolate());
+    try page.minorGC(4);
+    const dropped = ffi.v8_test_NodeWrappers_Dropped(page.isolate()) - before;
+    std.debug.print("node wrappers young collections dropped: {d} of 200 plain elements, {d} of 200 with a listener\n", .{ control, dropped });
+    try testing.expect(control >= 150);
+    try testing.expect(dropped <= 8);
+    // And the walk reaches every one from the document script holds.
+    page.fullGC();
+    (try page.evaluate("for (const b of t.doc.body.querySelectorAll('b')) b.dispatchEvent(new Event('x')); 0")).release();
+    var reports: Reports = .{};
+    const fired = try engine.evaluateClassicScriptToString(page.realm, .{ .utf8 = "String(t.fired)" }, "", null, testing.allocator, reports.reporter());
+    defer testing.allocator.free(fired);
+    try testing.expectEqual(@as(usize, 0), reports.count);
+    try testing.expectEqualStrings("200", fired);
+}
+
+test "a node marked before it had a wrapper gets one young collections keep" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    (try page.evaluate(subtree_observer)).release();
+    // 200 elements the parser made (no wrapper), removed under the subtree
+    // observer: each lists a transient registered observer, unwrapped. The
+    // record keeps them; then script sees each once and lets go.
+    (try page.evaluate(
+        \\t.p.innerHTML = "<u></u>".repeat(200);
+        \\t.p.textContent = "";
+        \\t.records = t.observer.takeRecords();
+        \\0
+    )).release();
+    try page.minorGC(2);
+    const before = ffi.v8_test_NodeWrappers_Dropped(page.isolate());
+    (try page.evaluate("(() => { let n = 0; for (const record of t.records) for (const node of record.removedNodes) if (node.nodeName === 'U') n++; return n; })()")).release();
+    try page.minorGC(4);
+    const dropped = ffi.v8_test_NodeWrappers_Dropped(page.isolate()) - before;
+    std.debug.print("wrappers of 200 nodes marked while unwrapped that young collections dropped: {d}\n", .{dropped});
+    try testing.expect(dropped <= 8);
+}
+
 test "a held value survives scavenges: a traced hold is a root in a young-generation collection" {
     var queue: DeferredTeardown = .init(std.heap.c_allocator);
     defer queue.deinit();
