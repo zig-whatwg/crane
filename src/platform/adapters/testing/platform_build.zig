@@ -50,3 +50,13 @@ pub fn prepareC(target: std.Build.ResolvedTarget) ?kit_build.PrepareC {
     _ = target;
     return null;
 }
+
+/// Nothing more for a finished program or library.
+pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    _ = .{ module, target };
+}
+
+/// Its implementation links nothing of its own beyond its kit parts.
+pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: platform_build.BindRequest) void {
+    _ = .{ impl, target, request };
+}

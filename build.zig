@@ -1937,13 +1937,8 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         prepare.module(kit[7]);
         prepare.module(kit[8]);
     }
-    // darwin's fonts are CoreText's (decision 20), linked dynamically as
-    // the system frameworks they are; compiled out, nothing is linked.
-    if (options.platform == .darwin and target.result.os.tag.isDarwin() and font_decoding_enabled) {
-        if (platform_build.prepareC(target)) |prepare| prepare.module(impl);
-        impl.linkFramework("CoreText", .{});
-        impl.linkFramework("CoreFoundation", .{});
-    }
+    // What the bound adapter's implementation links (platform_build.bind).
+    platform_build.bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
     // kit/posix wraps today's clock, process Io and resident-memory bridges.
     kit[0].addImport("clock", options.clock);
     kit[0].addImport("host", options.host);
@@ -3976,12 +3971,8 @@ pub fn build(b: *std.Build) void {
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, crane_lib.root_module, .{});
 
-    // System frameworks (macOS)
-    if (target.result.os.tag == .macos) {
-        crane_lib.root_module.linkFramework("CoreFoundation", .{});
-        crane_lib.root_module.linkFramework("CoreServices", .{});
-        crane_lib.root_module.linkFramework("SystemConfiguration", .{});
-    }
+    // What a finished program or library links on the target's OS.
+    platform_build.linkArtifact(crane_lib.root_module, target);
 
     // ---- Crane Executable (crane) ----
     // WebDriver browser for wptrunner integration
@@ -4016,11 +4007,7 @@ pub fn build(b: *std.Build) void {
     engine.link(b, crane_exe.root_module, .{});
 
     // System frameworks (macOS)
-    if (target.result.os.tag == .macos) {
-        crane_exe.root_module.linkFramework("CoreFoundation", .{});
-        crane_exe.root_module.linkFramework("CoreServices", .{});
-        crane_exe.root_module.linkFramework("SystemConfiguration", .{});
-    }
+    platform_build.linkArtifact(crane_exe.root_module, target);
 
     // Build step
     const browser_step = b.step("browser", "Build Crane browser (self-contained: the engine linked in)");

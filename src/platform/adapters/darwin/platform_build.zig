@@ -166,3 +166,26 @@ fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
     const b = translate.step.owner;
     if (iosSdkPath(b)) |sdk| translate.addSystemIncludePath(sdk.path(b, "usr/include"));
 }
+
+/// What a finished program or library links on darwin's systems (crane's
+/// library and executable): macOS's CoreFoundation, CoreServices and
+/// SystemConfiguration.
+pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    // System frameworks (macOS)
+    if (target.result.os.tag == .macos) {
+        module.linkFramework("CoreFoundation", .{});
+        module.linkFramework("CoreServices", .{});
+        module.linkFramework("SystemConfiguration", .{});
+    }
+}
+
+/// What darwin's implementation links when a graph binds it: its fonts are
+/// CoreText's (decision 20), linked dynamically as the system frameworks they
+/// are, on a darwin target; compiled out, nothing is linked.
+pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: platform_build.BindRequest) void {
+    if (target.result.os.tag.isDarwin() and request.font_decoding) {
+        if (prepareC(target)) |prepare| prepare.module(impl);
+        impl.linkFramework("CoreText", .{});
+        impl.linkFramework("CoreFoundation", .{});
+    }
+}

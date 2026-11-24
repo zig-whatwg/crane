@@ -30,6 +30,11 @@
 //!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options, probe: *std.Build.Step.Compile) void
 //!   pub fn forwarded(b: *std.Build, options: Options) []const []const u8
 //!   pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC
+//!   pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void
+//!
+//! and, asked of the adapter a graph binds:
+//!
+//!   pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: BindRequest) void
 //!
 //! A part is `src/platform/kit/<name>/root.zig`, a module the adapter
 //! imports as `kit_<name>`, made with the platform facade and the platform
@@ -114,6 +119,8 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options, *std.Build.Step.Compile) void);
     conforms(who, A, "forwarded", fn (*std.Build, A.Options) []const []const u8);
     conforms(who, A, "prepareC", fn (std.Build.ResolvedTarget) ?kit.PrepareC);
+    conforms(who, A, "linkArtifact", fn (*std.Build.Module, std.Build.ResolvedTarget) void);
+    conforms(who, A, "bind", fn (*std.Build.Module, std.Build.ResolvedTarget, BindRequest) void);
     // hasdecl: A is each listed adapter's build file (`adapters`), whose
     // `facts` is pub - this check exists to fail the configure when it is not.
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: platform_build.Facts`");
@@ -174,6 +181,32 @@ pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC {
         if (A.ownsTarget(target.result)) return A.prepareC(target);
     }
     return null;
+}
+
+/// What a finished program or library (crane's library and executable)
+/// links on `target`'s operating system, as the adapter that answers for it
+/// says.
+pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.linkArtifact(module, target);
+    }
+}
+
+/// What a binding asks of the adapter it binds (`bind`).
+pub const BindRequest = struct {
+    /// The font_decoding capability is compiled in (-Dplatform-without
+    /// does not name it).
+    font_decoding: bool,
+};
+
+/// What the implementation of `platform`, bound to a graph for `target`,
+/// links of its own (`impl` is its module); a third party's
+/// (`external`) declares nothing here.
+pub fn bind(platform: Platform, impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: BindRequest) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (platform == @field(Platform, name)) return @field(adapters, name).bind(impl, target, request);
+    }
 }
 
 /// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
