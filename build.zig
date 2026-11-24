@@ -6526,7 +6526,7 @@ pub fn build(b: *std.Build) void {
     // then reserves the callee's locals on every call: tools/repl.zig's
     // serveMcp kept 1 MiB of stdio buffers on the stack, inlined into main,
     // and every script of the release console threw "Maximum call stack
-    // size exceeded" (V8 takes its stack limit from the thread's stack
+    // size exceeded" (the engine takes its stack limit from the thread's stack
     // start; lane rc8, 2026-11-24). tools/lint_stack_arrays.zig flags,
     // through std.zig.Ast, every `var` array over 64 KiB in a function or
     // test body in src/ and tools/ that tools/stack_arrays_baseline.txt does
