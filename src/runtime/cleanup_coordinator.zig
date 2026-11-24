@@ -93,13 +93,6 @@ pub const CleanupPhase = enum(u8) {
     complete = 7,
 };
 
-/// Handler for a specific cleanup phase
-pub const CleanupHandler = struct {
-    phase: CleanupPhase,
-    handler: *const fn (*anyopaque) void,
-    context: *anyopaque,
-};
-
 /// Cleanup Coordinator
 ///
 /// Per-context coordinator for managing cleanup lifecycle.
@@ -117,12 +110,6 @@ pub const CleanupCoordinator = struct {
 
     /// Allocator for internal structures
     allocator: std.mem.Allocator,
-
-    /// Registered cleanup handlers (called in phase order)
-    handlers: std.ArrayListUnmanaged(CleanupHandler) = .empty,
-
-    /// Debug: count of instances cleaned up per phase
-    phase_cleanup_counts: [8]usize = @splat(0),
 
     /// The storage of instances this teardown tore down that no engine
     /// object ever reached (runtime.instance_lifecycle.provablyUnwrapped: a
@@ -152,7 +139,6 @@ pub const CleanupCoordinator = struct {
     /// Deinitialize the coordinator. Storage still deferred is left to the
     /// Browser's slab, which frees it with itself.
     pub fn deinit(self: *Self) void {
-        self.handlers.deinit(self.allocator);
         self.deferred_storage.deinit(self.allocator);
     }
 
@@ -198,10 +184,10 @@ pub const CleanupCoordinator = struct {
         return self.context_teardown_complete;
     }
 
-    /// Execute cleanup for a specific phase
+    /// Enter a cleanup phase
     ///
-    /// Calls all registered handlers for the phase in registration order.
-    /// Tracks the current phase for debugging and validation.
+    /// Tracks the current phase; a phase already passed is skipped.
+    /// context_manager's teardowns run the phases one by one.
     pub fn cleanupPhase(self: *Self, phase: CleanupPhase) void {
         // Validate phase ordering
         if (@backingInt(phase) <= @backingInt(self.current_phase)) {
@@ -211,30 +197,6 @@ pub const CleanupCoordinator = struct {
 
         // Update current phase
         self.current_phase = phase;
-
-        // Call all handlers for this phase
-        for (self.handlers.items) |handler| {
-            if (handler.phase == phase) {
-                handler.handler(handler.context);
-            }
-        }
-    }
-
-    /// Execute all cleanup phases in order
-    ///
-    /// Convenience method that runs all phases sequentially.
-    /// (context_manager's teardowns run the phases one by one.)
-    pub fn executeAllPhases(self: *Self) void {
-        self.beginContextCleanup();
-
-        self.cleanupPhase(.dom_tree);
-        self.cleanupPhase(.wrapper_cache);
-        self.cleanupPhase(.static_registries);
-        self.cleanupPhase(.event_loop);
-        self.cleanupPhase(.realm);
-        self.cleanupPhase(.context_data);
-
-        self.endContextCleanup();
     }
 
     /// End context teardown
@@ -244,24 +206,6 @@ pub const CleanupCoordinator = struct {
         self.current_phase = .complete;
         self.context_teardown_complete = true;
     }
-
-    /// Record a cleanup in the current phase
-    ///
-    /// Used for debugging to track how many instances are cleaned per phase.
-    pub fn recordCleanup(self: *Self) void {
-        const phase_idx = @backingInt(self.current_phase);
-        if (phase_idx < self.phase_cleanup_counts.len) {
-            self.phase_cleanup_counts[phase_idx] += 1;
-        }
-    }
-};
-
-/// Cleanup statistics for debugging
-pub const CleanupStats = struct {
-    total_cleaned: usize,
-    per_phase: [8]usize,
-    current_phase: CleanupPhase,
-    is_complete: bool,
 };
 
 // ============================================================================

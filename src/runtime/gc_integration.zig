@@ -14,41 +14,6 @@
 //! Thread safety: Callbacks are called from GC thread
 //! Memory model: Two-phase cleanup (deinit resources, then return the storage)
 //!
-//! ## Typed GC Callback Support
-//!
-//! For type-safe GC finalizers, use runtime.TypedGCCallback:
-//!
-//! ```zig
-//! const typed_callback = @import("typed_callback.zig");
-//!
-//! const NativeResource = struct {
-//!     file_handle: std.Io.File,
-//!     io: std.Io,
-//!     buffer: []u8,
-//!     allocator: std.mem.Allocator,
-//! };
-//!
-//! fn cleanupResource(resource: *NativeResource) void {
-//!     resource.file_handle.close(resource.io);
-//!     resource.allocator.free(resource.buffer);
-//! }
-//!
-//! // Create resource on heap (required for GC callbacks)
-//! var resource = try allocator.create(NativeResource);
-//! resource.* = .{ .file_handle = file, .buffer = buf, .allocator = allocator };
-//!
-//! // Create typed callback
-//! var cb = typed_callback.TypedGCCallback(NativeResource).init(
-//!     &cleanupResource,
-//!     resource,
-//!     allocator,
-//! );
-//!
-//! // Register with V8 weak callback API
-//! // The toLegacyCallbackC() provides C-compatible function pointer
-//! v8_set_weak_callback(handle, cb.getDataAnyopaque(), TypedGCCallback(NativeResource).toLegacyCallbackC());
-//! ```
-//!
 //! ## Lifetime Contracts
 //!
 //! ### GC Finalizer Callbacks
@@ -86,18 +51,9 @@ const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 ///
 /// This function uses `?*anyopaque` because it must be compatible with the C ABI
 /// for JavaScript engine callbacks. The `callconv(.c)` calling convention requires
-/// C-compatible types. For type-safe GC callbacks, use `TypedGCCallback(T)` from
-/// `runtime.typed_callback` which provides a typed wrapper that converts to this
-/// C-compatible signature.
-///
-/// Example with TypedGCCallback:
-/// ```zig
-/// const typed_callback = @import("typed_callback.zig");
-/// var cb = TypedGCCallback(MyResource).init(&cleanupFn, resource, allocator);
-/// v8.setWeakCallback(handle, cb.getDataAnyopaque(), TypedGCCallback(MyResource).toLegacyCallbackC());
-/// ```
+/// C-compatible types.
 pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
-    // KEEP: @ptrCast/@alignCast required at C ABI boundary - use TypedGCCallback for type-safe wrappers
+    // KEEP: @ptrCast/@alignCast required at C ABI boundary
     const inst = @as(*Instance, @ptrCast(@alignCast(user_data orelse return)));
 
     // Step 1: Call type-specific deinit to clean up owned resources

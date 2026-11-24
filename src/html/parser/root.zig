@@ -28,7 +28,6 @@ pub const State = @import("tokenizer_states.zig").State;
 pub const ParseError = @import("parse_errors.zig").ParseError;
 pub const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 pub const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
-pub const ParseErrorCollector = @import("parse_errors.zig").ParseErrorCollector;
 pub const getErrorDescription = @import("parse_errors.zig").getErrorDescription;
 
 // Input stream
@@ -81,12 +80,6 @@ pub const internElementName = tag_name_intern.internElementName;
 
 // Document write support (document.write/writeln/open/close)
 pub const document_write = @import("document_write.zig");
-pub const DocumentWriteState = document_write.DocumentWriteState;
-pub const DocumentWriteError = document_write.DocumentWriteError;
-pub const documentOpen = document_write.documentOpen;
-pub const documentWrite = document_write.documentWrite;
-pub const documentWriteln = document_write.documentWriteln;
-pub const documentClose = document_write.documentClose;
 
 test {
     // Run all parser tests

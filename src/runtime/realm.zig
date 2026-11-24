@@ -8,8 +8,9 @@
 //! - RealmInfo struct for context metadata
 //! - Realm struct for full realm implementation with V8 context and intrinsics
 //! - Intrinsics struct for caching JavaScript built-in constructors
-//! - Exposure, an enum of WebIDL [Exposed] sets (bindings check [Exposed] through
-//!   src/webidl/helpers.zig's GlobalScope.matchesExposure)
+//!
+//! Bindings check WebIDL [Exposed] through src/webidl/helpers.zig's
+//! GlobalScope.matchesExposure.
 //!
 //! ## Specification References
 //! - HTML Realms: https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm
@@ -20,8 +21,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// Import environment settings object (circular reference avoided via opaque pointers)
-const EnvironmentSettingsObject = @import("environment_settings.zig").EnvironmentSettingsObject;
 const Agent = @import("engine_types.zig").Agent;
 
 /// JavaScript execution context type
@@ -66,27 +65,6 @@ pub const ContextType = enum {
     }
 };
 
-/// WebIDL [Exposed] attribute values
-///
-/// Maps to WebIDL extended attribute:
-/// - [Exposed=Window]
-/// - [Exposed=Worker]
-/// - [Exposed=(Window,Worker)]
-/// - [Exposed=*]
-pub const Exposure = enum {
-    /// Exposed only in Window context
-    window,
-
-    /// Exposed only in Worker contexts (all worker types)
-    worker,
-
-    /// Exposed in both Window and Worker contexts
-    window_and_worker,
-
-    /// Exposed in all contexts
-    all,
-};
-
 /// Realm information for a JavaScript execution context
 ///
 /// Contains metadata about the current Realm, used for:
@@ -99,7 +77,6 @@ pub const RealmInfo = struct {
 
     // Future fields:
     // origin: ?Origin,           // Security origin
-    // settings_object: ?*EnvironmentSettingsObject,
     // global_object: ?*anyopaque,  // Reference to global (Window, Worker, etc.)
 
     const Self = @This();
@@ -303,11 +280,6 @@ pub const Realm = struct {
     /// Opaque pointer to BrowsingContext*
     browsing_context: ?*anyopaque,
 
-    /// Environment settings object for this realm
-    /// Provides origin, API base URL, policies, etc.
-    /// This is created lazily when needed.
-    settings_object: ?*EnvironmentSettingsObject,
-
     const Self = @This();
 
     /// Realm initialization options
@@ -352,7 +324,6 @@ pub const Realm = struct {
                 .unknown => RealmInfo.forTesting(),
             },
             .browsing_context = options.browsing_context,
-            .settings_object = null, // Lazily created when needed
         };
 
         return realm;
@@ -363,11 +334,6 @@ pub const Realm = struct {
     /// Note: V8 handles (context, global, intrinsics) must be disposed
     /// by the V8-specific code before calling this.
     pub fn deinit(self: *Self) void {
-        // Free environment settings object if we created it
-        if (self.settings_object) |settings| {
-            settings.deinit();
-        }
-
         self.intrinsics.deinit();
         self.allocator.destroy(self);
     }
@@ -451,45 +417,5 @@ pub const Realm = struct {
     /// Check if this is a Worklet realm
     pub fn isWorklet(self: *const Self) bool {
         return self.info.isWorklet();
-    }
-
-    // ========================================================================
-    // Environment Settings Object
-    // ========================================================================
-
-    /// Get or create the environment settings object for this realm
-    ///
-    /// Per HTML §8.1.5, each realm has an associated environment settings object.
-    /// This is created lazily on first access.
-    pub fn getSettingsObject(self: *Self) !*EnvironmentSettingsObject {
-        if (self.settings_object) |settings| {
-            return settings;
-        }
-
-        // Create a new settings object for this realm
-        const settings = try EnvironmentSettingsObject.init(self.allocator, .{
-            .realm = self,
-            // Other options will be set based on the context type
-        });
-        errdefer settings.deinit();
-
-        self.settings_object = settings;
-        return settings;
-    }
-
-    /// Get the settings object if already created (no allocation)
-    pub fn getExistingSettingsObject(self: *const Self) ?*EnvironmentSettingsObject {
-        return self.settings_object;
-    }
-
-    /// Set a pre-created settings object
-    ///
-    /// This takes ownership of the settings object.
-    /// Any existing settings object will be freed.
-    pub fn setSettingsObject(self: *Self, settings: *EnvironmentSettingsObject) void {
-        if (self.settings_object) |old| {
-            old.deinit();
-        }
-        self.settings_object = settings;
     }
 };

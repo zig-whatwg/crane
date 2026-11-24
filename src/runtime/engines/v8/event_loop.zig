@@ -44,38 +44,6 @@
 //! timer.clearTimeout(id);
 //! ```
 //!
-//! ## Typed Microtask API
-//!
-//! For type-safe microtasks, use SelfContainedCallback:
-//!
-//! ```zig
-//! const typed_callback = @import("runtime").typed_callback;
-//!
-//! const PromiseCtx = struct {
-//!     resolve_value: JSValue,
-//!     resolver: *PromiseResolver,
-//! };
-//!
-//! fn handleResolve(ctx: *PromiseCtx) void {
-//!     ctx.resolver.resolve(ctx.resolve_value);
-//! }
-//!
-//! // Create typed microtask
-//! var wrapper = try typed_callback.SelfContainedCallback(PromiseCtx, void).create(
-//!     allocator,
-//!     &handleResolve,
-//!     .{ .resolve_value = value, .resolver = resolver },
-//! );
-//!
-//! // Queue via event loop
-//! loop.queueMicrotask(.{
-//!     .callback = wrapper.getTrampolineCallback(),
-//!     .context = wrapper.toAnyopaque(),
-//! });
-//!
-//! // Note: wrapper will be invoked and should clean itself up in the callback
-//! ```
-//!
 //! ## Lifetime Contracts
 //!
 //! ### Microtask Callbacks

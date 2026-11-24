@@ -471,8 +471,8 @@ pub const UseLoad = struct {
         self.retain();
         delivery.* = .{ .load = self, .generation = self.generation, .valid = valid };
         // SVG resource completion: networking task source. The Browser's
-        // current task queue is one FIFO (liaison Q15); source separation
-        // belongs to the event-loop owner, html/event_loop/task.zig.
+        // current task queue is one FIFO (liaison Q15); no task source is
+        // modelled yet.
         loop.queueTask(.{
             .callback = Delivery.run,
             .context = delivery,

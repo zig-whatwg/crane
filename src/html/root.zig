@@ -5,9 +5,6 @@
 //!
 //! This module provides implementations of various parts of the HTML specification:
 //!
-//! - **Event Loop** (§8.1.7) - Core event loop for coordinating events, scripts,
-//!   rendering, and more
-//! - **Timers** (§8.6) - setTimeout() and setInterval()
 //! - **Parser** (§13) - HTML parsing algorithm with tokenizer and tree builder
 //! - **Custom Elements** - Custom element registry and lifecycle
 //! - **Structured Clone** (§2.7) - Safe passing of structured data
@@ -19,13 +16,6 @@
 //!
 //! ```
 //! src/html/
-//! ├── event_loop/          # Event loop, task queues, microtasks, timers
-//! │   ├── event_loop.zig   # Main EventLoop struct
-//! │   ├── task.zig         # Task and TaskSource definitions
-//! │   ├── task_queue.zig   # TaskQueue and TaskQueueSet
-//! │   ├── microtask.zig    # Microtask queue and checkpoint
-//! │   ├── timers.zig       # setTimeout/setInterval
-//! │   └── root.zig         # Module exports
 //! ├── parser/              # HTML parser (§13)
 //! │   ├── tokenizer.zig    # Tokenization state machine (84 states)
 //! │   ├── tokens.zig       # Token types (DOCTYPE, Tag, Comment, etc.)
@@ -53,42 +43,11 @@
 //! └── root.zig             # This file
 //! ```
 //!
-//! ## Usage
-//!
-//! ```zig
-//! const html = @import("html/root.zig");
-//! const timer_backend = @import("platform/timer_backend.zig");
-//!
-//! // Create event loop
-//! const platform = try timer_backend.RealTimerBackend.init(allocator);
-//! var event_loop = try html.EventLoop.init(allocator, .window, platform.backend());
-//! defer event_loop.deinit();
-//!
-//! // Queue tasks
-//! _ = try event_loop.queueTask(.dom_manipulation, callback, context, null);
-//!
-//! // Set timers
-//! _ = try event_loop.setTimeout(timerCallback, 1000, null);
-//!
-//! // Run
-//! try event_loop.run();
-//! ```
+//! The event loop that runs is not here: a window's is the Browser's
+//! (src/browser/event_loop.zig), a worker's is html/worker_event_loop.zig;
+//! timers are runtime.native_timer.
 
 const std = @import("std");
-
-// Event Loop (§8.1.7)
-pub const event_loop = @import("event_loop/root.zig");
-
-// Re-export commonly used types
-pub const EventLoop = event_loop.EventLoop;
-pub const EventLoopType = event_loop.EventLoopType;
-pub const Task = event_loop.Task;
-pub const TaskSource = event_loop.TaskSource;
-pub const Microtask = event_loop.Microtask;
-pub const Timer = event_loop.Timer;
-pub const TimerManager = event_loop.TimerManager;
-pub const VisibilityState = event_loop.VisibilityState;
-pub const RenderingCallbacks = event_loop.RenderingCallbacks;
 
 // Parser (§13)
 pub const parser = @import("parser/root.zig");
@@ -102,7 +61,6 @@ pub const DoctypeToken = parser.DoctypeToken;
 pub const CommentToken = parser.CommentToken;
 pub const ParseError = parser.ParseError;
 pub const ParseErrorCode = parser.ParseErrorCode;
-pub const ParseErrorCollector = parser.ParseErrorCollector;
 
 // Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
 pub const parseFragment = parser.parseFragment;
@@ -116,14 +74,6 @@ pub const internTagName = parser.internTagName;
 pub const internTagNameExact = parser.internTagNameExact;
 /// An element's static name record (lane nd2 N2), or null: dom.element_name.
 pub const internElementName = parser.internElementName;
-
-// Document write support (§8.4 - document.write/writeln/open/close)
-pub const DocumentWriteState = parser.DocumentWriteState;
-pub const DocumentWriteError = parser.DocumentWriteError;
-pub const documentOpen = parser.documentOpen;
-pub const documentWrite = parser.documentWrite;
-pub const documentWriteln = parser.documentWriteln;
-pub const documentClose = parser.documentClose;
 
 // Custom Elements
 pub const custom_element_reactions = @import("custom_elements/reactions.zig");
@@ -170,15 +120,6 @@ pub const IFrameError = window.IFrameError;
 // Navigation & History (§7.2-7.4)
 pub const navigation = @import("navigation/root.zig");
 
-// Module Graph and Async Fetching (§8.1.6)
-pub const module_graph = @import("module_graph.zig");
-
-// Re-export commonly used module graph types
-pub const ModuleGraph = module_graph.ModuleGraph;
-pub const ModuleNode = module_graph.ModuleNode;
-pub const ModuleStatus = module_graph.ModuleStatus;
-pub const ModuleGraphFetcher = module_graph.ModuleGraphFetcher;
-
 // Web Workers (§10)
 pub const workers = @import("workers/root.zig");
 
@@ -190,31 +131,19 @@ pub const WorkerError = workers.WorkerError;
 pub const WorkerLocation = workers.WorkerLocation;
 pub const WorkerNavigator = workers.WorkerNavigator;
 
-// Navigator (§8.8)
-pub const navigator = @import("navigator/root.zig");
+// Navigator (§8.8): the Navigator object and the APIs it exposes are the
+// impls (src/webidl/impls/Navigator.zig, NavigatorID.zig, ...); what stays
+// here is HTML's "PDF viewing support", which the NavigatorPlugins family's
+// impls and navigation's document type read.
+pub const navigator = struct {
+    /// HTML "PDF viewing support": PDF viewer supported, and the fixed plugin
+    /// and mime type lists.
+    pub const pdf_viewer = @import("navigator/pdf_viewer.zig");
 
-// Re-export commonly used navigator types
-pub const Navigator = navigator.Navigator;
-pub const NavigatorBackend = navigator.NavigatorBackend;
-pub const NavigatorId = navigator.NavigatorId;
-pub const NavigatorLanguage = navigator.NavigatorLanguage;
-pub const NavigatorOnLine = navigator.NavigatorOnLine;
-pub const NavigatorConcurrentHardware = navigator.NavigatorConcurrentHardware;
-pub const NavigatorContentUtils = navigator.NavigatorContentUtils;
-pub const NavigatorCookies = navigator.NavigatorCookies;
-pub const NavigatorPlugins = navigator.NavigatorPlugins;
-
-// Hardware APIs (various specs via Navigator)
-pub const Geolocation = navigator.geolocation.Geolocation;
-pub const MediaDevices = navigator.media_devices.MediaDevices;
-pub const Clipboard = navigator.clipboard.Clipboard;
-pub const CredentialsContainer = navigator.credentials.CredentialsContainer;
-pub const Bluetooth = navigator.bluetooth.Bluetooth;
-pub const USB = navigator.usb.USB;
-pub const Serial = navigator.serial.Serial;
-pub const HID = navigator.hid.HID;
-pub const BatteryManager = navigator.battery.BatteryManager;
-pub const NavigatorStorageManager = navigator.storage_manager.StorageManager;
+    test {
+        std.testing.refAllDecls(@This());
+    }
+};
 
 // Web Storage (§12)
 pub const web_storage = @import("web_storage/root.zig");
@@ -228,16 +157,6 @@ pub const WebStorageType = web_storage.StorageType;
 pub const WebStorageError = web_storage.StorageError;
 pub const getLocalStorage = web_storage.getLocalStorage;
 pub const getSessionStorage = web_storage.getSessionStorage;
-
-// Stylesheet Blocking (§14.3.3)
-pub const stylesheet_blocking = @import("stylesheet_blocking.zig");
-
-// Re-export commonly used stylesheet blocking types
-pub const StylesheetBlockingTracker = stylesheet_blocking.StylesheetBlockingTracker;
-pub const PendingStylesheet = stylesheet_blocking.PendingStylesheet;
-pub const isBlockingStylesheet = stylesheet_blocking.isBlockingStylesheet;
-pub const isStylesheetRel = stylesheet_blocking.isStylesheetRel;
-pub const shouldBlockScriptExecution = stylesheet_blocking.shouldBlockScriptExecution;
 
 // Permissions Policy (W3C Permissions Policy spec)
 pub const permissions_policy = @import("permissions_policy.zig");

@@ -378,14 +378,10 @@ src/hr_time/clock.zig clock.monotonicNanos 1
 src/hr_time/clock.zig clock.wallNanos 3
 src/hr_time/clock.zig std.os.windows 3
 src/html/editing/executor.zig clock.@import 1
-src/html/event_loop/event_loop.zig platform.timer_backend 4
-src/html/event_loop/timers.zig platform.timer_backend 4
 src/html/external_script_loader.zig host.@import 1
 src/html/external_script_loader.zig host.cwd 1
 src/html/external_script_loader.zig host.io 1
 src/html/navigation/joint_history.zig extern.getentropy 1
-src/html/navigator/navigator_concurrent_hardware.zig std.Thread.getCpuCount 1
-src/html/navigator/navigator_id.zig builtin.os.tag 2
 src/html/web_locks/registry.zig extern.getentropy 1
 src/html/window/browsing_context.zig clock.@import 1
 src/html/window/browsing_context.zig clock.monotonicNanos 1
@@ -409,8 +405,6 @@ src/runtime/engines/v8/snapshot_loader.zig clock.monotonicMillis 4
 src/runtime/engines/v8/snapshot_loader.zig host.@import 1
 src/runtime/engines/v8/snapshot_loader.zig host.cwd 2
 src/runtime/engines/v8/snapshot_loader.zig host.io 2
-src/runtime/environment_settings.zig clock.@import 1
-src/runtime/environment_settings.zig clock.wallMillis 1
 src/runtime/logger.zig clock.@import 1
 src/runtime/logger.zig clock.wallSeconds 1
 src/runtime/native_timer.zig clock.@import 1
