@@ -26,6 +26,8 @@ pub const facts: platform_build.Facts = .{
     // The platform, its two systems, the iPhoneOS SDK and its tool, and the
     // macOS package manager whose paths the build reads.
     .words = &.{ "darwin", "macos", "word:ios", "iphoneos", "xcrun", "homebrew" },
+    // The tools that read Mach-O objects test against one made for macOS.
+    .object_format = .{ .name = "mach_o", .target = "aarch64-macos-none" },
     .checks = &.{
         // lib-full for aarch64-ios, its own `zig build` like check-linux: a
         // static library, so it builds every C library and all of Crane for

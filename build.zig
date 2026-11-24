@@ -4491,15 +4491,17 @@ pub fn build(b: *std.Build) void {
         \\
     );
     const ubsan_fixtures = b.addOptions();
-    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
-        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+    // One object per format, for a target whose objects have it: the
+    // platform adapters' (platform_build.object_format_fixtures).
+    for (platform_build.object_format_fixtures) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format.target }) catch @panic("fixture target"));
         for ([_]std.zig.SanitizeC{ .full, .trap }) |sanitizer| {
             const object = b.addObject(.{
-                .name = b.fmt("ubsan_fixture_{s}_{t}", .{ format[0], sanitizer }),
+                .name = b.fmt("ubsan_fixture_{s}_{t}", .{ format.name, sanitizer }),
                 .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe, .sanitize_c = sanitizer }),
             });
             object.root_module.addCSourceFile(.{ .file = ubsan_fixture_source });
-            ubsan_fixtures.addOptionPath(b.fmt("{s}_{t}", .{ format[0], sanitizer }), object.getEmittedBin());
+            ubsan_fixtures.addOptionPath(b.fmt("{s}_{t}", .{ format.name, sanitizer }), object.getEmittedBin());
         }
     }
     const ubsan_symbols_module = b.createModule(.{
@@ -4540,15 +4542,17 @@ pub fn build(b: *std.Build) void {
         \\
     );
     const thread_local_fixtures = b.addOptions();
-    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
-        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+    // One object per format, for a target whose objects have it: the
+    // platform adapters' (platform_build.object_format_fixtures).
+    for (platform_build.object_format_fixtures) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format.target }) catch @panic("fixture target"));
         for ([_]struct { []const u8, []const []const u8 }{ .{ "", &.{} }, .{ "_plain", &.{"-DCRANE_FIXTURE_PLAIN"} } }) |variant| {
             const object = b.addObject(.{
-                .name = b.fmt("thread_local_fixture_{s}{s}", .{ format[0], variant[0] }),
+                .name = b.fmt("thread_local_fixture_{s}{s}", .{ format.name, variant[0] }),
                 .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe }),
             });
             object.root_module.addCSourceFile(.{ .file = thread_local_fixture_source, .flags = variant[1] });
-            thread_local_fixtures.addOptionPath(b.fmt("{s}{s}", .{ format[0], variant[0] }), object.getEmittedBin());
+            thread_local_fixtures.addOptionPath(b.fmt("{s}{s}", .{ format.name, variant[0] }), object.getEmittedBin());
         }
     }
     const thread_local_size_module = b.createModule(.{

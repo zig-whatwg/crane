@@ -21,6 +21,8 @@ pub fn kitParts(target: std.Target) []const KitPart {
 
 pub const facts: platform_build.Facts = .{
     .words = &.{"linux"},
+    // The tools that read ELF objects test against one made for Linux.
+    .object_format = .{ .name = "elf", .target = "x86_64-linux-none" },
     .checks = &.{
         // check-target for both Linux targets, one after the other.
         // -Dwpt-runner-optimize=Debug: the runner check then shares the

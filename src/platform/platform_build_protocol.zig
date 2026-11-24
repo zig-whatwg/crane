@@ -99,6 +99,10 @@ pub const Facts = struct {
     /// The cross-target checks this adapter offers: the root build makes a
     /// step for each (`cross_checks`).
     checks: []const CrossCheck = &.{},
+    /// The object format of the systems this adapter answers for, and a
+    /// target whose objects have it, for the root build's tools that parse
+    /// objects (`object_format_fixtures`); null when it declares none.
+    object_format: ?ObjectFormatFixture = null,
     /// The words that name this platform or an operating system it answers
     /// for: what `zig build lint-build` looks for (its `--platform=` keys)
     /// in the root build.zig and the neutral files it imports, written as
@@ -258,6 +262,26 @@ pub const cross_checks: []const CrossCheck = checks: {
     var checks: []const CrossCheck = &.{};
     for (std.meta.fieldNames(@TypeOf(adapters))) |name| checks = checks ++ @field(adapters, name).facts.checks;
     break :checks checks;
+};
+
+/// An object format, by the name the root build's fixtures use for it
+/// ("elf", "mach_o"), and a target triple whose objects have it.
+pub const ObjectFormatFixture = struct {
+    name: []const u8,
+    target: []const u8,
+};
+
+/// Every object format the listed adapters declare, sorted by name, so the
+/// fixtures are made in one order whatever the list's.
+pub const object_format_fixtures: []const ObjectFormatFixture = formats: {
+    var formats: []const ObjectFormatFixture = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const format = @field(adapters, name).facts.object_format orelse continue;
+        var at: usize = 0;
+        while (at < formats.len and std.mem.order(u8, formats[at].name, format.name) == .lt) at += 1;
+        formats = formats[0..at] ++ &[_]ObjectFormatFixture{format} ++ formats[at..];
+    }
+    break :formats formats;
 };
 
 /// What a binding asks of the adapter it binds (`bind`).
@@ -719,6 +743,22 @@ test "the conformance bindings: each listed platform but the tests' own, then th
             } else return error.NotACapability;
         }
     }
+}
+
+test "the object-format fixtures: ELF from linux, then Mach-O from darwin, sorted by format" {
+    try testing.expectEqual(@as(usize, 2), object_format_fixtures.len);
+    try testing.expectEqualStrings("elf", object_format_fixtures[0].name);
+    try testing.expectEqualStrings("x86_64-linux-none", object_format_fixtures[0].target);
+    try testing.expectEqualStrings("mach_o", object_format_fixtures[1].name);
+    try testing.expectEqualStrings("aarch64-macos-none", object_format_fixtures[1].target);
+}
+
+test "the cross-target checks: darwin's check-ios, then linux's check-linux, in the list's order" {
+    try testing.expectEqual(@as(usize, 2), cross_checks.len);
+    try testing.expectEqualStrings("check-ios", cross_checks[0].step);
+    try testing.expect(cross_checks[0].forward_options);
+    try testing.expectEqualStrings("check-linux", cross_checks[1].step);
+    try testing.expectEqual(@as(usize, 2), cross_checks[1].targets.len);
 }
 
 test "a listed adapter's name is listed; a third party's and an unknown name are not" {
