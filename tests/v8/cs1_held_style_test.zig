@@ -306,12 +306,12 @@ fn isRawStyle(comptime T: type) bool {
 fn rawStyleReturners(comptime namespace: type) []const []const u8 {
     comptime {
         var names: []const []const u8 = &.{};
-        for (@typeInfo(namespace).@"struct".decls) |decl| {
-            const T = @TypeOf(@field(namespace, decl.name));
+        for (std.meta.declarations(namespace)) |name| {
+            const T = @TypeOf(@field(namespace, name));
             const info = @typeInfo(T);
             if (info != .@"fn") continue;
             const returned = info.@"fn".return_type orelse continue;
-            if (isRawStyle(returned)) names = names ++ .{decl.name};
+            if (isRawStyle(returned)) names = names ++ .{name};
         }
         return names;
     }

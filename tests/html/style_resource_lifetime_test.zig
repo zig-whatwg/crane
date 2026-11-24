@@ -672,19 +672,31 @@ fn fontTextParent() !void {
     defer assigned.release();
     const assigned_instance = engine.convertToPlatformObject(realm, assigned.borrow()) orelse return error.NoText;
     const assigned_node = dom.instance_bridge.getNodeBase(assigned_instance) orelse return error.NoText;
-    const assigned_style = (try dom.style.engine.fontStyleForText(assigned_node)) orelse return error.NoAssignedStyle;
-    try std.testing.expectEqual(@as(f64, 700), assigned_style.get(.font_weight).number);
+    {
+        // Held while read, released before script runs again.
+        const assigned_style = (try dom.style.engine.fontStyleForText(assigned_node)) orelse return error.NoAssignedStyle;
+        defer assigned_style.release();
+        try std.testing.expectEqual(@as(f64, 700), assigned_style.style.get(.font_weight).number);
+    }
     inline for (.{ "document.getElementById('unused').firstChild", "document.getElementById('none').firstChild", "document.getElementById('host').shadowRoot.firstChild.firstChild" }) |expression| {
         const value = try browser.evaluateScript(expression);
         defer value.release();
         const instance = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoText;
         const node = dom.instance_bridge.getNodeBase(instance) orelse return error.NoText;
-        try std.testing.expect(try dom.style.engine.fontStyleForText(node) == null);
+        try std.testing.expect(!try selectsFontStyle(node));
     }
     const shadow = try browser.evaluateScript("document.getElementById('shadow').shadowRoot.firstChild");
     defer shadow.release();
     const shadow_instance = engine.convertToPlatformObject(realm, shadow.borrow()) orelse return error.NoText;
-    try std.testing.expect(try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(shadow_instance).?) != null);
+    try std.testing.expect(try selectsFontStyle(dom.instance_bridge.getNodeBase(shadow_instance).?));
+}
+
+/// Whether `node`'s text has a font style (dom.style.engine.fontStyleForText),
+/// the hold released at once.
+fn selectsFontStyle(node: *dom.NodeBase) !bool {
+    const held = (try dom.style.engine.fontStyleForText(node)) orelse return false;
+    held.release();
+    return true;
 }
 
 test "font text inherits through the flat tree and excludes unassigned and hidden text" {
@@ -708,7 +720,7 @@ fn skippedFontText() !void {
         const value = try browser.evaluateScript("document.getElementById('" ++ id ++ "').firstChild");
         defer value.release();
         const instance = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoText;
-        try std.testing.expect(try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(instance).?) == null);
+        try std.testing.expect(!try selectsFontStyle(dom.instance_bridge.getNodeBase(instance).?));
     }
 }
 
