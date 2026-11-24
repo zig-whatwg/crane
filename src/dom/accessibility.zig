@@ -58,6 +58,11 @@ pub fn localName(node: *Instance) []const u8 {
     return if (data.of(node)) |element| element.localName() else "";
 }
 
+fn isSvgElement(node: *Instance) bool {
+    const element = data.of(node) orelse return false;
+    return eq(element.namespaceSlice() orelse "", "http://www.w3.org/2000/svg");
+}
+
 pub fn isHtml(node: *Instance) bool {
     const element = data.of(node) orelse return false;
     return eq(element.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
@@ -90,8 +95,8 @@ pub fn effective(allocator: Allocator, node: *Instance, comptime content: []cons
 }
 
 const roles = .{
-    "alert",        "alertdialog",         "application",   "article",      "banner",       "blockquote",      "button",           "caption",       "cell",        "checkbox",     "code",           "columnheader", "combobox",   "comment",     "complementary",  "contentinfo", "definition",   "deletion",     "dialog",       "document",   "emphasis",    "feed",         "figure",       "form",         "generic",      "grid",      "gridcell",         "group",       "heading",    "image",         "insertion",    "link",     "list",        "listbox",      "listitem",      "log",     "main",         "mark",    "marquee", "math",              "menu",            "menubar",         "menuitem", "menuitemcheckbox", "menuitemradio", "meter", "navigation", "none", "note", "option", "paragraph", "progressbar", "radio", "radiogroup", "region", "row", "rowgroup", "rowheader", "scrollbar", "search", "searchbox", "sectionfooter", "sectionheader", "separator", "slider", "spinbutton", "status", "strong", "subscript", "suggestion", "superscript", "switch", "tab", "table", "tablist", "tabpanel", "term", "textbox", "time", "timer", "toolbar", "tooltip", "tree", "treegrid", "treeitem",
-    "doc-abstract", "doc-acknowledgments", "doc-afterword", "doc-appendix", "doc-backlink", "doc-biblioentry", "doc-bibliography", "doc-biblioref", "doc-chapter", "doc-colophon", "doc-conclusion", "doc-cover",    "doc-credit", "doc-credits", "doc-dedication", "doc-endnote", "doc-endnotes", "doc-epigraph", "doc-epilogue", "doc-errata", "doc-example", "doc-footnote", "doc-foreword", "doc-glossary", "doc-glossref", "doc-index", "doc-introduction", "doc-noteref", "doc-notice", "doc-pagebreak", "doc-pagelist", "doc-part", "doc-preface", "doc-prologue", "doc-pullquote", "doc-qna", "doc-subtitle", "doc-tip", "doc-toc", "graphics-document", "graphics-object", "graphics-symbol",
+    "alert",        "alertdialog",         "application",   "article",      "banner",       "blockquote",      "button",           "caption",       "cell",        "checkbox",     "code",           "columnheader", "combobox",   "comment",     "complementary",  "contentinfo", "definition",   "deletion",     "dialog",       "document",   "emphasis",    "feed",         "figure",       "form",         "generic",      "grid",      "gridcell",         "group",       "heading",    "image",         "insertion",      "link",           "list",         "listbox",  "listitem",    "log",          "main",          "mark",    "marquee",      "math",    "menu",    "menubar",           "menuitem",        "menuitemcheckbox", "menuitemradio", "meter", "navigation", "none", "note", "option", "paragraph", "progressbar", "radio", "radiogroup", "region", "row", "rowgroup", "rowheader", "scrollbar", "search", "searchbox", "sectionfooter", "sectionheader", "separator", "slider", "spinbutton", "status", "strong", "subscript", "suggestion", "superscript", "switch", "tab", "table", "tablist", "tabpanel", "term", "textbox", "time", "timer", "toolbar", "tooltip", "tree", "treegrid", "treeitem",
+    "doc-abstract", "doc-acknowledgments", "doc-afterword", "doc-appendix", "doc-backlink", "doc-biblioentry", "doc-bibliography", "doc-biblioref", "doc-chapter", "doc-colophon", "doc-conclusion", "doc-cover",    "doc-credit", "doc-credits", "doc-dedication", "doc-endnote", "doc-endnotes", "doc-epigraph", "doc-epilogue", "doc-errata", "doc-example", "doc-footnote", "doc-foreword", "doc-glossary", "doc-glossref", "doc-index", "doc-introduction", "doc-noteref", "doc-notice", "doc-pagebreak", "doc-pagefooter", "doc-pageheader", "doc-pagelist", "doc-part", "doc-preface", "doc-prologue", "doc-pullquote", "doc-qna", "doc-subtitle", "doc-tip", "doc-toc", "graphics-document", "graphics-object", "graphics-symbol",
 };
 
 pub fn canonicalRole(token: []const u8) ?[]const u8 {
@@ -114,14 +119,12 @@ pub fn authorNamed(allocator: Allocator, node: *Instance) !bool {
     return if (attribute(node, "title")) |title| std.mem.trim(u8, title, spaces).len > 0 else false;
 }
 
-/// Returns a canonical static string; callers need not release it.
-pub fn computedRole(allocator: Allocator, node: *Instance, options: Options) ![]const u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    return role(arena.allocator(), node, options);
-}
-
-fn role(allocator: Allocator, node: *Instance, options: Options) anyerror![]const u8 {
+/// AccName's role decision, by HTML-AAM's and ARIA's tables (the roles a
+/// name from contents and an embedded control read). WebDriver's computed
+/// role is the accessibility tree's (accessibility_tree.webdriverRole);
+/// this answers it only for an element no document's tree holds (a detached
+/// one).
+pub fn role(allocator: Allocator, node: *Instance, options: Options) anyerror![]const u8 {
     if (try effective(allocator, node, "role", "role")) |value| {
         var tokens = std.mem.tokenizeAny(u8, value, spaces);
         while (tokens.next()) |token| if (canonicalRole(token)) |found| {
@@ -723,8 +726,18 @@ const Name = struct {
                 }
             };
             if (oneOf(tag, .{ "option", "optgroup" })) if (attribute(node, "label")) |value| if (value.len > 0) return value;
-        } else if (firstChildNamed(node, "title")) |title| {
-            return try self.text(title, .{ .native_label = true, .include_hidden = true });
+        } else {
+            // SVG-AAM's 2D: the first <title> child, then an SVG link's
+            // xlink:title (svg-aam/name/comp_host_language_label.html: Chrome
+            // 157, Firefox 160 and Safari 27.2 all name an <a xlink:title>
+            // from it; Blink NativeTextAlternative's SVG branch).
+            if (firstChildNamed(node, "title")) |title| {
+                const value = try self.text(title, .{ .native_label = true, .include_hidden = true });
+                if (value.len > 0) return value;
+            }
+            if (eq(tag, "a") and isSvgElement(node)) {
+                if (data.of(node)) |element| if (element.findAttribute("http://www.w3.org/1999/xlink", "title")) |entry| if (entry.value.len > 0) return entry.value;
+            }
         }
         return null;
     }
@@ -864,6 +877,9 @@ fn flatten(allocator: Allocator, value: []const u8) ![]u8 {
     return result.toOwnedSlice(allocator);
 }
 
+/// `node`'s accessible name in the tree its root roots (a detached subtree
+/// too), roles by AccName's own role decision: the label of an element the
+/// accessibility tree has no object for (accessibility_tree.webdriverRole).
 /// Caller owns the flattened UTF-8 name. All traversal state is temporary.
 pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
