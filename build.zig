@@ -310,7 +310,9 @@ const TestLaunch = struct {
 /// tests/<dir>/**/*_test.zig file, run by the launcher's verify mode from
 /// the file's directory executable - 10 times in one process and 5 times
 /// each alone; under -Dsanitize-thread, once - and any run that is not a
-/// pass fails the step. The files: -Dverify-files=<a,b,...> (repository-
+/// pass fails the step. A named src/**/*.zig file's inline tests are
+/// verified from every src/ module root's executable whose root's directory
+/// holds the file (`addSrcTestVerify`; lane core1). The files: -Dverify-files=<a,b,...> (repository-
 /// relative), or -Dverify-base=<git ref> for the *_test.zig files under
 /// tests/ that `git diff <ref>...HEAD` adds or changes - where there is a
 /// git checkout (a pool mirror has none: compute the list in the checkout
@@ -471,6 +473,12 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
     launch.test_runs.append(b.allocator, run) catch @panic("OOM");
+    // test-verify of a src/ file's inline tests, from the executable rooted
+    // in its module (addSrcTestVerify).
+    if (groups.len == 0) if (test_exe.root_module.root_source_file) |root| switch (root) {
+        .src_path => |p| if (p.owner == b and std.mem.startsWith(u8, p.sub_path, "src/")) addSrcTestVerify(b, launch, test_exe, name, std.fs.path.dirname(p.sub_path).?),
+        else => {},
+    };
     // -Dtest-filter: run-time selection, so the executable stays the cached
     // one.
     for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
@@ -964,7 +972,7 @@ fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.
 fn testVerifySelection(b: *std.Build, build_probe: *std.Build.Step.Compile) *TestVerify {
     const v = b.allocator.create(TestVerify) catch @panic("OOM");
     v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
-    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
+    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files, or src/**/*.zig files with inline tests (repository-relative)");
     const base = b.option([]const u8, "verify-base", "test-verify: the git ref whose diff (<ref>...HEAD) names the changed test files, where there is a git checkout");
     var files: std.ArrayList([]const u8) = .empty;
     if (files_option) |list| {
@@ -1054,6 +1062,48 @@ fn addTestVerifyIn(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     v.step.dependOn(&run.step);
 }
 
+/// `addTestVerify` for an executable rooted in src/ (lane core1): every
+/// verify file under its root's directory, `dir_path`, by its test names'
+/// prefix there ("parser.tokenizer.test."). A file there may be another
+/// module's - src/html holds html_core's root.zig and html's full.zig - so a
+/// prefix this executable has no test of is not a failure
+/// (`--verify-may-miss`): the module that owns the file verifies it, and
+/// tools/src_test_reach.zig holds that one runs every src/ test.
+fn addSrcTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8) void {
+    const v = launch.verify;
+    var prefixes: std.ArrayList([]const u8) = .empty;
+    for (v.files, v.matched) |file, *matched| {
+        if (!std.mem.endsWith(u8, file, ".zig")) continue;
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len + 1 or file[dir_path.len] != '/') continue;
+        matched.* = true;
+        const rel = file[dir_path.len + 1 .. file.len - ".zig".len];
+        const dotted = b.allocator.dupe(u8, rel) catch @panic("OOM");
+        std.mem.replaceScalar(u8, dotted, '/', '.');
+        prefixes.append(b.allocator, b.fmt("{s}.test.", .{dotted})) catch @panic("OOM");
+    }
+    if (prefixes.items.len == 0) return;
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test-verify {s}", .{name}));
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}", .{name}));
+    for (prefixes.items) |prefix| run.addArg(b.fmt("--verify={s}", .{prefix}));
+    run.addArg("--verify-may-miss");
+    if (launch.sanitize_thread) {
+        run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
+        run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+    }
+    if (launch.many_browsers) run.addArg("--many-browsers");
+    addGroupArgs(b, run, launch, &.{.{ .prefix = "", .config = suiteConfig(launch.engine, name), .plain = false }}, launch.many_browsers, false);
+    if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.verify{s}.jsonl", .{ name, if (launch.sanitize_thread) ".tsan" else "" }));
+    run.setCwd(b.path("."));
+    // A verification is a run, never a cache hit.
+    run.has_side_effects = true;
+    run.stdio = .inherit;
+    v.step.dependOn(&run.step);
+}
+
 /// The verify files no directory executable took fail the step, by name.
 fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
     if (!v.asked) {
@@ -1062,7 +1112,7 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
     }
     if (v.files.len == 0) return; // nothing changed: nothing to verify
     for (v.files, v.matched) |file, matched| {
-        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
+        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file, or a src/**/*.zig file under a src/ module root's directory; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
     }
 }
 
