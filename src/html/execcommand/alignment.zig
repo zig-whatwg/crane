@@ -60,6 +60,7 @@ pub fn alignmentValue(node_in: *Instance) !Alignment {
     defer if (style) |held| held.release();
     while (current) |c| : (current = try common.parent(c)) {
         if (!common.isElement(c)) continue;
+        // held-style: kept past the loop for the element the walk stops at (the defer above); released here otherwise.
         const s = (dom.style.computedStyle(c, null) catch null) orelse continue;
         const display = s.style.display();
         if (display.box == .none or (display.box == .normal and display.outer == .inline_ and display.inner == .flow)) {

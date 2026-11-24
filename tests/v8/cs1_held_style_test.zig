@@ -256,7 +256,7 @@ fn holdsCounted() !void {
     const page = try Page.open("<div id=x></div>");
     defer page.close();
     const x = try page.byId("x");
-    try testing.expectEqual(@import("builtin").mode == .Debug, runtime.native_holds.enabled);
+    try testing.expectEqual(@import("builtin").mode == .debug, runtime.native_holds.enabled);
     try testing.expectEqual(@as(u32, 0), runtime.native_holds.count(page.agent));
     const held = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
     // Debug counts the hold on the agent: a script entry or an event-loop

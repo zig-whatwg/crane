@@ -26,7 +26,7 @@ const Context = @import("context.zig").Context;
 const DeferredTeardown = @import("gc_integration.zig").DeferredTeardown;
 
 /// Whether holds are counted and checked: Debug builds of this module.
-pub const enabled = builtin.mode == .Debug;
+pub const enabled = builtin.mode == .debug;
 
 /// The agent's count of live holds (runtime.gc.DeferredTeardown.native_holds).
 pub const Count = if (enabled) u32 else void;

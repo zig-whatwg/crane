@@ -1044,13 +1044,13 @@ pub const WhiteSpace = enum {
 
 /// The computed style of an element, HELD - release it (dom.style.
 /// HeldStyle) - or null without a computed style.
-fn computedStyleOf(element: *Instance) ?dom.style.HeldStyle {
+fn heldStyleOf(element: *Instance) ?dom.style.HeldStyle {
     return dom.style.computedStyle(element, null) catch null;
 }
 
 /// The resolved white-space of `element`; normal without a computed style.
 pub fn whiteSpaceOf(element: *Instance) WhiteSpace {
-    const style_hold = computedStyleOf(element) orelse return .normal;
+    const style_hold = heldStyleOf(element) orelse return .normal;
     defer style_hold.release();
     const style = style_hold.style;
     const collapse = style.keyword(.white_space_collapse);
@@ -1103,7 +1103,7 @@ pub const WhiteSpaceStyles = struct {
 
 /// The computed white-space pair of `element`; null without a computed style.
 pub fn whiteSpaceStylesOf(element: *Instance) ?WhiteSpaceStyles {
-    const style_hold = computedStyleOf(element) orelse return null;
+    const style_hold = heldStyleOf(element) orelse return null;
     defer style_hold.release();
     const style = style_hold.style;
     const collapse: WhiteSpaceStyles.Collapse = switch (style.keyword(.white_space_collapse)) {
@@ -1142,7 +1142,7 @@ pub fn setInlineStyleProperty(element: *Instance, name: []const u8, value: []con
 
 /// Whether an element's computed display is none.
 pub fn displayIsNone(element: *Instance) bool {
-    const style_hold = computedStyleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     return style.display().box == .none;
@@ -1153,7 +1153,7 @@ pub fn displayIsNone(element: *Instance) bool {
 /// descendant element of which turns visibility back to visible.
 pub fn isVisibilityHidden(node: *Instance) !bool {
     if (!isElement(node)) return false;
-    const style_hold = computedStyleOf(node) orelse return false;
+    const style_hold = heldStyleOf(node) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     if (style.keyword(.visibility) == .visible) return false;
@@ -1161,7 +1161,7 @@ pub fn isVisibilityHidden(node: *Instance) !bool {
     while (current) |c| {
         if (!isDescendantOf(c, node)) break;
         if (isElement(c)) {
-            if (computedStyleOf(c)) |s| {
+            if (heldStyleOf(c)) |s| {
                 defer s.release();
                 if (s.style.keyword(.visibility) == .visible) return false;
             }
@@ -1178,7 +1178,7 @@ pub fn isVisibilityHidden(node: *Instance) !bool {
 pub fn isBlockNode(node: *Instance) bool {
     if (isDocument(node) or isDocumentFragment(node)) return true;
     if (!isElement(node)) return false;
-    const style_hold = computedStyleOf(node) orelse return true;
+    const style_hold = heldStyleOf(node) orelse return true;
     defer style_hold.release();
     const style = style_hold.style;
     const display = style.display();
@@ -1200,13 +1200,13 @@ pub fn isInlineNode(node: *Instance) bool {
 /// EnclosingBlock: the item is blockified, a LayoutBlockFlow).
 pub fn isFlexOrGridItem(node: *Instance) !bool {
     if (!isElement(node)) return false;
-    const own_hold = computedStyleOf(node) orelse return false;
+    const own_hold = heldStyleOf(node) orelse return false;
     defer own_hold.release();
     const own = own_hold.style;
     if (own.display().box != .normal) return false;
     const p = (try parent(node)) orelse return false;
     if (!isElement(p)) return false;
-    const style_hold = computedStyleOf(p) orelse return false;
+    const style_hold = heldStyleOf(p) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     const display = style.display();

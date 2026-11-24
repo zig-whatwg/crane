@@ -445,7 +445,7 @@ const Box = enum {
 const replaced_names = [_][]const u8{ "img", "input", "textarea", "select", "video", "audio", "canvas", "iframe", "embed", "object", "meter", "progress" };
 
 /// `element`'s computed style, HELD: release it (dom.style.HeldStyle).
-fn computedStyleOf(element: *Instance) ?dom.style.HeldStyle {
+fn heldStyleOf(element: *Instance) ?dom.style.HeldStyle {
     return dom.style.computedStyle(element, null) catch null;
 }
 
@@ -498,7 +498,7 @@ pub const Context = struct {
         if (!isElement(element)) return .none;
         if (!(dom.style.isBeingRendered(element) catch false)) return .none;
         if (insideReplaced(element)) return .none;
-        const style_hold = computedStyleOf(element) orelse return .none;
+        const style_hold = heldStyleOf(element) orelse return .none;
         defer style_hold.release();
         const style = style_hold.style;
         const display = style.display();
@@ -537,7 +537,7 @@ pub const Context = struct {
     fn styleBits(node: *Instance) StyleBits {
         const element = if (isElement(node)) node else (parentOf(node) orelse return .{ .visible = false, .selectable = false });
         if (!isElement(element)) return .{ .visible = true, .selectable = true };
-        const style_hold = computedStyleOf(element) orelse return .{ .visible = false, .selectable = false };
+        const style_hold = heldStyleOf(element) orelse return .{ .visible = false, .selectable = false };
         defer style_hold.release();
         const style = style_hold.style;
         // LayoutObject::IsSelectable: user-select: none on a read-only
@@ -644,7 +644,7 @@ pub const Context = struct {
 };
 
 fn isDisplayContents(element: *Instance) bool {
-    const style_hold = computedStyleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     return style.display().box == .contents;
@@ -652,7 +652,7 @@ fn isDisplayContents(element: *Instance) bool {
 
 fn isDisplayInsideTable(node: *Instance) bool {
     if (!isElement(node)) return false;
-    const style_hold = computedStyleOf(node) orelse return false;
+    const style_hold = heldStyleOf(node) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     const display = style.display();
@@ -660,7 +660,7 @@ fn isDisplayInsideTable(node: *Instance) bool {
 }
 
 fn isOutOfFlow(element: *Instance) bool {
-    const style_hold = computedStyleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     const position = style.keyword(.position);
@@ -1677,7 +1677,7 @@ pub fn isBlockFlow(allocator: std.mem.Allocator, element: *Instance) bool {
         else => return false,
     }
     if (isHtmlIn(element, &replaced_names)) return false;
-    const style_hold = computedStyleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     const display = style.display();
@@ -2023,7 +2023,7 @@ fn mayWrapAt(unit: Unit, char: u16) bool {
         .nowrap, .pre => return false,
         else => {},
     }
-    if (computedStyleOf(element)) |held| {
+    if (heldStyleOf(element)) |held| {
         defer held.release();
         const style = held.style;
         if (style.keyword(.word_break) != .normal and style.keyword(.word_break) != .keep_all) return true;

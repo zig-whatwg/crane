@@ -39,7 +39,7 @@ const Instance = runtime.Instance;
 const ComputedStyle = css.computed_style.ComputedStyle;
 
 /// `element`'s computed style, HELD: release it (dom.style.HeldStyle).
-fn styleOf(element: *Instance) ?dom.style.HeldStyle {
+fn heldStyleOf(element: *Instance) ?dom.style.HeldStyle {
     return dom.style.engine.computedStyle(element, null) catch null;
 }
 
@@ -72,7 +72,7 @@ fn isContainerStyle(style: *const ComputedStyle) bool {
 
 /// Whether `element` is a reading flow container.
 pub fn isContainer(element: *Instance) bool {
-    const style_hold = styleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     return isContainerStyle(style);
@@ -85,7 +85,7 @@ pub fn containerOf(element: *Instance) ?*Instance {
     var current = element;
     var hops: usize = 0;
     while (hops < 256) : (hops += 1) {
-        const style_hold = styleOf(current) orelse return null;
+        const style_hold = heldStyleOf(current) orelse return null;
         defer style_hold.release();
         const style = style_hold.style;
         if (style.display().box != .contents) return if (isContainerStyle(style)) current else null;
@@ -120,7 +120,7 @@ fn collectBoxChildren(allocator: Allocator, node: *Instance, out: *std.ArrayList
     var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (!isElement(c)) continue;
-        const style_hold = styleOf(c) orelse continue;
+        const style_hold = heldStyleOf(c) orelse continue;
         defer style_hold.release();
         const style = style_hold.style;
         switch (style.display().box) {
@@ -145,7 +145,7 @@ fn integerOf(style: *const ComputedStyle, longhand: css.properties.Longhand) i32
 /// as far as no renderer is needed (the module comment).
 fn siblingReadingFlow(allocator: Allocator, container: *Instance, out: *std.ArrayList(Item)) Allocator.Error!void {
     try collectBoxChildren(allocator, container, out, 0);
-    const style_hold = styleOf(container) orelse return;
+    const style_hold = heldStyleOf(container) orelse return;
     defer style_hold.release();
     const style = style_hold.style;
     const reading_flow = style.keyword(.reading_flow);

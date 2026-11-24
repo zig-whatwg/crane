@@ -40,7 +40,7 @@ const Allocator = std.mem.Allocator;
 // ============================================================================
 
 /// `element`'s computed style, HELD: release it (dom.style.HeldStyle).
-fn computedStyleOf(element: *Instance) ?dom.style.HeldStyle {
+fn heldStyleOf(element: *Instance) ?dom.style.HeldStyle {
     if (!common.isElement(element)) return null;
     return dom.style.computedStyle(element, null) catch null;
 }
@@ -49,7 +49,7 @@ fn computedStyleOf(element: *Instance) ?dom.style.HeldStyle {
 /// `allocator`; "" when the property is unsupported, not a longhand, or the
 /// element has no computed style (as getComputedStyle answers then).
 pub fn resolved(allocator: Allocator, element: *Instance, name: []const u8) ![]const u8 {
-    const style_hold = computedStyleOf(element) orelse return "";
+    const style_hold = heldStyleOf(element) orelse return "";
     defer style_hold.release();
     const style = style_hold.style;
     const property = css.properties.lookup(name) orelse return "";
@@ -74,7 +74,7 @@ pub fn backgroundIsTransparent(allocator: Allocator, element: *Instance) !bool {
 
 /// Whether `element`'s resolved "display" is exactly "inline".
 pub fn displayIsInline(element: *Instance) bool {
-    const style_hold = computedStyleOf(element) orelse return false;
+    const style_hold = heldStyleOf(element) orelse return false;
     defer style_hold.release();
     const style = style_hold.style;
     const display = style.display();

@@ -448,7 +448,7 @@ pub const ComputedStyle = struct {
     /// panic - the owner of a style others may hold releases it (`release`).
     /// Otherwise it is `release`, so a mistaken destroy stays memory-safe.
     pub fn destroy(self: *ComputedStyle) void {
-        if (builtin.mode == .Debug and self.refs != 1) std.debug.panic("ComputedStyle.destroy: {d} other holder(s) still read this style (dom.style.HeldStyle) - its owner releases it", .{self.refs -| 1});
+        if (builtin.mode == .debug and self.refs != 1) std.debug.panic("ComputedStyle.destroy: {d} other holder(s) still read this style (dom.style.HeldStyle) - its owner releases it", .{self.refs -| 1});
         self.release();
     }
 
