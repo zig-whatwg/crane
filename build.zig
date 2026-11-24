@@ -6520,6 +6520,45 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_page_allocator.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_page_allocator_module }), "tools-lint_page_allocator", null).step);
 
+    // ========================================================================
+    // LINT: arrays over 64 KiB on a function's stack
+    // ========================================================================
+    // An optimized build inlines a callee into its caller, whose prologue
+    // then reserves the callee's locals on every call: tools/repl.zig's
+    // serveMcp kept 1 MiB of stdio buffers on the stack, inlined into main,
+    // and every script of the release console threw "Maximum call stack
+    // size exceeded" (the engine takes its stack limit from the thread's stack
+    // start; lane rc8, 2026-11-24). tools/lint_stack_arrays.zig flags,
+    // through std.zig.Ast, every `var` array over 64 KiB in a function or
+    // test body in src/ and tools/ that tools/stack_arrays_baseline.txt does
+    // not record; the baseline only goes down (`-- --update` after removing
+    // some; `-- --list` prints every one). `zig build test` depends on it.
+    const lint_stack_arrays_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_stack_arrays.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_stack_arrays_exe = b.addExecutable(.{
+        .name = "lint_stack_arrays",
+        .root_module = lint_stack_arrays_module,
+    });
+    const lint_stack_arrays_step = b.step("lint-stack-arrays", "Fail on a new array over 64 KiB on a function's stack in src/ or tools/ (use -- --update after removing some, -- --list to see them)");
+    const lint_stack_arrays = b.addRunArtifact(lint_stack_arrays_exe);
+    // It reads src/, tools/ and the baseline, which the build graph does not
+    // track.
+    lint_stack_arrays.has_side_effects = true;
+    lint_stack_arrays.setCwd(b.path("."));
+    lint_stack_arrays.addPassthruArgs();
+    lint_stack_arrays_step.dependOn(&lint_stack_arrays.step);
+    // Part of `zig build test`: the check itself (never with --update) and
+    // the tool's own tests.
+    const lint_stack_arrays_check = b.addRunArtifact(lint_stack_arrays_exe);
+    lint_stack_arrays_check.has_side_effects = true;
+    lint_stack_arrays_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_stack_arrays_check.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_stack_arrays_module }), "tools-lint_stack_arrays", null).step);
+
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);

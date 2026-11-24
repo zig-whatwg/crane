@@ -414,10 +414,18 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         return 1;
     };
     defer server.stop();
-    var in_buffer: [1 << 20]u8 = undefined;
-    var stdin = std.Io.File.stdin().readerStreaming(io, &in_buffer);
-    var out_buffer: [64 * 1024]u8 = undefined;
-    var stdout = std.Io.File.stdout().writerStreaming(io, &out_buffer);
+    // The stdio buffers from the allocator, never the stack: in an
+    // optimized build this function inlines into main, whose prologue would
+    // reserve them on every run, --mcp or not - and V8 sets its stack limit
+    // from the thread's stack start, so every script of the plain console
+    // threw "Maximum call stack size exceeded" (lane rc8, 2026-11-24;
+    // tools/lint_stack_arrays.zig keeps such arrays off the stack).
+    const in_buffer = try allocator.alloc(u8, 1 << 20);
+    defer allocator.free(in_buffer);
+    var stdin = std.Io.File.stdin().readerStreaming(io, in_buffer);
+    const out_buffer = try allocator.alloc(u8, 64 * 1024);
+    defer allocator.free(out_buffer);
+    var stdout = std.Io.File.stdout().writerStreaming(io, out_buffer);
     devtools.mcp.server.serveStdio(allocator, server, &stdin.interface, &stdout.interface) catch |err| {
         try err_out.print("repl: --mcp: {t}\n", .{err});
         try err_out.flush();
