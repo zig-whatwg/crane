@@ -13,9 +13,7 @@ const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const TrackEventInit = @import("dictionaries").TrackEventInit;
 const EventTarget = @import("interfaces").EventTarget;
-const TextTrack = @import("interfaces").TextTrack;
-const VideoTrack = @import("interfaces").VideoTrack;
-const AudioTrack = @import("interfaces").AudioTrack;
+const VideoTrackOrAudioTrackOrTextTrack = @import("typedefs").VideoTrackOrAudioTrackOrTextTrack;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -178,7 +176,7 @@ pub const TrackEvent = struct {
         return try TrackEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_track(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    pub fn get_track(instance: *runtime.Instance) anyerror!?VideoTrackOrAudioTrackOrTextTrack {
         return try TrackEventImpl.get_track(instance);
     }
 };

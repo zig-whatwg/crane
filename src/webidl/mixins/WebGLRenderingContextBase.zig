@@ -10,12 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WebGLTexture = @import("interfaces").WebGLTexture;
-const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
 const WebGLShaderPrecisionFormat = @import("interfaces").WebGLShaderPrecisionFormat;
-const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
+const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
 const GLboolean = @import("typedefs").GLboolean;
 const GLfloat = @import("typedefs").GLfloat;
+const HTMLCanvasElementOrOffscreenCanvas = @import("typedefs").HTMLCanvasElementOrOffscreenCanvas;
 const WebGLRenderbuffer = @import("interfaces").WebGLRenderbuffer;
 const WebGLContextAttributes = @import("dictionaries").WebGLContextAttributes;
 const GLbitfield = @import("typedefs").GLbitfield;
@@ -33,7 +32,7 @@ const WebGLBuffer = @import("interfaces").WebGLBuffer;
 const PredefinedColorSpace = @import("enums").PredefinedColorSpace;
 const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
 const DOMString = @import("typedefs").DOMString;
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
+const WebGLTexture = @import("interfaces").WebGLTexture;
 
 const impl = @import("impls").WebGLRenderingContextBase;
 
@@ -46,7 +45,7 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!HTMLCanvasElementOrOffscreenCanvas {
     return try WebGLRenderingContextBaseImpl.get_canvas(instance);
 }
 

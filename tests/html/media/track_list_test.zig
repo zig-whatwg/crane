@@ -159,7 +159,7 @@ test "TrackEvent constructor initializes type flags and nullable track" {
     try testing.expect((try interfaces.TrackEvent.get_track(empty)) == null);
     const child = try track(&ctx, "held");
     defer interfaces.TextTrack.deinit(child);
-    const event = try interfaces.TrackEvent.call_constructor(&ctx, .initInterned("addtrack"), .passed(.{ .base = .{ .bubbles = true, .cancelable = true, .composed = true }, .track = .{ .instance = child } }));
+    const event = try interfaces.TrackEvent.call_constructor(&ctx, .initInterned("addtrack"), .passed(.{ .base = .{ .bubbles = true, .cancelable = true, .composed = true }, .track = .{ .text_track = child } }));
     defer interfaces.TrackEvent.deinit(event);
     var name = try interfaces.Event.get_type(event);
     defer name.deinit(testing.allocator);
@@ -167,5 +167,5 @@ test "TrackEvent constructor initializes type flags and nullable track" {
     try testing.expect(try interfaces.Event.get_bubbles(event));
     try testing.expect(try interfaces.Event.get_cancelable(event));
     try testing.expect(try interfaces.Event.get_composed(event));
-    try testing.expectEqual(child, (try interfaces.TrackEvent.get_track(event)).?.instance);
+    try testing.expectEqual(child, (try interfaces.TrackEvent.get_track(event)).?.text_track);
 }

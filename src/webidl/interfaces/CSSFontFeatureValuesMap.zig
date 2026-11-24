@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
+const UnsignedLongOrSequenceOfUnsignedLong = @import("typedefs").UnsignedLongOrSequenceOfUnsignedLong;
 
 pub const CSSFontFeatureValuesMap = struct {
     pub const Meta = struct {
@@ -155,7 +156,7 @@ pub const CSSFontFeatureValuesMap = struct {
         }
     }
 
-    pub fn call_set(instance: *runtime.Instance, featureValueName: CSSOMString, values: runtime.JSValue) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, featureValueName: CSSOMString, values: UnsignedLongOrSequenceOfUnsignedLong) anyerror!void {
         return try CSSFontFeatureValuesMapImpl.call_set(instance, featureValueName, values);
     }
 };

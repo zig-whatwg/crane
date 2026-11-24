@@ -14,6 +14,7 @@ const MLTensor = @import("interfaces").MLTensor;
 const MLLinearOptions = @import("dictionaries").MLLinearOptions;
 const MLCumulativeSumOptions = @import("dictionaries").MLCumulativeSumOptions;
 const MLLeakyReluOptions = @import("dictionaries").MLLeakyReluOptions;
+const UnsignedLongOrSequenceOfUnsignedLong = @import("typedefs").UnsignedLongOrSequenceOfUnsignedLong;
 const MLNamedOperands = @import("typedefs").MLNamedOperands;
 const MLBatchNormalizationOptions = @import("dictionaries").MLBatchNormalizationOptions;
 const MLResample2dOptions = @import("dictionaries").MLResample2dOptions;
@@ -617,7 +618,7 @@ pub const MLGraphBuilder = struct {
         return try MLGraphBuilderImpl.call_relu(instance, input, options);
     }
 
-    pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: runtime.JSValue, options: webidl.Opt(MLSplitOptions)) anyerror!runtime.JSValue {
+    pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: UnsignedLongOrSequenceOfUnsignedLong, options: webidl.Opt(MLSplitOptions)) anyerror!runtime.JSValue {
         return try MLGraphBuilderImpl.call_split(instance, input, splits, options);
     }
 

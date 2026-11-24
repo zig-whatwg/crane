@@ -14,6 +14,6 @@ pub const Int32List = union(enum) {
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "int32array", .kind = .{ .typed_array = "Int32Array" } },
-        .{ .field = "glint_sequence", .kind = .sequence },
+        .{ .field = "glint_sequence", .kind = .{ .sequence = null } },
     };
 };

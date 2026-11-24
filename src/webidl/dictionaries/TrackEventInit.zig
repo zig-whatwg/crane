@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const TrackEventInit = struct {
@@ -11,7 +12,7 @@ pub const TrackEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    track: ?runtime.JSValue = null,
+    track: ?typedefs.VideoTrackOrAudioTrackOrTextTrack = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

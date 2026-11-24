@@ -14,10 +14,11 @@ const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const Event = @import("interfaces").Event;
 const Blob = @import("interfaces").Blob;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const Event = @import("interfaces").Event;
 const EventListener = @import("interfaces").EventListener;
+const DOMStringOrArrayBuffer = @import("typedefs").DOMStringOrArrayBuffer;
 const DOMException = @import("interfaces").DOMException;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -264,7 +265,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.get_readyState(instance);
     }
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    pub fn get_result(instance: *runtime.Instance) anyerror!?DOMStringOrArrayBuffer {
         return try FileReaderImpl.get_result(instance);
     }
 

@@ -20,6 +20,7 @@ const Observable = @import("interfaces").Observable;
 const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
 const Event = @import("interfaces").Event;
 const RegistrationOptions = @import("dictionaries").RegistrationOptions;
+const ServiceWorkerRegistrationOrUndefined = @import("typedefs").ServiceWorkerRegistrationOrUndefined;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;

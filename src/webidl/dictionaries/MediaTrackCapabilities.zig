@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const ULongRange = @import("ULongRange.zig").ULongRange;
 const DoubleRange = @import("DoubleRange.zig").DoubleRange;
 const MediaSettingsRange = @import("MediaSettingsRange.zig").MediaSettingsRange;
@@ -18,7 +19,7 @@ pub const MediaTrackCapabilities = struct {
     resizeMode: ?[]const runtime.DOMString = null,
     sampleRate: ?ULongRange = null,
     sampleSize: ?ULongRange = null,
-    echoCancellation: ?[]const runtime.JSValue = null,
+    echoCancellation: ?[]const typedefs.BooleanOrDOMString = null,
     autoGainControl: ?[]const bool = null,
     noiseSuppression: ?[]const bool = null,
     latency: ?DoubleRange = null,

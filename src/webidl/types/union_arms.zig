@@ -36,10 +36,13 @@ pub const Kind = union(enum) {
     callback_interface,
     /// A dictionary type (steps 4.1 and 11.4).
     dictionary,
-    /// A sequence type (step 11.2).
-    sequence,
-    /// A frozen array type (step 11.3).
-    frozen_array,
+    /// A sequence type (step 11.2): its element type's interface, by name,
+    /// when that is an interface type (each element converts to it, 3.2.15),
+    /// else null.
+    sequence: ?[]const u8,
+    /// A frozen array type (step 11.3), its element interface as a
+    /// sequence's.
+    frozen_array: ?[]const u8,
     /// An async sequence type (step 11.1).
     async_sequence,
     /// A record type (step 11.5).

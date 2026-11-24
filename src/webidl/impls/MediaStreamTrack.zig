@@ -224,7 +224,7 @@ pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Op
 }
 
 /// Getter for stats
-pub fn get_stats(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_stats(instance: *runtime.Instance) anyerror!?typedefs.MediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats {
     _ = instance;
     return error.NotImplemented;
 }

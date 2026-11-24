@@ -13,6 +13,6 @@ pub const VibratePattern = union(enum) {
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "ulong", .kind = .numeric },
-        .{ .field = "ulong_sequence", .kind = .sequence },
+        .{ .field = "ulong_sequence", .kind = .{ .sequence = null } },
     };
 };

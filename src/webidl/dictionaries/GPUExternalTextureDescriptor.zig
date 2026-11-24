@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
@@ -12,7 +13,7 @@ pub const GPUExternalTextureDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    source: runtime.JSValue,
+    source: typedefs.HTMLVideoElementOrVideoFrame,
     colorSpace: ?enums.PredefinedColorSpace = null,
 
     /// Optional members' IDL default values: a member the value leaves

@@ -483,14 +483,16 @@ fn stringSequenceProperty(realm: runtime.Context, allocator: Allocator, construc
 ///
 /// Returns the constructor for the given name, or undefined if not defined.
 /// Note: Returns the constructor cast to anyopaque pointer to match interface signature.
-pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!typedefs.CustomElementConstructorOrUndefined {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const name_str = name.asSlice();
 
     // Step 1: If definition set contains an item with name, return that item's constructor
+    // The union's callback function member is BORROWED, as an EventHandler
+    // getter's is (conv.unionReturnIsOwned): the definition keeps it.
     if (internal.getDefinitionByName(name_str)) |def| {
-        return constructorValue(instance.ctx, def);
+        return .{ .custom_element_constructor = .{ .function = def.constructor.function.borrow() } };
     }
 
     // Step 2: no definition matches, so return undefined.
@@ -499,13 +501,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
     // exception - so `customElements.get('nope')` threw where the spec requires
     // it to hand back undefined, and feature detection of the form
     // `if (customElements.get(name))` blew up instead of taking the false branch.
-    return runtime.JSValue.jsUndefined;
-}
-
-/// `def`'s constructor as a result: a hold of the caller's own (the
-/// binding takes it).
-fn constructorValue(realm: runtime.Context, def: *const CustomElementDefinition) !runtime.JSValue {
-    return (try engine.retainValue(realm, def.constructor.function.value)).take();
+    return .undefined;
 }
 
 /// Operation: getName(constructor)

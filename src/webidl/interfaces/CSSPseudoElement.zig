@@ -17,6 +17,7 @@ const DOMQuad = @import("interfaces").DOMQuad;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
+const ElementOrCSSPseudoElement = @import("typedefs").ElementOrCSSPseudoElement;
 const DOMPoint = @import("interfaces").DOMPoint;
 const Element = @import("interfaces").Element;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
@@ -198,7 +199,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_element(instance);
     }
 
-    pub fn get_parent(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!ElementOrCSSPseudoElement {
         return try CSSPseudoElementImpl.get_parent(instance);
     }
 

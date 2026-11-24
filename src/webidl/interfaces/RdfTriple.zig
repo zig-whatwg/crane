@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RdfLiteral = @import("interfaces").RdfLiteral;
+const USVStringOrRdfLiteral = @import("typedefs").USVStringOrRdfLiteral;
 const USVString = @import("typedefs").USVString;
 
 pub const RdfTriple = struct {
@@ -176,7 +176,7 @@ pub const RdfTriple = struct {
         return try RdfTripleImpl.get_predicate(instance);
     }
 
-    pub fn get_object(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_object(instance: *runtime.Instance) anyerror!USVStringOrRdfLiteral {
         return try RdfTripleImpl.get_object(instance);
     }
 };

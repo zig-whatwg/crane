@@ -22,15 +22,15 @@ const CanvasDrawImage = @import("mixins").CanvasDrawImage;
 const CanvasPathDrawingStyles = @import("mixins").CanvasPathDrawingStyles;
 const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
+const CanvasPattern = @import("interfaces").CanvasPattern;
+const UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit = @import("typedefs").UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit;
+const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const DOMMatrix = @import("interfaces").DOMMatrix;
-const CanvasGradient = @import("interfaces").CanvasGradient;
-const CanvasLineCap = @import("enums").CanvasLineCap;
-const CanvasPattern = @import("interfaces").CanvasPattern;
-const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const Path2D = @import("interfaces").Path2D;
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
+const CanvasGradient = @import("interfaces").CanvasGradient;
+const CanvasLineCap = @import("enums").CanvasLineCap;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const DOMString = @import("typedefs").DOMString;
 
@@ -424,7 +424,7 @@ pub const PaintRenderingContext2D = struct {
 
     pub const call_getTransform = mixins.CanvasTransform.call_getTransform;
 
-    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit)) anyerror!void {
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 

@@ -48,7 +48,7 @@ pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!run
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: runtime.JSValue, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) anyerror!runtime.JSValue {
+pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: typedefs.RequestInfoOrSequenceOfRequestInfo, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = id;
     _ = requests;

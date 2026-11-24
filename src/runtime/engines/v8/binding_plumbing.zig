@@ -1528,17 +1528,21 @@ pub fn finishGetter(
         if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
         if (result) |value| interface.freeOwnedString(cleanup_allocator, value);
     } else if (comptime isUnionResult(PayloadType)) {
-        // A union (CSSNumberish, LineAndPositionSetting):
-        // its active member's conversion, and so that
-        // member's ownership - a number or string made
-        // here is released, a wrapper or an `any`
-        // member's handle (ImageData.data's, the
-        // ImageData's own) is kept (conv.unionValueIsOwned).
-        if (conv.unionValueIsOwned(PayloadType, result)) v8.v8_Global_Dispose(v8_value);
+        // A union (CSSNumberish, LineAndPositionSetting, every
+        // union attribute since lane bind1 batch B): its active
+        // member's conversion, and so that member's ownership
+        // as a result of its own type (conv.unionReturnIsOwned)
+        // - a number or string made here, a JSValue the impl
+        // handed over, are released; a wrapper is the cache's.
+        // An owned string member is the binding's to free, as a
+        // DOMString result's is.
+        if (conv.unionReturnIsOwned(PayloadType, result)) v8.v8_Global_Dispose(v8_value);
+        conv.freeReturnedUnion(PayloadType, cleanup_allocator, result);
     } else if (comptime @typeInfo(PayloadType) == .optional and isUnionResult(@typeInfo(PayloadType).optional.child)) {
         // A nullable union: null as below, a member as above.
         if (result) |member| {
-            if (conv.unionValueIsOwned(@typeInfo(PayloadType).optional.child, member)) v8.v8_Global_Dispose(v8_value);
+            if (conv.unionReturnIsOwned(@typeInfo(PayloadType).optional.child, member)) v8.v8_Global_Dispose(v8_value);
+            conv.freeReturnedUnion(@typeInfo(PayloadType).optional.child, cleanup_allocator, member);
         } else v8.v8_Global_Dispose(v8_value);
     } else if (comptime @typeInfo(PayloadType) == .optional) {
         // Any other optional: a null result's value is made
@@ -2162,6 +2166,17 @@ pub fn finishOperation(
         }
     };
 
+    // A union result's owned string member is the binding's too, as a
+    // DOMString result's is (conv.freeReturnedUnion), freed once its String
+    // is made.
+    defer if (comptime isUnionResult(InnerType)) {
+        if (comptime is_optional) {
+            if (zig_result) |value| conv.freeReturnedUnion(InnerType, instance.ctx.allocator, value);
+        } else {
+            conv.freeReturnedUnion(InnerType, instance.ctx.allocator, zig_result);
+        }
+    };
+
     // Cleanup for sequences (arrays) - free the array itself
     // Note: Individual strings in the array are NOT freed here because
     // they should reference internal data, not be separately allocated
@@ -2374,7 +2389,10 @@ pub fn convertReturnValue(
             owned.* = true;
             return v8.v8_Undefined(isolate);
         };
-        owned.* = conv.unionValueIsOwned(ReturnType, result);
+        // Each member as a result of its own type (conv.unionReturnIsOwned):
+        // a JSValue the impl handed over is the binding's, as a JSValue
+        // result is; its owned strings are freed by finishOperation.
+        owned.* = conv.unionReturnIsOwned(ReturnType, result);
         return converted;
     }
 

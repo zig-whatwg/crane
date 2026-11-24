@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
-const RequestInfo = @import("typedefs").RequestInfo;
+const RequestInfoOrSequenceOfRequestInfo = @import("typedefs").RequestInfoOrSequenceOfRequestInfo;
 const DOMString = @import("typedefs").DOMString;
 const BackgroundFetchOptions = @import("dictionaries").BackgroundFetchOptions;
 
@@ -171,7 +171,7 @@ pub const BackgroundFetchManager = struct {
         return try BackgroundFetchManagerImpl.call_getIds(instance);
     }
 
-    pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
+    pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: RequestInfoOrSequenceOfRequestInfo, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }
 

@@ -228,17 +228,17 @@ pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for hidden
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-hidden-attribute
 /// Returns false, true, or "until-found".
-pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_hidden(instance: *runtime.Instance) anyerror!?typedefs.BooleanOrUnrestrictedDoubleOrDOMString {
     if (getContentAttribute(instance, "hidden")) |value| {
         // Getter step 1: the enumerated Hidden Until Found state.
         if (std.ascii.eqlIgnoreCase(value.asSlice(), "until-found")) {
-            return runtime.JSValue.fromStringRef("until-found");
+            return .{ .domstring = runtime.DOMString.initInterned("until-found") };
         }
         // Step 2: any other present attribute means hidden.
-        return runtime.JSValue.fromBoolean(true);
+        return .{ .boolean = true };
     }
     // Step 3: absence is the boolean false, not the nullable union's null.
-    return runtime.JSValue.fromBoolean(false);
+    return .{ .boolean = false };
 }
 
 /// Getter for accessKeyLabel
@@ -544,30 +544,15 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 
 /// Setter for hidden
 /// HTML hidden setter steps 1-7, after WebIDL union conversion.
-pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    const allocator = instance.ctx.allocator;
-    var converted: ?[]u8 = null;
-    defer if (converted) |bytes| allocator.free(bytes);
-    const given = value orelse runtime.JSValue.jsNull;
-    const normalized = switch (given) {
-        .handle, .instance => blk: {
-            // WebIDL union conversion step 15: the remaining ECMAScript
-            // values select DOMString. The binding passes these as borrowed
-            // values; conversion can throw and must precede any mutation.
-            const engine = @import("engine");
-            converted = try engine.convertToDOMString(engine.currentRealm() orelse instance.ctx, given, allocator);
-            break :blk runtime.JSValue.fromStringRef(converted.?);
-        },
-        else => given,
-    };
-    const attribute: ?[]const u8 = switch (normalized) {
+pub fn set_hidden(instance: *runtime.Instance, value: ?typedefs.BooleanOrUnrestrictedDoubleOrDOMString) anyerror!void {
+    // The binding converted the value by WebIDL 3.2.25 (an object, by
+    // step 15, to its string) before these steps: nothing here can throw.
+    const attribute: ?[]const u8 = if (value) |given| switch (given) {
         // Step 1 precedes the empty-string removal in step 3.
-        .string => |s| if (std.ascii.eqlIgnoreCase(s.data, "until-found")) "until-found" else if (s.data.len == 0) null else "",
+        .domstring => |s| if (std.ascii.eqlIgnoreCase(s.asSlice(), "until-found")) "until-found" else if (s.asSlice().len == 0) null else "",
         .boolean => |b| if (b) "" else null, // Steps 2 and 7.
-        .null, .undefined => null, // Step 4; nullable union step 2 maps undefined to null.
-        .number => |n| if (n == 0 or std.math.isNan(n)) null else "", // Steps 5-7.
-        .handle, .instance => unreachable,
-    };
+        .double => |n| if (n == 0 or std.math.isNan(n)) null else "", // Steps 5-7.
+    } else null; // Step 4; nullable union step 2 maps undefined to null.
     if (attribute) |text| {
         try setContentAttribute(instance, "hidden", runtime.DOMString.initInterned(text));
     } else {

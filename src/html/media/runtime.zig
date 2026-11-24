@@ -69,8 +69,11 @@ pub const Event = struct {
         const event = try interfaces.Event.call_constructor(target.ctx, runtime.DOMString.initInterned(name), webidl.Opt(dictionaries.EventInit).notPassed());
         return take(target, event);
     }
+    /// TrackEventInit's `track` member: (VideoTrack or AudioTrack or
+    /// TextTrack), the member the child implements (dom.union_values).
+    const TrackMember = @typeInfo(@FieldType(@import("dictionaries").TrackEventInit, "track")).optional.child;
     pub fn track(target: *runtime.Instance, name: []const u8, child: *runtime.Instance) !Event {
-        const event = try interfaces.TrackEvent.call_constructor(target.ctx, .initInterned(name), .passed(.{ .base = .{}, .track = .{ .instance = child } }));
+        const event = try interfaces.TrackEvent.call_constructor(target.ctx, .initInterned(name), .passed(.{ .base = .{}, .track = @import("dom").union_values.ofInstance(TrackMember, child) }));
         return take(target, event);
     }
     fn take(target: *runtime.Instance, event: *runtime.Instance) !Event {
