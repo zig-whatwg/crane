@@ -33,12 +33,6 @@ comptime {
     if (zig_toolchain.refusal(builtin.zig_version)) |why| @compileError("Zig " ++ builtin.zig_version_string ++ ": " ++ why);
 }
 
-/// libcurl and the mbedTLS it links: the kit's (kit/curl/curl_build.zig).
-const StaticLibcurl = kit_build.curl.StaticLibcurl;
-
-/// Brotli's libraries: the kit's (kit/brotli/brotli_build.zig).
-const BrotliLibraries = kit_build.brotli.BrotliLibraries;
-
 /// The name of the generated test root `addTestFilesFromDir` writes into each
 /// test directory (gitignored).
 const test_root_name = ".all_tests.zig";
@@ -1648,16 +1642,14 @@ const ModuleConfig = struct {
     /// The build's engine: its adapter's module (root file, name, imports) is
     /// its build file's (`facts`).
     engine: *const engine_build.Engine,
-    use_system_curl: bool,
-    enable_http2: bool,
+    /// The kit's options (kit_build.declareOptions).
+    kit_options: kit_build.Options,
     /// -Dcdp: the `devtools` module's root (src/devtools/root.zig, or
     /// src/devtools/unavailable.zig when off).
     cdp: bool,
-    /// libcurl and its mbedTLS, built once for every graph (null with
-    /// -Dsystem-curl or when the lazy dependencies are not fetched yet).
-    static_libcurl: ?StaticLibcurl,
-    brotli: ?BrotliLibraries,
-    image_codecs: ?*std.Build.Step.Compile,
+    /// The C libraries the kit built for this graph (kit_build.libraries):
+    /// the shared graph's, or a runner graph's own.
+    libraries: kit_build.Libraries,
     /// -Dplatform-without, -Dplatform-static and -Dplatform-module.
     platform_without: []const []const u8,
     platform_static: []const []const u8,
@@ -1804,7 +1796,7 @@ pub fn build(b: *std.Build) void {
     // The kit's options: which network library and whether it speaks HTTP/2
     // (kit_build.declareOptions), declared here, in this place of the order.
     const kit_options = kit_build.declareOptions(b);
-    const use_system_curl = kit_options.system_library;
+    const system_library = kit_options.system_library;
     const enable_http2 = kit_options.http2;
 
     // The Chrome DevTools Protocol remote end (src/devtools; CDP part 1,
@@ -1981,14 +1973,13 @@ pub fn build(b: *std.Build) void {
     const chosen_platform = platform_build.choose(b, target);
     // -Dcdp=false compiles the remote end's transport out of the platform too.
     const platform_without = if (enable_cdp) chosen_platform.without else withCapability(b, chosen_platform.without, "devtools_transport");
-    const brotli_enabled = for (platform_without) |name| {
-        if (std.mem.eql(u8, name, "brotli")) break false;
-    } else true;
-    const brotli = kit_build.brotli.buildBrotli(b, target, optimize, null, platform_build.prepareC(target));
-    const image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, optimize, null, platform_build.prepareC(target));
-    const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
-    if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
-    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else kit_build.curl.buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null, platform_build.prepareC(target));
+    // The shared graph's C libraries (kit_build.libraries), with the step
+    // that installs the kit's image codecs for any target.
+    const libraries = kit_build.libraries(b, target, optimize, null, platform_build.prepareC(target), .{
+        .options = kit_options,
+        .without = platform_without,
+        .image_codecs_step = true,
+    });
     // What the kit asks of a system network library at make time
     // (kit_build.systemLibraryCheck); the end of build() adds it to every
     // top-level step.
@@ -2008,12 +1999,9 @@ pub fn build(b: *std.Build) void {
         .engine_adapter_options = engine_adapter_options,
         .debug_options = debug_options,
         .engine = &engine,
-        .use_system_curl = use_system_curl,
-        .enable_http2 = enable_http2,
+        .kit_options = kit_options,
         .cdp = enable_cdp,
-        .static_libcurl = static_libcurl,
-        .brotli = brotli,
-        .image_codecs = image_codecs,
+        .libraries = libraries,
         .platform_without = platform_without,
         .platform_static = chosen_platform.static,
         .platform_module = chosen_platform.module_path,
@@ -2087,9 +2075,6 @@ pub fn build(b: *std.Build) void {
         .target_platform = target_platform,
         .shared = crane_graph,
         .tests = testing_graph,
-        .use_system_curl = use_system_curl,
-        .enable_http2 = enable_http2,
-        .brotli_enabled = brotli_enabled,
     });
     // The bug-finding graph: the same platform; the shared graph itself when
     // its modes are -Doptimize's throughout (`-Doptimize=Debug`), else a
@@ -2099,9 +2084,6 @@ pub fn build(b: *std.Build) void {
         .target_platform = target_platform,
         .shared = crane_graph,
         .tests = testing_graph,
-        .use_system_curl = use_system_curl,
-        .enable_http2 = enable_http2,
-        .brotli_enabled = brotli_enabled,
     });
     // The mode and C sanitizer of each graph's C libraries: the shared
     // graph's are -Doptimize's at Zig's default; a runner graph's are its
@@ -2110,8 +2092,8 @@ pub fn build(b: *std.Build) void {
     // from them (addWptRunner, gc_bench), and checkLinkedC holds every build
     // to them at the end of build().
     const shared_c: CModes = .{ .optimize = optimize, .sanitize_c = null };
-    const production_c: CModes = if (use_system_curl) shared_c else .libraries(production_build.modes);
-    const bug_finding_c: CModes = if (use_system_curl) shared_c else .libraries(bug_finding_build.modes);
+    const production_c: CModes = if (system_library) shared_c else .libraries(production_build.modes);
+    const bug_finding_c: CModes = if (system_library) shared_c else .libraries(bug_finding_build.modes);
     const whatwg_mod = crane_graph.whatwg;
     const clock_mod = crane_graph.clock;
     const host_mod = crane_graph.host;
@@ -2138,7 +2120,6 @@ pub fn build(b: *std.Build) void {
     const mimesniff_mod = crane_graph.mimesniff;
     const csp_mod = crane_graph.csp;
     const fetch_mod = crane_graph.fetch;
-    const linked_mbedtls: ?*std.Build.Step.Compile = if (static_libcurl) |static| static.mbedtls else null;
     const trusted_types_mod = crane_graph.trusted_types;
     const hr_time_mod = crane_graph.hr_time;
     const websocket_mod = crane_graph.websocket;
@@ -2428,7 +2409,7 @@ pub fn build(b: *std.Build) void {
     // The platform tests check-target compiles without linking, for a target
     // with no sysroot here (targetCheckOf).
     var target_compile_only: std.ArrayList(*std.Build.Step.Compile) = .empty;
-    if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
+    if (libraries.image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
 
     // tests/eventsource/: a directory suite (addTestFilesFromDir), its own
     // step's and `test`'s. Built for the target, as the testing graph it
@@ -2462,7 +2443,7 @@ pub fn build(b: *std.Build) void {
     // library option: there is no library artifact of the kit's to ask.
     const versions_test = kit_build.versions_test;
     recordSuiteDir(b, test_selection, versions_test.dir);
-    if (linked_mbedtls) |library| {
+    if (libraries.linkedTls()) |library| {
         const deps_test_mod = versions_test.module(b, target, platform_build.prepareC(target), library, testing_graph.fetch);
         const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), versions_test.suite, null);
         b.step(versions_test.step_name, versions_test.step_description).dependOn(&run_deps_tests.step);
@@ -2972,7 +2953,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "fetch", .module = testing_graph.fetch },
             // kit/curl's share, options and trust store, as fetch reaches them.
-            .{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? },
+            .{ .name = kit_build.network_share_import, .module = testing_graph.fetch.import_table.get(kit_build.network_share_import).? },
             // What the platform was built with: its HTTP/2 parts' tests run
             // only where it has HTTP/2 (`http2`), as the platform's code does.
             .{ .name = "platform_options", .module = testing_graph.platform_options },
@@ -3342,7 +3323,7 @@ pub fn build(b: *std.Build) void {
         const retained_fetch = b.createModule(.{
             .root_source_file = b.path("src/fetch/retained_network_root.zig"),
             .target = target,
-            .imports = &.{.{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? }},
+            .imports = &.{.{ .name = kit_build.network_share_import, .module = testing_graph.fetch.import_table.get(kit_build.network_share_import).? }},
         });
         const old_platform = b.createModule(.{
             .root_source_file = b.path("src/platform/root.zig"),
@@ -3372,12 +3353,9 @@ pub fn build(b: *std.Build) void {
         for (platform_build.conformance) |binding| {
             const bound = platform_build.binding(b, target, .{
                 .platform = binding.platform,
-                .brotli = brotli,
-                .image_codecs = image_codecs,
+                .libraries = libraries,
                 .without = binding.without,
-                .http2 = enable_http2 and !use_system_curl,
-                .libcurl = if (static_libcurl) |lib| lib.libcurl else null,
-                .mbedtls = if (static_libcurl) |lib| lib.mbedtls else null,
+                .http2 = enable_http2 and !system_library,
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
@@ -4024,7 +4002,7 @@ pub fn build(b: *std.Build) void {
     const repl_graph = if (runner_release != null) production_graph else crane_graph;
     // What that graph's C libraries are built with (-Dsystem-curl builds the
     // production graph as the shared one, runnerGraph).
-    const repl_c: CModes = if (runner_release != null and !use_system_curl) .libraries(repl_modes) else shared_c;
+    const repl_c: CModes = if (runner_release != null and !system_library) .libraries(repl_modes) else shared_c;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
@@ -5112,7 +5090,7 @@ pub fn build(b: *std.Build) void {
         &.{ engine_flag, "-Dtest-binaries=engine" },
         &.{ engine_flag, "-Dsanitize-thread" },
         &.{ engine_flag, "-Dverify-base=HEAD" },
-        &.{ engine_flag, "-Dsystem-curl" },
+        &.{ engine_flag, kit_build.system_library_flag },
     }) |flags| {
         const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed" });
         sub_build.setName(b.fmt("configure this build with --cache-poison=disallowed {s}", .{std.mem.join(b.allocator, " ", flags) catch @panic("OOM")}));
@@ -6367,9 +6345,6 @@ const RunnerGraphContext = struct {
     /// The tests' platform's graph (platform_build.tests_platform), in
     /// -Doptimize's mode.
     tests: CraneModules,
-    use_system_curl: bool,
-    enable_http2: bool,
-    brotli_enabled: bool,
 };
 
 /// The module graph a WPT runner build links (tests/wpt_runner/build_mode.zig
@@ -6388,12 +6363,13 @@ fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_b
     const console = runner.platform == .console;
     const platform: Platform = if (console) ctx.target_platform else platform_build.tests_platform;
     const existing = if (console) ctx.shared else ctx.tests;
-    if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
+    if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.module_config.kit_options.system_library) return existing;
     var config = ctx.module_config;
     config.optimize = runner.modes.crane_modules;
-    config.brotli = kit_build.brotli.buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, platform_build.prepareC(target));
-    config.image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, platform_build.prepareC(target));
-    config.static_libcurl = kit_build.curl.buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null, platform_build.prepareC(target));
+    config.libraries = kit_build.libraries(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, platform_build.prepareC(target), .{
+        .options = config.kit_options,
+        .without = config.platform_without,
+    });
     // A private graph (`public` false).
     return addCraneModules(b, target, platform, config, false);
 }
@@ -6405,8 +6381,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const optimize = config.optimize;
     const build_options = config.build_options;
     const debug_options = config.debug_options;
-    const use_system_curl = config.use_system_curl;
-    const enable_http2 = config.enable_http2;
+    const system_library = config.kit_options.system_library;
+    const enable_http2 = config.kit_options.http2;
     // ========================================================================
     // LIBRARY MODULE
     // ========================================================================
@@ -7402,9 +7378,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const transitional: kit_build.TransitionalLinks = .{
         .fetch = fetch_mod,
         .webcrypto = webcrypto_mod,
-        .system_library = use_system_curl,
-        .http2 = enable_http2,
-        .static_libcurl = config.static_libcurl,
+        .options = config.kit_options,
+        .libraries = config.libraries,
     };
     kit_build.addFetchOptions(b, transitional);
     // A base64 data: URL body is Infra's forgiving-base64 decode.
@@ -7497,14 +7472,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // bound to this graph's platform. A leaf: it no longer imports fetch.
     const platform_binding = platform_build.binding(b, target, .{
         .platform = platform,
-        .brotli = config.brotli,
-        .image_codecs = config.image_codecs,
+        .libraries = config.libraries,
         .module_path = config.platform_module,
         .without = config.platform_without,
         .static = config.platform_static,
-        .http2 = enable_http2 and !use_system_curl,
-        .libcurl = if (config.static_libcurl) |lib| lib.libcurl else null,
-        .mbedtls = if (config.static_libcurl) |lib| lib.mbedtls else null,
+        .http2 = enable_http2 and !system_library,
         .public = public,
         .clock = clock_mod,
         .host = host_mod,
@@ -7526,7 +7498,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
-    fetch_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
+    fetch_mod.addImport(kit_build.network_share_import, platform_binding.network_share);
     websocket_mod.addImport("platform", platform_mod);
     const platform_options_mod = platform_binding.options;
 

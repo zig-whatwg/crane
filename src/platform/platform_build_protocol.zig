@@ -499,12 +499,12 @@ pub const lint_target_words: []const u8 = "os.tag,isDarwin,.abi ==";
 pub const Binding = struct {
     facade: *std.Build.Module,
     options: *std.Build.Module,
-    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// The kit's network connection share (src/platform/kit/curl/share.zig), which
     /// `fetch` imports for a Browser's network context until transfers move
     /// behind the platform's port. A module of its own that imports nothing:
     /// a graph whose `fetch` is compiled beside the old platform root (tests/
     /// platform/retained_old_platform.zig) must not reach the facade's files.
-    kit_curl_share: *std.Build.Module,
+    network_share: *std.Build.Module,
     /// kit/sfnt and kit/inflate, whose own test blocks the platform tests
     /// run (decision 20).
     kit_sfnt: *std.Build.Module,
@@ -524,13 +524,8 @@ pub const BindingOptions = struct {
     without: []const []const u8 = &.{},
     static: []const []const u8 = &.{},
     http2: bool,
-    libcurl: ?*std.Build.Step.Compile,
-    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
-    /// store parses certificates with it and hands curl's TLS configuration
-    /// the chain. Null with a system libcurl, whose TLS library is its own.
-    mbedtls: ?*std.Build.Step.Compile = null,
-    brotli: ?kit.brotli.BrotliLibraries,
-    image_codecs: ?*std.Build.Step.Compile,
+    /// The C libraries the kit built for the graph (kit.libraries).
+    libraries: kit.Libraries,
     /// Register the facade by name (the public graph).
     public: bool = false,
     /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
@@ -579,10 +574,7 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
         .options = options_mod,
         .impl = impl,
         .without = options.without,
-        .brotli = options.brotli,
-        .image_codecs = options.image_codecs,
-        .libcurl = options.libcurl,
-        .mbedtls = options.mbedtls,
+        .libraries = options.libraries,
         .clock = options.clock,
         .host = options.host,
         .memory = options.memory,
@@ -608,7 +600,7 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
     } else true;
     // What the bound adapter's implementation links (platform_build.bind).
     bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
+    return .{ .facade = facade, .options = options_mod, .network_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
 }
 
 /// The extra kit parts of the platform named `platform_name` for `target`:
