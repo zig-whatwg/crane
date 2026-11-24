@@ -2341,13 +2341,19 @@ pub inline fn keepCallbackInterface(callback: BorrowedCallbackInterface) Callbac
 /// RegisteredEventListener); WebKit: JSEventListener's `JSC::Weak` function
 /// marked from the target's wrapper (visitJSEventListeners).
 ///
-/// OWNED: `release` exactly once, on the agent's thread and never while the
-/// collector runs. `value` is BORROWED for as long as the hold lives - for
-/// reading only (comparing it, retaining it with `retainValue`, invoking it,
-/// returning it from a getter): never released, weakened or kept. V8: a
-/// TracedReference<Value> in a box. JavaScriptCore and QuickJS trace no
-/// values: their hold is a strong one, kept until released - the holds stay
-/// strong, as before refcount step 8.
+/// OWNED: `release` exactly once, never while the collector runs - on the
+/// agent's thread while the agent lives; an owner that outlives its agent
+/// releases its holds afterwards all the same (the hold reads empty from
+/// the agent's end on, and that release reaches no engine). `value` is
+/// BORROWED for as long as the hold lives - for reading only (comparing it,
+/// retaining it with `retainValue`, invoking it, returning it from a
+/// getter): never released, weakened or kept. V8: a TracedReference<Value>
+/// in a cell of the agent's hold slab, stamped where it is traced and
+/// written empty, in the collection's own pause, when nothing traced it -
+/// V8 reports that death to nobody (docs/engine-protocol.md, "Platform
+/// objects"; v8_wrapper.cpp, "the agent's hold slab"). JavaScriptCore and
+/// QuickJS trace no values: their hold is a strong one, kept until released
+/// - the holds stay strong, as before refcount step 8.
 pub const TracedHold = struct {
     handle: ?*anyopaque = null,
 
