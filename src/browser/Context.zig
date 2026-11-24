@@ -434,9 +434,9 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
 // and the timer being scheduled records `nesting level + 1`, so a chain of
 // self-rescheduling timers is throttled to 4ms once it is more than five deep.
 //
-// Crane already had a correct implementation of this in
-// src/html/event_loop/timers.zig (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD,
-// setTimerInternal). It is DEAD CODE - nothing references its TimerManager. The live
+// Crane once had an implementation of this in src/html/event_loop/timers.zig
+// (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD, setTimerInternal), which nothing
+// referenced; it was deleted with that loop (lane core1, 2026-11-24). The live
 // path is this file -> the realm's TimerInterface -> its agent's event loop
 // (browser/event_loop.zig) -> runtime.native_timer,
 // which applied no clamping whatsoever. So the clamp is implemented here, at the

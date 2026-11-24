@@ -52,20 +52,6 @@ pub const execcommand = @import("execcommand/root.zig");
 // This ensures Zig sees html_core as one module, not two modules owning same files
 const core = @import("html_core");
 
-// Event Loop (§8.1.7)
-pub const event_loop = core.event_loop;
-
-// Re-export commonly used types
-pub const EventLoop = core.EventLoop;
-pub const EventLoopType = core.EventLoopType;
-pub const Task = core.Task;
-pub const TaskSource = core.TaskSource;
-pub const Microtask = core.Microtask;
-pub const Timer = core.Timer;
-pub const TimerManager = core.TimerManager;
-pub const VisibilityState = core.VisibilityState;
-pub const RenderingCallbacks = core.RenderingCallbacks;
-
 // Parser (§13)
 pub const parser = core.parser;
 

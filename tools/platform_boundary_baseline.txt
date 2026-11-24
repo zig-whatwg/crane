@@ -378,8 +378,6 @@ src/hr_time/clock.zig clock.monotonicNanos 1
 src/hr_time/clock.zig clock.wallNanos 3
 src/hr_time/clock.zig std.os.windows 3
 src/html/editing/executor.zig clock.@import 1
-src/html/event_loop/event_loop.zig platform.timer_backend 4
-src/html/event_loop/timers.zig platform.timer_backend 4
 src/html/external_script_loader.zig host.@import 1
 src/html/external_script_loader.zig host.cwd 1
 src/html/external_script_loader.zig host.io 1

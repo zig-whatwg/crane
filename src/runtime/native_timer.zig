@@ -102,9 +102,9 @@ const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 // a window was. Both paths schedule through this manager, so this is the one place
 // both can see.
 //
-// It is not in `src/html/event_loop/timers.zig`, which also implements these steps
-// (`MIN_NESTED_DELAY_MS`, `NESTING_LEVEL_THRESHOLD`): nothing spins that event
-// loop, so that copy never runs.
+// A second copy of these steps (`MIN_NESTED_DELAY_MS`, `NESTING_LEVEL_THRESHOLD`)
+// sat in src/html/event_loop/timers.zig, in an event loop nothing spun; it was
+// deleted with that loop (lane core1, 2026-11-24).
 
 /// The timer nesting state is HTML's, in runtime.timer; these aliases keep
 /// this manager's callers and tests compiling. The level itself is the

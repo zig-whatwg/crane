@@ -5,9 +5,6 @@
 //!
 //! This module provides implementations of various parts of the HTML specification:
 //!
-//! - **Event Loop** (§8.1.7) - Core event loop for coordinating events, scripts,
-//!   rendering, and more
-//! - **Timers** (§8.6) - setTimeout() and setInterval()
 //! - **Parser** (§13) - HTML parsing algorithm with tokenizer and tree builder
 //! - **Custom Elements** - Custom element registry and lifecycle
 //! - **Structured Clone** (§2.7) - Safe passing of structured data
@@ -19,13 +16,6 @@
 //!
 //! ```
 //! src/html/
-//! ├── event_loop/          # Event loop, task queues, microtasks, timers
-//! │   ├── event_loop.zig   # Main EventLoop struct
-//! │   ├── task.zig         # Task and TaskSource definitions
-//! │   ├── task_queue.zig   # TaskQueue and TaskQueueSet
-//! │   ├── microtask.zig    # Microtask queue and checkpoint
-//! │   ├── timers.zig       # setTimeout/setInterval
-//! │   └── root.zig         # Module exports
 //! ├── parser/              # HTML parser (§13)
 //! │   ├── tokenizer.zig    # Tokenization state machine (84 states)
 //! │   ├── tokens.zig       # Token types (DOCTYPE, Tag, Comment, etc.)
@@ -53,42 +43,11 @@
 //! └── root.zig             # This file
 //! ```
 //!
-//! ## Usage
-//!
-//! ```zig
-//! const html = @import("html/root.zig");
-//! const timer_backend = @import("platform/timer_backend.zig");
-//!
-//! // Create event loop
-//! const platform = try timer_backend.RealTimerBackend.init(allocator);
-//! var event_loop = try html.EventLoop.init(allocator, .window, platform.backend());
-//! defer event_loop.deinit();
-//!
-//! // Queue tasks
-//! _ = try event_loop.queueTask(.dom_manipulation, callback, context, null);
-//!
-//! // Set timers
-//! _ = try event_loop.setTimeout(timerCallback, 1000, null);
-//!
-//! // Run
-//! try event_loop.run();
-//! ```
+//! The event loop that runs is not here: a window's is the Browser's
+//! (src/browser/event_loop.zig), a worker's is html/worker_event_loop.zig;
+//! timers are runtime.native_timer.
 
 const std = @import("std");
-
-// Event Loop (§8.1.7)
-pub const event_loop = @import("event_loop/root.zig");
-
-// Re-export commonly used types
-pub const EventLoop = event_loop.EventLoop;
-pub const EventLoopType = event_loop.EventLoopType;
-pub const Task = event_loop.Task;
-pub const TaskSource = event_loop.TaskSource;
-pub const Microtask = event_loop.Microtask;
-pub const Timer = event_loop.Timer;
-pub const TimerManager = event_loop.TimerManager;
-pub const VisibilityState = event_loop.VisibilityState;
-pub const RenderingCallbacks = event_loop.RenderingCallbacks;
 
 // Parser (§13)
 pub const parser = @import("parser/root.zig");

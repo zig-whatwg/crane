@@ -17,7 +17,6 @@ src/fs/entry.zig DirectoryEntry.children 1
 src/html/custom_elements.zig ElementReactionQueues.queues 1
 src/html/custom_elements/form_observers.zig FormIdObservers.by_element 1
 src/html/custom_elements/form_observers.zig FormIdObservers.by_id 1
-src/html/event_loop/timers.zig TimerManager.timers 1
 src/html/module_script.zig AsyncModuleLoader.pending 1
 src/html/navigation/joint_history.zig JointHistory.update_only 1
 src/html/parser/tokens.zig TagToken.attribute_names 1
