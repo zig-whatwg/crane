@@ -32,7 +32,10 @@ pub const InternalState = struct {
     /// observer's holder anchor, reached in a collection's atomic pause,
     /// keeps its callback - a traced hold (refcount step 8). Read-only.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
-        const internal = instance.getState(State).own._internal orelse return;
+        // A checked read: null for an object of another type (lint-impls'
+        // unchecked-state ratchet).
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
         if (internal.observer.callback) |callback| engine.traceHeld(tracer, callback.hold);
     }
 };
