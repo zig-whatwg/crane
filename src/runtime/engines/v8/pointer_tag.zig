@@ -108,16 +108,9 @@
 //! - **Alignment panic at 0x...1**: Pointer is tagged with .global_handle (tag=1)
 //! - **SIGSEGV in V8 code**: Probably passed a .runtime_instance to V8 FFI
 //!
-//! Check for untagged pointer usage with: `isTagged(ptr)` or `getTag(ptr)`
-//!
-//! ## Assertion Helpers
-//!
-//! For catching bugs early:
-//! - `assertUntagged(ptr)`: Panics in debug if pointer is tagged
-//! - `assertUntaggedOrUntag(ptr)`: Debug panics, release untags silently
+//! Read a pointer's tag with `untagPointer(ptr).tag`.
 
 const std = @import("std");
-const builtin = @import("builtin");
 
 // ============================================================================
 // TaggedPointer - Type-safe wrapper for tagged pointers
@@ -133,8 +126,7 @@ const builtin = @import("builtin");
 ///
 /// 1. **Type safety**: Can't accidentally use raw pointer as tagged or vice versa
 /// 2. **Clear intent**: Type name documents the pointer is tagged
-/// 3. **Debug assertions**: Built-in validation in debug builds
-/// 4. **Method chaining**: Cleaner API (`ptr.untagAs(V8Value)`)
+/// 3. **Method chaining**: Cleaner API (`ptr.untagAs(V8Value)`)
 ///
 /// ## Usage
 ///
@@ -143,7 +135,7 @@ const builtin = @import("builtin");
 /// const tagged = TaggedPointer.init(raw_ptr, .global_handle);
 ///
 /// // Check the tag
-/// if (tagged.is(.global_handle)) {
+/// if (tagged.getTag() == .global_handle) {
 ///     const v8_ptr = tagged.untagAs(*v8.Value);
 ///     // Use v8_ptr...
 /// }
@@ -151,8 +143,8 @@ const builtin = @import("builtin");
 /// // Get tag without untagging
 /// const tag = tagged.getTag();
 ///
-/// // Convert to raw for FFI (with debug assertion)
-/// const raw = tagged.toRaw(); // asserts untagged in debug
+/// // Hand the tagged pointer on, tag bits kept
+/// const raw = tagged.toConstPtr();
 /// ```
 pub const TaggedPointer = struct {
     /// The raw tagged address (pointer + tag in low 2 bits)
@@ -169,17 +161,6 @@ pub const TaggedPointer = struct {
         const addr = @intFromPtr(ptr);
 
         // Safety check: pointer must be aligned (low bits should be 0)
-        if (std.debug.runtime_safety) {
-            std.debug.assert(addr & 0x3 == 0);
-        }
-
-        return .{ .raw = addr | @backingInt(tag) };
-    }
-
-    /// Create a tagged pointer from a const pointer and tag.
-    pub fn initConst(ptr: *const anyopaque, tag: Tag) TaggedPointer {
-        const addr = @intFromPtr(ptr);
-
         if (std.debug.runtime_safety) {
             std.debug.assert(addr & 0x3 == 0);
         }
@@ -208,63 +189,10 @@ pub const TaggedPointer = struct {
         return @ptrCast(@alignCast(ptr));
     }
 
-    /// Check if this pointer has a specific tag
-    pub fn is(self: TaggedPointer, tag: Tag) bool {
-        return self.getTag() == tag;
-    }
-
-    /// Check if the pointer is tagged (has non-zero low bits)
-    pub fn isTagged(self: TaggedPointer) bool {
-        return (self.raw & 0x3) != 0;
-    }
-
     /// Convert to *const anyopaque (preserves tag bits)
     /// Use this when you need to pass the tagged pointer to existing code.
     pub fn toConstPtr(self: TaggedPointer) *const anyopaque {
         return @ptrFromInt(self.raw);
-    }
-
-    /// Convert to *anyopaque (preserves tag bits)
-    /// WARNING: This returns the tagged pointer, not the untagged one!
-    pub fn toPtr(self: TaggedPointer) *anyopaque {
-        return @ptrFromInt(self.raw);
-    }
-
-    /// Get the raw usize value
-    pub fn toRawUsize(self: TaggedPointer) usize {
-        return self.raw;
-    }
-
-    /// Debug assertion: panic if tag doesn't match expected
-    pub fn assertTag(self: TaggedPointer, expected: Tag) void {
-        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-            if (self.getTag() != expected) {
-                std.debug.panic(
-                    "TaggedPointer tag mismatch: expected {}, got {}",
-                    .{ expected, self.getTag() },
-                );
-            }
-        }
-    }
-
-    /// Debug assertion: panic if pointer is tagged when untagged expected
-    pub fn assertUntagged(self: TaggedPointer) void {
-        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-            if (self.isTagged()) {
-                std.debug.panic(
-                    "Expected untagged pointer, got tag: {}",
-                    .{self.getTag()},
-                );
-            }
-        }
-    }
-
-    /// Extract both pointer and tag in one operation
-    pub fn extract(self: TaggedPointer) struct { ptr: *anyopaque, tag: Tag } {
-        return .{
-            .ptr = self.untag(),
-            .tag = self.getTag(),
-        };
     }
 };
 
@@ -322,20 +250,6 @@ pub fn tagPointer(ptr: *anyopaque, tag: AnyopaqueTag) *const anyopaque {
     return @ptrFromInt(tagged_addr);
 }
 
-/// Tag a const pointer with type information.
-///
-/// Same as tagPointer but accepts *const anyopaque input.
-pub fn tagConstPointer(ptr: *const anyopaque, tag: AnyopaqueTag) *const anyopaque {
-    const addr = @intFromPtr(ptr);
-
-    if (std.debug.runtime_safety) {
-        std.debug.assert(addr & 0x3 == 0);
-    }
-
-    const tagged_addr = addr | @backingInt(tag);
-    return @ptrFromInt(tagged_addr);
-}
-
 /// Untag a pointer and extract type information.
 ///
 /// Extracts the type tag from the low 2 bits and returns the
@@ -362,193 +276,14 @@ pub fn untagPointer(tagged: *const anyopaque) UntaggedPointer {
     };
 }
 
-/// Check if a pointer is tagged (has non-zero low bits)
-pub fn isTagged(ptr: *const anyopaque) bool {
-    const addr = @intFromPtr(ptr);
-    return (addr & 0x3) != 0;
-}
-
-/// Get the tag from a pointer without clearing the bits
-pub fn getTag(ptr: *const anyopaque) AnyopaqueTag {
-    const addr = @intFromPtr(ptr);
-    return @fromBackingInt(@intCast(addr & 0x3));
-}
-
-/// Error type for pointer tag validation
-pub const PointerTagError = error{
-    /// A tagged pointer was passed where an untagged pointer was expected
-    TaggedPointerAtFFIBoundary,
-};
-
-/// Assert that a pointer is untagged (has zero low bits).
-///
-/// This is a debug-mode assertion to catch cases where tagged pointers
-/// are accidentally passed to FFI boundaries. In release builds, this
-/// function does nothing to avoid runtime overhead.
-///
-/// INTENTIONAL PANIC: Passing tagged pointers to V8 FFI functions causes
-/// undefined behavior or crashes. This panic is a fail-fast mechanism to
-/// catch programming errors early in development.
-///
-/// For code that needs error handling instead of panic, use checkUntagged().
-///
-/// Usage:
-/// ```zig
-/// fn v8IsString(js_value: *const anyopaque) bool {
-///     assertUntagged(js_value);  // Catches bugs in debug builds
-///     const value: *ffi.Value = @ptrCast(js_value);
-///     return ffi.v8_Value_IsString(value);
-/// }
-/// ```
-pub fn assertUntagged(ptr: *const anyopaque) void {
-    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-        if (isTagged(ptr)) {
-            @panic("Tagged pointer passed to FFI boundary - call untagPointer() first");
-        }
-    }
-}
-
-/// Check that a pointer is untagged, returning error if tagged.
-///
-/// This is the error-returning alternative to assertUntagged().
-/// Use this when you need to handle tagged pointers gracefully
-/// rather than panicking.
-///
-/// Returns the untagged pointer on success for convenience.
-pub fn checkUntagged(ptr: *const anyopaque) PointerTagError!*anyopaque {
-    if (isTagged(ptr)) {
-        return PointerTagError.TaggedPointerAtFFIBoundary;
-    }
-    return @constCast(ptr);
-}
-
-/// Assert that a pointer is untagged, or untag it and return the untagged pointer.
-///
-/// This is a convenience function that:
-/// - In Debug/ReleaseSafe: panics if pointer is tagged (catches bugs early)
-/// - In ReleaseFast/ReleaseSmall: returns the untagged pointer silently
-///
-/// INTENTIONAL PANIC in debug mode: This is a fail-fast mechanism to catch
-/// programming errors. Passing tagged pointers to V8 causes crashes or UB.
-///
-/// For code that needs error handling, use checkUntaggedOrUntag().
-///
-/// This is useful for FFI boundaries where you want to catch bugs in development
-/// but also want automatic untagging in production for resilience.
-pub fn assertUntaggedOrUntag(ptr: *const anyopaque) *anyopaque {
-    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-        if (isTagged(ptr)) {
-            @panic("Tagged pointer passed to FFI boundary - call untagPointer() first");
-        }
-        // In debug mode, we've verified it's untagged, return as-is
-        return @constCast(ptr);
-    } else {
-        // In release mode, silently untag for resilience
-        return untagPointer(ptr).ptr;
-    }
-}
-
-/// Check that a pointer is untagged, or untag it and return the result.
-///
-/// This is the error-returning alternative to assertUntaggedOrUntag().
-/// In Debug/ReleaseSafe mode, returns error if tagged.
-/// In ReleaseFast/ReleaseSmall mode, silently untags.
-///
-/// Use this when you need to handle tagged pointers gracefully.
-pub fn checkUntaggedOrUntag(ptr: *const anyopaque) PointerTagError!*anyopaque {
-    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-        if (isTagged(ptr)) {
-            return PointerTagError.TaggedPointerAtFFIBoundary;
-        }
-        return @constCast(ptr);
-    } else {
-        return untagPointer(ptr).ptr;
-    }
-}
-
 // ============================================================================
-// Debug Assertions for FFI Boundary Safety
+// Debug tracing hooks
 // ============================================================================
 
-/// Debug assertion helpers for catching pointer tagging bugs early.
-///
-/// These functions compile away in ReleaseFast and ReleaseSmall builds,
-/// providing zero runtime overhead in production while catching bugs in
-/// development.
-///
-/// ## Usage
-///
-/// ```zig
-/// fn v8CallFunction(ptr: *anyopaque) void {
-///     // Catch bugs: tagged pointers passed to V8 will crash
-///     DebugAssertions.assertNotTagged(ptr);
-///     ffi.v8_Function_Call(ptr);
-/// }
-///
-/// fn processValue(ptr: *anyopaque, expected: TaggedPointer.Tag) void {
-///     // Verify we got the expected tag
-///     DebugAssertions.assertTagged(ptr, expected);
-///     // ...
-/// }
-/// ```
+/// Tracing hooks at the tagging boundaries (conversions.zig, engine.zig),
+/// disabled: each compiles to nothing.
 pub const DebugAssertions = struct {
     const debug_log = std.log.scoped(.pointer_tag);
-
-    /// Assert that a pointer is NOT tagged (low 2 bits are zero).
-    ///
-    /// Use this at FFI entry points before passing pointers to V8.
-    /// Passing tagged pointers to V8 causes crashes or undefined behavior.
-    ///
-    /// In debug/safe builds: panics with detailed message
-    /// In release builds: compiles away completely
-    pub fn assertNotTagged(ptr: *const anyopaque) void {
-        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-            const addr = @intFromPtr(ptr);
-            if (addr & 0x3 != 0) {
-                std.debug.panic(
-                    "Expected untagged pointer, got tagged: 0x{x} (tag bits: 0b{b:0>2}, tag: {})",
-                    .{ addr, addr & 0x3, @as(AnyopaqueTag, @fromBackingInt(@intCast(addr & 0x3))) },
-                );
-            }
-        }
-    }
-
-    /// Assert that a pointer has a specific tag.
-    ///
-    /// Use this to verify pointer type at boundaries where you expect
-    /// a specific type of tagged pointer.
-    ///
-    /// In debug/safe builds: panics with detailed message if wrong tag
-    /// In release builds: compiles away completely
-    pub fn assertTagged(ptr: *const anyopaque, expected: AnyopaqueTag) void {
-        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-            const actual = getTag(ptr);
-            if (actual != expected) {
-                std.debug.panic(
-                    "Pointer tag mismatch: expected {}, got {} (address: 0x{x})",
-                    .{ expected, actual, @intFromPtr(ptr) },
-                );
-            }
-        }
-    }
-
-    /// Assert that a raw address from V8 is aligned (not tagged).
-    ///
-    /// V8 should always return properly aligned pointers. If we get
-    /// a misaligned one, something is very wrong.
-    ///
-    /// In debug/safe builds: panics with detailed message
-    /// In release builds: compiles away completely
-    pub fn assertV8ReturnedAligned(addr: usize) void {
-        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
-            if (addr & 0x3 != 0) {
-                std.debug.panic(
-                    "V8 returned misaligned pointer: 0x{x} (low bits: 0b{b:0>2})",
-                    .{ addr, addr & 0x3 },
-                );
-            }
-        }
-    }
 
     /// Log creation of tagged pointer (debug only, not panic).
     ///

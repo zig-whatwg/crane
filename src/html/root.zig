@@ -116,9 +116,6 @@ pub const internTagName = parser.internTagName;
 pub const internTagNameExact = parser.internTagNameExact;
 /// An element's static name record (lane nd2 N2), or null: dom.element_name.
 pub const internElementName = parser.internElementName;
-pub const isKnownHtmlTag = parser.isKnownHtmlTag;
-pub const eqlInternedTag = parser.eqlInternedTag;
-pub const internAttributeName = parser.internAttributeName;
 
 // Document write support (§8.4 - document.write/writeln/open/close)
 pub const DocumentWriteState = parser.DocumentWriteState;

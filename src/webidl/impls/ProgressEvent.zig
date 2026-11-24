@@ -182,36 +182,3 @@ pub fn get_total(instance: *runtime.Instance) anyerror!f64 {
     };
     return internal.total;
 }
-
-// ============================================================================
-// Helper functions for creating ProgressEvents
-// ============================================================================
-
-/// Create a ProgressEvent with the given parameters
-///
-/// This is a convenience function for internal use (e.g., FileReader)
-/// that creates a fully initialized ProgressEvent.
-pub fn create(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    event_type: []const u8,
-    length_computable: bool,
-    loaded: u64,
-    total: u64,
-) !*runtime.Instance {
-    return call_constructor(
-        allocator,
-        ctx,
-        runtime.DOMString.initInterned(event_type),
-        .{
-            .base = .{
-                .bubbles = false, // ProgressEvents don't bubble
-                .cancelable = false, // ProgressEvents are not cancelable
-                .composed = false,
-            },
-            .lengthComputable = length_computable,
-            .loaded = @floatFromInt(loaded),
-            .total = @floatFromInt(total),
-        },
-    );
-}

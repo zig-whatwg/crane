@@ -50,9 +50,6 @@ pub const TimeOrigin = time_origin.TimeOrigin;
 // Re-export commonly used functions at top level
 pub const coarsenTime = coarsen.coarsenTime;
 pub const toMilliseconds = clock.toMilliseconds;
-pub const fromMilliseconds = clock.fromMilliseconds;
-pub const currentCoarsenedWallTime = time_origin.currentCoarsenedWallTime;
-pub const coarsenedSharedCurrentTime = time_origin.coarsenedSharedCurrentTime;
 
 // Constants
 pub const DEFAULT_RESOLUTION_NS = coarsen.DEFAULT_RESOLUTION_NS;

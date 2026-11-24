@@ -188,8 +188,3 @@ pub fn toMilliseconds(ns: Nanoseconds) f64 {
     const rest: f64 = @floatFromInt(@mod(ns, std.time.ns_per_ms));
     return whole + rest / @as(f64, std.time.ns_per_ms);
 }
-
-/// Convert milliseconds to nanoseconds
-pub fn fromMilliseconds(ms: f64) Nanoseconds {
-    return @intFromFloat(ms * @as(f64, std.time.ns_per_ms));
-}

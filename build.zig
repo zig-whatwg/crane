@@ -7367,16 +7367,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
 
-    const streams_read_into_request_promise_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/read_into_request_promise.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "read_into_request", .module = streams_read_into_request_mod },
-        },
-    });
-
     const streams_pull_into_descriptor_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/pull_into_descriptor.zig"),
         .target = target,
@@ -7399,17 +7389,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_cross_realm_transform_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
         },
     });
 
@@ -7448,7 +7427,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     streams_mod.addImport("view_construction", streams_view_construction_mod);
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
-    streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -7464,7 +7442,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     impls_mod.addImport("streams_read_request", streams_read_request_mod);
     impls_mod.addImport("streams_write_request", streams_write_request_mod);
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
-    impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 

@@ -202,21 +202,13 @@ pub const pointer_tag = @import("pointer_tag.zig");
 pub const AnyopaqueTag = pointer_tag.AnyopaqueTag;
 pub const TaggedPointer = pointer_tag.TaggedPointer;
 pub const tagPointer = pointer_tag.tagPointer;
-pub const tagConstPointer = pointer_tag.tagConstPointer;
 pub const untagPointer = pointer_tag.untagPointer;
-pub const isTaggedPointer = pointer_tag.isTagged;
-pub const getPointerTag = pointer_tag.getTag;
 
 /// Type-Safe JavaScript Value Representation
 /// Use JSValue instead of *const anyopaque for type safety
 pub const js_value = @import("js_value.zig");
 pub const JSValue = js_value.JSValue;
 pub const OptionalJSValue = js_value.OptionalJSValue;
-
-/// Type-Safe Stored Error for Stream Implementations
-/// Use StoredError instead of stored_error: ?*anyopaque
-pub const stored_error = @import("stored_error.zig");
-pub const StoredError = stored_error.StoredError;
 
 /// V8 Array Creation Utilities
 /// High-level functions for creating V8 Arrays from Zig data
@@ -287,12 +279,6 @@ pub const protocol_agents = @import("protocol_agents.zig");
 /// The agent's node wrappers (the wrapper redesign); tests/v8 runs a realm's
 /// end's first step through it (`releaseRealm`).
 pub const node_wrappers = @import("node_wrappers.zig");
-
-/// Bfcache (Back-Forward Cache) Frozen Context Manager
-pub const frozen_context_manager = @import("frozen_context_manager.zig");
-pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;
-pub const FrozenContext = frozen_context_manager.FrozenContext;
-pub const FrozenTimer = frozen_context_manager.FrozenTimer;
 
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;

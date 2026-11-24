@@ -176,23 +176,6 @@ pub const CleanupCoordinator = struct {
         self.deferred_storage.clearAndFree(self.allocator);
     }
 
-    /// Register a cleanup handler for a specific phase
-    ///
-    /// Handlers are called in phase order during context teardown.
-    /// Multiple handlers can be registered for the same phase.
-    pub fn registerHandler(
-        self: *Self,
-        phase: CleanupPhase,
-        handler: *const fn (*anyopaque) void,
-        context: *anyopaque,
-    ) !void {
-        try self.handlers.append(self.allocator, .{
-            .phase = phase,
-            .handler = handler,
-            .context = context,
-        });
-    }
-
     /// Begin context teardown
     ///
     /// Sets the teardown flag to signal GC callbacks to skip cleanup.
@@ -270,30 +253,6 @@ pub const CleanupCoordinator = struct {
         if (phase_idx < self.phase_cleanup_counts.len) {
             self.phase_cleanup_counts[phase_idx] += 1;
         }
-    }
-
-    /// Get cleanup statistics for debugging
-    pub fn getStats(self: *const Self) CleanupStats {
-        var total: usize = 0;
-        for (self.phase_cleanup_counts) |count| {
-            total += count;
-        }
-        return .{
-            .total_cleaned = total,
-            .per_phase = self.phase_cleanup_counts,
-            .current_phase = self.current_phase,
-            .is_complete = self.context_teardown_complete,
-        };
-    }
-
-    /// Reset for testing
-    pub fn reset(self: *Self) void {
-        self.current_phase = .not_started;
-        self.context_teardown_started = false;
-        self.context_teardown_complete = false;
-        self.phase_cleanup_counts = @splat(0);
-        self.handlers.clearRetainingCapacity();
-        self.deferred_storage.clearRetainingCapacity();
     }
 };
 

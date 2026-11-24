@@ -210,17 +210,6 @@ fn estimateEpoch() clock.Nanoseconds {
 // process-wide: HR-Time's one estimated monotonic time of the Unix epoch per group of settings objects that can communicate (the process is a superset of every group, and its Browsers on many threads share one monotonic and one wall clock; Gecko keeps one PerformanceService per process); written once while the process starts (Performance.installHooks), before any Browser or worker thread, and only read after.
 var process_estimated_epoch: Hook(?clock.Nanoseconds) = .init(null);
 
-/// Get the current coarsened wall time (global, no context)
-///
-/// Per spec: "current coarsened wall time" is the result of calling
-/// coarsen time with the wall clock's unsafe current time.
-///
-/// Uses default resolution (not cross-origin isolated).
-pub fn currentCoarsenedWallTime() clock.Nanoseconds {
-    const wall_time = clock.WallClock.unsafeCurrentTime();
-    return coarsen.coarsenTime(wall_time, false);
-}
-
 /// Get the unsafe shared current time
 ///
 /// Per spec: "unsafe shared current time" must return the
@@ -229,14 +218,4 @@ pub fn currentCoarsenedWallTime() clock.Nanoseconds {
 /// This is NOT coarsened and should only be used internally.
 pub fn unsafeSharedCurrentTime() clock.Nanoseconds {
     return clock.MonotonicClock.unsafeCurrentTime();
-}
-
-/// Get the coarsened shared current time
-///
-/// Per spec: "coarsened shared current time" given an optional boolean
-/// crossOriginIsolatedCapability (default false), must return the result
-/// of calling coarsen time with the unsafe shared current time.
-pub fn coarsenedSharedCurrentTime(cross_origin_isolated: bool) clock.Nanoseconds {
-    const unsafe_time = unsafeSharedCurrentTime();
-    return coarsen.coarsenTime(unsafe_time, cross_origin_isolated);
 }

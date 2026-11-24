@@ -670,17 +670,6 @@ pub const ContextData = struct {
         return self.realm_info;
     }
 
-    /// Check if an API with given exposure is available in this context
-    ///
-    /// Per WebIDL spec, [Exposed] attribute determines availability:
-    /// - [Exposed=Window] -> only in Window
-    /// - [Exposed=Worker] -> only in Workers
-    /// - [Exposed=(Window,Worker)] -> both
-    /// - [Exposed=*] -> all contexts
-    pub fn isExposedTo(self: *const Self, exposure: Exposure) bool {
-        return self.realm_info.isExposedTo(exposure);
-    }
-
     /// Check if this is a Window context
     pub fn isWindow(self: *const Self) bool {
         return self.realm_info.isWindow();
@@ -694,11 +683,6 @@ pub const ContextData = struct {
     /// Check if this is a Worklet context
     pub fn isWorklet(self: *const Self) bool {
         return self.realm_info.isWorklet();
-    }
-
-    /// Get human-readable context name for debugging
-    pub fn contextName(self: *const Self) []const u8 {
-        return self.realm_info.contextName();
     }
 
     // ========================================================================

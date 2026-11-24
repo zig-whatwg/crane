@@ -42,34 +42,6 @@ pub const ConsoleValue = union(enum) {
         }
     }
 
-    /// Format the value for printing
-    /// Allocates a string representation that must be freed by caller
-    pub fn toString(self: ConsoleValue, allocator: std.mem.Allocator) ![]const u8 {
-        return switch (self) {
-            .undefined => try allocator.dupe(u8, "undefined"),
-            .null => try allocator.dupe(u8, "null"),
-            .boolean => |b| if (b) try allocator.dupe(u8, "true") else try allocator.dupe(u8, "false"),
-            .number => |n| blk: {
-                // Handle special number values
-                if (std.math.isNan(n)) {
-                    break :blk try allocator.dupe(u8, "NaN");
-                } else if (std.math.isInf(n)) {
-                    break :blk if (n > 0)
-                        try allocator.dupe(u8, "Infinity")
-                    else
-                        try allocator.dupe(u8, "-Infinity");
-                } else {
-                    // Format number as string
-                    break :blk try std.fmt.allocPrint(allocator, "{d}", .{n});
-                }
-            },
-            .string => |s| try allocator.dupe(u8, s),
-            .object => try allocator.dupe(u8, "[object Object]"),
-            .symbol => try allocator.dupe(u8, "Symbol()"),
-            .bigint => |s| try std.fmt.allocPrint(allocator, "{s}n", .{s}),
-        };
-    }
-
     /// Get the type name of the value
     pub fn typeName(self: ConsoleValue) []const u8 {
         return switch (self) {
