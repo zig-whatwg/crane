@@ -102,7 +102,6 @@ pub const DoctypeToken = parser.DoctypeToken;
 pub const CommentToken = parser.CommentToken;
 pub const ParseError = parser.ParseError;
 pub const ParseErrorCode = parser.ParseErrorCode;
-pub const ParseErrorCollector = parser.ParseErrorCollector;
 
 // Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
 pub const parseFragment = parser.parseFragment;
@@ -116,14 +115,6 @@ pub const internTagName = parser.internTagName;
 pub const internTagNameExact = parser.internTagNameExact;
 /// An element's static name record (lane nd2 N2), or null: dom.element_name.
 pub const internElementName = parser.internElementName;
-
-// Document write support (§8.4 - document.write/writeln/open/close)
-pub const DocumentWriteState = parser.DocumentWriteState;
-pub const DocumentWriteError = parser.DocumentWriteError;
-pub const documentOpen = parser.documentOpen;
-pub const documentWrite = parser.documentWrite;
-pub const documentWriteln = parser.documentWriteln;
-pub const documentClose = parser.documentClose;
 
 // Custom Elements
 pub const custom_element_reactions = @import("custom_elements/reactions.zig");
@@ -170,15 +161,6 @@ pub const IFrameError = window.IFrameError;
 // Navigation & History (§7.2-7.4)
 pub const navigation = @import("navigation/root.zig");
 
-// Module Graph and Async Fetching (§8.1.6)
-pub const module_graph = @import("module_graph.zig");
-
-// Re-export commonly used module graph types
-pub const ModuleGraph = module_graph.ModuleGraph;
-pub const ModuleNode = module_graph.ModuleNode;
-pub const ModuleStatus = module_graph.ModuleStatus;
-pub const ModuleGraphFetcher = module_graph.ModuleGraphFetcher;
-
 // Web Workers (§10)
 pub const workers = @import("workers/root.zig");
 
@@ -216,16 +198,6 @@ pub const WebStorageType = web_storage.StorageType;
 pub const WebStorageError = web_storage.StorageError;
 pub const getLocalStorage = web_storage.getLocalStorage;
 pub const getSessionStorage = web_storage.getSessionStorage;
-
-// Stylesheet Blocking (§14.3.3)
-pub const stylesheet_blocking = @import("stylesheet_blocking.zig");
-
-// Re-export commonly used stylesheet blocking types
-pub const StylesheetBlockingTracker = stylesheet_blocking.StylesheetBlockingTracker;
-pub const PendingStylesheet = stylesheet_blocking.PendingStylesheet;
-pub const isBlockingStylesheet = stylesheet_blocking.isBlockingStylesheet;
-pub const isStylesheetRel = stylesheet_blocking.isStylesheetRel;
-pub const shouldBlockScriptExecution = stylesheet_blocking.shouldBlockScriptExecution;
 
 // Permissions Policy (W3C Permissions Policy spec)
 pub const permissions_policy = @import("permissions_policy.zig");

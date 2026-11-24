@@ -82,21 +82,12 @@ pub const DoctypeToken = core.DoctypeToken;
 pub const CommentToken = core.CommentToken;
 pub const ParseError = core.ParseError;
 pub const ParseErrorCode = core.ParseErrorCode;
-pub const ParseErrorCollector = core.ParseErrorCollector;
 
 // Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
 pub const parseFragment = core.parseFragment;
 pub const parseHTMLFromString = core.parseHTMLFromString;
 pub const FragmentParseResult = core.FragmentParseResult;
 pub const FragmentParseOptions = core.FragmentParseOptions;
-
-// Document write support (§8.4 - document.write/writeln/open/close)
-pub const DocumentWriteState = core.DocumentWriteState;
-pub const DocumentWriteError = core.DocumentWriteError;
-pub const documentOpen = core.documentOpen;
-pub const documentWrite = core.documentWrite;
-pub const documentWriteln = core.documentWriteln;
-pub const documentClose = core.documentClose;
 
 // Custom Elements (requires webidl access for CustomElementDefinition)
 // Note: These modules are NOT available from html_core because they access

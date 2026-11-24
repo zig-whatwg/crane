@@ -9,7 +9,9 @@
 //!
 //! - `fetchNavigationResource`: Performs the actual fetch for navigation
 //! - `processNavigationResponse`: Handles the response from navigation fetch
-//! - `isHtmlResponse`: Checks if response is HTML based on Content-Type
+//!
+//! What kind of document a response makes (HTML, XML, ...) is decided by
+//! navigation/document_type.zig's classify.
 
 const std = @import("std");
 const mimesniff = @import("mimesniff");
@@ -766,17 +768,6 @@ pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetch
     var result = NavigationFetchResult.init(allocator);
     result.final_url = allocator.dupe(u8, url) catch return NavigationFetchError.OutOfMemory;
     return result;
-}
-
-/// Check if a response is HTML based on Content-Type
-pub fn isHtmlResponse(content_type: ?[]const u8) bool {
-    const ct = content_type orelse return false;
-
-    // Check for text/html or application/xhtml+xml
-    if (std.mem.startsWith(u8, ct, "text/html")) return true;
-    if (std.mem.startsWith(u8, ct, "application/xhtml+xml")) return true;
-
-    return false;
 }
 
 /// Check if a response is XML based on Content-Type

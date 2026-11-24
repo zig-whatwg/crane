@@ -22,7 +22,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const csp = @import("csp");
 const html_core = @import("html_core");
-const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 
 // Document's state type (dom.document_state): the impl owns each Document's
 // state and registers it in `Registry`; these algorithms read it there.
@@ -548,66 +547,4 @@ pub fn isInlineScriptAllowedByCSP(
     }
 
     return true;
-}
-
-// =============================================================================
-// Stylesheet Blocking (HTML Standard §14.3.3)
-// =============================================================================
-
-/// Check if document has a style sheet that is blocking scripts.
-pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.stylesheet_tracker.hasBlockingStylesheet();
-}
-
-/// Get the stylesheet blocking tracker.
-pub fn getStylesheetTracker(instance: *runtime.Instance) ?*StylesheetBlockingTracker {
-    const internal = getInternal(instance) orelse return null;
-    return &internal.stylesheet_tracker;
-}
-
-/// Add a stylesheet to the blocking tracker.
-pub fn addBlockingStylesheet(
-    instance: *runtime.Instance,
-    id: []const u8,
-    url: []const u8,
-    is_blocking: bool,
-) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.stylesheet_tracker.addStylesheet(id, url, is_blocking);
-}
-
-/// Mark a stylesheet as loaded.
-pub fn markStylesheetLoaded(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.markLoaded(id);
-}
-
-/// Mark a stylesheet as failed.
-pub fn markStylesheetFailed(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.markFailed(id);
-}
-
-/// Remove a stylesheet from tracking.
-pub fn removeBlockingStylesheet(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.removeStylesheet(id);
-}
-
-/// Get the count of blocking stylesheets.
-pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.stylesheet_tracker.getBlockingCount();
-}
-
-/// Set callback for when all blocking stylesheets are resolved.
-/// KEEP: context is *anyopaque for user-provided callback context (standard callback pattern)
-pub fn setStylesheetBlockingResolvedCallback(
-    instance: *runtime.Instance,
-    callback: StylesheetBlockingTracker.BlockingResolvedCallback,
-    context: ?*anyopaque,
-) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
 }
