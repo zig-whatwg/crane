@@ -281,21 +281,3 @@ pub fn asArrayOpt(value: ?*ffi.Value) ?*ffi.Array {
     const v = value orelse return null;
     return asArray(v);
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const std = @import("std");
-
-test "toValue comptime type checking" {
-    // This test verifies the compile-time type checking works.
-    // We can't actually call these without a V8 isolate, but we can
-    // verify the function compiles correctly for valid types.
-
-    // These should compile (valid types):
-    _ = @TypeOf(toValue);
-
-    // The following would fail at comptime if uncommented:
-    // _ = toValue(@as(*u32, undefined)); // Error: not a V8 type
-}

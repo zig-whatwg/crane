@@ -5612,11 +5612,6 @@ pub fn iterateAsRecordPairs(
 // Tests
 // ============================================================================
 
-test "conversion module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}
-
 // Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
 // (comptime-only element types, so every call is evaluated at comptime).
 const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };

@@ -566,35 +566,3 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     // Call the original callback
     ctx.callback(ctx.context);
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-// Note: These tests require V8 to be initialized and an isolate to be created.
-// They are integration tests that should be run with V8 available.
-
-test "V8EventLoop - basic initialization" {
-    // Skip if V8 not available
-    // This would need actual V8 setup
-    if (true) return error.SkipZigTest;
-
-    // const allocator = testing.allocator;
-    // const isolate = v8_ffi.v8_Isolate_New();
-    // defer v8_ffi.v8_Isolate_Dispose(isolate);
-    //
-    // var loop = V8EventLoop.init(isolate, allocator);
-    // defer loop.deinit();
-    //
-    // const ev_loop = loop.eventLoop();
-    // try testing.expect(ev_loop.ptr != null);
-}
-
-test "V8EventLoop - microtask execution" {
-    // Skip if V8 not available
-    if (true) return error.SkipZigTest;
-
-    // Integration test - would need V8 setup
-}

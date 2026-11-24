@@ -181,12 +181,3 @@ pub fn getCurrentIsolate() ArrayCreationError!*v8.Isolate {
 pub fn getCurrentContext(isolate: *v8.Isolate) ArrayCreationError!*v8.Context {
     return v8.v8_Isolate_GetCurrentContext(isolate) orelse return ArrayCreationError.NoContext;
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "createEmptyArray" {
-    // This test requires V8 initialization which we can't do in unit tests
-    // It serves as documentation for the API
-}

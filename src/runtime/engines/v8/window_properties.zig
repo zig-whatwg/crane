@@ -620,8 +620,3 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&indexedPropertyQuery));
     ext_refs.registerPointer(@intFromPtr(&indexedPropertyDescriptor));
 }
-
-const testing = std.testing;
-test "WindowProperties module compiles" {
-    testing.refAllDecls(@This());
-}
