@@ -2277,3 +2277,351 @@ assertion       = test1: display:none triggers notification: assert_unreached: T
 kind            = needs-renderer
 why             = each test observes an SVG element, takes the initial notification, then changes an attribute that moves its bounding box (circle r, ellipse rx, rect width, text font-size, ...) and waits for the second notification; with no layout box every SVG bounding box stays 0x0, so each wait times out (1 s per test) until the harness timeout ends test9 and leaves test10-test17 and guard unrun
 assertion       = test0: observe svg:circle: assert_unreached: Timed out waiting for notification. (1000ms) Reached unreachable code
+
+# needs-decoder: media-elements/ and webvtt/ (lane vtt1, 2026-11-23; the integrator added the directories to the worklist
+# at 2:08 PM ET). Evidence from the tip's production run on server1 (lane/vtt1 c350fca7e): every file below waits on a
+# video or non-WAV audio resource - getVideoURI picks .mp4 and getAudioURI .mp3, since canPlayType answers "" for
+# WebM and Ogg - and the default platform decodes WAV only.
+
+[html/semantics/embedded-content/media-elements/audio_loop_base.html]
+kind      = needs-decoder
+why       = waits for a looping audio to seek back to the start; the default platform cannot decode the MP3, so it fails before playing
+media     = /media/sound_0.mp3 (audio/mpeg)
+assertion = ERROR: Unhandled rejection - FAIL: Check if audio.loop is set to true that expecting the seeking event is fired more than once - assert_unreached: Reached unreachable code
+
+[html/semantics/embedded-content/media-elements/audio_loop_seek_to_eos.html]
+kind      = needs-decoder
+why       = seeks a looping audio to its end; the MP3 is not decoded, so play() rejects with NotSupportedError
+media     = /media/sound_5.mp3 (audio/mpeg)
+assertion = FAIL: seeking to the end of looping audio - promise_test: Unhandled rejection with value: object "NotSupportedError"
+
+[html/semantics/embedded-content/media-elements/autoplay-with-broken-track.html]
+kind      = needs-decoder
+why       = each subtest waits for an autoplaying video to play beside a broken default track; the MP4 is not decoded, so it never plays
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: <video autoplay> with <track src="invalid://url" default=""> child - Test timed out (and 2 more not passing)
+
+[html/semantics/embedded-content/media-elements/event_playing_noautoplay.html]
+kind      = needs-decoder
+why       = the play() subtests wait for playing on an MP3 audio and an MP4 video the platform cannot decode (the two outer setup tests pass)
+media     = /media/sound_5.mp3 (audio/mpeg), /media/movie_5.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - NOTRUN: calling play() on audio should trigger playing event - NOTRUN (and 1 more not passing) (2/4 pass)
+
+[html/semantics/embedded-content/media-elements/event_timeupdate.html]
+kind      = needs-decoder
+why       = both subtests wait for timeupdate from a playing autoplay audio and video the platform cannot decode
+media     = /media/sound_5.mp3 (audio/mpeg), /media/movie_5.mp4 (video/mp4)
+assertion = NOTRUN: setting src attribute on a sufficiently long autoplay audio should trigger timeupdate event - NOTRUN (and 1 more not passing)
+
+[html/semantics/embedded-content/media-elements/event_timeupdate_noautoplay.html]
+kind      = needs-decoder
+why       = the play() subtests wait for timeupdate from an audio and a video the platform cannot decode (the two outer setup tests pass)
+media     = /media/sound_5.mp3 (audio/mpeg), /media/movie_5.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - FAIL: calling play() on a sufficiently long audio should trigger timeupdate event - assert_unreached: Reached unreachable code (and 1 more not passing) (2/4 pass)
+
+[html/semantics/embedded-content/media-elements/interfaces/TextTrack/activeCues.html]
+kind      = needs-decoder
+why       = the video subtests wait for the video to load and play past cues; the MP4 is not decoded (the three cue-list subtests pass)
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: TextTrack.activeCues, video loading - Test timed out (and 2 more not passing) (3/6 pass)
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/autoplay-overrides-preload.html]
+kind      = needs-decoder
+why       = each subtest waits for an autoplaying MP3 audio to load past preload; it is not decoded, so the element fires error
+media     = /media/sound_5.mp3 (audio/mpeg)
+assertion = FAIL: autoplay (set first) overrides preload "none" - assert_unreached: Reached unreachable code (and 3 more not passing)
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-currentSrc.html]
+kind      = needs-decoder
+why       = plays MP3 sources to read currentSrc in each scenario; they are not decoded, so play() rejects
+media     = /media/sound_0.mp3, /media/sine440.mp3 (audio/mpeg)
+assertion = ERROR: NotSupportedError: NotSupportedError - TIMEOUT: Test currentSrc behaviour in various playback scenarios - Test timed out
+
+[html/semantics/embedded-content/media-elements/media_fragment_seek.html]
+kind      = needs-decoder
+why       = reads currentTime after loadedmetadata of a #t=4 video; with no decoder there is no metadata, so the fragment never seeks
+media     = /media/movie_5.mp4#t=4 (video/mp4)
+assertion = FAIL: Video should seek to time specified in media fragment syntax - assert_equals: expected 4 but got 0
+
+[html/semantics/embedded-content/media-elements/offsets-into-the-media-resource/currentTime-move-within-document.html]
+kind      = needs-decoder
+why       = plays a video, moves it and checks its position; the MP4 is not decoded, so play() rejects
+media     = /media/movie_300.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: playback should not reset when moving within a document - Test timed out
+
+[html/semantics/embedded-content/media-elements/offsets-into-the-media-resource/currentTime.html]
+kind      = needs-decoder
+why       = the readyState > HAVE_NOTHING subtest waits for the video to load; the MP4 is not decoded (the HAVE_NOTHING subtests pass)
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: setting currentTime when readyState is greater than HAVE_NOTHING - Test timed out (2/3 pass)
+
+[html/semantics/embedded-content/media-elements/played-loop.html]
+kind      = needs-decoder
+why       = waits for a looping video to wrap around; the MP4 is not decoded
+media     = /media/test-1s.mp4 (video/mp4)
+assertion = TIMEOUT: played TimeRanges should be preserved and not reset when video loops - Test timed out
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/fragmented-mp4-end.html]
+kind      = needs-decoder
+why       = requires canPlayType('video/mp4; codecs=avc1.64000D') to be "probably"; the default platform decodes no video
+media     = /media-source/mp4/test-v-128k-320x240-24fps-8kfr.mp4 (video/mp4)
+assertion = FAIL: fragmented-mp4-end - Test needs canPlayType('video/mp4; codecs=avc1.64000D') == 'probably'; got ''.
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/pause-move-to-other-document.html]
+kind      = needs-decoder
+why       = plays a video and moves it to another document; the MP4 is not decoded, so play() rejects
+media     = /media/movie_300.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: paused state when moving to other document - Test timed out
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/pause-move-within-document.html]
+kind      = needs-decoder
+why       = plays a video and moves it within the document; the MP4 is not decoded, so play() rejects
+media     = /media/movie_300.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: paused state when moving within a document - Test timed out
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/pause-remove-from-document-different-load.html]
+kind      = needs-decoder
+why       = plays a video, removes it and loads another; the MP4 is not decoded, so play() rejects
+media     = /media/movie_300.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: paused state when removing from a document - Test timed out
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/pause-remove-from-document.html]
+kind      = needs-decoder
+why       = plays a video and removes it; the MP4 is not decoded, so play() rejects
+media     = /media/movie_300.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: paused state when removing from a document - Test timed out
+
+[html/semantics/embedded-content/media-elements/playing-the-media-resource/play-in-detached-document.html]
+kind      = needs-decoder
+why       = waits for a video in a detached document to play; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: play() in detached document - Test timed out
+
+[html/semantics/embedded-content/media-elements/ready-states/autoplay-hidden.optional.html]
+kind      = needs-decoder
+why       = waits for a hidden autoplay video to play once visible; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: Allow delaying autoplay until video elements become visible - Test timed out
+
+[html/semantics/embedded-content/media-elements/ready-states/autoplay-with-slow-text-tracks.html]
+kind      = needs-decoder
+why       = waits for an autoplay video to play once its slow text track loads; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = NOTRUN: autoplay with slow text tracks - NOTRUN
+
+[html/semantics/embedded-content/media-elements/ready-states/autoplay.html]
+kind      = needs-decoder
+why       = each subtest expects canplay from an autoplay audio or video; neither is decoded, so the element fires error instead
+media     = /media/sound_5.mp3 (audio/mpeg), /media/movie_5.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - FAIL: audio.autoplay - assert_array_equals: expected property 0 to be "canplay" but got "error" (expected array ["canplay"] got ["error"]) (and 9 more not passing)
+
+[html/semantics/embedded-content/media-elements/replay.html]
+kind      = needs-decoder
+why       = plays an audio and a video to their end twice; neither is decoded, so play() rejects (the two outer setup tests pass)
+media     = /media/sound_5.mp3 (audio/mpeg), /media/movie_5.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - FAIL: first audio playback worked - assert_unreached: Reached unreachable code (and 3 more not passing) (2/6 pass)
+
+[html/semantics/embedded-content/media-elements/seeking/seek-to-currentTime.html]
+kind      = needs-decoder
+why       = waits for the video to load before seeking; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: seek to currentTime - Test timed out
+
+[html/semantics/embedded-content/media-elements/seeking/seek-to-max-value.htm]
+kind      = needs-decoder
+why       = waits for the video to load before seeking; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: seek to Number.MAX_VALUE - Test timed out
+
+[html/semantics/embedded-content/media-elements/seeking/seek-to-negative-time.htm]
+kind      = needs-decoder
+why       = waits for the video to load before seeking; the MP4 is not decoded
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: seek to negative time - Test timed out
+
+[html/semantics/embedded-content/media-elements/src_object_blob.html]
+kind      = needs-decoder
+why       = plays a video from a Blob of the MP4; it is not decoded, so the element never plays
+media     = /media/movie_5.mp4 as a Blob (video/mp4)
+assertion = TIMEOUT: HTMLMediaElement.srcObject blob - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/no-cuechange-before-play.html]
+kind      = needs-decoder
+why       = waits for canplaythrough of the video before playing it; the default platform decodes no video
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: Ensure that the 'cuechange' event is not fired before video playback has begun. - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-active-cues.html]
+kind      = needs-decoder
+why       = calls play() on the video and checks activeCues at its canplaythrough; play() rejects unhandled (the subtest itself passes - the file ERRORs); the default platform decodes no video
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - harness ERROR (1/1 pass)
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cue-mutable-fragment.html]
+kind      = needs-decoder
+why       = waits for canplaythrough of the video; the default platform decodes no video
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Cue fragment is mutable - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cue-negative-duration.html]
+kind      = needs-decoder
+why       = plays the video to fire enter/exit; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Enter, Exit events for a cue with negative duration - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cue-negative-timestamp-events.html]
+kind      = needs-decoder
+why       = plays the video to fire enter/exit; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Enter, Exit events for cues with negative timestamps - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cue-rendering-empty-cue.html]
+kind      = needs-decoder
+why       = plays the video and waits for playing; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Empty cues - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-add-new-track.html]
+kind      = needs-decoder
+why       = plays the video and adds a track at a timeupdate; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Adding a new track with a cue during playback should fire events - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-cuechange-dynamically-created-track-element.html]
+kind      = needs-decoder
+why       = plays the video to fire cuechange; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: 'cuechange' event on dynamically created track element - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-cuechange.html]
+kind      = needs-decoder
+why       = waits for canplaythrough, then plays the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: TextTrack's cues are indexed and updated in order during video playback - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-enter-exit.html]
+kind      = needs-decoder
+why       = waits for canplaythrough, then plays the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: TextTrack's cues are indexed and updated in order during video playback - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-enter-seeking.html]
+kind      = needs-decoder
+why       = waits for canplaythrough, then seeks the video onto a cue; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: TextTrack's cue onenter handler called when seeked onto - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-missed-no-immediate-events.html]
+kind      = needs-decoder
+why       = plays the video and adds a missed cue at a timeupdate; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Adding a missed cue during playback should not fire events - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-missed.html]
+kind      = needs-decoder
+why       = waits for canplaythrough, then plays the video to its end; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: Events are triggered for missed (skipped) cues during normal playback - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-pause-on-exit.html]
+kind      = needs-decoder
+why       = plays the video past pause-on-exit cues; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Video is paused after cues having pause-on-exit flag are processed - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-seeking.html]
+kind      = needs-decoder
+why       = seeks the video and reads activeCues at seeked; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: TextTrack's activeCues are indexed and updated during video playback - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-cues-sorted-before-dispatch.html]
+kind      = needs-decoder
+why       = plays the video to its end; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: All events are triggered in chronological order - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-default-load-timer-during-parser-block.html]
+kind      = needs-decoder
+why       = waits for canplay of the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: Default text track delays readyState past HAVE_CURRENT_DATA when resource selection runs while the parser is blocked inside the <video> - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-disabled-addcue.html]
+kind      = needs-decoder
+why       = plays the video and checks events at a timeupdate; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Adding cues to a disabled text track - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-disabled.html]
+kind      = needs-decoder
+why       = plays the video and checks events at a timeupdate; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Disabling a track - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-insert-after-load.html]
+kind      = needs-decoder
+why       = waits for loadedmetadata of the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: Inserting a track element immediately after video load - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-mode-disabled.html]
+kind      = needs-decoder
+why       = waits for canplaythrough, then seeks the video; the default platform decodes no video
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Cues are properly removed from the active cue list when their track changes mode to disabled - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-mode-not-changed-by-new-track.html]
+kind      = needs-decoder
+why       = waits for canplaythrough of the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: A track appended after the initial track configuration does not change other tracks - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-mode-triggers-loading.html]
+kind      = needs-decoder
+why       = waits for canplaythrough of the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: A "metadata" track does not load automatically, but it does load when the mode is changed - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-mode.html]
+kind      = needs-decoder
+why       = plays the video and checks cues at a timeupdate; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: TextTrack mode attribute - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-remove-active-cue.html]
+kind      = needs-decoder
+why       = plays the video to make a cue active; play() rejects; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - TIMEOUT: Removing an active cue - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-remove-by-setting-innerHTML.html]
+kind      = needs-decoder
+why       = seeks the video and waits for seeked; the default platform decodes no video
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Removing a track by setting video.innerHTML doesn't crash - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-remove-insert-ready-state.html]
+kind      = needs-decoder
+why       = waits for canplaythrough and playing of the video; the default platform decodes no video
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: Attaching a media element again to the document, having a child track that failed loading doesn't block video from playing - Test timed out
+
+[html/semantics/embedded-content/media-elements/track/track-element/track-remove-track-inband.html]
+kind      = needs-decoder
+why       = waits for the in-band text tracks of a WebM file the platform cannot demux; the default platform decodes no video
+media     = resources/vp8-vorbis-webvtt.webm (video/webm)
+assertion = TIMEOUT: Tests that the 'removetrack' event is NOT fired for inband TextTrack on a failed load. - Test timed out
+
+[html/semantics/embedded-content/media-elements/video_loop_base.html]
+kind      = needs-decoder
+why       = waits for a looping video to seek back to the start; the MP4 is not decoded, so play() rejects
+media     = /media/2x2-green.mp4 (video/mp4)
+assertion = ERROR: Unhandled rejection - NOTRUN: Check if video.loop is set to true that expecting the seeking event is fired more than once - NOTRUN
+
+[webvtt/api/VTTRegion/non-visible-cue-with-region.html]
+kind      = needs-decoder
+why       = waits for loadedmetadata, then plays past a box-less cue in a region to its exit; the MP4 is not decoded
+media     = /media/test.mp4 (video/mp4)
+assertion = TIMEOUT: Box-less VTTCue attached to VTTRegion - Test timed out
+

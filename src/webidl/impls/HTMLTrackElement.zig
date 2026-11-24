@@ -1,10 +1,9 @@
 //! HTML 4.8.11.11.3: out-of-band text track processing.
 //! The one text track format is WebVTT (html.webvtt, WebVTT 6.1-6.3): a
-//! fetched resource is parsed once it has arrived, and a file that is
-//! successfully processed makes the track loaded and fires `load`.
-//! TODO(webvtt cues): the parsed cues do not reach the text track's list of
-//! cues yet - VTTCue, TextTrackCue and TextTrackCueList hold no cues (cue
-//! ownership is the queued follow-up of media Q10).
+//! fetched resource is parsed once it has arrived, its cues become the text
+//! track's list of cues (WebVTT 6.1 step 14.2: VTTCue objects, with VTTRegion
+//! objects for the regions they are in), and a file that is successfully
+//! processed makes the track loaded and fires `load`.
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -149,8 +148,8 @@ pub const InternalState = struct {
         var result = webvtt.parse(self.activity.allocator, self.body.items) catch return self.failed(task);
         defer result.deinit();
         if (!result.processed) return self.failed(task);
-        // TODO(webvtt cues): add result.cues to the text track list of cues
-        // (WebVTT 6.1 step 14.2) once TextTrackCueList holds VTTCue objects.
+        // "The text track list of cues being used for that parser's output."
+        addParsedCues(self.track.?, &result) catch return self.failed(task);
         self.loaded();
     }
     /// "If fetching does not fail, and the file was successfully processed,
@@ -186,6 +185,103 @@ pub const InternalState = struct {
         self.activity.sync();
     }
 };
+/// WebVTT 6.1 step 14.2, for each cue the parser made, in file order: a
+/// VTTCue with its identifier, times, settings and cue text, in the region
+/// object made for its WebVTT region (one VTTRegion per REGION block, shared
+/// by the cues in it, kept by the track), added to `track`'s text track list
+/// of cues - which owns it, with no wrapper, until script reads it
+/// (TextTrackCueList.zig).
+fn addParsedCues(track: *runtime.Instance, result: *const webvtt.Result) !void {
+    const ctx = track.ctx;
+    const allocator = ctx.allocator;
+    const regions = try allocator.alloc(?*runtime.Instance, result.regions.len);
+    defer allocator.free(regions);
+    @memset(regions, null);
+    // The cues made, added to the track together at the end.
+    var made: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer made.deinit(allocator);
+    try made.ensureTotalCapacity(allocator, result.cues.len);
+    // Until then they are this function's: a failure frees them (none has a
+    // wrapper).
+    var handed = false;
+    defer if (!handed) for (made.items) |cue| cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
+    for (result.cues) |parsed| {
+        const cue = try interfaces.VTTCue.init(allocator, ctx);
+        made.appendAssumeCapacity(cue);
+        try interfaces.TextTrackCue.set_id(cue, .initInterned(parsed.identifier));
+        try interfaces.TextTrackCue.set_startTime(cue, parsed.start_time);
+        try interfaces.TextTrackCue.set_endTime(cue, parsed.end_time);
+        try interfaces.TextTrackCue.set_pauseOnExit(cue, parsed.pause_on_exit);
+        if (parsed.region) |index| {
+            if (regions[index] == null) {
+                // A region no cue is in is never made; one made is the
+                // track's from the start.
+                const region = try regionObject(ctx, result.regions[index]);
+                hooks.keepTrackRegion(track, region);
+                regions[index] = region;
+            }
+            try interfaces.VTTCue.set_region(cue, regions[index]);
+        }
+        try interfaces.VTTCue.set_vertical(cue, switch (parsed.writing_direction) {
+            .horizontal => .__,
+            .vertical_growing_left => ._rl_,
+            .vertical_growing_right => ._lr_,
+        });
+        try interfaces.VTTCue.set_snapToLines(cue, parsed.snap_to_lines);
+        try interfaces.VTTCue.set_line(cue, switch (parsed.line) {
+            .auto => .{ .auto_keyword = ._auto_ },
+            .number => |number| .{ .double = number },
+        });
+        try interfaces.VTTCue.set_lineAlign(cue, switch (parsed.line_alignment) {
+            .start => ._start_,
+            .center => ._center_,
+            .end => ._end_,
+        });
+        try interfaces.VTTCue.set_position(cue, switch (parsed.position) {
+            .auto => .{ .auto_keyword = ._auto_ },
+            .number => |number| .{ .double = number },
+        });
+        try interfaces.VTTCue.set_positionAlign(cue, switch (parsed.position_alignment) {
+            .line_left => ._line_left_,
+            .center => ._center_,
+            .line_right => ._line_right_,
+            .auto => ._auto_,
+        });
+        try interfaces.VTTCue.set_size(cue, parsed.size);
+        try interfaces.VTTCue.set_align(cue, switch (parsed.text_alignment) {
+            .start => ._start_,
+            .center => ._center_,
+            .end => ._end_,
+            .left => ._left_,
+            .right => ._right_,
+        });
+        try interfaces.VTTCue.set_text(cue, .initInterned(parsed.text));
+    }
+    handed = true;
+    hooks.addTrackCues(track, made.items) catch |err| {
+        // The cues the track's list did not take are still this function's.
+        for (made.items) |cue| if ((interfaces.TextTrackCue.get_track(cue) catch null) == null) cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
+        return err;
+    };
+}
+/// The VTTRegion object for a parsed WebVTT region (6.1, region creation and
+/// 6.2's settings).
+fn regionObject(ctx: runtime.Context, parsed: webvtt.Region) !*runtime.Instance {
+    const region = try interfaces.VTTRegion.init(ctx.allocator, ctx);
+    errdefer region.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(region));
+    try interfaces.VTTRegion.set_id(region, .initInterned(parsed.identifier));
+    try interfaces.VTTRegion.set_width(region, parsed.width);
+    try interfaces.VTTRegion.set_lines(region, parsed.lines);
+    try interfaces.VTTRegion.set_regionAnchorX(region, parsed.anchor[0]);
+    try interfaces.VTTRegion.set_regionAnchorY(region, parsed.anchor[1]);
+    try interfaces.VTTRegion.set_viewportAnchorX(region, parsed.viewport_anchor[0]);
+    try interfaces.VTTRegion.set_viewportAnchorY(region, parsed.viewport_anchor[1]);
+    try interfaces.VTTRegion.set_scroll(region, switch (parsed.scroll) {
+        .none => .__,
+        .up => ._up_,
+    });
+    return region;
+}
 fn data(instance: *runtime.Instance) *InternalState {
     return instance.getState(State).own._internal.?;
 }
@@ -304,8 +400,10 @@ pub fn installHooks() void {
     // end.
     dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
+/// The text track's mode changed: start the track processing model. (Its
+/// media element hears of the change from the track itself, as for any
+/// track in its list of text tracks: TextTrack.set_mode.)
 fn modeChanged(instance: *runtime.Instance, _: hooks.Mode, _: hooks.Mode) void {
-    if (interfaces.Node.get_parentNode(instance) catch null) |parent| if (common.isMedia(parent)) hooks.textTrackModeChanged(parent);
     data(instance).start() catch data(instance).cancel();
 }
 fn updateAttributes(instance: *runtime.Instance) !void {
@@ -325,7 +423,10 @@ fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u
         const url = if (value) |text| (if (text.len != 0) html.encoding_parse.encodingParseAndSerialize(instance, text) catch null else null) else null;
         if (self.url) |old| self.activity.allocator.free(old);
         self.url = url;
-        // No format is supported, hence the cue lists are already empty (Q10).
+        // "Whenever a track element has its src attribute set, changed, or
+        // removed, the user agent must immediately empty the element's text
+        // track's text track list of cues."
+        if (self.track) |track| hooks.clearTrackCues(track);
         self.start() catch self.cancel();
     } else if (std.mem.eql(u8, name, "kind") or std.mem.eql(u8, name, "label") or std.mem.eql(u8, name, "srclang") or std.mem.eql(u8, name, "id")) updateAttributes(instance) catch {};
 }

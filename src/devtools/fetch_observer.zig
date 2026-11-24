@@ -189,6 +189,7 @@ const Head = struct {
         var headers: std.json.ObjectMap = .empty;
         errdefer freeHeaders(allocator, &headers);
         for (response.header_list.entries.items) |h| try putHeader(allocator, &headers, h.name, h.value);
+        sortHeaders(&headers);
         const url = try allocator.dupe(u8, if (response.url_list.items.len > 0) response.url_list.items[response.url_list.items.len - 1] else "");
         errdefer allocator.free(url);
         const status_text = try allocator.dupe(u8, response.status_message);
@@ -283,6 +284,22 @@ fn headerOf(headers: *const std.json.ObjectMap, name: []const u8) ?[]const u8 {
     var it = headers.iterator();
     while (it.next()) |e| if (std.ascii.eqlIgnoreCase(e.key_ptr.*, name)) return e.value_ptr.string;
     return null;
+}
+
+/// A response's (and an ExtraInfo event's) Headers object in Chrome's
+/// order: by name, byte by byte - Chrome builds them as a base::Value::Dict,
+/// a flat_map sorted by key (content/browser/devtools/protocol/
+/// network_handler.cc BuildResponseHeaders / GetRawHeaders; BSD-3 -
+/// reproduced, not copied). requestWillBeSent's request headers keep their
+/// order (Blink's HTTPHeaderMap, which no client can rely on either).
+fn sortHeaders(headers: *std.json.ObjectMap) void {
+    const ByName = struct {
+        keys: []const []const u8,
+        pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+            return std.mem.lessThan(u8, ctx.keys[a], ctx.keys[b]);
+        }
+    };
+    headers.sort(ByName{ .keys = headers.keys() });
 }
 
 /// Headers as CDP's Network.Headers object: a name seen twice is joined
@@ -696,6 +713,7 @@ fn requestSent(context: *anyopaque, request: *const InternalRequest, network_req
     var headers: std.json.ObjectMap = .empty;
     for (network_request.headers) |h| putHeader(arena, &headers, h.name, h.value) catch return;
     if (headerOf(&headers, "host") == null) if (hostOf(network_request.url)) |host| putHeader(arena, &headers, "Host", host) catch return;
+    sortHeaders(&headers);
     var id_buffer: [48]u8 = undefined;
     for (sessions) |s| {
         s.emit(N.requestWillBeSentExtraInfo, .{
@@ -732,6 +750,7 @@ fn responseHeadReceived(context: *anyopaque, request: *const InternalRequest, ne
     const arena = arena_state.allocator();
     var headers: std.json.ObjectMap = .empty;
     for (network_response.headers) |h| putHeader(arena, &headers, h.name, h.value) catch return;
+    sortHeaders(&headers);
     var id_buffer: [48]u8 = undefined;
     for (sessions) |s| {
         s.emit(N.responseReceivedExtraInfo, .{

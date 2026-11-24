@@ -120,9 +120,14 @@ test "a constructor's restricted double beside an unrestricted one: VTTCue(start
     const page = try Page.open();
     defer page.close();
     // webvtt.idl: constructor(double startTime, unrestricted double endTime, DOMString text).
+    // The binding converts every endTime; the constructor's own step 3 then
+    // throws a TypeError for NaN and -Infinity (WebVTT 9.1; lane vtt1,
+    // webvtt/api/VTTCue/constructor-exceptions.html), so +Infinity - an
+    // unbounded cue - is the value that shows the argument is unrestricted.
     try page.expectOk(prelude ++
         \\for (const v of bad) if (!rejects(() => new VTTCue(v, 1, "x"))) failures.push("VTTCue(" + v + ", 1)");
-        \\for (const v of bad) if (rejects(() => new VTTCue(0, v, "x"))) failures.push("VTTCue(0, " + v + ") refused an unrestricted value");
+        \\if (!passes(() => new VTTCue(0, Infinity, "x"))) failures.push("VTTCue(0, Infinity) refused an unrestricted value");
+        \\if (new VTTCue(0, Infinity, "x").endTime !== Infinity) failures.push("VTTCue(0, Infinity).endTime");
         \\failures.join("; ") || "ok"
     );
 }

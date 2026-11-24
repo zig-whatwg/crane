@@ -4,9 +4,9 @@
 # count rises or a new line appears. After a batch moves a slice behind the
 # build side of a protocol (src/runtime/engine_build_protocol.zig), lower it
 # with `zig build lint-build -- --update`. Never raise it by hand.
-build.zig library:brotli code 62
+build.zig library:brotli code 58
 build.zig library:brotli comment 14
-build.zig library:curl code 153
+build.zig library:curl code 152
 build.zig library:curl comment 135
 build.zig library:expat code 11
 build.zig library:jpeg code 23
@@ -16,29 +16,26 @@ build.zig library:leveldb comment 1
 build.zig library:mbedtls code 62
 build.zig library:mbedtls comment 52
 build.zig library:nanosvg code 4
-build.zig library:nghttp2 code 47
+build.zig library:nghttp2 code 46
 build.zig library:nghttp2 comment 18
-build.zig library:sqlite code 3
+build.zig library:sqlite code 2
 build.zig library:sqlite comment 4
-build.zig library:zlib code 9
+build.zig library:zlib code 8
 build.zig library:zlib comment 18
-build.zig platform:.testing code 15
-build.zig platform:darwin code 16
-build.zig platform:darwin comment 8
-build.zig platform:homebrew code 1
-build.zig platform:ios code 61
-build.zig platform:ios comment 32
-build.zig platform:iphoneos code 3
+build.zig platform:darwin code 4
+build.zig platform:darwin comment 5
+build.zig platform:ios code 59
+build.zig platform:ios comment 30
+build.zig platform:iphoneos code 2
 build.zig platform:iphoneos comment 6
-build.zig platform:linux code 28
-build.zig platform:linux comment 21
-build.zig platform:macos code 6
-build.zig platform:macos comment 10
-build.zig platform:xcrun code 2
+build.zig platform:linux code 20
+build.zig platform:linux comment 17
+build.zig platform:macos code 4
+build.zig platform:macos comment 9
+build.zig platform:xcrun code 1
 build.zig platform:xcrun comment 2
-build.zig target:.abi == code 1
-build.zig target:isDarwin code 4
-build.zig target:os.tag code 26
+build.zig target:isDarwin code 3
+build.zig target:os.tag code 23
 tests/wpt_runner/build_mode.zig library:brotli comment 2
 tests/wpt_runner/build_mode.zig library:curl comment 3
 tests/wpt_runner/build_mode.zig library:mbedtls comment 5

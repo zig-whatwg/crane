@@ -4431,7 +4431,7 @@ pub extern fn v8_Inspector_CanDispatch(method: [*]const u8, length: usize) bool;
 /// `context`. Its stack: an object exception's own, else `stack`'s (a copy;
 /// BORROWED) - whose top frame then gives the URL, line, column and script
 /// when `url` is empty - else the current one.
-pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint, stack: ?*const InspectorStack) c_uint;
+pub extern fn v8_Inspector_ExceptionThrown(inspector: *Inspector, context: *Context, exception: ?*Value, message: [*]const u8, message_length: usize, detailed_message: [*]const u8, detailed_message_length: usize, url: [*]const u8, url_length: usize, line: c_uint, column: c_uint, stack: ?*const InspectorStack) c_uint;
 /// A captured JavaScript stack (v8_inspector::V8StackTrace).
 pub const InspectorStack = opaque {};
 /// The current stack as the inspector captures one; OWNED (null outside

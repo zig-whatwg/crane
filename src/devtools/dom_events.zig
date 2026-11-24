@@ -56,12 +56,17 @@ pub fn unregister(side: *BrowserSide, session: *PageSession) void {
 pub fn install(side: *BrowserSide, scope: *runtime.BrowserScope) std.mem.Allocator.Error!void {
     const sink = try scope.table(.inspector_probes, inspector_probes.Sink);
     sink.set(side, &vtable);
+    // The title probe reports to targets, which need no DOM agent: its gate
+    // opens with the Browser's adoption.
+    inspector_probes.browserAdopted();
 }
 
 /// Remove it (BrowserSide.uninstall, after every session detached).
 pub fn uninstall(scope: *runtime.BrowserScope) void {
     const sink = scope.existingTable(.inspector_probes, inspector_probes.Sink) orelse return;
+    if (sink.vtable == null) return;
     sink.set(null, null);
+    inspector_probes.browserReleased();
 }
 
 const vtable: inspector_probes.VTable = .{
@@ -76,7 +81,15 @@ const vtable: inspector_probes.VTable = .{
     .slot_assignment_changed = slotAssignmentChanged,
     .rendering_updated = renderingUpdated,
     .did_modify_adopted_style_sheets = didModifyAdoptedStyleSheets,
+    .title_may_have_changed = titleMayHaveChanged,
 };
+
+/// A document's title may have changed: the Browser's side reports a
+/// top-level document's to its target (not the DOM agents': Target info).
+fn titleMayHaveChanged(context: *anyopaque, document: *runtime.Instance) void {
+    const side: *BrowserSide = @ptrCast(@alignCast(context));
+    side.documentTitleMayHaveChanged(document);
+}
 
 /// The agents a probe goes to: a copy, so that an agent's handler may
 /// change the list (none does today).
