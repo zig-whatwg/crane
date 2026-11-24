@@ -25,6 +25,7 @@ const Page = session_mod.Page;
 const Response = @import("../response.zig").Response;
 const wait = @import("../wait.zig");
 const console = @import("../console.zig");
+const elements = @import("../elements.zig");
 
 pub const list = [_]Tool{
     // evaluate_script resolves its page itself (defineTool with
@@ -81,18 +82,37 @@ fn evaluateScript(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, respons
     if (std.mem.eql(u8, format, "script") and uids.len > 0) return ctx.fail("args cannot be used when format is \"script\".", .{});
     // throwIfDialogOpen: evaluate_script is not page-scoped in ToolHandler.
     if (target.dialog) |d| return ctx.fail("A dialog is open ({s}: {s}).", .{ d.type, d.message });
-    // Element uids come from the page's snapshot (take_snapshot).
-    if (uids.len > 0) return ctx.fail("No snapshot found for page {d}. Use take_snapshot to capture one.", .{target.id});
+    // Element uids from the page's snapshot (McpPage.getElementByUid), all
+    // in one frame (getPageOrFrame), released when the call is done.
+    var handles: std.ArrayList(elements.Element) = .empty;
+    defer for (handles.items) |h| if (h.object_id) |id| elements.release(ctx, target, id);
+    var frame_id: ?[]const u8 = null;
+    var different_frames = false;
+    for (uids) |uid| {
+        const element = try elements.byUid(ctx, target, session_mod.str(uid));
+        try handles.append(ctx.arena, element);
+        if (frame_id) |f| {
+            if (!std.mem.eql(u8, f, element.frame_id)) different_frames = true;
+        } else frame_id = element.frame_id;
+    }
+    if (different_frames) return ctx.fail("Elements from different frames can't be evaluated together.", .{});
+    var arguments: std.Io.Writer.Allocating = .init(ctx.arena);
+    for (handles.items) |h| try arguments.writer.print(",{s}", .{h.argument});
+    // The frame's main world, or the page's (its main frame's).
+    const context_id: ?i64 = if (frame_id) |f| try elements.mainWorld(ctx, target, f) else target.main_context_id;
 
     const dialog_action = registry.stringArg(args, "dialogAction") orelse "accept";
     const Evaluate = struct {
         page: *Page,
+        context_id: ?i64,
         source: []const u8,
         script: bool,
+        arguments: []const u8,
         response: *Response,
 
         pub fn run(self: @This(), c: *Context) !void {
-            const result = if (self.script) try evaluateAsScript(c, self.page, self.source) else try evaluateAsFunction(c, self.page, self.source);
+            const where: Where = .{ .page = self.page, .context_id = self.context_id };
+            const result = if (self.script) try evaluateAsScript(c, where, self.source) else try evaluateAsFunction(c, where, self.source, self.arguments);
             try self.response.line("Script ran on page and returned:", .{});
             try self.response.line("```json", .{});
             try self.response.line("{s}", .{result});
@@ -102,65 +122,86 @@ fn evaluateScript(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, respons
     const result = try wait.afterAction(ctx, target, .{
         .dialog_action = .{ .all = dialog_action },
         .wait_for_stable_dom = registry.boolArg(args, "waitForStableDom") orelse true,
-    }, Evaluate{ .page = target, .source = function.?, .script = std.mem.eql(u8, format, "script"), .response = response });
+    }, Evaluate{ .page = target, .context_id = context_id, .source = function.?, .script = std.mem.eql(u8, format, "script"), .arguments = arguments.written(), .response = response });
     response.wait_result = result.forResponse();
 }
 
-/// format "function": the result's text (`${result}`).
-fn evaluateAsFunction(ctx: *Context, page: *Page, source: []const u8) ![]const u8 {
+/// Where an evaluation runs: the page's session, in a context (null: the
+/// main frame's main world is not known yet).
+const Where = struct {
+    page: *Page,
+    context_id: ?i64,
+};
+
+/// format "function": the result's text (`${result}`), the function
+/// called with the element handles after it (`arguments`: each
+/// CallArgument preceded by a comma).
+fn evaluateAsFunction(ctx: *Context, where: Where, source: []const u8, arguments: []const u8) ![]const u8 {
     const trimmed = std.mem.trimEnd(u8, source, " \t\n\r\x0b\x0c");
     const function_source = if (std.mem.endsWith(u8, trimmed, ";")) trimmed[0 .. trimmed.len - 1] else trimmed;
     const expression = try std.fmt.allocPrint(ctx.arena, "(\n{s}\n)", .{function_source});
-    const handle = try evaluateHandle(ctx, page, expression);
-    return callWith(ctx, page, wrapper, handle);
+    const handle = try evaluateHandle(ctx, where, expression);
+    defer if (handle.object_id) |id| elements.release(ctx, where.page, id);
+    return callWith(ctx, where, wrapper, try std.fmt.allocPrint(ctx.arena, "{s}{s}", .{ handle.argument, arguments }), handle.object_id);
 }
 
 /// format "script".
-fn evaluateAsScript(ctx: *Context, page: *Page, source: []const u8) ![]const u8 {
-    const handle = try evaluateHandle(ctx, page, source);
-    return callWith(ctx, page, stringify_value, handle);
+fn evaluateAsScript(ctx: *Context, where: Where, source: []const u8) ![]const u8 {
+    const handle = try evaluateHandle(ctx, where, source);
+    defer if (handle.object_id) |id| elements.release(ctx, where.page, id);
+    return callWith(ctx, where, stringify_value, handle.argument, handle.object_id);
 }
 
-/// ExecutionContext.evaluateHandle(string): Runtime.evaluate in the main
-/// world, by reference. The handle's CallArgument (convertArgument).
-fn evaluateHandle(ctx: *Context, page: *Page, expression: []const u8) ![]const u8 {
+const Handle = struct {
+    /// Its CallArgument (convertArgument).
+    argument: []const u8,
+    /// Its remote object, released when done (`using`).
+    object_id: ?[]const u8,
+};
+
+/// ExecutionContext.evaluateHandle(string): Runtime.evaluate in the
+/// context, by reference.
+fn evaluateHandle(ctx: *Context, where: Where, expression: []const u8) !Handle {
     const arena = ctx.arena;
     const with_url = if (hasSourceUrl(expression)) expression else try std.fmt.allocPrint(arena, "{s}\n{s}\n", .{ expression, source_url_comment });
     var params: std.Io.Writer.Allocating = .init(arena);
     try params.writer.print("{{\"expression\":{f}", .{std.json.fmt(with_url, .{})});
-    if (page.main_context_id) |id| try params.writer.print(",\"contextId\":{d}", .{id});
+    if (where.context_id) |id| try params.writer.print(",\"contextId\":{d}", .{id});
     try params.writer.writeAll(",\"returnByValue\":false,\"awaitPromise\":true,\"userGesture\":true}");
-    var r = try ctx.session.client.call("Runtime.evaluate", params.written(), page.session_id, session_mod.command_timeout_ms);
+    var r = try ctx.session.client.call("Runtime.evaluate", params.written(), where.page.session_id, session_mod.command_timeout_ms);
     defer r.deinit();
     const result = try answer(ctx, &r, "Runtime.evaluate");
     const remote = (result.object.get("result") orelse return ctx.fail("Protocol error (Runtime.evaluate): no result", .{})).object;
     var argument: std.Io.Writer.Allocating = .init(arena);
+    var object_id: ?[]const u8 = null;
     if (remote.get("objectId")) |id| {
+        object_id = try arena.dupe(u8, session_mod.str(id));
         try argument.writer.print("{{\"objectId\":{f}}}", .{std.json.fmt(id, .{})});
     } else if (remote.get("unserializableValue")) |u| {
         try argument.writer.print("{{\"unserializableValue\":{f}}}", .{std.json.fmt(u, .{})});
     } else if (remote.get("value")) |v| {
         try argument.writer.print("{{\"value\":{f}}}", .{std.json.fmt(v, .{})});
     } else try argument.writer.writeAll("{}");
-    return argument.written();
+    return .{ .argument = argument.written(), .object_id = object_id };
 }
 
-/// ExecutionContext.evaluate(fn, handle): Runtime.callFunctionOn by value;
-/// the string it returns, or "undefined".
-fn callWith(ctx: *Context, page: *Page, declaration: []const u8, argument: []const u8) ![]const u8 {
+/// ExecutionContext.evaluate(fn, ...handles): Runtime.callFunctionOn by
+/// value; the string it returns, or "undefined". `first_object` is the
+/// first argument's remote object, which names the context when none is
+/// known.
+fn callWith(ctx: *Context, where: Where, declaration: []const u8, arguments: []const u8, first_object: ?[]const u8) ![]const u8 {
     const arena = ctx.arena;
     const with_url = try std.fmt.allocPrint(arena, "{s}\n{s}\n", .{ declaration, source_url_comment });
     var params: std.Io.Writer.Allocating = .init(arena);
     try params.writer.print("{{\"functionDeclaration\":{f}", .{std.json.fmt(with_url, .{})});
-    if (page.main_context_id) |id| {
+    if (where.context_id) |id| {
         try params.writer.print(",\"executionContextId\":{d}", .{id});
-    } else if (std.mem.startsWith(u8, argument, "{\"objectId\":")) {
+    } else if (first_object) |id| {
         // No context known yet: the argument's own.
-        const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena, argument, .{});
-        try params.writer.print(",\"objectId\":{f}", .{std.json.fmt(parsed.object.get("objectId").?, .{})});
+        try params.writer.print(",\"objectId\":{f}", .{std.json.fmt(id, .{})});
     } else return ctx.fail("Execution context was destroyed, most likely because of a navigation.", .{});
-    try params.writer.print(",\"arguments\":[{s}],\"returnByValue\":true,\"awaitPromise\":true,\"userGesture\":true}}", .{argument});
-    var r = try ctx.session.client.call("Runtime.callFunctionOn", params.written(), page.session_id, session_mod.command_timeout_ms);
+    try params.writer.print(",\"arguments\":[{s}],\"returnByValue\":true,\"awaitPromise\":true,\"userGesture\":true}}", .{arguments});
+    var r = try ctx.session.client.call("Runtime.callFunctionOn", params.written(), where.page.session_id, session_mod.command_timeout_ms);
     defer r.deinit();
     const result = try answer(ctx, &r, "Runtime.callFunctionOn");
     const remote = (result.object.get("result") orelse return "undefined").object;

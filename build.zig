@@ -4720,13 +4720,20 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tools/mcp_diff/main.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
-        .imports = &.{.{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) }},
+        .imports = &.{
+            .{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            // The MCP server's snapshot tree rules (std only), to replay
+            // Google's numbering on Chrome's tree; perf_bench's WebSocket
+            // CDP client, to read it (tools/mcp_diff/user_agent.zig).
+            .{ .name = "ax_tree", .module = b.createModule(.{ .root_source_file = b.path("src/devtools/mcp/ax_tree.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "cdp_ws", .module = b.createModule(.{ .root_source_file = b.path("tools/perf_bench/cdp.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
     });
     const mcp_diff_exe = b.addExecutable(.{ .name = "mcp_diff", .root_module = mcp_diff_module });
     b.step("mcp-diff", "Build the MCP differential suite's harness alone (zig-out/bin/mcp_diff)").dependOn(&b.addInstallArtifact(mcp_diff_exe, .{}).step);
     const mcp_diff_tests = b.addTest(.{ .root_module = mcp_diff_module });
     test_step.dependOn(&addSuiteRun(b, launch, mcp_diff_tests, "tools-mcp_diff", null).step);
-    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig" });
+    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig", "user_agent.zig" });
 
     // tools/build_probe.zig: what the configure would ask the machine, asked
     // at make time.

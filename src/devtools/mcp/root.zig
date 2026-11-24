@@ -21,6 +21,10 @@ pub const network = @import("network.zig");
 pub const keyboard = @import("keyboard.zig");
 pub const validate = @import("validate.zig");
 pub const server = @import("server.zig");
+pub const snapshot = @import("snapshot.zig");
+pub const ax_tree = @import("ax_tree.zig");
+pub const query = @import("query.zig");
+pub const elements = @import("elements.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());

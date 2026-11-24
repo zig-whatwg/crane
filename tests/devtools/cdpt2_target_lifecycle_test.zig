@@ -370,7 +370,7 @@ test "G12: a disposeOnDetach context with tabs goes with its connection, without
     try testing.expect(gone);
 }
 
-test "G15: a new page target has title \"\" and no parentId, its tab target the URL \"\"; the commit's targetInfoChanged brings the URL, the document's <title> one more" {
+test "G15: a new page target has title \"\" and no parentId, its tab target the URL \"\"; the commit's targetInfoChanged brings the URL, Target.getTargets the document's <title>" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     const allocator = gpa.allocator();
@@ -413,20 +413,38 @@ test "G15: a new page target has title \"\" and no parentId, its tab target the 
             try testing.expect(cdp.at(info, "parentId") == null);
         }
     }
-    // Then the page's title: the document's own once it is parsed.
+    // Then the commit's targetInfoChanged: the URL, and for its title the
+    // URL as Chrome shows a page with no title yet (a data: URL as it is).
+    // No event brings the document's <title>: Chrome 157 sends
+    // targetInfoChanged for a commit only (lane mcp1's
+    // tests/devtools/mcp1_target_title_test.zig, against Chrome for Testing
+    // 157); Target.getTargets shows the title.
     while (true) {
         const changed = try client.waitEvent("Target.targetInfoChanged");
         defer changed.deinit();
         const info = cdp.at(changed.value, "params.targetInfo").?;
         if (!std.mem.eql(u8, cdp.stringAt(info, "targetId").?, page_id)) continue;
         try testing.expect(cdp.at(info, "parentId") == null);
-        if (std.mem.eql(u8, cdp.stringAt(info, "title").?, "Hello")) {
-            try testing.expectEqualStrings(url, cdp.stringAt(info, "url").?);
+        const title = cdp.stringAt(info, "title").?;
+        if (std.mem.eql(u8, cdp.stringAt(info, "url").?, url)) {
+            try testing.expectEqualStrings(url, title);
             break;
         }
-        // Before the title: the committed URL stands for it, or "" before
-        // the commit.
-        const title = cdp.stringAt(info, "title").?;
+        // Before it: "" before any commit (an attach's change), or the
+        // initial about:blank's own URL standing for its title.
         try testing.expect(title.len == 0 or std.mem.eql(u8, title, cdp.stringAt(info, "url").?));
+        try testing.expect(!std.mem.eql(u8, title, "Hello"));
     }
+    var tries: u32 = 0;
+    const listed = while (tries < 500) : (tries += 1) {
+        const answer = try client.call("Target.getTargets", "{}", "");
+        defer answer.deinit();
+        var title: []const u8 = "";
+        for (cdp.at(answer.value, "result.targetInfos").?.array.items) |info| {
+            if (std.mem.eql(u8, cdp.stringAt(info, "targetId").?, page_id)) title = cdp.stringAt(info, "title").?;
+        }
+        if (std.mem.eql(u8, title, "Hello")) break true;
+        std.Io.sleep(std.testing.io, .fromMilliseconds(10), .awake) catch {};
+    } else false;
+    try testing.expect(listed);
 }
