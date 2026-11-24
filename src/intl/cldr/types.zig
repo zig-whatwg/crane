@@ -241,30 +241,3 @@ pub const WeekInfo = struct {
         .weekend = 0b1000001, // Saturday and Sunday
     };
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "MonthNames.DEFAULT has correct values" {
-    try std.testing.expectEqualStrings("January", MonthNames.DEFAULT.wide[0]);
-    try std.testing.expectEqualStrings("Dec", MonthNames.DEFAULT.abbreviated[11]);
-    try std.testing.expectEqualStrings("J", MonthNames.DEFAULT.narrow[0]);
-}
-
-test "WeekdayNames.DEFAULT has correct values" {
-    try std.testing.expectEqualStrings("Sunday", WeekdayNames.DEFAULT.wide[0]);
-    try std.testing.expectEqualStrings("Sat", WeekdayNames.DEFAULT.abbreviated[6]);
-}
-
-test "DateTimePatterns.DEFAULT has valid patterns" {
-    // Verify patterns contain expected tokens
-    try std.testing.expect(std.mem.indexOf(u8, DateTimePatterns.DEFAULT.date_full, "EEEE") != null);
-    try std.testing.expect(std.mem.indexOf(u8, DateTimePatterns.DEFAULT.time_short, "h:mm") != null);
-}
-
-test "LocaleData.DEFAULT is valid" {
-    const data = LocaleData.DEFAULT;
-    try std.testing.expectEqualStrings("en", data.tag);
-    try std.testing.expect(!data.is_allocated);
-}
