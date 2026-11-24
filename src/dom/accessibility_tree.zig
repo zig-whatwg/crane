@@ -604,20 +604,31 @@ pub const Tree = struct {
         return self.options.is_focusable(dom);
     }
 
-    /// IsRedundantLabel: a label whose control is named by it and is not a
-    /// focusable descendant of it - the control already speaks the label.
+    /// AXNodeObject::IsRedundantLabel: the label of a visible checkbox or
+    /// radio that its label names (IsNameFromLabelElement: no aria-labelledby
+    /// elements, no aria-label), holding no element but that control - the
+    /// control already speaks it. Returns the control.
     fn isRedundantLabel(self: *Tree, label: *Instance) !?*Instance {
-        _ = self;
         const control = (try interfaces.HTMLLabelElement.get_control(label)) orelse return null;
-        // Blink: a label wrapping its control is not redundant; one that
-        // points at a checkbox or radio elsewhere is.
-        const base = bridge.getNodeBase(label).?;
-        var at = bridge.getNodeBase(control).?.parent_node;
-        while (at) |ancestor| : (at = ancestor.parent_node) if (ancestor == base) return null;
         if (control.stateAs(interfaces.HTMLInputElement.State) == null) return null;
+        // A laid-out control whose visibility is visible.
+        if (!try hasBox(control)) return null;
+        const computed = (try style.computedStyle(control, null)) orelse return null;
+        if (computed.keyword(.visibility) != .visible) return null;
         var kind = try interfaces.HTMLInputElement.get_type(control);
         defer kind.deinit(control.ctx.allocator);
         if (!oneOf(kind.asSlice(), .{ "checkbox", "radio" })) return null;
+        // IsNameFromAriaAttribute.
+        if ((try a11y.related(self.arena, control, .labelledby)).len > 0) return null;
+        if (try a11y.effective(self.arena, control, "aria-label", "ariaLabel")) |value| if (std.mem.trim(u8, value, spaces).len > 0) return null;
+        // The first element child: none, or the control alone.
+        const base = bridge.getNodeBase(label).?;
+        var first: ?*NodeBase = base.firstChild();
+        while (first) |child| : (first = child.next_sibling) if (child.node_type == NodeBase.ELEMENT_NODE) break;
+        const child = first orelse return control;
+        if (child != bridge.getNodeBase(control).?) return null;
+        var next = child.next_sibling;
+        while (next) |sibling| : (next = sibling.next_sibling) if (sibling.node_type == NodeBase.ELEMENT_NODE) return null;
         return control;
     }
 
@@ -1310,6 +1321,8 @@ pub const Property = struct { name: []const u8, value: Value };
 pub const Description = struct {
     /// The accessible name (null: none sent, for an ignored object).
     name: ?[]const u8 = null,
+    /// How the name was found (null: no `sources` sent).
+    name_sources: ?[]const NameSource = null,
     description: []const u8 = "",
     value: ?Value = null,
     properties: []const Property = &.{},
@@ -1324,7 +1337,7 @@ pub fn describe(tree: *Tree, index: Index, force_name: bool) !Description {
         if (!force_name) return .{};
         return .{ .name = try nameOf(tree, index) };
     }
-    var out: Description = .{ .name = try nameOf(tree, index) };
+    var out: Description = .{ .name = try nameOf(tree, index), .name_sources = try nameSources(tree, index) };
     const dom = switch (object.source) {
         .node => |n| n,
         else => {
@@ -1341,12 +1354,8 @@ pub fn describe(tree: *Tree, index: Index, force_name: bool) !Description {
         out.properties = try nodelessProperties(tree, index);
         return out;
     }
-    var related: std.ArrayListUnmanaged(a11y.RelatedText) = .empty;
-    out.name = if (object.role == .LineBreak) "\n" else try tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), try tree.names.hidden(dom), &related);
-    // Blink keeps each related text with its runs of white space made one.
-    for (related.items) |*r| r.text = try collapseRuns(tree.arena, r.text);
     var properties: std.ArrayListUnmanaged(Property) = .empty;
-    try properties_(tree, dom, object, related.items, &properties);
+    try properties_(tree, dom, object, nameRelated(out.name_sources orelse &.{}), &properties);
     out.properties = properties.items;
     out.description = try descriptionOf(tree, dom, object, out.name orelse "");
     out.value = try valueOf(tree, dom, object);
@@ -1402,7 +1411,7 @@ pub fn nameOf(tree: *Tree, index: Index) ![]const u8 {
                 return tree.arena.dupe(u8, title.asSlice());
             }
             if (base.node_type != NodeBase.ELEMENT_NODE) return object.text;
-            return tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), try tree.names.hidden(dom), null);
+            return tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), try tree.names.hidden(dom));
         },
         .pseudo, .nodeless => return object.text,
     }
@@ -1418,7 +1427,479 @@ fn nameFromContents(tree: *Tree, dom: *Instance, role: Role) bool {
     return supportsNameFromContents(role);
 }
 
-/// AXNodeObject::Description, without its sources (batch 2): describedby,
+// ============================================================================
+// The name's sources (Blink AXObject::NameSources, CDP's AXValueSource list)
+// ============================================================================
+//
+// GetName(name_sources) runs TextAlternative to the end, recording each
+// place a name can come from in the order it looks, whether or not an
+// earlier one gave the name (Chromium 157.0.8103.78, BSD-3:
+// third_party/blink/renderer/modules/accessibility/ax_node_object.cc
+// TextAlternative, NativeTextAlternative, TextAlternativeFromTooltip,
+// TextAlternativeFromTitleAttribute; ax_object.cc AriaTextAlternative,
+// TextFromElements; inspector_type_builder_helper.cc CreateValueSource).
+// The name itself stays dom/accessibility.zig's computation: each source's
+// text comes from that computation's own steps (Names.labelledbyTexts,
+// labelTexts, contentsText, nativeLabelText), so the sources show how the
+// one name was found.
+
+/// AXValueSourceType (ValueSourceType: a NameFrom of an attribute, an
+/// explicitly empty one, a title or a value is "attribute", a caption or a
+/// related element "relatedElement", CSS alt text "implicit").
+pub const SourceType = enum { attribute, implicit, contents, placeholder, relatedElement };
+
+/// AXValueNativeSourceType (NativeSourceType).
+pub const NativeSource = enum { label, labelfor, labelwrapped, legend, tablecaption, title };
+
+/// One NameSource, as CreateValueSource sends it.
+pub const NameSource = struct {
+    type: SourceType,
+    /// The attribute it reads (`attribute`).
+    attribute: ?[]const u8 = null,
+    /// That attribute's value (`attributeValue`: a string, or for
+    /// aria-labelledby with related elements an idrefList carrying it).
+    attribute_value: ?[]const u8 = null,
+    /// The text it gave (`value`, a computedString), when it gave one.
+    text: ?[]const u8 = null,
+    /// A source before it gave the name (NameSource(found_text_alternative)).
+    superseded: bool = false,
+    invalid: bool = false,
+    native_source: ?NativeSource = null,
+    /// The elements whose text it is, each with that text (aria-labelledby's
+    /// idrefList, a native source's nodeList).
+    related: []const Related = &.{},
+};
+
+/// The sources list as TextAlternative fills it: `found` is its
+/// found_text_alternative, which marks every later source superseded.
+const Sources = struct {
+    arena: Allocator,
+    items: std.ArrayListUnmanaged(NameSource) = .empty,
+    found: bool = false,
+
+    /// Appends `source`, superseded when an earlier one gave the name; it
+    /// gives the name itself when it has a text (`gives`, else as told).
+    fn add(self: *Sources, source: NameSource) !void {
+        try self.addGiving(source, source.text != null);
+    }
+
+    fn addGiving(self: *Sources, source: NameSource, gives: bool) !void {
+        var entry = source;
+        entry.superseded = self.found;
+        try self.items.append(self.arena, entry);
+        if (gives) self.found = true;
+    }
+};
+
+/// The name sources CDP sends for object `index` (null: none, as for an
+/// InlineTextBox, whose AXInlineTextBox names itself without them, and an
+/// ignored object).
+pub fn nameSources(tree: *Tree, index: Index) !?[]const NameSource {
+    const object = tree.node(index);
+    if (object.ignored) return null;
+    var list: Sources = .{ .arena = tree.arena };
+    switch (object.role) {
+        .InlineTextBox => return null,
+        // A layout text's own text; a pseudo-element's alternative text
+        // (GetCSSAltText: NameFrom kCssAltText, sent as implicit).
+        .StaticText => {
+            try list.add(.{ .type = if (object.source == .pseudo) .implicit else .contents, .text = object.text });
+            return list.items.items;
+        },
+        // A list marker's text alternative; a <br>'s "\n".
+        .ListMarker => {
+            try list.add(.{ .type = .contents, .text = object.text });
+            return list.items.items;
+        },
+        .LineBreak => {
+            try list.add(.{ .type = .contents, .text = "\n" });
+            return list.items.items;
+        },
+        else => {},
+    }
+    const dom = switch (object.source) {
+        .node => |n| n,
+        // The select's pop-up: Chrome's is its user-agent picker element,
+        // with no attributes of its own (a11y1-chrome157-trace.txt, the
+        // forms page): aria-labelledby, aria-label, then its title.
+        .pseudo, .nodeless => {
+            try list.add(.{ .type = .relatedElement, .attribute = "aria-labelledby" });
+            try list.add(.{ .type = .attribute, .attribute = "aria-label" });
+            try list.add(.{ .type = .attribute, .attribute = "title" });
+            return list.items.items;
+        },
+    };
+    const node_type = bridge.getNodeBase(dom).?.node_type;
+    if (node_type == NodeBase.DOCUMENT_NODE) {
+        try documentSources(tree, dom, &list);
+        return list.items.items;
+    }
+    if (node_type != NodeBase.ELEMENT_NODE) return null;
+    const hidden = object.hidden_via_style or ariaHiddenRoot(tree, dom);
+    // AriaTextAlternative. A slot names nothing; 2A: a node hidden from the
+    // text alternative (an aria-hidden root, or hidden by its style) is
+    // found with no text, so every later source is superseded.
+    if (isHtml(dom) and eq(localName(dom), "slot")) {} else if (hidden) {
+        list.found = true;
+    } else {
+        try ariaSources(tree, dom, &list);
+    }
+    // 2D: the host language's.
+    const explicitly_empty = try nativeSources(tree, dom, object, &list);
+    // 2F: the contents, where the role takes a name from them (not a
+    // select's options, not a text field's value; not a menu list option
+    // with one text child, whose DisplayLabel was its contents source:
+    // SupportsNameFromContents).
+    const one_text_option = object.role == .MenuListOption and hasOneTextChild(dom);
+    if (nameFromContents(tree, dom, object.role) and !one_text_option and !isTextField(dom, object) and !(isHtml(dom) and eq(localName(dom), "select"))) {
+        const text = try contentsOf(tree, dom, hidden);
+        try list.add(.{ .type = .contents, .text = if (text.len > 0) text else null });
+    }
+    // 2I: the tooltip, unless the role prohibits a name, or an image's alt
+    // is explicitly empty.
+    if (!nameProhibited(tree, dom, object) and !explicitly_empty) try tooltipSource(dom, &list);
+    return list.items.items;
+}
+
+/// AriaTextAlternative 2B (aria-labelledby, or aria-labeledby when only
+/// that spelling is set) and 2C (aria-label).
+fn ariaSources(tree: *Tree, dom: *Instance, list: *Sources) !void {
+    const legacy = attribute(dom, "aria-labeledby") != null and attribute(dom, "aria-labelledby") == null;
+    var labelledby: NameSource = .{ .type = .relatedElement, .attribute = if (legacy) "aria-labeledby" else "aria-labelledby" };
+    if (attribute(dom, labelledby.attribute.?)) |value| {
+        labelledby.attribute_value = value;
+        const texts = try tree.names.labelledbyTexts(dom);
+        const joined = try joinTexts(tree.arena, texts);
+        if (std.mem.trim(u8, joined, spaces).len > 0) {
+            labelledby.text = joined;
+            labelledby.related = try relatedOf(tree.arena, texts);
+        } else labelledby.invalid = true;
+    }
+    try list.add(labelledby);
+    var label: NameSource = .{ .type = .attribute, .attribute = "aria-label" };
+    if (try a11y.effective(tree.arena, dom, "aria-label", "ariaLabel")) |value| if (std.mem.trim(u8, value, spaces).len > 0) {
+        label.text = value;
+        label.attribute_value = value;
+    };
+    try list.add(label);
+}
+
+/// NativeTextAlternative's sources for an element. Returns whether an
+/// image's (or area's) alt is explicitly empty (kAttributeExplicitlyEmpty,
+/// which keeps the tooltip out).
+fn nativeSources(tree: *Tree, dom: *Instance, object: *const Node, list: *Sources) !bool {
+    if (!isHtml(dom)) {
+        try svgSources(tree, dom, list);
+        return false;
+    }
+    const tag = localName(dom);
+    // An option with one text child: HTMLOptionElement::DisplayLabel.
+    if (eq(tag, "option") and hasOneTextChild(dom)) {
+        var label = try interfaces.HTMLOptionElement.get_label(dom);
+        defer label.deinit(dom.ctx.allocator);
+        if (label.asSlice().len > 0) {
+            try list.add(.{ .type = .contents, .text = try tree.arena.dupe(u8, label.asSlice()) });
+            return false;
+        }
+    }
+    // An optgroup's label (GroupLabelText), a source with no attribute.
+    if (eq(tag, "optgroup")) {
+        const label = try collapse(tree.arena, attribute(dom, "label") orelse "");
+        if (label.len > 0) {
+            try list.add(.{ .type = .attribute, .text = label });
+            return false;
+        }
+    }
+    // 5.1/5.5: a labelable element's labels.
+    if (try tree.names.labelTexts(dom)) |labels| {
+        var source: NameSource = .{ .type = .relatedElement, .native_source = .label };
+        var gives = false;
+        if (labels.len > 0) {
+            const id = attribute(dom, "id") orelse "";
+            for (labels) |l| {
+                const target = attribute(l.node, "for") orelse "";
+                source.native_source = if (target.len > 0 and eq(target, id)) .labelfor else .labelwrapped;
+            }
+            source.text = std.mem.trim(u8, try joinTexts(tree.arena, labels), spaces);
+            source.related = try relatedOf(tree.arena, labels);
+            gives = true;
+        }
+        try list.addGiving(source, gives);
+    }
+    if (eq(tag, "input")) {
+        var kind_value = try interfaces.HTMLInputElement.get_type(dom);
+        defer kind_value.deinit(dom.ctx.allocator);
+        const kind = kind_value.asSlice();
+        // 5.2: a text button's value attribute; its default label when it
+        // is not laid out.
+        if (oneOf(kind, .{ "button", "submit", "reset" })) {
+            const value = attribute(dom, "value");
+            try list.add(.{ .type = .attribute, .attribute = "value", .text = value });
+            if (value == null and !object.has_layout) if (defaultButtonLabel(kind)) |label| try list.add(.{ .type = .contents, .text = label });
+            return false;
+        }
+        // 5.3: an image button's alt, value, tooltip and its localized
+        // "Submit" (IDS_FORM_SUBMIT_LABEL), the last always giving a name.
+        if (eq(kind, "image")) {
+            const alt = attribute(dom, "alt");
+            var alt_source: NameSource = .{ .type = .attribute, .attribute = "alt" };
+            if (alt) |a| if (a.len > 0) {
+                alt_source.text = a;
+                alt_source.attribute_value = a;
+            };
+            try list.add(alt_source);
+            try list.add(.{ .type = .attribute, .attribute = "value", .text = attribute(dom, "value") });
+            try tooltipSource(dom, list);
+            try list.add(.{ .type = .attribute, .attribute = "type", .attribute_value = attribute(dom, "type"), .text = @import("control_labels.zig").submit });
+            return false;
+        }
+        // A file chooser: its button's label, as the contents.
+        if (eq(kind, "file")) try list.add(.{ .type = .contents, .attribute = "value", .text = @import("control_labels.zig").choose_file });
+    }
+    // 5.1 step 3: a text control's tooltip, then its placeholder.
+    if (isTextControl(dom)) {
+        try tooltipSource(dom, list);
+        var placeholder: NameSource = .{ .type = .placeholder, .attribute = "placeholder" };
+        if (attribute(dom, "placeholder")) |value| if (value.len > 0) {
+            placeholder.text = value;
+            placeholder.attribute_value = value;
+        };
+        try list.add(placeholder);
+    }
+    // And a text field's aria-placeholder.
+    if (isTextField(dom, object)) {
+        var placeholder: NameSource = .{ .type = .placeholder, .attribute = "aria-placeholder" };
+        if (try a11y.effective(tree.arena, dom, "aria-placeholder", "ariaPlaceholder")) |value| if (value.len > 0) {
+            placeholder.text = value;
+            placeholder.attribute_value = value;
+        };
+        try list.add(placeholder);
+        return false;
+    }
+    // 5.8: an img's or area's alt.
+    if (oneOf(tag, .{ "img", "area" })) {
+        const alt = attribute(dom, "alt");
+        try list.add(.{ .type = .attribute, .attribute = "alt", .attribute_value = alt, .text = alt });
+        return alt != null and alt.?.len == 0;
+    }
+    // 5.9: a table's first caption not hidden, then its summary.
+    if (eq(tag, "table")) {
+        var source: NameSource = .{ .type = .relatedElement, .native_source = .tablecaption };
+        if (try firstUnhiddenChild(tree, dom, "caption")) |caption| {
+            const text = try tree.names.nativeLabelText(dom, caption);
+            source.text = text;
+            source.related = try tree.arena.dupe(Related, &.{.{ .node = caption, .text = try collapseRuns(tree.arena, text) }});
+        }
+        try list.add(source);
+        const summary = attribute(dom, "summary");
+        try list.add(.{ .type = .attribute, .attribute = "summary", .attribute_value = summary, .text = summary });
+        return false;
+    }
+    // A fieldset's legend (HTMLFieldSetElement::Legend: its first legend
+    // child).
+    if (eq(tag, "fieldset")) {
+        var source: NameSource = .{ .type = .relatedElement, .native_source = .legend };
+        var gives = false;
+        if (a11y.firstChildNamed(dom, "legend")) |legend| {
+            const text = try tree.names.nativeLabelText(dom, legend);
+            source.text = text;
+            source.related = try tree.arena.dupe(Related, &.{.{ .node = legend, .text = try collapseRuns(tree.arena, text) }});
+            gives = true;
+        }
+        try list.addGiving(source, gives);
+    }
+    return false;
+}
+
+/// SVG-AAM's 2D: the first <title> child's text, and an SVG link's
+/// xlink:title.
+fn svgSources(tree: *Tree, dom: *Instance, list: *Sources) !void {
+    if (!isSvg(dom)) return;
+    var title_source: NameSource = .{ .type = .relatedElement, .native_source = .title };
+    if (a11y.firstChildNamed(dom, "title")) |title| {
+        // GetInnerTextWithoutUpdate: an SVG element's is its text content.
+        if (try interfaces.Node.get_textContent(title)) |text_value| {
+            var text = text_value;
+            defer text.deinit(title.ctx.allocator);
+            if (text.asSlice().len > 0) title_source.text = try tree.arena.dupe(u8, text.asSlice());
+        }
+    }
+    try list.add(title_source);
+    if (eq(localName(dom), "a")) {
+        // CreateValueSource sends the attribute's local name.
+        var link: NameSource = .{ .type = .attribute, .attribute = "title" };
+        const xlink_title = if (data.of(dom)) |element| element.findAttribute("http://www.w3.org/1999/xlink", "title") else null;
+        if (xlink_title) |entry| if (entry.value.len > 0) {
+            const value = entry.value;
+            link.text = value;
+            link.attribute_value = value;
+        };
+        try list.add(link);
+    }
+}
+
+/// The web area's: AriaTextAlternative's two (the document has no
+/// attributes), then the document's: its element's aria-label and its title.
+fn documentSources(tree: *Tree, document: *Instance, list: *Sources) !void {
+    try list.add(.{ .type = .relatedElement, .attribute = "aria-labelledby" });
+    try list.add(.{ .type = .attribute, .attribute = "aria-label" });
+    var label: NameSource = .{ .type = .attribute, .attribute = "aria-label" };
+    if (try interfaces.Document.get_documentElement(document)) |root| {
+        if (try a11y.effective(tree.arena, root, "aria-label", "ariaLabel")) |value| if (value.len > 0) {
+            label.text = value;
+            label.attribute_value = value;
+        };
+    }
+    try list.add(label);
+    // Blink builds this one from the pointer `found_text_alternative`, not
+    // the flag it points at, so it is always superseded (Chrome 157: every
+    // RootWebArea of a11y1-chrome157-trace.txt).
+    list.items.items[list.items.items.len - 1].superseded = true;
+    var title = try interfaces.Document.get_title(document);
+    defer title.deinit(document.ctx.allocator);
+    try list.addGiving(.{ .type = .relatedElement, .native_source = .title, .text = try tree.arena.dupe(u8, title.asSlice()) }, true);
+}
+
+/// TextAlternativeFromTooltip's title source: the title attribute, unless
+/// it only repeats the element's inner text. (Its interestfor and hint
+/// popover sources follow: TODO(a11y1), no page of the trace has one.)
+fn tooltipSource(dom: *Instance, list: *Sources) !void {
+    var source: NameSource = .{ .type = .attribute, .attribute = "title" };
+    if (attribute(dom, "title")) |title| {
+        const own = std.mem.trim(u8, title, spaces);
+        var inner: []const u8 = "";
+        var inner_text: ?runtime.DOMString = null;
+        defer if (inner_text) |*t| t.deinit(dom.ctx.allocator);
+        if (dom.stateAs(interfaces.HTMLElement.State) != null) {
+            inner_text = try interfaces.HTMLElement.get_innerText(dom);
+            inner = std.mem.trim(u8, inner_text.?.asSlice(), spaces);
+        }
+        if (!eq(own, inner)) {
+            source.text = title;
+            source.attribute_value = title;
+        }
+    }
+    try list.add(source);
+}
+
+/// The text 2F's contents source shows: a control's user-agent contents
+/// (a text button's label, an image button's alt), else the element's.
+fn contentsOf(tree: *Tree, dom: *Instance, hidden: bool) ![]const u8 {
+    if (isHtml(dom) and eq(localName(dom), "input")) {
+        var kind_value = try interfaces.HTMLInputElement.get_type(dom);
+        defer kind_value.deinit(dom.ctx.allocator);
+        const kind = kind_value.asSlice();
+        if (oneOf(kind, .{ "button", "submit", "reset" })) return attribute(dom, "value") orelse defaultButtonLabel(kind) orelse "";
+        if (eq(kind, "image")) return attribute(dom, "alt") orelse "";
+        return "";
+    }
+    return tree.names.contentsText(dom, hidden);
+}
+
+fn defaultButtonLabel(kind: []const u8) ?[]const u8 {
+    if (eq(kind, "submit")) return @import("control_labels.zig").submit;
+    if (eq(kind, "reset")) return @import("control_labels.zig").reset;
+    return null;
+}
+
+/// AXObject::IsNameProhibited: a role whose name ARIA prohibits, unless the
+/// object is focusable or a custom element. It reads RoleValue(), the role
+/// before ComputeFinalRoleForSerialization: an unnamed <section> (sent as
+/// SectionWithoutName) and an <aside> inside an article (sent as generic)
+/// still show their title source (Chrome 157, the trace's structure page).
+fn nameProhibited(tree: *Tree, dom: *Instance, object: *const Node) bool {
+    if (focusable(tree, dom, object.role)) return false;
+    if (isCustomElement(dom)) return false;
+    return roleIsNameProhibited(if (object.aria_role != .Unknown) object.aria_role else object.native_role);
+}
+
+/// RoleIsNameProhibited (ax_utilities_generated_naming.cc.tmpl): the roles
+/// whose aria_properties.json5 nameFrom is ["prohibited"], by their
+/// internal roles.
+fn roleIsNameProhibited(role: Role) bool {
+    return switch (role) {
+        .Caption, .Code, .Definition, .ContentDeletion, .Emphasis, .GenericContainer, .SectionWithoutName, .ContentInsertion, .Mark, .None, .Paragraph, .Strong, .Subscript, .Suggestion, .Superscript, .Term, .Time => true,
+        else => false,
+    };
+}
+
+/// AXObject::IsTextField: a native text control, or else an element with a
+/// contenteditable attribute or an ARIA text field role (RawAriaRole:
+/// textbox, searchbox, a text combobox).
+fn isTextField(dom: *Instance, object: *const Node) bool {
+    if (isTextControl(dom)) return true;
+    if (attribute(dom, "contenteditable")) |value| if (!std.ascii.eqlIgnoreCase(value, "false")) return true;
+    return object.aria_role == .TextField or object.aria_role == .SearchBox or object.aria_role == .TextFieldWithComboBox;
+}
+
+/// Element::IsTextControl: a textarea, or an input whose type is a text
+/// field's.
+fn isTextControl(dom: *Instance) bool {
+    if (!isHtml(dom)) return false;
+    if (eq(localName(dom), "textarea")) return true;
+    if (!eq(localName(dom), "input")) return false;
+    var kind = interfaces.HTMLInputElement.get_type(dom) catch return false;
+    defer kind.deinit(dom.ctx.allocator);
+    return oneOf(kind.asSlice(), .{ "text", "search", "url", "tel", "email", "password", "number" });
+}
+
+/// IsAriaHiddenRoot: the element's own aria-hidden is true.
+fn ariaHiddenRoot(tree: *Tree, dom: *Instance) bool {
+    const value = (a11y.effective(tree.arena, dom, "aria-hidden", "ariaHidden") catch return false) orelse return false;
+    return std.ascii.eqlIgnoreCase(std.mem.trim(u8, value, spaces), "true");
+}
+
+/// HTMLOptionElement::HasOneTextChild.
+fn hasOneTextChild(dom: *Instance) bool {
+    const base = bridge.getNodeBase(dom).?;
+    const first = base.firstChild() orelse return false;
+    return first.next_sibling == null and first.node_type == NodeBase.TEXT_NODE;
+}
+
+/// The first child element named `name` not hidden from the accessibility
+/// tree (FirstUnhiddenTableCaption).
+fn firstUnhiddenChild(tree: *Tree, dom: *Instance, name: []const u8) !?*Instance {
+    const base = bridge.getNodeBase(dom).?;
+    var at = base.firstChild();
+    while (at) |child| : (at = child.next_sibling) {
+        const element = a11y.instance(child) orelse continue;
+        if (child.node_type != NodeBase.ELEMENT_NODE or !eq(localName(element), name)) continue;
+        if (!try tree.names.hidden(element)) return element;
+    }
+    return null;
+}
+
+/// TextFromElements' accumulated text: the non-empty texts, one space
+/// between.
+fn joinTexts(arena: Allocator, texts: []const a11y.RelatedText) ![]const u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    for (texts) |t| {
+        if (t.text.len == 0) continue;
+        if (out.items.len > 0) try out.append(arena, ' ');
+        try out.appendSlice(arena, t.text);
+    }
+    return out.items;
+}
+
+/// The related objects, each text with its runs of white space made one
+/// (as Chrome 157 sends them, a11y1-chrome157-trace.txt).
+fn relatedOf(arena: Allocator, texts: []const a11y.RelatedText) ![]const Related {
+    var out: std.ArrayListUnmanaged(Related) = .empty;
+    for (texts) |t| try out.append(arena, .{ .node = t.node, .text = try collapseRuns(arena, t.text) });
+    return out.items;
+}
+
+/// The labelledby property's related objects: those of each source that
+/// gave a text and is not superseded (BuildProtocolAXNodeForUnignoredAXObject).
+fn nameRelated(sources: []const NameSource) []const Related {
+    for (sources) |source| {
+        if (source.text == null or source.superseded) continue;
+        if (source.related.len > 0) return source.related;
+    }
+    return &.{};
+}
+
+/// AXNodeObject::Description (CDP sends no sources for it): describedby,
 /// aria-description, a text button's value, a table's caption, a summary's
 /// text, the title attribute.
 fn descriptionOf(tree: *Tree, dom: *Instance, object: *const Node, name: []const u8) ![]const u8 {
@@ -1643,7 +2124,7 @@ fn editableKind(dom: *Instance) ?[]const u8 {
 /// FillLiveRegionProperties, FillGlobalStates, FillWidgetProperties,
 /// FillWidgetStates, FillRelationships, FillSparseAttributes, and the
 /// labelledby of the name's sources, in Blink's order.
-fn properties_(tree: *Tree, dom: *Instance, object: *const Node, name_related: []const a11y.RelatedText, out: *std.ArrayListUnmanaged(Property)) !void {
+fn properties_(tree: *Tree, dom: *Instance, object: *const Node, name_related: []const Related, out: *std.ArrayListUnmanaged(Property)) !void {
     const arena = tree.arena;
     const role = object.role;
     // FillLiveRegionProperties: an active live region root.
@@ -1700,7 +2181,7 @@ fn properties_(tree: *Tree, dom: *Instance, object: *const Node, name_related: [
     if (try relatedList(tree, dom, "aria-owns", false)) |v| try out.append(arena, .{ .name = "owns", .value = v });
     // FillSparseAttributes.
     if (attribute(dom, "aria-busy")) |v| if (std.ascii.eqlIgnoreCase(v, "true")) try out.append(arena, .{ .name = "busy", .value = .boolean_one });
-    if (role == .Link) if (try linkUrl(tree, dom)) |url| try out.append(arena, .{ .name = "url", .value = .{ .string = url } });
+    if (try objectUrl(tree, dom, role)) |url| try out.append(arena, .{ .name = "url", .value = .{ .string = url } });
     if (attribute(dom, "aria-keyshortcuts")) |v| if (v.len > 0) try out.append(arena, .{ .name = "keyshortcuts", .value = .{ .string = v } });
     if (attribute(dom, "aria-roledescription")) |v| if (v.len > 0) try out.append(arena, .{ .name = "roledescription", .value = .{ .string = v } });
     if (try activeDescendant(tree, dom, object)) |target| try out.append(arena, .{ .name = "activedescendant", .value = .{ .idref = .{ .node = target } } });
@@ -1710,11 +2191,7 @@ fn properties_(tree: *Tree, dom: *Instance, object: *const Node, name_related: [
     if (try relatedList(tree, dom, "aria-flowto", false)) |v| try out.append(arena, .{ .name = "flowto", .value = v });
     // The name's related-element sources (labelledby: aria-labelledby's
     // targets, the labels, a legend or caption), each with its text.
-    if (name_related.len > 0) {
-        var related: std.ArrayListUnmanaged(Related) = .empty;
-        for (name_related) |r| try related.append(arena, .{ .node = r.node, .text = r.text });
-        try out.append(arena, .{ .name = "labelledby", .value = .{ .node_list = related.items } });
-    }
+    if (name_related.len > 0) try out.append(arena, .{ .name = "labelledby", .value = .{ .node_list = name_related } });
 }
 
 /// kActivedescendantId: aria-activedescendant's element, when it is in the
@@ -2019,6 +2496,57 @@ fn relatedList(tree: *Tree, dom: *Instance, comptime name: []const u8, allow_ign
 }
 
 /// A link's URL: its href, resolved.
+/// AXNodeObject::Url for an element: a link's href, an image's source URL
+/// (ImageSourceURL, completed against the document), an image button's src;
+/// TruncateAndAddStringAttribute keeps at most 10,000 bytes of it, cut at a
+/// character boundary.
+fn objectUrl(tree: *Tree, dom: *Instance, role: Role) !?[]const u8 {
+    const url = if (role == .Link)
+        try linkUrl(tree, dom)
+    else if (role == .Image and dom.stateAs(interfaces.HTMLImageElement.State) != null)
+        try imageUrl(tree, dom)
+    else if (isImageButton(dom))
+        try inputImageUrl(tree, dom)
+    else
+        null;
+    const value = url orelse return null;
+    if (value.len == 0) return null;
+    const max = 10000;
+    if (value.len <= max) return value;
+    var end: usize = max;
+    while (end > 0 and (value[end] & 0xC0) == 0x80) end -= 1;
+    return value[0..end];
+}
+
+/// HTMLImageElement::ImageSourceURL: its src attribute, stripped of HTML
+/// white space; with none, the candidate srcset selected (currentSrc).
+fn imageUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
+    if (std.mem.trim(u8, attribute(dom, "src") orelse "", spaces).len > 0) {
+        const src = try interfaces.HTMLImageElement.get_src(dom);
+        defer dom.ctx.allocator.free(src);
+        return try tree.arena.dupe(u8, src);
+    }
+    if (attribute(dom, "srcset") == null) return null;
+    const current = try interfaces.HTMLImageElement.get_currentSrc(dom);
+    defer dom.ctx.allocator.free(current);
+    return try tree.arena.dupe(u8, current);
+}
+
+fn isImageButton(dom: *Instance) bool {
+    if (dom.stateAs(interfaces.HTMLInputElement.State) == null) return false;
+    var kind = interfaces.HTMLInputElement.get_type(dom) catch return false;
+    defer kind.deinit(dom.ctx.allocator);
+    return eq(kind.asSlice(), "image");
+}
+
+/// HTMLInputElement::Src: the src attribute completed against the document.
+fn inputImageUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
+    if (attribute(dom, "src") == null) return null;
+    const src = try interfaces.HTMLInputElement.get_src(dom);
+    defer dom.ctx.allocator.free(src);
+    return try tree.arena.dupe(u8, src);
+}
+
 fn linkUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
     if (dom.stateAs(interfaces.HTMLAnchorElement.State) == null) return null;
     const href = try interfaces.HTMLAnchorElement.get_href(dom);

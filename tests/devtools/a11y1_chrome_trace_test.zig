@@ -25,9 +25,9 @@
 //! renamed in order of first appearance ("n1", "n2"...; Chrome's renderer
 //! hands DOMNodeIds to other subsystems too, so its numbers are not Crane's),
 //! Chrome's generated negative ids likewise ("g1"...), frame ids ("frame1").
-//! Name and description `sources` are left out until batch 2 adds them
-//! (`compare_sources`). Accessibility events are batch 3's and are not in
-//! this comparison.
+//! A name's `sources` are compared with the rest (CDP sends none for a
+//! description). Accessibility events are batch 3's and are not in this
+//! comparison.
 //!
 //! RECORDING the fixture: run Chrome for Testing 157 with
 //! `--headless=new --remote-debugging-port=<port> --user-data-dir=<empty dir> about:blank`
@@ -46,9 +46,6 @@ const cdp = @import("cdp_client.zig");
 const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 
 const fixture_path = "tests/devtools/fixtures/a11y1-chrome157-trace.txt";
-
-/// Batch 2 compares the name and description sources too.
-const compare_sources = false;
 
 /// One command of a step. Selectors are document.querySelector's, run by
 /// Runtime.evaluate in the page ("document" for the document itself).
@@ -240,6 +237,30 @@ const pages = [_]Page{
         },
     },
     .{
+        // tools/mcp_diff/fixtures/snapshot.html (lane mcp1): chrome-devtools-
+        // mcp's take_snapshot over it showed a label of a checkbox, an
+        // image's url, a text field's and a select's user-agent parts. Those
+        // parts are Chrome's user-agent shadow DOM, which Crane has none of
+        // for form controls (main, 12:25 AM ET 2026-11-24: a later
+        // devtools-fidelity item, no made-up DOM ids): Crane's textbox has no
+        // children, its value carrying the text, and its select's pop-up is
+        // nodeless - set apart here as every page's user-agent nodes are.
+        .label = "snapshot",
+        .html = "<!doctype html>\n<title>Snapshot</title>\n" ++
+            "<nav><a href=\"#top\">Top</a> <a href=\"second.html\">Second page</a></nav>\n<main>\n<h1>Orders</h1>\n" ++
+            "<p>Three orders are <em>waiting</em>.</p>\n<ul><li>First</li><li>Second</li></ul>\n<form>\n" ++
+            "<label>Name <input name=\"name\" value=\"Ada\"></label>\n<label><input type=\"checkbox\" checked> Gift wrap</label>\n" ++
+            "<select><option>Red</option><option selected>Green</option></select>\n<textarea aria-label=\"Notes\"></textarea>\n" ++
+            "<button type=\"button\">Send</button>\n<button type=\"button\" disabled>Cancel</button>\n</form>\n" ++
+            "<img alt=\"Logo\" src=\"data:image/gif;base64,R0lGODlhAQABAAAAACw=\">\n" ++
+            "<iframe srcdoc=\"<!doctype html><title>Inner</title><button>Inside</button>\"></iframe>\n</main>\n",
+        .steps = &.{
+            .{ .label = "full", .action = full },
+            .{ .label = "child-frame", .action = .{ .frame = 0 } },
+            .{ .label = "query-label", .action = .{ .query = .{ .selector = "document", .name = "Gift wrap" } } },
+        },
+    },
+    .{
         .label = "enabled",
         .html = "<!doctype html><html lang=en><head><title>Enabled</title></head><body><main><h1>Top</h1><p>para <a href=\"/l\">link</a></p></main></body></html>",
         .steps = &.{
@@ -268,18 +289,11 @@ const pages = [_]Page{
 /// in Chrome's vocabulary) and needs-renderer rows (soft wraps: main's D1)
 /// go here.
 const Deviation = struct { chrome: []const u8, crane: []const u8 };
-const deviations = [_]Deviation{
-    // A treeitem's name from its contents: Crane's AccName (dom/
-    // accessibility.zig, AccName 1.2 step 2F, shared with WebDriver's computed
-    // label) takes its whole subtree, the nested group's "a.zig" too; Chrome
-    // 157 leaves a group's text out of an ancestor's name (Blink
-    // SupportsNameFromContents(recursive) is false for kGroup). OPEN: the
-    // other browsers' answer decides by golden rule 2 (main's batch 2).
-    .{
-        .chrome = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src\"}",
-        .crane = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src a.zig\"}",
-    },
-};
+// None today. The treeitem whose nested group Chrome leaves out of its name
+// was one until golden rule 2 decided it the same way (dom/accessibility.zig
+// groupKeepsContents: Chrome, Firefox and Safari all keep a group's text out
+// of a treeitem's name).
+const deviations = [_]Deviation{};
 
 /// CRANE_A11Y_TRACE_VERBOSE set: each step's progress on stderr.
 fn progress(comptime format: []const u8, args: anytype) void {
@@ -687,10 +701,7 @@ fn canonical(allocator: Allocator, names: *Names, value: std.json.Value, out: *s
             var keys: std.ArrayList([]const u8) = .empty;
             defer keys.deinit(allocator);
             var it = object.iterator();
-            while (it.next()) |entry| {
-                if (!compare_sources and std.mem.eql(u8, entry.key_ptr.*, "sources")) continue;
-                try keys.append(allocator, entry.key_ptr.*);
-            }
+            while (it.next()) |entry| try keys.append(allocator, entry.key_ptr.*);
             std.mem.sort([]const u8, keys.items, {}, struct {
                 fn less(_: void, a: []const u8, b: []const u8) bool {
                     return std.mem.lessThan(u8, a, b);
@@ -981,11 +992,11 @@ test "the Accessibility domain's answers for a list of pages and commands equal 
     try testing.expect(try reportDifferences(allocator, expected, crane, 40));
 }
 
-test "canonical form: one rename map for AX node ids and backend ids, generated ids apart, sources dropped" {
+test "canonical form: one rename map for AX node ids and backend ids (related nodes' too), generated ids apart" {
     const allocator = testing.allocator;
     const raw =
         \\page p
-        \\step full {"result":{"nodes":[{"nodeId":"7","backendDOMNodeId":7,"childIds":["9","-1000000002"],"role":{"type":"internalRole","value":"RootWebArea"},"frameId":"ABC","name":{"type":"computedString","value":"T","sources":[{"type":"attribute"}]}},{"nodeId":"-1000000002","parentId":"7","childIds":[]}]}}
+        \\step full {"result":{"nodes":[{"nodeId":"7","backendDOMNodeId":7,"childIds":["9","-1000000002"],"role":{"type":"internalRole","value":"RootWebArea"},"frameId":"ABC","name":{"type":"computedString","value":"T","sources":[{"type":"relatedElement","attribute":"aria-labelledby","attributeValue":{"type":"idrefList","value":"x","relatedNodes":[{"backendDOMNodeId":9,"idref":"x","text":"T"}]},"value":{"type":"computedString","value":"T"}},{"type":"attribute","attribute":"title","superseded":true}]}},{"nodeId":"-1000000002","parentId":"7","childIds":[]}]}}
         \\step bad {"error":{"code":-32602,"message":"Frame with the given frameId is not found."}}
         \\
     ;
@@ -994,7 +1005,7 @@ test "canonical form: one rename map for AX node ids and backend ids, generated 
     try testing.expectEqualStrings(
         \\page p
         \\step full
-        \\  node {backendDOMNodeId:n1,childIds:[n2,g1],frameId:frame1,name:{type:"computedString",value:"T"},nodeId:n1,role:{type:"internalRole",value:"RootWebArea"}}
+        \\  node {backendDOMNodeId:n1,childIds:[n2,g1],frameId:frame1,name:{sources:[{attribute:"aria-labelledby",attributeValue:{relatedNodes:[{backendDOMNodeId:n2,idref:"x",text:"T"}],type:"idrefList",value:"x"},type:"relatedElement",value:{type:"computedString",value:"T"}},{attribute:"title",superseded:true,type:"attribute"}],type:"computedString",value:"T"},nodeId:n1,role:{type:"internalRole",value:"RootWebArea"}}
         \\  node {childIds:[],nodeId:g1,parentId:n1}
         \\step bad
         \\  error -32602 Frame with the given frameId is not found.

@@ -380,7 +380,11 @@ const Serializer = struct {
             var properties: std.ArrayListUnmanaged(A.AXProperty) = .empty;
             for (described.properties) |p| try properties.append(self.arena, try self.property(p));
             node.properties = properties.items;
-            node.name = .{ .type = .computedString, .value = .{ .string = described.name orelse "" } };
+            var name: A.AXValue = .{ .type = .computedString, .value = .{ .string = described.name orelse "" } };
+            if (described.name_sources) |sources| if (sources.len > 0) {
+                name.sources = try self.valueSources(sources);
+            };
+            node.name = name;
             if (described.description.len > 0) node.description = .{ .type = .computedString, .value = .{ .string = described.description } };
             if (described.value) |v| node.value = try self.value(v);
         }
@@ -453,6 +457,51 @@ const Serializer = struct {
             },
             .node_list => |l| .{ .type = .nodeList, .relatedNodes = try self.relatedNodes(l) },
         };
+    }
+
+    /// CreateValueSource for each name source: related elements of
+    /// aria-labelledby as its attributeValue (an idrefList carrying the
+    /// attribute's text), of a native source as its nativeSourceValue (a
+    /// nodeList); otherwise the attribute's value as a string.
+    fn valueSources(self: *Serializer, sources: []const ax.NameSource) ![]const A.AXValueSource {
+        var out: std.ArrayListUnmanaged(A.AXValueSource) = .empty;
+        for (sources) |source| {
+            var v: A.AXValueSource = .{ .type = switch (source.type) {
+                .attribute => .attribute,
+                .implicit => .implicit,
+                .contents => .contents,
+                .placeholder => .placeholder,
+                .relatedElement => .relatedElement,
+            } };
+            const labelledby = if (source.attribute) |a| std.mem.eql(u8, a, "aria-labelledby") or std.mem.eql(u8, a, "aria-labeledby") else false;
+            if (source.related.len > 0) {
+                if (labelledby) {
+                    v.attributeValue = .{
+                        .type = .idrefList,
+                        .value = if (source.attribute_value) |text| .{ .string = text } else null,
+                        .relatedNodes = try self.relatedNodes(source.related),
+                    };
+                } else if (source.attribute == null) {
+                    v.nativeSourceValue = .{ .type = .nodeList, .relatedNodes = try self.relatedNodes(source.related) };
+                }
+            } else if (source.attribute_value) |text| {
+                v.attributeValue = .{ .type = .string, .value = .{ .string = text } };
+            }
+            if (source.text) |text| v.value = .{ .type = .computedString, .value = .{ .string = text } };
+            v.attribute = source.attribute;
+            if (source.superseded) v.superseded = true;
+            if (source.invalid) v.invalid = true;
+            if (source.native_source) |native| v.nativeSource = switch (native) {
+                .label => .label,
+                .labelfor => .labelfor,
+                .labelwrapped => .labelwrapped,
+                .legend => .legend,
+                .tablecaption => .tablecaption,
+                .title => .title,
+            };
+            try out.append(self.arena, v);
+        }
+        return out.items;
     }
 
     /// RelatedNodeForAXObject: the backendDOMNodeId, the element's id as
