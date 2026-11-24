@@ -22098,7 +22098,9 @@ void v8_InspectorStack_Delete(CraneInspectorStack* stack) {
 }
 
 unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>* context, Global<Value>* exception,
-                                      const uint8_t* message, size_t message_length, const uint8_t* url, size_t url_length,
+                                      const uint8_t* message, size_t message_length,
+                                      const uint8_t* detailed_message, size_t detailed_message_length,
+                                      const uint8_t* url, size_t url_length,
                                       unsigned line, unsigned column, const CraneInspectorStack* site) {
     if (!inspector || !inspector->inspector() || !context || context->IsEmpty()) return 0;
     Isolate* isolate = inspector->isolate();
@@ -22160,7 +22162,14 @@ unsigned v8_Inspector_ExceptionThrown(CraneInspector* inspector, Global<Context>
     }
     if (!stack) stack = inspector->inspector()->captureStackTrace(false);
     v8_inspector::StringView message_view = CraneMessageView(message ? message : reinterpret_cast<const uint8_t*>(""), message ? message_length : 0, wide_message);
-    return inspector->inspector()->exceptionThrown(local, message_view, value, message_view, url_view,
+    // Blink's two strings (core/inspector/main_thread_debugger.cc
+    // MainThreadDebugger::ExceptionThrown; BSD-3 - reproduced, not copied):
+    // the default message ("Uncaught"), which exceptionDetails.text carries
+    // beside an exception value, and the detailed one (the error event's
+    // console message).
+    std::vector<uint16_t> wide_detailed;
+    v8_inspector::StringView detailed_view = CraneMessageView(detailed_message ? detailed_message : reinterpret_cast<const uint8_t*>(""), detailed_message ? detailed_message_length : 0, wide_detailed);
+    return inspector->inspector()->exceptionThrown(local, message_view, value, detailed_view, url_view,
                                                    line, column, std::move(stack), script_id);
 }
 

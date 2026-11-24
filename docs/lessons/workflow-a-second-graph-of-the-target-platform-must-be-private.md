@@ -1,6 +1,7 @@
 # Workflow: A second module graph of the target's own platform must be private
 
 **Date**: 2026-11-05
+**Status** (2026-11-23, lane bp1, build migration batch P1): `ModuleConfig.public_platform` is gone; `addCraneModules` takes a `public` flag, true only for the target platform's own graph, so a second graph (a runner graph in another mode, the tests' graph) passes `false` instead of naming some other platform. The rule stands: one graph registers its modules by name.
 **Lesson**: build.zig's `addCraneModules` registers a graph's modules by name (`b.addModule`) when the graph's platform is `config.public_platform`; a second graph built for the target's own platform (another optimize mode) must set `public_platform` to another platform, or the configure step panics on the duplicate name before anything compiles.
 
 **Why**: `graphModule` is `b.addModule(name, ...)` for the public graph and `b.createModule(...)` otherwise, and `addModule` asserts each name once. The WPT runner's own graph never hit this because it is the `.testing` platform's, which is not the target's.

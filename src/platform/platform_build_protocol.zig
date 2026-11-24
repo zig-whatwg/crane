@@ -1,17 +1,26 @@
 //! THE BUILD SIDE OF THE PLATFORM PROTOCOL (docs/platform-protocol.md 10).
 //!
-//! What is one platform's in the build beyond its fixed kit - the extra kit
-//! parts it builds in and the system libraries each links - is declared by
-//! the platform's adapter, in a build file beside its code,
+//! What is one platform's in the build - which operating systems it answers
+//! for, the extra kit parts it builds in and the system libraries each links -
+//! is declared by the platform's adapter, in a build file beside its code,
 //! `adapters/<platform>/platform_build.zig`, and never by the root build.zig
 //! (the user, 2026-11-12: no engine or platform code in build.zig), as the
 //! engine's adapters declare theirs (src/runtime/engine_build_protocol.zig).
-//! This file is the protocol's part: the list of adapters, the declaration's
-//! type, and what the root build.zig asks. The root build names no library.
+//! This file is the protocol's part: the list of adapters, the platforms a
+//! module graph binds (`Platform`) and the protocol's own options
+//! (-Dplatform, -Dplatform-module, -Dplatform-without, -Dplatform-static:
+//! `choose`), which adapter the tests bind (`tests_platform`), the
+//! conformance test's bindings (`conformance`), the interface every
+//! adapter's build file exports with the check that holds each to it, and
+//! the words the build-neutrality lint looks for. The root build names no
+//! platform and no library.
 //!
-//! What an adapter's build file exports:
+//! What an adapter's build file exports (`checkAdapter` holds each one to
+//! exactly these types):
 //!
+//!   pub fn ownsTarget(target: std.Target) bool
 //!   pub fn kitParts(target: std.Target) []const KitPart
+//!   pub const facts: Facts = .{ ... };
 //!
 //! A part is `src/platform/kit/<name>/root.zig`, a module the adapter
 //! imports as `kit_<name>`, made with the platform facade and the platform
@@ -25,12 +34,35 @@
 //! where the build side meets the adapters.)
 const std = @import("std");
 
-/// The platform adapters, by their -Dplatform name: each one's build file.
+/// The platform adapters, by their -Dplatform name: each one's build file. A
+/// new adapter is a directory, a build file and a line here; Zig imports by
+/// a literal path only, so one file has to list them, and it is this one.
 pub const adapters = .{
     .darwin = @import("adapters/darwin/platform_build.zig"),
     .linux = @import("adapters/linux/platform_build.zig"),
     .testing = @import("adapters/testing/platform_build.zig"),
 };
+
+/// The platform a module graph is built for (docs/platform-protocol.md 1.1):
+/// a listed adapter, by its -Dplatform name, or `external` - the
+/// implementation -Dplatform-module names. The values -Dplatform takes: the
+/// list's names, in its order, then `external`.
+pub const Platform = platform: {
+    const listed = std.meta.fieldNames(@TypeOf(adapters));
+    var names: [listed.len + 1][]const u8 = undefined;
+    for (listed, 0..) |name, i| names[i] = name;
+    names[listed.len] = "external";
+    const frozen = names;
+    const Tag = std.math.IntFittingRange(0, frozen.len - 1);
+    break :platform @Enum(Tag, .exhaustive, &frozen, &std.simd.iota(Tag, frozen.len));
+};
+
+/// The adapter the test executables bind, and the WPT runners whose build
+/// asks for the tests' graph (tests/wpt_runner/build_mode.zig
+/// `PlatformGraph`): the build machine's real OS services plus test
+/// capabilities (docs/platform-protocol.md 9). It answers for no target, so
+/// a product binds it only when -Dplatform asks.
+pub const tests_platform: Platform = .testing;
 
 /// One extra kit part a platform builds in.
 pub const KitPart = struct {
@@ -39,6 +71,291 @@ pub const KitPart = struct {
     /// The system libraries it links (linkSystemLibrary).
     system_libraries: []const []const u8 = &.{},
 };
+
+/// What the neutral build asks about an adapter.
+pub const Facts = struct {
+    /// The words that name this platform or an operating system it answers
+    /// for: what `zig build lint-build` looks for (its `--platform=` keys)
+    /// in the root build.zig and the neutral files it imports, written as
+    /// tools/lint_build_neutral.zig reads a key (`word:<text>` a whole word,
+    /// `.<name>` an enum literal, else the text anywhere).
+    words: []const []const u8,
+};
+
+// The build side's conformance check, as the engine's is: an adapter whose
+// build file lacks a declaration, or declares one with another type, does
+// not configure - and the error names both.
+comptime {
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| checkAdapter(name, @field(adapters, name));
+}
+
+fn checkAdapter(comptime name: []const u8, comptime A: type) void {
+    const who = "platform adapter '" ++ name ++ "' (src/platform/adapters/" ++ name ++ "/platform_build.zig)";
+    conforms(who, A, "ownsTarget", fn (std.Target) bool);
+    conforms(who, A, "kitParts", fn (std.Target) []const KitPart);
+    // hasdecl: A is each listed adapter's build file (`adapters`), whose
+    // `facts` is pub - this check exists to fail the configure when it is not.
+    if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: platform_build.Facts`");
+}
+
+fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u8, comptime Expected: type) void {
+    if (!@hasDecl(A, decl)) @compileError(who ++ " lacks `" ++ decl ++ "`: " ++ @typeName(Expected));
+    const Actual = @TypeOf(@field(A, decl));
+    if (Actual != Expected) @compileError(who ++ ": `" ++ decl ++ "` is " ++ @typeName(Actual) ++ "; the build protocol's is " ++ @typeName(Expected));
+}
+
+/// The platform a target gets when -Dplatform does not say: the first
+/// listed adapter that answers for its operating system; null where Crane
+/// has no built-in platform (pass -Dplatform-module).
+pub fn defaultFor(target: std.Target) ?Platform {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (@field(adapters, name).ownsTarget(target)) return @field(Platform, name);
+    }
+    return null;
+}
+
+/// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
+/// Capabilities fields. The facade checks the names again at compile time;
+/// this list only makes a typo fail before any compile starts.
+pub const capability_names = [_][]const u8{
+    "image_decoding",
+    "image_encoding",
+    "font_decoding",
+    "brotli",
+    "deflate_decoding",
+    "persistent_storage",
+    "file_urls",
+    "system_trust_store",
+    "http2",
+    "http3",
+    "thread_qos",
+    "resident_memory",
+    "layout",
+    "os_permissions",
+    "simple_dialogs",
+    "printing",
+    "file_picker",
+    "windows",
+    "media_decoding",
+    "pdf_viewer",
+    "webcodecs",
+    "media_capabilities",
+    "encrypted_media",
+    "camera",
+    "microphone",
+    "screen_capture",
+    "audio_output",
+    "speech_synthesis",
+    "speech_recognition",
+    "clipboard",
+    "notifications",
+    "push",
+    "background_sync",
+    "background_fetch",
+    "geolocation",
+    "sensors",
+    "device_orientation",
+    "usb",
+    "hid",
+    "serial",
+    "bluetooth",
+    "nfc",
+    "midi",
+    "gamepad",
+    "payment",
+    "webauthn",
+    "identity_credentials",
+    "share",
+    "contacts",
+    "fullscreen",
+    "pointer_lock",
+    "keyboard_lock",
+    "wake_lock",
+    "idle_detection",
+    "battery",
+    "vibration",
+    "badging",
+    "eyedropper",
+    "local_fonts",
+    "keyboard_map",
+    "screen_details",
+    "presentation",
+    "remote_playback",
+    "picture_in_picture",
+    "media_session",
+    "network_information",
+    "compute_pressure",
+    "device_posture",
+    "virtual_keyboard",
+    "protocol_handlers",
+    "address_space",
+    "devtools_transport",
+};
+
+/// The link-plan items -Dplatform-static may name (contract section 10): a
+/// platform compiles the kit's static implementation of each instead of
+/// linking the system library. `all` names every one.
+pub const static_items = [_][]const u8{ "sqlite", "zlib", "brotli", "crypto", "trust_store", "curl", "nghttp2", "all" };
+
+/// -Dplatform's description: the list's names.
+const platform_help: []const u8 = help: {
+    const names = std.meta.fieldNames(@TypeOf(adapters));
+    var text: []const u8 = "The platform: ";
+    for (names, 0..) |name, i| text = text ++ (if (i == 0) "" else if (i + 1 == names.len) " or " else ", ") ++ name;
+    break :help text ++ " (default: from the target)";
+};
+
+/// What the command line chose for the platform protocol (`choose`).
+pub const Choice = struct {
+    /// The platform the target's own graph binds: `external` with
+    /// -Dplatform-module, else -Dplatform, else the adapter that answers for
+    /// the target (`defaultFor`).
+    platform: Platform,
+    /// -Dplatform-module: the third-party implementation's root file.
+    module_path: ?[]const u8,
+    /// -Dplatform-without: the capabilities compiled out, as given.
+    without: []const []const u8,
+    /// -Dplatform-static: the link-plan items compiled from the kit.
+    static: []const []const u8,
+};
+
+/// Declare the platform protocol's options - -Dplatform-without,
+/// -Dplatform-module, -Dplatform, -Dplatform-static, in that order - and
+/// answer what they chose. Called once. A name neither list holds, a target
+/// no adapter answers for with no -Dplatform-module, or -Dplatform=external
+/// without one stops the configure with the reason.
+pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Choice {
+    checkListIsComplete(b);
+    const without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &capability_names);
+    const module_path = b.option([]const u8, "platform-module", "A third-party platform: the root file of an implementation of src/platform/protocol.zig");
+    const asked = b.option(Platform, "platform", platform_help);
+    const platform: Platform = if (module_path != null) .external else asked orelse defaultFor(target.result) orelse {
+        std.debug.print("Error: no built-in platform for {s}; pass -Dplatform-module=<path>\n", .{@tagName(target.result.os.tag)});
+        std.process.exit(1);
+    };
+    if (asked == .external and module_path == null) {
+        std.debug.print("Error: -Dplatform=external needs -Dplatform-module=<path>\n", .{});
+        std.process.exit(1);
+    }
+    const static = optionList(b, "platform-static", b.option([]const u8, "platform-static", "Link-plan items to compile statically instead of linking the system library (comma-separated, or all)"), &static_items);
+    return .{ .platform = platform, .module_path = module_path, .without = without, .static = static };
+}
+
+/// Whether `name` is a listed adapter's name.
+fn isListed(name: []const u8) bool {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |listed| {
+        if (std.mem.eql(u8, listed, name)) return true;
+    }
+    return false;
+}
+
+/// Fail the configure when a directory under src/platform/adapters/ is not a
+/// listed adapter. The list is what -Dplatform offers, what the conformance
+/// check holds to the interface, what the conformance test binds and what
+/// the build-neutrality lint takes its platform words from: an adapter's
+/// directory it lacks would be none of these, silently. (A listed adapter
+/// without its directory or its build file cannot happen: the list imports
+/// the file.) The engine protocol's check, for the platform.
+///
+/// What it reads - the directory's entries, by name and kind - is a tracked
+/// input of Zig's configure cache (`dependOnDirectoryContents` records
+/// exactly those), so a new directory there configures again and fails here,
+/// and an unchanged one leaves the cached configuration in use.
+fn checkListIsComplete(b: *std.Build) void {
+    const io = b.graph.io;
+    const adapters_path = "src/platform/adapters";
+    b.dependOnDirectoryContents(b.path(adapters_path));
+    var dir = b.root.root_dir.handle.openDir(io, adapters_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("the platform build protocol cannot open {s} to check its list of adapters: {t}", .{ adapters_path, err });
+    defer dir.close(io);
+    var entries = dir.iterate();
+    while (entries.next(io) catch |err| std.debug.panic("the platform build protocol cannot read {s}: {t}", .{ adapters_path, err })) |entry| {
+        if (entry.kind != .directory or isListed(entry.name)) continue;
+        std.debug.panic(
+            "{s}/{s}/ is a platform adapter the build protocol does not list: give it a platform_build.zig (the interface: src/platform/platform_build_protocol.zig) and a line in that file's `adapters`",
+            .{ adapters_path, entry.name },
+        );
+    }
+}
+
+/// A comma-separated option as a list of names, each checked against `valid`.
+fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []const []const u8) []const []const u8 {
+    const text = value orelse return &.{};
+    var names: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.tokenizeScalar(u8, text, ',');
+    while (it.next()) |raw| {
+        const name = std.mem.trim(u8, raw, " ");
+        for (valid) |v| {
+            if (std.mem.eql(u8, v, name)) break;
+        } else {
+            std.debug.print("Error: -D{s} names '{s}', which is not one of: ", .{ option, name });
+            for (valid, 0..) |v, i| std.debug.print("{s}{s}", .{ if (i == 0) "" else ", ", v });
+            std.debug.print("\n", .{});
+            std.process.exit(1);
+        }
+        names.append(b.allocator, b.dupe(name)) catch @panic("OOM");
+    }
+    return names.items;
+}
+
+/// One binding of the platform contract's test
+/// (tests/platform/protocol_conformance_test.zig): the facade, one platform
+/// and the kit, nothing of the engine, in an executable of its own named
+/// `platform_protocol_<name>`.
+pub const Conformance = struct {
+    name: []const u8,
+    platform: Platform,
+    /// The capabilities compiled out of this binding.
+    without: []const []const u8 = &.{},
+    /// Bind the platform's own font operations and media decoding too
+    /// (tests/platform/font_adapters.zig, tests/platform/
+    /// media_decoding_test.zig): a built-in platform's own binding.
+    fonts_and_media: bool = false,
+    /// Run the kit parts' own test blocks with this binding - once in the
+    /// whole list, since they do not depend on the platform they are bound
+    /// with.
+    kit_tests: bool = false,
+};
+
+/// The contract against every listed platform but the tests' own - which
+/// tests/platform/'s executable binds - each with nothing compiled out, in
+/// the list's order; then the bindings that compile capabilities out.
+pub const conformance: []const Conformance = rows: {
+    var rows: []const Conformance = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (std.mem.eql(u8, name, @tagName(tests_platform))) continue;
+        rows = rows ++ &[_]Conformance{.{ .name = name, .platform = @field(Platform, name), .fonts_and_media = true, .kit_tests = rows.len == 0 }};
+    }
+    break :rows rows ++ &compiled_out;
+};
+
+/// The contract with capabilities compiled out: the testing platform, and
+/// darwin without its CoreText fonts (decision 20).
+const compiled_out = [_]Conformance{
+    .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
+    .{ .name = "testing_without_brotli_and_deflate_decoding", .platform = .testing, .without = &.{ "brotli", "deflate_decoding" } },
+    .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
+    .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
+    .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
+    .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
+};
+
+/// Every listed adapter's words, comma-separated: the platform keys of `zig
+/// build lint-build`, from the list itself - so the root build.zig spells
+/// no platform to look for one, and a new adapter is covered the day it is
+/// listed.
+pub const lint_words: []const u8 = words: {
+    var text: []const u8 = "";
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        for (@field(adapters, name).facts.words) |word| text = text ++ (if (text.len == 0) "" else ",") ++ word;
+    }
+    break :words text;
+};
+
+/// What a branch on the target's operating system looks like in Zig: the
+/// target keys of `zig build lint-build` (case kept). Such a branch belongs
+/// to the adapter that answers for that system.
+pub const lint_target_words: []const u8 = "os.tag,isDarwin,.abi ==";
 
 /// The extra kit parts of the platform named `platform_name` for `target`:
 /// its adapter's declaration, none for a platform with no build file here.
@@ -52,4 +369,90 @@ pub fn kitParts(platform_name: []const u8, target: std.Target) []const KitPart {
 /// Link `module`, part `part`'s module, against what the part declares.
 pub fn link(module: *std.Build.Module, part: KitPart) void {
     for (part.system_libraries) |library| module.linkSystemLibrary(library, .{});
+}
+
+const testing = std.testing;
+
+/// The build machine's target with its operating system set to `tag`.
+fn targetFor(tag: std.Target.Os.Tag) std.Target {
+    var target = @import("builtin").target;
+    target.os.tag = tag;
+    return target;
+}
+
+test "Platform is -Dplatform's values: the listed adapters, in the list's order, then external" {
+    const names = std.meta.fieldNames(Platform);
+    try testing.expectEqual(@as(usize, 4), names.len);
+    for ([_][]const u8{ "darwin", "linux", "testing", "external" }, names) |expected, name| try testing.expectEqualStrings(expected, name);
+}
+
+test "-Dplatform's description names the listed adapters" {
+    try testing.expectEqualStrings("The platform: darwin, linux or testing (default: from the target)", platform_help);
+}
+
+test "a target gets the adapter that answers for its operating system, and none where no adapter does" {
+    try testing.expectEqual(@as(?Platform, .darwin), defaultFor(targetFor(.macos)));
+    try testing.expectEqual(@as(?Platform, .darwin), defaultFor(targetFor(.ios)));
+    try testing.expectEqual(@as(?Platform, .linux), defaultFor(targetFor(.linux)));
+    try testing.expectEqual(@as(?Platform, null), defaultFor(targetFor(.windows)));
+    try testing.expectEqual(@as(?Platform, null), defaultFor(targetFor(.freestanding)));
+}
+
+test "the tests' platform is a listed adapter that answers for no target" {
+    try testing.expect(tests_platform != .external);
+    for ([_]std.Target.Os.Tag{ .macos, .ios, .linux, .windows }) |tag| {
+        try testing.expect(defaultFor(targetFor(tag)) != tests_platform);
+    }
+}
+
+test "the capability and link-plan names are each named once; `all` is the last link-plan item" {
+    for ([_][]const []const u8{ &capability_names, &static_items }) |list| {
+        try testing.expect(list.len > 0);
+        for (list, 0..) |name, i| for (list[i + 1 ..]) |other| try testing.expect(!std.mem.eql(u8, name, other));
+    }
+    try testing.expectEqual(@as(usize, 72), capability_names.len);
+    try testing.expectEqualStrings("devtools_transport", try last(&capability_names));
+    try testing.expectEqualStrings("all", try last(&static_items));
+}
+
+fn last(list: []const []const u8) ![]const u8 {
+    if (list.len == 0) return error.EmptyList;
+    return list[list.len - 1];
+}
+
+test "the conformance bindings: each listed platform but the tests' own, then the compile-outs, in today's order" {
+    const expected = [_]struct { []const u8, Platform, usize, bool, bool }{
+        .{ "darwin", .darwin, 0, true, true },
+        .{ "linux", .linux, 0, true, false },
+        .{ "testing_without_camera_clipboard", .testing, 2, false, false },
+        .{ "testing_without_brotli_and_deflate_decoding", .testing, 2, false, false },
+        .{ "testing_without_image_decoding", .testing, 1, false, false },
+        .{ "testing_without_image_encoding", .testing, 1, false, false },
+        .{ "testing_without_font_decoding", .testing, 1, false, false },
+        .{ "darwin_without_font_decoding", .darwin, 1, false, false },
+    };
+    try testing.expectEqual(expected.len, conformance.len);
+    for (expected, 0..) |row, i| {
+        const binding = conformance[i];
+        try testing.expectEqualStrings(row[0], binding.name);
+        try testing.expectEqual(row[1], binding.platform);
+        try testing.expectEqual(row[2], binding.without.len);
+        try testing.expectEqual(row[3], binding.fonts_and_media);
+        try testing.expectEqual(row[4], binding.kit_tests);
+        for (binding.without) |capability| {
+            for (capability_names) |name| {
+                if (std.mem.eql(u8, name, capability)) break;
+            } else return error.NotACapability;
+        }
+    }
+}
+
+test "a listed adapter's name is listed; a third party's and an unknown name are not" {
+    for ([_][]const u8{ "darwin", "linux", "testing" }) |name| try testing.expect(isListed(name));
+    for ([_][]const u8{ "external", "windows", "", "Darwin" }) |name| try testing.expect(!isListed(name));
+}
+
+test "the lint's platform keys are the listed adapters' words; its target keys a branch on the OS" {
+    try testing.expectEqualStrings("darwin,macos,word:ios,iphoneos,xcrun,homebrew,linux,.testing", lint_words);
+    try testing.expectEqualStrings("os.tag,isDarwin,.abi ==", lint_target_words);
 }

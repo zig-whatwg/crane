@@ -1839,7 +1839,15 @@ pub const InspectorClient = struct {
 /// Where an exception the host reports was thrown (`inspectorExceptionThrown`).
 /// BORROWED; lines and columns 1-based, 0 when unknown.
 pub const InspectorExceptionDetails = struct {
+    /// Runtime.exceptionThrown's exceptionDetails.text when there is an
+    /// exception value: Blink's default_message, "Uncaught" ("Uncaught (in
+    /// promise)" for a rejection).
     message: []const u8,
+    /// Blink's detailedMessage (the error event's console message), which
+    /// the inspector shows when there is no exception value; null: `message`
+    /// (core/inspector/main_thread_debugger.cc ExceptionThrown passes the
+    /// two).
+    detailed_message: ?[]const u8 = null,
     url: []const u8 = "",
     line: u32 = 0,
     column: u32 = 0,

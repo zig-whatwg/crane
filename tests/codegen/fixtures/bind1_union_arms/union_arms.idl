@@ -1,0 +1,35 @@
+// Lane bind1 batch B (B3): every member type kind a union typedef can hold,
+// for the `arms` table codegen writes beside each generated union.
+[Exposed=*]
+interface Thing {};
+[Exposed=*]
+interface OtherThing {};
+typedef Thing ThingAlias;
+typedef DOMString StringAlias;
+typedef unsigned long NumberAlias;
+typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource;
+dictionary Options {
+  boolean flag;
+};
+enum Mode { "a", "b" };
+callback Notify = undefined (DOMString message);
+callback interface Listener {
+  undefined handle(DOMString message);
+};
+
+typedef (Thing or OtherThing) Things;
+typedef (Things or DOMString) NestedThings;
+typedef (ThingAlias or Options or Mode) AliasOptionsMode;
+typedef (Notify or USVString) NotifyOrString;
+typedef (Listener or ByteString) ListenerOrString;
+typedef (sequence<DOMString> or Thing) SequenceOrThing;
+typedef (record<DOMString, DOMString> or long) RecordOrLong;
+typedef (FrozenArray<DOMString> or Thing) FrozenOrThing;
+typedef (object or StringAlias) ObjectOrString;
+typedef (Float32Array or DataView or ArrayBuffer or DOMString) Views;
+typedef (SharedArrayBuffer or boolean) SharedOrBoolean;
+typedef (bigint or NumberAlias) Numbers;
+typedef (BufferSource or DOMString) Buffers;
+typedef (AllowSharedBufferSource or long) SharedBuffers;
+typedef (undefined or DOMString) MaybeString;

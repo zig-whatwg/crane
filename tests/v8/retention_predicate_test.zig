@@ -512,7 +512,16 @@ test "setterValueIsBorrowed - an any, nullable or optional, is borrowed for the 
 }
 
 test "setterValueIsBorrowed - a union whose only non-copied arm is `object` is borrowed" {
-    const ObjectOrString = union(enum) { object: runtime.JSValue, text: runtime.DOMString };
+    // Its arms table says `object` (webidl.union_arms): the predicates read
+    // the table, never the arm's name.
+    const ObjectOrString = union(enum) {
+        object: runtime.JSValue,
+        text: runtime.DOMString,
+        pub const arms = [_]@import("webidl").UnionArm{
+            .{ .field = "object", .kind = .object },
+            .{ .field = "text", .kind = .string },
+        };
+    };
     try std.testing.expect(borrowed(ObjectOrString));
     try std.testing.expect(borrowed(?ObjectOrString));
 }
@@ -658,4 +667,41 @@ test "a plain struct holding a JSValue is not a dictionary: no rule takes it for
     try std.testing.expect(!isDictionary(runtime.BorrowedCallbackInterface));
     try std.testing.expect(isDictionary(v8.conversions.generated_dictionaries.QueuingStrategy));
     try std.testing.expect(isDictionary(v8.conversions.generated_dictionaries.EventInit));
+}
+
+test "typeRetainsContext - nesting through optionals and sequences is no reason to retain; only deep dictionary nesting is" {
+    // The predicate gives up (answers "retains") past a depth, against a
+    // self-referential dictionary. That depth counted EVERY step - an
+    // optional, a webidl.Opt, a sequence - so webidl.Opt(SaveFilePickerOptions)
+    // reached it (Opt, its inherited FilePickerOptions, `types`' optional and
+    // sequence, FilePickerAcceptType, `accept`'s optional and sequence, the
+    // record entry) though every member is inert. The frame then kept the
+    // current context for the conversion, and nothing released it: `leaks
+    // --atExit` counted one Global<Context> per showOpenFilePicker /
+    // showSaveFilePicker call (70 over file-system-access/showPicker-errors,
+    // lane bind1, 2026-11-23). Only a dictionary entered counts now.
+    const dictionaries = v8.conversions.generated_dictionaries;
+    const webidl = @import("webidl");
+    try std.testing.expect(!retains(webidl.Opt(dictionaries.SaveFilePickerOptions)));
+    try std.testing.expect(!retains(webidl.Opt(dictionaries.OpenFilePickerOptions)));
+    try std.testing.expect(!retains(webidl.Opt(dictionaries.DirectoryPickerOptions)));
+    // An inert type wrapped in many optionals and sequences stays inert.
+    try std.testing.expect(!retains(?[]const ?[]const ?[]const ?[]const ?[]const runtime.DOMString));
+    // A dictionary nested within itself past the limit still gives up.
+    try std.testing.expect(retains(Nested9));
+}
+
+/// Dictionaries nested nine deep: past the predicate's limit (eight
+/// dictionaries), the safe answer.
+const Nested9 = Nest(9);
+
+fn Nest(comptime n: usize) type {
+    if (n == 0) return struct {
+        pub const webidl_dictionary = true;
+        flag: ?bool = null,
+    };
+    return struct {
+        pub const webidl_dictionary = true;
+        inner: ?Nest(n - 1) = null,
+    };
 }

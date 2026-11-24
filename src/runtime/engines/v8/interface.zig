@@ -259,12 +259,12 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (T == runtime.JSValue) break :blk false;
 
         // Optionals and error unions are inert exactly when their payload is.
-        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth + 1);
-        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth + 1);
+        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth);
+        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth);
 
         // `webidl.Opt(T)` wraps a payload in `.value`.
         if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
-            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth + 1);
+            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth);
         }
 
         // A wrapped platform object: conversion checks the wrapper, reads its
@@ -283,8 +283,13 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
         if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
-        // A self-referential dictionary would recurse without end; past this
-        // depth, give the safe answer.
+        // A self-referential dictionary would recurse without end; past
+        // eight dictionaries entered, give the safe answer. Only a dictionary
+        // (or another member-wise struct) counts: an optional, a webidl.Opt,
+        // a sequence or a union adds no depth - counting them made
+        // webidl.Opt(SaveFilePickerOptions), every member inert, "retain",
+        // and its context leaked per call (lane bind1, 2026-11-23;
+        // tests/v8/retention_predicate_test.zig).
         if (depth >= 8) break :blk true;
 
         // A sequence converts element by element (fromV8Sequence), a dictionary
@@ -293,7 +298,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // exactly when every part is: one callback member, function pointer or
         // unknown pointer anywhere makes the whole type retain.
         if (info == .pointer and info.pointer.size == .slice) {
-            break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
+            break :blk typeRetainsContextDepth(info.pointer.child, depth);
         }
         if (isMemberwiseStruct(T)) {
             for (info.@"struct".field_types) |field_type| {
@@ -303,7 +308,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         }
         if (info == .@"union") {
             for (info.@"union".field_types) |field_type| {
-                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
+                if (typeRetainsContextDepth(field_type, depth)) break :blk true;
             }
             break :blk false;
         }
@@ -1196,21 +1201,35 @@ fn isOptWrapper(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed");
 }
 
-/// The union arm `name` of `T` is a reference to an object: WebIDL's
-/// `object`, or a typed array type (3.2.26, "a reference to the same
-/// object"). Codegen types both as runtime.JSValue and names the arm for the
-/// type - `object`, `uint8clamped_array` - and `conv.fromV8Value`'s union
-/// path gives each the argument's own handle. A JSValue arm under another
-/// name is not one - CryptoKeyID's and MLNumber's `bigint`.
+/// The union arm `name` of `T` holds a reference to the value converted
+/// from - the argument's own handle (conv.referenceTo): WebIDL's `object`
+/// (3.2.25 steps 5.2-11.7), a typed array type (3.2.26, "a reference to the
+/// same object"), and `bigint` (step 14: V itself). Codegen types each
+/// runtime.JSValue, and its arms table says which member type the arm holds
+/// (conv.unionArmKind) - never the arm's name.
 ///
 /// The typed array arms joined when their conversion was written
 /// (2026-10-04); every impl taking such a union was read for keepers:
 /// ImageData takes its own hold of its data (engine.retainValue), and the
 /// rest - WebGL's Float32List/Int32List/Uint32List, OrientationSensor's
-/// RotationMatrixType - are stubs that keep nothing.
+/// RotationMatrixType - are stubs that keep nothing. The bigint arms joined
+/// with the arms tables (lane bind1 batch B), read for keepers the same way:
+/// MLNumber's (MLPadOptions.value, MLClampOptions.minValue/maxValue, which
+/// MLGraphBuilder's pad and clamp stubs ignore) and CryptoKeyID's
+/// (RTCRtpSFrameEncryptor/Decryptor and SFrameEncryptor/DecryptorStream key
+/// operations, SFrameTransformErrorEventInit.keyID - stubs that keep
+/// nothing).
+///
+/// A union with no arms table - one codegen did not describe, which the
+/// binding never converts (conv.unionArmsOf) - has none: the conservative
+/// answer.
 fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
     if (@FieldType(T, name) != runtime.JSValue) return false;
-    return std.mem.eql(u8, name, "object") or conv.typedArrayArmName(name) != null;
+    const kind = comptime conv.describedUnionArmKind(T, name) orelse return false;
+    return switch (kind) {
+        .object, .typed_array, .bigint => true,
+        else => false,
+    };
 }
 
 /// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of

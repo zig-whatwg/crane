@@ -407,17 +407,24 @@ test "argumentHandleIsKeptInValue - buffer sources and object arms are decided b
     // A union whose only non-copying arms are buffer sources.
     const BufferOrText = union(enum) { buffer_source: BufferSource, usvstring: []const u8 };
     try std.testing.expect(kept(BufferOrText));
+    // CryptoKeyID's JSValue arm is `bigint`, which its arms table says holds
+    // the BigInt converted from - a reference, as an `object` arm's (WebIDL
+    // 3.2.25 step 14; lane bind1 batch B): decided by its value.
+    try std.testing.expect(kept(typedefs.CryptoKeyID));
 }
 
-test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm not named object, defaults to NO" {
+test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm no arms table calls a reference, defaults to NO" {
     defer test_agent.close();
     const kept = iface.argumentHandleIsKeptInValue;
     try std.testing.expect(!kept(runtime.DOMString));
     try std.testing.expect(!kept([]const BufferSource));
-    // CryptoKeyID's JSValue arm is `bigint`, not `object`.
-    try std.testing.expect(!kept(typedefs.CryptoKeyID));
+    // A union with no arms table - none codegen describes, which the binding
+    // never converts - keeps the conservative answer, whatever its arms are
+    // named.
     const Shape = union(enum) { value: runtime.JSValue, text: runtime.DOMString };
     try std.testing.expect(!kept(Shape));
+    const Unnamed = union(enum) { object: runtime.JSValue, text: runtime.DOMString };
+    try std.testing.expect(!kept(Unnamed));
     const SomethingNew = struct { a: u32, b: *anyopaque };
     try std.testing.expect(!kept(SomethingNew));
     const BufferOrCallback = union(enum) { buffer_source: BufferSource, callback: *anyopaque };
