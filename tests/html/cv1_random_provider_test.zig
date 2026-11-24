@@ -72,6 +72,7 @@ fn allocationFailure() !void {
     var failing = testing.FailingAllocator.init(original_allocator, .{ .fail_index = 0 });
     engine.allocator = failing.allocator();
     defer engine.allocator = original_allocator;
+    // held-style: the read fails, so no hold is taken.
     try testing.expectError(error.OutOfMemory, dom.style.computedStyle(target, null));
     try testing.expect(engine.rare == null);
 }

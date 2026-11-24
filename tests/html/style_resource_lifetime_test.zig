@@ -695,7 +695,7 @@ fn fontTextParent() !void {
 /// the hold released at once.
 fn selectsFontStyle(node: *dom.NodeBase) !bool {
     const held = (try dom.style.engine.fontStyleForText(node)) orelse return false;
-    held.release();
+    defer held.release();
     return true;
 }
 

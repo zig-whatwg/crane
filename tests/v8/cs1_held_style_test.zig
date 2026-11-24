@@ -258,6 +258,7 @@ fn holdsCounted() !void {
     const x = try page.byId("x");
     try testing.expectEqual(@import("builtin").mode == .debug, runtime.native_holds.enabled);
     try testing.expectEqual(@as(u32, 0), runtime.native_holds.count(page.agent));
+    // held-style: released by hand below, to read the count after it.
     const held = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
     // Debug counts the hold on the agent: a script entry or an event-loop
     // turn now would panic (runtime.native_holds.assertNone).
@@ -277,6 +278,7 @@ fn fullCount() !void {
     var holds: [300]dom.style.HeldStyle = undefined;
     var taken: usize = 0;
     defer for (holds[0..taken]) |held| held.release();
+    // held-style: 300 holds at once, each released by the defer above.
     while (taken < holds.len) : (taken += 1) holds[taken] = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
     // The cache's reference and 254 holds fill the one-byte count; every
     // later hold is on a clone of the style, a holder of its own, with the
