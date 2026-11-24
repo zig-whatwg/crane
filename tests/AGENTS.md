@@ -164,6 +164,8 @@ test-verify on a quiet host never shows it. Prove such a fix red and green
 by starving the test ([lesson](../docs/lessons/testing-starve-a-test-of-cpu-to-reproduce-a-flake-that-needs-a-stalled-host.md);
 [lesson](../docs/lessons/testing-a-test-that-waits-one-turn-races-a-step-that-went-parallel.md)).
 
+**src/ inline tests run too, and a check holds that** (lane core1, 2026-11-24). Every src/ module with test blocks is the root of a test executable (`src-<module>`, through `addSuiteRun`). `zig build check-src-tests`, part of `test`, fails on any src/ test block that no executable lists (tools/AGENTS.md). Test-verify takes a src/ file too (`-Dverify-files=src/html/structured_clone/transfer.zig`): every src/ root whose directory holds the file verifies its own tests of that file, and says so when the file belongs to another module there (`--verify-may-miss`).
+
 One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
 

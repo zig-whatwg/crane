@@ -499,6 +499,71 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     return run;
 }
 
+/// tools/src_test_reach.zig: the src/ test blocks no test step runs (lane
+/// core1, 2026-11-24). `zig test` collects the tests of its root module's
+/// files only, and only from a file something analyzes: html_core's 320 inline
+/// tests ran nowhere (docs/lessons/testing-a-test-block-in-a-module-no-step-
+/// roots-never-runs.md). Which files are analyzed is the executables' to say,
+/// not the imports': every executable `addSuiteRun` was given whose root is
+/// in src/ lists its tests (`test_launcher <exe> --list`, cached with the
+/// executable), and the tool fails on any src/ file whose blocks none lists,
+/// but for tools/src_test_reach_baseline.txt's. Part of `test` where it makes
+/// every suite (`full`, no -Dtest-file); `check-src-tests` runs it alone, and
+/// `check-src-tests -- --update` lowers the baseline. `not_built`: src/
+/// directories this configuration compiles nothing of.
+fn addSrcTestReach(b: *std.Build, launch: *const TestLaunch, test_step: *std.Build.Step, full: bool, whole: bool, not_built: []const []const u8) void {
+    const module = b.createModule(.{
+        .root_source_file = b.path("tools/src_test_reach.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const own_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = module }), "tools-src_test_reach", null);
+    test_step.dependOn(&own_tests.step);
+    b.step("test-src-test-reach", "Run tools/src_test_reach.zig's own tests").dependOn(&own_tests.step);
+
+    const check_step = b.step("check-src-tests", "Fail on a src/ test block no test step runs (tools/src_test_reach.zig; -- --update lowers its baseline)");
+    if (!(full and whole)) {
+        check_step.dependOn(&b.addFail("check-src-tests: needs every suite - no -Dspec (or -Dspec=all) and no -Dtest-file").step);
+        return;
+    }
+    const exe = b.addExecutable(.{ .name = "src_test_reach", .root_module = module });
+    // The check `test` runs (never with --update), and the named step's,
+    // which takes `-- --update` or `-- --list`.
+    const check = b.addRunArtifact(exe);
+    check.setName("check src/ test blocks run");
+    const by_hand = b.addRunArtifact(exe);
+    for ([_]*std.Build.Step.Run{ check, by_hand }) |run| {
+        // It reads src/ and the baseline, which the build graph does not track.
+        run.has_side_effects = true;
+        run.setCwd(b.path("."));
+        for (not_built) |dir| run.addArg(b.fmt("--not-built={s}", .{dir}));
+    }
+    var listed: std.ArrayList(*std.Build.Step.Compile) = .empty;
+    for (launch.test_exes.items) |test_exe| {
+        const root = test_exe.root_module.root_source_file orelse continue;
+        const sub_path = switch (root) {
+            .src_path => |p| if (p.owner == b) p.sub_path else continue,
+            else => continue,
+        };
+        if (!std.mem.startsWith(u8, sub_path, "src/")) continue;
+        // One listing per executable.
+        if (std.mem.indexOfScalar(*std.Build.Step.Compile, listed.items, test_exe) != null) continue;
+        listed.append(b.allocator, test_exe) catch @panic("OOM");
+        const list = b.addRunArtifact(launch.launcher);
+        list.setName(b.fmt("list the tests of {s} ({s})", .{ test_exe.name, sub_path }));
+        list.addArtifactArg(test_exe);
+        list.addArg("--list");
+        const names = list.captureStdOut(.{});
+        const arg = b.fmt("--suite={s}=", .{std.fs.path.dirname(sub_path).?});
+        check.addPrefixedFileArg(arg, names);
+        by_hand.addPrefixedFileArg(arg, names);
+    }
+    by_hand.addPassthruArgs();
+    check_step.dependOn(&by_hand.step);
+    test_step.dependOn(&check.step);
+}
+
 /// The launcher arguments of the member suites of a one-binary executable
 /// (`SuiteGroup`): each one's batch size (`--group`; -Dlaunch-batch
 /// overrides every one, so batch 0 is still each suite in one process), its
@@ -6010,6 +6075,11 @@ pub fn build(b: *std.Build) void {
     for (target_compile_only.items) |check| {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (targetCheckOf)", .{check.name});
     }
+
+    // Every src/ test block runs in some test step (tools/src_test_reach.zig):
+    // known here, once every suite exists - and only where `test` makes every
+    // suite. With -Dcdp=false nothing of src/devtools is compiled.
+    addSrcTestReach(b, launch, test_step, spec_filter == null or std.mem.eql(u8, spec_filter.?, "all"), test_selection.file == null, if (enable_cdp) &.{} else &.{"src/devtools"});
 
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.

@@ -1,0 +1,63 @@
+# tools/src_test_reach.zig: src/ files with test blocks no test step runs, each with its
+# count of unrun blocks and why. Only goes down: `zig build check-src-tests -j2 -- --update`
+# after wiring or deleting some refuses a new file or a rise. A new line's reason is the
+# integrator's to review.
+
+src/devtools/mcp/tools/network.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
+src/devtools/mcp/tools/pages.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
+src/devtools/mcp/tools/script.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
+src/platform/adapters/testing/seeded_random.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/clipboard_adapter.zig	3	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/clock.zig	5	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/filesystem_adapter.zig	3	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/host.zig	3	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/kit/curl/options.zig	2	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/kit/image_encoding/png.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/kit/image_encoding/root.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/kit/posix/devtools_transport.zig	2	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/kit/sqlite/root.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/layout_adapter.zig	2	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/layout_backend.zig	4	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/network_adapter.zig	3	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/notification_adapter.zig	2	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/notification_backend.zig	10	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/push_adapter.zig	2	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/push_backend.zig	11	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/timer_adapter.zig	4	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/platform/ui_adapter.zig	4	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
+src/runtime/arena_allocator.zig	9	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/arraybuffer_view.zig	2	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/binding_generator.zig	5	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/binding_types.zig	5	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/browser_pause.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/ce_reactions.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/cleanup_coordinator.zig	7	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/console_value.zig	7	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/context.zig	16	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/engine_context.zig	12	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/environment_settings.zig	11	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/field_merger.zig	8	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/instance.zig	5	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/js_value.zig	15	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/lifetime.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/logger.zig	5	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/native_timer.zig	9	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/realm.zig	11	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/root.zig	2	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/slab_allocator.zig	10	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/timer.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/typed_callback.zig	13	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/typedefs/ArrayBuffer.zig	3	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/typedefs/DOMString.zig	8	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/typedefs/primitives.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/types.zig	1	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/runtime/vtable_builder.zig	2	lane core1: src/runtime is wired once hard1 merges (the integrator's order, 2026-11-24)
+src/webidl/impls/Blob.zig	5	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/CSSStyleDeclaration.zig	1	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/DOMParser.zig	2	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/FileReaderSync.zig	1	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/IdleDeadline.zig	2	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/ProgressEvent.zig	3	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/TestUtils.zig	1	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/URLSearchParams.zig	1	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
+src/webidl/impls/node_filter.zig	1	lane core1 (g): an impl is a module of its own - its helpers move to their owning modules and its harness-era tests are rewritten in tests/, last
