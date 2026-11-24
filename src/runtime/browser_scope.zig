@@ -69,6 +69,11 @@ pub const BrowserScope = struct {
     /// end frees every one with the reservation, so a block alive then is a
     /// lifetime the heap took over from the old arena, which hid it.
     report_heap_leaks: bool = false,
+    /// Where the scope's end writes how many blocks its heap still held
+    /// after the final sweep's nodes went (the leak report's count, which a
+    /// Browser's end logs as `heap leak:` lines): a test's question, null
+    /// otherwise.
+    heap_leak_count_out: ?*usize = null,
     /// Serialises the heap's start (`reserveHeap`, `heapEngine`'s first
     /// call). Not `mutex`: a supplement's `init` may make the scope's first
     /// object, and `of` holds `mutex` across it.
@@ -364,6 +369,9 @@ pub const BrowserScope = struct {
         if (self.heap) |heap| {
             if (self.engine.load(.acquire)) |engine| {
                 const swept = self.releaseSweptNodes(engine);
+                if (self.heap_leak_count_out) |out| out.* = engine.leakReport({}, struct {
+                    fn line(_: void, _: heap_engine.LeakLine) void {}
+                }.line);
                 if (self.report_heap_leaks and engine.config.record_sites) {
                     if (swept != 0) std.log.scoped(.heap).warn("heap swept: {d} node(s) released at the Browser's end, after the final sweep (held past every realm's end: refcount_teardown.agentEnded's count)", .{swept});
                     reportHeapLeaks(engine);
