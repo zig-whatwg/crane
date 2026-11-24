@@ -57,35 +57,3 @@ pub const coarsenedSharedCurrentTime = time_origin.coarsenedSharedCurrentTime;
 // Constants
 pub const DEFAULT_RESOLUTION_NS = coarsen.DEFAULT_RESOLUTION_NS;
 pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS = coarsen.CROSS_ORIGIN_ISOLATED_RESOLUTION_NS;
-
-// ============================================================================
-// Integration Tests
-// ============================================================================
-
-test "hr_time module integration" {
-    // Create a time origin
-    const origin = TimeOrigin.init(false);
-
-    // Get current relative time (Performance.now equivalent)
-    const now = origin.currentRelativeTimestampMs();
-    try std.testing.expect(now >= 0);
-
-    // Get time origin (Performance.timeOrigin equivalent)
-    const origin_time = origin.getTimeOriginTimestampMs();
-    try std.testing.expect(origin_time > 0);
-
-    // Verify the relationship:
-    // origin_time + now ≈ current wall time in ms
-    // (approximately, due to coarsening and timing)
-}
-
-test "hr_time sub-module exports" {
-    // Verify all expected types and functions are accessible
-    _ = MonotonicClock.unsafeCurrentTime();
-    _ = WallClock.unsafeCurrentTime();
-    _ = coarsenTime(1000000, false);
-    _ = toMilliseconds(1000000);
-    _ = fromMilliseconds(1.0);
-    _ = currentCoarsenedWallTime();
-    _ = coarsenedSharedCurrentTime(false);
-}

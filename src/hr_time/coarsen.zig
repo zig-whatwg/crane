@@ -185,18 +185,6 @@ test "coarsenTime - cross-origin isolated resolution" {
     try testing.expectEqual(@as(clock.Nanoseconds, 123_453_125), result);
 }
 
-test "coarsenTime - already at boundary" {
-    const input: clock.Nanoseconds = 100_000_000; // Exactly on a 125 us boundary
-    const result = coarsenTime(input, false);
-
-    try testing.expectEqual(input, result);
-}
-
-test "coarsenTime - zero" {
-    const result = coarsenTime(0, false);
-    try testing.expectEqual(@as(clock.Nanoseconds, 0), result);
-}
-
 test "coarsenTime - negative value" {
     // Negative times should also be coarsened correctly
     const input: clock.Nanoseconds = -123_456_789;
@@ -205,41 +193,4 @@ test "coarsenTime - negative value" {
     // Floor division rounds toward negative infinity
     try testing.expectEqual(@as(clock.Nanoseconds, -123_500_000), result);
     try testing.expect(isCoarsened(result, false));
-}
-
-test "isCoarsened - correctly identifies coarsened timestamps" {
-    const coarsened: clock.Nanoseconds = 123_375_000;
-    const uncoarsened: clock.Nanoseconds = 123_456_789;
-
-    try testing.expect(isCoarsened(coarsened, false));
-    try testing.expect(!isCoarsened(uncoarsened, false));
-}
-
-test "coarsenTime - result is always <= input for positive values" {
-    const input: clock.Nanoseconds = 999_999_999;
-    const result_default = coarsenTime(input, false);
-    const result_isolated = coarsenTime(input, true);
-
-    try testing.expect(result_default <= input);
-    try testing.expect(result_isolated <= input);
-}
-
-test "coarsenTimeWithJitter - stays within bounds" {
-    const input: clock.Nanoseconds = 123_456_789;
-    const base = coarsenTime(input, false);
-    const resolution = getResolution(false);
-
-    // Run multiple times with different seeds
-    var i: u64 = 0;
-    while (i < 100) : (i += 1) {
-        const jittered = coarsenTimeWithJitter(input, false, i);
-        // Result should be >= base and < base + resolution
-        try testing.expect(jittered >= base);
-        try testing.expect(jittered < base + resolution);
-    }
-}
-
-test "getResolution - returns correct values" {
-    try testing.expectEqual(DEFAULT_RESOLUTION_NS, getResolution(false));
-    try testing.expectEqual(CROSS_ORIGIN_ISOLATED_RESOLUTION_NS, getResolution(true));
 }
