@@ -219,6 +219,15 @@ pub fn structuredSerializeWithTransfer(
     var seen = std.AutoHashMap(usize, void).init(allocator);
     defer seen.deinit();
 
+    // The records step 2.4 makes, each destroyed once, when this returns -
+    // a throw at step 2.3 or 5.1 used to leak every one made so far (lane
+    // core1).
+    var placeholders: std.ArrayList(*SerializedValue) = .empty;
+    defer {
+        for (placeholders.items) |placeholder| allocator.destroy(placeholder);
+        placeholders.deinit(allocator);
+    }
+
     for (transfer_list) |transferable| {
         // Step 2.1: Check if transferable
         // (Type checking is done by the union type)
@@ -240,6 +249,10 @@ pub fn structuredSerializeWithTransfer(
         // Step 2.4: Add placeholder to memory (prevents serialization)
         // We use the identity as a fake pointer
         const placeholder = try allocator.create(SerializedValue);
+        placeholders.append(allocator, placeholder) catch |err| {
+            allocator.destroy(placeholder);
+            return err;
+        };
         placeholder.* = .{
             .type = .array_buffer, // Will be replaced
             .allocator = allocator,
@@ -270,12 +283,9 @@ pub fn structuredSerializeWithTransfer(
             return CloneError.DataCloneError;
         }
 
-        // Step 5.3: Get the placeholder from memory
-        const identity = transferable.getIdentity();
-        if (memory.get(identity)) |placeholder| {
-            // Clean up placeholder
-            allocator.destroy(placeholder);
-        }
+        // Step 5.3: the placeholder in memory is this transferable's data
+        // holder; this walker builds a TransferDataHolder of its own instead
+        // (below), and the placeholders go when it returns.
 
         // Step 5.4-5: Perform transfer
         const data_holder: TransferDataHolder = switch (transferable) {
