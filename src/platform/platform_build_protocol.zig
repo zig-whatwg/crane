@@ -22,6 +22,15 @@
 //!   pub fn kitParts(target: std.Target) []const KitPart
 //!   pub const facts: Facts = .{ ... };
 //!
+//! and, asked of the adapter that answers for the target's operating system
+//! (`ownsTarget`) whichever platform a graph binds - its "OS side":
+//!
+//!   pub const Options = struct { ... };     // its own -D options
+//!   pub fn declareOptions(b: *std.Build) Options
+//!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options, probe: *std.Build.Step.Compile) void
+//!   pub fn forwarded(b: *std.Build, options: Options) []const []const u8
+//!   pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC
+//!
 //! A part is `src/platform/kit/<name>/root.zig`, a module the adapter
 //! imports as `kit_<name>`, made with the platform facade and the platform
 //! options as every kit part is, and linked against `system_libraries`.
@@ -99,6 +108,13 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "ownsTarget", fn (std.Target) bool);
     conforms(who, A, "kitParts", fn (std.Target) []const KitPart);
     // hasdecl: A is each listed adapter's build file (`adapters`), whose
+    // Options is pub - this check exists to fail the configure when it is not.
+    if (!@hasDecl(A, "Options") or @TypeOf(A.Options) != type) @compileError(who ++ " lacks `pub const Options = struct { ... };`");
+    conforms(who, A, "declareOptions", fn (*std.Build) A.Options);
+    conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options, *std.Build.Step.Compile) void);
+    conforms(who, A, "forwarded", fn (*std.Build, A.Options) []const []const u8);
+    conforms(who, A, "prepareC", fn (std.Build.ResolvedTarget) ?kit.PrepareC);
+    // hasdecl: A is each listed adapter's build file (`adapters`), whose
     // `facts` is pub - this check exists to fail the configure when it is not.
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: platform_build.Facts`");
 }
@@ -115,6 +131,47 @@ fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u
 pub fn defaultFor(target: std.Target) ?Platform {
     inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
         if (@field(adapters, name).ownsTarget(target)) return @field(Platform, name);
+    }
+    return null;
+}
+
+/// The adapter that answers for the target's operating system - its "OS
+/// side", whichever platform a module graph binds (docs/platform-protocol.md
+/// 9: the testing platform is the build machine's real OS services plus test
+/// capabilities): darwin for macOS and iOS, linux for Linux. What the root
+/// build keeps of it once it is chosen (`chooseOs`).
+pub const OsSide = struct {
+    /// The arguments a sub-build of the root build for another target of the
+    /// same OS side takes from this one (check-ios's -Dios-sdk).
+    forwarded: []const []const u8,
+};
+
+/// Ask the adapter that answers for `target`'s operating system to declare
+/// its options - only that adapter, so another's do not exist in this build
+/// and the configure refuses them, as it refuses any -D nothing declared -
+/// and to read what it needs of the machine (`probe`: the root build's
+/// tools/build_probe.zig, which asks at make time). Called once, where the
+/// root build's option order puts those options. A target no listed adapter
+/// answers for has no OS side: no options, nothing read.
+pub fn chooseOs(b: *std.Build, target: std.Build.ResolvedTarget, probe: *std.Build.Step.Compile) OsSide {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) {
+            const options = A.declareOptions(b);
+            A.resolve(b, target, options, probe);
+            return .{ .forwarded = A.forwarded(b, options) };
+        }
+    }
+    return .{ .forwarded = &.{} };
+}
+
+/// What C compiled or translated for `target` needs beyond what Zig finds
+/// by itself (kit.PrepareC), as the adapter that answers for its operating
+/// system says; null when it needs nothing or no listed adapter answers.
+pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.prepareC(target);
     }
     return null;
 }

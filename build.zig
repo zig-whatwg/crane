@@ -1679,105 +1679,6 @@ fn engineProtocolBinding(
     return facade;
 }
 
-/// The SDK root of this build's target, as `recordSdkRoot` recorded it, or
-/// null for a target that needs none. Every caller here holds only `b`, so
-/// the root is kept by name on the build itself (`named_lazy_paths`).
-fn iosSdkPath(b: *std.Build) ?std.Build.LazyPath {
-    return b.named_lazy_paths.get(sdk_root_name);
-}
-
-/// The name `recordSdkRoot` keeps the SDK root under.
-const sdk_root_name = "crane-sdk-root";
-
-/// Record the SDK root of a target whose libc Zig does not find: the path
-/// `option` (the build option `option_name`) gives, else the root the
-/// machine's SDK tools name for the target, asked at make time (build_probe
-/// sdk-root links it into the cache) - a program's answer is never asked at
-/// configure time (`check-configure-cache`). No SDK fails that step, naming
-/// the option.
-///
-/// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
-/// path fails as missing libc headers rather than as a missing SDK. The option
-/// is for a machine whose xcode-select names the Command Line Tools, which
-/// have no iPhoneOS SDK: the pool hosts are set up that way and link their
-/// Xcode's SDK at ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
-fn recordSdkRoot(b: *std.Build, target: std.Build.ResolvedTarget, option: ?[]const u8, option_name: []const u8, build_probe: *std.Build.Step.Compile) std.Build.LazyPath {
-    const root: std.Build.LazyPath = if (option) |path| .{ .cwd_relative = path } else asked: {
-        const run = b.addRunArtifact(build_probe);
-        run.setName("find the target's SDK");
-        const triple = target.result.zigTriple(b.allocator) catch @panic("OOM");
-        run.addArgs(&.{ "sdk-root", b.fmt("--target={s}", .{triple}), b.fmt("--option={s}", .{option_name}) });
-        const out = run.addOutputDirectoryArg("sdk");
-        // Its answer is the machine's: asked on every build.
-        run.has_side_effects = true;
-        break :asked out.path(b, "root");
-    };
-    b.addNamedLazyPath(sdk_root_name, root);
-    return root;
-}
-
-/// Apply the iOS SDK paths to every Compile step reachable from `root`.
-///
-/// zlib and mbedtls are TRANSITIVE dependencies of the curl package - curl depends
-/// on them, and each is its own artifact with its own module. Touching only
-/// libcurl's module left them failing on <stdio.h> and <string.h>, so the whole
-/// reachable graph gets the paths.
-///
-/// Depth-bounded rather than visited-tracked: the build graph is a DAG, revisiting
-/// a module is idempotent here, and a bound needs no allocation. Real dependency
-/// chains are nowhere near this deep.
-fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?std.Build.LazyPath) void {
-    if (sdk == null) return;
-    applyIosSdkStep(b, root, sdk, 0);
-}
-
-fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?std.Build.LazyPath, depth: u32) void {
-    if (depth > 24) return;
-    if (step.cast(std.Build.Step.Compile)) |compile| {
-        addIosSdkPaths(compile.root_module, sdk);
-        // Linked artifacts are recorded as `link_objects` entries on the MODULE, not
-        // as step dependencies, so walking `step.dependencies` alone never reaches
-        // zlib or mbedtls - they are libraries curl links, not steps it waits on.
-        for (compile.root_module.link_objects.items) |obj| {
-            switch (obj) {
-                .other_step => |other| applyIosSdkStep(b, &other.step, sdk, depth + 1),
-                else => {},
-            }
-        }
-    }
-    for (step.dependencies.items) |dep| applyIosSdkStep(b, dep, sdk, depth + 1);
-}
-
-/// Point a module at the iOS SDK's headers, libraries and frameworks.
-///
-/// No-op off iOS. Called for every module that compiles or links C, since Zig will
-/// not find them on its own for this target.
-fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
-    const root = sdk orelse return;
-    module.addSystemIncludePath(root.path(module.owner, "usr/include"));
-    module.addLibraryPath(root.path(module.owner, "usr/lib"));
-    module.addFrameworkPath(root.path(module.owner, "System/Library/Frameworks"));
-}
-
-/// What the kit's C needs for `target` beyond what Zig finds by itself
-/// (kit_build.PrepareC): the SDK's paths, for the one target whose SDK is
-/// recorded (recordSdkRoot); nothing for any other. Batch P3 moves it behind
-/// the build side of the platform that answers for that target.
-fn prepareCFor(target: std.Build.ResolvedTarget) ?kit_build.PrepareC {
-    return if (target.result.os.tag == .ios) sdk_prepare_c else null;
-}
-const sdk_prepare_c: kit_build.PrepareC = .{ .module = sdkModule, .graph = sdkGraph, .translate = sdkTranslate };
-fn sdkModule(module: *std.Build.Module) void {
-    addIosSdkPaths(module, iosSdkPath(module.owner));
-}
-fn sdkGraph(step: *std.Build.Step) void {
-    applyIosSdkRecursively(step.owner, step, iosSdkPath(step.owner));
-}
-fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
-    const b = translate.step.owner;
-    if (iosSdkPath(b)) |sdk| translate.addSystemIncludePath(sdk.path(b, "usr/include"));
-}
-
 /// The platform a module graph is built for: a listed adapter or a third
 /// party's (platform_build.Platform).
 const Platform = platform_build.Platform;
@@ -2005,7 +1906,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
-        kit[7].addImport("brotli_c", kit_build.cImport(b, "brotli_c", target, prepareCFor(target), .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
+        kit[7].addImport("brotli_c", kit_build.cImport(b, "brotli_c", target, platform_build.prepareC(target), .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
     };
     // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
     // kit/brotli - headless's NotSupported when no Brotli library is built.
@@ -2030,16 +1931,16 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_media_decoding.addImport("mimesniff", options.mimesniff);
     if (options.image_codecs) |codecs| {
         kit[8].linkLibrary(codecs);
-        kit[8].addImport("image_codecs_c", kit_build.cImport(b, "image_codecs_c", target, prepareCFor(target), .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
+        kit[8].addImport("image_codecs_c", kit_build.cImport(b, "image_codecs_c", target, platform_build.prepareC(target), .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
     }
-    if (target.result.os.tag == .ios) {
-        addIosSdkPaths(kit[7], iosSdkPath(b));
-        addIosSdkPaths(kit[8], iosSdkPath(b));
+    if (platform_build.prepareC(target)) |prepare| {
+        prepare.module(kit[7]);
+        prepare.module(kit[8]);
     }
     // darwin's fonts are CoreText's (decision 20), linked dynamically as
     // the system frameworks they are; compiled out, nothing is linked.
     if (options.platform == .darwin and target.result.os.tag.isDarwin() and font_decoding_enabled) {
-        if (target.result.os.tag == .ios) addIosSdkPaths(impl, iosSdkPath(b));
+        if (platform_build.prepareC(target)) |prepare| prepare.module(impl);
         impl.linkFramework("CoreText", .{});
         impl.linkFramework("CoreFoundation", .{});
     }
@@ -2048,7 +1949,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("host", options.host);
     kit[0].addImport("memory", options.memory);
     // and reads the local time zone through <time.h> (localtime_r, tzset).
-    const c_time = kit_build.cImport(b, "c_time", target, prepareCFor(target), .{ .includes = &.{"time.h"} });
+    const c_time = kit_build.cImport(b, "c_time", target, platform_build.prepareC(target), .{ .includes = &.{"time.h"} });
     kit[0].addImport("c_time", c_time);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
@@ -2066,23 +1967,23 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
     if (options.mbedtls) |mbedtls| {
         kit_curl_share.linkLibrary(mbedtls);
-        kit_curl_share.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_trust_c", target, prepareCFor(target), .{
+        kit_curl_share.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_trust_c", target, platform_build.prepareC(target), .{
             .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
             .libs = &.{mbedtls},
             .macros = &kit_build.mbedtls_threading_macros,
         }));
-        if (target.result.os.tag == .ios) addIosSdkPaths(kit_curl_share, iosSdkPath(b));
+        if (platform_build.prepareC(target)) |prepare| prepare.module(kit_curl_share);
     }
     // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
     // its own module: fetch's curl_ffi translates curl.h alone, as the two
     // @cImports did.
     const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
     if (options.libcurl) |libcurl| {
-        kit_build.curl.linkStaticLibcurl(kit[3], target, libcurl, prepareCFor(target));
-        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        kit_build.curl.linkStaticLibcurl(kit[3], target, libcurl, platform_build.prepareC(target));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     } else {
         kit[3].linkSystemLibrary("curl", .{});
-        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
     return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
@@ -2115,20 +2016,12 @@ pub fn build(b: *std.Build) void {
     });
     const build_probe = b.addExecutable(.{ .name = "build_probe", .root_module = build_probe_module });
 
-    // Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
-    // trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
-    // found, with or without --sysroot. That surfaces far from the cause, as 15
-    // errors in vendored zlib and 107 in mbedtls, which reads like a dependency
-    // problem rather than a missing SDK.
-    //
-    // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
-    // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
-    // with Xcode - asked at make time (recordSdkRoot).
-    // -Dios-sdk: the SDK root used instead of xcrun's (declared here once;
-    // check-ios passes it to its sub-build).
-    const sdk_option_name = "ios-sdk";
-    const ios_sdk_option = b.option([]const u8, sdk_option_name, "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
-    const ios_sdk: ?std.Build.LazyPath = if (target.result.os.tag == .ios) recordSdkRoot(b, target, ios_sdk_option, sdk_option_name, build_probe) else null;
+    // The adapter that answers for the target's operating system - whichever
+    // platform a graph binds - declares its own options here, in this place
+    // of the option order, and reads what it needs of the machine once
+    // (platform_build.chooseOs; for an iOS target, the SDK root, asked at
+    // make time).
+    const os_side = platform_build.chooseOs(b, target, build_probe);
 
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
@@ -2353,11 +2246,11 @@ pub fn build(b: *std.Build) void {
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    const brotli = kit_build.brotli.buildBrotli(b, target, optimize, null, prepareCFor(target));
-    const image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, optimize, null, prepareCFor(target));
+    const brotli = kit_build.brotli.buildBrotli(b, target, optimize, null, platform_build.prepareC(target));
+    const image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, optimize, null, platform_build.prepareC(target));
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
-    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else kit_build.curl.buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null, prepareCFor(target));
+    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else kit_build.curl.buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null, platform_build.prepareC(target));
     // What the kit asks of a system network library at make time
     // (kit_build.systemLibraryCheck); the end of build() adds it to every
     // top-level step.
@@ -2832,7 +2725,7 @@ pub fn build(b: *std.Build) void {
     const versions_test = kit_build.versions_test;
     recordSuiteDir(b, test_selection, versions_test.dir);
     if (linked_mbedtls) |library| {
-        const deps_test_mod = versions_test.module(b, target, prepareCFor(target), library, testing_graph.fetch);
+        const deps_test_mod = versions_test.module(b, target, platform_build.prepareC(target), library, testing_graph.fetch);
         const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), versions_test.suite, null);
         b.step(versions_test.step_name, versions_test.step_description).dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
@@ -3996,7 +3889,7 @@ pub fn build(b: *std.Build) void {
 
     // Zig does not resolve the iOS SDK itself; without this the C sources below
     // fail on <stdio.h> and the link fails on libSystem.
-    addIosSdkPaths(full_static_lib.root_module, ios_sdk);
+    if (platform_build.prepareC(target)) |prepare| prepare.module(full_static_lib.root_module);
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, full_static_lib.root_module, .{});
 
@@ -4204,7 +4097,7 @@ pub fn build(b: *std.Build) void {
     // step with it, until the adapter builds lib-full; it is no gate.
     const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
     const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
-    if (ios_sdk_option) |sdk| ios_build.addArg(b.fmt("-Dios-sdk={s}", .{sdk}));
+    for (os_side.forwarded) |arg| ios_build.addArg(arg);
     // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
     // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
     ios_build.addArg("--cache-dir");
@@ -5471,9 +5364,8 @@ pub fn build(b: *std.Build) void {
     // The flag sets: the gates' own, and each one under which the configure
     // used to read the checkout or ask the machine (the one-binary layout's
     // module roots, git, the system libcurl's features), with this build's
-    // engine. (A cross target's SDK root is asked at make time as well -
-    // recordSdkRoot - and is held by the platform's build side when that
-    // moves out of this file.)
+    // engine. (A cross target's SDK root is asked at make time as well, by
+    // the platform's build side: platform_build.chooseOs.)
     const engine_flag = b.fmt("-Dengine={t}", .{engine.name});
     for ([_][]const []const u8{
         &.{engine_flag},
@@ -6759,9 +6651,9 @@ fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_b
     if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
     var config = ctx.module_config;
     config.optimize = runner.modes.crane_modules;
-    config.brotli = kit_build.brotli.buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, prepareCFor(target));
-    config.image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, prepareCFor(target));
-    config.static_libcurl = kit_build.curl.buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null, prepareCFor(target));
+    config.brotli = kit_build.brotli.buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, platform_build.prepareC(target));
+    config.image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, platform_build.prepareC(target));
+    config.static_libcurl = kit_build.curl.buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null, platform_build.prepareC(target));
     // A private graph (`public` false).
     return addCraneModules(b, target, platform, config, false);
 }
@@ -7780,11 +7672,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     if (use_system_curl) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
-        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
     } else if (config.static_libcurl) |static| {
         // Production: the statically compiled libcurl with mbedTLS
-        kit_build.curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, prepareCFor(target));
-        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        kit_build.curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, platform_build.prepareC(target));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     }
     const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
 
@@ -7793,7 +7685,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // installed headers, translated with the library's threading macros.
     if (linked_mbedtls) |library| {
         webcrypto_mod.linkLibrary(library);
-        webcrypto_mod.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_c", target, prepareCFor(target), .{
+        webcrypto_mod.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_c", target, platform_build.prepareC(target), .{
             .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
             .libs = &.{library},
             .macros = &kit_build.mbedtls_threading_macros,
@@ -7802,7 +7694,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const webcrypto_options = b.addOptions();
     webcrypto_options.addOption(bool, "mbedtls", kit_build.curl.tls_backend == .mbedtls and !use_system_curl);
     webcrypto_mod.addOptions("options", webcrypto_options);
-    if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
+    if (platform_build.prepareC(target)) |prepare| prepare.module(webcrypto_mod);
 
     // fetch_mod dependencies will be added as implementation progresses:
     // fetch_mod.addImport("url", url_mod);
