@@ -28,6 +28,8 @@
 //!   web-locks/, compression/, permissions/
 //! - approved expansion (2026-10-22): accname/, html-aam/, wai-aria/,
 //!   mathml/, css/, editing/, quirks/
+//! - lane a11y1's accessibility files (2026-11-24): core-aam/, dpub-aam/,
+//!   graphics-aria/, svg-aam/
 //!
 //! `in_scope_categories` below is the list; keep it in step with the INCLUDE
 //! table of tools/wpt_subset.py, which writes the 0.1 worklist. Categories
@@ -214,6 +216,13 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "quirks", .description = "Quirks parsing and DOM behavior" },
     // The integrator, 2026-11-23 (lane vtt1): WebVTT's API and parsing joins the worklist.
     .{ .name = "webvtt", .description = "WebVTT: VTTCue, VTTRegion, file and cue text parsing" },
+    // The integrator, 2026-11-24 7:27 AM ET (lane a11y1's survey): the
+    // computed role and label files outside accname/, html-aam/ and
+    // wai-aria/ (tools/wpt_subset.py names each file).
+    .{ .name = "core-aam", .description = "Core accessibility mappings: computed roles in context" },
+    .{ .name = "dpub-aam", .description = "DPUB-ARIA computed roles" },
+    .{ .name = "graphics-aria", .description = "WAI-ARIA Graphics computed roles" },
+    .{ .name = "svg-aam", .description = "SVG accessible names and computed roles" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
