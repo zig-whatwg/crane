@@ -1815,7 +1815,7 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
             document,
             runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"),
             runtime.DOMString.initInterned("body"),
-            webidl.Opt(runtime.JSValue).notPassed(),
+            .notPassed(),
         );
         temporary_body = body;
         break :blk body;

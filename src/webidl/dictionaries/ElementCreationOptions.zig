@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 
 pub const ElementCreationOptions = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
-    customElementRegistry: ?*runtime.Instance = null,
+    customElementRegistry: webidl.Opt(?*runtime.Instance) = .notPassed(),
     is: ?runtime.DOMString = null,
 
     /// Optional members whose IDL type is nullable: a present null is the

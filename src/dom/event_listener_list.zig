@@ -265,7 +265,11 @@ pub const Bits = packed struct(u64) {
     /// records, lane leak3). A bit here, not the signal: most listeners
     /// have none.
     abort_steps: bool = false,
-    _: u1 = 0,
+    /// `Listener.object` is an engine.TracedHold's handle - traced from the
+    /// target at collection time (refcount step 8: its anchor's or the
+    /// walk's trace_held_nodes) - not a strong hold. A realm's global and a
+    /// lazily made entry keep strong holds (EventTarget's `Kept`).
+    traced: bool = false,
 };
 
 /// One event listener (DOM 2.7), 32 bytes, BY VALUE: what the list hands
@@ -281,9 +285,10 @@ pub const Listener = struct {
     type: EventType,
     /// A listener's callback (DOM: "callback (null or an EventListener
     /// object)"): the engine handle of the callback interface's object, an
-    /// owned hold - null when the binding's value had no object. An event
-    /// handler's value: the compiled function's handle (`compiled`), the
-    /// `RawHandler` (`raw`), or null.
+    /// owned hold - a traced one when `bits.traced` (engine.TracedHold), a
+    /// strong one otherwise - null when the binding's value had no object.
+    /// An event handler's value: the compiled function's handle (`compiled`,
+    /// held the same way), the `RawHandler` (`raw`), or null.
     object: ?*anyopaque,
     /// The callback context (WebIDL 3.2.16, 3.2.19) of `object`'s value.
     context: ?runtime.Context,

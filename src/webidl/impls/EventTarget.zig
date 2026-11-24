@@ -77,6 +77,14 @@ pub const InternalState = struct {
     // nsGlobalWindowInner::mEvent), and inner invoke swaps it through
     // dom.window_globals.
 
+    /// VTable.trace_held_nodes (runtime.lifetime.heldNodesOf): what a
+    /// chained, non-node target's holder anchor keeps when a collection
+    /// reaches its wrapper - its listeners' traced values (`traceOwnListeners`;
+    /// refcount step 8). In the atomic pause: read-only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        traceOwnListeners(instance, tracer);
+    }
+
     /// Deinitialize, releasing the engine values held - the listeners'
     /// callbacks and the event handlers' functions - only when
     /// `release_engine_values`: during final runtime cleanup the engine's
@@ -116,13 +124,26 @@ fn releaseListener(allocator: std.mem.Allocator, registry: ?*Registry, listener:
 /// Release a listener's callback, or an event handler's value.
 fn releaseValue(allocator: std.mem.Allocator, listener: Listener, engine_alive: bool) void {
     switch (listener.bits.kind) {
-        .listener => if (engine_alive) ownedObject(listener.object).release(),
+        .listener => if (engine_alive) releaseObject(listener.object, listener.bits.traced),
         .handler => switch (listener.bits.value) {
             .none => {},
-            .compiled => if (engine_alive) ownedObject(listener.object).release(),
+            .compiled => if (engine_alive) releaseObject(listener.object, listener.bits.traced),
             .raw => listener.rawHandler().?.destroy(allocator),
         },
     }
+}
+
+/// End a listener's hold of its engine value: a traced hold
+/// (engine.TracedHold) or a strong one.
+fn releaseObject(object: ?*anyopaque, traced: bool) void {
+    if (traced) (engine.TracedHold{ .handle = object }).release() else ownedObject(object).release();
+}
+
+/// A listener's engine value, BORROWED from its hold: undefined once the
+/// collector took a traced one (nothing traced its target), or for none.
+fn valueOf(object: ?*anyopaque, traced: bool) runtime.JSValue {
+    if (traced) return (engine.TracedHold{ .handle = object }).value();
+    return ownedObject(object).value;
 }
 
 /// The engine value a list keeps as `object` - a hold of the list's own, as
@@ -148,9 +169,100 @@ fn ownedObject(object: ?*anyopaque) engine.Owned {
 }
 
 /// A listener's callback as the engine protocol takes it - BORROWED from the
-/// list, or owned by the caller for a listener just taken out of it.
+/// listener's hold, which its owner (the list, or the caller for a listener
+/// just taken out of it) releases.
 fn callbackOf(listener: Listener) engine.CallbackInterface {
-    return .{ .object = ownedObject(listener.object), .context = listener.context };
+    return .{ .object = .{ .value = valueOf(listener.object, listener.bits.traced) }, .context = listener.context };
+}
+
+// ----------------------------------------------------------------------------
+// The list's values, traced from the target at collection time (refcount
+// step 8, decision D7; docs/refcount-design.md 3, "event listener closure
+// capturing its node"; the trace-time design the integrator approved
+// 2026-11-23 6:53 PM ET).
+//
+// A listener's callback and an event handler's compiled function are TRACED
+// holds (engine.TracedHold): no root - the collector keeps one while marking
+// reaches it through its target, and takes it when nothing does. A non-node
+// target's wrapper is bound to a holder anchor (its type's VTable
+// .trace_held_nodes, `InternalState.traceHeldNodes`), in every world, whose
+// trace keeps the list's values; a node's list is traced by the walk where it
+// visits the node (dom.wrapper_tracing, `traces_held`). So a closure over its
+// own target - the commonest listener there is - no longer keeps the target,
+// its tree and its realm alive until the realm ends: once script holds none
+// of them, they go together; and a listener lives exactly as long as its
+// target is reachable, from any world. Adding and removing a listener makes
+// no engine call but the hold's own - nothing is rebuilt per change.
+//
+// - Blink: EventTarget::Trace -> EventListenerMap -> RegisteredEventListener
+//   -> JSEventListener's TraceWrapperV8Reference (core/dom/events/,
+//   platform/bindings/trace_wrapper_v8_reference.h): traced from the target,
+//   rooted nowhere - the same model.
+// - WebKit (reference only, LGPL): JSEventListener keeps `JSC::Weak` and the
+//   target's wrapper marks it (EventTarget::visitJSEventListeners).
+//
+// A realm's global (a Window, a worker's global scope) keeps STRONG holds:
+// its wrapper is the realm's global object, bound to no holder anchor, and
+// lives as long as its realm, whose end weakens what its API kept (the realm
+// tag). So does an entry made lazily for an instance that never ran
+// EventTarget's init: it lives in its Browser's registry, behind a lock no
+// collector's pause may take.
+// ----------------------------------------------------------------------------
+
+/// A callback value as a listener keeps it (`Listener.object` and
+/// `bits.traced`): a traced hold where its target's list is traced, a strong
+/// one otherwise. OWNED until stored.
+const Kept = struct {
+    object: ?*anyopaque,
+    traced: bool,
+    context: ?runtime.Context,
+
+    fn release(self: Kept) void {
+        releaseObject(self.object, self.traced);
+    }
+
+    /// The value, BORROWED.
+    fn value(self: Kept) runtime.JSValue {
+        return valueOf(self.object, self.traced);
+    }
+
+    /// `given` (the binding's, BORROWED for the call) kept for `target`'s
+    /// list - traced when `traced`. During the call.
+    fn ofInterface(given: runtime.BorrowedCallbackInterface, traced: bool) Kept {
+        if (traced) {
+            const kept = given.keepTraced();
+            return .{ .object = kept.hold.handle, .traced = true, .context = kept.context };
+        }
+        const kept = given.keep();
+        return .{ .object = packObject(kept.object), .traced = false, .context = kept.context };
+    }
+};
+
+/// Whether `instance`'s list - `listeners` - keeps traced holds: a node's
+/// (the walk traces it) and a chained target's own state (its holder anchor
+/// does), but not a realm's global or a lazily made entry (`Kept`).
+fn tracesValues(listeners: Listeners, instance: *runtime.Instance) bool {
+    switch (listeners.place) {
+        .node => return true,
+        .own => {
+            if (Own.get(instance) == null) return false;
+            const record = instance.ctx.getRealm() orelse return true;
+            const global = record.global_object orelse return true;
+            return @intFromPtr(global) != @intFromPtr(instance);
+        },
+    }
+}
+
+/// VTable.trace_held_nodes for every chained, non-node EventTarget
+/// (runtime.lifetime.heldNodesOf finds it on this level's state): its holder
+/// anchor, reached in a collection's atomic pause, keeps its listeners'
+/// traced values. Read-only; no allocation, no lock.
+fn traceOwnListeners(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+    if (instance.vtable.counted != null) return;
+    const internal = Own.get(instance) orelse return;
+    for (internal.listeners.view()) |listener| {
+        if (listener.bits.traced) engine.traceHeld(tracer, .{ .handle = listener.object });
+    }
 }
 
 /// A target's event listener list, wherever the target keeps it - what
@@ -311,9 +423,12 @@ const Listeners = struct {
                 if (list.hasUnusedCapacity(count)) return;
                 // The rare block may move here; the list's own block, which
                 // `list` names, does not.
+                const made = !node.hasEventListenerBlock();
                 try node.reserveEventListeners();
                 try list.ensureUnusedCapacity(allocator, count);
                 node.setEventListeners(list);
+                // Its first block: the walk traces it from here.
+                if (made) if (node.registeredInstance()) |instance| dom_module.wrapper_tracing.noteNodeHoldsValues(instance, node);
             },
         }
     }
@@ -906,9 +1021,9 @@ fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) boo
 /// DOM "event listener whose callback is callback": two callback interface
 /// values are the same listener's when they are the same object (SameValue).
 /// `kept` is a listener's (`Listener.object`), `given` the argument's.
-fn callbackEquals(realm: runtime.Context, kept: ?*anyopaque, given: ?runtime.JSValue) bool {
+fn callbackEquals(realm: runtime.Context, kept: Listener, given: ?runtime.JSValue) bool {
     const y = given orelse return false;
-    return engine.sameValue(realm, ownedObject(kept).value, y);
+    return engine.sameValue(realm, valueOf(kept.object, kept.bits.traced), y);
 }
 
 /// The next listener's id: a listener is found by id only in its own
@@ -1056,7 +1171,7 @@ fn armAbortSteps(instance: *runtime.Instance, signal: *runtime.Instance, id: u56
 /// To add an event listener, given an EventTarget object eventTarget and
 /// an event listener listener - here its type (BORROWED), its callback
 /// (OWNED: stored or released on every path) and its flattened options.
-fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, options: FlatOptions) !void {
+fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?Kept, options: FlatOptions) !void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
     // Step 2: If listener's signal is not null and is aborted, then return
@@ -1095,7 +1210,7 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
         // algorithm as its callback, which script never holds.
         if (existing.bits.kind != .listener) continue;
         if (existing.bits.capture == options.capture and existing.type.matches(key) and
-            callbackEquals(instance.ctx, existing.object, callback_value.object.value))
+            callbackEquals(instance.ctx, existing, callback_value.value()))
         {
             // Already there: its abort steps (step 6) would remove a listener
             // that was never appended, which does nothing, so none are added.
@@ -1120,9 +1235,9 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
     var list = listeners.current();
     list.appendAssumeCapacity(.{
         .type = kept_type,
-        .object = packObject(callback_value.object),
+        .object = callback_value.object,
         .context = callback_value.context,
-        .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once, .abort_steps = options.signal != null },
+        .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once, .abort_steps = options.signal != null, .traced = callback_value.traced },
     });
     // Appended: its owner hears of it before step 6 can fail.
     if (list.watched()) dom_module.event_listener_changes.changed(instance);
@@ -1149,7 +1264,7 @@ fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"ty
         // handler, never by removeEventListener (its callback is internal).
         if (existing.bits.kind != .listener) continue;
         if (existing.bits.capture == capture and existing.type.matches(key) and
-            callbackEquals(instance.ctx, existing.object, if (callback) |given| given.object else null)) break i;
+            callbackEquals(instance.ctx, existing, if (callback) |given| given.object else null)) break i;
     } else return;
 
     // Step 2: Set listener's removed to true and remove listener from
@@ -1177,11 +1292,21 @@ const NewHandlerValue = union(enum) {
     }
 
     /// Hand the value to `listener`, an event handler's: from here on it is
-    /// the list's.
-    fn keepIn(self: NewHandlerValue, listener: *Listener) void {
+    /// the list's - a compiled function as a traced hold when `traced` (its
+    /// target's list is traced: `tracesValues`), the strong one it came as
+    /// otherwise.
+    fn keepIn(self: NewHandlerValue, listener: *Listener, traced: bool) void {
         switch (self) {
             .compiled => |callback| {
-                listener.object = packObject(callback.function);
+                if (traced) {
+                    defer callback.release();
+                    const kept = (runtime.BorrowedCallbackFunction{ .function = callback.function.value }).keepTraced();
+                    listener.object = kept.hold.handle;
+                    listener.bits.traced = kept.hold.handle != null;
+                } else {
+                    listener.object = packObject(callback.function);
+                    listener.bits.traced = false;
+                }
                 listener.context = callback.context;
                 listener.bits.value = if (listener.object == null) .none else .compiled;
             },
@@ -1189,6 +1314,7 @@ const NewHandlerValue = union(enum) {
                 listener.object = raw;
                 listener.context = null;
                 listener.bits.value = .raw;
+                listener.bits.traced = false;
             },
         }
     }
@@ -1263,7 +1389,7 @@ fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type
     // and Servo's set_inline_event_listener replace it in place).
     if (listeners.indexOfHandlerIn(EventTypeKey.of(event_type), world)) |index| {
         var updated = listeners.at(index);
-        value.keepIn(&updated);
+        value.keepIn(&updated, tracesValues(listeners, target));
         const old = listeners.replaceAt(index, updated);
         releaseValue(allocator, old, true);
         return;
@@ -1287,7 +1413,7 @@ fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type
         .context = null,
         .bits = .{ .id = nextListenerId(), .passive = defaultPassiveValue(event_type, target), .kind = .handler },
     };
-    value.keepIn(&listener);
+    value.keepIn(&listener, tracesValues(listeners, target));
     listeners.appendAssumeCapacity(listener);
     listenersChanged(listeners, target);
 }
@@ -1369,6 +1495,12 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
 /// The getter's value: the list's own hold, BORROWED.
 fn getHandlerValue(target: *runtime.Instance, event_type: []const u8) dom_module.event_handlers.HandlerValue {
     const current = currentHandlerValue(target, event_type, currentHandlerWorld(target)) orelse return null;
+    // The getter's value is null for a function the collector took (refcount
+    // step 8): a traced hold reads empty once no trace from its target kept
+    // it - its target went unreached in a collection and is wrapped again;
+    // WebKit's JSEventListener answers null the same way once its JSC::Weak
+    // is cleared.
+    if (current.callback.function.value.isUndefined()) return null;
     return .{ .function = current.callback.function.value };
 }
 
@@ -1467,7 +1599,7 @@ const HandlerValue = struct {
 
 fn handlerValueOf(listener: Listener) HandlerValue {
     return .{
-        .callback = .{ .function = ownedObject(listener.object), .context = listener.context },
+        .callback = .{ .function = .{ .value = valueOf(listener.object, listener.bits.traced) }, .context = listener.context },
     };
 }
 
@@ -1575,8 +1707,9 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 
     // The callback interface value, kept with the incumbent realm now - the
     // conversion's - as its callback context. The binding's value is
-    // BORROWED for the call; the listener keeps a value of its own.
-    const callback_value: ?engine.CallbackInterface = if (callback) |given| given.keep() else null;
+    // BORROWED for the call; the listener keeps a value of its own, traced
+    // from this target where its list is traced (`Kept`).
+    const callback_value: ?Kept = if (callback) |given| Kept.ofInterface(given, tracesValues(listeners, instance)) else null;
 
     // "Add an event listener with this and an event listener whose type is
     // type, callback is callback, capture is capture, passive is passive,
@@ -1707,6 +1840,11 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     path.init(runtime.allocatorOf(event));
     path.only_world = only_world;
     defer path.deinit();
+    // The path's nodes keep their wrappers - and with them the listeners
+    // still to be called - while the dispatch runs (refcount step 8).
+    var active: dom_module.event_dispatch.ActiveDispatch = .{ .path = &path };
+    active.begin(target);
+    defer active.end();
     // Whatever way the dispatch left, the event does not point at this
     // frame once it is gone.
     defer if (state.path == &path) state.clearPath();
@@ -1960,9 +2098,12 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // given event's currentTarget attribute value and listener" - BEFORE
         // invoking it, so a re-entrant dispatch cannot reach it. Its callback
         // is then this call's to release, after the call.
-        var expired: ?engine.CallbackInterface = null;
+        // (Out of the list, a traced callback is traced by nothing: the call
+        // retains it before anything can allocate - callListener's first
+        // step.)
+        var expired: ?Listener = null;
         if (listener.bits.once) expired = detachListener(listeners, current_target, listener.bits.id);
-        defer if (expired) |value| value.release();
+        defer if (expired) |gone| releaseObject(gone.object, gone.bits.traced);
 
         // Step 2.11 (passive): set event's in passive listener flag.
         if (listener.bits.passive) state.in_passive_listener_flag = true;
@@ -1975,7 +2116,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // any script runs - or, for a once listener, this call's.
         const started: ?i64 = if (monitor) |m| m.willCallback(false) else null;
         switch (listener.bits.kind) {
-            .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw, only_world),
+            .listener => callListener(callbackOf(expired orelse listener), event, current_target, in_shadow_tree, did_throw, only_world),
             .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw, only_world, if (handlers_per_world) handlerListenerWorld(listener) else null),
         }
         if (monitor) |m| reportListenerViolations(m, event, current_target, listener.bits.id, listener.bits.passive, started, blocked_delay);
@@ -2032,7 +2173,7 @@ fn reportListenerViolations(monitor: *dom_module.performance_monitor.Monitor, ev
 /// of the removal, before the callback runs (WebKit's
 /// innerInvokeEventListeners removes a once listener through
 /// removeEventListener, which calls eventListenersDidChange).
-fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?engine.CallbackInterface {
+fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?Listener {
     const index = listeners.indexOfId(id) orelse return null;
     // "Set listener's removed to true and remove listener from eventTarget's
     // event listener list."
@@ -2041,7 +2182,8 @@ fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?eng
     if (removed.bits.abort_steps) forgetAbortSteps(registryOf(target), removed.bits.id);
     removed.type.deinit(runtime.allocatorOf(target));
     listenersChanged(listeners, target);
-    return callbackOf(removed);
+    // Its hold is the caller's from here (`releaseObject` after the call).
+    return removed;
 }
 
 /// Inner invoke step 2.11 - "call a user object's operation" with the listener's

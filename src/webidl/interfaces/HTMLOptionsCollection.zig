@@ -14,7 +14,7 @@ const HTMLCollection = @import("interfaces").HTMLCollection;
 const Element = @import("interfaces").Element;
 const HTMLOptionElement = @import("interfaces").HTMLOptionElement;
 const HTMLOptionElementOrHTMLOptGroupElement = @import("typedefs").HTMLOptionElementOrHTMLOptGroupElement;
-const HTMLElement = @import("interfaces").HTMLElement;
+const HTMLElementOrLong = @import("typedefs").HTMLElementOrLong;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLOptionsCollection = struct {
@@ -233,7 +233,7 @@ pub const HTMLOptionsCollection = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?HTMLElementOrLong)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

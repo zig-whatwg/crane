@@ -37,7 +37,7 @@ fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
 }
 
-const no_options: @import("webidl").Opt(runtime.JSValue) = .{ .was_passed = false, .value = undefined };
+const no_options: @typeInfo(@TypeOf(interfaces.Document.call_createElement)).@"fn".param_types[2].? = .{ .was_passed = false, .value = undefined };
 
 /// An engine-less page (the fixture of tests/dom/perf3e1_element_registry_test.zig).
 const Page = struct {

@@ -1051,6 +1051,24 @@ pub fn traceWorldWrappers(worlds: *const AgentWorlds, instance: *engine.Instance
     }
 }
 
+/// engine.keepNodeWrapperInYoungCollections, the worlds' half
+/// (node_wrappers.keepInYoungCollections): `instance`, a node, keeps values
+/// for script from now on - its wrapper in each world realm of its relevant
+/// realm is kept by young-generation collections from here, as its main
+/// world's is. A node wrapped only in a world is held by that world's
+/// wrapper alone, and the walk that traces its listeners visits held nodes
+/// only. `worlds` is the agent's (its registry's, non-null only once a world
+/// realm was made: an agent with none pays nothing). On the agent's thread,
+/// outside the collector.
+pub fn keepNodeWrappersInYoungCollections(worlds: *const AgentWorlds, isolate: *ffi.Isolate, instance: *engine.Instance) void {
+    const list = worlds.by_main.get(instance.ctx) orelse return;
+    for (list.items) |w| {
+        const storage = w.realm.getV8WrapperCacheStorage() orelse continue;
+        const cache: *const WrapperCache = @ptrCast(@alignCast(storage));
+        cache.keepWorldEntryInYoungCollections(isolate, instance);
+    }
+}
+
 /// `instance`, a node, was torn down while wrappers of it may live (a forced
 /// realm end's coordinated teardown: context_manager.markInstanceCleanedUp):
 /// each world realm's wrapper of it is severed and its reference forgotten,
@@ -1064,4 +1082,74 @@ pub fn nodeDestroyed(instance: *engine.Instance) void {
         const cache: *WrapperCache = @ptrCast(@alignCast(storage));
         cache.worldNodeDestroyed(instance);
     }
+}
+
+// ============================================================================
+// Wrappers in other worlds
+// ============================================================================
+//
+// An object has a wrapper per world. "Has script seen it" asks every world
+// (engine.hasWrapper; main's ruling of 2026-11-23 12:17 PM ET, lane rc8):
+// the realm group's caches - the main realm's and each world realm's - are
+// read through `eachOtherWrapper`. (What an owner keeps for script is traced
+// from the owner itself - engine.TracedHold - whichever world's wrapper the
+// collector reaches: Blink's model, with no copy per wrapper.)
+
+/// `realm`'s wrapper cache, or null.
+fn cacheOf(realm: Context) ?*WrapperCache {
+    const storage = realm.getV8WrapperCacheStorage() orelse return null;
+    return @ptrCast(@alignCast(storage));
+}
+
+/// Whether `cache` is `other`.
+fn isCache(cache: *const WrapperCache, other: ?*const WrapperCache) bool {
+    const that = other orelse return false;
+    return cache == that;
+}
+
+/// Each wrapper `owner` has in its realm group - its main realm's and each
+/// of its world realms' - but the one `except` keeps, handed to `visit`
+/// BORROWED from its cache, until `visit` answers false. None for a Window:
+/// its sets hang on its main realm's retained store
+/// (protocol_realms.tracedEdgeHolderOfWindow), which outlives every world
+/// realm of it. None while its agent has made no world realm.
+fn eachOtherWrapper(owner: *engine.Instance, except: ?*const WrapperCache, context: anytype, comptime visit: fn (@TypeOf(context), *ffi.Object) bool) void {
+    if (std.mem.eql(u8, owner.vtable.name, "Window")) return;
+    const worlds = worldsOfRealm(owner.ctx) orelse return;
+    if (!worlds.active) return;
+    const main = mainRealmOf(owner.ctx);
+    if (cacheOf(main)) |cache| {
+        if (!isCache(cache, except) and !cache.is_tearing_down) {
+            if (cache.get(owner)) |wrapper| {
+                if (!visit(context, wrapper)) return;
+            }
+        }
+    }
+    const list = worlds.by_main.get(main) orelse return;
+    for (list.items) |w| {
+        const cache = cacheOf(w.realm) orelse continue;
+        if (isCache(cache, except) or cache.is_tearing_down) continue;
+        const wrapper = cache.get(owner) orelse continue;
+        if (!visit(context, wrapper)) return;
+    }
+}
+
+/// engine.hasWrapper beyond `instance`'s own realm: whether another realm of
+/// its group - a world realm's cache, or its main realm's for an instance of
+/// a world realm - has a wrapper of it. The caller made sure a world realm
+/// may exist (`realmMayHaveWorlds`). A Window's other wrappers are its world
+/// realms' globals, which it does not count: those realms end before its own.
+pub fn hasWrapperInOtherWorld(instance: *engine.Instance) bool {
+    const Found = struct {
+        found: bool = false,
+
+        fn visit(self: *@This(), _: *ffi.Object) bool {
+            self.found = true;
+            return false;
+        }
+    };
+    var found: Found = .{};
+    const own: ?*const WrapperCache = cacheOf(instance.ctx);
+    eachOtherWrapper(instance, own, &found, Found.visit);
+    return found.found;
 }
