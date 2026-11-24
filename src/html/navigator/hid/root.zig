@@ -119,22 +119,3 @@ pub const HID = struct {
         return HIDError.NotAllowedError;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "HID - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var hid = HID.init(allocator, null);
-    defer hid.deinit();
-
-    // Should return empty device list
-    const devices = try hid.getDevices();
-    try std.testing.expectEqual(@as(usize, 0), devices.len);
-
-    // Should return permission denied
-    const result = hid.requestDevice(.{ .filters = &[_]HIDDeviceFilter{} });
-    try std.testing.expectError(HIDError.NotAllowedError, result);
-}

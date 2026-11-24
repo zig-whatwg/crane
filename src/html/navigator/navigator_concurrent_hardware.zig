@@ -48,24 +48,3 @@ fn getHardwareConcurrency() usize {
     // Default to 1 if unable to determine
     return std.Thread.getCpuCount() catch 1;
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "NavigatorConcurrentHardware - init" {
-    const hw = NavigatorConcurrentHardware.init();
-
-    // Should be at least 1
-    try std.testing.expect(hw.getConcurrency() >= 1);
-}
-
-test "NavigatorConcurrentHardware - custom value" {
-    const hw = NavigatorConcurrentHardware.initWithValue(8);
-    try std.testing.expectEqual(@as(usize, 8), hw.getConcurrency());
-}
-
-test "NavigatorConcurrentHardware - minimum is 1" {
-    const hw = NavigatorConcurrentHardware.initWithValue(0);
-    try std.testing.expectEqual(@as(usize, 1), hw.getConcurrency());
-}

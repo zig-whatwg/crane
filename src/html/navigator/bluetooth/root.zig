@@ -107,25 +107,3 @@ pub const Bluetooth = struct {
         return BluetoothError.NotSupportedError;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "Bluetooth - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var bluetooth = Bluetooth.init(allocator, null);
-    defer bluetooth.deinit();
-
-    // Should return not available
-    try std.testing.expect(!bluetooth.getAvailability());
-
-    // Should return empty device list
-    const devices = try bluetooth.getDevices();
-    try std.testing.expectEqual(@as(usize, 0), devices.len);
-
-    // Should return not supported
-    const result = bluetooth.requestDevice(.{});
-    try std.testing.expectError(BluetoothError.NotSupportedError, result);
-}

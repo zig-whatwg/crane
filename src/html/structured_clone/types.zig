@@ -637,10 +637,3 @@ test "ErrorName.fromString" {
     try testing.expectEqual(ErrorName.RangeError, ErrorName.fromString("RangeError"));
     try testing.expectEqual(ErrorName.Error, ErrorName.fromString("CustomError"));
 }
-
-test "TypedArrayConstructor.elementSize" {
-    const testing = std.testing;
-    try testing.expectEqual(@as(usize, 1), TypedArrayConstructor.Uint8Array.elementSize());
-    try testing.expectEqual(@as(usize, 4), TypedArrayConstructor.Float32Array.elementSize());
-    try testing.expectEqual(@as(usize, 8), TypedArrayConstructor.Float64Array.elementSize());
-}

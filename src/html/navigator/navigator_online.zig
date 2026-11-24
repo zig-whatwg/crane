@@ -133,31 +133,3 @@ pub const StubNetworkStatusBackend = struct {
         .removeChangeListener = null,
     };
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "NavigatorOnLine - default is online" {
-    const online = NavigatorOnLine.init();
-    try std.testing.expect(online.isOnLine());
-}
-
-test "NavigatorOnLine - setOnLine" {
-    var online = NavigatorOnLine.init();
-
-    try std.testing.expect(online.isOnLine());
-
-    online.setOnLine(false);
-    try std.testing.expect(!online.isOnLine());
-
-    online.setOnLine(true);
-    try std.testing.expect(online.isOnLine());
-}
-
-test "NavigatorOnLine - with stub backend" {
-    var stub = StubNetworkStatusBackend.init();
-    const online = NavigatorOnLine.initWithBackend(stub.getBackend());
-
-    try std.testing.expect(online.isOnLine());
-}

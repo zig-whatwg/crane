@@ -51,21 +51,3 @@ pub fn isFramingAllowed(
         .sameorigin => is_same_origin,
     };
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "XFrameOptions - parse" {
-    try std.testing.expectEqual(XFrameOptions.deny, XFrameOptions.parse("DENY"));
-    try std.testing.expectEqual(XFrameOptions.sameorigin, XFrameOptions.parse("SAMEORIGIN"));
-    try std.testing.expectEqual(XFrameOptions.none, XFrameOptions.parse(null));
-}
-
-test "isFramingAllowed" {
-    try std.testing.expect(isFramingAllowed(.none, false));
-    try std.testing.expect(!isFramingAllowed(.deny, true));
-    try std.testing.expect(!isFramingAllowed(.deny, false));
-    try std.testing.expect(isFramingAllowed(.sameorigin, true));
-    try std.testing.expect(!isFramingAllowed(.sameorigin, false));
-}

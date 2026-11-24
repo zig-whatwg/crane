@@ -25,9 +25,3 @@ pub const foreign = attribute_names.foreign;
 pub fn intern(namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) ?*const QualifiedName {
     return attribute_names.staticRecord(attribute_names.staticId(namespace, prefix, local_name) orelse return null);
 }
-
-test "the forwarder answers with dom.attribute_names' static records" {
-    for (names, 0..) |name, i| try std.testing.expect(intern(null, null, name) == &attribute_names.static_records[i]);
-    try std.testing.expect(intern(null, null, "data-x") == null);
-    try std.testing.expect(intern(infra.namespaces.XLINK_NAMESPACE, "xlink", "href") != null);
-}

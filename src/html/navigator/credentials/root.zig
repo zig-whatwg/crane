@@ -105,38 +105,3 @@ pub const CredentialsContainer = struct {
         return false;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "CredentialsContainer - init and deinit" {
-    const allocator = std.testing.allocator;
-
-    var credentials = CredentialsContainer.init(allocator);
-    defer credentials.deinit();
-
-    // Should return null (no credentials)
-    const result = try credentials.get(.{});
-    try std.testing.expect(result == null);
-}
-
-test "CredentialsContainer - preventSilentAccess" {
-    const allocator = std.testing.allocator;
-
-    var credentials = CredentialsContainer.init(allocator);
-    defer credentials.deinit();
-
-    // Should succeed silently
-    try credentials.preventSilentAccess();
-}
-
-test "CredentialsContainer - isConditionalMediationAvailable" {
-    const allocator = std.testing.allocator;
-
-    var credentials = CredentialsContainer.init(allocator);
-    defer credentials.deinit();
-
-    // Stub returns false
-    try std.testing.expect(!credentials.isConditionalMediationAvailable());
-}

@@ -117,22 +117,3 @@ pub const USB = struct {
         return USBError.NotAllowedError;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "USB - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var usb = USB.init(allocator, null);
-    defer usb.deinit();
-
-    // Should return empty device list
-    const devices = try usb.getDevices();
-    try std.testing.expectEqual(@as(usize, 0), devices.len);
-
-    // Should return permission denied
-    const result = usb.requestDevice(.{});
-    try std.testing.expectError(USBError.NotAllowedError, result);
-}

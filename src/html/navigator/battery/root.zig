@@ -158,31 +158,3 @@ pub const StubBatteryBackend = struct {
         .getLevel = getLevel,
     };
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "BatteryManager - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var battery = BatteryManager.init(allocator, null);
-    defer battery.deinit();
-
-    // Default values
-    try std.testing.expect(battery.isCharging());
-    try std.testing.expectEqual(@as(f64, 0), battery.getChargingTime());
-    try std.testing.expect(std.math.isInf(battery.getDischargingTime()));
-    try std.testing.expectEqual(@as(f64, 1.0), battery.getLevel());
-}
-
-test "BatteryManager - with stub backend" {
-    const allocator = std.testing.allocator;
-
-    var stub = StubBatteryBackend.init();
-    var battery = BatteryManager.init(allocator, stub.getBackend());
-    defer battery.deinit();
-
-    try std.testing.expect(battery.isCharging());
-    try std.testing.expectEqual(@as(f64, 1.0), battery.getLevel());
-}

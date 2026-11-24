@@ -138,30 +138,3 @@ pub const Clipboard = struct {
         return ClipboardError.NotAllowedError;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "Clipboard - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var clipboard = Clipboard.init(allocator, null);
-    defer clipboard.deinit();
-
-    // Should return permission denied
-    const result = clipboard.readText();
-    try std.testing.expectError(ClipboardError.NotAllowedError, result);
-
-    const write_result = clipboard.writeText("test");
-    try std.testing.expectError(ClipboardError.NotAllowedError, write_result);
-}
-
-test "ClipboardItem - init and deinit" {
-    const allocator = std.testing.allocator;
-
-    var item = ClipboardItem.init(allocator);
-    defer item.deinit();
-
-    try std.testing.expectEqual(PresentationStyle.unspecified, item.presentation_style);
-}

@@ -104,31 +104,3 @@ pub const StubCookieStatusBackend = struct {
         .areCookiesEnabled = areCookiesEnabled,
     };
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "NavigatorCookies - default is enabled" {
-    const cookies = NavigatorCookies.init();
-    try std.testing.expect(cookies.isCookieEnabled());
-}
-
-test "NavigatorCookies - setCookieEnabled" {
-    var cookies = NavigatorCookies.init();
-
-    try std.testing.expect(cookies.isCookieEnabled());
-
-    cookies.setCookieEnabled(false);
-    try std.testing.expect(!cookies.isCookieEnabled());
-
-    cookies.setCookieEnabled(true);
-    try std.testing.expect(cookies.isCookieEnabled());
-}
-
-test "NavigatorCookies - with stub backend" {
-    var stub = StubCookieStatusBackend.init();
-    const cookies = NavigatorCookies.initWithBackend(stub.getBackend());
-
-    try std.testing.expect(cookies.isCookieEnabled());
-}

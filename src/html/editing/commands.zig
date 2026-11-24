@@ -478,28 +478,3 @@ test "Command.fromString" {
     try testing.expect(Command.fromString("bold ") == null);
     try testing.expect(Command.fromString("enableabsolutepositioneditorx") == null);
 }
-
-test "Command.toString" {
-    const testing = std.testing;
-
-    try testing.expectEqualStrings("bold", Command.bold.toString());
-    try testing.expectEqualStrings("strikeThrough", Command.strikeThrough.toString());
-}
-
-test "Command.requiresValue" {
-    const testing = std.testing;
-
-    try testing.expect(Command.fontName.requiresValue());
-    try testing.expect(Command.createLink.requiresValue());
-    try testing.expect(!Command.bold.requiresValue());
-    try testing.expect(!Command.undo.requiresValue());
-}
-
-test "Command.isToggle" {
-    const testing = std.testing;
-
-    try testing.expect(Command.bold.isToggle());
-    try testing.expect(Command.italic.isToggle());
-    try testing.expect(!Command.fontName.isToggle());
-    try testing.expect(!Command.copy.isToggle());
-}

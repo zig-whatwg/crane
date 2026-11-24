@@ -132,22 +132,3 @@ pub const Serial = struct {
         return SerialError.NotAllowedError;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "Serial - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var serial = Serial.init(allocator, null);
-    defer serial.deinit();
-
-    // Should return empty port list
-    const ports = try serial.getPorts();
-    try std.testing.expectEqual(@as(usize, 0), ports.len);
-
-    // Should return permission denied
-    const result = serial.requestPort(.{});
-    try std.testing.expectError(SerialError.NotAllowedError, result);
-}

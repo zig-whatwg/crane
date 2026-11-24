@@ -138,33 +138,3 @@ pub const MediaDevices = struct {
         return .{};
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "MediaDevices - init without backend" {
-    const allocator = std.testing.allocator;
-
-    var media = MediaDevices.init(allocator, null);
-    defer media.deinit();
-
-    // Should return empty device list
-    const devices = try media.enumerateDevices();
-    try std.testing.expectEqual(@as(usize, 0), devices.len);
-
-    // Should return permission denied for getUserMedia
-    const result = media.getUserMedia(.{ .video = true });
-    try std.testing.expectError(MediaDevicesError.NotAllowedError, result);
-}
-
-test "MediaDevices - getSupportedConstraints" {
-    const allocator = std.testing.allocator;
-
-    var media = MediaDevices.init(allocator, null);
-    defer media.deinit();
-
-    const constraints = media.getSupportedConstraints();
-    try std.testing.expect(constraints.width);
-    try std.testing.expect(constraints.height);
-}

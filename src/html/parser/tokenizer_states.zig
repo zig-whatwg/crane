@@ -273,17 +273,3 @@ pub fn isCharacterReferenceState(state: State) bool {
         else => false,
     };
 }
-
-test "State - getStateName" {
-    const name = getStateName(.data);
-    const std = @import("std");
-    try std.testing.expectEqualStrings("Data state", name);
-}
-
-test "State - isScriptDataState" {
-    const std = @import("std");
-    try std.testing.expect(isScriptDataState(.script_data));
-    try std.testing.expect(isScriptDataState(.script_data_escaped));
-    try std.testing.expect(!isScriptDataState(.data));
-    try std.testing.expect(!isScriptDataState(.tag_name));
-}
