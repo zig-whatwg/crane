@@ -1,0 +1,19 @@
+# Architecture: A traced reference's death in a full collection is the embedder's to record
+
+**Date**: 2026-11-23
+**Lesson**: V8 tells nobody when a full collection frees a `v8::TracedReference` no trace reached; an embedder that keeps one outside a cppgc object must record the death itself, in the same pause, from its own trace.
+
+**Why**: A `TracedReference` has no destructor and no weak callback. `TracedHandles::ResetDeadNodes` (V8 15.7.112.43, `src/handles/traced-handles.cc:320-345`) frees every node the marking did not reach and leaves the embedder's reference naming the freed, reusable node. V8 assumes the reference sits in a cppgc object that dies in the same collection (Blink's `TraceWrapperV8Reference` in a `GarbageCollected` listener). `EmbedderRootsHandler::ResetRoot` / `TryResetRoot` are called only in young-generation collections, for droppable references (`ProcessWeakYoungObjects`). The public header says whose job it is (`v8-traced-handle.h`, `TracedReference`): "The embedder needs to ensure that the handle is not accessed once the V8 object has been reclaimed." Crane's owners are Zig objects that outlive the collection.
+
+**What Happened**: Refcount step 8 (lane rc8) moved listeners' callbacks, event handlers' functions and observers' callbacks to `engine.TracedHold`, a `TracedReference<Value>` in a malloc box traced from its owner (commit e1c26d48d). Its pin read "0 of 200 untraced holds cleared" after a full collection, and two hypotheses were tested and disproved (a non-droppable reference is a root; a conservatively scanned stack word). The functions HAD been collected: `IsEmpty()` read the box's stale location. Every such hold was a dangling pointer, and its release freed a V8 node a second time - the rewritten pins measured V8's used handle bytes at 18446744073709548912 (an underflow) after 200 releases, and the next holds were handed nodes given out twice. The escalation listed "raw-null the dead boxes in the weak processing" as needing V8 internals (the node's mark bit). It does not: the oracle is Crane's OWN trace. The wrapper cache already worked that way - `PlatformAnchor::Trace` sets a record's `marked` bit and `sweepUnmarked` writes every unmarked record's reference empty in the pause - and so do node slots, by their anchor's liveness.
+
+**Fix**:
+1. A hold is a 16-byte cell of a per-agent slab the V8 adapter owns: the reference and a stamp (`v8_wrapper.cpp`, "the agent's hold slab").
+2. `v8_Tracer_TraceHeld` traces the reference AND stamps the cell with the collection's number, in one function, only inside that collection's atomic pause.
+3. A cppgc object rooted by the isolate's record registers a weak callback in every full collection; it writes every unstamped, non-empty reference empty - raw (a fresh `TracedReference` made over it), because V8 frees the node itself in that pause and a `Reset` would free it twice - then raises the number.
+4. References are the default kind, not droppable: roots in a scavenge, and never seen by `EmbedderRootsHandler`.
+5. Teardown order: at the agent's end, while the isolate lives, every cell is reset and the slab is cut from the isolate; a later release only gives its cell back.
+
+Measured before building (standalone microbench on the V8 archive, public API only, an M2, best of 21): a cell made and ended 10 ns (7 ns in a batch of 16,384) against 6-19 ns for a strong `v8::Global` in a malloc box; the cppgc-box-per-hold alternative (V8's intended shape, with a `cppgc::WeakPersistent` for the Zig owner) 29-37 ns; a full collection with 100,000 live holds costs what it costs with 100,000 Globals, the sweep itself 0.05 ms.
+
+**Takeaway**: **A `TracedReference` kept outside a cppgc object needs a same-pause sweep driven by the embedder's own trace marks; "is it empty?" proves nothing after a full collection, so pin a traced hold by V8's used handle bytes and by a release after the collection, never by `IsEmpty()` alone.**
