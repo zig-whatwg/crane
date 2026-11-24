@@ -330,7 +330,6 @@ pub const V8EventLoop = struct {
 
         // Note: Timer state is preserved automatically since we stop polling.
         // When thawed, timers will continue from where they left off.
-        // For proper time adjustment, FrozenContextManager tracks freeze time.
     }
 
     /// Thaw the event loop after bfcache restoration
@@ -344,9 +343,6 @@ pub const V8EventLoop = struct {
         }
 
         self.frozen = false;
-
-        // Timer adjustment is handled by FrozenContextManager which knows
-        // how long the context was frozen.
     }
 
     /// Check if the event loop is currently frozen

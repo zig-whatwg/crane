@@ -27,7 +27,6 @@ src/permissions/storage.zig PermissionStorage.cache 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.directories 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.files 1
 src/platform/stub_platform_backend.zig StubContext.storage 1
-src/runtime/engines/v8/frozen_context_manager.zig FrozenContextManager.frozen_contexts 1
 src/runtime/engines/v8/observable_array.zig Registry.states 1
 src/runtime/engines/v8/protocol_agents.zig agents 1
 src/runtime/engines/v8/shadow_realm.zig ShadowRealmCallbackData.tracked_realms 1
