@@ -149,33 +149,40 @@ pub fn identifyUnknownMimeType(
 ) !?MimeType {
     // 1. If the sniff-scriptable flag is set, check for scriptable types
     if (sniff_scriptable) {
-        // Check HTML patterns (case-insensitive with tag-terminating byte)
+        // The HTML rows: each pattern is followed by a tag-terminating byte
+        // ([TT]), "any one of the following bytes: 0x20 (SP), 0x3E (">")"
+        // (mimesniff §3, Terminology) - matched as the row's pattern with each
+        // of them in [TT]'s place, mask 0xFF. (Only SP used to be taken: an
+        // unlabeled "<!DOCTYPE html>" computed as text/plain; lane core1.)
         // Spec: https://mimesniff.spec.whatwg.org/#rules-for-identifying-an-unknown-mime-type
         const html_patterns = [_]struct { pattern: []const u8, mask: []const u8 }{
-            .{ .pattern = "\x3C\x21\x44\x4F\x43\x54\x59\x50\x45\x20\x48\x54\x4D\x4C\x20", .mask = "\xFF\xFF\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xFF\xDF\xDF\xDF\xDF\xFF" }, // "<!DOCTYPE HTML "
-            .{ .pattern = "\x3C\x48\x54\x4D\x4C\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xFF" }, // "<HTML "
-            .{ .pattern = "\x3C\x48\x45\x41\x44\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xFF" }, // "<HEAD "
-            .{ .pattern = "\x3C\x53\x43\x52\x49\x50\x54\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xDF\xFF" }, // "<SCRIPT "
-            .{ .pattern = "\x3C\x49\x46\x52\x41\x4D\x45\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xDF\xFF" }, // "<IFRAME "
-            .{ .pattern = "\x3C\x48\x31\x20", .mask = "\xFF\xDF\xFF\xFF" }, // "<H1 "
-            .{ .pattern = "\x3C\x44\x49\x56\x20", .mask = "\xFF\xDF\xDF\xDF\xFF" }, // "<DIV "
-            .{ .pattern = "\x3C\x46\x4F\x4E\x54\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xFF" }, // "<FONT "
-            .{ .pattern = "\x3C\x54\x41\x42\x4C\x45\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xFF" }, // "<TABLE "
-            .{ .pattern = "\x3C\x41\x20", .mask = "\xFF\xDF\xFF" }, // "<A "
-            .{ .pattern = "\x3C\x53\x54\x59\x4C\x45\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xFF" }, // "<STYLE "
-            .{ .pattern = "\x3C\x54\x49\x54\x4C\x45\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xFF" }, // "<TITLE "
-            .{ .pattern = "\x3C\x42\x20", .mask = "\xFF\xDF\xFF" }, // "<B "
-            .{ .pattern = "\x3C\x42\x4F\x44\x59\x20", .mask = "\xFF\xDF\xDF\xDF\xDF\xFF" }, // "<BODY "
-            .{ .pattern = "\x3C\x42\x52\x20", .mask = "\xFF\xDF\xDF\xFF" }, // "<BR "
-            .{ .pattern = "\x3C\x50\x20", .mask = "\xFF\xDF\xFF" }, // "<P "
-            .{ .pattern = "\x3C\x21\x2D\x2D\x20", .mask = "\xFF\xFF\xFF\xFF\xFF" }, // "<!--"
+            .{ .pattern = "\x3C\x21\x44\x4F\x43\x54\x59\x50\x45\x20\x48\x54\x4D\x4C", .mask = "\xFF\xFF\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xFF\xDF\xDF\xDF\xDF" }, // "<!DOCTYPE HTML"
+            .{ .pattern = "\x3C\x48\x54\x4D\x4C", .mask = "\xFF\xDF\xDF\xDF\xDF" }, // "<HTML"
+            .{ .pattern = "\x3C\x48\x45\x41\x44", .mask = "\xFF\xDF\xDF\xDF\xDF" }, // "<HEAD"
+            .{ .pattern = "\x3C\x53\x43\x52\x49\x50\x54", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xDF" }, // "<SCRIPT"
+            .{ .pattern = "\x3C\x49\x46\x52\x41\x4D\x45", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF\xDF" }, // "<IFRAME"
+            .{ .pattern = "\x3C\x48\x31", .mask = "\xFF\xDF\xFF" }, // "<H1"
+            .{ .pattern = "\x3C\x44\x49\x56", .mask = "\xFF\xDF\xDF\xDF" }, // "<DIV"
+            .{ .pattern = "\x3C\x46\x4F\x4E\x54", .mask = "\xFF\xDF\xDF\xDF\xDF" }, // "<FONT"
+            .{ .pattern = "\x3C\x54\x41\x42\x4C\x45", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF" }, // "<TABLE"
+            .{ .pattern = "\x3C\x41", .mask = "\xFF\xDF" }, // "<A"
+            .{ .pattern = "\x3C\x53\x54\x59\x4C\x45", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF" }, // "<STYLE"
+            .{ .pattern = "\x3C\x54\x49\x54\x4C\x45", .mask = "\xFF\xDF\xDF\xDF\xDF\xDF" }, // "<TITLE"
+            .{ .pattern = "\x3C\x42", .mask = "\xFF\xDF" }, // "<B"
+            .{ .pattern = "\x3C\x42\x4F\x44\x59", .mask = "\xFF\xDF\xDF\xDF\xDF" }, // "<BODY"
+            .{ .pattern = "\x3C\x42\x52", .mask = "\xFF\xDF\xDF" }, // "<BR"
+            .{ .pattern = "\x3C\x50", .mask = "\xFF\xDF" }, // "<P"
+            .{ .pattern = "\x3C\x21\x2D\x2D", .mask = "\xFF\xFF\xFF\xFF" }, // "<!--"
         };
+        const tag_terminating_bytes = [_]u8{ 0x20, 0x3E };
 
         const whitespace = "\x09\x0A\x0C\x0D\x20"; // Whitespace bytes to ignore
 
-        for (html_patterns) |p| {
-            if (pattern_matching.patternMatching(resource_header, p.pattern, p.mask, whitespace)) {
-                return try mime_type.parseMimeType(allocator, "text/html");
+        inline for (html_patterns) |p| {
+            inline for (tag_terminating_bytes) |tt| {
+                if (pattern_matching.patternMatching(resource_header, p.pattern ++ [_]u8{tt}, p.mask ++ "\xFF", whitespace)) {
+                    return try mime_type.parseMimeType(allocator, "text/html");
+                }
             }
         }
 
