@@ -112,6 +112,11 @@ pub const Answer = struct {
     is_error: bool,
     /// Image items (a screenshot): counted, not compared.
     images: usize = 0,
+    /// What the harness did to Chrome's answer before comparing it (its
+    /// user-agent nodes set apart, user_agent.zig), or why it could not.
+    note: []const u8 = "",
+    /// The answer as the server gave it, when the text compared differs.
+    raw: ?[]const u8 = null,
 };
 
 /// A tools/call answer message, read as compared.
