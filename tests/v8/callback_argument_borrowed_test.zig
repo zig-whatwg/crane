@@ -295,7 +295,16 @@ const Call = struct {
         cb: ?Callback = null,
         n: ?f64 = null,
     };
-    const Arm = union(enum) { domstring: runtime.DOMString, function: Callback };
+    /// (DOMString or Callback), with the arms table codegen writes
+    /// (webidl.union_arms) - TimerHandler's shape.
+    const Arm = union(enum) {
+        domstring: runtime.DOMString,
+        function: Callback,
+        pub const arms = [_]webidl.UnionArm{
+            .{ .field = "domstring", .kind = .string },
+            .{ .field = "function", .kind = .callback_function },
+        };
+    };
 
     fn steps(data: ?*anyopaque) void {
         const self: *Call = @ptrCast(@alignCast(data.?));

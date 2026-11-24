@@ -3,10 +3,19 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const typedefs = @import("root.zig");
 
 pub const MessageEventSource = union(enum) {
     window_proxy: typedefs.WindowProxy,
     message_port: *runtime.Instance,
     service_worker: *runtime.Instance,
+
+    /// What each field's member type is, for the binding's union conversion
+    /// (WebIDL 3.2.25; webidl.union_arms).
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "window_proxy", .kind = .{ .interface = "Window" } },
+        .{ .field = "message_port", .kind = .{ .interface = "MessagePort" } },
+        .{ .field = "service_worker", .kind = .{ .interface = "ServiceWorker" } },
+    };
 };
