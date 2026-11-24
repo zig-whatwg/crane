@@ -173,9 +173,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "CanvasFillStrokeStyles", "fillStyle", "" },
     .{ "CanvasFillStrokeStyles", "strokeStyle", "" },
     // css (CSSStyleSheet's constructor, typed OM's mapSet)
-    .{ "CSSStyleSheetInit", "media", "" },
-    .{ "StylePropertyMap", "append", "values" },
-    .{ "StylePropertyMap", "set", "values" },
     // dom (element creation options, importNode, view transitions)
     // events and observers (EventTarget's options; lane rc8 is in these files)
     .{ "EventTarget", "addEventListener", "options" },
