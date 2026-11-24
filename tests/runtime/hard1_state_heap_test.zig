@@ -566,3 +566,25 @@ test "S1: the slab's peak is the most Instances live at once, not the slots the 
     engine.endTask();
     try testing.expectEqual(@as(usize, count), scope.slab.stats().peak_allocated);
 }
+
+test "M5: a span only the magazine keeps is aged from its own last release, not its bucket's latest" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    // One block per span (the largest class): each in a span of its own.
+    engine.setNow(1_000);
+    const early = try scope.arena.create(BigState);
+    const late = try scope.arena.create(BigState);
+    const start = engine.stats().objects.spans_decommitted;
+    scope.arena.destroy(BigState, early);
+    // The bucket releases again 900 ms later.
+    engine.setNow(1_900);
+    scope.arena.destroy(BigState, late);
+    try testing.expect(engine.inMagazine(early) and engine.inMagazine(late));
+    // At 2.1 s the span released at 1 s is past the age, the other is not:
+    // the first goes back now, as it would with no magazine.
+    const r = engine.decommitAged(2_100, heap.decommit_age_ms, std.math.maxInt(usize));
+    try testing.expectEqual(@as(usize, 1), r.decommitted);
+    try testing.expectEqual(start + 1, engine.stats().objects.spans_decommitted);
+    try testing.expect(r.next_due_ms != null);
+}

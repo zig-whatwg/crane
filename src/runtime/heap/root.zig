@@ -246,7 +246,9 @@ pub const SpanEntry = extern struct {
     chunk: u32,
     /// Its place in that chunk.
     ordinal: u32,
-    /// The engine's clock when it last emptied.
+    /// The engine's clock at its last release of a slot - to its span or to
+    /// its bucket's magazine: once it is empty, when it emptied (what idle
+    /// decommit ages it from), however long a magazine held its last block.
     empty_since: u32,
     /// Its sites array in its partition's pool (offset / 256 + 1), or 0.
     sites: u32,
@@ -328,10 +330,9 @@ const Bucket = struct {
     /// The magazine: the blocks released last, reissued first (`Engine.
     /// release`, `Engine.allocIn`) - a pool chunk of `magazine_depth` block
     /// offsets (window offset / 16), `no_chunk` until the bucket first
-    /// releases one; how many it holds; the engine's clock at its last push.
+    /// releases one; how many it holds.
     mag: u32 = no_chunk,
     mag_count: u16 = 0,
-    mag_since: u32 = 0,
     // The partition's figures (PartitionStats' live and total counts) are
     // these, summed when asked (`Engine.stats`): one bucket's line is what
     // an allocation and a free touch, never a second line of totals (lane
@@ -1235,17 +1236,23 @@ pub const Engine = struct {
         if (b.mag == no_chunk) b.mag = self.poolAlloc(p, @sizeOf(Chunk)) catch return false;
         const mag = self.magazineOf(p, b);
         slotSet(self.slotMap(index), slot, .cached);
+        // The span's last release: a span only the magazine keeps is aged
+        // from it when the magazine gives the block back, as it would have
+        // been with no magazine (a bucket-wide time made idle decommit miss
+        // spans emptied long before: +1 MB steady and collected on the
+        // events rows, lane hard1's chat2 mechanism run).
+        self.entry(index).empty_since = self.now_ms.load(.monotonic);
         mag[b.mag_count] = @intCast((index * span_bytes + slot * b.block_bytes) / 16);
         b.mag_count += 1;
-        b.mag_since = self.now_ms.load(.monotonic);
         return true;
     }
 
-    /// A cached block back to its span, as released at `since`.
-    fn releaseCached(self: *Engine, p: *Partition, b: *Bucket, at: u32, since: u32) void {
+    /// A cached block back to its span, which was last released at its
+    /// `empty_since`.
+    fn releaseCached(self: *Engine, p: *Partition, b: *Bucket, at: u32) void {
         const offset = @as(usize, at) * 16;
         const index = offset / span_bytes;
-        self.releaseSlot(p, b, index, (offset - index * span_bytes) / b.block_bytes, since);
+        self.releaseSlot(p, b, index, (offset - index * span_bytes) / b.block_bytes, self.entry(index).empty_since);
     }
 
     /// The magazine's last block, issued as `allocIn` issues one: verified
@@ -1282,7 +1289,7 @@ pub const Engine = struct {
         for (self.buckets(p.id)) |*b| {
             if (b.mag_count == 0) continue;
             const mag = self.magazineOf(p, b);
-            for (mag[0..b.mag_count]) |at| self.releaseCached(p, b, at, b.mag_since);
+            for (mag[0..b.mag_count]) |at| self.releaseCached(p, b, at);
             b.mag_count = 0;
         }
     }
@@ -1302,9 +1309,10 @@ pub const Engine = struct {
     }
 
     /// The slot is free in its span again: the span may have room, or be
-    /// empty (aged from `since`).
+    /// empty (aged from `since`, its last release).
     fn releaseSlot(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize, since: u32) void {
         const e = self.entry(index);
+        e.empty_since = since;
         slotSet(self.slotMap(index), slot, .free);
         if (slot < e.hint) e.hint = @intCast(slot);
         const was_full = e.used == e.slots;
@@ -1314,7 +1322,6 @@ pub const Engine = struct {
             if (b.current == no_span or index < b.current) b.current = @intCast(index);
         }
         if (e.used == 0) {
-            e.empty_since = since;
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
             // The bug-finding run makes it inaccessible at once - unless it
