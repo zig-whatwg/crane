@@ -31,12 +31,14 @@ const inspector_probes = dom_module.inspector_probes;
 /// a title element inserted, removed, or with its children changed may change the
 /// document's title, which the DevTools remote end reports to its targets
 /// (dom.inspector_probes.titleMayHaveChanged; Blink's HTMLTitleElement::ChildrenChanged / InsertedInto / RemovedFrom ->
-/// Document::UpdateTitle). Each step costs one gate read while no Browser
-/// is adopted by the remote end.
+/// Document::UpdateTitle), and a title the parser has finished, once
+/// (dom.finish_parsing_children). Each step costs one gate read while no
+/// Browser is adopted by the remote end.
 pub fn installHooks() void {
     dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
     dom_module.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
     dom_module.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch {};
+    dom_module.finish_parsing_children.install("title", .{ .finished = &finishedParsingChildren });
 }
 
 /// `node` as this element, when it is one.
@@ -58,9 +60,8 @@ fn countsForTitle(title: *NodeBase) bool {
 }
 
 /// The probe, unless the parser is still inside the element: a parsed
-/// title reports its text once, not per character it appends (Blink's
-/// parser inserts a title's text in one change; the document's
-/// DOMContentLoaded report carries a parsed title - BrowserSide).
+/// title reports its text once, not per character it appends, when the
+/// parser pops it (`finishedParsingChildren`).
 fn probe(title: *runtime.Instance) void {
     const owner = interfaces.Node.get_ownerDocument(title) catch return;
     const document = owner orelse return;
@@ -85,6 +86,19 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     // the document.
     if (false) return;
     probe(title);
+}
+
+/// The parser popped the element off its stack of open elements: its text
+/// is parsed (Blink's HTMLTitleElement::ChildrenChanged and
+/// Element::FinishParsingChildren -> Document::UpdateTitle), and a parsed
+/// title reaches the remote end now, not at DOMContentLoaded - Chrome 157
+/// lists a streamed page's title in Target.getTargets from its commit, while
+/// its body is still coming (tests/devtools/mcp1_title_timing_test.zig).
+fn finishedParsingChildren(title: *runtime.Instance) void {
+    if (!inspector_probes.titlesObserved()) return;
+    const owner = interfaces.Node.get_ownerDocument(title) catch return;
+    const document = owner orelse return;
+    inspector_probes.titleMayHaveChanged(document);
 }
 
 fn childrenChangedSteps(parent: *NodeBase, _: dom_module.mutation.ChildrenChange) void {

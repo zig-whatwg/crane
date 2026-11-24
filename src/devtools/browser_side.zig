@@ -38,10 +38,12 @@ pub const TargetEvent = union(enum) {
     /// (Target.targetInfoChanged). `url` is OWNED by the event (allocated
     /// with the side's allocator).
     navigated: struct { navigable: u64, url: []u8, cross_document: bool = true },
-    /// A tab's document title is known or changed (read at its document's
-    /// DOMContentLoaded and load, and of a tab already open when the
-    /// remote end came: Target.targetInfoChanged as Chrome's TitleWasSet).
-    /// `title` is OWNED by the event.
+    /// A tab's document title is known or changed (read when the parser
+    /// pops its title element, as script changes it, at its document's
+    /// DOMContentLoaded and load, and of a tab already open when the remote
+    /// end came): the target's title in Target.getTargets, which no event
+    /// tells (Chrome sends targetInfoChanged for a commit only). `title` is
+    /// OWNED by the event.
     title_changed: struct { tab: host_bridge.TabId, title: []u8 },
     /// A page session's Runtime.runIfWaitingForDebugger: one of the tab's
     /// waiting sessions is done waiting (the hold is released when all are).
@@ -207,18 +209,21 @@ pub const BrowserSide = struct {
 
     /// Every attached page session's handlers hear the milestone, in order.
     /// A handler compares the milestone's navigable with its session's tab.
-    /// A commit or a same-document navigation also tells the devtools thread
-    /// the navigable's new URL (Target.targetInfoChanged).
+    /// A commit or a same-document navigation then tells the devtools thread
+    /// the navigable's new URL (Target.targetInfoChanged), after the
+    /// sessions' own events for it: Chrome 157 sends a commit's
+    /// targetInfoChanged after Page.frameNavigated (TargetHandler hears
+    /// DevToolsAgentHostNavigated from DidFinishNavigation, once the frame
+    /// has committed; tests/devtools/mcp1_target_title_test.zig).
     fn fanOutNavigation(self: *BrowserSide, milestone: *const host_bridge.Milestone) void {
         fetch_observer.onMilestone(self, milestone);
         log_domain.onMilestone(self, milestone);
         page_domain.onBrowserMilestone(self, milestone);
         switch (milestone.event) {
-            .committed => |c| self.postNavigated(milestone.navigable_id, c.url, true),
-            .same_document => |c| self.postNavigated(milestone.navigable_id, c.url, false),
             // A top-level document's title, once its parser has had the
-            // <title> (Chrome reports each title the page sets: WebContents
-            // TitleWasSet -> targetInfoChanged).
+            // <title>, for Target.getTargets (Chrome's WebContents title;
+            // no event tells it). The parser's pop of the title element
+            // reports it sooner (dom.inspector_probes.titleMayHaveChanged).
             .dom_content_loaded => |d| self.postTitleOf(milestone.navigable_id, d.document),
             .load => |d| self.postTitleOf(milestone.navigable_id, d.document),
             else => {},
@@ -233,6 +238,11 @@ pub const BrowserSide = struct {
                 const H = @field(page_domains.Handlers, name);
                 if (comptime @hasDecl(H, "onNavigation")) H.onNavigation(session, milestone);
             }
+        }
+        switch (milestone.event) {
+            .committed => |c| self.postNavigated(milestone.navigable_id, c.url, true),
+            .same_document => |c| self.postNavigated(milestone.navigable_id, c.url, false),
+            else => {},
         }
     }
 
@@ -263,9 +273,9 @@ pub const BrowserSide = struct {
 
     /// dom.inspector_probes.titleMayHaveChanged: `document`'s title element
     /// or its text changed. A tab's active document's title goes to the
-    /// devtools thread, which reports it to the target when it moved (Blink:
+    /// devtools thread, which keeps it for the target's info (Blink:
     /// Document::UpdateTitle -> LocalFrameClient::DispatchDidReceiveTitle ->
-    /// WebContents TitleWasSet -> targetInfoChanged); a frame's is no
+    /// WebContents title, which Target.getTargets reads); a frame's is no
     /// target's.
     pub fn documentTitleMayHaveChanged(self: *BrowserSide, document: *@import("runtime").Instance) void {
         const b = self.browser orelse return;
