@@ -15,6 +15,7 @@ const collectors = @import("collectors.zig");
 const console = @import("console.zig");
 const network = @import("network.zig");
 const keyboard_mod = @import("keyboard.zig");
+const snapshot_mod = @import("snapshot.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -64,6 +65,38 @@ pub const Watch = struct {
     };
 };
 
+/// Puppeteer's UTILITY_WORLD_NAME (puppeteer-core 25.17.0
+/// lib/puppeteer/common/util.js): the isolated world its queries run in.
+pub const utility_world_name = "__puppeteer_utility_world__25.17.0";
+
+pub const World = enum { main, utility };
+
+/// An execution context of one of a page's frames.
+pub const FrameContext = struct {
+    id: i64,
+    /// OWNED.
+    frame_id: []u8,
+    world: World,
+    /// The utility world's objects wait_for keeps (Puppeteer's
+    /// puppeteerUtil, injected once per context, and its document): their
+    /// remote object ids, OWNED; they go with the context.
+    util_object: ?[]u8 = null,
+    document_object: ?[]u8 = null,
+
+    pub fn deinit(self: *FrameContext, allocator: Allocator) void {
+        allocator.free(self.frame_id);
+        if (self.util_object) |o| allocator.free(o);
+        if (self.document_object) |o| allocator.free(o);
+    }
+};
+
+/// McpPage.textSnapshot: what its uids name, kept until the next snapshot.
+pub const TextSnapshot = struct {
+    arena: std.heap.ArenaAllocator,
+    /// idToNode, by uid (in `arena`).
+    targets: std.StringArrayHashMapUnmanaged(snapshot_mod.Target) = .empty,
+};
+
 pub const Page = struct {
     /// The MCP page id (McpPage.id).
     id: u32,
@@ -84,13 +117,19 @@ pub const Page = struct {
     focus_emulated: bool = false,
     /// The main frame's id (Page.frameNavigated without a parentId).
     main_frame_id: ?[]u8 = null,
-    /// The frames' main-world execution contexts (Runtime's isDefault):
-    /// Puppeteer hears console calls only in those (Frame
-    /// registerWorldListeners for MAIN_WORLD).
-    main_world_contexts: std.ArrayList(i64) = .empty,
+    /// The frames' execution contexts Puppeteer keeps (FrameManager
+    /// #onExecutionContextCreated): each frame's main world (Runtime's
+    /// isDefault), where console calls are heard (registerWorldListeners
+    /// for MAIN_WORLD) and evaluations run, and its utility world
+    /// (PUPPETEER_WORLD, named `utility_world_name`).
+    contexts: std.ArrayList(FrameContext) = .empty,
     /// The main frame's main-world context (Puppeteer's mainFrame() world
     /// that page.evaluate runs in).
     main_context_id: ?i64 = null,
+    /// McpPage.textSnapshot: the last snapshot's uids and their nodes.
+    text_snapshot: ?*TextSnapshot = null,
+    /// McpPage.uniqueBackendNodeIdToMcpId.
+    uids: snapshot_mod.UidMap = .{},
     /// ConsoleCollector: console messages and uncaught errors.
     console: collectors.Collector(console.Message) = .{ .max_per_navigation = console.max_per_navigation },
     /// NetworkCollector: the requests.
@@ -110,7 +149,44 @@ pub const Page = struct {
         self.console.deinit(allocator);
         self.network.deinit(allocator);
         self.keyboard.deinit(allocator);
-        self.main_world_contexts.deinit(allocator);
+        for (self.contexts.items) |*c| c.deinit(allocator);
+        self.contexts.deinit(allocator);
+        self.dropSnapshot(allocator);
+        self.uids.deinit(allocator);
+    }
+
+    /// Replace the page's snapshot (null: none).
+    pub fn setSnapshot(self: *Page, allocator: Allocator, next: ?*TextSnapshot) void {
+        self.dropSnapshot(allocator);
+        self.text_snapshot = next;
+    }
+
+    fn dropSnapshot(self: *Page, allocator: Allocator) void {
+        if (self.text_snapshot) |s| {
+            s.arena.deinit();
+            allocator.destroy(s);
+        }
+        self.text_snapshot = null;
+    }
+
+    /// The execution context of `frame_id`'s `world`, if Puppeteer would
+    /// have one.
+    pub fn contextOf(self: *Page, frame_id: []const u8, world: World) ?*FrameContext {
+        for (self.contexts.items) |*c| if (c.world == world and std.mem.eql(u8, c.frame_id, frame_id)) return c;
+        return null;
+    }
+
+    fn isMainWorld(self: *const Page, id: i64) bool {
+        for (self.contexts.items) |c| if (c.id == id and c.world == .main) return true;
+        return false;
+    }
+
+    fn removeContext(self: *Page, allocator: Allocator, id: i64) void {
+        for (self.contexts.items, 0..) |*c, at| if (c.id == id) {
+            c.deinit(allocator);
+            _ = self.contexts.orderedRemove(at);
+            return;
+        };
     }
 
     /// Puppeteer's mainFrame()._id: the main frame's id, which is the
@@ -146,6 +222,9 @@ pub const Session = struct {
     /// The tools' definitions (tools/list's array), parsed: the input
     /// schemas calls are checked against (validate.zig).
     schemas: ?std.json.Parsed(std.json.Value) = null,
+    /// TextSnapshot.nextSnapshotId: one count for the server, every page's
+    /// snapshots numbered from it.
+    next_snapshot_id: u32 = 1,
 
     /// Attach to the browser behind `link` as Puppeteer's connect does.
     pub fn create(allocator: Allocator, link: *LocalLink) !*Session {
@@ -398,32 +477,31 @@ pub const Session = struct {
             const context = (p.get("context") orelse return).object;
             const aux = context.get("auxData") orelse return;
             if (aux != .object) return;
-            const is_default = aux.object.get("isDefault") orelse return;
-            if (is_default != .bool or !is_default.bool) return;
             const id = context.get("id") orelse return;
             if (id != .integer) return;
-            try page.main_world_contexts.append(self.allocator, id.integer);
-            if (std.mem.eql(u8, str(aux.object.get("frameId")), page.mainFrameId())) page.main_context_id = id.integer;
+            // FrameManager #onExecutionContextCreated: the main world by
+            // isDefault, the utility world by its name; no other.
+            const is_default = if (aux.object.get("isDefault")) |d| d == .bool and d.bool else false;
+            const world: World = if (is_default) .main else if (std.mem.eql(u8, str(context.get("name")), utility_world_name)) .utility else return;
+            try self.addContext(page, id.integer, str(aux.object.get("frameId")), world);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.executionContextDestroyed")) {
             const id = p.get("executionContextId") orelse return;
             if (id != .integer) return;
-            for (page.main_world_contexts.items, 0..) |c, at| if (c == id.integer) {
-                _ = page.main_world_contexts.swapRemove(at);
-                break;
-            };
+            page.removeContext(self.allocator, id.integer);
             if (page.main_context_id == id.integer) page.main_context_id = null;
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.executionContextsCleared")) {
-            page.main_world_contexts.clearRetainingCapacity();
+            for (page.contexts.items) |*c| c.deinit(self.allocator);
+            page.contexts.clearRetainingCapacity();
             page.main_context_id = null;
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.consoleAPICalled")) {
             const id = p.get("executionContextId") orelse return;
-            if (id != .integer or std.mem.indexOfScalar(i64, page.main_world_contexts.items, id.integer) == null) return;
+            if (id != .integer or !page.isMainWorld(id.integer)) return;
             if (try console.fromConsoleApi(self.allocator, p)) |message| try page.console.add(self.allocator, message);
             return;
         }
@@ -445,6 +523,17 @@ pub const Session = struct {
             if (try console.fromException(self.allocator, p)) |message| try page.console.add(self.allocator, message);
             return;
         }
+    }
+
+    /// Record context `id` of `frame_id`'s `world` (once: the answer to
+    /// Page.createIsolatedWorld and its executionContextCreated name the
+    /// same one).
+    pub fn addContext(self: *Session, page: *Page, id: i64, frame_id: []const u8, world: World) !void {
+        for (page.contexts.items) |c| if (c.id == id) return;
+        const frame = try self.allocator.dupe(u8, frame_id);
+        errdefer self.allocator.free(frame);
+        try page.contexts.append(self.allocator, .{ .id = id, .frame_id = frame, .world = world });
+        if (world == .main and std.mem.eql(u8, frame_id, page.mainFrameId())) page.main_context_id = id;
     }
 
     pub fn pageByTarget(self: *Session, target_id: []const u8) ?*Page {

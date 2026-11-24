@@ -22,6 +22,7 @@ pub const Handlers = struct {
     pub const Network = @import("network.zig");
     pub const Fetch = @import("fetch.zig");
     pub const Security = @import("security.zig");
+    pub const Accessibility = @import("accessibility.zig");
 };
 
 /// One field per domain: `session.states.Page`.
@@ -41,4 +42,5 @@ pub const States = struct {
     Network: Handlers.Network.State = .{},
     Fetch: Handlers.Fetch.State = .{},
     Security: Handlers.Security.State = .{},
+    Accessibility: Handlers.Accessibility.State = .{},
 };

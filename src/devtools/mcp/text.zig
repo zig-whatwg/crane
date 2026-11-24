@@ -45,6 +45,15 @@ pub fn truncateText(arena: Allocator, text: []const u8, max: usize, options: Tru
     return std.fmt.allocPrint(arena, "{s}{s}", .{ prefixUnits(text, keep), options.ellipsis });
 }
 
+/// ECMAScript WhiteSpace and LineTerminator: what a regular expression's
+/// \s matches.
+pub fn isJsSpace(cp: u21) bool {
+    return switch (cp) {
+        0x09...0x0d, 0x20, 0xa0, 0x1680, 0x2000...0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff => true,
+        else => false,
+    };
+}
+
 /// URL_SIZE_LIMIT.
 const url_size_limit = 255;
 

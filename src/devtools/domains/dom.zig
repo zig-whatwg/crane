@@ -315,7 +315,7 @@ const have_remote_objects = contexts.have_inspector and @hasDecl(engine, "inspec
 /// session's bound ids: "Could not find node with given id"), by
 /// backendNodeId, or by a remote object's id (unwrapped by the session's
 /// inspector session). error.Protocol with Chrome's message otherwise.
-fn nodeNamed(session: *PageSession, node_id: ?i64, backend_node_id: ?i64, object_id: ?[]const u8) !*runtime.Instance {
+pub fn nodeNamed(session: *PageSession, node_id: ?i64, backend_node_id: ?i64, object_id: ?[]const u8) !*runtime.Instance {
     if (node_id) |id| {
         const map = session.states.DOM.map orelse return session.fail("Could not find node with given id");
         return map.nodeOf(id) orelse session.fail("Could not find node with given id");

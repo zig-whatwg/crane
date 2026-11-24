@@ -9,6 +9,7 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const URLSearchParams = interfaces.URLSearchParams;
+const typedefs = @import("typedefs");
 
 // Import URL infrastructure
 const infra = @import("infra");
@@ -27,11 +28,10 @@ const URLInternalState = struct {
 
 pub const State = URLSearchParams.State;
 
-/// Record entry type for URLSearchParams initialization
-pub const RecordEntry = struct {
-    name: []const u8,
-    value: []const u8,
-};
+/// The constructor's `init`: (sequence<sequence<USVString>> or
+/// record<USVString, USVString> or USVString), converted by the binding
+/// (WebIDL 3.2.25).
+const Init = typedefs.SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString;
 
 /// Internal state for URLSearchParams implementation
 /// Stores the list of name-value tuples
@@ -90,75 +90,70 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-urlsearchparams
 ///
 /// `init` is `optional (sequence<sequence<USVString>> or record<USVString,
-/// USVString> or USVString) init = ""`, which reaches the impl unconverted:
-/// the union conversion (WebIDL 3.2.24) is done here, through the engine
-/// protocol.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    const realm = engine.currentRealm() orelse ctx;
+/// USVString> or USVString) init = ""`. The binding converts it (WebIDL
+/// 3.2.25: an Object with @@iterator is the sequence, any other Object the
+/// record, everything else the USVString) and frees what it converted once
+/// this returns, so every string kept is copied.
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(Init)) !*runtime.Instance {
     // The optional argument's default, "", for undefined as for absent.
-    const value = if (init_data.was_passed) init_data.value else runtime.JSValue.jsUndefined;
-    if (value == .undefined) return initWithString(ctx.allocator, ctx, "");
-
-    // WebIDL union conversion, for an Object: an object with @@iterator is
-    // the sequence<sequence<USVString>>; any other object is the record.
-    if (engine.typeOf(realm, value) == .object) {
+    if (!init_data.was_passed) return initWithString(ctx.allocator, ctx, "");
+    switch (init_data.value) {
         // "Initialize" step 1: for each innerSequence of init, if its size is
-        // not 2, throw a TypeError; append (innerSequence[0],
+        // not 2, throw a TypeError; otherwise append (innerSequence[0],
         // innerSequence[1]).
-        if (try engine.convertToSequenceOfStringPairs(realm, value, .usv_string, ctx.allocator)) |pairs| {
-            defer runtime.StringRecordEntry.freeAll(pairs, ctx.allocator);
-            return initWithPairs(ctx.allocator, ctx, pairs);
-        }
+        .sequence_usvstring_sequence => |sequences| return initWithPairs(ctx.allocator, ctx, sequences),
         // "Initialize" step 2: for each name -> value of init, append
         // (name, value).
-        const record = try engine.convertToRecordOfStrings(realm, value, .usv_string, .usv_string, ctx.allocator);
-        defer runtime.StringRecordEntry.freeAll(record, ctx.allocator);
-        return initWithPairs(ctx.allocator, ctx, record);
+        .usvstring_usvstring_record => |record| return initWithPairs(ctx.allocator, ctx, record),
+        // Constructor step 1: a string starting with "?" loses it. Then
+        // "initialize" step 3: parse it.
+        .usvstring => |text| {
+            const query = if (text.len > 0 and text[0] == '?') text[1..] else text;
+            return initWithString(ctx.allocator, ctx, query);
+        },
     }
-
-    // Anything else is the USVString (null is "null").
-    const text = try engine.convertToUSVString(realm, value, ctx.allocator);
-    defer ctx.allocator.free(text);
-    // Constructor step 1: a string starting with "?" loses it. Then
-    // "initialize" step 3: parse it.
-    const query = if (text.len > 0 and text[0] == '?') text[1..] else text;
-    return initWithString(ctx.allocator, ctx, query);
 }
 
-/// "Initialize" with a list of name-value pairs (a sequence's or a
-/// record's), each appended in order. The strings are copied.
+/// "Initialize" with a list of name-value pairs - `init`'s sequence member
+/// (each inner sequence must hold two strings: a TypeError otherwise) or its
+/// record member - each appended in order. The strings are copied.
 fn initWithPairs(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
-    pairs: []const runtime.StringRecordEntry,
+    pairs: anytype,
 ) !*runtime.Instance {
+    const from_sequences = comptime @TypeOf(pairs) == []const []const runtime.USVString;
+
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
-    // Create InternalState
+    // Create InternalState. The instance holds it from here, so a failure
+    // below frees it with the pairs already appended (`deinit`).
     const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
     internal.* = InternalState{
         .list = infra.List(Tuple).init(allocator),
         .url_object = null,
         .allocator = allocator,
     };
+    state.own._internal = internal;
 
     for (pairs) |pair| {
-        const name = try allocator.dupe(u8, pair.key);
+        if (from_sequences and pair.len != 2) return error.TypeError;
+        const pair_name: []const u8 = if (from_sequences) pair[0] else pair.key;
+        const pair_value: []const u8 = if (from_sequences) pair[1] else pair.value;
+
+        const name = try allocator.dupe(u8, pair_name);
         errdefer allocator.free(name);
 
-        const pairvalue = try allocator.dupe(u8, pair.value);
-        errdefer allocator.free(pairvalue);
+        const value = try allocator.dupe(u8, pair_value);
+        errdefer allocator.free(value);
 
-        try internal.list.append(.{ .name = name, .value = pairvalue });
+        try internal.list.append(.{ .name = name, .value = value });
     }
 
-    state.own._internal = internal;
     return instance;
 }
 
@@ -203,82 +198,6 @@ pub fn initWithString(
         }
 
         allocator.free(tuples);
-    }
-
-    state.own._internal = internal;
-    return instance;
-}
-
-/// Initialize from sequence of sequences
-/// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 1
-pub fn initWithSequence(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    sequence: []const [2][]const u8,
-) !*runtime.Instance {
-    // Create instance
-    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = InternalState{
-        .list = infra.List(Tuple).init(allocator),
-        .url_object = null,
-        .allocator = allocator,
-    };
-
-    // Add each pair to the list
-    for (sequence) |pair| {
-        const name = try allocator.dupe(u8, pair[0]);
-        errdefer allocator.free(name);
-
-        const value = try allocator.dupe(u8, pair[1]);
-        errdefer allocator.free(value);
-
-        try internal.list.append(.{ .name = name, .value = value });
-    }
-
-    state.own._internal = internal;
-    return instance;
-}
-
-/// Initialize from record (dictionary)
-/// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 2
-pub fn initWithRecord(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    record: []const RecordEntry,
-) !*runtime.Instance {
-    // Create instance
-    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = InternalState{
-        .list = infra.List(Tuple).init(allocator),
-        .url_object = null,
-        .allocator = allocator,
-    };
-
-    // Add each entry to the list
-    for (record) |entry| {
-        const name = try allocator.dupe(u8, entry.name);
-        errdefer allocator.free(name);
-
-        const value = try allocator.dupe(u8, entry.value);
-        errdefer allocator.free(value);
-
-        try internal.list.append(.{ .name = name, .value = value });
     }
 
     state.own._internal = internal;

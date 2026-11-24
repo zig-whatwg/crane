@@ -603,8 +603,138 @@
       ]
     },
     {
+      "name": "snapshot: a page's tree and its uids",
+      "about": "take_snapshot of a page with landmarks, a form and an iframe; the same uids again; verbose; uids handed to evaluate_script, an unknown one, and one after a reload.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/snapshot.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "verbose": true
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "(a, b) => a.tagName + ':' + a.textContent.slice(0, 20) + '|' + b.tagName",
+            "args": [
+              "1_1",
+              "1_3"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "(el) => el.id",
+            "args": [
+              "9_9"
+            ]
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "(el) => el.id",
+            "args": [
+              "1_1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wait_for: later text, names, timeouts",
+      "about": "wait_for text that appears after 500 ms, an accessible name, a timeout with its advice, and the schema's checks.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/later.html"
+          }
+        },
+        {
+          "tool": "wait_for",
+          "args": {
+            "pageId": 1,
+            "text": [
+              "Order confirmed"
+            ],
+            "timeout": 5000
+          }
+        },
+        {
+          "tool": "wait_for",
+          "args": {
+            "pageId": 1,
+            "text": [
+              "Close",
+              "Nope"
+            ]
+          }
+        },
+        {
+          "tool": "wait_for",
+          "args": {
+            "pageId": 1,
+            "text": [
+              "Nowhere"
+            ],
+            "timeout": 500
+          }
+        },
+        {
+          "tool": "wait_for",
+          "args": {
+            "pageId": 1,
+            "text": []
+          }
+        },
+        {
+          "tool": "wait_for",
+          "args": {
+            "pageId": 1,
+            "text": [
+              "Close"
+            ],
+            "visible": true
+          }
+        }
+      ]
+    },
+    {
       "name": "deferred: tools and parameters not in Crane yet",
-      "about": "What a call gets before batches 2 and 3: the same shape where Google's server has one (a disabled category), else a clear error.",
+      "about": "What a call gets before batch 3: the same shape where Google's server has one (a disabled category), else a clear error.",
       "calls": [
         {
           "tool": "mock_network",
@@ -651,13 +781,8 @@
   "expected": [
     {
       "case": "deferred: tools and parameters not in Crane yet",
-      "call": 2,
-      "reason": "take_snapshot (the Accessibility domain, element uids) is batch 2; Crane answers \"Tool take_snapshot not found\"."
-    },
-    {
-      "case": "deferred: tools and parameters not in Crane yet",
       "call": 3,
-      "reason": "upload_file needs element uids from take_snapshot: batch 2 (main, 2:24 PM ET); Crane answers \"Tool upload_file not found\"."
+      "reason": "upload_file hands a local file to a page: it lands in batch 3 with the path policy (realpath; roots from --filesystemRoot, the client's MCP roots and the OS temp dir; Google's \"Access denied\" text) - main, 10:44 PM ET 2026-11-23; until then Crane answers \"Tool upload_file not found\"."
     },
     {
       "case": "deferred: tools and parameters not in Crane yet",
@@ -703,6 +828,11 @@
       "case": "network: list, filter, details",
       "call": 9,
       "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The later reqids shift by it."
+    },
+    {
+      "case": "wait_for: later text, names, timeouts",
+      "call": 6,
+      "reason": "visible: true asks whether the matched text is visible - a computed style and a non-empty bounding box (Puppeteer's checkVisibility) - and Crane has no layout (needs-renderer); Crane answers \"visible is not supported by Crane's MCP server: Crane has no layout to tell whether text is visible.\""
     }
   ]
 }

@@ -16,6 +16,8 @@ const engine_build = @import("src/runtime/engine_build_protocol.zig");
 /// answers for, the extra kit parts it builds in and the system libraries they link. This file names no
 /// platform.
 const platform_build = @import("src/platform/platform_build_protocol.zig");
+/// The kit's build side, reached through the platform protocol's.
+const kit_build = platform_build.kit;
 
 /// The Zig that builds Crane, std-only and pinned by `zig build test`.
 const zig_toolchain = @import("tools/zig_toolchain.zig");
@@ -31,742 +33,11 @@ comptime {
     if (zig_toolchain.refusal(builtin.zig_version)) |why| @compileError("Zig " ++ builtin.zig_version_string ++ ": " ++ why);
 }
 
-// ============================================================================
-// Static libcurl Configuration for Fetch Module
-// ============================================================================
+/// libcurl and the mbedTLS it links: the kit's (kit/curl/curl_build.zig).
+const StaticLibcurl = kit_build.curl.StaticLibcurl;
 
-/// Find a library artifact by name from a dependency
-/// This is needed because some packages (like curl) expose both .exe and .lib
-/// with the same name, causing ambiguity with the standard artifact() method
-fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*std.Build.Step.Compile {
-    for (dependency.builder.install_tls.step.dependencies.items) |dep_step| {
-        const inst = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
-        if (!std.mem.eql(u8, inst.artifact.name, name)) continue;
-        if (inst.artifact.kind != .lib) continue;
-        return inst.artifact;
-    }
-    return null;
-}
-
-/// The TLS library libcurl uses - chosen here and nowhere else. mbedTLS today.
-/// HTTP/3 (ngtcp2 + nghttp3) needs a QUIC-capable TLS library - BoringSSL or
-/// OpenSSL 3.5+ - so adding it means a new member here, the curl options
-/// derived from this in buildStaticLibcurl, and the ALPN query in
-/// src/fetch/network/curl_backend.zig (`negotiatedHttp2`), which knows each
-/// backend's session type.
-const TlsBackend = enum { mbedtls };
-const tls_backend: TlsBackend = .mbedtls;
-
-/// Configure statically-compiled libcurl for the fetch module
-///
-/// Compiles libcurl from source using allyourcodebase/curl package.
-/// TLS provided by `tls_backend` (cross-platform, no system dependencies).
-///
-/// Features enabled:
-/// - HTTP/HTTPS (with `tls_backend`)
-/// - HTTP/2, through nghttp2 built from source (buildNghttp2), with
-///   -Dhttp2 (the default)
-/// - Compression (gzip via zlib, RFC 7932 Brotli unless compiled out)
-///
-/// Features disabled (minimize binary size):
-/// - LDAP, LDAPS (not needed for Fetch)
-/// - libpsl (Public Suffix List - URL module handles this)
-/// - libssh2 (SSH/SCP/SFTP)
-/// - libidn2 (IDN - URL module handles IDNA)
-/// - zstd (additional compression)
-/// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
-///
-/// Called once per C-library set: build() for the shared graph, and
-/// runnerGraph for each runner graph whose C libraries differ from it
-/// (runner_build_mode.RunnerModes.ownCLibraries). Every call compiles
-/// libraries of its OWN - libcurl, mbedTLS, zlib and nghttp2, each a new
-/// artifact (copyCLibrary, buildNghttp2) - in `optimize`, with `sanitize_c`
-/// (null: Zig's default for the mode). The dependencies' own artifacts are
-/// only read: Zig memoizes a dependency by its arguments, so two graphs in
-/// one mode get ONE curl, ONE mbedTLS and ONE zlib artifact, and a setting
-/// either graph wrote onto them would be both graphs' (lane buildfix1,
-/// 2026-11-10: the bug-finding graph's `.full` overwrote the production
-/// graph's `.trap` on mbedTLS and zlib; main's release console failed to link,
-/// and generation 214's production runner carried the full sanitizer in them).
-/// build() checks every build's linked C libraries against its modes at the
-/// end of configuration (checkLinkedC).
-///
-/// `sanitize_c` is the C sanitizer of mbedTLS, zlib and nghttp2 (libcurl's own
-/// sources keep theirs off, `libcurl_sanitize_c`, below).
-fn buildStaticLibcurl(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    enable_http2: bool,
-    sanitize_c: ?std.zig.SanitizeC,
-    brotli: ?BrotliLibraries,
-) ?StaticLibcurl {
-    // Get the curl dependency with appropriate options
-    const curl_dep = b.lazyDependency("curl", .{
-        .target = target,
-        .optimize = optimize,
-        // Static linking
-        .linkage = .static,
-        // TLS backend: `tls_backend` (cross-platform, no OpenSSL issues)
-        .@"enable-ssl" = true,
-        .@"use-openssl" = false,
-        .@"use-mbedtls" = tls_backend == .mbedtls,
-        .@"use-schannel" = false,
-        .@"use-wolfssl" = false,
-        .@"use-gnutls" = false,
-        .@"use-rustls" = false,
-        // The pinned Brotli build is linked below, not curl's dependency.
-        .zlib = true,
-        .brotli = false,
-        .zstd = false,
-        // Disable optional dependencies we don't need
-        .libpsl = false, // URL module handles PSL
-        .libssh2 = false, // No SSH/SCP/SFTP
-        .libssh = false,
-        .libidn2 = false, // URL module handles IDNA
-        .@"apple-idn" = false,
-        .@"win32-idn" = false,
-        // Never curl's own: it links a SYSTEM libnghttp2. HTTP/2 comes from
-        // buildNghttp2, below.
-        .nghttp2 = false,
-        .ares = false, // Use threaded resolver
-        // Disable non-HTTP protocols
-        .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
-        // No CA bundle or CA directory of curl's own: every TLS connection
-        // verifies against Crane's trust store (src/platform/kit/curl/
-        // trust.zig - the system roots parsed once per process, with a
-        // Browser's extra anchors), which kit/curl's options attach to each
-        // handle. "auto", the default, made a native build read the build
-        // machine at configure time and compile what it found in: on Linux
-        // CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt AND
-        // CURL_CA_PATH=/etc/ssl/certs, which curl's mbedTLS backend parses
-        // again in every connection's first step (lib/vtls/mbedtls.c
-        // mbed_connect_step1: mbedtls_x509_crt_parse_path) - ~100 ms of CPU
-        // per HTTPS connection on server1 (lane linux1); on macOS
-        // /etc/ssl/cert.pem.
-        .@"ca-bundle" = @as([]const u8, "none"),
-        .@"ca-path" = @as([]const u8, "none"),
-    }) orelse return null; // Lazy dependency not available
-
-    // The curl package declares both a "curl" exe and a "curl" library: its
-    // library is the recipe this call's own libcurl is compiled from, in
-    // `optimize` with libcurl's own sanitizer (below).
-    const libcurl = copyCLibrary(b, findLibraryArtifact(curl_dep, "curl") orelse return null, optimize, libcurl_sanitize_c);
-    // "none" above is what upstream curl's CMake takes as "no CA file / no CA
-    // directory" (CMakeLists.txt: unset when "none"), but allyourcodebase/curl
-    // (5184bb9ff2) writes it into curl_config.h as the PATH "none"
-    // (`.CURL_CA_BUNDLE = if (eql(ca_bundle, "auto")) null else ca_bundle`):
-    // every connection then failed to read a CA file named "none"
-    // (CURLE_SSL_CACERT_BADFILE). Both are left undefined in the header, as
-    // CMake leaves them; tests/fetch/trust_store_test.zig pins that curl names
-    // neither (CURLINFO_CAINFO, CURLINFO_CAPATH). The header is this libcurl's
-    // own copy (copyCLibrary), so the recipe's stays as curl's build wrote it.
-    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_BUNDLE");
-    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_PATH");
-
-    // mbedTLS and zlib: the versions build.zig.zon pins, not the curl package's.
-    //
-    // allyourcodebase/curl at c59c65cd - its newest commit; no newer pin exists -
-    // pins mbedTLS 3.6.4 and zlib 1.3.1 in its own build.zig.zon and links them
-    // with `linkLibrary(dependency.artifact("mbedtls"))` and `("z")`. mbedTLS
-    // 3.6.5 and 3.6.6 are security releases. Zig 0.16's package manager cannot
-    // override a transitive pin from build.zig.zon (`zig build --fork=<path>` is a
-    // command-line override with a local checkout, not a pin), so the override
-    // happens here, in the build graph: root's own `.mbedtls` and `.zlib` are
-    // built with the arguments curl passes, and libcurl's link entries for curl's
-    // copies are pointed at them. Nothing else reaches curl's copies: they are
-    // fetched (curl's build asks for them) but never compiled or linked.
-    // Root's are recipes too: this call compiles its own of each, in its mode
-    // and with its sanitizer (copyCLibrary), and never writes to the
-    // dependency's artifact, which every graph in this mode is given.
-    // tests/linked_libraries/versions_test.zig asks the linked code which versions it
-    // is, and replaceLinkedLibrary fails the build if a curl bump links either
-    // library some other way.
-    //
-    // `.threading = true` is what curl requests (`!(single_threaded orelse
-    // false)`, and Crane never sets single-threaded); see MBEDTLS_THREADING_C below.
-    const mbedtls_dep = b.lazyDependency("mbedtls", .{
-        .target = target,
-        .optimize = optimize,
-        .threading = true,
-    }) orelse return null;
-    const zlib_dep = b.lazyDependency("zlib", .{
-        .target = target,
-        .optimize = optimize,
-    }) orelse return null;
-    const mbedtls = copyCLibrary(b, mbedtls_dep.artifact("mbedtls"), optimize, sanitize_c);
-    const zlib = copyCLibrary(b, zlib_dep.artifact("z"), optimize, sanitize_c);
-    replaceLinkedLibrary(libcurl, "mbedtls", mbedtls);
-    replaceLinkedLibrary(libcurl, "z", zlib);
-    // curl's build passes the version IT pins as MBEDTLS_VERSION - a CMake
-    // variable in upstream curl that no C source of curl or mbedTLS reads. Drop it
-    // rather than leave a false "3.6.4" on every libcurl compile line.
-    removeCMacro(libcurl.root_module, "MBEDTLS_VERSION");
-
-    // Turn Zig's C UBSan OFF for libcurl's own sources.
-    //
-    // curl 8.18.0 reads `static bool init_ssl` in Curl_ssl_cleanup (lib/vtls/vtls.c
-    // :1042) after curl_global_init wrote it, and the byte is not 0 or 1 - so the
-    // -fsanitize=undefined bool check Zig inserts in Debug aborts the process. It is
-    // reproducible with nothing but globalInit() followed by globalCleanup(), so it is
-    // entirely inside libcurl; bisected against mbedTLS 3.6.4 vs 3.6.6 (identical) and
-    // against every Crane-side change in the 0.16 migration.
-    //
-    // The value is truthy, so `if(init_ssl)` takes the branch TRUE would have taken and
-    // the library behaves correctly - `zig build test -Doptimize=ReleaseFast`, where the
-    // check is absent, passes every one of these tests. The defect is real C UB but it
-    // is upstream's, in a content-hash-pinned dependency we cannot patch from here.
-    //
-    // This disables the sanitizer for libcurl ONLY (`libcurl_sanitize_c`, given to
-    // copyCLibrary above). Every Zig module in Crane keeps its full safety checks.
-    // Revisit when a curl release fixes it upstream.
-
-    // HTTP/2: nghttp2 built here from its pinned release and linked into
-    // libcurl (curl's `nghttp2` option above stays off).
-    //
-    // This leans on how allyourcodebase/curl (pinned at c59c65cd) builds: it
-    // compiles http2.c and cf-h2-proxy.c unconditionally and gates them on
-    // USE_NGHTTP2 from a cmake-style config header, whose `#cmakedefine`
-    // leaves the macro undefined, not #undef'd, when its option is off - so
-    // defining it here turns them on. Whoever bumps curl re-checks that;
-    // `fetch`'s test "libcurl speaks HTTP/2 when the build asked for it"
-    // fails if HTTP/2 goes missing.
-    if (enable_http2) {
-        if (buildNghttp2(b, target, optimize, sanitize_c)) |nghttp2| {
-            libcurl.root_module.addCMacro("USE_NGHTTP2", "1");
-            libcurl.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
-            libcurl.root_module.linkLibrary(nghttp2);
-        }
-    }
-
-    // Use the same pinned decoder as the platform's Compression Streams codec.
-    // The dependency's option stays off to avoid its transitive Brotli pin.
-    if (brotli) |codec| {
-        libcurl.root_module.addCMacro("HAVE_BROTLI", "1");
-        libcurl.root_module.linkLibrary(codec.decoder);
-    }
-
-    // The mbedTLS package compiles the LIBRARY with these two macros (its
-    // build.zig:30-33, under the `threading` option passed above; the same lines
-    // in the 3.6.4 and 3.6.6 packages) but does not propagate them to anything
-    // that includes the installed headers. MBEDTLS_THREADING_C appends a
-    // `mbedtls_threading_mutex_t mutex` to mbedtls_entropy_context and
-    // mbedtls_ctr_drbg_context, so the two translation units disagree (aarch64
-    // macOS, measured on 3.6.4 and again on 3.6.6 - identical):
-    //
-    //     libmbedtls.a  (macros on)   entropy_ctx 904   ctr_drbg_ctx 416
-    //     libcurl       (macros off)  entropy_ctx 832   ctr_drbg_ctx 344
-    //
-    // curl sizes its context with the short view, mbedtls_entropy_init writes
-    // the mutex 72 bytes past the end of it, a neighbour clears mutex.is_valid,
-    // and at connect time mbedtls_entropy_func fails the mutex lock and returns
-    // WITHOUT POLLING ANY ENTROPY SOURCE. mbedtls_ctr_drbg_seed then reports
-    // -0x0034 CTR_DRBG_ENTROPY_SOURCE_FAILED, surfacing as CURLE_SSL_CONNECT_ERROR.
-    //
-    // Every `.https.` WPT test failed on this: 0 of 192 produced a single
-    // subtest result, 157 of them inside the 0.1 worklist. It presented as a
-    // 10-second timeout rather than an error because a network-error response
-    // carries no headers, so src/browser/navigation.zig:312 defaults the
-    // content type to text/html and parses an empty document as a successful
-    // page load.
-    if (tls_backend == .mbedtls) {
-        libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
-        libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
-    }
-
-    // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
-    // zlib and mbedtls are artifacts of their own (root's, linked into libcurl
-    // above), which applyIosSdkRecursively reaches through libcurl's link objects;
-    // pointing only the top-level module at the SDK left them failing on <stdio.h>
-    // and <string.h> - 15 errors and 107 respectively, which read like broken
-    // dependencies rather than an unresolved SDK.
-    if (target.result.os.tag == .ios) {
-        applyIosSdkRecursively(b, &libcurl.step, iosSdkPath(b));
-    }
-
-    // The mbedTLS libcurl links, for WebCrypto: one library, one PSA key store.
-    return .{ .libcurl = libcurl, .mbedtls = mbedtls };
-}
-
-/// libcurl's own C sanitizer, in every mode: off (buildStaticLibcurl says
-/// why). checkLinkedC holds libcurl to it.
-const libcurl_sanitize_c: std.zig.SanitizeC = .off;
-
-/// A C library of the calling graph's own, compiled from `recipe` - a static
-/// library a dependency's build.zig declares - in `optimize` with `sanitize_c`
-/// (null: Zig's default for the mode).
-///
-/// Zig memoizes a dependency by its arguments, so every graph that asks for
-/// curl, mbedTLS or zlib with the same target and mode is given the SAME
-/// artifact, and whatever one graph writes onto it is every graph's. None of
-/// the three packages declares an option for the C sanitizer (allyourcodebase/
-/// mbedtls 3.6.6 declares `threading`, zlib 1.3.2 `pie`, curl none for it), so
-/// no honest argument tells two instances apart. The dependency's artifact is
-/// therefore a recipe that is only read - never built, never written: the copy
-/// takes its root module whole (its C sources and their flags, its macros,
-/// include directories, link entries, system libraries and frameworks, and
-/// every other setting) with its own mode and sanitizer, a config header of
-/// its own (so an edit to it stays this copy's), and the recipe's installed
-/// headers, and is a new artifact. The configuration fails here if the
-/// recipe is anything but a static C library, or carries a link entry a copy
-/// cannot take.
-fn copyCLibrary(b: *std.Build, recipe: *std.Build.Step.Compile, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) *std.Build.Step.Compile {
-    const from = recipe.root_module;
-    if (recipe.kind != .lib or recipe.linkage != .static or from.root_source_file != null or from.import_table.count() != 0) {
-        std.debug.panic("{s} is not a static C library; re-check copyCLibrary", .{recipe.name});
-    }
-    const gpa = b.allocator;
-    const module = gpa.create(std.Build.Module) catch @panic("OOM");
-    module.init(b, .{ .existing = from });
-    module.owner = b;
-    module.optimize = optimize;
-    module.sanitize_c = sanitize_c;
-    module.cached_graph = .{ .modules = &.{}, .names = &.{} };
-    module.import_table = .empty;
-    module.c_macros = from.c_macros.clone(gpa) catch @panic("OOM");
-    module.include_dirs = from.include_dirs.clone(gpa) catch @panic("OOM");
-    module.lib_paths = from.lib_paths.clone(gpa) catch @panic("OOM");
-    module.rpaths = from.rpaths.clone(gpa) catch @panic("OOM");
-    module.frameworks = from.frameworks.clone(gpa) catch @panic("OOM");
-    module.link_objects = from.link_objects.clone(gpa) catch @panic("OOM");
-    for (module.include_dirs.items) |*dir| switch (dir.*) {
-        .config_header_step => |header| dir.* = .{ .config_header_step = copyConfigHeader(b, header) },
-        else => {},
-    };
-    for (module.link_objects.items) |object| switch (object) {
-        .c_source_files, .c_source_file, .assembly_file, .static_path, .other_step, .system_lib => {},
-        .win32_resource_file => std.debug.panic("{s} compiles a Win32 resource; re-check copyCLibrary", .{recipe.name}),
-    };
-    const lib = b.addLibrary(.{ .name = recipe.name, .linkage = .static, .root_module = module, .version = recipe.version });
-    lib.installLibraryHeaders(recipe);
-    return lib;
-}
-
-/// A config header of its own with `original`'s template and values
-/// (copyCLibrary).
-fn copyConfigHeader(b: *std.Build, original: *std.Build.Step.ConfigHeader) *std.Build.Step.ConfigHeader {
-    if (original.include_guard != .none) std.debug.panic("{s} has an include guard; re-check copyConfigHeader", .{original.include_path});
-    const copy = std.Build.Step.ConfigHeader.create(b, .{
-        .style = original.style,
-        .max_bytes = original.input_size_limit,
-        .include_path = original.include_path,
-    });
-    copy.values = original.values.clone(b.allocator) catch @panic("OOM");
-    return copy;
-}
-
-/// libcurl and the mbedTLS it links, built by buildStaticLibcurl for one
-/// C-library set.
-const StaticLibcurl = struct {
-    libcurl: *std.Build.Step.Compile,
-    mbedtls: *std.Build.Step.Compile,
-};
-
-/// Link the static libcurl into `module` (one module graph's fetch).
-fn linkStaticLibcurl(
-    b: *std.Build,
-    module: *std.Build.Module,
-    target: std.Build.ResolvedTarget,
-    libcurl: *std.Build.Step.Compile,
-) void {
-    // The importing module links against the SDK too (its curl_c translation
-    // gets the SDK headers from addCImport).
-    if (target.result.os.tag == .ios) addIosSdkPaths(module, iosSdkPath(b));
-
-    // Link the static library to the module
-    module.linkLibrary(libcurl);
-
-    // Required macro for static linking
-    module.addCMacro("CURL_STATICLIB", "1");
-
-    // Platform-specific system libraries required by curl
-    const os = target.result.os.tag;
-    if (os == .windows) {
-        // Windows: Winsock2 and crypto libraries
-        module.linkSystemLibrary("ws2_32", .{});
-        module.linkSystemLibrary("bcrypt", .{});
-        module.linkSystemLibrary("advapi32", .{});
-        module.linkSystemLibrary("crypt32", .{});
-    } else if (os == .linux) {
-        // Linux: pthread for threaded resolver
-        module.linkSystemLibrary("pthread", .{});
-    }
-    // macOS: No additional libraries needed with mbedTLS
-}
-
-/// Point `library` at `replacement` wherever it links the artifact named `name`:
-/// its link object (what the linker reads) and its include directory (the
-/// installed headers its C sources compile against) - the two entries
-/// `Module.linkLibrary` appends. The build runner derives step dependencies
-/// from these entries (createModuleDependenciesForStep), so the original
-/// artifact is then unreachable and never built.
-///
-/// Panics unless exactly one of each was replaced: a dependency that links the
-/// library some other way must fail the build here, not quietly link its own pin.
-fn replaceLinkedLibrary(library: *std.Build.Step.Compile, name: []const u8, replacement: *std.Build.Step.Compile) void {
-    var links: usize = 0;
-    for (library.root_module.link_objects.items) |*object| switch (object.*) {
-        .other_step => |other| if (std.mem.eql(u8, other.name, name)) {
-            object.* = .{ .other_step = replacement };
-            links += 1;
-        },
-        else => {},
-    };
-    var includes: usize = 0;
-    for (library.root_module.include_dirs.items) |*dir| switch (dir.*) {
-        .other_step => |other| if (std.mem.eql(u8, other.name, name)) {
-            dir.* = .{ .other_step = replacement };
-            includes += 1;
-        },
-        else => {},
-    };
-    if (links != 1 or includes != 1) std.debug.panic(
-        "{s} links {d} artifact(s) and {d} header tree(s) named '{s}', expected one of each; " ++
-            "the dependency changed how it links '{s}' - re-check buildStaticLibcurl",
-        .{ library.name, links, includes, name, name },
-    );
-    // What Module.linkLibrary records too: the build needs the binary.
-    _ = replacement.getEmittedBin();
-}
-
-/// Remove every `-D<name>=...` from `module`'s C macros.
-/// Leaves `name` undefined in `module`'s config header `include_path` (a
-/// ConfigHeader step a dependency made): for a value the dependency's build
-/// writes where its upstream leaves it unset. The build fails if the header or
-/// the value is not there, so a dependency bump that renames them is seen.
-fn undefineConfigHeaderValue(module: *std.Build.Module, include_path: []const u8, name: []const u8) void {
-    for (module.include_dirs.items) |dir| switch (dir) {
-        .config_header_step => |header| if (std.mem.eql(u8, header.include_path, include_path)) {
-            const value = header.values.getPtr(name) orelse std.debug.panic("{s} has no {s}", .{ include_path, name });
-            value.* = .undef;
-            return;
-        },
-        else => {},
-    };
-    std.debug.panic("no config header {s} in the module", .{include_path});
-}
-
-fn removeCMacro(module: *std.Build.Module, name: []const u8) void {
-    const prefix = module.owner.fmt("-D{s}=", .{name});
-    var i: usize = 0;
-    while (i < module.c_macros.items.len) {
-        if (std.mem.startsWith(u8, module.c_macros.items[i], prefix)) {
-            _ = module.c_macros.orderedRemove(i);
-        } else i += 1;
-    }
-}
-
-/// Google's pinned RFC 7932 implementation, following upstream CMake's three
-/// library source sets. Only the C codec is built, for the requested target.
-const BrotliLibraries = struct { common: *std.Build.Step.Compile, decoder: *std.Build.Step.Compile, encoder: *std.Build.Step.Compile };
-fn buildBrotli(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?BrotliLibraries {
-    const upstream = b.lazyDependency("brotli", .{}) orelse return null;
-    var libs: [3]*std.Build.Step.Compile = undefined;
-    const groups = .{ .{ "common", &brotli_common_sources }, .{ "dec", &brotli_dec_sources }, .{ "enc", &brotli_enc_sources } };
-    inline for (groups, 0..) |group, i| {
-        const lib = b.addLibrary(.{
-            .name = "brotli" ++ group[0],
-            .linkage = .static,
-            .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
-        });
-        if (sanitize_c) |sanitizer| lib.root_module.sanitize_c = sanitizer;
-        lib.root_module.addIncludePath(upstream.path("c/include"));
-        lib.root_module.addCSourceFiles(.{ .root = upstream.path("c"), .files = group[1], .flags = &.{"-std=c99"} });
-        lib.installHeadersDirectory(upstream.path("c/include/brotli"), "brotli", .{});
-        if (target.result.os.tag == .ios) addIosSdkPaths(lib.root_module, iosSdkPath(b));
-        libs[i] = lib;
-    }
-    libs[1].root_module.linkLibrary(libs[0]);
-    // The upstream default calls exit() on OOM; embedders must unwind instead.
-    libs[2].root_module.addCMacro("BROTLI_ENCODER_CLEANUP_ON_OOM", "1");
-    libs[2].root_module.linkLibrary(libs[0]);
-    return .{ .common = libs[0], .decoder = libs[1], .encoder = libs[2] };
-}
-
-const brotli_common_sources = [_][]const u8{
-    "common/constants.c",
-    "common/context.c",
-    "common/dictionary.c",
-    "common/platform.c",
-    "common/shared_dictionary.c",
-    "common/transform.c",
-};
-
-const brotli_dec_sources = [_][]const u8{
-    "dec/bit_reader.c",
-    "dec/decode.c",
-    "dec/huffman.c",
-    "dec/prefix.c",
-    "dec/state.c",
-    "dec/static_init.c",
-};
-
-const brotli_enc_sources = [_][]const u8{
-    "enc/backward_references.c",
-    "enc/backward_references_hq.c",
-    "enc/bit_cost.c",
-    "enc/block_splitter.c",
-    "enc/brotli_bit_stream.c",
-    "enc/cluster.c",
-    "enc/command.c",
-    "enc/compound_dictionary.c",
-    "enc/compress_fragment.c",
-    "enc/compress_fragment_two_pass.c",
-    "enc/dictionary_hash.c",
-    "enc/encode.c",
-    "enc/encoder_dict.c",
-    "enc/entropy_encode.c",
-    "enc/fast_log.c",
-    "enc/histogram.c",
-    "enc/literal_cost.c",
-    "enc/memory.c",
-    "enc/metablock.c",
-    "enc/static_dict.c",
-    "enc/static_dict_lut.c",
-    "enc/static_init.c",
-    "enc/utf8_util.c",
-};
-
-/// The testing image decoders. Unmodified pinned sources; no tools, test
-/// corpus, system JPEG/XML dependency, or build-time interpreter. Scalar JPEG
-/// builds on every target, including iOS, without assembler or CPU globals.
-fn buildImageCodecs(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?*std.Build.Step.Compile {
-    const jpeg = b.lazyDependency("jpeg", .{}) orelse return null;
-    const nanosvg = b.lazyDependency("nanosvg", .{}) orelse return null;
-    const expat = b.lazyDependency("expat", .{}) orelse return null;
-    const headers = b.addWriteFiles();
-    _ = headers.add("jconfig.h",
-        \\#define JPEG_LIB_VERSION 62
-        \\#define LIBJPEG_TURBO_VERSION 3.1.3
-        \\#define LIBJPEG_TURBO_VERSION_NUMBER 3001003
-        \\#define MEM_SRCDST_SUPPORTED 1
-        \\#ifndef BITS_IN_JSAMPLE
-        \\#define BITS_IN_JSAMPLE 8
-        \\#endif
-        \\#define C_ARITH_CODING_SUPPORTED 1
-        \\#define D_ARITH_CODING_SUPPORTED 1
-        \\
-    );
-    _ = headers.add("jconfigint.h", b.fmt(
-        \\#define BUILD "crane-3.1.3"
-        \\#define HIDDEN __attribute__((visibility("hidden")))
-        \\#define INLINE inline __attribute__((always_inline))
-        \\#define THREAD_LOCAL _Thread_local
-        \\#define PACKAGE_NAME "libjpeg-turbo"
-        \\#define VERSION "3.1.3"
-        \\#define SIZEOF_SIZE_T {d}
-        \\#define HAVE_BUILTIN_CTZL 1
-        \\#define FALLTHROUGH __attribute__((fallthrough));
-        \\#ifndef BITS_IN_JSAMPLE
-        \\#define BITS_IN_JSAMPLE 8
-        \\#endif
-        \\#undef C_ARITH_CODING_SUPPORTED
-        \\#undef D_ARITH_CODING_SUPPORTED
-        \\#if BITS_IN_JSAMPLE == 8
-        \\#define C_ARITH_CODING_SUPPORTED 1
-        \\#define D_ARITH_CODING_SUPPORTED 1
-        \\#endif
-        \\
-    , .{target.result.ptrBitWidth() / 8}));
-    const jpeg_version = b.addConfigHeader(.{ .style = .{ .cmake = jpeg.path("src/jversion.h.in") }, .include_path = "jversion.h" }, .{ .COPYRIGHT_YEAR = "1991-2025" });
-    const jpeg_lib = b.addLibrary(.{ .name = "jpeg", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
-    jpeg_lib.root_module.addIncludePath(headers.getDirectory());
-    jpeg_lib.root_module.addIncludePath(jpeg.path("src"));
-    jpeg_lib.root_module.addConfigHeader(jpeg_version);
-    // jinclude.h's PUTENV_S calls setenv(), which glibc declares under
-    // -std=c11 only with a feature-test macro (setenv is POSIX, not ISO C).
-    // libjpeg-turbo's CMake build compiles with the compiler's default GNU
-    // dialect, which implies _DEFAULT_SOURCE; ask for it explicitly here.
-    // Apple's libc declares setenv unconditionally.
-    if (target.result.os.tag == .linux) jpeg_lib.root_module.addCMacro("_DEFAULT_SOURCE", "1");
-    jpeg_lib.root_module.addCSourceFiles(.{ .root = jpeg.path("src"), .files = &jpeg_sources, .flags = &.{"-std=c11"} });
-
-    const xml_headers = b.addWriteFiles();
-    _ = xml_headers.add("expat_config.h", b.fmt(
-        \\#define BYTEORDER {d}
-        \\#define XML_CONTEXT_BYTES 1024
-        \\#define XML_GE 1
-        \\#define XML_NS 1
-        \\#define HAVE_STDINT_H 1
-        \\#define HAVE_STDLIB_H 1
-        \\#define HAVE_STRING_H 1
-        \\#define HAVE_UNISTD_H 1
-        \\#define HAVE_SYS_TYPES_H 1
-        \\#define HAVE_FCNTL_H 1
-        \\#define HAVE_{s} 1
-        \\
-    , .{ if (target.result.cpu.arch.endian() == .little) @as(u16, 1234) else 4321, if (target.result.os.tag == .linux) "GETRANDOM" else "ARC4RANDOM_BUF" }));
-    const xml_lib = b.addLibrary(.{ .name = "expat", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
-    xml_lib.root_module.addIncludePath(xml_headers.getDirectory());
-    xml_lib.root_module.addIncludePath(expat.path("expat/lib"));
-    xml_lib.root_module.addCMacro("XML_STATIC", "1");
-    xml_lib.root_module.addCSourceFiles(.{ .root = expat.path("expat/lib"), .files = &.{ "xcs.c", "xmlparse.c", "xmlrole.c", "xmltok.c", if (target.result.os.tag == .linux) "random_getrandom.c" else "random_arc4random_buf.c" }, .flags = &.{"-std=c11"} });
-
-    const lib = b.addLibrary(.{ .name = "crane_image_codecs", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
-    lib.root_module.addIncludePath(headers.getDirectory());
-    lib.root_module.addIncludePath(jpeg.path("src"));
-    lib.root_module.addIncludePath(expat.path("expat/lib"));
-    lib.root_module.addIncludePath(nanosvg.path("src"));
-    lib.root_module.addCMacro("XML_STATIC", "1");
-    lib.root_module.addCSourceFiles(.{ .root = b.path("src/platform/kit/image_codecs"), .files = &.{ "jpeg.c", "svg.c" }, .flags = &.{"-std=c11"} });
-    lib.root_module.linkLibrary(jpeg_lib);
-    lib.root_module.linkLibrary(xml_lib);
-    if (target.result.os.tag == .linux) lib.root_module.linkSystemLibrary("m", .{});
-    lib.installHeader(b.path("src/platform/kit/image_codecs/image_codecs.h"), "image_codecs.h");
-    if (target.result.os.tag == .ios) for ([_]*std.Build.Step.Compile{ jpeg_lib, xml_lib, lib }) |part| addIosSdkPaths(part.root_module, iosSdkPath(b));
-    return lib;
-}
-
-// libjpeg-turbo 3.1.3 CMakeLists.txt JPEG_SOURCES, including all sample precisions.
-const jpeg_sources = [_][]const u8{
-    "jcapimin.c",
-    "wrapper/jcapistd-8.c",
-    "wrapper/jcapistd-12.c",
-    "wrapper/jcapistd-16.c",
-    "wrapper/jccoefct-8.c",
-    "wrapper/jccoefct-12.c",
-    "wrapper/jccolor-8.c",
-    "wrapper/jccolor-12.c",
-    "wrapper/jccolor-16.c",
-    "wrapper/jcdctmgr-8.c",
-    "wrapper/jcdctmgr-12.c",
-    "wrapper/jcdiffct-8.c",
-    "wrapper/jcdiffct-12.c",
-    "wrapper/jcdiffct-16.c",
-    "jchuff.c",
-    "jcicc.c",
-    "jcinit.c",
-    "jclhuff.c",
-    "wrapper/jclossls-8.c",
-    "wrapper/jclossls-12.c",
-    "wrapper/jclossls-16.c",
-    "wrapper/jcmainct-8.c",
-    "wrapper/jcmainct-12.c",
-    "wrapper/jcmainct-16.c",
-    "jcmarker.c",
-    "jcmaster.c",
-    "jcomapi.c",
-    "jcparam.c",
-    "jcphuff.c",
-    "wrapper/jcprepct-8.c",
-    "wrapper/jcprepct-12.c",
-    "wrapper/jcprepct-16.c",
-    "wrapper/jcsample-8.c",
-    "wrapper/jcsample-12.c",
-    "wrapper/jcsample-16.c",
-    "jctrans.c",
-    "jdapimin.c",
-    "wrapper/jdapistd-8.c",
-    "wrapper/jdapistd-12.c",
-    "wrapper/jdapistd-16.c",
-    "jdatadst.c",
-    "jdatasrc.c",
-    "wrapper/jdcoefct-8.c",
-    "wrapper/jdcoefct-12.c",
-    "wrapper/jdcolor-8.c",
-    "wrapper/jdcolor-12.c",
-    "wrapper/jdcolor-16.c",
-    "wrapper/jddctmgr-8.c",
-    "wrapper/jddctmgr-12.c",
-    "wrapper/jddiffct-8.c",
-    "wrapper/jddiffct-12.c",
-    "wrapper/jddiffct-16.c",
-    "jdhuff.c",
-    "jdicc.c",
-    "jdinput.c",
-    "jdlhuff.c",
-    "wrapper/jdlossls-8.c",
-    "wrapper/jdlossls-12.c",
-    "wrapper/jdlossls-16.c",
-    "wrapper/jdmainct-8.c",
-    "wrapper/jdmainct-12.c",
-    "wrapper/jdmainct-16.c",
-    "jdmarker.c",
-    "jdmaster.c",
-    "wrapper/jdmerge-8.c",
-    "wrapper/jdmerge-12.c",
-    "jdphuff.c",
-    "wrapper/jdpostct-8.c",
-    "wrapper/jdpostct-12.c",
-    "wrapper/jdpostct-16.c",
-    "wrapper/jdsample-8.c",
-    "wrapper/jdsample-12.c",
-    "wrapper/jdsample-16.c",
-    "jdtrans.c",
-    "jerror.c",
-    "jfdctflt.c",
-    "wrapper/jfdctfst-8.c",
-    "wrapper/jfdctfst-12.c",
-    "wrapper/jfdctint-8.c",
-    "wrapper/jfdctint-12.c",
-    "wrapper/jidctflt-8.c",
-    "wrapper/jidctflt-12.c",
-    "wrapper/jidctfst-8.c",
-    "wrapper/jidctfst-12.c",
-    "wrapper/jidctint-8.c",
-    "wrapper/jidctint-12.c",
-    "wrapper/jidctred-8.c",
-    "wrapper/jidctred-12.c",
-    "jmemmgr.c",
-    "jmemnobs.c",
-    "jpeg_nbits.c",
-    "wrapper/jquant1-8.c",
-    "wrapper/jquant1-12.c",
-    "wrapper/jquant2-8.c",
-    "wrapper/jquant2-12.c",
-    "wrapper/jutils-8.c",
-    "wrapper/jutils-12.c",
-    "wrapper/jutils-16.c",
-    "jaricom.c",
-    "jcarith.c",
-    "jdarith.c",
-};
-
-/// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
-/// its release tarball (build.zig.zon `nghttp2`, pinned by hash), never a
-/// system library. Only lib/ is built, as upstream's --enable-lib-only does:
-/// lib/CMakeLists.txt's NGHTTP2_SOURCES and definitions.
-fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?*std.Build.Step.Compile {
-    const upstream = b.lazyDependency("nghttp2", .{}) orelse return null;
-    const version_h = b.addConfigHeader(.{
-        .style = .{ .cmake = upstream.path("lib/includes/nghttp2/nghttp2ver.h.in") },
-        .include_path = "nghttp2/nghttp2ver.h",
-    }, .{
-        .PACKAGE_VERSION = "1.70.0",
-        .PACKAGE_VERSION_NUM = 0x014600,
-    });
-    const lib = b.addLibrary(.{
-        .name = "nghttp2",
-        .linkage = .static,
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }),
-    });
-    lib.root_module.addIncludePath(upstream.path("lib/includes"));
-    lib.root_module.addConfigHeader(version_h);
-    lib.root_module.addCMacro("BUILDING_NGHTTP2", "1");
-    lib.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
-    // What upstream's configure finds on a POSIX system (there is no
-    // config.h: nothing defines HAVE_CONFIG_H).
-    lib.root_module.addCMacro("HAVE_ARPA_INET_H", "1");
-    lib.root_module.addCMacro("HAVE_NETINET_IN_H", "1");
-    lib.root_module.addCMacro("HAVE_CLOCK_GETTIME", "1");
-    lib.root_module.addCMacro("HAVE_DECL_CLOCK_MONOTONIC", "1");
-    lib.root_module.addCSourceFiles(.{ .root = upstream.path("lib"), .files = &nghttp2_sources });
-    lib.installHeadersDirectory(upstream.path("lib/includes/nghttp2"), "nghttp2", .{});
-    lib.installConfigHeader(version_h);
-    return lib;
-}
-
-const nghttp2_sources = [_][]const u8{
-    "nghttp2_pq.c",            "nghttp2_map.c",             "nghttp2_queue.c",
-    "nghttp2_frame.c",         "nghttp2_buf.c",             "nghttp2_stream.c",
-    "nghttp2_outbound_item.c", "nghttp2_session.c",         "nghttp2_submit.c",
-    "nghttp2_helper.c",        "nghttp2_alpn.c",            "nghttp2_hd.c",
-    "nghttp2_hd_huffman.c",    "nghttp2_hd_huffman_data.c", "nghttp2_version.c",
-    "nghttp2_priority_spec.c", "nghttp2_option.c",          "nghttp2_callbacks.c",
-    "nghttp2_mem.c",           "nghttp2_http.c",            "nghttp2_rcbuf.c",
-    "nghttp2_extpri.c",        "nghttp2_ratelim.c",         "nghttp2_time.c",
-    "nghttp2_debug.c",         "sfparse.c",
-};
+/// Brotli's libraries: the kit's (kit/brotli/brotli_build.zig).
+const BrotliLibraries = kit_build.brotli.BrotliLibraries;
 
 /// The name of the generated test root `addTestFilesFromDir` writes into each
 /// test directory (gitignored).
@@ -2489,49 +1760,23 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
     module.addFrameworkPath(root.path(module.owner, "System/Library/Frameworks"));
 }
 
-/// A C header set translated to Zig by the build: what a file's `@cImport`
-/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; Step.TranslateC
-/// is deprecated in 0.17 but present). The file
-/// imports the result by name (`const c = @import("curl_c");`).
-///
-/// `@cImport` translated against its module's include paths and C macros; a
-/// translate-c step sees only its own, so each set names them: `libs`'
-/// installed headers (what linkLibrary gave the module), `macros` (what
-/// addCMacro gave it), `system_libs` (linkSystemLibrary's pkg-config flags)
-/// and, for aarch64-ios, the SDK's usr/include - which kit/posix's time.h
-/// never had (the iOS lib-full break since de4a36b9529a).
-///
-/// ONE module per header set per graph: two translate-c modules with the same
-/// inputs have the same output file, and a file in two modules of one compile
-/// is an error. So a set two importers in one graph share is made once and
-/// handed to both (PlatformBinding.c_time, for tests/platform).
-///
-/// Translated as Debug: none of these headers tests __OPTIMIZE__ or NDEBUG
-/// (curl 8.18, mbedTLS 3.6.6, Brotli, image_codecs.h and <time.h>; checked
-/// 2026-10-29), so the result is the same in every mode the importers build.
-/// The threading configuration buildStaticLibcurl compiles mbedTLS with, which
-/// every translation of its headers must see too.
-const mbedtls_threading_macros = [_][2][]const u8{ .{ "MBEDTLS_THREADING_C", "" }, .{ "MBEDTLS_THREADING_PTHREAD", "" } };
-
-const CImport = struct {
-    includes: []const []const u8,
-    libs: []const *std.Build.Step.Compile = &.{},
-    macros: []const [2][]const u8 = &.{},
-    system_libs: []const []const u8 = &.{},
-};
-
-fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget, spec: CImport) *std.Build.Module {
-    var text: std.ArrayList(u8) = .empty;
-    for (spec.includes) |include| text.print(b.allocator, "#include <{s}>\n", .{include}) catch @panic("OOM");
-    const header = b.addWriteFiles().add(b.fmt("{s}.h", .{name}), text.items);
-    const translate = b.addTranslateC(.{ .root_source_file = header, .target = target, .optimize = .Debug, .link_libc = true });
-    for (spec.libs) |lib| translate.addIncludePath(lib.getEmittedIncludeTree());
-    for (spec.macros) |macro| translate.defineCMacro(macro[0], macro[1]);
-    for (spec.system_libs) |lib| translate.linkSystemLibrary(lib, .{});
-    if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
-        translate.addSystemIncludePath(sdk.path(b, "usr/include"));
-    };
-    return translate.createModule();
+/// What the kit's C needs for `target` beyond what Zig finds by itself
+/// (kit_build.PrepareC): the SDK's paths, for the one target whose SDK is
+/// recorded (recordSdkRoot); nothing for any other. Batch P3 moves it behind
+/// the build side of the platform that answers for that target.
+fn prepareCFor(target: std.Build.ResolvedTarget) ?kit_build.PrepareC {
+    return if (target.result.os.tag == .ios) sdk_prepare_c else null;
+}
+const sdk_prepare_c: kit_build.PrepareC = .{ .module = sdkModule, .graph = sdkGraph, .translate = sdkTranslate };
+fn sdkModule(module: *std.Build.Module) void {
+    addIosSdkPaths(module, iosSdkPath(module.owner));
+}
+fn sdkGraph(step: *std.Build.Step) void {
+    applyIosSdkRecursively(step.owner, step, iosSdkPath(step.owner));
+}
+fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
+    const b = translate.step.owner;
+    if (iosSdkPath(b)) |sdk| translate.addSystemIncludePath(sdk.path(b, "usr/include"));
 }
 
 /// The platform a module graph is built for: a listed adapter or a third
@@ -2660,7 +1905,7 @@ const PlatformBinding = struct {
     /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
     /// whose own test blocks the platform tests run.
     kit_media_decoding: *std.Build.Module,
-    /// <time.h> translated (addCImport), which kit/posix imports as `c_time`;
+    /// <time.h> translated (kit_build.cImport), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
 };
@@ -2761,7 +2006,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
-        kit[7].addImport("brotli_c", addCImport(b, "brotli_c", target, .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
+        kit[7].addImport("brotli_c", kit_build.cImport(b, "brotli_c", target, prepareCFor(target), .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
     };
     // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
     // kit/brotli - headless's NotSupported when no Brotli library is built.
@@ -2786,7 +2031,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_media_decoding.addImport("mimesniff", options.mimesniff);
     if (options.image_codecs) |codecs| {
         kit[8].linkLibrary(codecs);
-        kit[8].addImport("image_codecs_c", addCImport(b, "image_codecs_c", target, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
+        kit[8].addImport("image_codecs_c", kit_build.cImport(b, "image_codecs_c", target, prepareCFor(target), .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
     }
     if (target.result.os.tag == .ios) {
         addIosSdkPaths(kit[7], iosSdkPath(b));
@@ -2804,7 +2049,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("host", options.host);
     kit[0].addImport("memory", options.memory);
     // and reads the local time zone through <time.h> (localtime_r, tzset).
-    const c_time = addCImport(b, "c_time", target, .{ .includes = &.{"time.h"} });
+    const c_time = kit_build.cImport(b, "c_time", target, prepareCFor(target), .{ .includes = &.{"time.h"} });
     kit[0].addImport("c_time", c_time);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
@@ -2822,10 +2067,10 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
     if (options.mbedtls) |mbedtls| {
         kit_curl_share.linkLibrary(mbedtls);
-        kit_curl_share.addImport("mbedtls_c", addCImport(b, "mbedtls_trust_c", target, .{
+        kit_curl_share.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_trust_c", target, prepareCFor(target), .{
             .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
             .libs = &.{mbedtls},
-            .macros = &mbedtls_threading_macros,
+            .macros = &kit_build.mbedtls_threading_macros,
         }));
         if (target.result.os.tag == .ios) addIosSdkPaths(kit_curl_share, iosSdkPath(b));
     }
@@ -2834,11 +2079,11 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     // @cImports did.
     const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
     if (options.libcurl) |libcurl| {
-        linkStaticLibcurl(b, kit[3], target, libcurl);
-        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        kit_build.curl.linkStaticLibcurl(kit[3], target, libcurl, prepareCFor(target));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     } else {
         kit[3].linkSystemLibrary("curl", .{});
-        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
+        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
     return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
@@ -2926,20 +2171,11 @@ pub fn build(b: *std.Build) void {
             "Disable with -Denable-test-utils=false for production builds.",
     ) orelse true;
 
-    // Fetch network backend options
-    // Use system libcurl for faster development builds (no static compilation)
-    const use_system_curl = b.option(
-        bool,
-        "system-curl",
-        "Use system libcurl instead of static compilation (faster dev builds)",
-    ) orelse false;
-
-    // HTTP/2 through the vendored nghttp2 (buildNghttp2)
-    const enable_http2 = b.option(
-        bool,
-        "http2",
-        "HTTP/2 via the vendored nghttp2 (default on)",
-    ) orelse true;
+    // The kit's options: which network library and whether it speaks HTTP/2
+    // (kit_build.declareOptions), declared here, in this place of the order.
+    const kit_options = kit_build.declareOptions(b);
+    const use_system_curl = kit_options.system_library;
+    const enable_http2 = kit_options.http2;
 
     // The Chrome DevTools Protocol remote end (src/devtools; CDP part 1,
     // tmp/plans/cdp-part1-design.md). The user, 2026-11-21: "We also need
@@ -3118,23 +2354,15 @@ pub fn build(b: *std.Build) void {
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    const brotli = buildBrotli(b, target, optimize, null);
-    const image_codecs = buildImageCodecs(b, target, optimize, null);
+    const brotli = kit_build.brotli.buildBrotli(b, target, optimize, null, prepareCFor(target));
+    const image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, optimize, null, prepareCFor(target));
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
-    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null);
-    // A system libcurl may lack WebSockets. Say so when building rather than
-    // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL: a warning, asked at
-    // make time (build_probe curl-websockets) by every top-level step - the
-    // end of build() adds it to each.
-    const system_curl_check: ?*std.Build.Step.Run = if (use_system_curl) check: {
-        const run = b.addRunArtifact(build_probe);
-        run.setName("check the system libcurl for WebSockets");
-        run.addArg("curl-websockets");
-        // Its answer is the machine's: asked on every build.
-        run.has_side_effects = true;
-        break :check run;
-    } else null;
+    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else kit_build.curl.buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null, prepareCFor(target));
+    // What the kit asks of a system network library at make time
+    // (kit_build.systemLibraryCheck); the end of build() adds it to every
+    // top-level step.
+    const system_curl_check = kit_build.systemLibraryCheck(b, kit_options, build_probe);
 
     // The library, the CLI and the other products use the target's platform,
     // whose graph registers its modules by name for dependent packages; the
@@ -3599,21 +2827,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_webcrypto_tests.step);
     }
 
-    // The mbedTLS and zlib versions the binary links, asked of the linked code
-    // (tests/linked_libraries/versions_test.zig). Built against the same mbedTLS
-    // artifact, headers and threading macros as libcurl and WebCrypto. Not under
-    // -Dsystem-curl: there is no mbedTLS artifact, and the versions are the system's.
-    recordSuiteDir(b, test_selection, "tests/linked_libraries");
-    if (linked_mbedtls) |mbedtls_library| {
-        const deps_test_mod = b.createModule(.{
-            .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
-            .target = target,
-            .imports = &.{.{ .name = "fetch", .module = testing_graph.fetch }},
-        });
-        deps_test_mod.linkLibrary(mbedtls_library);
-        deps_test_mod.addImport("mbedtls_version_c", addCImport(b, "mbedtls_version_c", target, .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &mbedtls_threading_macros }));
-        const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), "tests-linked_libraries", null);
-        b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
+    // The kit's linked-versions test (kit_build.versions_test): what the
+    // binary links, asked of the linked code. Not under the kit's system
+    // library option: there is no library artifact of the kit's to ask.
+    const versions_test = kit_build.versions_test;
+    recordSuiteDir(b, test_selection, versions_test.dir);
+    if (linked_mbedtls) |library| {
+        const deps_test_mod = versions_test.module(b, target, prepareCFor(target), library, testing_graph.fetch);
+        const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), versions_test.suite, null);
+        b.step(versions_test.step_name, versions_test.step_description).dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
             test_step.dependOn(&run_deps_tests.step);
         }
@@ -4444,7 +3666,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "platform", .module = testing_graph.platform },
             .{ .name = "platform_options", .module = testing_graph.platform_options },
             // dp1_local_datetime_test.zig checks against localtime_r through the
-            // <time.h> module kit/posix imports (addCImport: one per graph).
+            // <time.h> module kit/posix imports (kit_build.cImport: one per graph).
             .{ .name = "c_time", .module = testing_graph.c_time },
             // tls1_stack_overflow_test.zig runs the stack-overflow fixture
             // (tests/platform/stack_overflow_fixture.zig): a program set up
@@ -5471,6 +4693,9 @@ pub fn build(b: *std.Build) void {
             // tests/wpt/MANIFEST.json by relative path (and skips itself when
             // the WPT checkout is absent), so it must run from the repo root.
             run_harness_tests.setCwd(b.path("."));
+            // config.zig's allowlist test reads the generated worklist at run time, and every suite that
+            // imports config.zig runs it: a worklist change re-runs them, never a cached pass (lane a11y1).
+            run_harness_tests.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
             test_step.dependOn(&run_harness_tests.step);
         }
     }
@@ -5873,13 +5098,20 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tools/mcp_diff/main.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
-        .imports = &.{.{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) }},
+        .imports = &.{
+            .{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            // The MCP server's snapshot tree rules (std only), to replay
+            // Google's numbering on Chrome's tree; perf_bench's WebSocket
+            // CDP client, to read it (tools/mcp_diff/user_agent.zig).
+            .{ .name = "ax_tree", .module = b.createModule(.{ .root_source_file = b.path("src/devtools/mcp/ax_tree.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "cdp_ws", .module = b.createModule(.{ .root_source_file = b.path("tools/perf_bench/cdp.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
     });
     const mcp_diff_exe = b.addExecutable(.{ .name = "mcp_diff", .root_module = mcp_diff_module });
     b.step("mcp-diff", "Build the MCP differential suite's harness alone (zig-out/bin/mcp_diff)").dependOn(&b.addInstallArtifact(mcp_diff_exe, .{}).step);
     const mcp_diff_tests = b.addTest(.{ .root_module = mcp_diff_module });
     test_step.dependOn(&addSuiteRun(b, launch, mcp_diff_tests, "tools-mcp_diff", null).step);
-    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig" });
+    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig", "user_agent.zig" });
 
     // tools/build_probe.zig: what the configure would ask the machine, asked
     // at make time.
@@ -5925,6 +5157,16 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, platform_build_tests, "platform-build-protocol", null).step);
+
+    // The kit's build side: its own file's tests - the lint's library keys,
+    // the sanitizer a kit library keeps, the linked-versions test's naming -
+    // std-only.
+    const kit_build_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/kit/kit_build.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, kit_build_tests, "platform-kit-build", null).step);
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
@@ -6071,8 +5313,8 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // docs/platform-protocol.md section 11: everything platform-specific goes
     // through the platform protocol (`@import("platform")`). Outside
-    // src/platform/ there is no OS API and no libcurl, mbedTLS, SQLite or
-    // LevelDB identifier. tools/lint_platform_boundary.zig counts every such
+    // src/platform/ there is no OS API and no identifier of a library the
+    // platform owns. tools/lint_platform_boundary.zig counts every such
     // reference per file and key and fails if any rises above
     // tools/platform_boundary_baseline.txt or a new pair appears; the baseline
     // only goes down (`zig build lint-platform -- --update`).
@@ -6118,17 +5360,16 @@ pub fn build(b: *std.Build) void {
     // an increase; `-- --list` prints every site. `zig build test` depends on
     // it.
     //
-    // The words it looks for, a list per class. An engine's words are its
-    // adapter's own, from the engine protocol's list of adapters, and a
-    // platform's from the platform protocol's; what a branch on the target's
-    // system looks like is the platform protocol's too. Until the kit's
-    // build file supplies the libraries' the same way, they are spelled
-    // here - and counted like every other line of this file.
+    // The words it looks for, a list per class, none spelled here: an
+    // engine's are its adapter's own, from the engine protocol's list of
+    // adapters; a platform's from the platform protocol's, which also says
+    // what a branch on the target's system looks like; a library's from the
+    // kit's parts (kit_build.lint_words).
     const lint_build_words = [_][]const u8{
         "--engine=" ++ engine_build.lint_words,
         "--platform=" ++ platform_build.lint_words,
         "--target=" ++ platform_build.lint_target_words,
-        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
+        "--library=" ++ kit_build.lint_words,
     };
     const lint_build_module = b.createModule(.{
         .root_source_file = b.path("tools/lint_build_neutral.zig"),
@@ -7235,7 +6476,8 @@ const CheckedBuild = struct {
 /// when they need it. What a build links is found from its executable: every
 /// library artifact reachable through the link entries of the modules in its
 /// graph, and of those libraries in turn (libcurl's mbedTLS, zlib, nghttp2,
-/// Brotli). libcurl's own sources are held to `libcurl_sanitize_c`.
+/// Brotli). A kit library whose sanitizer is its own in every mode is held
+/// to it (kit_build.expectedSanitizer).
 fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
     const gpa = b.allocator;
     var linked: std.ArrayList(runner_build_mode.LinkedCLibrary) = .empty;
@@ -7275,7 +6517,6 @@ fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
             };
         }
         for (libraries.keys()) |library| {
-            const is_libcurl = std.mem.eql(u8, library.name, "curl");
             linked.append(gpa, .{
                 .build = checked.exe.name,
                 .library = library.name,
@@ -7283,7 +6524,7 @@ fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
                 .optimize = library.root_module.optimize orelse .debug,
                 .sanitize_c = library.root_module.sanitize_c,
                 .want_optimize = checked.c.optimize,
-                .want_sanitize_c = if (is_libcurl) libcurl_sanitize_c else checked.c.sanitize_c,
+                .want_sanitize_c = kit_build.expectedSanitizer(library.name) orelse checked.c.sanitize_c,
             }) catch @panic("OOM");
         }
     }
@@ -7529,9 +6770,9 @@ fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_b
     if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
     var config = ctx.module_config;
     config.optimize = runner.modes.crane_modules;
-    config.brotli = buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
-    config.image_codecs = buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
-    config.static_libcurl = buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null);
+    config.brotli = kit_build.brotli.buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, prepareCFor(target));
+    config.image_codecs = kit_build.image_codecs.buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c, prepareCFor(target));
+    config.static_libcurl = kit_build.curl.buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null, prepareCFor(target));
     // A private graph (`public` false).
     return addCraneModules(b, target, platform, config, false);
 }
@@ -8541,7 +7782,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // already is, by the engine adapter's module.
     const curl_options = b.addOptions();
     curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
-    curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    curl_options.addOption(bool, "mbedtls", kit_build.curl.tls_backend == .mbedtls and !use_system_curl);
     fetch_mod.addOptions("curl_options", curl_options);
     // A base64 data: URL body is Infra's forgiving-base64 decode.
     fetch_mod.addImport("infra", infra_mod);
@@ -8550,11 +7791,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     if (use_system_curl) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
-        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
     } else if (config.static_libcurl) |static| {
         // Production: the statically compiled libcurl with mbedTLS
-        linkStaticLibcurl(b, fetch_mod, target, static.libcurl);
-        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+        kit_build.curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, prepareCFor(target));
+        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, prepareCFor(target), .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     }
     const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
 
@@ -8563,14 +7804,14 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // installed headers, translated with the library's threading macros.
     if (linked_mbedtls) |library| {
         webcrypto_mod.linkLibrary(library);
-        webcrypto_mod.addImport("mbedtls_c", addCImport(b, "mbedtls_c", target, .{
+        webcrypto_mod.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_c", target, prepareCFor(target), .{
             .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
             .libs = &.{library},
-            .macros = &mbedtls_threading_macros,
+            .macros = &kit_build.mbedtls_threading_macros,
         }));
     }
     const webcrypto_options = b.addOptions();
-    webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    webcrypto_options.addOption(bool, "mbedtls", kit_build.curl.tls_backend == .mbedtls and !use_system_curl);
     webcrypto_mod.addOptions("options", webcrypto_options);
     if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
 

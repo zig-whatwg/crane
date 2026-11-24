@@ -12,6 +12,9 @@
 //!       --crane zig-out/bin/repl --node <node> --chrome-mcp <its bin .js> --chrome <Chrome for Testing>
 //!       --out tmp/mcp-diff [--only <case name prefix>]
 //!
+//! Chrome's snapshots are compared with its user-agent shadow nodes set
+//! apart (user_agent.zig): Crane has no user-agent shadow DOM.
+//!
 //! Output: <out>/report.md (per case equal / differs, each differing call's
 //! two answers) and <out>/results.json; each server's stderr in <out>/logs.
 
@@ -19,6 +22,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const client = @import("client.zig");
+const user_agent = @import("user_agent.zig");
 const fw_server = @import("fw_server");
 
 const usage =
@@ -115,7 +119,14 @@ const Outcome = struct {
     failure: ?[]const u8 = null,
 };
 
-fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, log_path: []const u8, case: Case, origin: []const u8) Outcome {
+/// Chrome's side's extra: its remote debugging port and the case's replay
+/// of Google's numbering (user_agent.zig).
+const ChromePage = struct {
+    port: u16,
+    replay: user_agent.Replay = .{},
+};
+
+fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, log_path: []const u8, case: Case, origin: []const u8, chrome_page: ?*ChromePage) Outcome {
     var answers: std.ArrayList(client.Answer) = .empty;
     const server = client.Server.start(gpa, io, argv, log_path) catch |err| {
         return .{ .answers = &.{}, .failure = std.fmt.allocPrint(arena, "could not start: {t}", .{err}) catch "could not start" };
@@ -130,16 +141,78 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
             Io.sleep(io, .fromMilliseconds(call.sleep_ms), .awake) catch {};
             continue;
         }
-        const args = argsJson(arena, call.args, origin) catch return .{ .answers = answers.items, .failure = "out of memory" };
+        // A uid a call names is Crane's numbering: Chrome's for Chrome.
+        const call_args = if (chrome_page) |c| c.replay.argsForChrome(arena, call.args) catch call.args else call.args;
+        const args = argsJson(arena, call_args, origin) catch return .{ .answers = answers.items, .failure = "out of memory" };
         const params = std.fmt.allocPrint(arena, "{{\"name\":{f},\"arguments\":{s}}}", .{ std.json.fmt(call.tool, .{}), args }) catch return .{ .answers = answers.items, .failure = "out of memory" };
         const message = server.request(arena, "tools/call", params, call_timeout_ms) catch |err| {
             return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "{s}: {t}", .{ call.tool, err }) catch "call failed" };
         };
         var answer = client.answerOf(arena, message) catch return .{ .answers = answers.items, .failure = "unreadable answer" };
+        if (chrome_page) |c| if (user_agent.hasSnapshot(answer.text)) setApart(gpa, arena, io, c, call, &answer);
         answer.text = normalize(arena, answer.text, origin) catch answer.text;
+        if (answer.raw) |raw| answer.raw = normalize(arena, raw, origin) catch raw;
         answers.append(arena, answer) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
     return .{ .answers = answers.items };
+}
+
+/// Chrome's snapshot with its user-agent nodes set apart, numbered as Crane
+/// numbers; when the replay does not reproduce Google's lines, the answer
+/// stays as it was and says so (`note`), and the case's later uids are not
+/// mapped.
+fn setApart(gpa: Allocator, arena: Allocator, io: Io, chrome_page: *ChromePage, call: Call, answer: *client.Answer) void {
+    const replay = &chrome_page.replay;
+    if (replay.broken) {
+        answer.note = "user-agent nodes not set apart: an earlier snapshot's replay failed";
+        return;
+    }
+    const verbose = std.mem.eql(u8, call.tool, "take_snapshot") and call.args == .object and
+        (if (call.args.object.get("verbose")) |v| v == .bool and v.bool else false);
+    const failed = struct {
+        fn note(a: Allocator, r: *user_agent.Replay, why: []const u8, err: anyerror) []const u8 {
+            r.broken = true;
+            return std.fmt.allocPrint(a, "user-agent nodes not set apart: {s} ({t})", .{ why, err }) catch why;
+        }
+    };
+    const url = user_agent.snapshotUrl(answer.text) orelse {
+        replay.broken = true;
+        answer.note = "user-agent nodes not set apart: the snapshot names no URL";
+        return;
+    };
+    const page = user_agent.readPage(arena, gpa, io, chrome_page.port, url, verbose) catch |err| {
+        answer.note = failed.note(arena, replay, "Chrome's page could not be read", err);
+        return;
+    };
+    const kept = page.kept orelse {
+        replay.broken = true;
+        answer.note = "user-agent nodes not set apart: Chrome's page has no tree";
+        return;
+    };
+    const numbered = replay.number(arena, kept, &page.ua) catch |err| {
+        answer.note = failed.note(arena, replay, "the replay failed", err);
+        return;
+    };
+    const agree = user_agent.agrees(arena, answer.text, numbered) catch false;
+    if (!agree) {
+        replay.broken = true;
+        answer.note = "user-agent nodes not set apart: the replay of Google's numbering does not reproduce its lines";
+        return;
+    }
+    var dropped: usize = 0;
+    var nodeless: usize = 0;
+    for (numbered) |n| switch (n.fate) {
+        .drop => dropped += 1,
+        .nodeless => nodeless += 1,
+        .uid => {},
+    };
+    const text = user_agent.setApart(arena, answer.text, &replay.fates) catch |err| {
+        answer.note = failed.note(arena, replay, "the lines could not be rewritten", err);
+        return;
+    };
+    if (!std.mem.eql(u8, text, answer.text)) answer.raw = answer.text;
+    answer.text = text;
+    if (dropped + nodeless > 0) answer.note = std.fmt.allocPrint(arena, "Chrome's user-agent shadow nodes set apart: {d} dropped, {d} made nodeless, uids renumbered", .{ dropped, nodeless }) catch "";
 }
 
 const Options = struct {
@@ -207,7 +280,6 @@ pub fn main(init: std.process.Init) !void {
     defer fixtures.stop();
     const origin = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}", .{fixtures.port()});
 
-    const chrome_argv = [_][]const u8{ options.node, options.chrome_mcp, "--executablePath", options.chrome, "--headless", "--isolated", "--no-usage-statistics", "--no-performance-crux" };
     const crane_argv = [_][]const u8{ options.crane, "--mcp" };
 
     var report: Io.Writer.Allocating = .init(arena);
@@ -222,8 +294,13 @@ pub fn main(init: std.process.Init) !void {
     for (cases.cases) |case| {
         if (options.only) |prefix| if (!std.mem.startsWith(u8, case.name, prefix)) continue;
         const slug = try slugOf(arena, case.name);
-        const chrome = runSide(gpa, arena, io, &chrome_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, origin);
-        const crane = runSide(gpa, arena, io, &crane_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, origin);
+        // Chrome's remote debugging port beside Puppeteer's pipe, for the
+        // harness's own reads of the page (user_agent.zig).
+        var chrome_page: ChromePage = .{ .port = try user_agent.freePort(io) };
+        const port_arg = try std.fmt.allocPrint(arena, "--chromeArg=--remote-debugging-port={d}", .{chrome_page.port});
+        const chrome_argv = [_][]const u8{ options.node, options.chrome_mcp, "--executablePath", options.chrome, "--headless", "--isolated", "--no-usage-statistics", "--no-performance-crux", port_arg };
+        const chrome = runSide(gpa, arena, io, &chrome_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, origin, &chrome_page);
+        const crane = runSide(gpa, arena, io, &crane_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, origin, null);
         const equal = chrome.failure == null and crane.failure == null and sameAnswers(chrome.answers, crane.answers);
         const only_expected = !equal and chrome.failure == null and crane.failure == null and differsOnlyWhereExpected(cases, case.name, chrome.answers, crane.answers);
         if (equal) equal_cases += 1;
@@ -275,7 +352,10 @@ fn writeSideJson(w: *Io.Writer, name: []const u8, outcome: Outcome) !void {
     try w.print(",\"{s}\":{{\"answers\":[", .{name});
     for (outcome.answers, 0..) |a, i| {
         if (i != 0) try w.writeAll(",");
-        try w.print("{{\"text\":{f},\"isError\":{},\"images\":{d}}}", .{ std.json.fmt(a.text, .{}), a.is_error, a.images });
+        try w.print("{{\"text\":{f},\"isError\":{},\"images\":{d}", .{ std.json.fmt(a.text, .{}), a.is_error, a.images });
+        if (a.note.len != 0) try w.print(",\"note\":{f}", .{std.json.fmt(a.note, .{})});
+        if (a.raw) |raw| try w.print(",\"raw\":{f}", .{std.json.fmt(raw, .{})});
+        try w.writeAll("}");
     }
     try w.writeAll("]");
     if (outcome.failure) |f| try w.print(",\"failure\":{f}", .{std.json.fmt(f, .{})});
@@ -298,12 +378,13 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
         const b: ?client.Answer = if (index < crane.answers.len) crane.answers[index] else null;
         if (a != null and b != null and a.?.is_error == b.?.is_error and std.mem.eql(u8, a.?.text, b.?.text)) continue;
         const why = if (expectedFor(cases, case.name, index + 1)) |e| try std.fmt.allocPrint(arena, " (expected: {s})", .{e.reason}) else "";
-        try w.print("### call {d}: {s} {s}{s}\n\nChrome{s}:\n\n```\n{s}\n```\n\nCrane{s}:\n\n```\n{s}\n```\n\n", .{
+        try w.print("### call {d}: {s} {s}{s}\n\nChrome{s}{s}:\n\n```\n{s}\n```\n\nCrane{s}:\n\n```\n{s}\n```\n\n", .{
             index + 1,
             call.tool,
             try std.json.Stringify.valueAlloc(arena, call.args, .{}),
             why,
             if (a != null and a.?.is_error) " (isError)" else "",
+            if (a != null and a.?.note.len != 0) try std.fmt.allocPrint(arena, " ({s})", .{a.?.note}) else "",
             if (a) |x| x.text else "(none)",
             if (b != null and b.?.is_error) " (isError)" else "",
             if (b) |x| x.text else "(none)",
@@ -345,4 +426,5 @@ test "the repository's cases file is well formed" {
 
 test {
     _ = client;
+    _ = user_agent;
 }
