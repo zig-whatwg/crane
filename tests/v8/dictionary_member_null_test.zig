@@ -49,8 +49,12 @@ const dictionaries = struct {
     const MessageEventInit = @FieldType(@typeInfo(@TypeOf(interfaces.MessageEvent.call_constructor)).@"fn".param_types[2].?, "value");
     /// element.setHTML(html, options)'s `options`: `(Sanitizer or
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
-    /// union typed runtime.JSValue.
+    /// union with a generated type (lane bind1 B5).
     const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
+    /// new IntersectionObserver(callback, options)'s `options`: `(double or
+    /// sequence<double>) threshold = 0`, an inline union still typed
+    /// runtime.JSValue (codegen's `unions_converted_by_impl`).
+    const IntersectionObserverInit = @FieldType(@typeInfo(@TypeOf(interfaces.IntersectionObserver.call_constructor)).@"fn".param_types[2].?, "value");
 };
 
 const Env = struct {
@@ -331,18 +335,47 @@ test "MessageEventInit {ports: null} is a TypeError; {transfer: undefined} stays
 test "an inline union member typed JSValue keeps a present null apart from absent" {
     defer test_agent.close();
     // WebIDL 3.2.18: only undefined is "not present"; a present null converts
-    // by the union's type (3.2.25 step 4: to the SanitizerConfig arm, an empty
-    // dictionary). The impl converts the JSValue, so it must see the null:
+    // by the union's type. Where the impl still converts the JSValue (a
+    // position codegen's `unions_converted_by_impl` lists), it must see the
+    // null: codegen lists the member in `jsvalue_union_members`.
+    // IntersectionObserverInit's threshold is one until its area retires;
+    // then this case moves to another listed member, and goes with the last.
+    try testing.expect(@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
+    const e = try env();
+    const present = try eval("({ threshold: null })");
+    defer ffi.v8_Value_Dispose(present);
+    const given = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, present);
+    try testing.expect(given.threshold != null);
+    try testing.expect(given.threshold.? == .null);
+
+    const absent = try eval("({ threshold: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const omitted = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(omitted.threshold == null);
+}
+
+test "SetHTMLOptions {sanitizer: null} is the union's SanitizerConfig member, empty; undefined is not present" {
+    defer test_agent.close();
+    // 3.2.25 step 4: null converts to the union's dictionary member - an
+    // empty SanitizerConfig, which is not the member's "default" preset:
     // `{sanitizer: null}` read as absent took the default preset
-    // (crane/san-options-null.html). Codegen lists the member in
-    // `jsvalue_union_members`.
-    try testing.expect(@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
+    // (crane/san-options-null.html). The member has a generated union type
+    // since lane bind1 B5 (it was runtime.JSValue, converted by
+    // html/sanitizer.zig), so the binding converts the null.
+    try testing.expect(!@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ sanitizer: null })");
     defer ffi.v8_Value_Dispose(present);
     const given = try conversions.fromV8Value(dictionaries.SetHTMLOptions, testing.allocator, e.isolate, e.context, present);
     try testing.expect(given.sanitizer != null);
-    try testing.expect(given.sanitizer.? == .null);
+    try testing.expect(given.sanitizer.? == .sanitizer_config);
+    const config = given.sanitizer.?.sanitizer_config;
+    try testing.expect(config.elements == null and config.removeElements == null and config.attributes == null and config.comments == null);
+
+    const preset = try eval("({ sanitizer: 'default' })");
+    defer ffi.v8_Value_Dispose(preset);
+    const named = try conversions.fromV8Value(dictionaries.SetHTMLOptions, testing.allocator, e.isolate, e.context, preset);
+    try testing.expect(named.sanitizer.? == .sanitizer_presets);
 
     const absent = try eval("({ sanitizer: undefined })");
     defer ffi.v8_Value_Dispose(absent);

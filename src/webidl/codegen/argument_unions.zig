@@ -192,10 +192,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // performance
     // popover
     // sanitizer (html/sanitizer.zig, parser_options.zig)
-    .{ "Sanitizer", "constructor", "configuration" },
-    .{ "SetHTMLOptions", "sanitizer", "" },
-    .{ "SetHTMLUnsafeOptions", "sanitizer", "" },
-    .{ "ParseHTMLUnsafeOptions", "sanitizer", "" },
     // service workers and workers (lane hard1 is in ExtendableMessageEvent)
     .{ "InstallEvent", "addRoutes", "rules" },
     .{ "ExtendableMessageEventInit", "source", "" },
