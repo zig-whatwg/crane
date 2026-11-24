@@ -32,4 +32,6 @@ test {
     _ = @import("mcp1_network_test.zig");
     _ = @import("mcp1_input_test.zig");
     _ = @import("mcp1_title_test.zig");
+    _ = @import("mcp1_title_timing_test.zig");
+    _ = @import("mcp1_target_title_test.zig");
 }
