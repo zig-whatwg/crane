@@ -4,5 +4,5 @@
 
 const runtime = @import("runtime");
 
-/// callback EffectCallback = undefined (double? progress, (Element or CSSPseudoElement) currentTarget, Animation animation)
+/// callback EffectCallback = undefined (double? progress, ElementOrCSSPseudoElement currentTarget, Animation animation)
 pub const EffectCallback = runtime.BorrowedCallbackFunction;

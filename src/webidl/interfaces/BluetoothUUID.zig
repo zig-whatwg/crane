@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const DOMStringOrUnsignedLong = @import("typedefs").DOMStringOrUnsignedLong;
 const UUID = @import("typedefs").UUID;
-const DOMString = @import("typedefs").DOMString;
 
 pub const BluetoothUUID = struct {
     pub const Meta = struct {
@@ -159,7 +159,7 @@ pub const BluetoothUUID = struct {
         }
     }
 
-    pub fn call_static_getService(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+    pub fn call_static_getService(instance: *runtime.Instance, name: DOMStringOrUnsignedLong) anyerror!UUID {
         return try BluetoothUUIDImpl.call_static_getService(instance, name);
     }
 
@@ -167,11 +167,11 @@ pub const BluetoothUUID = struct {
         return try BluetoothUUIDImpl.call_static_canonicalUUID(instance, alias);
     }
 
-    pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+    pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: DOMStringOrUnsignedLong) anyerror!UUID {
         return try BluetoothUUIDImpl.call_static_getCharacteristic(instance, name);
     }
 
-    pub fn call_static_getDescriptor(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+    pub fn call_static_getDescriptor(instance: *runtime.Instance, name: DOMStringOrUnsignedLong) anyerror!UUID {
         return try BluetoothUUIDImpl.call_static_getDescriptor(instance, name);
     }
 

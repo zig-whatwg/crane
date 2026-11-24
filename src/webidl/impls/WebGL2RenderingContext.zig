@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!typedefs.HTMLCanvasElementOrOffscreenCanvas {
     _ = instance;
     return error.NotImplemented;
 }

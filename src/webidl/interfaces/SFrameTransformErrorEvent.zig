@@ -11,15 +11,14 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
+const DOMString = @import("typedefs").DOMString;
 const SFrameTransformErrorEventInit = @import("dictionaries").SFrameTransformErrorEventInit;
-const RTCEncodedAudioFrame = @import("interfaces").RTCEncodedAudioFrame;
-const RTCEncodedVideoFrame = @import("interfaces").RTCEncodedVideoFrame;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const SFrameTransformErrorEventType = @import("enums").SFrameTransformErrorEventType;
 const EventInit = @import("dictionaries").EventInit;
+const RTCEncodedVideoFrameOrRTCEncodedAudioFrame = @import("typedefs").RTCEncodedVideoFrameOrRTCEncodedAudioFrame;
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
-const DOMString = @import("typedefs").DOMString;
 
 pub const SFrameTransformErrorEvent = struct {
     pub const Meta = struct {
@@ -196,7 +195,7 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.get_keyID(instance);
     }
 
-    pub fn get_frame(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_frame(instance: *runtime.Instance) anyerror!RTCEncodedVideoFrameOrRTCEncodedAudioFrame {
         return try SFrameTransformErrorEventImpl.get_frame(instance);
     }
 };

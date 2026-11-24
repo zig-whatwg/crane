@@ -9,7 +9,6 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const ir_mod = @import("ir.zig");
 const argument_unions = @import("argument_unions.zig");
-const member_unions = @import("member_unions.zig");
 const generator = @import("generator.zig");
 const format = @import("format.zig");
 const types = @import("types.zig");
@@ -241,15 +240,12 @@ pub fn processFiles(
     // An include_removals.zig entry no statement matched is stale.
     try ir.checkIncludeRemovals();
 
-    // Stage 1.6: a union argument the binding must convert in argument order
-    // becomes a named union typedef (argument_unions.zig) - after the
-    // includes, so an includer's mixin operations are named too. A union with
-    // a Trusted Type member is named first, in every position.
+    // Stage 1.6: every inline union, in every position, becomes a named union
+    // typedef (argument_unions.zig) - after the includes, so an includer's
+    // mixin members are named too. A union with a Trusted Type member is
+    // named first, its attribute getter keeping the string member's type.
     try argument_unions.nameTrustedTypeUnions(&ir);
-    try argument_unions.nameArgumentUnions(&ir);
-    // And a dictionary member's union the binding converts in its place
-    // (member_unions.zig's opt-in table).
-    try member_unions.nameMemberUnions(&ir, &member_unions.table);
+    try argument_unions.nameEveryUnion(&ir);
 
     // Stage 2: Report merging statistics
     std.debug.print("\nStage 2: Partial interface merging\n", .{});

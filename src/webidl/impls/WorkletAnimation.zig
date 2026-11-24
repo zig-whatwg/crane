@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?runtime.JSValue), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?typedefs.AnimationEffectOrSequenceOfAnimationEffect), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &WorkletAnimation.vtable, ctx);
     errdefer deinit(instance);

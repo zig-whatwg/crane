@@ -226,9 +226,13 @@ pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
 pub fn get_data(instance: *runtime.Instance) anyerror!typedefs.ImageDataArray {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const data = internal.data orelse return error.InvalidStateError;
+    // A union's JavaScript value is handed to the binding as a JSValue
+    // result is (conv.unionReturnIsOwned): a hold of its own, released once
+    // the value is set; the ImageData keeps `data` for the next read.
+    const hold = (try engine.retainValue(instance.ctx, data.borrow())).take();
     return switch (internal.data_kind) {
-        .uint8_clamped => .{ .uint8clamped_array = data.borrow() },
-        .float16 => .{ .float16array = data.borrow() },
+        .uint8_clamped => .{ .uint8clamped_array = hold },
+        .float16 => .{ .float16array = hold },
     };
 }
 

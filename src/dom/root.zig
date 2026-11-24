@@ -193,6 +193,7 @@ pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
 /// FileAPI "process blob parts" for the Blob and File constructors.
 pub const blob_parts = @import("blob_parts.zig");
+pub const union_values = @import("union_values.zig");
 /// The Streams Standard's abstract operations over the stream interfaces'
 /// platform objects: the shared steps their impls run (lane impls8 moved
 /// them out of src/webidl/impls/, the impls boundary rule 3).

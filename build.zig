@@ -2264,6 +2264,44 @@ fn addCompileCheck(
     return check;
 }
 
+/// Whether a compile for `target` has no sysroot here to find the system
+/// libraries its graph names in (addCrossLibraryStubs): a target of the
+/// system the stand-ins are built for whose query names its OS or ABI. What
+/// the target's query names, not what the host is: `-Dtarget` with the build
+/// machine's own triple names both, and gets no search path.
+fn hasNoSysroot(target: std.Build.ResolvedTarget) bool {
+    const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
+    return target.result.os.tag == .linux and names_os_or_abi;
+}
+
+/// What check-target builds of a test executable bound to -Dtarget (the
+/// platform contract's tests): the executable itself, linked - unless the
+/// target has no sysroot here (`hasNoSysroot`). Then the executable cannot
+/// link: its graph names system libraries (a kit part's, through the
+/// platform's build declaration, since lane life1) that only the target's
+/// own sysroot has, and the stand-ins may never reach a link
+/// (addCrossLibraryStubs). So check-target compiles a twin instead, as it
+/// compiles crane and wpt_runner: the same root source, target, mode and
+/// imports in a root module of its own, with the stand-ins, linking
+/// nothing. build() holds each twin, kept in `compile_only`, to "nobody asks
+/// for its binary".
+fn targetCheckOf(b: *std.Build, exe: *std.Build.Step.Compile, compile_only: *std.ArrayList(*std.Build.Step.Compile)) *std.Build.Step {
+    const root = exe.root_module;
+    const target = root.resolved_target.?;
+    if (!hasNoSysroot(target)) return &exe.step;
+    const module = b.createModule(.{
+        .root_source_file = root.root_source_file,
+        .target = target,
+        .optimize = root.optimize,
+        .link_libc = root.link_libc,
+    });
+    for (root.import_table.keys(), root.import_table.values()) |name, dep| module.addImport(name, dep);
+    addCrossLibraryStubs(b, module, target);
+    const twin = b.addTest(.{ .name = b.fmt("{s}_compile_only", .{exe.name}), .root_module = module });
+    compile_only.append(b.allocator, twin) catch @panic("OOM");
+    return &twin.step;
+}
+
 /// The system libraries a module graph names (kit/sqlite's sqlite3, through
 /// the platform's build declaration) are resolved when the compiler starts, even
 /// for a compile that links nothing (-fno-emit-bin). The compiler searches
@@ -2282,13 +2320,12 @@ fn addCompileCheck(
 /// module, which nothing else imports. They satisfy name resolution and
 /// nothing else: no artifact that links may receive them (build() asserts
 /// that neither compile-only check is asked for its binary), and anything
-/// linked for Linux needs the real libraries. A real Linux sysroot replaces
-/// them - pass its libraries instead and delete this function.
+/// linked for Linux needs the real libraries - a test executable bound to
+/// such a target is compiled only, by a twin (`targetCheckOf`). A real Linux
+/// sysroot replaces them - pass its libraries instead and delete this
+/// function.
 fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-    // What the target's query names, not what the host is: `-Dtarget` with
-    // the build machine's own triple names both, and gets no search path.
-    const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
-    if (target.result.os.tag != .linux or !names_os_or_abi) return;
+    if (!hasNoSysroot(target)) return;
     const empty = b.addWriteFiles().add("stub.zig", "");
     for ([_][]const u8{"sqlite3"}) |library| {
         const stub = b.addLibrary(.{
@@ -3529,6 +3566,9 @@ pub fn build(b: *std.Build) void {
     // archives exist for the build machine's target only. `check-linux` runs it
     // for both Linux targets; `crane-check` is the host's crane compile.
     const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
+    // The platform tests check-target compiles without linking, for a target
+    // with no sysroot here (targetCheckOf).
+    var target_compile_only: std.ArrayList(*std.Build.Step.Compile) = .empty;
     if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
 
     // tests/eventsource/: a directory suite (addTestFilesFromDir), its own
@@ -4520,7 +4560,7 @@ pub fn build(b: *std.Build) void {
                 // WPT's fonts, relative to the repo root.
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
-                check_target_step.dependOn(&font_adapters.step);
+                check_target_step.dependOn(targetCheckOf(b, font_adapters, &target_compile_only));
                 // And its media decoding (lane wptcfg, D4): the directory's
                 // tests/platform/media_decoding_test.zig, bound to each - the
                 // built-in platforms share kit/media_decoding.
@@ -4533,7 +4573,7 @@ pub fn build(b: *std.Build) void {
                     }),
                 });
                 test_step.dependOn(&addSuiteRun(b, launch, media_decoding, media_decoding.name, null).step);
-                check_target_step.dependOn(&media_decoding.step);
+                check_target_step.dependOn(targetCheckOf(b, media_decoding, &target_compile_only));
             }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
@@ -4543,8 +4583,9 @@ pub fn build(b: *std.Build) void {
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
             }
-            // Built, not run: the target need not be this machine.
-            check_target_step.dependOn(&conformance.step);
+            // Built, not run: the target need not be this machine (and
+            // compiled only when it has no sysroot here: targetCheckOf).
+            check_target_step.dependOn(targetCheckOf(b, conformance, &target_compile_only));
         }
     }
 
@@ -5823,6 +5864,22 @@ pub fn build(b: *std.Build) void {
     fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
     fw_matrix_test_step.dependOn(&fw_matrix_check.step);
 
+    // The MCP differential suite's harness (tools/mcp_diff/, lane mcp1;
+    // tmp/plans/mcp1-design.md 8): Google's chrome-devtools-mcp under Node
+    // and Crane's `repl --mcp` given the same calls, their answers compared.
+    // A tool: std only (and fw_matrix's static server for the fixtures).
+    const mcp_diff_module = b.createModule(.{
+        .root_source_file = b.path("tools/mcp_diff/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        .imports = &.{.{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) }},
+    });
+    const mcp_diff_exe = b.addExecutable(.{ .name = "mcp_diff", .root_module = mcp_diff_module });
+    b.step("mcp-diff", "Build the MCP differential suite's harness alone (zig-out/bin/mcp_diff)").dependOn(&b.addInstallArtifact(mcp_diff_exe, .{}).step);
+    const mcp_diff_tests = b.addTest(.{ .root_module = mcp_diff_module });
+    test_step.dependOn(&addSuiteRun(b, launch, mcp_diff_tests, "tools-mcp_diff", null).step);
+    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig" });
+
     // tools/build_probe.zig: what the configure would ask the machine, asked
     // at make time.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = build_probe_module }), "tools-build_probe", null).step);
@@ -6960,6 +7017,9 @@ pub fn build(b: *std.Build) void {
     // stubs. Asked or not is known here, once every step exists.
     for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check, bug_finding_runner.check }) |check| {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
+    }
+    for (target_compile_only.items) |check| {
+        if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (targetCheckOf)", .{check.name});
     }
 
     // Every test executable runs through the launcher; and `test-launch` is
@@ -8838,6 +8898,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         devtools_mod.addImport("engine", engine_mod);
         devtools_mod.addImport("fetch", fetch_mod);
         devtools_mod.addImport("infra", infra_mod);
+        devtools_mod.addImport("url", url_mod); // the MCP server's validateUrl (lane mcp1)
         // The page-side domains read documents and nodes through their
         // generated interfaces (DOM.describeNode, Page.getFrameTree), as the
         // console does - never an impl.

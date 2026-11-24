@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const BluetoothAdvertisingEventInit = struct {
@@ -12,7 +13,7 @@ pub const BluetoothAdvertisingEventInit = struct {
     base: EventInit,
 
     device: *runtime.Instance,
-    uuids: ?[]const runtime.JSValue = null,
+    uuids: ?[]const typedefs.DOMStringOrUnsignedLong = null,
     name: ?runtime.DOMString = null,
     appearance: ?u16 = null,
     txPower: ?i8 = null,

@@ -66,7 +66,7 @@ pub fn get_outputLatency(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for sinkId
-pub fn get_sinkId(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_sinkId(instance: *runtime.Instance) anyerror!typedefs.DOMStringOrAudioSinkInfo {
     _ = instance;
     return error.NotImplemented;
 }
@@ -149,7 +149,7 @@ pub fn call_resume(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: setSinkId
-pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.JSValue) anyerror!runtime.JSValue {
+pub fn call_setSinkId(instance: *runtime.Instance, sinkId: typedefs.DOMStringOrAudioSinkOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = sinkId;
     return error.NotImplemented;

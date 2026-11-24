@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const UndefinedOrCSSStyleValue = @import("typedefs").UndefinedOrCSSStyleValue;
 const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMapReadOnly = struct {
@@ -183,7 +184,7 @@ pub const StylePropertyMapReadOnly = struct {
         return try StylePropertyMapReadOnlyImpl.call_has(instance, property);
     }
 
-    pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!UndefinedOrCSSStyleValue {
         return try StylePropertyMapReadOnlyImpl.call_get(instance, property);
     }
 

@@ -72,6 +72,28 @@ Crane is MIT-licensed (see `LICENSE`). The following files contain code derived 
 - What was derived: the role enumeration with its values, and the internal-role-to-ARIA-name table, as data.
 - License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright lines: Copyright 2018 The Chromium Authors (`ax_enums.mojom`); `aria_properties.json5` carries no header of its own and is under Chromium's `LICENSE` (Copyright The Chromium Authors).
 
+### `src/devtools/mcp/schemas/tools.json`
+
+- Upstream project: chrome-devtools-mcp, https://github.com/ChromeDevTools/chrome-devtools-mcp
+- Revision: tag `chrome-devtools-mcp-v1.13.0` (commit `b1e35e3ab1774664dfc66a2cb813a392535fe160`)
+- Upstream files: `src/tools/*.ts` (the tool definitions: names, descriptions, input schemas, annotations), as its own server serializes them in its `tools/list` answer
+- What was derived: the definitions, copied without change, so Crane's built-in MCP server offers the same tools with the same schemas (lane mcp1; design `tmp/plans/mcp1-design.md` 2.3).
+- License: Apache-2.0. Copyright lines: Copyright 2025 Google LLC, Copyright 2026 Google LLC. The license text is kept beside the file: `src/devtools/mcp/schemas/LICENSE`; the project has no NOTICE file.
+
+### `src/devtools/mcp/*.zig`, `src/devtools/mcp/tools/*.zig` (translated)
+
+- Upstream project: chrome-devtools-mcp, https://github.com/ChromeDevTools/chrome-devtools-mcp, tag `chrome-devtools-mcp-v1.13.0` (commit `b1e35e3ab1774664dfc66a2cb813a392535fe160`)
+- Upstream files: `src/McpResponse.ts` (format, pagination), `src/McpContext.ts`, `src/McpPage.ts`, `src/ToolHandler.ts`, `src/tools/pages.ts`, `src/tools/console.ts`, `src/tools/script.ts`, `src/tools/network.ts`, `src/collectors/PageCollector.ts`, `src/formatters/ConsoleFormatter.ts`, `src/formatters/RemoteObjectFormatter.ts`, `src/formatters/NetworkFormatter.ts`, `src/devtools/DevtoolsUtils.ts` (SymbolizedError), `src/utils/WaitForHelper.ts`, `src/utils/url.ts`, `src/utils/text.ts`, `src/utils/pagination.ts`, `src/utils/resourceType.ts`
+- What was derived: the tools' behaviour and answer formats, translated statement by statement into Zig where the output must match (the differential suite compares the two servers); the evaluate_script wrapper function's JavaScript is copied.
+- License: Apache-2.0 (text: `src/devtools/mcp/schemas/LICENSE`). Copyright line: Copyright 2025 Google LLC.
+
+### `src/devtools/mcp/console.zig`, `network.zig`, `tools/script.zig` (translated)
+
+- Upstream project: Puppeteer, https://github.com/puppeteer/puppeteer, npm `puppeteer-core` 25.17.0
+- Upstream files: `src/cdp/utils.ts` (createConsoleMessage, valueFromJSHandle, valueFromRemoteObjectReference, valueFromPrimitiveRemoteObject, createEvaluationError, getErrorDetails), `src/cdp/Page.ts` (#onConsoleAPI, #onLogEntryAdded), `src/cdp/ExecutionContext.ts` (#evaluate, rewriteError), `src/cdp/HTTPRequest.ts`, `src/cdp/HTTPResponse.ts`, `src/cdp/NetworkManager.ts`, `src/util/httpUtils.ts` (normalizeHeaderValue)
+- What was derived: how Puppeteer turns CDP events and answers into console messages, requests, responses and evaluation errors - the model chrome-devtools-mcp's formatters print - translated into Zig.
+- License: Apache-2.0 (the same text as above). Copyright line: Copyright 2017 Google Inc.
+
 ## Vendored and pinned dependencies
 
 These are listed here by reference. Their license texts are kept beside them:

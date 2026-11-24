@@ -9,14 +9,10 @@ const enums = @import("enums");
 pub const GPURenderPassColorAttachment = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
-    view: runtime.JSValue,
+    view: typedefs.GPUTextureOrGPUTextureView,
     depthSlice: ?typedefs.GPUIntegerCoordinate = null,
-    resolveTarget: ?runtime.JSValue = null,
+    resolveTarget: ?typedefs.GPUTextureOrGPUTextureView = null,
     clearValue: ?typedefs.GPUColor = null,
     loadOp: enums.GPULoadOp,
     storeOp: enums.GPUStoreOp,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"resolveTarget"};
 };

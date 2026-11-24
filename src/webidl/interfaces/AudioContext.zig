@@ -11,12 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
-const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
+const DOMString = @import("typedefs").DOMString;
 const MediaStreamAudioDestinationNode = @import("interfaces").MediaStreamAudioDestinationNode;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OscillatorNode = @import("interfaces").OscillatorNode;
-const AudioSinkInfo = @import("interfaces").AudioSinkInfo;
 const ScriptProcessorNode = @import("interfaces").ScriptProcessorNode;
+const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
 const DelayNode = @import("interfaces").DelayNode;
 const MediaStreamAudioSourceNode = @import("interfaces").MediaStreamAudioSourceNode;
 const DecodeErrorCallback = @import("callbacks").DecodeErrorCallback;
@@ -25,7 +25,6 @@ const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const ConvolverNode = @import("interfaces").ConvolverNode;
 const MediaElementAudioSourceNode = @import("interfaces").MediaElementAudioSourceNode;
 const AudioContextState = @import("enums").AudioContextState;
-const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
 const AudioPlaybackStats = @import("interfaces").AudioPlaybackStats;
 const MediaStream = @import("interfaces").MediaStream;
 const PannerNode = @import("interfaces").PannerNode;
@@ -51,10 +50,11 @@ const ConstantSourceNode = @import("interfaces").ConstantSourceNode;
 const ChannelMergerNode = @import("interfaces").ChannelMergerNode;
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const PeriodicWave = @import("interfaces").PeriodicWave;
+const DOMStringOrAudioSinkOptions = @import("typedefs").DOMStringOrAudioSinkOptions;
 const AudioWorklet = @import("interfaces").AudioWorklet;
 const BiquadFilterNode = @import("interfaces").BiquadFilterNode;
-const AudioSinkOptions = @import("dictionaries").AudioSinkOptions;
-const DOMString = @import("typedefs").DOMString;
+const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
+const DOMStringOrAudioSinkInfo = @import("typedefs").DOMStringOrAudioSinkInfo;
 const AudioTimestamp = @import("dictionaries").AudioTimestamp;
 
 pub const AudioContext = struct {
@@ -306,7 +306,7 @@ pub const AudioContext = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_sinkId(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_sinkId(instance: *runtime.Instance) anyerror!DOMStringOrAudioSinkInfo {
         return try AudioContextImpl.get_sinkId(instance);
     }
 
@@ -362,7 +362,7 @@ pub const AudioContext = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.JSValue) anyerror!runtime.JSValue {
+    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMStringOrAudioSinkOptions) anyerror!runtime.JSValue {
         return try AudioContextImpl.call_setSinkId(instance, sinkId);
     }
 

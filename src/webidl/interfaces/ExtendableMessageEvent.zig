@@ -11,13 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
-const ServiceWorker = @import("interfaces").ServiceWorker;
-const Client = @import("interfaces").Client;
+const EventInit = @import("dictionaries").EventInit;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const ExtendableMessageEventInit = @import("dictionaries").ExtendableMessageEventInit;
+const ClientOrServiceWorkerOrMessagePort = @import("typedefs").ClientOrServiceWorkerOrMessagePort;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const EventInit = @import("dictionaries").EventInit;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MessagePort = @import("interfaces").MessagePort;
@@ -45,6 +44,12 @@ pub const ExtendableMessageEvent = struct {
             .{ "lastEventId", "get_lastEventId", null },
             .{ "source", "get_source", null },
             .{ "ports", "get_ports", null },
+        };
+
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "source",
         };
 
         /// FrozenArray<T> attributes: their getters return the array as a JSValue, and
@@ -88,7 +93,7 @@ pub const ExtendableMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_source: ?runtime.JSValue = null,
+            cached_source: ?ClientOrServiceWorkerOrMessagePort = null,
             _internal: ?*ExtendableMessageEventImpl.InternalState = null,
         },
     );
@@ -214,8 +219,15 @@ pub const ExtendableMessageEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_source(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ExtendableMessageEventImpl.get_source(instance);
+    pub fn get_source(instance: *runtime.Instance) anyerror!?ClientOrServiceWorkerOrMessagePort {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_source) |cached| {
+            return cached;
+        }
+        const value = try ExtendableMessageEventImpl.get_source(instance);
+        state.own.cached_source = value;
+        return value;
     }
 
     pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {

@@ -215,10 +215,12 @@ pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for source (4.7.4): the value it was initialized to.
-pub fn get_source(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.ClientOrServiceWorkerOrMessagePort {
     const internal = try internalOf(instance);
     const source = internal.source orelse return null;
-    return runtime.JSValue.fromInstance(source);
+    // The member interface the source implements (a Client, a
+    // ServiceWorker or a MessagePort).
+    return @import("dom").union_values.ofInstance(typedefs.ClientOrServiceWorkerOrMessagePort, source);
 }
 
 /// Getter for ports (4.7.5): the frozen array it was initialized to.

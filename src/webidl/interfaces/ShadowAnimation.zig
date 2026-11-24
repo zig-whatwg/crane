@@ -14,19 +14,18 @@ const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const EventHandler = @import("typedefs").EventHandler;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
+const ElementOrCSSPseudoElement = @import("typedefs").ElementOrCSSPseudoElement;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
-const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AnimationReplaceState = @import("enums").AnimationReplaceState;
 const EventListener = @import("interfaces").EventListener;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const DOMString = @import("typedefs").DOMString;
+const EventHandler = @import("typedefs").EventHandler;
 
 pub const ShadowAnimation = struct {
     pub const Meta = struct {
@@ -196,7 +195,7 @@ pub const ShadowAnimation = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, source: *runtime.Instance, newTarget: runtime.JSValue) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, source: *runtime.Instance, newTarget: ElementOrCSSPseudoElement) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ShadowAnimationImpl.call_constructor(ctx, source, newTarget);
     }

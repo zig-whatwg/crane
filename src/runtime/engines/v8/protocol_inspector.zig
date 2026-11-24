@@ -637,7 +637,8 @@ pub fn inspectorExceptionThrown(realm: Context, exception: JSValue, details: *co
     const held = support.ownGlobal(entered, exception) catch null;
     defer if (held) |h| ffi.v8_Global_Dispose(h);
     const stack: ?*const ffi.InspectorStack = if (details.stack) |captured| CapturedStack.of(captured).native else null;
-    return ffi.v8_Inspector_ExceptionThrown(inspector.native, entered.context(), held, details.message.ptr, details.message.len, details.url.ptr, details.url.len, details.line, details.column, stack);
+    const detailed = details.detailed_message orelse details.message;
+    return ffi.v8_Inspector_ExceptionThrown(inspector.native, entered.context(), held, details.message.ptr, details.message.len, detailed.ptr, detailed.len, details.url.ptr, details.url.len, details.line, details.column, stack);
 }
 
 /// What engine.inspectorCaptureStack hands out: V8's stack (C++, freed by

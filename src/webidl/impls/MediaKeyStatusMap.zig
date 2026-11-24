@@ -53,7 +53,7 @@ pub fn call_has(instance: *runtime.Instance, keyId: typedefs.BufferSource) anyer
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, keyId: typedefs.BufferSource) anyerror!runtime.JSValue {
+pub fn call_get(instance: *runtime.Instance, keyId: typedefs.BufferSource) anyerror!typedefs.MediaKeyStatusOrUndefined {
     _ = instance;
     _ = keyId;
     return error.NotImplemented;

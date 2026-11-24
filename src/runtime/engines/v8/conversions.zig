@@ -1561,30 +1561,35 @@ pub fn argReadConverts(comptime T: type, comptime Interface: ?type) bool {
         if (T == runtime.DOMString or T == []const u8) break :blk true;
         if (info == .@"enum") break :blk true;
         if (T == *runtime.Instance) break :blk Interface != null;
-        // A union, for a String value: its string arm (unionStringArm).
+        // The buffer source unions convert by their own rules, never a
+        // String's (convertBufferSource and the rest).
+        if (T == typedefs.BufferSource or T == typedefs.ArrayBufferView or T == typedefs.AllowSharedBufferSource) break :blk false;
+        // A generated union, for a String value: its string arm
+        // (unionStringArm).
         if (info == .@"union" and info.@"union".tag_type != null) {
             const arm = unionStringArm(T) orelse break :blk false;
-            break :blk argReadConverts(zig017FieldsOf(info.@"union")[arm].type, null);
+            break :blk argReadConverts(@FieldType(T, arm), null);
         }
         break :blk false;
     };
 }
 
-/// The arm of union `T` a String value converts to: WebIDL 3.2.24 step 14,
-/// "If types includes a string type, return the result of converting V to
-/// that type" - DOMString, USVString or ByteString first, then an
-/// enumeration, as `convertValueAs`'s union dispatch picks it (its
-/// `string_idx`). Null when the union has none.
-fn unionStringArm(comptime T: type) ?usize {
+/// The field of union `T` a String value converts to: WebIDL 3.2.25 step
+/// 15, "If types includes a string type, then return the result of
+/// converting V to that type" - a String reaches no earlier step. A string
+/// type is DOMString, USVString or ByteString, or an enumeration (WebIDL 2.13
+/// counts every enumeration among the string types); a valid union has at
+/// most one, and a string arm is preferred to an enumeration one, as the
+/// union conversion prefers it (`unionFromValue`). Only `T`'s own arms: a
+/// string type inside a nested union takes the general conversion. Null when
+/// `T` has neither.
+fn unionStringArm(comptime T: type) ?[]const u8 {
     comptime {
-        const fields = zig017FieldsOf(@typeInfo(T).@"union");
-        for (fields, 0..) |field, i| {
-            if (field.type == runtime.DOMString) return i;
-            const field_info = @typeInfo(field.type);
-            if (field_info == .pointer and field_info.pointer.size == .slice and field_info.pointer.child == u8) return i;
+        for (unionArmsOf(T)) |arm| {
+            if (arm.kind == .string) return arm.field;
         }
-        for (fields, 0..) |field, i| {
-            if (@typeInfo(field.type) == .@"enum") return i;
+        for (unionArmsOf(T)) |arm| {
+            if (arm.kind == .enumeration) return arm.field;
         }
         return null;
     }
@@ -1683,9 +1688,8 @@ pub fn fromArgumentRead(
         // value goes through the general conversion and its earlier steps.
         if (read.kind != .string) return null;
         const arm = comptime unionStringArm(T).?;
-        const field = zig017FieldsOf(type_info.@"union")[arm];
-        const converted = (try fromArgumentRead(field.type, null, .modulo, false, allocator, info, index, read, buffer)) orelse return null;
-        return @unionInit(T, field.name, converted);
+        const converted = (try fromArgumentRead(@FieldType(T, arm), null, .modulo, false, allocator, info, index, read, buffer)) orelse return null;
+        return @unionInit(T, arm, converted);
     }
     if (comptime T == *runtime.Instance) {
         const I = comptime Interface.?;
@@ -1772,40 +1776,471 @@ pub fn convertToInterface(comptime I: type, value: *v8.Value) ConversionError!*r
 }
 
 // =============================================================================
-// Union arms of interface type (WebIDL §3.2.24 step 4)
+// Union types (WebIDL 3.2.25), from codegen's arms tables
 // =============================================================================
 
-/// The interface a union arm of type `*runtime.Instance` names, from the
-/// arm's name - which codegen derives from the interface's
-/// (`sanitizeTypeName` in codegen/generator.zig: an underscore before an
-/// upper-case letter that follows a lower-case one, then lower case, so
-/// URLSearchParams is `urlsearch_params`). Null when no interface has that
-/// name: the arm then cannot be checked, and accepts any platform object.
-pub fn unionArmInterface(comptime arm: []const u8) ?type {
+const union_arms = @import("webidl").union_arms;
+const ArmTag = std.meta.Tag(union_arms.Kind);
+
+/// Union `T`'s arms table: what each field's member type is (codegen's
+/// `pub const arms`, webidl.union_arms). The binding converts only a union
+/// codegen describes: one with no table is a compile error, never a guess
+/// from its Zig type's shape or its fields' names.
+pub fn unionArmsOf(comptime T: type) []const union_arms.Arm {
     comptime {
-        @setEvalBranchQuota(10_000_000);
-        const interfaces = @import("interfaces");
-        // Typedefs of an interface type take the typedef's name.
-        const aliases = .{.{ "window_proxy", "Window" }};
-        for (aliases) |alias| {
-            if (std.mem.eql(u8, alias[0], arm)) return @field(interfaces, alias[1]);
-        }
-        for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
-            if (!isArmNameOf(decl_name, arm)) continue;
-            const I = @field(interfaces, decl_name);
-            if (@TypeOf(I) != type or !@hasDecl(I, "State")) continue;
-            return I;
-        }
-        return null;
+        // hasdecl: every union codegen emits declares `pub const arms`
+        // (generator.generateTypedef, union_arms.writeArms); a hand-written
+        // one that reaches the binding declares it pub too.
+        if (!@hasDecl(T, "arms")) @compileError("union " ++ @typeName(T) ++ " has no `pub const arms` table: the binding converts only unions codegen describes (webidl.union_arms)");
+        return &T.arms;
     }
 }
 
-/// The WebIDL name of the interface `unionArmInterface` finds, for tests
-/// (`tests/v8` cannot import `interfaces`).
-pub fn unionArmInterfaceName(comptime arm: []const u8) ?[]const u8 {
-    const I = comptime unionArmInterface(arm);
-    if (comptime I == null) return null;
-    return I.?.Meta.name;
+/// Whether union `T`'s flattened member types (WebIDL 2.13.32) include one
+/// of kind `tag`: its own arms, and a nested union's.
+pub fn unionIncludes(comptime T: type, comptime tag: ArmTag) bool {
+    comptime {
+        for (unionArmsOf(T)) |arm| {
+            if (std.meta.activeTag(arm.kind) == tag) return true;
+            if (arm.kind == .@"union" and unionIncludes(@FieldType(T, arm.field), tag)) return true;
+        }
+        return false;
+    }
+}
+
+/// The kind of member type field `name` of union `T` holds.
+pub fn unionArmKind(comptime T: type, comptime name: []const u8) union_arms.Kind {
+    comptime {
+        for (unionArmsOf(T)) |arm| {
+            if (std.mem.eql(u8, arm.field, name)) return arm.kind;
+        }
+        @compileError("union " ++ @typeName(T) ++ " has no arm '" ++ name ++ "' in its arms table");
+    }
+}
+
+/// The kind of member type field `name` of union `T` holds, or null when
+/// `T` has no arms table: for the ownership predicates (interface.isObjectArm),
+/// whose default for a union codegen did not describe is the safe answer.
+/// The conversion itself refuses such a union (`unionArmsOf`), so only a
+/// value the binding never converted is asked about without one.
+pub fn describedUnionArmKind(comptime T: type, comptime name: []const u8) ?union_arms.Kind {
+    comptime {
+        // hasdecl: every union codegen emits declares `pub const arms`
+        // (union_arms.writeArms); a union without one is answered null.
+        if (!@hasDecl(T, "arms")) return null;
+        return unionArmKind(T, name);
+    }
+}
+
+/// Whether union `T`'s flattened member types include ArrayBuffer (step 6):
+/// an ArrayBuffer member, or BufferSource or AllowSharedBufferSource, whose
+/// own flattened member types hold it.
+fn unionIncludesArrayBuffer(comptime T: type) bool {
+    return unionIncludes(T, .array_buffer) or unionIncludes(T, .buffer_source) or unionIncludes(T, .allow_shared_buffer_source);
+}
+
+/// Whether union `T`'s flattened member types include a DataView or a
+/// typed array type of every name (steps 8 and 9): ArrayBufferView, or
+/// BufferSource or AllowSharedBufferSource, which hold it.
+fn unionIncludesViews(comptime T: type) bool {
+    return unionIncludes(T, .array_buffer_view) or unionIncludes(T, .buffer_source) or unionIncludes(T, .allow_shared_buffer_source);
+}
+
+/// Whether union `T`'s flattened member types include the typed array type
+/// named `name` as a member of its own (step 9.1), not through a buffer
+/// source family.
+fn unionIncludesTypedArray(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        for (unionArmsOf(T)) |arm| {
+            switch (arm.kind) {
+                .typed_array => |typed_array| if (std.mem.eql(u8, typed_array, name)) return true,
+                .@"union" => if (unionIncludesTypedArray(@FieldType(T, arm.field), name)) return true,
+                else => {},
+            }
+        }
+        return false;
+    }
+}
+
+/// "Return the result of converting V to that type": `value` converted to
+/// the first of union `T`'s flattened member types of kind `tag` - a nested
+/// union's through its own field (`@unionInit(T, outer, nested)`). The
+/// caller has asked `unionIncludes(T, tag)`.
+fn convertToUnionMember(
+    comptime T: type,
+    comptime tag: ArmTag,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    inline for (comptime unionArmsOf(T)) |arm| {
+        const Field = @FieldType(T, arm.field);
+        if (comptime std.meta.activeTag(arm.kind) == tag) {
+            return @unionInit(T, arm.field, try convertUnionMemberValue(Field, arm.kind, allocator, isolate, context, value));
+        }
+        if (comptime arm.kind == .@"union" and unionIncludes(Field, tag)) {
+            return @unionInit(T, arm.field, try convertToUnionMember(Field, tag, allocator, isolate, context, value));
+        }
+    }
+    unreachable;
+}
+
+/// Step 9.1's member: the typed array type named `name` - a member of `T`'s
+/// own or of a nested union - holding `value`.
+fn convertToTypedArrayMember(comptime T: type, comptime name: []const u8, value: *v8.Value) T {
+    inline for (comptime unionArmsOf(T)) |arm| {
+        const Field = @FieldType(T, arm.field);
+        switch (comptime arm.kind) {
+            .typed_array => |typed_array| if (comptime std.mem.eql(u8, typed_array, name)) {
+                return @unionInit(T, arm.field, referenceTo(Field, value));
+            },
+            .@"union" => if (comptime unionIncludesTypedArray(Field, name)) {
+                return @unionInit(T, arm.field, convertToTypedArrayMember(Field, name, value));
+            },
+            else => {},
+        }
+    }
+    unreachable;
+}
+
+/// "The IDL value that is a reference to the object V" (steps 5.2, 6.2-9.2,
+/// 10.2, 11.7; 3.2.26 for a typed array; step 14's BigInt): `value` ITSELF
+/// - the handle converted from, no clone - BORROWED for the call and
+/// released by whoever made it once the call returns
+/// (`interface.releaseAnyArgument`; a dictionary member's or a sequence
+/// element's with its dictionary or sequence). Codegen types such a member
+/// runtime.JSValue (interface.isObjectArm says which ones do).
+fn referenceTo(comptime Field: type, value: *v8.Value) Field {
+    comptime std.debug.assert(Field == runtime.JSValue);
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
+}
+
+/// `value` converted to one union member type of kind `kind`, held in a
+/// field of type `Field`.
+fn convertUnionMemberValue(
+    comptime Field: type,
+    comptime kind: union_arms.Kind,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!Field {
+    switch (comptime kind) {
+        // The steps that take these call their own conversions: step 5.1
+        // (`platformObjectUnionMember`), 9.1 (`convertToTypedArrayMember`),
+        // 11.2 and 11.3 (with the @@iterator method they read), 11.5
+        // (`recordFrom`).
+        .interface, .typed_array, .sequence, .frozen_array, .record, .@"union" => comptime unreachable,
+        // No union codegen describes has one yet (codegen's parser reads no
+        // async_sequence<T>).
+        .async_sequence => @compileError("an async sequence union member: no conversion yet (WebIDL 3.2.25 step 11.1)"),
+        // Step 1: "the unique undefined value".
+        .undefined => return {},
+        // Step 10.1, WebIDL 3.2.19: the callable's own handle, BORROWED for
+        // the call and freed with the union (interface.freeConvertedArg).
+        .callback_function => return borrowedCallbackFunction(value),
+        // Steps 5.2-9.2, 10.2, 11.7 and 14: a reference to the object (or
+        // the BigInt) V. An ArrayBuffer, SharedArrayBuffer or DataView member
+        // of a type of its own converts by that type's rules.
+        .object, .bigint => return referenceTo(Field, value),
+        .array_buffer, .shared_array_buffer, .data_view => {
+            if (comptime Field == runtime.JSValue) return referenceTo(Field, value);
+            return fromV8Value(Field, allocator, isolate, context, value);
+        },
+        // Everything else by the member type's own conversion: a dictionary
+        // (3.2.18), a callback interface (3.2.16), a buffer source family
+        // (3.2.26), a string type or an enumeration (step 15), a numeric type
+        // (steps 13 and 17), boolean (steps 12 and 18).
+        .dictionary, .callback_interface, .buffer_source, .allow_shared_buffer_source, .array_buffer_view, .string, .enumeration, .numeric, .boolean => return fromV8Value(Field, allocator, isolate, context, value),
+    }
+}
+
+/// Step 5.1: "If types includes an interface type that V implements, then
+/// return the IDL value that is a reference to the object V" - the first
+/// interface member, in member order (a nested union's in its place), whose
+/// interface `instance` implements: File implements Blob. The interface is
+/// the one codegen named (`interfaceNamed`), so an arm naming no generated
+/// interface is a compile error. Null when it implements none.
+fn platformObjectUnionMember(comptime T: type, instance: *runtime.Instance) ?T {
+    inline for (comptime unionArmsOf(T)) |arm| {
+        const Field = @FieldType(T, arm.field);
+        switch (comptime arm.kind) {
+            .interface => |name| {
+                comptime std.debug.assert(Field == *runtime.Instance);
+                if (implements(instance, interfaceNamed(name))) return @unionInit(T, arm.field, instance);
+            },
+            .@"union" => if (comptime unionIncludes(Field, .interface)) {
+                if (platformObjectUnionMember(Field, instance)) |nested| return @unionInit(T, arm.field, nested);
+            },
+            else => {},
+        }
+    }
+    return null;
+}
+
+/// Steps 11.2 and 11.3: `value` as the first sequence or frozen array member
+/// (kind `tag`) of `T`, created from `method`, V's @@iterator (BORROWED).
+fn sequenceUnionMember(
+    comptime T: type,
+    comptime tag: ArmTag,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+    method: *v8.Value,
+) ConversionError!T {
+    inline for (comptime unionArmsOf(T)) |arm| {
+        const Field = @FieldType(T, arm.field);
+        if (comptime std.meta.activeTag(arm.kind) == tag) {
+            // A sequence of an interface type converts each element to the
+            // interface the arms table names (3.2.15).
+            const element_interface: ?[]const u8 = comptime switch (arm.kind) {
+                .sequence, .frozen_array => |name| name,
+                else => unreachable,
+            };
+            const Element = comptime if (element_interface) |name| interfaceNamed(name) else null;
+            return @unionInit(T, arm.field, try sequenceFromMethod(Field, Element, allocator, isolate, context, value, method));
+        }
+        if (comptime arm.kind == .@"union" and unionIncludes(Field, tag)) {
+            return @unionInit(T, arm.field, try sequenceUnionMember(Field, tag, allocator, isolate, context, value, method));
+        }
+    }
+    unreachable;
+}
+
+/// Step 11.5: `value` as `T`'s record member, by WebIDL 3.2.23.
+fn recordUnionMember(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError!T {
+    inline for (comptime unionArmsOf(T)) |arm| {
+        const Field = @FieldType(T, arm.field);
+        if (comptime arm.kind == .record) {
+            const Entry = @typeInfo(Field).pointer.child;
+            return @unionInit(T, arm.field, try recordFrom(Entry, null, allocator, isolate, context, value));
+        }
+        if (comptime arm.kind == .@"union" and unionIncludes(Field, .record)) {
+            return @unionInit(T, arm.field, try recordUnionMember(Field, allocator, isolate, context, value));
+        }
+    }
+    unreachable;
+}
+
+/// WebIDL 3.2.25, converting a JavaScript value V to an IDL union type `T`,
+/// step by step, every "types includes" answered by `T`'s arms table
+/// (`unionIncludes`). Replaces a dispatch on Zig type shapes and arm names
+/// (lane bind1 batch B, B3), under which an interface arm codegen did not
+/// name took any platform object, a callback value could match the
+/// dictionary arm, and the object steps ran in an order of their own.
+///
+/// Ownership: each member converts by its own type's rules, so the value is
+/// owned as its ACTIVE member is (interface.zig's predicates answer per arm).
+fn unionFromValue(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    // 1. If the union type includes undefined and V is undefined, then
+    //    return the unique undefined value.
+    if (comptime unionIncludes(T, .undefined)) {
+        if (v8.v8_Value_IsUndefined(value)) return convertToUnionMember(T, .undefined, allocator, isolate, context, value);
+    }
+    // 2. If the union type includes a nullable type and V is null or
+    //    undefined, then return the IDL value null: a nullable union is `?T`,
+    //    and the optional branch (3.2.20) answered null before this.
+    // 3. Let types be the flattened member types of the union type: `T`'s
+    //    arms, and a nested union's (`unionIncludes`).
+    // 4. If V is null or undefined, then: if types includes a dictionary
+    //    type, then return the result of converting V to that dictionary
+    //    type.
+    if (comptime unionIncludes(T, .dictionary)) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) return convertToUnionMember(T, .dictionary, allocator, isolate, context, value);
+    }
+    // 5. If V is a platform object, then:
+    if (platformObjectOf(value)) |instance| {
+        // 5.1. If types includes an interface type that V implements, then
+        //      return the IDL value that is a reference to the object V.
+        if (comptime unionIncludes(T, .interface)) {
+            if (platformObjectUnionMember(T, instance)) |member| return member;
+        }
+        // 5.2. If types includes object, then return the IDL value that is
+        //      a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 6. If V is an Object, V has an [[ArrayBufferData]] internal slot, and
+    //    IsSharedArrayBuffer(V) is false (V8's IsArrayBuffer is false for a
+    //    SharedArrayBuffer), then:
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        // 6.1. If types includes ArrayBuffer, then return the result of
+        //      converting V to ArrayBuffer - an ArrayBuffer member's, or
+        //      BufferSource's or AllowSharedBufferSource's (3.2.26: a
+        //      resizable one is their TypeError).
+        if (comptime unionIncludes(T, .array_buffer)) return convertToUnionMember(T, .array_buffer, allocator, isolate, context, value);
+        if (comptime unionIncludes(T, .buffer_source)) return convertToUnionMember(T, .buffer_source, allocator, isolate, context, value);
+        if (comptime unionIncludes(T, .allow_shared_buffer_source)) return convertToUnionMember(T, .allow_shared_buffer_source, allocator, isolate, context, value);
+        // 6.2. If types includes object, then return the IDL value that is
+        //      a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 7. If V is an Object, V has an [[ArrayBufferData]] internal slot, and
+    //    IsSharedArrayBuffer(V) is true, then:
+    if (v8.v8_Value_IsSharedArrayBuffer(value)) {
+        // 7.1. If types includes SharedArrayBuffer, then return the result of
+        //      converting V to SharedArrayBuffer.
+        if (comptime unionIncludes(T, .shared_array_buffer)) return convertToUnionMember(T, .shared_array_buffer, allocator, isolate, context, value);
+        if (comptime unionIncludes(T, .allow_shared_buffer_source)) return convertToUnionMember(T, .allow_shared_buffer_source, allocator, isolate, context, value);
+        // 7.2. If types includes object, then return the IDL value that is
+        //      a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+        // Not the spec text, by golden rule 2 ("no newer spec": the browsers
+        // decide; main, 2026-11-23 8:47 AM ET): a union that includes
+        // ArrayBuffer and no SharedArrayBuffer throws a TypeError for a
+        // SharedArrayBuffer. The spec text takes no step 7 member here, no
+        // step 10 or 11 member either for such a union, and reaches step 15:
+        // ToString, "[object SharedArrayBuffer]". Chrome, Firefox and Safari
+        // all throw a TypeError instead - they convert it as step 6 once did,
+        // to ArrayBuffer, which 3.2.26 refuses for a shared one - and so does
+        // WPT: xhr/send-data-sharedarraybuffer.any.js ("sending a
+        // SharedArrayBuffer", XMLHttpRequest.send's (Document or
+        // XMLHttpRequestBodyInit); lane binding4, a42cac17d).
+        if (comptime unionIncludesArrayBuffer(T)) return ConversionError.TypeError;
+    }
+    // 8. If V is an Object and V has a [[DataView]] internal slot, then:
+    if (v8.v8_Value_IsDataView(value)) {
+        // 8.1. If types includes DataView, then return the result of
+        //      converting V to DataView - a DataView member's, or a buffer
+        //      source family's (3.2.26: a view over a shared or resizable
+        //      buffer is their TypeError).
+        if (comptime unionIncludes(T, .data_view)) return convertToUnionMember(T, .data_view, allocator, isolate, context, value);
+        if (comptime unionIncludesViews(T)) return convertViewToUnionMember(T, allocator, isolate, context, value);
+        // 8.2. If types includes object, then return the IDL value that is
+        //      a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 9. If V is an Object and V has a [[TypedArrayName]] internal slot,
+    //    then:
+    if (typedArrayNameOf(value)) |name| {
+        // 9.1. If types includes a typed array type whose name is the value
+        //      of V's [[TypedArrayName]] internal slot, then return the
+        //      result of converting V to that type: a member of its own (a
+        //      reference to the object, 3.2.26), else a buffer source
+        //      family's, which holds every typed array type.
+        inline for (typed_array_names) |typed_array| {
+            if (comptime unionIncludesTypedArray(T, typed_array)) {
+                if (std.mem.eql(u8, name, typed_array)) return convertToTypedArrayMember(T, typed_array, value);
+            }
+        }
+        if (comptime unionIncludesViews(T)) return convertViewToUnionMember(T, allocator, isolate, context, value);
+        // 9.2. If types includes object, then return the IDL value that is
+        //      a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 10. If IsCallable(V) is true, then:
+    if (v8.v8_Value_IsFunction(value)) {
+        // 10.1. If types includes a callback function type, then return the
+        //       result of converting V to that callback function type.
+        if (comptime unionIncludes(T, .callback_function)) return convertToUnionMember(T, .callback_function, allocator, isolate, context, value);
+        // 10.2. If types includes object, then return the IDL value that is
+        //       a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 11. If V is an Object, then:
+    if (v8.v8_Value_IsObject(value)) {
+        // 11.1. If types includes an async sequence type: no union codegen
+        //       describes has one (convertUnionMemberValue refuses it).
+        if (comptime unionIncludes(T, .async_sequence)) @compileError("an async sequence union member: no conversion yet (WebIDL 3.2.25 step 11.1)");
+        // 11.2. If types includes a sequence type, then
+        if (comptime unionIncludes(T, .sequence)) {
+            // 11.2.1. Let method be ? GetMethod(V, %Symbol.iterator%).
+            // 11.2.2. If method is not undefined, return the result of
+            //         creating a sequence of that type from V and method.
+            if (try iteratorMethodOf(isolate, context, value)) |method| {
+                defer v8.v8_Value_Dispose(method);
+                return sequenceUnionMember(T, .sequence, allocator, isolate, context, value, method);
+            }
+        }
+        // 11.3. If types includes a frozen array type, then
+        if (comptime unionIncludes(T, .frozen_array)) {
+            // 11.3.1. Let method be ? GetMethod(V, %Symbol.iterator%).
+            // 11.3.2. If method is not undefined, return the result of
+            //         creating a frozen array of that type from V and method.
+            if (try iteratorMethodOf(isolate, context, value)) |method| {
+                defer v8.v8_Value_Dispose(method);
+                return sequenceUnionMember(T, .frozen_array, allocator, isolate, context, value, method);
+            }
+        }
+        // 11.4. If types includes a dictionary type, then return the result
+        //       of converting V to that dictionary type.
+        if (comptime unionIncludes(T, .dictionary)) return convertToUnionMember(T, .dictionary, allocator, isolate, context, value);
+        // 11.5. If types includes a record type, then return the result of
+        //       converting V to that record type.
+        if (comptime unionIncludes(T, .record)) return recordUnionMember(T, allocator, isolate, context, value);
+        // 11.6. If types includes a callback interface type, then return the
+        //       result of converting V to that callback interface type.
+        if (comptime unionIncludes(T, .callback_interface)) return convertToUnionMember(T, .callback_interface, allocator, isolate, context, value);
+        // 11.7. If types includes object, then return the IDL value that is
+        //       a reference to the object V.
+        if (comptime unionIncludes(T, .object)) return convertToUnionMember(T, .object, allocator, isolate, context, value);
+    }
+    // 12. If V is a Boolean, then: if types includes boolean, then return
+    //     the result of converting V to boolean.
+    if (comptime unionIncludes(T, .boolean)) {
+        if (v8.v8_Value_IsBoolean(value)) return convertToUnionMember(T, .boolean, allocator, isolate, context, value);
+    }
+    // 13. If V is a Number, then: if types includes a numeric type, then
+    //     return the result of converting V to that numeric type.
+    if (comptime unionIncludes(T, .numeric)) {
+        if (v8.v8_Value_IsNumber(value)) return convertToUnionMember(T, .numeric, allocator, isolate, context, value);
+    }
+    // 14. If V is a BigInt, then: if types includes bigint, then return the
+    //     result of converting V to bigint - V itself (codegen types a bigint
+    //     member runtime.JSValue: a reference to the value).
+    if (comptime unionIncludes(T, .bigint)) {
+        if (v8.v8_Value_IsBigInt(value)) return convertToUnionMember(T, .bigint, allocator, isolate, context, value);
+    }
+    // 15. If types includes a string type, then return the result of
+    //     converting V to that type - ToString, whose exception propagates
+    //     (ExceptionPending). WebIDL 2.13 counts every enumeration among the
+    //     string types; a valid union has at most one string type, and a
+    //     string member is taken before an enumeration (unionStringArm).
+    if (comptime unionIncludes(T, .string)) return convertToUnionMember(T, .string, allocator, isolate, context, value);
+    if (comptime unionIncludes(T, .enumeration)) return convertToUnionMember(T, .enumeration, allocator, isolate, context, value);
+    // 16. If types includes a numeric type and bigint, then return the
+    //     result of converting V to either that numeric type or bigint:
+    //     ToNumeric(V). A Number is the numeric member's - ToNumber of V
+    //     gives that Number, so the numeric conversion of V is the same,
+    //     valueOf run once.
+    //     TODO(bind1 B1): step 16's BigInt result - an object whose valueOf
+    //     answers a BigInt - is the bigint member's per WebIDL 3.2.25 step 16
+    //     ("converted to a numeric type or bigint"). It would be a value of
+    //     the conversion's own, which a runtime.JSValue member cannot hold
+    //     apart from the argument's handle the binding releases, so ToNumber
+    //     throws its TypeError for it, as before the arms tables: a temporary
+    //     deviation (main, 2026-11-23 8:47 AM ET) until B1 makes the bigint
+    //     member a copied value. Pinned red by tests/v8/
+    //     union_conversion_steps_test.zig ("step 16 ... knownRed").
+    // 17. If types includes a numeric type, then return the result of
+    //     converting V to that numeric type.
+    if (comptime unionIncludes(T, .numeric)) return convertToUnionMember(T, .numeric, allocator, isolate, context, value);
+    // 18. If types includes boolean, then return the result of converting V
+    //     to boolean.
+    if (comptime unionIncludes(T, .boolean)) return convertToUnionMember(T, .boolean, allocator, isolate, context, value);
+    // 19. If types includes bigint, then return the result of converting V
+    //     to bigint: ToBigInt(V), a BigInt of the conversion's own - no union
+    //     codegen describes has bigint without a numeric type (step 16), and
+    //     the member becomes a copied value in B1.
+    if (comptime unionIncludes(T, .bigint)) @compileError("a union with bigint and no numeric type: ToBigInt's value needs a member that owns it (WebIDL 3.2.25 step 19)");
+    // 20. Throw a TypeError.
+    return ConversionError.TypeError;
+}
+
+/// Steps 8.1 and 9.1 for a DataView or a typed array that no member of its
+/// own type takes: the buffer source family's member that holds every view
+/// type - ArrayBufferView, else BufferSource, else AllowSharedBufferSource.
+fn convertViewToUnionMember(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError!T {
+    if (comptime unionIncludes(T, .array_buffer_view)) return convertToUnionMember(T, .array_buffer_view, allocator, isolate, context, value);
+    if (comptime unionIncludes(T, .buffer_source)) return convertToUnionMember(T, .buffer_source, allocator, isolate, context, value);
+    return convertToUnionMember(T, .allow_shared_buffer_source, allocator, isolate, context, value);
 }
 
 /// The generated typedefs, re-exported so `tests/v8` can walk every union's
@@ -1816,47 +2251,12 @@ pub const generated_typedefs = @import("typedefs");
 /// interface-typed member.
 pub const generated_dictionaries = @import("dictionaries");
 
-/// Whether codegen names a union arm of interface `name` `arm`.
-fn isArmNameOf(comptime name: []const u8, comptime arm: []const u8) bool {
-    comptime {
-        var i: usize = 0;
-        var prev_was_lower = false;
-        for (name) |c| {
-            if (std.ascii.isUpper(c)) {
-                if (prev_was_lower) {
-                    if (i >= arm.len or arm[i] != '_') return false;
-                    i += 1;
-                }
-                if (i >= arm.len or arm[i] != std.ascii.toLower(c)) return false;
-                i += 1;
-                prev_was_lower = false;
-            } else {
-                if (i >= arm.len or arm[i] != c) return false;
-                i += 1;
-                prev_was_lower = std.ascii.isLower(c);
-            }
-        }
-        return i == arm.len;
-    }
-}
-
 /// The typed array types' names, as [[TypedArrayName]] holds them.
 const typed_array_names = [_][]const u8{
     "Int8Array",      "Uint8Array",   "Uint8ClampedArray", "Int16Array",
     "Uint16Array",    "Int32Array",   "Uint32Array",       "BigInt64Array",
     "BigUint64Array", "Float16Array", "Float32Array",      "Float64Array",
 };
-
-/// The typed array type a union arm is named for, if any: codegen types a
-/// typed array member of a union as runtime.JSValue (the reference to the
-/// object, WebIDL 3.2.26) and names the arm after it -
-/// ImageDataArray's `uint8clamped_array`, Float32List's `float32array`.
-pub fn typedArrayArmName(comptime arm: []const u8) ?[]const u8 {
-    inline for (typed_array_names) |name| {
-        if (comptime isArmNameOf(name, arm)) return name;
-    }
-    return null;
-}
 
 /// V's [[TypedArrayName]], or null when V is no typed array.
 pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
@@ -1873,67 +2273,6 @@ pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
     if (v8.v8_Value_IsFloat16Array(value)) return "Float16Array";
     if (v8.v8_Value_IsFloat32Array(value)) return "Float32Array";
     if (v8.v8_Value_IsFloat64Array(value)) return "Float64Array";
-    return null;
-}
-
-/// Whether `instance` implements the interface arm `arm` names: its state
-/// ancestry holds that interface's State, so File implements Blob. An arm
-/// no interface is named for cannot be checked, and is accepted (no
-/// generated union has one: tests/v8/union_arm_interface_test.zig). An
-/// instance whose vtable carries no ancestry implements none (`implements`).
-fn implementsArm(comptime arm: []const u8, instance: *runtime.Instance) bool {
-    const Interface = comptime unionArmInterface(arm);
-    if (comptime Interface == null) return true;
-    return implements(instance, Interface.?);
-}
-
-/// WebIDL §3.2.24 step 4 for a union with `*runtime.Instance` arms: if
-/// `value` is a platform object, the arm of the first member interface it
-/// implements. Arms that name an interface are tried before any that
-/// cannot be checked. Null when `value` is no platform object, or one that
-/// implements none of them.
-fn platformObjectArm(comptime T: type, value: *v8.Value) ?T {
-    const instance = platformObjectOf(value) orelse return null;
-    return checkedArm(T, instance) orelse uncheckedArm(T, instance);
-}
-
-/// Whether `T` is a union whose every arm is an interface - a
-/// `*runtime.Instance` - or such a union itself. A union member of a union
-/// contributes its own members to the outer one's flattened member types
-/// (WebIDL 2.13.29), so its interfaces are the outer union's too:
-/// CanvasImageSource's HTMLOrSVGImageElement holds HTMLImageElement and
-/// SVGImageElement. Codegen keeps such a member as a nested union.
-pub fn isInterfaceUnion(comptime T: type) bool {
-    if (@typeInfo(T) != .@"union") return false;
-    inline for (@typeInfo(T).@"union".field_types) |field_type| {
-        if (field_type != *runtime.Instance and !isInterfaceUnion(field_type)) return false;
-    }
-    return true;
-}
-
-/// The arm of `T` - a nested interface union's included - whose named
-/// interface `instance` implements, in member order.
-fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
-        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) != null) {
-            if (implementsArm(field_name, instance)) return @unionInit(T, field_name, instance);
-        } else if (comptime isInterfaceUnion(field_type)) {
-            if (checkedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
-        }
-    }
-    return null;
-}
-
-/// The first arm of `T` (a nested interface union's included) that names no
-/// interface, and so accepts any platform object.
-fn uncheckedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
-        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) == null) {
-            return @unionInit(T, field_name, instance);
-        } else if (comptime isInterfaceUnion(field_type)) {
-            if (uncheckedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
-        }
-    }
     return null;
 }
 
@@ -1964,16 +2303,6 @@ fn dictionaryMemberOrder(comptime T: type) [std.meta.fieldNames(T).len]Zig017Fie
             }
         }.lessThan);
         return fields;
-    }
-}
-
-/// Whether union `T` has an arm for a typed array type (`typedArrayArmName`).
-fn hasTypedArrayArm(comptime T: type) bool {
-    comptime {
-        for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
-            if (field_type == runtime.JSValue and typedArrayArmName(field_name) != null) return true;
-        }
-        return false;
     }
 }
 
@@ -2030,7 +2359,7 @@ fn borrowedCallbackFunction(value: *v8.Value) runtime.BorrowedCallbackFunction {
 /// says which interface each position names (`interface_arguments`,
 /// `constructor_interface_arguments`, `interface_members`); the Zig type
 /// cannot, since every interface type is `*runtime.Instance`. A union's arms
-/// name their own interfaces (`unionArmInterface`), and a dictionary's
+/// name their own interfaces (their arms tables, `unionArmsOf`), and a dictionary's
 /// members theirs (`interface_members`), so neither takes `Interface`.
 ///
 /// A union with restricted `double` or `float` arms (codegen's
@@ -2229,7 +2558,14 @@ fn convertValueAs(
         return try fromV8String(allocator, isolate, context, string);
     }
 
-    // Handle HeadersInit specially - parse V8 value to appropriate variant
+    // HeadersInit and BodyInit keep converters of their own, which already
+    // follow WebIDL 3.2.25 for their member types step by step (see each):
+    // HeadersInit's sequence/record (steps 11.2, 11.5, 20), BodyInit's
+    // interfaces, buffer sources and USVString (steps 5, 6-9, 15). They are
+    // kept for what the generic union conversion does not do: BodyInit
+    // COPIES its buffer at conversion (Fetch's "extract a body" takes a copy;
+    // `interface.argHandleIsCopied`), and HeadersInit reads its ByteStrings
+    // with their TypeError for a code unit above 0xFF.
     if (T == @import("typedefs").HeadersInit) {
         return try convertHeadersInit(allocator, isolate, context, value);
     }
@@ -2327,451 +2663,8 @@ fn convertValueAs(
         return .{ .object = .{ .handle = .{ .ptr = @ptrCast(value) } } };
     }
 
-    // Handle unions (for constructor overloading and type unions)
-    if (type_info == .@"union") {
-        // Union types require runtime type discrimination per WebIDL specification.
-        //
-        // For common union patterns (HeadersInit, BodyInit, etc.), we try to
-        // find the best matching variant based on the V8 value type.
-        //
-        // Strategy: At comptime, find which variant matches each JS type category,
-        // then dispatch at runtime based on the actual value type.
-
-        const union_info = type_info.@"union";
-        const fields = zig017FieldsOf(union_info);
-
-        // Find indices for different type categories at comptime
-        // Note: []const u8 (ByteString, USVString) could match both string and sequence
-        // so we need to check for byte slices specifically
-
-        // String types: DOMString (union), or []const u8 (ByteString/USVString)
-        // - or an enumeration: WebIDL 2.13 counts "all enumeration types"
-        // among the string types, so 3.2.25 step 15 ("If types includes a
-        // string type, then return the result of converting V to that type")
-        // takes an enumeration arm - ToString, then a TypeError unless it is
-        // one of the values. A valid union has at most one string type (they
-        // are not distinguishable); a string arm is still preferred to an
-        // enumeration one, as before. Without it, an enumeration arm took
-        // nothing: (TaskPriority or TaskSignal), (Sanitizer or
-        // SanitizerConfig or SanitizerPresets).
-        const string_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == runtime.DOMString) {
-                    break :blk i;
-                }
-                // Check for []const u8 (ByteString, USVString, runtime.ByteString, runtime.USVString)
-                const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .slice and
-                    field_info.pointer.child == u8)
-                {
-                    break :blk i;
-                }
-            }
-            for (fields, 0..) |field, i| {
-                if (@typeInfo(field.type) == .@"enum") break :blk i;
-            }
-            break :blk null;
-        };
-
-        // Sequence types: slices that are NOT []const u8
-        const sequence_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .slice) {
-                    // Skip []const u8 which is handled as string above
-                    if (field_info.pointer.child == u8) continue;
-                    // A record (its entry marked `webidl_record_entry`) is
-                    // no sequence: step 11.5, below.
-                    if (interface_mod.isRecordEntryType(field_info.pointer.child)) continue;
-                    break :blk i;
-                }
-            }
-            break :blk null;
-        };
-
-        // A record<K, V> arm (codegen's `[]const Entry`, the entry marked
-        // `webidl_record_entry`): WebIDL 3.2.25 step 11.5.
-        const record_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                const field_info = @typeInfo(field.type);
-                if (field_info == .pointer and field_info.pointer.size == .slice and interface_mod.isRecordEntryType(field_info.pointer.child)) break :blk i;
-            }
-            break :blk null;
-        };
-
-        const dict_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                // A dictionary arm is a struct that SAYS it is one
-                // (interface.isDictionaryType): a callback value
-                // (runtime.Borrowed*) is a struct too, and an Object that is
-                // not callable goes on to the string step (3.2.25 step 15),
-                // so setTimeout({ toString() { ... } }) runs its string.
-                if (interface_mod.isDictionaryType(field.type)) break :blk i;
-            }
-            break :blk null;
-        };
-
-        const boolean_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == runtime.Boolean) {
-                    break :blk i;
-                }
-            }
-            break :blk null;
-        };
-
-        const number_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                const field_info = @typeInfo(field.type);
-                if (field_info == .int or field_info == .float or
-                    field.type == runtime.Double or field.type == runtime.Long)
-                {
-                    break :blk i;
-                }
-            }
-            break :blk null;
-        };
-
-        // Check if this union has only *anyopaque variants (generated for unresolved unions)
-        const anyopaque_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == *const anyopaque or field.type == *anyopaque) {
-                    break :blk i;
-                }
-            }
-            break :blk null;
-        };
-
-        // Interface pointer types: *runtime.Instance (for unions like NodeOrString)
-        // These match JS objects that are wrapped platform objects (DOM nodes, etc.)
-        const instance_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == *runtime.Instance) {
-                    break :blk i;
-                }
-            }
-            break :blk null;
-        };
-
-        // A callback function arm (runtime.BorrowedCallbackFunction): a
-        // callable goes to it (WebIDL 3.2.25 step 10), and is held there by
-        // its own Global.
-        const function_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == runtime.BorrowedCallbackFunction) break :blk i;
-            }
-            break :blk null;
-        };
-
-        // Buffer source arms: BufferSource (its flattened member types are
-        // ArrayBuffer, DataView and the typed arrays), AllowSharedBufferSource
-        // (those and SharedArrayBuffer, with [AllowShared] views - WebCodecs'
-        // ImageBufferSource = (AllowSharedBufferSource or ReadableStream)) or
-        // ArrayBufferView (DataView and the typed arrays).
-        const buffer_source_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == typedefs.BufferSource or field.type == typedefs.AllowSharedBufferSource) break :blk i;
-            }
-            break :blk null;
-        };
-        const array_buffer_view_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == typedefs.ArrayBufferView) break :blk i;
-            }
-            break :blk null;
-        };
-
-        // The `object` arm: codegen types IDL `object` as runtime.JSValue and
-        // names the arm `object` (AlgorithmIdentifier = (object or
-        // DOMString)). Matched on the name as well as the type: a JSValue arm
-        // under another name is something else - CryptoKeyID's and MLNumber's
-        // `bigint`.
-        const object_idx: ?usize = comptime blk: {
-            for (fields, 0..) |field, i| {
-                if (field.type == runtime.JSValue and std.mem.eql(u8, field.name, "object")) break :blk i;
-            }
-            break :blk null;
-        };
-
-        // WebIDL 3.2.25 steps 6, 8 and 9: an ArrayBuffer that is not shared,
-        // a DataView or a typed array goes to the buffer source arm, by that
-        // arm's own conversion - a view over a SharedArrayBuffer is its
-        // TypeError (3.2.26 step 3), not a reason to try the next arm.
-        if (buffer_source_idx) |idx| {
-            // A SharedArrayBuffer too: step 6 converts it to ArrayBuffer,
-            // which throws a TypeError for a shared one (3.2.26 step 2) -
-            // it is not left for step 15 to stringify.
-            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsSharedArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
-                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-            }
-        } else if (array_buffer_view_idx) |idx| {
-            if (v8.v8_Value_IsArrayBufferView(value)) {
-                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-            }
-        }
-
-        // WebIDL 3.2.25 step 9: "If V has a [[TypedArrayName]] internal
-        // slot, then: if types includes a typed array type whose name is the
-        // value of V's [[TypedArrayName]] internal slot, then return the
-        // result of converting V to that type" - the IDL value that is a
-        // reference to the object: the argument's own handle, as an `object`
-        // arm's (released by the binding once the call returns,
-        // `interface.releaseAnyArgument`). `new ImageData(new
-        // Uint8ClampedArray(16), 2)` was a TypeError: no arm took it.
-        if (comptime hasTypedArrayArm(T)) {
-            if (typedArrayNameOf(value)) |name| {
-                inline for (fields) |field| {
-                    if (comptime field.type == runtime.JSValue and typedArrayArmName(field.name) != null) {
-                        if (std.mem.eql(u8, name, comptime typedArrayArmName(field.name).?)) {
-                            return @unionInit(T, field.name, runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } });
-                        }
-                    }
-                }
-            }
-        }
-
-        // WebIDL 3.2.25 step 11.2, for a union with a sequence member: an
-        // Object that no earlier step took - step 5, a platform object
-        // implementing a member interface; steps 6-9, the buffer sources
-        // above; step 10, a callable given a callback function member, below
-        // - is that sequence when its @@iterator is not undefined: an Array,
-        // and every other iterable. This tested IsArray, so a Map, a Set, a
-        // generator or an iterable platform object went to the dictionary
-        // member, or to none; and an Array went to no member at all in a
-        // union without a sequence member, where step 11.4 gives it to the
-        // dictionary member and step 15 to the string one.
-        if (comptime sequence_idx != null) {
-            if (v8.v8_Value_IsObject(value) and !(function_idx != null and v8.v8_Value_IsFunction(value))) {
-                // Step 5.1.
-                if (comptime instance_idx != null) {
-                    if (platformObjectArm(T, value)) |arm| return arm;
-                }
-                // 11.2.1. Let method be ? GetMethod(V, %Symbol.iterator%).
-                // 11.2.2. If method is not undefined, return the result of
-                //         creating a sequence of that type from V and method.
-                if (try iteratorMethodOf(isolate, context, value)) |method| {
-                    defer v8.v8_Value_Dispose(method);
-                    const idx = comptime sequence_idx.?;
-                    return @unionInit(T, fields[idx].name, try sequenceFromMethod(fields[idx].type, null, allocator, isolate, context, value, method));
-                }
-            }
-        }
-
-        // Runtime dispatch based on V8 value type
-        // Check function FIRST since functions are also objects in JavaScript.
-        // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
-        // - if there is one. Otherwise it is just an object and goes on
-        // through the object steps and, failing those, to the string step
-        // (ToString), so `new Request(URL)` - the URL constructor - is the
-        // string it stringifies to.
-        if (function_idx != null and v8.v8_Value_IsFunction(value)) {
-            if (function_idx) |idx| {
-                // 3.2.19: the callable's own Global (the binding's argument
-                // Global, or the member's Get handle), BORROWED for the call
-                // and freed with the union (interface.freeConvertedArg).
-                return @unionInit(T, fields[idx].name, borrowedCallbackFunction(value));
-            }
-        } else if (v8.v8_Value_IsString(value)) {
-            if (string_idx) |idx| {
-                const FieldType = fields[idx].type;
-                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-        } else if (v8.v8_Value_IsBoolean(value)) {
-            if (boolean_idx) |idx| {
-                const FieldType = fields[idx].type;
-                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-        } else if (v8.v8_Value_IsNumber(value)) {
-            if (number_idx) |idx| {
-                const FieldType = fields[idx].type;
-                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-        } else if (v8.v8_Value_IsObject(value)) {
-            // For objects, we need to distinguish between:
-            // 1. Wrapped platform objects (DOM nodes, etc.) - a wrapper, which reaches an instance
-            // 2. Plain JS objects (dictionaries, String objects, etc.) - none
-            //
-            // Try the instance conversion: an object that reaches no instance
-            // is treated as a plain object.
-            if (instance_idx != null) {
-                // Try to extract as instance - but first check if we have a string alternative
-                // because strings should take priority over treating them as objects
-                if (string_idx != null and v8.v8_Value_IsString(value)) {
-                    // This is a string, skip instance extraction and let string handling below deal with it
-                } else if (platformObjectArm(T, value)) |arm| {
-                    // WebIDL §3.2.24 step 4: a platform object goes to the
-                    // arm whose interface it implements.
-                    return arm;
-                } else if (comptime string_idx != null and dict_idx == null and function_idx == null and
-                    sequence_idx == null and object_idx == null)
-                {
-                    // Not a platform object, or one no arm names - a URL
-                    // given for (Request or USVString), a Blob for (Node or
-                    // DOMString), {toString() {...}} for (TrustedHTML or
-                    // DOMString). WebIDL 3.2.25: step 5.1 took no arm; steps
-                    // 6-9 (buffer sources) were tried above; step 10 needs a
-                    // callback function arm and step 11 a sequence,
-                    // dictionary, record, callback interface or `object`
-                    // arm, which this union has none of. So step 15: "If
-                    // types includes a string type, then return the result
-                    // of converting V to that type" - ToString, whose
-                    // exception propagates (ExceptionPending).
-                    const str_idx = string_idx.?;
-                    return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
-                } else if (comptime string_idx == null and dict_idx == null and function_idx == null and
-                    sequence_idx == null and object_idx == null and anyopaque_idx == null and
-                    (number_idx != null or boolean_idx != null))
-                {
-                    // An object that is no platform object an arm names -
-                    // {valueOf() {...}} for CSSNumberish (double or
-                    // CSSNumericValue) - in a union with no string type and
-                    // none of step 11's arms (WebIDL 3.2.25): step 5.1 took
-                    // no arm, steps 6-11 have nothing to try, and step 15
-                    // has no string type. Step 17: "If types includes a
-                    // numeric type, then return the result of converting V
-                    // to that numeric type" - ToNumber, so the valueOf runs
-                    // and what it throws propagates (ExceptionPending), and a
-                    // restricted arm still refuses NaN (`requireFiniteArm`).
-                    // Step 18 is the boolean arm's. It was a TypeError.
-                    if (number_idx) |idx| {
-                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-                    }
-                    if (boolean_idx) |idx| {
-                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-                    }
-                } else if (comptime dict_idx == null) {
-                    // A union with one of step 11's arms as well, but no
-                    // dictionary: as before (a toString attempt, then the
-                    // arms below). With a dictionary arm, step 11.4 takes the
-                    // object before step 15 could stringify it - no
-                    // toString() runs, and an enumeration arm (a string type)
-                    // never takes an object whose toString() names a value.
-                    if (string_idx) |str_idx| {
-                        // Call toString() on the object to get a string representation
-                        if (v8.v8_Value_ToString(value, context)) |str_value| {
-                            // OWNED (v8_wrapper.cpp: a `new Global<String>`),
-                            // and the string arm's conversion copies its
-                            // characters (fromV8String: WriteUtf8 into its
-                            // own buffer), keeping nothing of it. Left
-                            // undisposed, every setTimeout({ toString() }) -
-                            // TimerHandler's string arm - leaked 16 bytes and
-                            // a global handle for the agent's life (`leaks
-                            // --atExit`, lane mem1; lane flk4, 2026-11-22:
-                            // tests/v8/flk4_union_tostring_handle_test.zig).
-                            defer v8.v8_String_Dispose(str_value);
-                            const StringFieldType = fields[str_idx].type;
-                            if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
-                                return @unionInit(T, fields[str_idx].name, str_converted);
-                            } else |_| {
-                                // String conversion also failed, fall through
-                            }
-                        }
-                    }
-                    // Fall through to dict_idx
-                }
-            }
-            if (dict_idx) |idx| {
-                const FieldType = fields[idx].type;
-                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-            // Step 11.5: "If types includes a record type, then return the
-            // result of converting V to that record type" (3.2.23). A record
-            // and a dictionary are not distinguishable, so a union has at
-            // most one of the two.
-            if (record_idx) |idx| {
-                const Entry = @typeInfo(fields[idx].type).pointer.child;
-                return @unionInit(T, fields[idx].name, try recordFrom(Entry, null, allocator, isolate, context, value));
-            }
-        }
-
-        // WebIDL 3.2.25 steps 5.2, 6.2, 7.2, 8.2, 9.2, 10.2 and 11.7: an
-        // Object no member type above took - a plain object, an array, a
-        // callable, a platform object, a buffer - is "the IDL value that is a
-        // reference to the object V" when the union includes `object`. The
-        // reference is the argument's own handle, as an `any` argument's is:
-        // BORROWED for the call and released by the binding once it returns
-        // (`interface.releaseAnyArgument`). (`object` is not distinguishable
-        // from interface, buffer, callback, dictionary or sequence types, so a
-        // valid union has none of the arms the steps above try first.)
-        if (object_idx) |idx| {
-            if (v8.v8_Value_IsObject(value)) {
-                return @unionInit(T, fields[idx].name, runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } });
-            }
-        }
-
-        // Steps 15, 17 and 18 for an Object that no member type above took
-        // (no interface, buffer source, callback, dictionary or `object` arm
-        // matched it): converted to the string type - ToString, so its
-        // toString() runs and what it throws propagates - else the numeric
-        // type, else boolean. The instance path above does step 15 itself for
-        // a union with interface arms; this is the rest:
-        // FontFace(family, (CSSOMString or BufferSource) source, ...) given
-        // an object with a toString was a TypeError. A union with a sequence
-        // arm reaches here only with an Object that has no @@iterator: step
-        // 11.2 above took every iterable one.
-        if (comptime instance_idx == null) {
-            if (v8.v8_Value_IsObject(value)) {
-                if (string_idx) |idx| {
-                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-                }
-                if (number_idx) |idx| {
-                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-                }
-                if (boolean_idx) |idx| {
-                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
-                }
-            }
-        }
-
-        // WebIDL §3.2.25 "converting to a union", for a value that is not an
-        // object and that no step above took.
-        if (!v8.v8_Value_IsObject(value)) {
-            // Step 4: "If V is null or undefined, then: If types includes a
-            // dictionary type, then return the result of converting V to that
-            // dictionary type."
-            if (v8.v8_Value_IsNullOrUndefined(value)) {
-                if (dict_idx) |idx| {
-                    const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
-                    return @unionInit(T, fields[idx].name, converted);
-                }
-            }
-            // Step 15: "If types includes a string type, then return the
-            // result of converting V to that type" - ToString, so null is
-            // "null" and 5 is "5"; a Symbol throws.
-            if (string_idx) |idx| {
-                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-            // Step 17: "If types includes a numeric type, then return the
-            // result of converting V to that numeric type."
-            if (number_idx) |idx| {
-                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-            // Step 18: "If types includes boolean, then return the result of
-            // converting V to boolean."
-            if (boolean_idx) |idx| {
-                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
-            }
-        }
-
-        // Fallback: If no typed variant matched but we have an anyopaque variant,
-        // use it to pass through the V8 value. This handles unions like HeadersInit
-        // where codegen generates *anyopaque variants for unresolved types.
-        if (anyopaque_idx) |idx| {
-            // Pass through the V8 value as an opaque pointer
-            // The implementation is responsible for parsing this
-            return @unionInit(T, fields[idx].name, @ptrCast(value));
-        }
-
-        // No matching variant found - return error
-        return ConversionError.TypeError;
-    }
+    // WebIDL 3.2.25: a union, by its arms table (`unionFromValue`).
+    if (type_info == .@"union") return unionFromValue(T, allocator, isolate, context, value);
 
     // Handle integers: WebIDL § 3.2.4 ConvertToInt, for a type with neither
     // [EnforceRange] nor [Clamp].
@@ -3528,6 +3421,8 @@ fn convertsByActiveMember(comptime T: type) bool {
 /// - an optional: null is the Null toV8Null makes; otherwise its child's
 ///   answer - a ?(DOMString or object) member by its active member.
 /// - a union toV8Value converts by its active member (`unionValueIsOwned`).
+/// - `void`, a union's `undefined` member (`(Event or undefined)`): the
+///   Undefined toV8Undefined makes.
 ///
 /// Anything else - a platform object's wrapper, an `*anyopaque`, a member type
 /// not named - answers false: the handle is kept, the safe default
@@ -3537,6 +3432,9 @@ fn convertsByActiveMember(comptime T: type) bool {
 pub fn memberValueIsOwned(comptime T: type, value: T) bool {
     @setEvalBranchQuota(100_000);
     if (comptime T == JSValue or T == OptionalJSValue) return false;
+    // A union's `undefined` member (codegen's `void` field): toV8Value's
+    // void branch makes an Undefined for it (toV8Undefined: a Global).
+    if (comptime T == void) return true;
     if (comptime T == runtime.JSValue) return jsValueConversionIsFresh(value);
     if (comptime T == runtime.OptionalJSValue) return switch (value) {
         .not_passed => true,
@@ -3644,6 +3542,61 @@ pub fn unionValueIsOwned(comptime T: type, value: T) bool {
                 return memberValueIsOwned(Member, payload);
             },
         }
+    }
+}
+
+/// Whether the value toV8Value made of a union `T` an operation or a getter
+/// RETURNED is the binding's to release once it is set as the call's result:
+/// its active member, by the rule that member's type follows returned on its
+/// own (lane bind1 batch B, B2 - every union is typed in every position now):
+///
+/// - a runtime.JSValue member: what the impl returns is the binding's
+///   (engine.Owned.take), as a JSValue result is - a handle it hands over, a
+///   string, number or boolean made here - except an instance's wrapper, the
+///   wrapper cache's (binding_plumbing.convertReturnValue's JSValue branch);
+/// - a callback function member: the holder's own handle, BORROWED (an
+///   EventHandler getter's rule, binding_plumbing.isOptionalCallbackType);
+/// - a nested union: its own active member, by this rule;
+/// - anything else as `unionValueIsOwned` answers (a String made for a
+///   string member is released, a wrapper is the cache's).
+///
+/// Before every union was typed, a union's JSValue member was answered
+/// "kept" here, and the one impl returning one (ImageData.data) handed back
+/// its own hold; it now hands over a hold of its own, as a JSValue getter
+/// does.
+pub fn unionReturnIsOwned(comptime T: type, value: T) bool {
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.JSValue) return payload != .instance;
+            if (comptime Member == runtime.BorrowedCallbackFunction or Member == runtime.BorrowedCallbackInterface) return false;
+            if (comptime @typeInfo(Member) == .@"union" and convertsByActiveMember(Member)) return unionReturnIsOwned(Member, payload);
+            return memberValueIsOwned(Member, payload);
+        },
+    }
+}
+
+/// Free what a union `T` an impl RETURNED owns once its value has been made
+/// (`unionReturnIsOwned` released the handle): an owned string member - a
+/// DOMString's `.owned` arm (interned and empty strings are not freed). The
+/// strings a union returns are the impl's to hand over, as a DOMString
+/// result's are (binding_plumbing.finishOperation, finishGetter).
+pub fn freeReturnedUnion(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.DOMString) {
+                var text = payload;
+                text.deinit(allocator);
+            } else if (comptime Member == runtime.JSValue) {
+                if (payload == .string) {
+                    var text = payload.string;
+                    text.deinit(allocator);
+                }
+            } else if (comptime @typeInfo(Member) == .@"union" and convertsByActiveMember(Member)) {
+                freeReturnedUnion(Member, allocator, payload);
+            }
+        },
     }
 }
 

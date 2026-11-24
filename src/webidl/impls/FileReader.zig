@@ -150,11 +150,20 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
 
 /// The result getter steps are to return this's result. The reader keeps
 /// holding it; the binding gets a hold of its own.
-pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_result(instance: *runtime.Instance) anyerror!?typedefs.DOMStringOrArrayBuffer {
     const internal = getInternal(instance) orelse return null;
     if (!internal.has_result) return null;
     const result = engine.tracedValue(instance, result_slot) orelse return null;
-    return result.take();
+    // fr's result is a string or an ArrayBuffer (File API 6.2). A string is
+    // its copy - the binding frees it, as a DOMString result's - and an
+    // ArrayBuffer the hold handed over, released once set
+    // (conv.unionReturnIsOwned).
+    if (engine.typeOf(instance.ctx, result.value) == .string) {
+        defer result.release();
+        const text = try engine.convertToDOMString(instance.ctx, result.value, instance.ctx.allocator);
+        return .{ .domstring = runtime.DOMString.initOwned(text) };
+    }
+    return .{ .array_buffer = result.take() };
 }
 
 /// Where a reader keeps its result and its error (Blink: FileReader's

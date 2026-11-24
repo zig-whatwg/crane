@@ -1,30 +1,22 @@
-//! Named unions for union arguments the binding must convert in argument order.
+//! Named unions: every inline union becomes a union typedef the binding
+//! converts in its place (lane bind1 batch B, B2: `nameEveryUnion`).
 //!
-//! WebIDL converts an operation's arguments - every one of them, in order -
-//! before the operation's steps run (3.7.6 "create an operation function"
-//! step 2.8, and the overload resolution algorithm it calls). Codegen types an
-//! inline union argument `(A or B) x` as `runtime.JSValue`, which the binding
-//! passes through unconverted; the impl then converts it itself, AFTER the
-//! binding converted every later argument. When the union's conversion is
-//! observable - a dictionary arm's getters, an object's toString - and a later
-//! argument's conversion can throw, the order is visible: SubtleCrypto
-//! importKey's keyData `(BufferSource or JsonWebKey)` must run its `alg`
-//! getter before a Symbol algorithm's TypeError, and the impl never ran.
+//! WebIDL converts every value at its position - an operation's arguments,
+//! all of them, in order, before the operation's steps run (3.7.6 "create an
+//! operation function" step 2.8); a dictionary's members when the dictionary
+//! is (3.2.18 step 4); a setter's value before the setter's steps. Codegen
+//! typed an inline union `runtime.JSValue`, which the binding passed through
+//! unconverted, and each impl converted it itself - after every later
+//! argument, by rules of its own. Until lane bind1 only a union argument
+//! followed by another, whose members a shape-driven union conversion took
+//! "faithfully", was named. Now the binding converts every member type by
+//! WebIDL 3.2.25 from the union's arms table (union_arms.zig), so every
+//! union, in every position, is named: `(BufferSource or JsonWebKey)` is
+//! `typedefs.BufferSourceOrJsonWebKey`.
 //!
-//! So an inline union argument that has a LATER argument, and whose members
-//! the binding converts faithfully, becomes a named union typedef, converted
-//! by the binding in its place: `typedefs.BufferSourceOrJsonWebKey`. The last
-//! argument keeps its JSValue - converted first thing by the impl, nothing
-//! follows it - and so does a union with a member the binding's union
-//! conversion does not take faithfully (`convertsFaithfully`): a sequence
-//! (the binding's union path takes only an Array, not any iterable), a
-//! record, a callback, `any` or `object`, a nested union, or a dictionary
-//! with a member the binding leaves to the impl (a union, typed JSValue) or
-//! a sequence of `any` (whose element handles it keeps).
-//!
-//! The typedef is recorded in the IR under `source`, so every writer sees an
-//! ordinary typedef: the typedef file, its root.zig entry, the interface's
-//! parameter type and the impl stub's.
+//! A typedef is recorded in the IR under `source`, so every writer sees an
+//! ordinary typedef: the typedef file and its arms table, its root.zig
+//! entry, the position's type and the impl stub's.
 //!
 //! Trusted Types sinks (`nameTrustedTypeUnions`): a union with a Trusted Type
 //! member - `(TrustedHTML or DOMString)`, `(TrustedType or DOMString)`,
@@ -45,46 +37,356 @@ const ir_mod = @import("ir.zig");
 /// The source the named unions are recorded under in the IR.
 pub const source = "(argument unions)";
 
-/// Name every qualifying union argument of every interface operation and
-/// constructor (see the file comment), rewriting the argument's type to the
-/// typedef. Deterministic: interfaces are visited by name, members and
-/// arguments in order, and a union of the same members in the same order is
-/// one typedef.
-pub fn nameArgumentUnions(ir: *ir_mod.IR) !void {
+/// Every inline union in every position becomes a named union typedef
+/// (lane bind1 batch B, B2): an operation's arguments - the last and a
+/// variadic one's element included - and return type, a constructor's
+/// arguments, an attribute, a dictionary member, a namespace's members, a
+/// callback's arguments and return type, a typedef's members and a sequence's
+/// or record's element types. Codegen then types each one as the typedef,
+/// which carries its arms table (union_arms.zig), and the binding converts it
+/// by WebIDL 3.2.25 in its place - no impl receives a union as an
+/// unconverted runtime.JSValue. A union inside a union is named first, and is
+/// that union's nested member (2.13.32: its flattened member types are the
+/// outer union's). A union that includes a nullable type makes its position
+/// nullable (3.2.25 step 2). Deterministic, as `nameArgumentUnions` is.
+///
+/// Two unions stay as they are: one with a Trusted Type member, named by
+/// `nameTrustedTypeUnions` (which runs first) wherever its setter or sink
+/// needs the arm, its attribute getter typed by the string member; and
+/// (Node or DOMString), mixins.ParentNode.NodeOrString (`writtenAsAnotherType`).
+pub fn nameEveryUnion(ir: *ir_mod.IR) !void {
+    const allocator = ir.allocator;
+    {
+        const names = try sortedNames(allocator, &ir.interfaces);
+        defer allocator.free(names);
+        for (names) |name| {
+            const iface = ir.interfaces.getPtr(name) orelse continue;
+            for (iface.members.items) |*member| {
+                if (member.type == .attribute) if (member.attribute) |attribute| {
+                    if (keepsObjectIdentity(name, attribute.name)) continue;
+                };
+                try nameMemberUnions(ir, name, iface.mixins.items, member);
+            }
+        }
+    }
+    {
+        const names = try sortedNames(allocator, &ir.namespaces);
+        defer allocator.free(names);
+        for (names) |name| {
+            const namespace = ir.namespaces.getPtr(name) orelse continue;
+            for (namespace.members) |*member| try nameMemberUnions(ir, name, &.{}, member);
+        }
+    }
+    {
+        const names = try sortedNames(allocator, &ir.dictionaries);
+        defer allocator.free(names);
+        for (names) |name| {
+            const dictionary = ir.dictionaries.getPtr(name) orelse continue;
+            for (dictionary.members) |*member| {
+                if (convertedByImpl(name, &.{}, member.name, "")) continue;
+                try nameType(ir, &member.idlType);
+            }
+        }
+    }
+    {
+        const names = try sortedNames(allocator, &ir.callbacks);
+        defer allocator.free(names);
+        for (names) |name| {
+            const callback = ir.callbacks.getPtr(name) orelse continue;
+            for (callback.arguments) |*argument| try nameType(ir, &argument.idlType);
+            try nameType(ir, &callback.idlType);
+        }
+    }
+    {
+        // Every typedef the IDL defines (the typedefs named above are made of
+        // types already named): a union typedef's members, and a sequence's
+        // or record's element types. Adding a typedef can move the map's
+        // entries, so each is looked up again.
+        const names = try sortedNames(allocator, &ir.typedefs);
+        defer allocator.free(names);
+        for (names) |name| {
+            const typedef = ir.typedefs.getPtr(name) orelse continue;
+            if (typedef.idlType.unionTypes) |members| {
+                for (members) |*member| try nameType(ir, member);
+            } else {
+                var idl_type = typedef.idlType;
+                try nameType(ir, &idl_type);
+                (ir.typedefs.getPtr(name) orelse continue).idlType = idl_type;
+            }
+        }
+    }
+}
+
+/// The keys of `map`, sorted: an OWNED slice of borrowed keys.
+fn sortedNames(allocator: std.mem.Allocator, map: anytype) ![][]const u8 {
     var names = std.ArrayList([]const u8).empty;
-    defer names.deinit(ir.allocator);
-    var iter = ir.interfaces.keyIterator();
-    while (iter.next()) |key| try names.append(ir.allocator, key.*);
+    errdefer names.deinit(allocator);
+    var iter = map.keyIterator();
+    while (iter.next()) |key| try names.append(allocator, key.*);
     std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
+    return names.toOwnedSlice(allocator);
+}
 
-    for (names.items) |name| {
-        const iface = ir.interfaces.getPtr(name) orelse continue;
-        // A callback interface's operation is called by the platform, with
-        // values the platform made: nothing converts its arguments from script.
-        if (iface.callback) continue;
-        for (iface.members.items) |member| {
-            const arguments: []types.Argument = switch (member.type) {
-                .operation => (member.operation orelse continue).arguments,
-                .constructor => (member.constructor orelse continue).arguments,
-                else => continue,
-            };
-            if (arguments.len < 2) continue;
-            for (arguments[0 .. arguments.len - 1]) |*argument| {
-                if (argument.variadic) continue;
-                const members = argument.idlType.unionTypes orelse continue;
-                if (writtenAsAnotherType(members)) continue;
-                if (!convertsFaithfully(ir, members)) continue;
-                const typedef_name = try unionTypedef(ir, members);
-                // The same type, now named: nullability and the rest stay.
-                argument.idlType.type = typedef_name;
-                argument.idlType.unionTypes = null;
-            }
+/// Union attributes whose getter returns the very JavaScript object a
+/// platform object keeps - not a platform object's wrapper made on demand -
+/// and so stay `runtime.JSValue` (`any`): IndexedDB's `source` attributes
+/// return the source object itself "including after its realm retires and
+/// its native wrapper association has been severed" (IDBCursor.zig,
+/// IDBRequest.zig; lesson architecture-a-traced-wrapper-does-not-retain-its-
+/// native-instance.md): the native Instance an interface member would carry
+/// may no longer exist, while the traced wrapper does.
+pub const object_identity_attributes = [_]struct { []const u8, []const u8 }{
+    .{ "IDBCursor", "source" },
+    .{ "IDBRequest", "source" },
+};
+
+fn keepsObjectIdentity(interface_name: []const u8, attribute_name: []const u8) bool {
+    for (object_identity_attributes) |entry| {
+        if (std.mem.eql(u8, entry[0], interface_name) and std.mem.eql(u8, entry[1], attribute_name)) return true;
+    }
+    return false;
+}
+
+/// Union positions an impl still converts by hand, kept `runtime.JSValue`
+/// until a lane bind1 B5 commit moves that area's impl onto the typed union
+/// and deletes its entries: `.{ owner, member, position }` - an interface,
+/// interface mixin or dictionary; a member (an operation, attribute or
+/// dictionary member; "constructor"; "" for an anonymous special
+/// operation); an argument's name, "return", or "" for an attribute's or a
+/// dictionary member's type. A mixin's entry covers its includers. THIS
+/// TABLE ONLY SHRINKS, and is empty before batch B is done
+/// (tests/codegen/argument_unions_test.zig pins it).
+pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const u8 }{
+    // animations (dom/animations: effectOptions, keyframes)
+    .{ "Animatable", "animate", "options" },
+    .{ "KeyframeEffect", "constructor", "options" },
+    .{ "BasePropertyIndexedKeyframe", "composite", "" },
+    .{ "BasePropertyIndexedKeyframe", "easing", "" },
+    .{ "BasePropertyIndexedKeyframe", "offset", "" },
+    .{ "EffectTiming", "duration", "" },
+    .{ "OptionalEffectTiming", "duration", "" },
+    // canvas (CanvasFillStrokeStyles' styleValue / setStyle)
+    .{ "CanvasFillStrokeStyles", "fillStyle", "" },
+    .{ "CanvasFillStrokeStyles", "strokeStyle", "" },
+    // css (CSSStyleSheet's constructor, typed OM's mapSet)
+    .{ "CSSStyleSheetInit", "media", "" },
+    .{ "StylePropertyMap", "append", "values" },
+    .{ "StylePropertyMap", "set", "values" },
+    // dom (element creation options, importNode, view transitions)
+    .{ "Document", "createElement", "options" },
+    .{ "Document", "createElementNS", "options" },
+    .{ "Document", "importNode", "options" },
+    .{ "Document", "startViewTransition", "callbackOptions" },
+    // events and observers (EventTarget's options; lane rc8 is in these files)
+    .{ "EventTarget", "addEventListener", "options" },
+    .{ "EventTarget", "removeEventListener", "options" },
+    .{ "IntersectionObserver", "root", "" },
+    .{ "IntersectionObserverInit", "root", "" },
+    .{ "IntersectionObserverInit", "threshold", "" },
+    // forms (options.add's `before`, setFormValue, the form's named getter)
+    .{ "HTMLOptionsCollection", "add", "before" },
+    .{ "HTMLSelectElement", "add", "before" },
+    .{ "ElementInternals", "setFormValue", "state" },
+    .{ "HTMLFormElement", "", "return" },
+    // HTMLAllCollection (its legacy caller and named getter bind `item` and
+    // `namedItem` through a special path that takes the JSValue)
+    .{ "HTMLAllCollection", "item", "return" },
+    .{ "HTMLAllCollection", "namedItem", "return" },
+    // fs
+    .{ "WriteParams", "data", "" },
+    // idb
+    .{ "IDBDatabase", "transaction", "storeNames" },
+    .{ "IDBObjectStore", "createIndex", "keyPath" },
+    .{ "IDBObjectStoreParameters", "keyPath", "" },
+    // media
+    .{ "MediaStreamConstraints", "audio", "" },
+    .{ "MediaStreamConstraints", "video", "" },
+    // performance
+    .{ "Performance", "measure", "startOrMeasureOptions" },
+    .{ "PerformanceMeasureOptions", "start", "" },
+    .{ "PerformanceMeasureOptions", "end", "" },
+    // popover
+    .{ "HTMLElement", "togglePopover", "options" },
+    // sanitizer (html/sanitizer.zig, parser_options.zig)
+    .{ "Sanitizer", "constructor", "configuration" },
+    .{ "SetHTMLOptions", "sanitizer", "" },
+    .{ "SetHTMLUnsafeOptions", "sanitizer", "" },
+    .{ "ParseHTMLUnsafeOptions", "sanitizer", "" },
+    // service workers and workers (lane hard1 is in ExtendableMessageEvent)
+    .{ "InstallEvent", "addRoutes", "rules" },
+    .{ "ExtendableMessageEventInit", "source", "" },
+    .{ "SharedWorker", "constructor", "options" },
+    // url
+    .{ "URLSearchParams", "constructor", "init" },
+    // websocket and xhr
+    .{ "WebSocket", "constructor", "protocols" },
+    .{ "WebSocket", "send", "data" },
+    .{ "XMLHttpRequest", "send", "body" },
+};
+
+/// Whether position (`member`, `position`) of `owner` - or of a mixin
+/// `owner_mixins` names - is one `unions_converted_by_impl` keeps.
+fn convertedByImpl(owner: []const u8, owner_mixins: []const []const u8, member: []const u8, position: []const u8) bool {
+    for (unions_converted_by_impl) |entry| {
+        if (!std.mem.eql(u8, entry[1], member) or !std.mem.eql(u8, entry[2], position)) continue;
+        if (std.mem.eql(u8, entry[0], owner)) return true;
+        for (owner_mixins) |mixin| {
+            if (std.mem.eql(u8, entry[0], mixin)) return true;
         }
     }
+    return false;
+}
+
+/// Name the unions of one member of interface or namespace `owner` (which
+/// includes `mixins`), but the positions `unions_converted_by_impl` keeps.
+fn nameMemberUnions(ir: *ir_mod.IR, owner: []const u8, mixins: []const []const u8, member: *types.Member) !void {
+    switch (member.type) {
+        .operation => if (member.operation) |*operation| {
+            const name = operation.name orelse "";
+            for (operation.arguments) |*argument| {
+                if (convertedByImpl(owner, mixins, name, argument.name)) continue;
+                try nameType(ir, &argument.idlType);
+            }
+            if (!convertedByImpl(owner, mixins, name, "return")) try nameType(ir, &operation.idlType);
+        },
+        .constructor => if (member.constructor) |*constructor| {
+            for (constructor.arguments) |*argument| {
+                if (convertedByImpl(owner, mixins, "constructor", argument.name)) continue;
+                try nameType(ir, &argument.idlType);
+            }
+        },
+        .attribute => if (member.attribute) |*attribute| {
+            if (!convertedByImpl(owner, mixins, attribute.name, "")) try nameType(ir, &attribute.idlType);
+        },
+        .iterable => if (member.iterable) |*iterable| {
+            try nameType(ir, &iterable.keyType);
+            if (iterable.valueType) |*value| try nameType(ir, value);
+        },
+        .async_iterable => if (member.async_iterable) |*iterable| {
+            try nameType(ir, &iterable.keyType);
+            if (iterable.valueType) |*value| try nameType(ir, value);
+        },
+        .setlike => if (member.setlike) |*setlike| try nameType(ir, &setlike.value_type),
+        .maplike => if (member.maplike) |*maplike| {
+            try nameType(ir, &maplike.key_type);
+            try nameType(ir, &maplike.value_type);
+        },
+        .constant => {},
+    }
+}
+
+/// Name every inline union in `t`, `t` itself last (see `nameEveryUnion`).
+fn nameType(ir: *ir_mod.IR, t: *types.IDLType) anyerror!void {
+    if (t.sequence) |element| try nameType(ir, element);
+    if (t.record) |record| {
+        try nameType(ir, record.key);
+        try nameType(ir, record.value);
+    }
+    // A sequence, frozen array or record the parser kept as text:
+    // `sequence<(JsonLdRecord or USVString)>` - its element type named, the
+    // text then naming the typedef.
+    if (t.generic) |text| {
+        if (std.mem.indexOfScalar(u8, text, '(') != null) t.generic = try nameGenericText(ir, text);
+    }
+    const members = t.unionTypes orelse return;
+    for (members) |*member| try nameType(ir, member);
+    if (writtenAsAnotherType(members)) return;
+    // 3.2.25 step 2, "the union type includes a nullable type": the position
+    // takes null.
+    for (members) |member| {
+        if (member.nullable) t.nullable = true;
+    }
+    t.type = try unionTypedef(ir, members);
+    t.unionTypes = null;
+}
+
+/// A generic type's argument text with each parenthesized union in it named:
+/// "(JsonLdRecord or USVString)" is "JsonLdRecordOrUSVString", "USVString,
+/// (USVString or undefined)" (a record's) "USVString, USVStringOrUndefined".
+fn nameGenericText(ir: *ir_mod.IR, text: []const u8) anyerror![]const u8 {
+    const arena = ir.merged.allocator();
+    var out = std.ArrayList(u8).empty;
+    var i: usize = 0;
+    while (i < text.len) {
+        if (text[i] != '(') {
+            try out.append(arena, text[i]);
+            i += 1;
+            continue;
+        }
+        // The matching parenthesis.
+        var depth: usize = 0;
+        var end = i;
+        while (end < text.len) : (end += 1) {
+            if (text[end] == '(') depth += 1;
+            if (text[end] == ')') {
+                depth -= 1;
+                if (depth == 0) break;
+            }
+        }
+        if (end >= text.len) return error.UnbalancedUnionText;
+        var union_type = try parseTypeText(arena, text[i .. end + 1]);
+        try nameType(ir, &union_type);
+        try out.appendSlice(arena, union_type.type);
+        if (union_type.nullable) try out.append(arena, '?');
+        i = end + 1;
+    }
+    return out.toOwnedSlice(arena);
+}
+
+/// An IDL type written as text - a name ("unsigned long", "DOMPointInit"),
+/// `T?`, `sequence<T>`, `record<K, V>`, `FrozenArray<T>` or a union `(A or
+/// B ...)` - as the parser's IDLType.
+fn parseTypeText(arena: std.mem.Allocator, text: []const u8) anyerror!types.IDLType {
+    var trimmed = std.mem.trim(u8, text, " \t\n");
+    // Extended attributes on the type (`[EnforceRange] unsigned long`): the
+    // generic text keeps them and the writers ignore them, as before.
+    while (trimmed.len > 0 and trimmed[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, trimmed, ']') orelse break;
+        trimmed = std.mem.trim(u8, trimmed[close + 1 ..], " \t\n");
+    }
+    var nullable = false;
+    if (std.mem.endsWith(u8, trimmed, "?")) {
+        nullable = true;
+        trimmed = std.mem.trim(u8, trimmed[0 .. trimmed.len - 1], " \t\n");
+    }
+    if (trimmed.len >= 2 and trimmed[0] == '(' and trimmed[trimmed.len - 1] == ')') {
+        const inner = trimmed[1 .. trimmed.len - 1];
+        var members = std.ArrayList(types.IDLType).empty;
+        var depth: usize = 0;
+        var start: usize = 0;
+        var i: usize = 0;
+        while (i < inner.len) : (i += 1) {
+            switch (inner[i]) {
+                '(', '<' => depth += 1,
+                ')', '>' => depth -= 1,
+                ' ' => if (depth == 0 and std.mem.startsWith(u8, inner[i..], " or ")) {
+                    try members.append(arena, try parseTypeText(arena, inner[start..i]));
+                    i += " or ".len - 1;
+                    start = i + 1;
+                },
+                else => {},
+            }
+        }
+        try members.append(arena, try parseTypeText(arena, inner[start..]));
+        return .{ .type = "", .nullable = nullable, .unionTypes = try members.toOwnedSlice(arena) };
+    }
+    if (std.mem.indexOfScalar(u8, trimmed, '<')) |open| {
+        if (std.mem.endsWith(u8, trimmed, ">")) {
+            const base = std.mem.trim(u8, trimmed[0..open], " \t");
+            const argument = std.mem.trim(u8, trimmed[open + 1 .. trimmed.len - 1], " \t");
+            if (std.mem.eql(u8, base, "sequence")) {
+                const element = try arena.create(types.IDLType);
+                element.* = try parseTypeText(arena, argument);
+                return .{ .type = "sequence", .nullable = nullable, .sequence = element };
+            }
+            return .{ .type = try arena.dupe(u8, base), .nullable = nullable, .generic = try arena.dupe(u8, argument) };
+        }
+    }
+    return .{ .type = try arena.dupe(u8, trimmed), .nullable = nullable };
 }
 
 /// Name every union with a Trusted Type member (see the file comment): an
@@ -216,114 +518,56 @@ pub fn unionName(allocator: std.mem.Allocator, members: []const types.IDLType) !
     errdefer out.deinit(allocator);
     for (members, 0..) |member, i| {
         if (i > 0) try out.appendSlice(allocator, "Or");
-        var words = std.mem.tokenizeScalar(u8, member.type, ' ');
-        while (words.next()) |word| {
-            try out.append(allocator, std.ascii.toUpper(word[0]));
-            try out.appendSlice(allocator, word[1..]);
-        }
+        try appendTypeName(allocator, &out, member);
     }
     return out.toOwnedSlice(allocator);
 }
 
-/// Does the binding's union conversion (conversions.zig, fromV8Value's union
-/// path) take every member of `members` the way WebIDL 3.2.25 does, leaving
-/// no handle it would not release: a string, numeric or boolean type, an
-/// interface, a buffer source (BufferSource, ArrayBufferView), a typedef of
-/// one of those, or a dictionary whose members are all such
-/// (`dictionaryConvertsFaithfully`)?
-pub fn convertsFaithfully(ir: *const ir_mod.IR, members: []const types.IDLType) bool {
-    for (members) |member| {
-        if (member.nullable or member.unionTypes != null) return false;
-        if (!simpleConverts(ir, member, 0)) return false;
+/// One member's part of a union's name: its type's words in upper camel
+/// case, a sequence's or record's with its element types ("SequenceOfLong",
+/// "RecordOfDOMStringToDOMString"), so that (DOMString or sequence<DOMString>)
+/// and (DOMString or sequence<long>) are two unions.
+fn appendTypeName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), t: types.IDLType) !void {
+    if (t.sequence) |element| {
+        try out.appendSlice(allocator, "SequenceOf");
+        return appendTypeName(allocator, out, element.*);
     }
-    return true;
-}
-
-/// A non-union, non-container type the binding converts faithfully - in a
-/// union arm or a dictionary member.
-fn simpleConverts(ir: *const ir_mod.IR, t: types.IDLType, depth: u32) bool {
-    if (depth > 8) return false;
-    if (t.unionTypes != null or t.sequence != null or t.record != null or t.generic != null) return false;
-    const name = t.type;
-    if (std.mem.indexOfScalar(u8, name, '<') != null) return false;
-    if (isStringType(name) or isNumericType(name) or std.mem.eql(u8, name, "boolean")) return true;
-    // The buffer source typedefs: a reference to the object, released with
-    // the converted value (interface.freeConvertedArg).
-    if (std.mem.eql(u8, name, "BufferSource") or std.mem.eql(u8, name, "ArrayBufferView")) return true;
-    const kind = ir.type_registry.lookup(name) orelse return false;
-    return switch (kind) {
-        .interface => true,
-        .typedef => blk: {
-            const typedef = ir.typedefs.get(name) orelse break :blk false;
-            if (typedef.idlType.nullable) break :blk false;
-            break :blk simpleConverts(ir, typedef.idlType, depth + 1);
-        },
-        .dictionary => dictionaryConvertsFaithfully(ir, name, depth + 1),
-        else => false,
-    };
-}
-
-/// A dictionary the binding converts member by member (fromV8Value's struct
-/// path), each member - its own and its inherited dictionaries' - a type
-/// `simpleConverts` takes, an enumeration, a sequence of such, or `any` /
-/// `object` (a handle the binding releases with the dictionary). A union
-/// member is typed `runtime.JSValue` and converted by the impl, later than
-/// WebIDL converts it; a sequence of `any` keeps its elements' handles:
-/// either keeps the dictionary with the impl.
-pub fn dictionaryConvertsFaithfully(ir: *const ir_mod.IR, name: []const u8, depth: u32) bool {
-    if (depth > 8) return false;
-    const dictionary = ir.dictionaries.get(name) orelse return false;
-    if (dictionary.inheritance) |base| {
-        if (!dictionaryConvertsFaithfully(ir, base, depth + 1)) return false;
+    if (t.record) |record| {
+        try out.appendSlice(allocator, "RecordOf");
+        try appendTypeName(allocator, out, record.key.*);
+        try out.appendSlice(allocator, "To");
+        return appendTypeName(allocator, out, record.value.*);
     }
-    for (dictionary.members) |member| {
-        if (!memberConverts(ir, member.idlType, depth)) return false;
+    try appendWords(allocator, out, t.type);
+    if (t.generic) |text| {
+        try out.appendSlice(allocator, "Of");
+        // Extended attributes (`[EnforceRange]`) are no part of the name.
+        var plain = std.ArrayList(u8).empty;
+        defer plain.deinit(allocator);
+        var in_brackets = false;
+        for (text) |c| {
+            if (c == '[') in_brackets = true;
+            if (!in_brackets) try plain.append(allocator, c);
+            if (c == ']') in_brackets = false;
+        }
+        // "K, V" (a record's), "T": each name's words, joined.
+        var parts = std.mem.tokenizeAny(u8, plain.items, ",<>() ?");
+        var first = true;
+        while (parts.next()) |part| {
+            if (!first and std.mem.eql(u8, t.type, "record")) try out.appendSlice(allocator, "To");
+            first = false;
+            try appendWords(allocator, out, part);
+        }
     }
-    return true;
 }
 
-fn memberConverts(ir: *const ir_mod.IR, t: types.IDLType, depth: u32) bool {
-    // An `any` or `object` member needs no conversion but its handle, which
-    // the binding releases with the dictionary (interface.freeConvertedArg).
-    // Not as a sequence's element: those it keeps (conservatively).
-    if (t.unionTypes == null and t.sequence == null and
-        (std.mem.eql(u8, t.type, "any") or std.mem.eql(u8, t.type, "object"))) return true;
-    if (sequenceElement(t)) |element| return elementConverts(ir, element, depth + 1);
-    return elementConverts(ir, t, depth);
-}
-
-fn elementConverts(ir: *const ir_mod.IR, t: types.IDLType, depth: u32) bool {
-    if (sequenceElement(t)) |element| return elementConverts(ir, element, depth + 1);
-    if (ir.type_registry.lookup(t.type)) |kind| {
-        if (kind == .enum_type) return true;
+/// `text`'s words in upper camel case; an extended attribute (`[EnforceRange]`)
+/// is no part of a type's name.
+fn appendWords(allocator: std.mem.Allocator, out: *std.ArrayList(u8), text: []const u8) !void {
+    var words = std.mem.tokenizeScalar(u8, text, ' ');
+    while (words.next()) |word| {
+        if (std.mem.indexOfAny(u8, word, "[]=") != null) continue;
+        try out.append(allocator, std.ascii.toUpper(word[0]));
+        try out.appendSlice(allocator, word[1..]);
     }
-    var plain = t;
-    plain.nullable = false;
-    return simpleConverts(ir, plain, depth);
-}
-
-/// The element type of a sequence, in whichever form the parser stored it.
-fn sequenceElement(t: types.IDLType) ?types.IDLType {
-    if (t.sequence) |element| return element.*;
-    if (std.mem.eql(u8, t.type, "sequence")) {
-        if (t.generic) |inner| return .{ .type = std.mem.trim(u8, inner, " \t") };
-    }
-    if (std.mem.startsWith(u8, t.type, "sequence<") and std.mem.endsWith(u8, t.type, ">")) {
-        return .{ .type = std.mem.trim(u8, t.type["sequence<".len .. t.type.len - 1], " \t") };
-    }
-    return null;
-}
-
-fn isStringType(name: []const u8) bool {
-    return std.mem.eql(u8, name, "DOMString") or std.mem.eql(u8, name, "USVString") or std.mem.eql(u8, name, "ByteString");
-}
-
-fn isNumericType(name: []const u8) bool {
-    const numeric = [_][]const u8{
-        "byte",  "octet",              "short",     "unsigned short",
-        "long",  "unsigned long",      "long long", "unsigned long long",
-        "float", "unrestricted float", "double",    "unrestricted double",
-    };
-    for (numeric) |n| if (std.mem.eql(u8, n, name)) return true;
-    return false;
 }

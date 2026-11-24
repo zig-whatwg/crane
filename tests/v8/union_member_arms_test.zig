@@ -73,12 +73,17 @@ const Config = struct {
     comments: ?bool = null,
 };
 
-/// (AbortSignal or Config or Presets): the interface arm named as codegen
-/// names one (`unionArmInterface`).
+/// (AbortSignal or Config or Presets), with the arms table codegen writes
+/// (webidl.union_arms).
 const Choice = union(enum) {
     abort_signal: *runtime.Instance,
     config: Config,
     presets: Presets,
+    pub const arms = [_]@import("webidl").UnionArm{
+        .{ .field = "abort_signal", .kind = .{ .interface = "AbortSignal" } },
+        .{ .field = "config", .kind = .dictionary },
+        .{ .field = "presets", .kind = .enumeration },
+    };
 };
 
 fn convert(code: []const u8) !Choice {
@@ -121,6 +126,10 @@ test "a platform object implementing the interface is the interface arm" {
 const StringFirst = union(enum) {
     presets: Presets,
     domstring: runtime.DOMString,
+    pub const arms = [_]@import("webidl").UnionArm{
+        .{ .field = "presets", .kind = .enumeration },
+        .{ .field = "domstring", .kind = .string },
+    };
 };
 
 test "with both a string and an enumeration arm, a string goes to the string arm" {

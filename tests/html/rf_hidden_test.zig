@@ -10,7 +10,7 @@ test "hidden without a content attribute is false rather than null" {
     try page.open();
     defer page.close();
     const value = (try interfaces.HTMLElement.get_hidden(page.element)) orelse return error.UnexpectedNull;
-    try std.testing.expectEqual(false, value.asBoolean().?);
+    try std.testing.expect(value == .boolean and value.boolean == false);
 }
 
 test "hidden recognizes until-found ASCII case insensitively" {
@@ -19,32 +19,33 @@ test "hidden recognizes until-found ASCII case insensitively" {
     defer page.close();
     try interfaces.Element.call_setAttribute(page.element, str("hidden"), .{ .domstring = str("UnTiL-FoUnD") });
     const value = (try interfaces.HTMLElement.get_hidden(page.element)).?;
-    try std.testing.expect(value == .string);
-    try std.testing.expectEqualStrings("until-found", value.string.data);
+    try std.testing.expect(value == .domstring);
+    try std.testing.expectEqualStrings("until-found", value.domstring.asSlice());
 }
 
 test "hidden setter handles every primitive union arm" {
     var page: fixture.Page = undefined;
     try page.open();
     defer page.close();
-    const cases = [_]struct { value: ?runtime.JSValue, attribute: ?[]const u8 }{
+    // The setter takes the union the binding converted (WebIDL 3.2.25: null
+    // and undefined are the nullable union's null, step 2).
+    const Hidden = @typeInfo(@typeInfo(@TypeOf(interfaces.HTMLElement.set_hidden)).@"fn".param_types[1].?).optional.child;
+    const cases = [_]struct { value: ?Hidden, attribute: ?[]const u8 }{
         .{ .value = null, .attribute = null },
-        .{ .value = runtime.JSValue.jsNull, .attribute = null },
-        .{ .value = runtime.JSValue.jsUndefined, .attribute = null },
-        .{ .value = runtime.JSValue.fromBoolean(false), .attribute = null },
-        .{ .value = runtime.JSValue.fromBoolean(true), .attribute = "" },
-        .{ .value = runtime.JSValue.fromNumber(0), .attribute = null },
-        .{ .value = runtime.JSValue.fromNumber(-0.0), .attribute = null },
-        .{ .value = runtime.JSValue.fromNumber(std.math.nan(f64)), .attribute = null },
-        .{ .value = runtime.JSValue.fromNumber(1), .attribute = "" },
-        .{ .value = runtime.JSValue.fromNumber(std.math.inf(f64)), .attribute = "" },
-        .{ .value = runtime.JSValue.fromStringRef(""), .attribute = null },
-        .{ .value = runtime.JSValue.fromStringRef("UnTiL-FoUnD"), .attribute = "until-found" },
-        .{ .value = runtime.JSValue.fromStringRef("false"), .attribute = "" },
-        .{ .value = runtime.JSValue.fromStringRef("0"), .attribute = "" },
+        .{ .value = .{ .boolean = false }, .attribute = null },
+        .{ .value = .{ .boolean = true }, .attribute = "" },
+        .{ .value = .{ .double = 0 }, .attribute = null },
+        .{ .value = .{ .double = -0.0 }, .attribute = null },
+        .{ .value = .{ .double = std.math.nan(f64) }, .attribute = null },
+        .{ .value = .{ .double = 1 }, .attribute = "" },
+        .{ .value = .{ .double = std.math.inf(f64) }, .attribute = "" },
+        .{ .value = .{ .domstring = str("") }, .attribute = null },
+        .{ .value = .{ .domstring = str("UnTiL-FoUnD") }, .attribute = "until-found" },
+        .{ .value = .{ .domstring = str("false") }, .attribute = "" },
+        .{ .value = .{ .domstring = str("0") }, .attribute = "" },
     };
     for (cases) |case| {
-        try interfaces.HTMLElement.set_hidden(page.element, runtime.JSValue.fromBoolean(true));
+        try interfaces.HTMLElement.set_hidden(page.element, .{ .boolean = true });
         try interfaces.HTMLElement.set_hidden(page.element, case.value);
         var attribute = try interfaces.Element.call_getAttribute(page.element, str("hidden"));
         defer if (attribute) |*value| value.deinit(std.testing.allocator);

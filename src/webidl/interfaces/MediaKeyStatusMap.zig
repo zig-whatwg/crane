@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MediaKeyStatus = @import("enums").MediaKeyStatus;
 const BufferSource = @import("typedefs").BufferSource;
+const MediaKeyStatusOrUndefined = @import("typedefs").MediaKeyStatusOrUndefined;
 
 pub const MediaKeyStatusMap = struct {
     pub const Meta = struct {
@@ -176,7 +177,7 @@ pub const MediaKeyStatusMap = struct {
         return try MediaKeyStatusMapImpl.call_has(instance, keyId);
     }
 
-    pub fn call_get(instance: *runtime.Instance, keyId: BufferSource) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, keyId: BufferSource) anyerror!MediaKeyStatusOrUndefined {
         return try MediaKeyStatusMapImpl.call_get(instance, keyId);
     }
 

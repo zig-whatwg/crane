@@ -14,6 +14,7 @@ const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSKeywordish = @import("typedefs").CSSKeywordish;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSColorValueOrCSSStyleValue = @import("typedefs").CSSColorValueOrCSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;

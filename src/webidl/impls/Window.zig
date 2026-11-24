@@ -1862,10 +1862,10 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 /// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-event
 /// "return this's current event" - the event whose listener is running in this
 /// Window's realm (set by EventTarget's inner invoke), else undefined.
-pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
-    const event = internal.current_event orelse return runtime.JSValue.jsUndefined;
-    return .{ .instance = event };
+pub fn get_event(instance: *runtime.Instance) anyerror!typedefs.EventOrUndefined {
+    const internal = getInternal(instance) orelse return .undefined;
+    const event = internal.current_event orelse return .undefined;
+    return .{ .event = event };
 }
 
 /// dom.window_globals.swapCurrentEvent: set this Window's current event to
@@ -2940,21 +2940,12 @@ fn processAcceptTypes(realm: runtime.Context, options: dictionaries.FilePickerOp
             //  4. If suffixes is a string: validate a suffix given suffixes.
             //  5. Otherwise, for each suffix of suffixes: validate a suffix
             //     given suffix. (suffixes is `(USVString or
-            //     sequence<USVString>)`: an Object with @@iterator is the
-            //     sequence, anything else its string, WebIDL 3.2.25.)
-            if (engine.typeOf(realm, entry.value) == .object) {
-                if (try engine.convertToSequenceOfDOMStrings(realm, entry.value, allocator)) |suffixes| {
-                    defer {
-                        for (suffixes) |suffix| allocator.free(suffix);
-                        allocator.free(suffixes);
-                    }
-                    for (suffixes) |suffix| try validateSuffix(suffix);
-                    continue;
-                }
+            //     sequence<USVString>)`, converted by the binding, WebIDL
+            //     3.2.25: an Object with @@iterator is the sequence.)
+            switch (entry.value) {
+                .usvstring => |suffix| try validateSuffix(suffix),
+                .usvstring_sequence => |suffixes| for (suffixes) |suffix| try validateSuffix(suffix),
             }
-            const suffix = try engine.convertToUSVString(realm, entry.value, allocator);
-            defer allocator.free(suffix);
-            try validateSuffix(suffix);
         }
         //  2-5. The filter, the description, and append (description,
         //       filter) to accepts options.
