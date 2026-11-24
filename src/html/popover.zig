@@ -483,17 +483,11 @@ pub fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     if (state.pointerdown_target.get() == element) state.setPointerdownTarget(null);
 }
 
-pub fn toggleMethod(element: *Instance, value: ?runtime.JSValue) !bool {
-    var force: ?bool = null;
-    var source: ?*Instance = null;
-    if (value) |options| {
-        const kind = engine.typeOf(element.ctx, options);
-        if (kind == .boolean) force = engine.toBoolean(element.ctx, options) else if (kind == .object and !options.isNullOrUndefined()) {
-            force = try engine.getPropertyBoolean(element.ctx, options, "force");
-            source = try engine.getPropertyPlatformObject(element.ctx, options, "source");
-            if (source) |node| if (node.stateAs(interfaces.HTMLElement.State) == null) return error.TypeError;
-        } else if (kind != .undefined and kind != .null) force = engine.toBoolean(element.ctx, options);
-    }
+/// togglePopover(options)'s steps, given what its `(TogglePopoverOptions or
+/// boolean)` argument holds once the binding has converted it: `force` (the
+/// boolean itself, or the dictionary's member) and the dictionary's `source`
+/// (an HTMLElement: the dictionary conversion's TypeError otherwise).
+pub fn toggleMethod(element: *Instance, force: ?bool, source: ?*Instance) !bool {
     if (showing(element) and force != true) try hideMethod(element) else if (force != false) try showPopover(element, true, source) else _ = try valid(element, showing(element), null, false);
     return showing(element);
 }

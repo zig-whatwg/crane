@@ -22,6 +22,23 @@
 //!   pub fn kitParts(target: std.Target) []const KitPart
 //!   pub const facts: Facts = .{ ... };
 //!
+//! and, asked of the adapter that answers for the target's operating system
+//! (`ownsTarget`) whichever platform a graph binds - its "OS side":
+//!
+//!   pub const Options = struct { ... };     // its own -D options
+//!   pub fn declareOptions(b: *std.Build) Options
+//!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options, probe: *std.Build.Step.Compile) void
+//!   pub fn forwarded(b: *std.Build, options: Options) []const []const u8
+//!   pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC
+//!   pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void
+//!   pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void
+//!   pub fn needsStandIns(target: std.Build.ResolvedTarget) bool
+//!   pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void
+//!
+//! and, asked of the adapter a graph binds:
+//!
+//!   pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: BindRequest) void
+//!
 //! A part is `src/platform/kit/<name>/root.zig`, a module the adapter
 //! imports as `kit_<name>`, made with the platform facade and the platform
 //! options as every kit part is, and linked against `system_libraries`.
@@ -99,6 +116,18 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "ownsTarget", fn (std.Target) bool);
     conforms(who, A, "kitParts", fn (std.Target) []const KitPart);
     // hasdecl: A is each listed adapter's build file (`adapters`), whose
+    // Options is pub - this check exists to fail the configure when it is not.
+    if (!@hasDecl(A, "Options") or @TypeOf(A.Options) != type) @compileError(who ++ " lacks `pub const Options = struct { ... };`");
+    conforms(who, A, "declareOptions", fn (*std.Build) A.Options);
+    conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options, *std.Build.Step.Compile) void);
+    conforms(who, A, "forwarded", fn (*std.Build, A.Options) []const []const u8);
+    conforms(who, A, "prepareC", fn (std.Build.ResolvedTarget) ?kit.PrepareC);
+    conforms(who, A, "linkArtifact", fn (*std.Build.Module, std.Build.ResolvedTarget) void);
+    conforms(who, A, "afterTestBuild", fn (*std.Build, *std.Build.Step.Compile, *std.Build.Step.Run, []const u8) void);
+    conforms(who, A, "needsStandIns", fn (std.Build.ResolvedTarget) bool);
+    conforms(who, A, "addStandIns", fn (*std.Build, *std.Build.Module, std.Build.ResolvedTarget) void);
+    conforms(who, A, "bind", fn (*std.Build.Module, std.Build.ResolvedTarget, BindRequest) void);
+    // hasdecl: A is each listed adapter's build file (`adapters`), whose
     // `facts` is pub - this check exists to fail the configure when it is not.
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: platform_build.Facts`");
 }
@@ -117,6 +146,106 @@ pub fn defaultFor(target: std.Target) ?Platform {
         if (@field(adapters, name).ownsTarget(target)) return @field(Platform, name);
     }
     return null;
+}
+
+/// The adapter that answers for the target's operating system - its "OS
+/// side", whichever platform a module graph binds (docs/platform-protocol.md
+/// 9: the testing platform is the build machine's real OS services plus test
+/// capabilities): darwin for macOS and iOS, linux for Linux. What the root
+/// build keeps of it once it is chosen (`chooseOs`).
+pub const OsSide = struct {
+    /// The arguments a sub-build of the root build for another target of the
+    /// same OS side takes from this one (check-ios's -Dios-sdk).
+    forwarded: []const []const u8,
+};
+
+/// Ask the adapter that answers for `target`'s operating system to declare
+/// its options - only that adapter, so another's do not exist in this build
+/// and the configure refuses them, as it refuses any -D nothing declared -
+/// and to read what it needs of the machine (`probe`: the root build's
+/// tools/build_probe.zig, which asks at make time). Called once, where the
+/// root build's option order puts those options. A target no listed adapter
+/// answers for has no OS side: no options, nothing read.
+pub fn chooseOs(b: *std.Build, target: std.Build.ResolvedTarget, probe: *std.Build.Step.Compile) OsSide {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) {
+            const options = A.declareOptions(b);
+            A.resolve(b, target, options, probe);
+            return .{ .forwarded = A.forwarded(b, options) };
+        }
+    }
+    return .{ .forwarded = &.{} };
+}
+
+/// What C compiled or translated for `target` needs beyond what Zig finds
+/// by itself (kit.PrepareC), as the adapter that answers for its operating
+/// system says; null when it needs nothing or no listed adapter answers.
+pub fn prepareC(target: std.Build.ResolvedTarget) ?kit.PrepareC {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.prepareC(target);
+    }
+    return null;
+}
+
+/// What a finished program or library (crane's library and executable)
+/// links on `target`'s operating system, as the adapter that answers for it
+/// says.
+pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.linkArtifact(module, target);
+    }
+}
+
+/// What a test executable's run (`run`, the launcher's) needs beside the
+/// executable for its reports - debug information packaged as the
+/// executable's OS keeps it - as the adapter that answers for the
+/// executable's target says.
+pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |adapter| {
+        const A = @field(adapters, adapter);
+        if (A.ownsTarget(test_exe.rootModuleTarget())) return A.afterTestBuild(b, test_exe, run, name);
+    }
+}
+
+/// Whether a compile for `target` finds no system library its graph names
+/// on this machine - no sysroot here - so that a compile-only check needs
+/// stand-ins for them (`addStandIns`) and nothing for the target can be
+/// linked here, as the adapter that answers for its OS says.
+pub fn needsStandIns(target: std.Build.ResolvedTarget) bool {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.needsStandIns(target);
+    }
+    return false;
+}
+
+/// Put the stand-ins for `target`'s system libraries on `module`, the root
+/// module of a compile that links nothing (`needsStandIns`); nothing when
+/// the target needs none.
+pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const A = @field(adapters, name);
+        if (A.ownsTarget(target.result)) return A.addStandIns(b, module, target);
+    }
+}
+
+/// What a binding asks of the adapter it binds (`bind`).
+pub const BindRequest = struct {
+    /// The font_decoding capability is compiled in (-Dplatform-without
+    /// does not name it).
+    font_decoding: bool,
+};
+
+/// What the implementation of `platform`, bound to a graph for `target`,
+/// links of its own (`impl` is its module); a third party's
+/// (`external`) declares nothing here.
+pub fn bind(platform: Platform, impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: BindRequest) void {
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (platform == @field(Platform, name)) return @field(adapters, name).bind(impl, target, request);
+    }
 }
 
 /// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
@@ -362,6 +491,126 @@ pub const lint_words: []const u8 = words: {
 /// to the adapter that answers for that system.
 pub const lint_target_words: []const u8 = "os.tag,isDarwin,.abi ==";
 
+/// The platform protocol's modules for one platform (docs/platform-protocol.md
+/// section 1): the facade `platform` (src/platform/protocol.zig), the bound
+/// implementation `platform_impl`, the kit parts it composes and this
+/// binding's `platform_options`. The facade's comptime check holds the
+/// implementation to the contract whenever the facade is compiled.
+pub const Binding = struct {
+    facade: *std.Build.Module,
+    options: *std.Build.Module,
+    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// `fetch` imports for a Browser's network context until transfers move
+    /// behind the platform's port. A module of its own that imports nothing:
+    /// a graph whose `fetch` is compiled beside the old platform root (tests/
+    /// platform/retained_old_platform.zig) must not reach the facade's files.
+    kit_curl_share: *std.Build.Module,
+    /// kit/sfnt and kit/inflate, whose own test blocks the platform tests
+    /// run (decision 20).
+    kit_sfnt: *std.Build.Module,
+    kit_inflate: *std.Build.Module,
+    /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
+    /// whose own test blocks the platform tests run.
+    kit_media_decoding: *std.Build.Module,
+    /// <time.h> translated (kit.cImport), which kit/posix imports as `c_time`;
+    /// tests/platform takes the same module (one per header set per graph).
+    c_time: *std.Build.Module,
+};
+
+pub const BindingOptions = struct {
+    platform: Platform,
+    /// -Dplatform-module's root, for `.external`.
+    module_path: ?[]const u8 = null,
+    without: []const []const u8 = &.{},
+    static: []const []const u8 = &.{},
+    http2: bool,
+    libcurl: ?*std.Build.Step.Compile,
+    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
+    /// store parses certificates with it and hands curl's TLS configuration
+    /// the chain. Null with a system libcurl, whose TLS library is its own.
+    mbedtls: ?*std.Build.Step.Compile = null,
+    brotli: ?kit.brotli.BrotliLibraries,
+    image_codecs: ?*std.Build.Step.Compile,
+    /// Register the facade by name (the public graph).
+    public: bool = false,
+    /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
+    /// timer_backend reads.
+    clock: *std.Build.Module,
+    host: *std.Build.Module,
+    memory: *std.Build.Module,
+    /// MIME Sniffing's parser, which kit/media_decoding's canPlayType parses
+    /// a type with: one parser in Crane, not a copy in the platform. Pure
+    /// Zig over `infra` (whose only import is the clock bridge), so no part
+    /// of it reaches back to the facade.
+    mimesniff: *std.Build.Module,
+};
+
+pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: BindingOptions) Binding {
+    const platform_options = b.addOptions();
+    platform_options.addOption([]const u8, "platform_name", @tagName(options.platform));
+    platform_options.addOption([]const []const u8, "platform_without", options.without);
+    platform_options.addOption([]const []const u8, "platform_static", options.static);
+    platform_options.addOption(bool, "http2", options.http2);
+    const options_mod = platform_options.createModule();
+
+    // Registered by name in the public graph (one name cannot be registered
+    // twice), private otherwise: the root build's graphModule.
+    const facade_options: std.Build.Module.CreateOptions = .{
+        .root_source_file = b.path("src/platform/protocol.zig"),
+        .target = target,
+    };
+    const facade = if (options.public) b.addModule("platform", facade_options) else b.createModule(facade_options);
+    facade.addImport("platform_options", options_mod);
+    // TRANSITIONAL: the re-exported timer_backend reads the clock bridge.
+    facade.addImport("clock", options.clock);
+
+    const impl_root: std.Build.LazyPath = switch (options.platform) {
+        .external => .{ .cwd_relative = options.module_path.? },
+        else => b.path(b.fmt("src/platform/adapters/{s}/protocol.zig", .{@tagName(options.platform)})),
+    };
+    const impl = b.createModule(.{ .root_source_file = impl_root, .target = target, .link_libc = true });
+    impl.addImport("platform", facade);
+    impl.addImport("platform_options", options_mod);
+    facade.addImport("platform_impl", impl);
+
+    // The kit's modules for this binding: the kit's build side.
+    const parts = kit.modules(b, target, prepareC(target), .{
+        .facade = facade,
+        .options = options_mod,
+        .impl = impl,
+        .without = options.without,
+        .brotli = options.brotli,
+        .image_codecs = options.image_codecs,
+        .libcurl = options.libcurl,
+        .mbedtls = options.mbedtls,
+        .clock = options.clock,
+        .host = options.host,
+        .memory = options.memory,
+        .mimesniff = options.mimesniff,
+    });
+    // The platform's own extra kit parts and the system libraries each links:
+    // its adapter's declaration (kitParts) - the root build names none of
+    // them.
+    for (kitParts(@tagName(options.platform), target.result)) |part| {
+        const module = b.createModule(.{
+            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part.name})),
+            .target = target,
+            .link_libc = true,
+        });
+        module.addImport("platform", facade);
+        module.addImport("platform_options", options_mod);
+        module.addImport("host", options.host);
+        link(module, part);
+        impl.addImport(b.fmt("kit_{s}", .{part.name}), module);
+    }
+    const font_decoding_enabled = for (options.without) |name| {
+        if (std.mem.eql(u8, name, "font_decoding")) break false;
+    } else true;
+    // What the bound adapter's implementation links (platform_build.bind).
+    bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
+}
+
 /// The extra kit parts of the platform named `platform_name` for `target`:
 /// its adapter's declaration, none for a platform with no build file here.
 pub fn kitParts(platform_name: []const u8, target: std.Target) []const KitPart {
@@ -438,13 +687,13 @@ test "the conformance bindings: each listed platform but the tests' own, then th
     };
     try testing.expectEqual(expected.len, conformance.len);
     for (expected, 0..) |row, i| {
-        const binding = conformance[i];
-        try testing.expectEqualStrings(row[0], binding.name);
-        try testing.expectEqual(row[1], binding.platform);
-        try testing.expectEqual(row[2], binding.without.len);
-        try testing.expectEqual(row[3], binding.fonts_and_media);
-        try testing.expectEqual(row[4], binding.kit_tests);
-        for (binding.without) |capability| {
+        const bound = conformance[i];
+        try testing.expectEqualStrings(row[0], bound.name);
+        try testing.expectEqual(row[1], bound.platform);
+        try testing.expectEqual(row[2], bound.without.len);
+        try testing.expectEqual(row[3], bound.fonts_and_media);
+        try testing.expectEqual(row[4], bound.kit_tests);
+        for (bound.without) |capability| {
             for (capability_names) |name| {
                 if (std.mem.eql(u8, name, capability)) break;
             } else return error.NotACapability;

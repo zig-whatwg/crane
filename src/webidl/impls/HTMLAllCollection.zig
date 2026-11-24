@@ -48,7 +48,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 
 /// Operation: item, which is also the legacy caller (`document.all(x)`).
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmlallcollection-item
-pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?runtime.JSValue {
+pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.HTMLCollectionOrElement {
     _ = instance;
     // 1. If nameOrIndex was not provided, return null.
     if (!nameOrIndex.wasPassed()) return null;
@@ -61,7 +61,7 @@ pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DO
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?typedefs.HTMLCollectionOrElement {
     _ = instance;
     _ = name;
     return error.NotImplemented;

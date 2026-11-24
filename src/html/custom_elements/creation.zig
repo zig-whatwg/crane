@@ -16,49 +16,32 @@ const mathml_namespace = "http://www.w3.org/1998/Math/MathML";
 pub const FlattenedOptions = struct {
     registry: ?*runtime.Instance,
     is_value: ?[]u8 = null,
-    registry_root: ?engine.Owned = null,
 
     pub fn deinit(self: FlattenedOptions, allocator: std.mem.Allocator) void {
         if (self.is_value) |value| allocator.free(value);
-        if (self.registry_root) |root| root.release();
     }
 };
 
-/// WebIDL dictionary conversion precedes DOM flatten-element-creation-options.
-/// Keep the registry's wrapper alive while the subsequent `is` getter runs.
-pub fn flatten(document: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) !FlattenedOptions {
+/// createElement's and createElementNS's `options`, `(DOMString or
+/// ElementCreationOptions)`, as the binding converted it (WebIDL 3.2.25:
+/// undefined, null and any Object are the dictionary, its members read in
+/// lexicographic order - customElementRegistry, then is; anything else the
+/// legacy DOMString, converted and never used).
+pub const CreationOptions = struct {
+    /// ElementCreationOptions' customElementRegistry: not passed, or the
+    /// registry given - null included (an explicit null registry).
+    registry: webidl.Opt(?*runtime.Instance) = .notPassed(),
+    /// ElementCreationOptions' is, BORROWED, or null.
+    is_value: ?[]const u8 = null,
+};
+
+/// DOM "flatten element creation options", after the WebIDL conversion.
+pub fn flatten(document: *runtime.Instance, options: CreationOptions) !FlattenedOptions {
     var result: FlattenedOptions = .{ .registry = try interfaces.Document.get_customElementRegistry(document) };
     errdefer result.deinit(document.ctx.allocator);
-    if (!options.was_passed) return result;
-    const realm = document.ctx;
-    const value = options.value;
-    switch (engine.typeOf(realm, value)) {
-        .null, .undefined => return result,
-        .object => {},
-        else => {
-            // The legacy string form is converted but never used as an is
-            // value. Conversion still throws for a Symbol.
-            const ignored = try engine.convertToDOMString(realm, value, realm.allocator);
-            realm.allocator.free(ignored);
-            return result;
-        },
-    }
-    // WebIDL dictionary members are read in lexicographic order.
-    const registry_value = try engine.getProperty(realm, value, "customElementRegistry");
-    const explicit = engine.typeOf(realm, registry_value.value) != .undefined;
-    result.registry_root = registry_value;
-    if (explicit) {
-        if (engine.typeOf(realm, registry_value.value) == .null) {
-            result.registry = null;
-        } else {
-            const registry = engine.convertToPlatformObject(realm, registry_value.value) orelse return error.TypeError;
-            if (registry.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
-            result.registry = registry;
-        }
-    }
-    const is_value = try engine.getProperty(realm, value, "is");
-    defer is_value.release();
-    if (engine.typeOf(realm, is_value.value) != .undefined) result.is_value = try engine.convertToDOMString(realm, is_value.value, realm.allocator);
+    const explicit = options.registry.was_passed;
+    if (explicit) result.registry = options.registry.value;
+    if (options.is_value) |is_value| result.is_value = try document.ctx.allocator.dupe(u8, is_value);
     // DOM flatten steps 3.2.1–3.2.3.
     if (explicit) {
         if (result.is_value != null) return error.NotSupportedError;

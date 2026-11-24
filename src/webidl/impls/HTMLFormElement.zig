@@ -406,10 +406,16 @@ pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.In
 ///      entry of that name;
 ///   6. return it.
 /// Like WebKit HTMLFormElement::namedItem, current controls precede images.
-pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+///
+/// The result is (RadioNodeList or Element): the binding invokes the getter
+/// only for a supported property name (WebIDL 3.9.1 step 2.1), so a name
+/// that names nothing - the empty string, a form with no state, a candidate
+/// that has since gone - is `error.NotFoundError`, which the binding reads
+/// as "no such named property" (the lookup goes on to the prototype chain).
+pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!typedefs.RadioNodeListOrElement {
     const key = name.asSlice();
-    if (key.len == 0) return runtime.JSValue.jsUndefined;
-    const internal = Registry.get(instance) orelse return runtime.JSValue.jsUndefined;
+    if (key.len == 0) return error.NotFoundError;
+    const internal = Registry.get(instance) orelse return error.NotFoundError;
     const named = try namedElements(instance, internal);
     if (named.map.get(key)) |candidates| {
         if (candidates.control) |first| {
@@ -418,7 +424,7 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
                 const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
                 errdefer runtime.Instance.deinit(list);
                 try dom.node_lists.namedControls(list, try get_elements(instance), key);
-                return .{ .instance = list };
+                return .{ .radio_node_list = list };
             }
             if (first.getWeak()) |element| return single(instance, internal, key, element);
         }
@@ -428,22 +434,22 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
                 const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
                 errdefer runtime.Instance.deinit(list);
                 try dom.node_lists.namedFormImages(list, instance, key);
-                return .{ .instance = list };
+                return .{ .radio_node_list = list };
             }
             if (first.getWeak()) |element| return single(instance, internal, key, element);
         }
     }
     // Step 3: no candidate, and the past names map has the name.
-    if (internal.past_names.get(key)) |element| return .{ .instance = element };
-    return runtime.JSValue.jsUndefined;
+    if (internal.past_names.get(key)) |element| return .{ .element = element };
+    return error.NotFoundError;
 }
 
 /// Steps 5-6 for the one candidate `element`.
-fn single(instance: *runtime.Instance, internal: *InternalState, name: []const u8, element: *runtime.Instance) runtime.JSValue {
+fn single(instance: *runtime.Instance, internal: *InternalState, name: []const u8, element: *runtime.Instance) typedefs.RadioNodeListOrElement {
     // Out of memory, the map keeps what it had: the value is still the
     // candidate, and no entry is half made.
     recordPastName(instance, internal, name, element) catch {};
-    return .{ .instance = element };
+    return .{ .element = element };
 }
 
 /// Step 5: map `name` to `element`, replacing the entry of that name (a new

@@ -3,17 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 
 pub const CSSStyleSheetInit = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
     baseURL: ?runtime.DOMString = null,
-    media: ?runtime.JSValue = null,
+    media: ?typedefs.MediaListOrDOMString = null,
     disabled: ?bool = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"media"};
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

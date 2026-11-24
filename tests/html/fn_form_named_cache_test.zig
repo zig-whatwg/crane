@@ -32,12 +32,17 @@ fn supported(form: *runtime.Instance, name: []const u8) !bool {
     return interfaces.HTMLFormElement.isSupportedPropertyName(form, runtime.DOMString.initInterned(name));
 }
 
-/// The named getter's element, or null for undefined; a list is an error.
+/// The named getter's element, or null for a name that names nothing
+/// (the getter's `error.NotFoundError`: no such named property); a list is
+/// an error.
 fn named(form: *runtime.Instance, name: []const u8) !?*runtime.Instance {
-    const value = try interfaces.HTMLFormElement.call_getter__1(form, runtime.DOMString.initInterned(name));
+    const value = interfaces.HTMLFormElement.call_getter__1(form, runtime.DOMString.initInterned(name)) catch |err| switch (err) {
+        error.NotFoundError => return null,
+        else => return err,
+    };
     return switch (value) {
-        .instance => |instance| if (instance.stateAs(interfaces.RadioNodeList.State) == null) instance else error.UnexpectedList,
-        else => null,
+        .element => |element| element,
+        .radio_node_list => error.UnexpectedList,
     };
 }
 

@@ -11,18 +11,15 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ARIAMixin = @import("mixins").ARIAMixin;
+const Element = @import("interfaces").Element;
 const HTMLElement = @import("interfaces").HTMLElement;
+const HTMLFormElement = @import("interfaces").HTMLFormElement;
 const ShadowRoot = @import("interfaces").ShadowRoot;
 const FileOrUSVStringOrFormData = @import("typedefs").FileOrUSVStringOrFormData;
 const ValidityStateFlags = @import("dictionaries").ValidityStateFlags;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("typedefs").USVString;
-const Element = @import("interfaces").Element;
-const File = @import("interfaces").File;
-const HTMLFormElement = @import("interfaces").HTMLFormElement;
-const CustomStateSet = @import("interfaces").CustomStateSet;
-const FormData = @import("interfaces").FormData;
 const ValidityState = @import("interfaces").ValidityState;
+const CustomStateSet = @import("interfaces").CustomStateSet;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ElementInternals = struct {
@@ -1249,7 +1246,7 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setFormValue(instance: *runtime.Instance, value: ?FileOrUSVStringOrFormData, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_setFormValue(instance: *runtime.Instance, value: ?FileOrUSVStringOrFormData, state: webidl.Opt(?FileOrUSVStringOrFormData)) anyerror!void {
         return try ElementInternalsImpl.call_setFormValue(instance, value, state);
     }
 

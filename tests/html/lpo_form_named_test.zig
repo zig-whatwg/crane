@@ -13,8 +13,11 @@ fn append(document: *runtime.Instance, parent: *runtime.Instance, tag: []const u
     return node;
 }
 
-fn named(form: *runtime.Instance, name: []const u8) !runtime.JSValue {
-    return interfaces.HTMLFormElement.call_getter__1(form, runtime.DOMString.initInterned(name));
+/// The named getter's object - the one element, or the RadioNodeList.
+fn named(form: *runtime.Instance, name: []const u8) !*runtime.Instance {
+    return switch (try interfaces.HTMLFormElement.call_getter__1(form, runtime.DOMString.initInterned(name))) {
+        inline else => |object| object,
+    };
 }
 
 fn exercise(comptime images: bool) !void {
@@ -28,9 +31,9 @@ fn exercise(comptime images: bool) !void {
     const form = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("form"), .notPassed());
     defer dom.node_creation.destroyUninserted(form);
     const first = try append(document, form, if (images) "img" else "input", "group");
-    try testing.expectEqual(first, (try named(form, "group")).instance);
+    try testing.expectEqual(first, try named(form, "group"));
     const second = try append(document, form, if (images) "img" else "button", "group");
-    const list = (try named(form, "group")).instance;
+    const list = try named(form, "group");
     defer runtime.Instance.deinit(list);
     try testing.expectEqual(@as(u32, 2), try interfaces.RadioNodeList.get_length(list));
     try testing.expectEqual(first, (try interfaces.RadioNodeList.call_item(list, 0)).?);
@@ -42,10 +45,10 @@ fn exercise(comptime images: bool) !void {
     const other = try append(document, form, "form", "other");
     _ = try interfaces.Node.call_appendChild(other, second);
     try testing.expectEqual(@as(u32, 1), try interfaces.RadioNodeList.get_length(list));
-    try testing.expectEqual(second, (try named(other, "group")).instance);
+    try testing.expectEqual(second, try named(other, "group"));
     if (images) {
         const control = try append(document, form, "input", "group");
-        try testing.expectEqual(control, (try named(form, "group")).instance);
+        try testing.expectEqual(control, try named(form, "group"));
         try testing.expectEqual(first, (try interfaces.RadioNodeList.call_item(list, 0)).?);
     }
 }

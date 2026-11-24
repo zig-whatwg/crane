@@ -71,20 +71,18 @@ pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.C
     var media_text: []const u8 = "";
     var media_owned: ?[]u8 = null;
     defer if (media_owned) |m| allocator.free(m);
-    if (init.media) |media| {
-        if (engine.convertToPlatformObject(ctx, media)) |object| {
-            if (object.vtable == &interfaces.MediaList.vtable) {
-                var text = try interfaces.MediaList.get_mediaText(object);
-                defer text.deinit(object.ctx.allocator);
-                media_owned = try allocator.dupe(u8, text.asSlice());
-                media_text = media_owned.?;
-            }
-        }
-        if (media_owned == null) {
-            media_owned = try engine.convertToDOMString(ctx, media, allocator);
+    // `(MediaList or DOMString) media = ""`, converted by the binding (WebIDL
+    // 3.2.25: a MediaList is that member; anything else ToString - a present
+    // null is "null", as in Chrome, Firefox and Safari).
+    if (init.media) |media| switch (media) {
+        .media_list => |list| {
+            var text = try interfaces.MediaList.get_mediaText(list);
+            defer text.deinit(list.ctx.allocator);
+            media_owned = try allocator.dupe(u8, text.asSlice());
             media_text = media_owned.?;
-        }
-    }
+        },
+        .domstring => |text| media_text = text.asSlice(),
+    };
     const record = try dom.style.SheetRecord.create(allocator, "", .{
         .location = location,
         .base_url = base,

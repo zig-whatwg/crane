@@ -17,7 +17,6 @@ const ElementContentEditable = @import("mixins").ElementContentEditable;
 const HTMLOrSVGOrMathMLElement = @import("mixins").HTMLOrSVGOrMathMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
-const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const GeometryNode = @import("typedefs").GeometryNode;
@@ -42,6 +41,7 @@ const Range = @import("interfaces").Range;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
+const TogglePopoverOptionsOrBoolean = @import("typedefs").TogglePopoverOptionsOrBoolean;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
@@ -1720,7 +1720,7 @@ pub const HTMLElement = struct {
 
     pub const call_blur = mixins.HTMLOrSVGOrMathMLElement.call_blur;
 
-    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
+    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(TogglePopoverOptionsOrBoolean)) anyerror!bool {
         return try HTMLElementImpl.call_togglePopover(instance, options);
     }
 

@@ -173,14 +173,7 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "CanvasFillStrokeStyles", "fillStyle", "" },
     .{ "CanvasFillStrokeStyles", "strokeStyle", "" },
     // css (CSSStyleSheet's constructor, typed OM's mapSet)
-    .{ "CSSStyleSheetInit", "media", "" },
-    .{ "StylePropertyMap", "append", "values" },
-    .{ "StylePropertyMap", "set", "values" },
     // dom (element creation options, importNode, view transitions)
-    .{ "Document", "createElement", "options" },
-    .{ "Document", "createElementNS", "options" },
-    .{ "Document", "importNode", "options" },
-    .{ "Document", "startViewTransition", "callbackOptions" },
     // events and observers (EventTarget's options; lane rc8 is in these files)
     .{ "EventTarget", "addEventListener", "options" },
     .{ "EventTarget", "removeEventListener", "options" },
@@ -188,14 +181,8 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "IntersectionObserverInit", "root", "" },
     .{ "IntersectionObserverInit", "threshold", "" },
     // forms (options.add's `before`, setFormValue, the form's named getter)
-    .{ "HTMLOptionsCollection", "add", "before" },
-    .{ "HTMLSelectElement", "add", "before" },
-    .{ "ElementInternals", "setFormValue", "state" },
-    .{ "HTMLFormElement", "", "return" },
     // HTMLAllCollection (its legacy caller and named getter bind `item` and
     // `namedItem` through a special path that takes the JSValue)
-    .{ "HTMLAllCollection", "item", "return" },
-    .{ "HTMLAllCollection", "namedItem", "return" },
     // fs
     .{ "WriteParams", "data", "" },
     // idb
@@ -204,7 +191,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "MediaStreamConstraints", "video", "" },
     // performance
     // popover
-    .{ "HTMLElement", "togglePopover", "options" },
     // sanitizer (html/sanitizer.zig, parser_options.zig)
     .{ "Sanitizer", "constructor", "configuration" },
     .{ "SetHTMLOptions", "sanitizer", "" },
