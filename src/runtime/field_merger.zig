@@ -97,36 +97,6 @@ pub fn FlattenedState(
         /// holds elsewhere for such an instance, and never reads this State
         /// of it (`Instance.stateAs` answers null).
         pub const may_be_absent: bool = allowsAbsence(OwnFields);
-
-        /// Check if a field exists by name (compile-time only)
-        /// This is used for reflection and code generation
-        pub fn hasField(comptime name: []const u8) bool {
-            // Check own fields
-            const own_info = @typeInfo(Own);
-            if (own_info == .@"struct") {
-                inline for (own_info.@"struct".field_names) |field_name| {
-                    if (std.mem.eql(u8, field_name, name)) return true;
-                }
-            }
-
-            // Check mixin fields
-            const MixinStruct = MixinFieldsStruct(MixinTypes);
-            const mixin_info = @typeInfo(MixinStruct);
-            if (mixin_info == .@"struct") {
-                inline for (mixin_info.@"struct".field_names) |field_name| {
-                    if (std.mem.eql(u8, field_name, name)) return true;
-                }
-            }
-
-            // Check base fields recursively
-            if (Nested) |B| {
-                if (@hasDecl(B, "hasField")) {
-                    return B.hasField(name);
-                }
-            }
-
-            return false;
-        }
     };
 }
 
@@ -295,11 +265,4 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
     // shape the old @Type call produced. Reified types cannot carry decls in
     // 0.16 either, so nothing is lost by the empty decls list going away.
     return @Struct(.auto, null, &names, &types, &attrs);
-}
-
-/// Merge multiple struct types into one (alternative approach)
-///
-/// This is useful when you want to merge struct instances, not just types.
-pub fn mergeStructs(comptime structs: []const type) type {
-    return MixinFieldsStruct(structs);
 }

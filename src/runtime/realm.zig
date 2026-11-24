@@ -8,7 +8,8 @@
 //! - RealmInfo struct for context metadata
 //! - Realm struct for full realm implementation with V8 context and intrinsics
 //! - Intrinsics struct for caching JavaScript built-in constructors
-//! - Exposure checking for WebIDL [Exposed] attributes
+//! - Exposure, an enum of WebIDL [Exposed] sets (bindings check [Exposed] through
+//!   src/webidl/helpers.zig's GlobalScope.matchesExposure)
 //!
 //! ## Specification References
 //! - HTML Realms: https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm
@@ -149,27 +150,6 @@ pub const RealmInfo = struct {
     /// Check if this is a Worklet context
     pub fn isWorklet(self: Self) bool {
         return self.context_type == .worklet;
-    }
-
-    /// Check if an API with given exposure is available in this context
-    ///
-    /// Per WebIDL spec, [Exposed] attribute determines availability:
-    /// - [Exposed=Window] -> only in Window
-    /// - [Exposed=Worker] -> only in Workers
-    /// - [Exposed=(Window,Worker)] -> both
-    /// - [Exposed=*] -> all contexts
-    pub fn isExposedTo(self: Self, exposure: Exposure) bool {
-        return switch (exposure) {
-            .window => self.isWindow(),
-            .worker => self.isWorker(),
-            .window_and_worker => self.isWindow() or self.isWorker(),
-            .all => true,
-        };
-    }
-
-    /// Get human-readable context name
-    pub fn contextName(self: Self) []const u8 {
-        return self.context_type.name();
     }
 };
 
@@ -471,16 +451,6 @@ pub const Realm = struct {
     /// Check if this is a Worklet realm
     pub fn isWorklet(self: *const Self) bool {
         return self.info.isWorklet();
-    }
-
-    /// Check if an API with given exposure is available in this realm
-    pub fn isExposedTo(self: *const Self, exposure: Exposure) bool {
-        return self.info.isExposedTo(exposure);
-    }
-
-    /// Get human-readable context name
-    pub fn contextName(self: *const Self) []const u8 {
-        return self.info.contextName();
     }
 
     // ========================================================================
