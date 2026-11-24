@@ -356,7 +356,8 @@ pub const random_buckets: usize = 1;
 /// 461c62b66d7c) - so delayed reuse is the quarantine's as before; unlike
 /// it, the magazine keeps the free state out of the block (offsets in a side
 /// array, design 3.4). It relaxes lowest-address-first within its depth
-/// only; idle decommit and pressure drain it (`drainMagazines`), and the
+/// only, and takes a block only from a span at or below its bucket's lowest
+/// span with room (`release`); idle decommit and pressure drain it (`drainMagazines`), and the
 /// bug-finding run, which retires a span the moment it empties, bypasses it.
 /// 0 turns it off.
 pub const magazine_depth: usize = 32;
@@ -1215,7 +1216,15 @@ pub const Engine = struct {
     /// The slot is free again: into its bucket's magazine, or back to its
     /// span (`releaseSlot`).
     fn release(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize) void {
+        // Only a block at or below the bucket's lowest span with room (or any,
+        // when none is known to have room): one above it goes back to its
+        // span, which lowest-address-first then leaves to empty and age. A
+        // magazine that took every block spread a churning page's blocks over
+        // more spans than lowest-address-first keeps them in, spans last
+        // touched just before idle decommit looked: +0.7 to +1.2 MB steady and
+        // collected on the events and tree rows (lane hard1's chat2 runs).
         if (magazine_depth != 0 and b.kind != .large and !self.config.retire_freed_spans and
+            (b.current == no_span or index <= b.current) and
             self.pushMagazine(p, b, index, slot)) return;
         self.releaseSlot(p, b, index, slot, self.now_ms.load(.monotonic));
     }

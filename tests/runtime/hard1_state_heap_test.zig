@@ -588,3 +588,31 @@ test "M5: a span only the magazine keeps is aged from its own last release, not 
     try testing.expectEqual(start + 1, engine.stats().objects.spans_decommitted);
     try testing.expect(r.next_due_ms != null);
 }
+
+test "M6: a block from a span above the bucket's lowest span with room goes back to its span, not the magazine" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try productionScope(&scope);
+    const per_span = heap.span_bytes / @sizeOf(EventState);
+    const low = try testing.allocator.alloc(*EventState, per_span);
+    defer testing.allocator.free(low);
+    // Span A full, span B begun.
+    for (low) |*block| block.* = try scope.arena.create(EventState);
+    const high = try scope.arena.create(EventState);
+    try testing.expect(@intFromPtr(high) > @intFromPtr(low[per_span - 1]));
+    // A's blocks freed: the magazine takes its depth of them, the rest go
+    // back to A, which then has room below B.
+    for (low) |block| scope.arena.destroy(EventState, block);
+    // The magazine's are taken again, leaving room in A only.
+    const again = try testing.allocator.alloc(*EventState, heap.magazine_depth);
+    defer testing.allocator.free(again);
+    for (again) |*block| block.* = try scope.arena.create(EventState);
+    // B's block is freed while A has room: it goes back to B, and the next
+    // block comes from A, lowest first.
+    scope.arena.destroy(EventState, high);
+    try testing.expect(!engine.inMagazine(high));
+    const next = try scope.arena.create(EventState);
+    try testing.expect(@intFromPtr(next) < @intFromPtr(high));
+    scope.arena.destroy(EventState, next);
+    for (again) |block| scope.arena.destroy(EventState, block);
+}
