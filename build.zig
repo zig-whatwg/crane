@@ -4692,6 +4692,9 @@ pub fn build(b: *std.Build) void {
             // tests/wpt/MANIFEST.json by relative path (and skips itself when
             // the WPT checkout is absent), so it must run from the repo root.
             run_harness_tests.setCwd(b.path("."));
+            // config.zig's allowlist test reads the generated worklist at run time, and every suite that
+            // imports config.zig runs it: a worklist change re-runs them, never a cached pass (lane a11y1).
+            run_harness_tests.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
             test_step.dependOn(&run_harness_tests.step);
         }
     }
