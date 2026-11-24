@@ -1394,6 +1394,50 @@ fn nodelessProperties(tree: *Tree, index: Index) ![]const Property {
     return properties.items;
 }
 
+// ============================================================================
+// WebDriver's computed role and label: the same answers
+// ============================================================================
+//
+// chromedriver (Chromium 157.0.8103.78, BSD-3: chrome/test/chromedriver/
+// element_util.cc GetAXNodeByElementId, element_commands.cc
+// ExecuteGetComputedRole / ExecuteGetComputedLabel) answers WebDriver's Get
+// Computed Role and Get Computed Label off the Accessibility domain's
+// getPartialAXTree {backendNodeId, fetchRelatives: false} node for the
+// element: its role.value, and its name.value ("" when it has none). Crane
+// answers both from that one decision - the tree's - in Chrome's
+// vocabulary, except where golden rule 2 says the browser majority answers
+// otherwise (`webdriverOverride`, each with its evidence).
+
+/// WebDriver's answers for one element.
+pub const WebDriverAnswer = struct { role: []const u8, label: []const u8 };
+
+/// The getPartialAXTree node's role and name for `element` in its node
+/// document's tree (BuildProtocolAXNodeForDOMNodeWithNoAXNode and an ignored
+/// object: role none and no name), with the rule-2 overrides. Strings live in
+/// `arena` or are static.
+pub fn webdriverAnswer(arena: Allocator, element: *Instance, options: Options) !WebDriverAnswer {
+    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return .{ .role = "none", .label = "" };
+    const tree = try arena.create(Tree);
+    tree.* = try Tree.build(arena, document, options);
+    const index = tree.indexOf(element) orelse {
+        // No object (Chrome: role none, no name). The label: Firefox and
+        // Safari name such an element by AccName all the same (a <wbr>'s
+        // aria-label, html-aam/accname-computation-by-element/
+        // phrasing-elements.html, wpt.fyi Chrome 157 4786307730243584 fails,
+        // Firefox 160 4877168468033536 and Safari 27.2 6479119966273536
+        // pass): the majority's answer.
+        return .{ .role = "none", .label = try a11y.computedName(arena, element, options.names()) };
+    };
+    const object = tree.node(index);
+    // The label of an ignored object: chromedriver sends none (its node has
+    // no name), Firefox and Safari name it (a <b>'s title, a <video>'s
+    // aria-label: phrasing-elements.html, section-and-grouping-elements.html,
+    // the same runs): the majority's answer, the object's AccName.
+    const label = try nameOf(tree, index);
+    if (object.ignored) return .{ .role = "none", .label = label };
+    return .{ .role = object.role.cdpName().name, .label = label };
+}
+
 /// The accessible name CDP sends.
 pub fn nameOf(tree: *Tree, index: Index) ![]const u8 {
     const object = tree.node(index);

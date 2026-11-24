@@ -326,6 +326,8 @@ pub const origin_domain = @import("origin_domain.zig");
 pub const secure_context = @import("secure_context.zig");
 /// HTML 6.6 focus: focusable areas, the focusing steps, activeElement.
 pub const focus = @import("focus.zig");
+/// What the accessibility tree asks HTML: focusable, inert, actually disabled.
+pub const accessibility_host = @import("accessibility_host.zig");
 pub const word_navigation = @import("word_navigation.zig");
 pub const autofocus = @import("autofocus.zig");
 pub const tables = @import("tables.zig");

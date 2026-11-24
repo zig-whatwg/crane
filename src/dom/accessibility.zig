@@ -114,13 +114,6 @@ pub fn authorNamed(allocator: Allocator, node: *Instance) !bool {
     return if (attribute(node, "title")) |title| std.mem.trim(u8, title, spaces).len > 0 else false;
 }
 
-/// Returns a canonical static string; callers need not release it.
-pub fn computedRole(allocator: Allocator, node: *Instance, options: Options) ![]const u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    return role(arena.allocator(), node, options);
-}
-
 fn role(allocator: Allocator, node: *Instance, options: Options) anyerror![]const u8 {
     if (try effective(allocator, node, "role", "role")) |value| {
         var tokens = std.mem.tokenizeAny(u8, value, spaces);
@@ -864,6 +857,9 @@ fn flatten(allocator: Allocator, value: []const u8) ![]u8 {
     return result.toOwnedSlice(allocator);
 }
 
+/// `node`'s accessible name in the tree its root roots (a detached subtree
+/// too), roles by AccName's own role decision: the label of an element the
+/// accessibility tree has no object for (accessibility_tree.webdriverAnswer).
 /// Caller owns the flattened UTF-8 name. All traversal state is temporary.
 pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);

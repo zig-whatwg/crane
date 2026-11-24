@@ -517,27 +517,9 @@ fn monotonicNs() i64 {
 // The host's answers (dom.accessibility_tree.Options)
 // ============================================================================
 
-fn isFocusable(node: *runtime.Instance) bool {
-    return html.focus.isFocusableArea(node);
-}
-
-fn isInert(node: *runtime.Instance) bool {
-    return html.focus.isInertNode(node);
-}
-
-/// HTML 4.15 "actually disabled", for the elements that can be.
-fn isDisabled(element: *runtime.Instance) bool {
-    const fa = html.form_associated;
-    if (fa.isButton(element) or fa.isInput(element) or fa.isSelect(element) or fa.isTextArea(element) or fa.isFormAssociatedCustom(element)) return fa.isDisabled(element);
-    const name = dom.accessibility.localName(element);
-    if (!dom.accessibility.isHtml(element)) return false;
-    if (std.mem.eql(u8, name, "fieldset")) return fa.isDisabled(element);
-    if (std.mem.eql(u8, name, "optgroup")) return dom.accessibility.attribute(element, "disabled") != null;
-    if (std.mem.eql(u8, name, "option")) return html.forms.options.isDisabled(element);
-    return false;
-}
-
-const options: ax.Options = .{ .is_focusable = &isFocusable, .is_inert = &isInert, .is_disabled = &isDisabled };
+/// HTML's (html.accessibility_host): the same answers WebDriver's computed
+/// role and label read.
+const options: ax.Options = html.accessibility_host.options;
 
 // ============================================================================
 // Building AXNodes (inspector_type_builder_helper.cc)
