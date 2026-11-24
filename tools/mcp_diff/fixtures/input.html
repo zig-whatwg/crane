@@ -1,0 +1,8 @@
+<!doctype html>
+<title>Input</title>
+<input id="field">
+<script>
+window.keys = [];
+document.addEventListener('keydown', (e) => keys.push(e.key + (e.ctrlKey ? '+ctrl' : '') + (e.shiftKey ? '+shift' : '')));
+document.getElementById('field').focus();
+</script>

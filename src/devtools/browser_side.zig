@@ -257,6 +257,25 @@ pub const BrowserSide = struct {
         self.postTitle(navigable, title.asSlice());
     }
 
+    /// dom.inspector_probes.titleMayHaveChanged: `document`'s title element
+    /// or its text changed. A tab's active document's title goes to the
+    /// devtools thread, which reports it to the target when it moved (Blink:
+    /// Document::UpdateTitle -> LocalFrameClient::DispatchDidReceiveTitle ->
+    /// WebContents TitleWasSet -> targetInfoChanged); a frame's is no
+    /// target's.
+    pub fn documentTitleMayHaveChanged(self: *BrowserSide, document: *@import("runtime").Instance) void {
+        const b = self.browser orelse return;
+        const navigables = @import("dom").browser_state.existingNavigablesIn(b.scope) orelse return;
+        for (navigables.contexts()) |bc| {
+            if (bc.parent != null or bc.is_closed) continue;
+            if (bc.getActiveDocument() != @as(*anyopaque, @ptrCast(document))) continue;
+            var title = @import("interfaces").Document.get_title(document) catch return;
+            defer title.deinit(document.ctx.allocator);
+            self.postTitle(bc.id, title.asSlice());
+            return;
+        }
+    }
+
     fn stillAttached(self: *BrowserSide, session: *PageSession) bool {
         for (self.sessions.items) |s| if (s == session) return true;
         return false;

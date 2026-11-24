@@ -1,0 +1,13 @@
+<!doctype html>
+<title>Console</title>
+<script>
+function logIt() { console.log('hello', 1, {a: 1, b: [2, 'c']}, null); }
+logIt();
+console.warn('a warning');
+console.error(new Error('boom'));
+console.info(new Map([['k', 1]]));
+for (let i = 0; i < 3; i++) console.debug('repeated');
+console.log(undefined, -0, 12n, Symbol('s'), function named() {});
+</script>
+<script>throw new TypeError('uncaught at load');</script>
+<script>Promise.reject(new Error('rejected at load'));</script>
