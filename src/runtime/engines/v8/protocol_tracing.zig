@@ -168,9 +168,10 @@ pub fn tracedValue(owner: *Instance, slot: TracedSlot) ?engine.Owned {
     }
 }
 
-/// engine.TracedHold's value on V8: the box read through the Global<Value>
-/// readers (v8_wrapper.cpp, "engine.TracedHold": one location word each) -
-/// BORROWED; undefined once the collector took it.
+/// engine.TracedHold's value on V8: the hold's cell read through the
+/// Global<Value> readers (v8_wrapper.cpp, "engine.TracedHold": one location
+/// word each) - BORROWED; undefined once the collector took it (the cell was
+/// written empty in that collection's pause) or the agent ended.
 pub fn tracedHoldValue(hold: engine.TracedHold) engine.JSValue {
     const handle = hold.handle orelse return engine.JSValue.jsUndefined;
     if (ffi.v8_TracedHold_IsEmpty(handle)) return engine.JSValue.jsUndefined;
@@ -182,13 +183,18 @@ pub fn tracedHoldIsEmpty(hold: engine.TracedHold) bool {
     return ffi.v8_TracedHold_IsEmpty(hold.handle);
 }
 
-/// engine.TracedHold.release on V8: the box's TracedReference reset and freed.
+/// engine.TracedHold.release on V8: the cell's TracedReference reset and the
+/// cell given back to its agent's slab. A hold the collector took has no V8
+/// handle left to reset, and one released after its agent's end makes no V8
+/// call (v8_wrapper.cpp, "the agent's hold slab": the teardown order).
 pub fn releaseTracedHold(hold: engine.TracedHold) void {
     ffi.v8_TracedHold_Dispose(hold.handle);
 }
 
 /// engine.traceHeld on V8: the visitor of the collection's atomic pause
-/// traces the hold's TracedReference.
+/// traces the hold's TracedReference and its cell is stamped with the
+/// collection's number - the pause's sweep empties every hold left unstamped
+/// (V8 reports a traced reference's death in a full collection to nobody).
 pub fn traceHeld(tracer: *Tracer, hold: engine.TracedHold) void {
     ffi.v8_Tracer_TraceHeld(tracer.visitor, hold.handle);
 }

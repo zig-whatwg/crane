@@ -869,6 +869,13 @@ pub fn endAgent(agent: *Agent) void {
     // And the agent's inspector, the same step: its host sessions
     // disconnected, every context it knows forgotten while it exists.
     if (inspector) |i| i.end();
+    // Its traced holds (engine.TracedHold: listeners' callbacks, handlers'
+    // functions, observers' callbacks) end LAST, with the isolate itself:
+    // v8_Isolate_Dispose resets every hold's reference while the isolate
+    // lives and cuts the agent's hold slab from it (v8_wrapper.cpp
+    // endHoldSlab), so an owner torn down after this - a realm's end below,
+    // a node the host still counts - releases a hold that reads empty and
+    // makes no V8 call. Nothing here releases holds: their owners do.
     // Its node wrappers end, every one's reference let go (engine.
     // releaseNodeWrappers, idempotent: a host that called it before its last
     // drain left nothing here) - before the agent is forgotten, while the

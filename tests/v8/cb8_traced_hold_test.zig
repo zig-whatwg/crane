@@ -254,6 +254,92 @@ test "a hold released after the collection that took its value is safe: the next
     }
 }
 
+const SlabStats = struct {
+    live: u64 = 0,
+    chunks: u64 = 0,
+    swept: u64 = 0,
+
+    fn of(page: Page) SlabStats {
+        var stats: SlabStats = .{};
+        ffi.v8_test_TracedHolds_Stats(page.isolate(), &stats.live, &stats.chunks, &stats.swept);
+        return stats;
+    }
+};
+
+test "the collection's pause counts the holds it took, and a hold it took still occupies its cell until released" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    const start = SlabStats.of(page);
+    var holds: [untraced_count]engine.TracedCallback = undefined;
+    for (&holds) |*held| held.* = try page.heldFunction();
+    try testing.expectEqual(start.live + untraced_count, SlabStats.of(page).live);
+    page.fullGC();
+    const collected = SlabStats.of(page);
+    try testing.expectEqual(start.swept + untraced_count, collected.swept);
+    try testing.expectEqual(start.live + untraced_count, collected.live);
+    for (holds) |held| held.release();
+    try testing.expectEqual(start.live, SlabStats.of(page).live);
+    // Nothing is left to take.
+    page.fullGC();
+    try testing.expectEqual(collected.swept, SlabStats.of(page).swept);
+}
+
+test "the agent's hold slab grows by chunks and gives the spare ones back" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    const function = try page.evaluate("globalThis.kept = () => 42; kept");
+    defer function.release();
+    const cells: usize = ffi.v8_test_TracedHolds_ChunkCells();
+    const count = 2 * cells + 7;
+    const holds = try testing.allocator.alloc(engine.TracedCallback, count);
+    defer testing.allocator.free(holds);
+    const start = SlabStats.of(page);
+    for (holds) |*held| held.* = (engine.BorrowedCallbackFunction{ .function = function.value }).keepTraced();
+    const full = SlabStats.of(page);
+    try testing.expectEqual(start.live + count, full.live);
+    try testing.expect(full.chunks >= 3);
+    // Every hold reads the function, whichever chunk its cell is in.
+    for (holds) |held| try testing.expect(engine.sameValue(page.realm, held.hold.value(), function.value));
+    // The middle chunk's holds end first, then the rest: one chunk with a
+    // free cell is kept, the others go back to the host.
+    for (holds[cells .. 2 * cells]) |held| held.release();
+    for (holds[0..cells]) |held| held.release();
+    for (holds[2 * cells ..]) |held| held.release();
+    const empty = SlabStats.of(page);
+    try testing.expectEqual(start.live, empty.live);
+    try testing.expect(empty.chunks <= 1 + start.chunks);
+    // And the slab is used again.
+    const again = (engine.BorrowedCallbackFunction{ .function = function.value }).keepTraced();
+    defer again.release();
+    try testing.expect(engine.sameValue(page.realm, again.hold.value(), function.value));
+}
+
+test "a hold its owner releases after the agent's end reads empty and is released without the engine" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    var holds: [untraced_count]engine.TracedCallback = undefined;
+    {
+        const page = try Page.open(&queue);
+        defer page.close();
+        const function = try page.evaluate("globalThis.kept = () => 42; kept");
+        defer function.release();
+        for (&holds) |*held| held.* = (engine.BorrowedCallbackFunction{ .function = function.value }).keepTraced();
+        for (holds) |held| try testing.expect(!held.hold.isEmpty());
+        // Some end with the agent alive, the rest outlive it.
+        for (holds[0 .. untraced_count / 2]) |held| held.release();
+    }
+    // The agent and its isolate are gone: the slab outlives them for these.
+    for (holds[untraced_count / 2 ..]) |held| {
+        try testing.expect(held.hold.isEmpty());
+        try testing.expect(held.hold.value().isUndefined());
+        held.release();
+    }
+}
+
 test "a held value survives scavenges: a traced hold is a root in a young-generation collection" {
     var queue: DeferredTeardown = .init(std.heap.c_allocator);
     defer queue.deinit();

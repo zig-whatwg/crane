@@ -12,6 +12,7 @@
 #include <array>
 #include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <mutex>
 #include <new>
 #include <v8.h>
@@ -3779,6 +3780,265 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
     IsolateData* record_;
 };
 
+// ---- engine.TracedHold's storage: the agent's hold slab (refcount step 8) ----
+//
+// A traced hold - a listener's callback, an event handler's function, an
+// observer's callback - is one v8::TracedReference<Value> its owner traces at
+// collection time (Blink's TraceWrapperV8Reference). V8 15.7 tells NOBODY
+// when a full collection takes such a reference: TracedHandles::ResetDeadNodes
+// (15.7.112.43 src/handles/traced-handles.cc:320-345) frees every node no
+// trace marked and leaves the embedder's TracedReference naming the freed,
+// reusable node - Blink's references sit in cppgc objects that die in the
+// same collection. EmbedderRootsHandler::ResetRoot / TryResetRoot are called
+// only in young-generation collections, for droppable references
+// (ProcessWeakYoungObjects). The public contract puts it on the embedder
+// (v8-traced-handle.h, TracedReference: "The embedder needs to ensure that
+// the handle is not accessed once the V8 object has been reclaimed"). Crane's
+// owners are Zig objects that outlive the collection, so the adapter records
+// the death itself, as it does for every wrapper (the wrapper cache's
+// `marked` bit and `sweepUnmarked`; a node slot's anchor):
+//
+// - A hold is a HoldCell, 16 bytes of a chunk of its agent's slab: the
+//   reference and a stamp. The cell's address never changes and is the
+//   hold's handle.
+// - v8_Tracer_TraceHeld - the one place a hold is traced - traces the
+//   reference AND stamps the cell with the number of the collection that is
+//   marking (HoldSlab::epoch), inside that collection's atomic pause only.
+// - The slab's weak processing (HoldSweeper::ProcessWeak: a cppgc object the
+//   isolate's record roots, so it runs in the pause of every full
+//   collection, after the marking) writes every cell that holds a reference
+//   and was not stamped in this collection EMPTY - raw, a fresh
+//   TracedReference made over it: V8 frees the unmarked node itself in this
+//   pause, and a Reset would free it a second time. Then the number goes up.
+//
+// So: a cell that reads non-empty outside a collection was traced in the
+// last full collection or made after it, and V8 kept or made its node; a
+// cell V8 took reads empty from that pause on, and its release frees no node.
+// A stamp with no mark cannot exist (the trace and the stamp are one
+// function, and the stamp is refused outside the pause); a mark with no
+// stamp - a conservatively scanned stack word naming the node, a reference
+// made while V8 marks incrementally (V8 marks such a node itself) - only
+// leaves V8 a node nobody names, which the next full collection frees.
+//
+// The references are the default kind, not droppable: a root in a
+// young-generation collection, so a scavenge never takes a held value, and
+// nothing of EmbedderRootsHandler ever sees one (a droppable hold of an
+// unmodified API object would reach NodeWrapperRootsHandler::ResetRoot, which
+// reads its argument as a wrapper's reference).
+//
+// Lifetime (the teardown order, v8_Isolate_Dispose): the slab is the
+// agent's, made with its first hold. At the agent's end, while the isolate
+// lives, every cell's reference is Reset - V8 frees its node - and the slab
+// is cut from the isolate (`isolate` null: orphaned). A hold released after
+// that - an owner that outlived its agent - only gives its cell back: it
+// reads empty and makes no V8 call. The slab's memory outlives its last
+// cell: it is freed by the agent's end when no cell is in use, else by the
+// release of the last one. Until the agent's end every operation runs on the
+// agent's thread, with no lock; an orphaned slab's releases take its lock
+// (whichever thread ends the owner).
+//
+// Measured before it was built (lane rc8's microbench, 2026-11-23, V8
+// 15.7.112.43 public API on an M2): a cell made and ended costs 10 ns (7 ns
+// in a batch of 16,384) against 6-19 ns for a strong v8::Global in a malloc
+// box; a full collection with 100,000 live holds costs what it costs with
+// 100,000 Globals, the sweep itself 0.05 ms.
+struct HoldSlab;
+
+struct HoldCell {
+    /// The hold's reference. Empty: the cell is free, or the collector took
+    /// its value (the sweep), or the agent ended.
+    TracedReference<Value> ref;
+    /// In use: the number of the last collection whose marking traced the
+    /// cell (0: none yet). Free: the index of its chunk's next free cell.
+    uint32_t stamp;
+    uint32_t state;
+
+    static constexpr uint32_t kFree = 0;
+    static constexpr uint32_t kInUse = 0x48304c44;  // "H0LD"
+};
+static_assert(sizeof(HoldCell) == 16 && offsetof(HoldCell, ref) == 0,
+              "a hold cell is two words, and its address is its reference's: the handle every reader of the hold is given");
+
+/// 64 KiB of cells, aligned to its size so a cell finds its chunk - and
+/// through it its slab, with no isolate - by its address.
+struct HoldChunk {
+    static constexpr size_t kBytes = size_t{64} * 1024;
+    static constexpr size_t kHeaderBytes = 48;
+    static constexpr uint32_t kCells = static_cast<uint32_t>((kBytes - kHeaderBytes) / sizeof(HoldCell));
+    static constexpr uint32_t kNoCell = UINT32_MAX;
+
+    HoldSlab* slab;
+    /// The slab's list of chunks that have a free cell.
+    HoldChunk* prev_usable;
+    HoldChunk* next_usable;
+    /// Its place in HoldSlab::chunks.
+    uint32_t index;
+    /// Cells in use.
+    uint32_t live;
+    uint32_t first_free;
+    uint32_t in_usable;
+
+    HoldCell* cells() { return reinterpret_cast<HoldCell*>(reinterpret_cast<char*>(this) + kHeaderBytes); }
+    static HoldChunk* of(const HoldCell* cell) {
+        return reinterpret_cast<HoldChunk*>(reinterpret_cast<uintptr_t>(cell) & ~(static_cast<uintptr_t>(kBytes) - 1));
+    }
+};
+static_assert(sizeof(HoldChunk) <= HoldChunk::kHeaderBytes && HoldChunk::kHeaderBytes % sizeof(HoldCell) == 0, "a hold chunk's header ends where its cells begin");
+
+struct HoldSlab {
+    /// The agent's isolate; null once the agent ended (the slab is orphaned:
+    /// only releases reach it, under `orphan_lock`).
+    std::atomic<Isolate*> isolate;
+    /// The agent's C++ heap, asked whether its collection's atomic pause is
+    /// running (v8_Tracer_TraceHeld); null once orphaned.
+    const cppgc::HeapHandle* heap;
+    std::vector<HoldChunk*> chunks;
+    HoldChunk* usable = nullptr;
+    /// The number of the full collection that is marking, or of the next
+    /// one: every stamp made in a pause carries it, and the sweep that ends
+    /// the pause raises it. Never 0 (a fresh cell's stamp). A cell left
+    /// untraced for 2^32 collections is not a case.
+    uint32_t epoch = 1;
+    /// Cells in use, over every chunk.
+    size_t live = 0;
+    /// References the sweeps wrote empty, cumulative (tests/v8).
+    uint64_t swept = 0;
+    std::mutex orphan_lock;
+
+    HoldSlab(Isolate* owner, const cppgc::HeapHandle* cpp_heap) : isolate(owner), heap(cpp_heap) {}
+    ~HoldSlab() {
+        for (HoldChunk* chunk : chunks) std::free(chunk);
+    }
+    HoldSlab(const HoldSlab&) = delete;
+    HoldSlab& operator=(const HoldSlab&) = delete;
+
+    void linkUsable(HoldChunk* chunk) {
+        chunk->prev_usable = nullptr;
+        chunk->next_usable = usable;
+        if (usable) usable->prev_usable = chunk;
+        usable = chunk;
+        chunk->in_usable = 1;
+    }
+    void unlinkUsable(HoldChunk* chunk) {
+        if (chunk->prev_usable) chunk->prev_usable->next_usable = chunk->next_usable;
+        else usable = chunk->next_usable;
+        if (chunk->next_usable) chunk->next_usable->prev_usable = chunk->prev_usable;
+        chunk->prev_usable = chunk->next_usable = nullptr;
+        chunk->in_usable = 0;
+    }
+
+    /// One more chunk, every cell free; null when the host has no memory.
+    HoldChunk* grow() {
+        void* memory = nullptr;
+        if (posix_memalign(&memory, HoldChunk::kBytes, HoldChunk::kBytes) != 0 || !memory) return nullptr;
+        HoldChunk* chunk = new (memory) HoldChunk();
+        chunk->slab = this;
+        chunk->index = static_cast<uint32_t>(chunks.size());
+        chunk->live = 0;
+        HoldCell* cells = chunk->cells();
+        for (uint32_t i = 0; i < HoldChunk::kCells; i++) {
+            HoldCell* cell = new (&cells[i]) HoldCell();
+            cell->state = HoldCell::kFree;
+            cell->stamp = i + 1 < HoldChunk::kCells ? i + 1 : HoldChunk::kNoCell;
+        }
+        chunk->first_free = 0;
+        chunks.push_back(chunk);
+        linkUsable(chunk);
+        return chunk;
+    }
+
+    /// A chunk with no cell in use goes back to the host - unless it is the
+    /// only one with a free cell: one empty chunk is kept, so a hold made
+    /// and ended across a chunk's edge maps and unmaps nothing.
+    void releaseChunkIfSpare(HoldChunk* chunk) {
+        if (chunk->live != 0 || (!chunk->prev_usable && !chunk->next_usable)) return;
+        unlinkUsable(chunk);
+        HoldChunk* last = chunks.back();
+        chunks[chunk->index] = last;
+        last->index = chunk->index;
+        chunks.pop_back();
+        std::free(chunk);
+    }
+
+    /// A cell holding `value`: on the agent's thread, the isolate current.
+    /// Nothing here allocates on either heap (a TracedNode block is malloc),
+    /// so no collection runs between the cell's taking and its reference.
+    /// The reference is made by assignment (Reset), whose store applies V8's
+    /// marking barrier when a collection is marking: the cell is no cppgc
+    /// object (TracedReferenceStoreMode::kAssigningStore).
+    HoldCell* make(Isolate* owner, Local<Value> value) {
+        HoldChunk* chunk = usable ? usable : grow();
+        if (!chunk) return nullptr;
+        HoldCell* cell = chunk->cells() + chunk->first_free;
+        chunk->first_free = cell->stamp;
+        if (++chunk->live == HoldChunk::kCells) unlinkUsable(chunk);
+        ++live;
+        cell->stamp = 0;
+        cell->state = HoldCell::kInUse;
+        cell->ref.Reset(owner, value);
+        return cell;
+    }
+
+    /// `cell` goes back to its chunk; its reference is empty already.
+    void giveBack(HoldCell* cell) {
+        if (cell->state != HoldCell::kInUse) {
+            fprintf(stderr, "v8_wrapper: a traced hold was released twice, or is not one (cell state %#x)\n", cell->state);
+            abort();
+        }
+        HoldChunk* chunk = HoldChunk::of(cell);
+        cell->state = HoldCell::kFree;
+        cell->stamp = chunk->first_free;
+        chunk->first_free = static_cast<uint32_t>(cell - chunk->cells());
+        if (chunk->live-- == HoldChunk::kCells) linkUsable(chunk);
+        --live;
+    }
+
+    /// The hold ends while its agent lives: on the agent's thread, outside a
+    /// collection. A cell the sweep emptied has no node to free.
+    void end(HoldCell* cell) {
+        cell->ref.Reset();
+        giveBack(cell);
+        releaseChunkIfSpare(HoldChunk::of(cell));
+    }
+
+    /// The weak processing of a full collection's atomic pause: marking is
+    /// over, so a reference no trace stamped in this collection names a node
+    /// V8 frees in this pause. No V8 call, no allocation, nothing of Zig's.
+    void sweep() {
+        const uint32_t now = epoch;
+        uint64_t taken = 0;
+        for (HoldChunk* chunk : chunks) {
+            if (!chunk->live) continue;
+            HoldCell* cells = chunk->cells();
+            for (uint32_t i = 0; i < HoldChunk::kCells; i++) {
+                HoldCell& cell = cells[i];
+                if (cell.ref.IsEmpty() || cell.stamp == now) continue;
+                new (&cell.ref) TracedReference<Value>();
+                ++taken;
+            }
+        }
+        swept += taken;
+        if (++epoch == 0) epoch = 1;
+    }
+};
+
+/// The slab's part in every full collection: a cppgc object its isolate's
+/// record roots (IsolateData::hold_sweeper), so it is traced in each one's
+/// atomic pause, where it registers the sweep - the anchors' registry's
+/// pattern (NodeWrapperRegistry; Blink's ActiveScriptWrappableManager). A
+/// heap snapshot's visitor calls Trace too and registers nothing
+/// (cppgc::Visitor::RegisterWeakCallback's default). It owns nothing.
+class HoldSweeper final : public cppgc::GarbageCollected<HoldSweeper> {
+ public:
+    explicit HoldSweeper(HoldSlab* slab) : slab_(slab) {}
+    void Trace(cppgc::Visitor* visitor) const { visitor->RegisterWeakCallbackMethod<HoldSweeper, &HoldSweeper::ProcessWeak>(this); }
+    void ProcessWeak(const cppgc::LivenessBroker&) {
+        if (slab_) slab_->sweep();
+    }
+    /// Null once the agent ended.
+    HoldSlab* slab_;
+};
+
 class NodeWrapperRootsHandler;
 
 struct IsolateData {
@@ -3943,6 +4203,12 @@ struct IsolateData {
     /// (v8_Isolate_SetNodeWrappers to v8_Isolate_Dispose's start, which
     /// clears it before Isolate::Dispose terminates the heap).
     cppgc::Persistent<NodeWrapperRegistry> node_anchors;
+    /// The agent's traced holds (engine.TracedHold; "the agent's hold slab"
+    /// above), made with the first one, and the cppgc object that sweeps it
+    /// in every full collection. Both end in v8_Isolate_Dispose, before
+    /// Isolate::Dispose (endHoldSlab).
+    HoldSlab* holds = nullptr;
+    cppgc::Persistent<HoldSweeper> hold_sweeper;
     /// The isolate's EmbedderRootsHandler (design 4.11, P8: Blink's
     /// BlinkRootsHandler), installed right after Isolate::Initialize
     /// (installNodeWrapperRootsHandler) and uninstalled before
@@ -6075,27 +6341,72 @@ extern "C" void v8_NodeTracer_TraceSlot(cppgc::Visitor* visitor, void* slot) {
 // ---- engine.TracedHold (refcount step 8: values traced from their owner at
 // collection time, Blink's TraceWrapperV8Reference) ----
 //
-// A hold is a heap box holding one TracedReference<Value>, made DROPPABLE: no
+// A hold is a cell of its agent's hold slab ("the agent's hold slab", above
+// IsolateData: the cell, the stamp, the sweep and the teardown order): no
 // root in a full collection - the value lives while a trace reaches the hold
-// (traceHeld, from its owner's anchor or the walk) and V8 clears it when none
-// does - and, in a young-generation one, dropped only when its value is an
-// unmodified API object (TracedHandles::ComputeWeaknessForYoungObjects): a
-// function, or any object script gave a property, is kept, so a scavenge
-// never takes a held listener. (A non-droppable TracedReference is not
-// cleared by a full collection on 15.7: tests/v8/cb8_traced_hold_test.zig
-// measured 0 of 200 untraced holds cleared.) Made and disposed on the
-// agent's thread, never inside the collector; no lock, no realm tag.
+// (traceHeld, from its owner's anchor or the walk), and the pause of a
+// collection in which none does writes the hold empty - and a root in a
+// young-generation one. Made and ended on the agent's thread, never inside
+// the collector; no lock, no realm tag.
 // Blink: TraceWrapperV8Reference (platform/bindings/trace_wrapper_v8_reference.h)
 // in V8EventListener / CallbackInterfaceBase, traced from the target.
 //
-// The box is read as a BORROWED value through the Global<Value> operations
+// The cell is read as a BORROWED value through the Global<Value> operations
 // that only read it (Get, IsEmpty: v8_Global_Clone, the comparisons, the
 // binding's return of a getter's value): a TracedReference and a Global are
 // one IndirectHandleBase each - one `location_` word - and both read the slot
 // it names. Nothing that writes a Global's node (its class id flags, SetWeak,
-// Reset) is ever given a hold's box: only v8_TracedHold_Dispose ends one.
+// Reset) is ever given a hold's cell: only v8_TracedHold_Dispose ends one.
 static_assert(sizeof(TracedReference<Value>) == sizeof(Global<Value>),
-              "a traced hold's box is read through the Global<Value> readers: one location word each");
+              "a traced hold's cell is read through the Global<Value> readers: one location word each");
+
+/// `isolate`'s hold slab, made - with its sweeper, rooted by the record - on
+/// first use. The sweeper's allocation is the only step that can collect,
+/// and it runs before any cell exists. A loud failure for an isolate this
+/// file did not make or one with no C++ heap (the snapshot creator's): no
+/// collection there would trace a hold, so V8 would take every one.
+static HoldSlab* holdSlabOf(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (record && record->holds) return record->holds;
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!record || !heap) {
+        fprintf(stderr, "v8_wrapper: a traced hold on an isolate with no %s - nothing would trace it\n", record ? "C++ heap" : "record");
+        abort();
+    }
+    HoldSlab* slab = new HoldSlab(isolate, &heap->GetHeapHandle());
+    record->hold_sweeper = cppgc::MakeGarbageCollected<HoldSweeper>(heap->GetAllocationHandle(), slab);
+    record->holds = slab;
+    return slab;
+}
+
+/// The agent's end, in v8_Isolate_Dispose while the isolate lives (THE
+/// TEARDOWN ORDER of a traced hold): every cell's reference is Reset - V8
+/// frees its node - so no hold names anything of the isolate's once it is
+/// gone; the sweeper lets go of the slab and is unrooted (the heap's
+/// termination in Isolate::Dispose collects it); and the slab is cut from the
+/// isolate. Its memory outlives its last cell: freed here when no cell is in
+/// use, else by the release of the last one (v8_TracedHold_Dispose), which
+/// from here on only gives its cell back.
+static void endHoldSlab(IsolateData* record) {
+    HoldSlab* slab = record->holds;
+    if (!slab) return;
+    record->holds = nullptr;
+    if (HoldSweeper* sweeper = record->hold_sweeper.Get()) sweeper->slab_ = nullptr;
+    record->hold_sweeper.Clear();
+    for (HoldChunk* chunk : slab->chunks) {
+        if (!chunk->live) continue;
+        HoldCell* cells = chunk->cells();
+        for (uint32_t i = 0; i < HoldChunk::kCells; i++) cells[i].ref.Reset();
+    }
+    bool unused;
+    {
+        std::lock_guard<std::mutex> guard(slab->orphan_lock);
+        slab->heap = nullptr;
+        slab->isolate.store(nullptr, std::memory_order_release);
+        unused = slab->live == 0;
+    }
+    if (unused) delete slab;
+}
 
 /// A hold of `source`'s value (BORROWED), or null when `source` is empty or
 /// not on a live isolate.
@@ -6103,34 +6414,80 @@ extern "C" void* v8_TracedHold_New(Global<Value>* source) {
     if (!source || source->IsEmpty()) return nullptr;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return nullptr;
+    HoldSlab* slab = holdSlabOf(isolate);
     HandleScope scope(isolate);
     Local<Value> value = source->Get(isolate);
     if (value.IsEmpty()) return nullptr;
-    auto* hold = new TracedReference<Value>();
-    hold->Reset(isolate, value, TracedReference<Value>::IsDroppable{});
-    return hold;
+    return slab->make(isolate, value);
 }
 
 /// The hold ends (its owner let the value go, or is torn down): on the
-/// agent's thread, outside a collection.
+/// agent's thread, outside a collection - or, for an owner that outlived its
+/// agent, after the agent's end, on whichever thread ends the owner: the
+/// cell reads empty then (endHoldSlab) and only goes back; the last one
+/// frees the slab.
 extern "C" void v8_TracedHold_Dispose(void* hold) {
     if (!hold) return;
-    auto* traced = static_cast<TracedReference<Value>*>(hold);
-    traced->Reset();
-    delete traced;
+    HoldCell* cell = static_cast<HoldCell*>(hold);
+    HoldSlab* slab = HoldChunk::of(cell)->slab;
+    if (slab->isolate.load(std::memory_order_acquire)) {
+        slab->end(cell);
+        return;
+    }
+    bool last;
+    {
+        std::lock_guard<std::mutex> guard(slab->orphan_lock);
+        slab->giveBack(cell);
+        last = slab->live == 0;
+    }
+    if (last) delete slab;
 }
 
 /// Whether the collector took the hold's value (no trace reached it in a
-/// full collection) - or it never had one.
+/// full collection), its agent ended - or it never had one.
 extern "C" bool v8_TracedHold_IsEmpty(void* hold) {
-    return !hold || static_cast<TracedReference<Value>*>(hold)->IsEmpty();
+    return !hold || static_cast<HoldCell*>(hold)->ref.IsEmpty();
 }
 
 /// engine.traceHeld on V8: in the atomic pause, the walk's or an anchor's
-/// visitor keeps the hold's value.
+/// visitor keeps the hold's value, and the cell is stamped with this
+/// collection's number - the two in one function, so the sweep that ends the
+/// pause takes exactly the holds no trace reached. The stamp is refused
+/// outside the pause of the hold's own heap (a heap snapshot's visitor walks
+/// nothing: collectingRecord; so nothing should call this then): a stamp with
+/// no mark would leave the hold naming a node V8 frees. Debug builds fail
+/// loudly there; the others leave the cell unstamped, which the next sweep
+/// empties - a lost hold, never a dangling one.
 extern "C" void v8_Tracer_TraceHeld(cppgc::Visitor* visitor, void* hold) {
     if (!hold) return;
-    visitor->Trace(*static_cast<const TracedReference<Value>*>(hold));
+    HoldCell* cell = static_cast<HoldCell*>(hold);
+    if (cell->ref.IsEmpty()) return;
+    visitor->Trace(cell->ref);
+    HoldSlab* slab = HoldChunk::of(cell)->slab;
+    if (!slab->heap || !cppgc::subtle::HeapState::IsInAtomicPause(*slab->heap)) {
+#ifndef NDEBUG
+        fprintf(stderr, "v8_wrapper: a traced hold was traced outside its heap's atomic pause - its stamp would outlive the marking\n");
+        abort();
+#else
+        return;
+#endif
+    }
+    cell->stamp = slab->epoch;
+}
+
+/// tests/v8: `isolate`'s hold slab - cells in use, chunks mapped, and the
+/// references its sweeps wrote empty so far. Zeroes with no slab.
+extern "C" void v8_test_TracedHolds_Stats(Isolate* isolate, uint64_t* live, uint64_t* chunks, uint64_t* swept) {
+    IsolateData* record = isolateData(isolate);
+    const HoldSlab* slab = record ? record->holds : nullptr;
+    if (live) *live = slab ? slab->live : 0;
+    if (chunks) *chunks = slab ? slab->chunks.size() : 0;
+    if (swept) *swept = slab ? slab->swept : 0;
+}
+
+/// tests/v8: how many cells a chunk of a hold slab has.
+extern "C" uint32_t v8_test_TracedHolds_ChunkCells() {
+    return HoldChunk::kCells;
 }
 
 
@@ -7073,6 +7430,12 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // anchor (none holds a slot any more), and no Persistent of the
             // record outlives the heap.
             releaseNodeAnchors(record);
+            // Its traced holds, while the isolate lives (endHoldSlab: THE
+            // TEARDOWN ORDER of a traced hold): every cell's reference Reset,
+            // the sweeper unrooted, the slab cut from the isolate. A hold an
+            // owner still has reads empty from here, and its release - after
+            // Isolate::Dispose, whenever the owner ends - makes no V8 call.
+            endHoldSlab(record);
             // Finalizers still queued run no more: the isolate is not
             // entered here and its realms are gone, so nothing of Zig's is
             // called. An agent's end drained the queue in its last forced

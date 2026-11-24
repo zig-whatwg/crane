@@ -3290,17 +3290,27 @@ pub extern fn v8_Isolate_SetNodeWrapperTracing(
 /// `wrapper_`.
 pub extern fn v8_NodeTracer_TraceSlot(visitor: *anyopaque, slot: *anyopaque) void;
 
-/// engine.TracedHold on V8 (v8_wrapper.cpp, "engine.TracedHold"): a box with
-/// one TracedReference<Value> of `source`'s value (BORROWED) - no root in a
-/// full collection, a root in a young one - or null.
+/// engine.TracedHold on V8 (v8_wrapper.cpp, "engine.TracedHold"): a cell of
+/// the current isolate's hold slab with one TracedReference<Value> of
+/// `source`'s value (BORROWED) - no root in a full collection, a root in a
+/// young one - or null.
 pub extern fn v8_TracedHold_New(source: *Value) ?*anyopaque;
-/// The hold ends: on the agent's thread, outside a collection.
+/// The hold ends: on the agent's thread, outside a collection - or after its
+/// agent's end, when it only gives its cell back.
 pub extern fn v8_TracedHold_Dispose(hold: ?*anyopaque) void;
-/// Whether the collector took the hold's value.
+/// Whether the hold reads no value: a full collection in which nothing
+/// traced it took it (written empty in that collection's pause), or its
+/// agent ended.
 pub extern fn v8_TracedHold_IsEmpty(hold: ?*anyopaque) bool;
 /// engine.traceHeld: the visitor of a collection's atomic pause keeps the
-/// hold's value.
+/// hold's value, and the hold's cell is stamped with that collection's
+/// number - what its pause's sweep reads.
 pub extern fn v8_Tracer_TraceHeld(visitor: *anyopaque, hold: ?*anyopaque) void;
+/// tests/v8: `isolate`'s hold slab - cells in use, chunks mapped, and the
+/// references its sweeps wrote empty so far.
+pub extern fn v8_test_TracedHolds_Stats(isolate: *Isolate, live: ?*u64, chunks: ?*u64, swept: ?*u64) void;
+/// tests/v8: how many cells a chunk of a hold slab has.
+pub extern fn v8_test_TracedHolds_ChunkCells() u32;
 
 /// tests/v8: the MarkingType newAgentCppHeap gives every agent's C++ heap
 /// (cppgc::Heap::MarkingType: 0 kAtomic, 1 kIncremental, 2

@@ -606,7 +606,8 @@ pub fn keepCallbackFunction(callback: engine.BorrowedCallbackFunction) engine.Ca
 }
 
 /// engine.keepCallbackFunctionTraced: the function's value in a traced hold
-/// (v8_TracedHold_New: a TracedReference its owner traces, no root), with its
+/// (v8_TracedHold_New: a TracedReference its owner traces, no root, in a
+/// cell of the agent's hold slab), with its
 /// callback context the incumbent realm now. The binding's Global stays the
 /// binding's, released when the call returns; no realm tag - a traced value
 /// roots nothing, so a detached realm has nothing to weaken. A value with no
