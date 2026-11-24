@@ -140,10 +140,10 @@ pub fn arenaOf(instance: *const Instance) *ArenaAllocator {
 /// Node's initOwn) - found from its address, so a state need not keep a copy
 /// (lane perf2 batch 5: 16 bytes per level per object).
 pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
-    // The Browser's general allocator (allocator-hardening batch B: its
-    // heap's objects and bytes partitions), or, in a scope made without a
-    // Browser, the host's.
-    return BrowserScope.ofInstance(instance).generalAllocator();
+    // A Browser's: its heap's general allocator (allocator-hardening batch
+    // B: the objects and bytes partitions); a scope made without a Browser:
+    // the host's (BrowserScope.allocator).
+    return BrowserScope.ofInstance(instance).allocator;
 }
 
 /// Whether `allocator` IS `instance`'s Browser's (`allocatorOf`): the same

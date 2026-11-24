@@ -132,3 +132,63 @@ test "a huge bytes block (past a large run) is the bytes partition's, and its ad
     engine.freeGeneral(third, size, 1);
     try testing.expectEqual(@as(?heap.Violation, null), engine.takeViolation());
 }
+
+test "a general block made on one thread is freed on another, both ways, under the partitions' locks" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const allocator = heap.general.allocatorOf(engine);
+
+    // Each side makes blocks of both partitions for the other to free, in
+    // rounds, while it frees the other side's: under ThreadSanitizer a race
+    // on a span's state or a bucket's lists is a report.
+    const rounds = 200;
+    const per_round = 64;
+    const Exchange = struct {
+        allocator: std.mem.Allocator,
+        made: [rounds][per_round][]u8 = undefined,
+        words: [rounds][per_round][]usize = undefined,
+        ready: std.atomic.Value(usize) = .init(0),
+
+        fn make(self: *@This()) !void {
+            for (0..rounds) |r| {
+                for (0..per_round) |i| {
+                    self.made[r][i] = try self.allocator.alloc(u8, 16 + (i * 37) % 900);
+                    self.words[r][i] = try self.allocator.alloc(usize, 1 + i % 40);
+                }
+                self.ready.store(r + 1, .release);
+            }
+        }
+
+        fn takeFrom(self: *@This(), other: *@This()) void {
+            for (0..rounds) |r| {
+                while (other.ready.load(.acquire) <= r) std.Thread.yield() catch {};
+                for (0..per_round) |i| {
+                    self.allocator.free(other.made[r][i]);
+                    self.allocator.free(other.words[r][i]);
+                }
+            }
+        }
+    };
+    // Off the stack: two sides' block tables are 800 KiB.
+    const window_side = try testing.allocator.create(Exchange);
+    defer testing.allocator.destroy(window_side);
+    window_side.* = .{ .allocator = allocator };
+    const worker_side = try testing.allocator.create(Exchange);
+    defer testing.allocator.destroy(worker_side);
+    worker_side.* = .{ .allocator = allocator };
+    const Worker = struct {
+        fn run(mine: *Exchange, theirs: *Exchange) void {
+            mine.make() catch @panic("the worker's side could not allocate");
+            mine.takeFrom(theirs);
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Worker.run, .{ worker_side, window_side });
+    try window_side.make();
+    window_side.takeFrom(worker_side);
+    thread.join();
+    const Count = struct {
+        fn line(_: void, _: heap.LeakLine) void {}
+    };
+    try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
+}

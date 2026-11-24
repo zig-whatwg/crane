@@ -572,10 +572,10 @@ fn connectedDescriptorAllocations() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const first = try interfaces.FontFace.init(std.testing.allocator, realm);
+    const first = try interfaces.FontFace.init(realm.allocator, realm);
     const first_generation = runtime.SlabAllocator.generationOf(first);
     defer first.releaseIfUnwrapped(first_generation);
-    const second = try interfaces.FontFace.init(std.testing.allocator, realm);
+    const second = try interfaces.FontFace.init(realm.allocator, realm);
     const second_generation = runtime.SlabAllocator.generationOf(second);
     defer second.releaseIfUnwrapped(second_generation);
     const Exercise = struct {

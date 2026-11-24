@@ -356,9 +356,9 @@ pub const Browser = struct {
         // allocator (design 4.2). The host's allocator keeps only the
         // Browser's own record and its scope, made before and ended after.
         if (scope.heap) |reserved| if (reserved.general_pools) {
-            scope.general = runtime.heap.general.allocatorOf(try scope.heapEngine());
+            scope.useGeneralAllocator(runtime.heap.general.allocatorOf(try scope.heapEngine()));
         };
-        const memory = scope.generalAllocator();
+        const memory = scope.allocator;
 
         const agent_host = try memory.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(memory);
@@ -407,7 +407,7 @@ pub const Browser = struct {
         // The agent's event loop, with its timers (the host's).
         const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try EventLoop.initWithClock(agent, allocator, browser_clock);
+        event_loop.* = try EventLoop.initWithClock(agent, allocator, browser_clock, scope.host_allocator);
         // The agent's deferred teardown queue, which the loop runs between
         // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
@@ -469,8 +469,8 @@ pub const Browser = struct {
 
         // The Browser's own record: the host's, as its scope is (ended after
         // the heap).
-        const browser = try scope.allocator.create(Browser);
-        errdefer scope.allocator.destroy(browser);
+        const browser = try scope.host_allocator.create(Browser);
+        errdefer scope.host_allocator.destroy(browser);
 
         browser.* = Browser{
             .allocator = allocator,
@@ -660,7 +660,7 @@ pub const Browser = struct {
         // Its platform state ends first.
         // The host's allocator made the scope and this record; everything
         // else of the Browser is its heap's, ended with the scope.
-        const host_allocator = self.scope.allocator;
+        const host_allocator = self.scope.host_allocator;
         self.known_tabs.deinit(self.allocator);
         @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();

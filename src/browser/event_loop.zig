@@ -203,19 +203,23 @@ pub const EventLoop = struct {
 
     /// A new event loop for `agent`, with its timers, on the process's clocks.
     pub fn init(agent: *engine.Agent, allocator: Allocator) !Self {
-        return initWithClock(agent, allocator, .real);
+        return initWithClock(agent, allocator, .real, allocator);
     }
 
     /// `init`, measuring time with `browser_clock` - its Browser's
     /// (platform.browserClock) - for its idle periods, its frame clock and
-    /// its timers.
-    pub fn initWithClock(agent: *engine.Agent, allocator: Allocator, browser_clock: platform.BrowserClock) !Self {
+    /// its timers. Its cross-thread sink comes from `sink_allocator`: a
+    /// counted object its holders (a BrowserHost, a worker's link) may
+    /// release after the loop's Browser ended, so it is the host's, never
+    /// the Browser's heap (allocator-hardening batch B: the heap's
+    /// reservation goes with its Browser).
+    pub fn initWithClock(agent: *engine.Agent, allocator: Allocator, browser_clock: platform.BrowserClock, sink_allocator: Allocator) !Self {
         const timer_mgr = try TimerManager.initWithClock(allocator, .{
             .context = browser_clock.context,
             .monotonic_now = browser_clock.monotonic_now,
         });
         errdefer timer_mgr.deinit();
-        const sink = try runtime.TaskSink.create(allocator);
+        const sink = try runtime.TaskSink.create(sink_allocator);
         errdefer sink.release();
 
         return .{

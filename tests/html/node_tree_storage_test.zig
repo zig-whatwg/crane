@@ -40,9 +40,9 @@ fn runOnFreshThread(scenario: Scenario) !void {
 
             const before_instances = browser.scope.slab.stats().currently_allocated;
             const before_states = browser.scope.arena.stats().bytes_in_use;
-            const root = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
-            const child = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
-            const text = try interfaces.Text.init(testing.allocator, ctx);
+            const root = try interfaces.HTMLDivElement.init(ctx.allocator, ctx);
+            const child = try interfaces.HTMLDivElement.init(ctx.allocator, ctx);
+            const text = try interfaces.Text.init(ctx.allocator, ctx);
             _ = try interfaces.Node.call_appendChild(root, child);
             _ = try interfaces.Node.call_appendChild(child, text);
             const root_generation = runtime.SlabAllocator.generationOf(root);

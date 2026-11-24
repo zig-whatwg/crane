@@ -297,7 +297,7 @@ fn dialogCompletesAfterRemoval() !void {
 }
 
 fn makeNativeWindow(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
-    return interfaces.Window.init(std.testing.allocator, realm) catch null;
+    return interfaces.Window.init(realm.allocator, realm) catch null;
 }
 
 fn dialogBeforeToggleRetiresRealm() !void {
@@ -317,13 +317,13 @@ fn dialogBeforeToggleRetiresRealm() !void {
         .create_global_object = makeNativeWindow,
     });
     defer if (realm.hasEngine()) engine.destroyWindowRealm(realm, .global_detached);
-    const document = try interfaces.Document.init(std.testing.allocator, realm);
+    const document = try interfaces.Document.init(realm.allocator, realm);
     // The document's first wrapper takes its creator's reference over, so
     // the document goes with its wrappers (until the wrapper redesign's P7
     // the dialog's wrap made it, for node tracing's document edge; since P7
     // a wrap makes no wrapper but its node's).
     (try engine.retainValue(realm, .{ .instance = document })).release();
-    const dialog = try interfaces.HTMLDialogElement.init(std.testing.allocator, realm);
+    const dialog = try interfaces.HTMLDialogElement.init(realm.allocator, realm);
     try dom.node_document.set(dialog, document);
     // Engine-backed show() keeps the existing beforetoggle cleanup path.
     try interfaces.HTMLDialogElement.call_show(dialog);
