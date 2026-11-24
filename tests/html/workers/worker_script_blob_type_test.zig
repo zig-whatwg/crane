@@ -16,18 +16,18 @@ const script_fetch = @import("html_core").workers.script_fetch;
 const url = "blob:http://web-platform.test:8000/x";
 
 test "a classic worker's blob script runs whatever the blob's type" {
-    var fetched = try script_fetch.scriptFromBlob(testing.allocator, url, .classic, "postMessage(1);", "text/plain");
+    var fetched = try script_fetch.scriptFromLocalResponse(testing.allocator, url, .classic, "postMessage(1);", "text/plain");
     defer fetched.deinit();
     try testing.expectEqualStrings("postMessage(1);", fetched.source);
     try testing.expectEqualStrings(url, fetched.final_url);
 }
 
 test "a module worker's blob script with a type that is not JavaScript is refused" {
-    try testing.expectError(error.ParseError, script_fetch.scriptFromBlob(testing.allocator, url, .module, "export {};", "text/plain"));
+    try testing.expectError(error.ParseError, script_fetch.scriptFromLocalResponse(testing.allocator, url, .module, "export {};", "text/plain"));
 }
 
 test "a module worker's blob script with a JavaScript type is accepted" {
-    var fetched = try script_fetch.scriptFromBlob(testing.allocator, url, .module, "export {};", "text/javascript");
+    var fetched = try script_fetch.scriptFromLocalResponse(testing.allocator, url, .module, "export {};", "text/javascript");
     defer fetched.deinit();
     try testing.expectEqualStrings("export {};", fetched.source);
 }

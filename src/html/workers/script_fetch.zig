@@ -225,7 +225,7 @@ pub fn fetchWorkerScript(
 
     // Step 2: Check for special URLs
     if (std.mem.startsWith(u8, url, "data:")) {
-        return handleDataUrl(allocator, url);
+        return handleDataUrl(allocator, url, options.worker_type);
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
@@ -262,61 +262,28 @@ pub fn fetchWorkerScript(
     return WorkerScriptError.InvalidUrl;
 }
 
-/// Handle data: URL for worker scripts
-fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
-    // data:[<mediatype>][;base64],<data>
-    const data_start = std.mem.indexOf(u8, url, ",") orelse return WorkerScriptError.InvalidUrl;
-    const meta = url[5..data_start]; // After "data:"
-    const data = url[data_start + 1 ..];
-
-    // Check for base64 encoding
-    const is_base64 = std.mem.indexOf(u8, meta, ";base64") != null;
-
-    // Get content type (default to text/javascript for workers)
-    const content_type = blk: {
-        const semicolon_pos = std.mem.indexOf(u8, meta, ";");
-        if (semicolon_pos) |pos| {
-            if (pos > 0) {
-                break :blk meta[0..pos];
-            }
-        } else if (meta.len > 0) {
-            break :blk meta;
-        }
-        break :blk "text/javascript";
+/// A data: worker script: Fetch's scheme fetch "data" - the "data: URL
+/// processor" (Fetch 6) on the URL, a network error when that fails, else a
+/// response whose `Content-Type` is its MIME type serialized and whose body
+/// is its body, percent-decoded and, for a base64 type, forgiving-base64
+/// decoded - checked as HTML checks a worker script's response
+/// (`scriptFromLocalResponse`).
+fn handleDataUrl(allocator: Allocator, url: []const u8, worker_type: WorkerType) WorkerScriptError!FetchedScript {
+    const result = fetch.algorithms.scheme_fetch.schemeFetch(allocator, "data", url) catch return WorkerScriptError.OutOfMemory;
+    const response = switch (result) {
+        .response => |response| response,
+        // HTML "fetch a classic worker script" processResponseConsumeBody
+        // step 2 (and "fetch a single module script" step 1): a network
+        // error's body is null - no script.
+        .network_error => |reason| {
+            std.log.debug("handleDataUrl: {s}", .{reason orelse "network error"});
+            return WorkerScriptError.NetworkError;
+        },
     };
-
-    // Decode the data
-    var source: []const u8 = undefined;
-    if (is_base64) {
-        // Base64 decode
-        const decoded_size = std.base64.standard.Decoder.calcSizeForSlice(data) catch {
-            return WorkerScriptError.InvalidUrl;
-        };
-        const decoded = allocator.alloc(u8, decoded_size) catch {
-            return WorkerScriptError.OutOfMemory;
-        };
-        _ = std.base64.standard.Decoder.decode(decoded, data) catch {
-            allocator.free(decoded);
-            return WorkerScriptError.InvalidUrl;
-        };
-        source = decoded;
-    } else {
-        // Percent-decode
-        source = percentDecode(allocator, data) catch {
-            return WorkerScriptError.OutOfMemory;
-        };
-    }
-
-    // FetchedScript.init duplicates source, so free our allocation after
-    const result = FetchedScript.init(allocator, source, url, content_type, true) catch {
-        allocator.free(source);
-        return WorkerScriptError.OutOfMemory;
-    };
-
-    // Free original allocation since init() duplicated it
-    allocator.free(source);
-
-    return result;
+    defer response.deinit();
+    const bytes: []const u8 = if (response.body) |body| body.getBytes() else "";
+    const content_type = response.header_list.getFirstValue("content-type") orelse "";
+    return scriptFromLocalResponse(allocator, url, worker_type, bytes, content_type);
 }
 
 /// A blob: worker script URL's blob URL entry, captured when the URL is
@@ -373,24 +340,25 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_storage_key: 
     defer response.deinit();
     const bytes: []const u8 = if (response.body) |body| body.data.items else "";
     const content_type = response.header_list.getFirstValue("content-type") orelse "";
-    return scriptFromBlob(allocator, url, worker_type, bytes, content_type);
+    return scriptFromLocalResponse(allocator, url, worker_type, bytes, content_type);
 }
 
-/// A worker script from a blob's `bytes` and its `content_type`, for the
-/// blob URL `url` (its final URL).
+/// A worker script from the `bytes` and `content_type` of a blob: or data:
+/// URL's response, for that URL `url` (its final URL).
 ///
 /// HTML "fetch a classic worker script", processResponseConsumeBody step 3,
 /// refuses a script for its MIME type only when "response's URL's scheme is
-/// an HTTP(S) scheme": a classic worker's blob script runs whatever the
-/// blob's type. A module worker's script is a module script, which "fetch a
+/// an HTTP(S) scheme": a classic worker's blob: or data: script runs whatever
+/// its type. A module worker's script is a module script, which "fetch a
 /// single module script" accepts only with a JavaScript MIME type, whatever
-/// its scheme.
-pub fn scriptFromBlob(allocator: Allocator, url: []const u8, worker_type: WorkerType, bytes: []const u8, content_type: []const u8) WorkerScriptError!FetchedScript {
+/// its scheme (processResponseConsumeBody steps 2 and 7-9).
+pub fn scriptFromLocalResponse(allocator: Allocator, url: []const u8, worker_type: WorkerType, bytes: []const u8, content_type: []const u8) WorkerScriptError!FetchedScript {
     if (worker_type == .module and !isJavaScriptMimeType(content_type)) {
-        std.log.debug("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{content_type});
+        std.log.debug("worker script {s}: non-JavaScript MIME type: {s}", .{ url[0..@min(url.len, 5)], content_type });
         return WorkerScriptError.ParseError;
     }
-    // Blob URLs are same-origin (the store answers only its origin).
+    // A blob: URL's script is same-origin (the store answers only its
+    // origin); a data: URL's is answered by no origin's server.
     return FetchedScript.init(allocator, bytes, url, content_type, true) catch WorkerScriptError.OutOfMemory;
 }
 
@@ -716,45 +684,6 @@ fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const 
     try result.appendSlice(allocator, relative_path);
 
     return try result.toOwnedSlice(allocator);
-}
-
-/// Simple percent-decoding for data URLs
-fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
-    // Count output size first
-    var output_len: usize = 0;
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |_| {
-                output_len += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        output_len += 1;
-        i += 1;
-    }
-
-    const result = try allocator.alloc(u8, output_len);
-    errdefer allocator.free(result);
-
-    var out_idx: usize = 0;
-    i = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |value| {
-                result[out_idx] = value;
-                out_idx += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        result[out_idx] = input[i];
-        out_idx += 1;
-        i += 1;
-    }
-
-    return result;
 }
 
 // ============================================================================
