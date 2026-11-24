@@ -940,13 +940,6 @@ environment itself: WPT runs build against it and keep the host's environment, a
 
 ## 10. Link plans
 
-**The build declaration (lane life1, 2026-11-21).** What a built-in platform builds in beyond the fixed
-kit - an extra kit part and the system libraries it links - is declared by its adapter in
-`src/platform/adapters/<platform>/platform_build.zig` (`kitParts(target)`), read through
-`src/platform/platform_build_protocol.zig` as the engine's adapters are read through
-src/runtime/engine_build_protocol.zig: build.zig names no library for it. The first part is kit/sqlite,
-`sqlite3` from the system on darwin (macOS and iOS SDKs) and linux.
-
 **The principle (the user, 2026-10-09): ship the smallest library.** For each capability - and, where it
 matters, each algorithm or feature - a platform dynamically links the system library when the platform
 ships one that does what Crane needs (complete and conformant for that use) and can be trusted.
@@ -963,6 +956,69 @@ How this was checked: darwin against the macOS 27.0 and iOS 27.0 SDKs in Xcode (
 packages.ubuntu.com (2026-10-09). An SDK shows what the newest OS ships; whether an item is present on
 the oldest OS Crane will support depends on deployment targets not yet chosen (section 13). Anything
 not verified is marked UNVERIFIED.
+
+### 10.0 The build side
+
+**build.zig names no platform, no operating system and no platform library** (the user, 2026-11-12: no
+engine or platform code in build.zig). What is one platform's in the build is declared by its adapter
+and read through the build side of this protocol, as the engine's adapters are read through
+src/runtime/engine_build_protocol.zig (docs/engine-protocol.md 7b). The build migration's platform half
+moved it there (lane bp1, batches P1 to P4, 2026-11-23 to 2026-11-24; tmp/plans/build-protocol-design.md).
+Three kinds of file hold it:
+
+- **src/platform/platform_build_protocol.zig**, the protocol's part: the list of adapters (`adapters`; a
+  new adapter is a directory, a build file and a line there, and the configure fails on a directory
+  under src/platform/adapters/ the list lacks), `Platform` (the list's names, then `external`), the
+  protocol's own options (`-Dplatform`, `-Dplatform-module`, `-Dplatform-without`, `-Dplatform-static`:
+  `choose`), `tests_platform`, the conformance test's rows (`conformance`), `binding` - one graph's
+  facade, bound implementation, kit parts and options - and the words `lint-build` looks for
+  (`lint_words`, `lint_target_words`). A comptime check holds every adapter's build file to the
+  interface and names the declaration it lacks or mistypes.
+- **src/platform/adapters/<platform>/platform_build.zig**, an adapter's: the targets it answers for
+  (`ownsTarget`), the extra kit parts it builds in with the system libraries each links (`kitParts`;
+  the first is kit/sqlite, `sqlite3` from the system on darwin - the macOS and iOS SDKs - and linux,
+  lane life1, 2026-11-21), and `facts`: its lint words, the cross-target checks it offers (`checks`:
+  darwin's check-ios, linux's check-linux), a target it answers for (`example_target`) and its
+  systems' object format with a target whose objects have it (`object_format`).
+- **src/platform/kit/kit_build.zig**, with each part's build file beside the part
+  (curl/curl_build.zig, brotli/brotli_build.zig, image_codecs/image_codecs_build.zig), the kit's C
+  libraries: `libraries` builds one graph's set, `modules` the kit's modules over it, `cImport` a C
+  header translation, `declareOptions` the kit's options (`-Dsystem-curl`, `-Dhttp2`) with
+  `systemLibraryCheck`, and `TransitionalLinks` what fetch and WebCrypto still link directly, each
+  naming the recipes step that retires it (2a for libcurl, 5 for mbedTLS). The protocol re-exports it
+  (`platform_build.kit`): the root build reaches the kit only through the protocol.
+
+**The OS side.** Whatever platform a graph binds - the testing platform runs on the build machine's
+real OS services (9) - one adapter answers for the target's operating system: the one whose
+`ownsTarget` holds, chosen once by `chooseOs`. Only it declares its `-D` options (darwin's `-Dios-sdk`:
+a Linux build has no such option, and its configure refuses it as it refuses any `-D` nothing
+declared), and it reads what it needs of the machine at make time, through tools/build_probe.zig
+(`resolve`). It answers `forwarded` (what a cross-target sub-build takes from this build),
+`prepareC` (what C for the target needs beyond what Zig finds: an SDK's paths), `linkArtifact` (what
+crane's library and executable link: darwin's system frameworks on macOS), `afterTestBuild`
+(darwin's dSYM bundle beside a test executable, for a race report's lines) and `needsStandIns` / `addStandIns` (linux's
+stand-ins for the system libraries of a cross target with no sysroot here, in a compile that links
+nothing). `bind` is asked of the adapter a graph binds: what its implementation links of its own
+(darwin's CoreText and CoreFoundation when font decoding is compiled in). `addOptionOwnershipChecks`,
+under `lint-build` and `test`, configures the root once under every other adapter's `example_target`
+with each of the OS side's options and requires the configure to refuse every one - the engine
+protocol's check (7b), for the platform.
+
+**What the root build asks, and never answers itself:** the cross-target checks are `cross_checks`
+(a top-level step per `CrossCheck`, a sub-build per target); the fixtures of the tools that parse
+objects are `object_format_fixtures` (ELF from linux, Mach-O from darwin, sorted by format); whether
+two test executables can be joined into one is `sameSystem`.
+
+**Held by `zig build lint-build`** (tools/lint_build_neutral.zig, part of `zig build test`): build.zig
+and the neutral files it imports name no engine, no platform or operating system, no branch on the
+target's OS and no platform library - in code, in a comment or in an embedded script. The words come
+from the protocols' lists (the engine protocol's, `lint_words`, `lint_target_words`,
+`kit.lint_words`), so a new adapter or kit part is looked for the day it is listed. The protocols'
+build files and the engine adapters' are where the names live and are not counted; the platform's
+are counted for engine words only. The lint was a ratchet while the migration moved a slice per
+batch - 882 occurrences of platform, target and library words in 42 keys when P1 began, 211 in 25
+after P3 - and is a plain rule since P4 took it to zero: any name fails, printed with its file and
+line, `-- --update` is refused, and so is `tools/build_neutral_baseline.txt` if it comes back.
 
 ### 10.1 darwin
 
