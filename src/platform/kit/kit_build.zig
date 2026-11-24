@@ -167,6 +167,157 @@ pub const versions_test = struct {
     }
 };
 
+/// What the kit's modules are made with for one platform binding (the
+/// platform protocol's `binding`).
+pub const ModulesRequest = struct {
+    /// The binding's facade (`platform`), its options (`platform_options`)
+    /// and its bound implementation, which imports each part as
+    /// `kit_<name>`.
+    facade: *std.Build.Module,
+    options: *std.Build.Module,
+    impl: *std.Build.Module,
+    /// -Dplatform-without: a codec compiled out links nothing.
+    without: []const []const u8,
+    /// The C libraries this binding's graph built (null: not built).
+    brotli: ?brotli.BrotliLibraries,
+    image_codecs: ?*std.Build.Step.Compile,
+    libcurl: ?*std.Build.Step.Compile,
+    /// The mbedTLS libcurl links (curl.StaticLibcurl.mbedtls): kit/curl's
+    /// trust store parses certificates with it. Null with a system libcurl.
+    mbedtls: ?*std.Build.Step.Compile,
+    /// Today's bridges, which kit/posix wraps, and MIME Sniffing's parser,
+    /// which kit/media_decoding parses a type with.
+    clock: *std.Build.Module,
+    host: *std.Build.Module,
+    memory: *std.Build.Module,
+    mimesniff: *std.Build.Module,
+};
+
+/// The modules of the kit a binding hands on to what imports it.
+pub const Modules = struct {
+    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// `fetch` imports for a Browser's network context until transfers move
+    /// behind the platform's port: a module of its own that imports nothing.
+    kit_curl_share: *std.Build.Module,
+    /// kit/sfnt, kit/inflate and kit/media_decoding, whose own test blocks
+    /// the platform tests run.
+    kit_sfnt: *std.Build.Module,
+    kit_inflate: *std.Build.Module,
+    kit_media_decoding: *std.Build.Module,
+    /// <time.h> translated (`cImport`), which kit/posix imports as `c_time`;
+    /// tests/platform takes the same module (one per header set per graph).
+    c_time: *std.Build.Module,
+};
+
+/// The kit's modules for one binding: one module per part, imported by the
+/// bound implementation, each linked against and given the C headers of the
+/// libraries this binding's graph built, prepared for the target's C
+/// (`prepare`). Moved whole from the root build's platformBinding (build
+/// migration batch P3).
+pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?PrepareC, request: ModulesRequest) Modules {
+    // The kit: one module per part, each importing the facade for its types;
+    // any platform, built-in or third-party, may import any of them.
+    const brotli_enabled = for (request.without) |name| {
+        if (std.mem.eql(u8, name, "brotli")) break false;
+    } else true;
+    const font_decoding_enabled = for (request.without) |name| {
+        if (std.mem.eql(u8, name, "font_decoding")) break false;
+    } else true;
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding", "image_encoding" };
+    var kit_modules: [kit_parts.len]*std.Build.Module = undefined;
+    for (kit_parts, 0..) |part, i| {
+        kit_modules[i] = b.createModule(.{
+            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part})),
+            .target = target,
+            .link_libc = true,
+        });
+        kit_modules[i].addImport("platform", request.facade);
+        kit_modules[i].addImport("platform_options", request.options);
+        // A disabled codec does not import its C headers or link its libraries,
+        // even when the conformance test compiles every adapter operation.
+        request.impl.addImport(b.fmt("kit_{s}", .{part}), if (i == 7 and !brotli_enabled) kit_modules[1] else kit_modules[i]);
+    }
+    // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
+    // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
+    // kit/brotli by its own import, which only a font decode calls.
+    if (brotli_enabled or font_decoding_enabled) if (request.brotli) |codec| {
+        kit_modules[7].linkLibrary(codec.decoder);
+        kit_modules[7].linkLibrary(codec.encoder);
+        kit_modules[7].addImport("brotli_c", cImport(b, "brotli_c", target, prepare, .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
+    };
+    // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
+    // kit/brotli - headless's NotSupported when no Brotli library is built.
+    kit_modules[10].addImport("kit_inflate", kit_modules[9]);
+    kit_modules[10].addImport("kit_brotli", if (request.brotli != null) kit_modules[7] else kit_modules[1]);
+    // kit/image_decoding (D1, the user 2026-11-09): every built-in platform's
+    // image decoders - PNG through kit/inflate, JPEG and SVG through
+    // kit/image_codecs. Found by name, so a part appended after it keeps it.
+    const image_decoding_part = comptime for (kit_parts, 0..) |part, i| {
+        if (std.mem.eql(u8, part, "image_decoding")) break i;
+    } else unreachable;
+    const kit_image_decoding = kit_modules[image_decoding_part];
+    kit_image_decoding.addImport("kit_inflate", kit_modules[9]);
+    kit_image_decoding.addImport("kit_image_codecs", kit_modules[8]);
+    // kit/media_decoding (lane wptcfg D4, the user 2026-11-09): the media
+    // decoders darwin, linux and testing build in - WAV linear PCM - its
+    // canPlayType parsing with MIME Sniffing's parser. Found by name too.
+    const media_decoding_part = comptime for (kit_parts, 0..) |part, i| {
+        if (std.mem.eql(u8, part, "media_decoding")) break i;
+    } else unreachable;
+    const kit_media_decoding = kit_modules[media_decoding_part];
+    kit_media_decoding.addImport("mimesniff", request.mimesniff);
+    if (request.image_codecs) |codecs| {
+        kit_modules[8].linkLibrary(codecs);
+        kit_modules[8].addImport("image_codecs_c", cImport(b, "image_codecs_c", target, prepare, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
+    }
+    if (prepare) |p| {
+        p.module(kit_modules[7]);
+        p.module(kit_modules[8]);
+    }
+    // kit/posix wraps today's clock, process Io and resident-memory bridges.
+    kit_modules[0].addImport("clock", request.clock);
+    kit_modules[0].addImport("host", request.host);
+    kit_modules[0].addImport("memory", request.memory);
+    // and reads the local time zone through <time.h> (localtime_r, tzset).
+    const c_time = cImport(b, "c_time", target, prepare, .{ .includes = &.{"time.h"} });
+    kit_modules[0].addImport("c_time", c_time);
+    // kit/browser_state keeps a Browser's stores in kit/memory_store.
+    kit_modules[6].addImport("kit_memory_store", kit_modules[2]);
+    // kit/curl's connection share, its own module (see Modules).
+    const kit_curl_share = b.createModule(.{
+        .root_source_file = b.path("src/platform/kit/curl/share.zig"),
+        .target = target,
+        .link_libc = true,
+    });
+    kit_modules[3].addImport("kit_curl_share", kit_curl_share);
+    // Its trust store (trust.zig) parses with libcurl's own mbedTLS, when
+    // libcurl is the bundled one; a system libcurl keeps its own CA loading.
+    const kit_curl_options = b.addOptions();
+    kit_curl_options.addOption(bool, "mbedtls_trust_store", request.mbedtls != null);
+    kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
+    if (request.mbedtls) |mbedtls| {
+        kit_curl_share.linkLibrary(mbedtls);
+        kit_curl_share.addImport("mbedtls_c", cImport(b, "mbedtls_trust_c", target, prepare, .{
+            .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
+            .libs = &.{mbedtls},
+            .macros = &mbedtls_threading_macros,
+        }));
+        if (prepare) |p| p.module(kit_curl_share);
+    }
+    // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
+    // its own module: fetch's curl_ffi translates curl.h alone, as the two
+    // @cImports did.
+    const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
+    if (request.libcurl) |libcurl| {
+        curl.linkStaticLibcurl(kit_modules[3], target, libcurl, prepare);
+        kit_modules[3].addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+    } else {
+        kit_modules[3].linkSystemLibrary("curl", .{});
+        kit_modules[3].addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
+    }
+    return .{ .kit_curl_share = kit_curl_share, .kit_sfnt = kit_modules[10], .kit_inflate = kit_modules[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
+}
+
 /// The kit parts with no build file of their own: the words that name their
 /// libraries. kit/sqlite's link is each platform adapter's declaration
 /// (platform_build_protocol.zig KitPart).
