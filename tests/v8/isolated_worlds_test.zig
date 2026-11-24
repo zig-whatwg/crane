@@ -245,6 +245,85 @@ test "a world's wrappers are collected when nothing keeps them, and a node's wor
     engine.requestGarbageCollection(page.agent);
 }
 
+/// `n` young-generation collections of `page`'s agent, finished.
+fn scavenge(page: *Page, n: u32) !void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
+    const entered = ffi.v8_Isolate_GetCurrent() != isolate;
+    if (entered) ffi.v8_Isolate_Enter(isolate);
+    defer if (entered) ffi.v8_Isolate_Exit(isolate);
+    const before = ffi.v8_Debug_MinorGCCount(isolate);
+    ffi.v8_test_Isolate_MinorGC(isolate, n);
+    try testing.expect(ffi.v8_Debug_MinorGCCount(isolate) >= before + n);
+    while (ffi.v8_Platform_PumpMessageLoop(isolate)) {}
+}
+
+fn droppedWrappers(page: *Page) u64 {
+    return ffi.v8_test_NodeWrappers_Dropped(@ptrCast(@alignCast(page.agent)));
+}
+
+// Refcount step 8 traces a node's listeners from the node, and the walk
+// visits a node only while it is held. A node wrapped ONLY in an isolated
+// world is held by that world's wrapper - a droppable traced reference in the
+// world's wrapper cache, which a young-generation collection drops while the
+// wrapper is unmodified and no script holds it. The node then has no hold,
+// the walk passes it by, and the next full collection takes its listeners,
+// though the world can still reach the node through its tree. So a node that
+// keeps values keeps its wrapper through young collections in EVERY world
+// (engine.keepNodeWrapperInYoungCollections; main's ruling of 2026-11-23
+// 9:05 PM ET). The first trace-time build's private-property mark was drawn
+// on the main world's wrapper only: it never covered this either.
+
+test "a node only a world wrapped keeps its listener through a young collection while its tree lives" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    // The control: 200 elements the world made and let go of - a young
+    // collection drops their wrappers.
+    try expect(world, "(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('i')); })(); 'ok'", "ok");
+    const control_before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const control = droppedWrappers(&page) - control_before;
+    // 200 elements the world made, each with a listener of the world's; the
+    // world holds none of them, the page never saw them.
+    try expect(world,
+        \\globalThis.fired = 0;
+        \\(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('b')).addEventListener('x', () => { fired++; }); })();
+        \\'ok'
+    , "ok");
+    const before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const dropped = droppedWrappers(&page) - before;
+    std.debug.print("world wrappers young collections dropped: {d} of 200 plain elements, {d} of 200 with a listener\n", .{ control, dropped });
+    try testing.expect(control >= 150);
+    try testing.expect(dropped <= 8);
+    // The document is the page's and lives: every listener still runs.
+    engine.requestGarbageCollection(page.agent);
+    engine.requestGarbageCollection(page.agent);
+    try expect(world, "for (const b of document.body.querySelectorAll('b')) b.dispatchEvent(new Event('x')); String(fired)", "200");
+}
+
+test "a node that keeps values gets a world wrapper young collections keep, when a world wraps it later" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    // The page's listeners; then the world sees each node once and lets go.
+    try expect(page.realm,
+        \\globalThis.fired = 0;
+        \\(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('b')).addEventListener('x', () => { fired++; }); })();
+        \\'ok'
+    , "ok");
+    try scavenge(&page, 2);
+    try expect(world, "(() => { let n = 0; for (const b of document.body.querySelectorAll('b')) n += b.nodeName.length; return String(n); })()", "200");
+    const before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const dropped = droppedWrappers(&page) - before;
+    std.debug.print("world wrappers of 200 listener nodes, made after the listeners, that young collections dropped: {d}\n", .{dropped});
+    try testing.expect(dropped <= 8);
+    engine.requestGarbageCollection(page.agent);
+    engine.requestGarbageCollection(page.agent);
+    try expect(page.realm, "for (const b of document.body.querySelectorAll('b')) b.dispatchEvent(new Event('x')); String(fired)", "200");
+}
+
 test "a world wrapper script holds keeps its tree's main-world wrappers, and their expandos" {
     // Blink: an isolated world's wrapper reaches the C++ Node, whose Trace
     // reaches its tree and its main-world wrapper - so a detached subtree only
