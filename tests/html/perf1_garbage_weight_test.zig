@@ -130,9 +130,10 @@ const joins_total = 3000;
 /// Until lane hard1 (2026-11-23) this read the slab's capacity, on the
 /// premise that a slot is taken only by a live object, so capacity after the
 /// run is the most objects ever alive at once. Delayed reuse ended that:
-/// the heap's quarantine holds freed slots to the task's end (up to its cap,
-/// 2 MiB), and a bucket's magazine caches up to `heap.magazine_depth` freed
-/// slots, so capacity is live + quarantined + cached. One timer callback is
+/// the heap's quarantine holds freed slots to the task's end (up to its cap:
+/// then 2 MiB, 512 KiB since the user's ruling 2026-11-24), and a bucket's
+/// magazine caches up to `heap.magazine_depth` freed slots, so capacity is
+/// live + quarantined + cached. One timer callback is
 /// one task: on macOS its capacity read 35,840 (70 spans) against 13,312
 /// spread - 2.69x, over the bound - at every hard1 tree, and passed with
 /// the quarantine's cap at 0. The heap now counts the live high-water mark

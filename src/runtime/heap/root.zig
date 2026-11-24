@@ -115,8 +115,11 @@ pub const Checks = enum(u8) {
 pub const Config = struct {
     fill: Fill,
     /// The bytes the window agent's quarantine holds before it evicts at
-    /// random. Decision U2 (design 9.1), asked with batch A's numbers: 2 MiB
-    /// proposed, Chrome's shipped 512 KiB the floor.
+    /// random. Decision U2 (design 9.1), the user's ruling 2026-11-24 on
+    /// batch A's numbers: 512 KiB, over the 2 MiB proposed - about half the
+    /// quarantine's memory cost on the rows that free inside one task
+    /// (events.dispatch peak 1.110 against 1.213 at 2 MiB; dom.build-tree
+    /// 1.108 against 1.182), with random eviction unchanged.
     quarantine_cap: usize,
     /// Make a State span that has emptied inaccessible (discard, then
     /// PROT_NONE: lesson architecture-macos-recommit-needs-madv-free-reuse),
@@ -127,7 +130,7 @@ pub const Config = struct {
     /// Keep an allocation site per block for the leak report.
     record_sites: bool,
 
-    pub const production_quarantine_cap: usize = 2 * MiB;
+    pub const production_quarantine_cap: usize = 512 * KiB;
     pub const bug_finding_quarantine_cap: usize = 8 * MiB;
     pub const retired_spans_max: usize = 1024;
 
@@ -343,9 +346,11 @@ const Bucket = struct {
 /// WebKit's TZone, f3f8a5374a00): each node interface goes to one of K, by a
 /// per-Browser random assignment, so a stale pointer to one interface meets
 /// another interface of its class and kind only if the two drew the same
-/// bucket. K = 1 ships (the integrator's call 4, 2026-11-23) unless batch
-/// A's measurement of 2 and 4 is within the bar; a variant is this constant.
-pub const random_buckets: usize = 1;
+/// bucket. K = 2 ships: batch A measured it within the bar against K = 1
+/// (time at most 1.024, memory at most 1.021 on the tree and query rows;
+/// K = 4 read 1.032 on query-selector's peak), the brief's rule; the
+/// integrator's ruling 2026-11-24. A variant is this constant.
+pub const random_buckets: usize = 2;
 
 /// A bucket's magazine: the blocks it released last, reissued first, with no
 /// span search, tier flip or slot-map scan (lane hard1's P1: those were the

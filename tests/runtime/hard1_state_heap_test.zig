@@ -395,6 +395,15 @@ test "A12: the address space a class takes is counted, and pressure is raised at
     for (made.items) |big| scope.arena.destroy(BigState, big);
 }
 
+test "the production quarantine holds 512 KiB, and a node interface draws one of 2 random buckets (user-ruling 2026-11-24)" {
+    // Decision U2: 512 KiB, over the 2 MiB proposed - about half the
+    // quarantine's memory cost on the peak rows for the same random eviction.
+    try testing.expectEqual(@as(usize, 512 * 1024), heap.Config.production_quarantine_cap);
+    try testing.expectEqual(heap.Config.production_quarantine_cap, heap.Config.production.quarantine_cap);
+    // K = 2: measured within the bar against K = 1 (the brief's rule).
+    try testing.expectEqual(@as(usize, 2), heap.random_buckets);
+}
+
 test "the configuration is a function of the build and the Browser's request: production zeroes, Debug and bug-finding poison" {
     try testing.expectEqual(heap.Fill.zero, heap.Config.of(false, false).fill);
     try testing.expect(!heap.Config.of(false, false).retire_freed_spans);
