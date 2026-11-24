@@ -221,7 +221,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "ExtendableMessageEventInit", "source", "" },
     .{ "SharedWorker", "constructor", "options" },
     // url
-    .{ "URLSearchParams", "constructor", "init" },
     // websocket and xhr
     .{ "WebSocket", "constructor", "protocols" },
     .{ "WebSocket", "send", "data" },

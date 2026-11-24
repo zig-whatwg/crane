@@ -201,6 +201,7 @@ pub const SanitizerElement = @import("SanitizerElement.zig").SanitizerElement;
 pub const SanitizerElementWithAttributes = @import("SanitizerElementWithAttributes.zig").SanitizerElementWithAttributes;
 pub const SanitizerPI = @import("SanitizerPI.zig").SanitizerPI;
 pub const SecurePaymentConfirmationCapabilities = @import("SecurePaymentConfirmationCapabilities.zig").SecurePaymentConfirmationCapabilities;
+pub const SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString = @import("SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString.zig").SequenceOfSequenceUSVStringOrRecordOfUSVStringToUSVStringOrUSVString;
 pub const ServiceWorkerRegistrationOrUndefined = @import("ServiceWorkerRegistrationOrUndefined.zig").ServiceWorkerRegistrationOrUndefined;
 pub const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions.zig").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 pub const SmallCryptoKeyID = @import("SmallCryptoKeyID.zig").SmallCryptoKeyID;
