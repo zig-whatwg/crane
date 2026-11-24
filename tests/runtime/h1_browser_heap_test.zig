@@ -197,13 +197,16 @@ fn expectLayoutSound(comptime g: Heap.Geometry) !void {
     }
     try testing.expect(l.cage_alone_end <= l.window_bytes);
     if (g.profile == .full) {
-        // Objects after the metadata, bytes in the upper half after a guard,
-        // neither overlapping anything.
+        // Objects after the metadata, then a guard super page, then bytes:
+        // both in the window's lower half, which the span table and the slot
+        // maps cover (`spanned`), split evenly. Batch B's bytes partition
+        // needs a span-table entry per span (lane hard1-b; H1 had put bytes
+        // in the upper half, which no entry reaches).
         try testing.expectEqual(l.cage_alone_end, l.objects.offset);
-        try testing.expect(l.objects.bytes > 0);
-        try testing.expectEqual(l.window_bytes / 2, l.objects.end());
-        try testing.expectEqual(l.window_bytes / 2 + super, l.bytes.offset);
-        try testing.expectEqual(l.window_bytes, l.bytes.end());
+        try testing.expect(l.objects.bytes > 0 and l.bytes.bytes > 0);
+        try testing.expectEqual(l.objects.end() + super, l.bytes.offset);
+        try testing.expectEqual(l.window_bytes / 2, l.bytes.end());
+        try testing.expect(@max(l.objects.bytes, l.bytes.bytes) - @min(l.objects.bytes, l.bytes.bytes) <= super);
     } else {
         try testing.expectEqual(@as(u64, 0), l.objects.bytes);
         try testing.expectEqual(@as(u64, 0), l.bytes.bytes);
@@ -217,7 +220,8 @@ test "the full layout holds for the 4 GiB cage at shift 0 and the 32 GiB cage at
     // arch 0's map, with the metadata moved out of the cage.
     try testing.expectEqual(64 * GiB, four.window_bytes);
     try testing.expectEqual(4 * GiB + 2 * MiB, four.metadata.offset);
-    try testing.expectEqual(32 * GiB + 2 * MiB, four.bytes.offset);
+    try testing.expectEqual(32 * GiB, four.bytes.end());
+    try testing.expect(four.bytes.bytes >= 13 * GiB);
     const thirty_two = comptime Heap.layoutFor(.{ .profile = .full, .cage_bytes = 32 * GiB, .cage_shift = 3 });
     try testing.expectEqual(128 * GiB, thirty_two.window_bytes);
 }

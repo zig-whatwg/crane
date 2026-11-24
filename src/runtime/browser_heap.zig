@@ -35,8 +35,12 @@
 //!                           header past its first span, the span table, the
 //!                           free bitmaps, the Browser's tables at fixed
 //!                           offsets (the deep review's Z11)
-//!     [.., 32 GiB)          guard super page, then the OBJECTS pool (H6)
-//!     [32 GiB, 64 GiB)      the BYTES pool: page-controlled bytes (H6)
+//!     [.., ~18.5 GiB)       guard super page, then the OBJECTS pool (H6)
+//!     [~18.5 GiB, 32 GiB)   a guard super page, then the BYTES pool: page-
+//!                           controlled bytes (H6; allocator-hardening batch
+//!                           B). Both pools split the lower half evenly: the
+//!                           span table and the slot maps cover only it
+//!     [32 GiB, 64 GiB)      reserved, unused
 //!
 //! Every super page's first span stays inaccessible (oss R19): the layout
 //! starts nothing there - the header sits one span into its super page.
@@ -258,16 +262,27 @@ pub fn layoutFor(comptime g: Geometry) Layout {
     const bitmaps: Part = .{ .offset = span_table.end(), .bytes = bitmap_bytes };
     const table_bytes = metadata_bytes / 16;
     const meta_pool_bytes = std.mem.alignForward(u64, metadata_bytes / 16, super_page_bytes);
-    const meta_pools: Part = .{ .offset = bitmaps.end(), .bytes = 2 * meta_pool_bytes };
+    // One pool per partition: node, objects, bytes (heap.Engine).
+    const meta_pools: Part = .{ .offset = bitmaps.end(), .bytes = 3 * meta_pool_bytes };
     const quarantine: Part = .{ .offset = meta_pools.end(), .bytes = std.mem.alignForward(u64, quarantine_entries_max * 8, super_page_bytes) };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
     const tables: Part = .{ .offset = quarantine.end(), .bytes = table_bytes * table_count };
     if (tables.end() > metadata_offset + metadata_bytes) @compileError("the metadata window is too small for its parts");
     const cage_alone_end = metadata_offset + metadata_bytes + super_page_bytes;
+    // The general pools (allocator-hardening batch B): objects, then a guard
+    // super page, then bytes - both in the lower half the span table and the
+    // slot maps cover (`spanned`), split evenly. Every span of a pool needs
+    // its entry and its map for a validated free; covering the upper half too
+    // would take more than the metadata window holds (2 bits per 16 B: 1 GiB
+    // of slot maps alone for 32 GiB), so the upper half stays reserved and
+    // unused (lane hard1-b; H1 had placed bytes there before any span lived
+    // in it).
+    const pools_bytes = window / 2 - cage_alone_end;
+    const objects_bytes = std.mem.alignBackward(u64, pools_bytes / 2, super_page_bytes);
     const objects: Part, const bytes: Part = switch (g.profile) {
         .full => .{
-            .{ .offset = cage_alone_end, .bytes = window / 2 - cage_alone_end },
-            .{ .offset = window / 2 + super_page_bytes, .bytes = window / 2 - super_page_bytes },
+            .{ .offset = cage_alone_end, .bytes = objects_bytes },
+            .{ .offset = cage_alone_end + objects_bytes + super_page_bytes, .bytes = pools_bytes - objects_bytes - super_page_bytes },
         },
         .small => .{ .{ .offset = cage_alone_end, .bytes = 0 }, .{ .offset = cage_alone_end, .bytes = 0 } },
         .pointer32 => unreachable,
