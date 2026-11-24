@@ -340,6 +340,8 @@ test "an inline union member typed JSValue keeps a present null apart from absen
     // null: codegen lists the member in `jsvalue_union_members`.
     // IntersectionObserverInit's threshold is one until its area retires;
     // then this case moves to another listed member, and goes with the last.
+    // hasdecl: a generated dictionary (src/webidl/dictionaries/); codegen
+    // writes `pub const jsvalue_union_members` into each one with such a member.
     try testing.expect(@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ threshold: null })");
@@ -362,6 +364,8 @@ test "SetHTMLOptions {sanitizer: null} is the union's SanitizerConfig member, em
     // (crane/san-options-null.html). The member has a generated union type
     // since lane bind1 B5 (it was runtime.JSValue, converted by
     // html/sanitizer.zig), so the binding converts the null.
+    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
+    // only while a member is typed runtime.JSValue - its absence is the claim.
     try testing.expect(!@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ sanitizer: null })");
