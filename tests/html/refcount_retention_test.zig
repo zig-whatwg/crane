@@ -112,6 +112,54 @@ fn observerCycle() !void {
     try closureOverTarget("new MutationObserver(() => root).observe(root, { childList: true, subtree: true });", "a MutationObserver callback closing over its observed target");
 }
 
+/// 500 rounds of `body` (a script's loop body); nothing it makes is reachable
+/// from script after the loop, so every instance it made must be collected.
+fn cycleCollected(comptime body: []const u8, comptime label: []const u8) !void {
+    const page = try Page.open("");
+    defer page.close();
+    try page.run("for (let i = 0; i < 500; i++) {\n" ++ body ++ "\n}\n");
+    try page.settle();
+    const grown = page.grown();
+    std.debug.print("{s}: {d} instances alive after settling (500 rounds)\n", .{ label, grown });
+    try probe.knownRed(probe.migrated.cycle_breakers_step8, grown <= slack, label);
+}
+
+/// Step 8's own cases (lane rc8): a handler on a node removed from the
+/// document, an observer whose callback captures itself as well as its target,
+/// and a target that is not a node.
+fn removedNodeHandlerCycle() !void {
+    try cycleCollected(
+        \\  const root = document.body.appendChild(document.createElement('div'));
+        \\  root.appendChild(document.createElement('span'));
+        \\  root.onclick = () => root;
+        \\  root.remove();
+    , "an on* handler closing over its node, the node removed from the document");
+}
+fn observerSelfCycle() !void {
+    try cycleCollected(
+        \\  const root = document.createElement('div');
+        \\  root.appendChild(document.createElement('span'));
+        \\  const mo = new MutationObserver(() => [mo, root]);
+        \\  mo.observe(root, { attributes: true, subtree: true });
+    , "a MutationObserver callback closing over its observer and its detached target");
+}
+fn plainTargetCycle() !void {
+    try cycleCollected(
+        \\  const target = new EventTarget();
+        \\  target.addEventListener('x', () => target);
+    , "a listener closing over its EventTarget (not a node)");
+}
+
+test "a handler on a removed node that closes over the node does not pin it (D7)" {
+    try probe.onFreshThread(removedNodeHandlerCycle);
+}
+test "a MutationObserver callback that captures its observer and its target does not pin either (D7)" {
+    try probe.onFreshThread(observerSelfCycle);
+}
+test "a listener that closes over its non-node EventTarget does not pin it (D7)" {
+    try probe.onFreshThread(plainTargetCycle);
+}
+
 test "a listener that closes over its detached target does not pin the tree (D7)" {
     try probe.onFreshThread(listenerCycle);
 }

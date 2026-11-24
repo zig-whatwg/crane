@@ -2627,8 +2627,9 @@ pub const WrapperCache = struct {
         // the node (`Bits.world_counted`), before anything can see the
         // wrapper - as node_wrappers.adopt's step 1 does for the main
         // world's. Released when the record is freed, on every path.
+        var world_node: ?*anyopaque = null;
         if (counted) {
-            _ = runtime.lifetime.wrapperAcquired(instance) orelse return error.NotANode;
+            world_node = runtime.lifetime.wrapperAcquired(instance) orelse return error.NotANode;
             entry.bits.world_counted = true;
         }
 
@@ -2671,6 +2672,12 @@ pub const WrapperCache = struct {
             }
         } else if (self.anchors and v8.v8_WrapperCell_Attach(isolate, wrapper, entry.raw())) {
             entry.bits.boxed = false;
+            // A world's wrapper of a node that keeps values for script (a
+            // listener, a registered observer: refcount step 8) is one
+            // young-generation collections keep, as the main world's is
+            // (node_wrappers.adopt): the walk traces those values only while
+            // the node is held, and this wrapper may be its only hold.
+            if (world_node) |node| if (runtime.lifetime.keepsValues(node)) v8.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(entry));
         }
         if (entry.bits.boxed) entry.wrapper = @ptrCast(wrapper);
 
@@ -2862,6 +2869,23 @@ pub const WrapperCache = struct {
         if (entry.wrapper == null) return;
         // The record's first word IS the TracedReference (`Cell.wrapper`).
         v8.v8_NodeTracer_TraceSlot(visitor, @ptrCast(entry));
+    }
+
+    /// engine.keepNodeWrapperInYoungCollections, a world's half
+    /// (protocol_worlds.keepNodeWrappersInYoungCollections): `instance`, a
+    /// node, keeps values for script from now on, so this world cache's
+    /// wrapper of it - its record's droppable traced reference - is made a
+    /// default one: a root in a young-generation collection, traced by the
+    /// walk in a full one as before (`traceWorldEntry`). The record's
+    /// address, the handle its borrowers hold, does not change. Nothing for
+    /// a node this world has not wrapped (`set` asks when it does), or for a
+    /// record with no traced reference.
+    pub fn keepWorldEntryInYoungCollections(self: *const Self, isolate: *v8.Isolate, instance: *runtime.Instance) void {
+        const entry = self.cache.get(instance) orelse return;
+        const bits = entry.bits;
+        if (!bits.in_use or !bits.world_counted or bits.boxed or bits.weak_handle or bits.collected) return;
+        if (entry.wrapper == null) return;
+        v8.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(entry));
     }
 
     /// `instance`, a node, was torn down whatever its counts said (a forced

@@ -429,6 +429,55 @@ pub const DispatchPath = struct {
     }
 };
 
+/// An event dispatch in flight, as its agent's collector sees it (refcount
+/// step 8, decision D7): a stack root (runtime.gc.StackRoot) on the agent's
+/// deferred teardown queue, from the dispatch's start to its end, that keeps
+/// the wrappers of the path's nodes - each invocation target the path holds
+/// by count (`DispatchPath.hold`) - and of their trees. A listener's callback
+/// is a value traced from its target's wrapper, so a collection under the
+/// dispatch - in a listener's microtask that took the rest of the path out
+/// of the document and let script's last reference go - would otherwise take
+/// the listeners the dispatch has still to call. Chrome traces the path
+/// (EventPath's NodeEventContext `Member<Node>`, Node::Trace reaching its
+/// listeners), Gecko's chain items hold their targets and its listeners are
+/// strong: every listener on the path is called. (tests/html/
+/// lk1_dispatch_path_holds_test.zig's "walks the rest of its path" case.)
+/// Lives in the dispatcher's frame, beside its DispatchPath (whose size
+/// tests/dom/ev1_event_memory_test.zig pins).
+pub const ActiveDispatch = struct {
+    root: runtime.gc.StackRoot = .{ .trace = trace },
+    path: *const DispatchPath,
+    /// The queue the root is on, while it is: `begin` to `end`.
+    queue: ?*runtime.gc.DeferredTeardown = null,
+
+    /// The dispatch at `target` begins: on its agent's stack roots. An
+    /// agent with no queue (an engine-less test's) has no collector to ask.
+    pub fn begin(self: *ActiveDispatch, target: *runtime.Instance) void {
+        const queue = @import("refcount_teardown.zig").queueOf(target) orelse return;
+        queue.pushStackRoot(&self.root);
+        self.queue = queue;
+    }
+
+    /// The dispatch ends, however it ends.
+    pub fn end(self: *ActiveDispatch) void {
+        const queue = self.queue orelse return;
+        queue.removeStackRoot(&self.root);
+        self.queue = null;
+    }
+
+    /// In a collection's atomic pause: every node the path holds keeps its
+    /// wrapper and its trees' (dom.wrapper_tracing.traceHeld). An item not
+    /// held yet - the path still being built - or no more - after dispatch
+    /// step 9 - names nothing.
+    fn trace(root: *runtime.gc.StackRoot, tracer: *engine.Tracer) void {
+        const self: *ActiveDispatch = @fieldParentPtr("root", root);
+        for (self.path.constItems()) |*item| {
+            const node = item.invocation_ref.base orelse continue;
+            @import("wrapper_tracing.zig").traceHeld(node, tracer);
+        }
+    }
+};
+
 /// Event's eventPhase values (DOM 2.2).
 pub const Phase = struct {
     pub const none: u8 = 0;

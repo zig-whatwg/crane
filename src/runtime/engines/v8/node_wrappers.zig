@@ -523,8 +523,12 @@ pub fn adopt(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Objec
     //    node's first wrapper adopts its creator's.
     const target = runtime.lifetime.wrapperAcquired(instance) orelse return error.NotANode;
     std.debug.assert(target == node);
-    // 3-6.
-    ffi.v8_NodeWrapper_Attach(isolate, box, @ptrCast(slot));
+    // 3-6. The slot's reference is droppable - V8 may reclaim an unmodified
+    // wrapper nothing reaches in a young collection - unless the node keeps
+    // values for script (a listener, a registered observer: refcount step 8),
+    // which the walk traces only while the node is held
+    // (engine.keepNodeWrapperInYoungCollections).
+    ffi.v8_NodeWrapper_Attach(isolate, box, @ptrCast(slot), !runtime.lifetime.keepsValues(node));
     registry.live += 1;
     return .{ .handle = @ptrCast(slot), .box = box };
 }
@@ -555,6 +559,26 @@ fn holdKept(isolate: *ffi.Isolate, instance: *runtime.Instance, slot: *NodeWrapp
         return;
     }
     if (kept.root == null) kept.root = ffi.v8_NodeWrapper_Root(isolate, @ptrCast(slot));
+}
+
+/// engine.keepNodeWrapperInYoungCollections: `instance`, a node, keeps values
+/// for script from now on. Each wrapper it has - the main world's, in its
+/// slot, and each isolated world's, in that world's wrapper cache
+/// (protocol_worlds.keepNodeWrappersInYoungCollections) - has its droppable
+/// reference made again as a default one: a root in a young-generation
+/// collection, traced by the walk in a full one as before (v8_NodeWrapper_
+/// KeepInYoungCollections). A world it is not wrapped in yet needs nothing
+/// now: the wrap asks runtime.lifetime.keepsValues when it makes the wrapper
+/// (`adopt`; WrapperCache.set for a world's). So a node with no wrapper at
+/// all costs two loads and one call into the isolate's record here. A node
+/// of an ended agent, or an instance that is no node, is left alone.
+pub fn keepInYoungCollections(instance: *runtime.Instance) void {
+    const slot = slotOfInstance(instance) orelse return;
+    const isolate = isolateOfInstance(instance) orelse return;
+    const registry = registryOf(isolate) orelse return;
+    if (registry.ended) return;
+    if (!slot.isEmpty()) ffi.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(slot));
+    if (registry.worlds) |worlds| @import("protocol_worlds.zig").keepNodeWrappersInYoungCollections(worlds, isolate, instance);
 }
 
 /// engine.keepPlatformObjectAlive for a node: one more counted keep. The
@@ -837,6 +861,17 @@ fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void
         const target = targetOf(instance) orelse continue;
         walk(registry, target, &tracer);
     }
+    // The agent's stack roots (refcount step 8): the paths of the event
+    // dispatches in flight, whose nodes' listeners are values traced from
+    // their wrappers. The queue is read as every binding entry reads it
+    // (dom_algorithm.zig: the isolate's own adapter storage, a data slot) -
+    // no lock in the pause.
+    const storage = @import("isolate_templates.zig").getTemplateStorage(registry.isolate) orelse return;
+    const queue = storage.deferred_teardown orelse return;
+    if (queue.stack_roots == null) return;
+    registry.in_walk = true;
+    defer registry.in_walk = false;
+    queue.traceStackRoots(&tracer);
 }
 
 /// The end of a collection's marking (the anchors' registry's weak

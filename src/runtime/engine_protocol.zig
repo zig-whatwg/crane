@@ -2335,6 +2335,91 @@ pub inline fn keepCallbackInterface(callback: BorrowedCallbackInterface) Callbac
     return impl.keepCallbackInterface(callback);
 }
 
+/// An owner's hold of a JavaScript value it keeps for script and TRACES at
+/// collection time (refcount step 8, decision D7): an EventTarget's
+/// listeners' callbacks and event handlers' functions, an observer's
+/// callback. NO ROOT in a full collection: the value lives while the
+/// collector, marking, reaches the hold through its owner - the owner type's
+/// VTable.trace_held_nodes hook calls `traceHeld` for each, from a wrapper's
+/// anchor (any world's) or from the walk for a node - and the collector
+/// takes it when nothing does, after which the hold reads empty. A root in a
+/// young-generation collection, so a scavenge never takes it. Blink:
+/// TraceWrapperV8Reference in its V8EventListener and callback objects,
+/// traced from the EventTarget (EventTarget::Trace -> EventListenerMap ->
+/// RegisteredEventListener); WebKit: JSEventListener's `JSC::Weak` function
+/// marked from the target's wrapper (visitJSEventListeners).
+///
+/// OWNED: `release` exactly once, never while the collector runs - on the
+/// agent's thread while the agent lives; an owner that outlives its agent
+/// releases its holds afterwards all the same (the hold reads empty from
+/// the agent's end on, and that release reaches no engine). `value` is
+/// BORROWED for as long as the hold lives - for reading only (comparing it,
+/// retaining it with `retainValue`, invoking it, returning it from a
+/// getter): never released, weakened or kept. V8: a TracedReference<Value>
+/// in a cell of the agent's hold slab, stamped where it is traced and
+/// written empty, in the collection's own pause, when nothing traced it -
+/// V8 reports that death to nobody (docs/engine-protocol.md, "Platform
+/// objects"; v8_wrapper.cpp, "the agent's hold slab"). JavaScriptCore and
+/// QuickJS trace no values: their hold is a strong one, kept until released
+/// - the holds stay strong, as before refcount step 8.
+pub const TracedHold = struct {
+    handle: ?*anyopaque = null,
+
+    /// The value - undefined once the collector took it, or for a hold of no
+    /// value. BORROWED.
+    pub fn value(self: TracedHold) JSValue {
+        return impl.tracedHoldValue(self);
+    }
+
+    /// Whether the hold reads no value: the collector took it, or it never
+    /// had one.
+    pub fn isEmpty(self: TracedHold) bool {
+        return impl.tracedHoldIsEmpty(self);
+    }
+
+    /// End the hold.
+    pub fn release(self: TracedHold) void {
+        impl.releaseTracedHold(self);
+    }
+};
+
+/// A callback value kept as a TracedHold, with its callback context (WebIDL
+/// 3.2.16, 3.2.19) - what `keepCallbackInterfaceTraced` and
+/// `keepCallbackFunctionTraced` give. OWNED: `release` exactly once.
+pub const TracedCallback = struct {
+    hold: TracedHold,
+    context: ?Context,
+
+    pub fn release(self: TracedCallback) void {
+        self.hold.release();
+    }
+
+    /// The callback as the invocation operations take it - BORROWED from the
+    /// hold, valid while it lives: never released.
+    pub fn asInterface(self: TracedCallback) CallbackInterface {
+        return .{ .object = .{ .value = self.hold.value() }, .context = self.context };
+    }
+
+    /// As `asInterface`, for a callback function.
+    pub fn asFunction(self: TracedCallback) CallbackFunction {
+        return .{ .function = .{ .value = self.hold.value() }, .context = self.context };
+    }
+};
+
+/// Keep a callback interface value past its call as a TracedHold its owner
+/// traces (refcount step 8): the incumbent realm now its callback context.
+/// The binding's own hold is left to the binding; no realm tag - a traced
+/// value roots nothing, so a detached realm needs no weakening of it. During
+/// the call.
+pub inline fn keepCallbackInterfaceTraced(callback: BorrowedCallbackInterface) TracedCallback {
+    return impl.keepCallbackInterfaceTraced(callback);
+}
+
+/// As `keepCallbackInterfaceTraced`, for a callback function value.
+pub inline fn keepCallbackFunctionTraced(callback: BorrowedCallbackFunction) TracedCallback {
+    return impl.keepCallbackFunctionTraced(callback);
+}
+
 // ============================================================================
 // 4.5 ECMAScript values
 // ============================================================================
@@ -3121,7 +3206,16 @@ pub inline fn abortWebAssemblyResponse(compilation: *WebAssemblyResponseCompilat
 // it - script has run since - so a node wrapped again, put back in a tree, or
 // freed by someone else in between is not the queue's to free.
 
-/// Whether `instance` has a wrapper in its relevant realm.
+/// Whether `instance` has a wrapper in ANY world: its relevant realm's, or
+/// an isolated world's (section 4.2a) - "has script seen it" asks every
+/// world, so a caller that frees an instance it finds unwrapped never frees
+/// one only a world's wrapper reaches (Blink keeps a wrapper per world in
+/// each world's DOMDataStore, and any of them keeps its object). A caller
+/// that needs the relevant realm's own wrapper - to keep it, or to hang an
+/// edge on it - makes it with `retainValue`. JavaScriptCore and QuickJS have
+/// no worlds: their relevant realm's wrapper. (Main's ruling of 2026-11-23
+/// 12:17 PM ET, lane rc8: before it V8 read the relevant realm's cache
+/// alone.)
 pub inline fn hasWrapper(instance: *Instance) bool {
     return impl.hasWrapper(instance);
 }
@@ -3374,6 +3468,29 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 // read-only walk, dom.wrapper_tracing, reached through runtime.lifetime's
 // `traceTree` hook - and names each wrapper with the two operations below.
 
+/// `node` - a node's instance - keeps values for script that the walk traces
+/// from it from now on (refcount step 8: a listener's callback, a registered
+/// observer; dom.wrapper_tracing.noteNodeHoldsValues): its wrapper, if it
+/// has one, is kept by young-generation collections from here - in every
+/// world it is wrapped in (section 4.2a: a node only an isolated world
+/// wrapped is held by that world's wrapper alone) - still no root in a full
+/// collection, where the walk keeps it or nothing does. A node with no
+/// wrapper costs nothing: the engine asks runtime.lifetime's `keepsValues`
+/// where it makes a wrapper, in any world, and makes that kind then. Why:
+/// the walk visits a node only while it is held, a wrapped node is held by
+/// its wrapper, and an engine that drops a wrapper script cannot tell from a
+/// fresh one in a young collection would leave the node unvisited and take
+/// its listeners in the next full collection, while script can still reach
+/// the node through its tree. On the agent's thread, outside the collector;
+/// writes nothing on the wrapper. V8: the node's slot becomes a default
+/// TracedReference, not a droppable one (a root in a scavenge; Blink never
+/// needs this - its listeners die with the cppgc node, not with a wrapper).
+/// JavaScriptCore, QuickJS and the test adapter drop no wrapper in a young
+/// collection: nothing.
+pub inline fn keepNodeWrapperInYoungCollections(node: *Instance) void {
+    impl.keepNodeWrapperInYoungCollections(node);
+}
+
 /// Inside runtime.lifetime's `traceTree` hook only (`tracer` is the one the
 /// engine passed it): the engine keeps `slot`'s wrapper, if the slot holds
 /// one, as reachable as the wrapper being traced - and the node's wrapper in
@@ -3386,6 +3503,27 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 /// weak wrapper. An engine with no wrapper tracing does nothing.
 pub inline fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
     impl.traceNodeWrapper(tracer, slot);
+}
+
+/// The walk's, or a holder anchor's, step for a value its owner holds: the
+/// collector keeps `hold`'s value - inside a VTable.trace_held_nodes hook, in
+/// the collection's atomic pause, as `traceNodeWrapper` (refcount step 8;
+/// Blink's `visitor->Trace(TraceWrapperV8Reference)`). Allocates nothing,
+/// runs no script. An engine with no wrapper tracing does nothing (its holds
+/// are strong).
+pub inline fn traceHeld(tracer: *Tracer, hold: TracedHold) void {
+    impl.traceHeld(tracer, hold);
+}
+
+/// The same step for a platform object the owner holds for script - a
+/// MutationObserver a node's registered observer list names: the collector
+/// keeps `instance`'s wrapper in every world (a node's: `traceNodeWrapper`),
+/// and with it whatever that wrapper's anchor traces. Blink:
+/// `visitor->Trace(Member<MutationObserver>)` from the registration. Inside a
+/// trace_held_nodes hook only; read-only. An engine with no wrapper tracing
+/// does nothing.
+pub inline fn traceWrapperOf(tracer: *Tracer, instance: *Instance) void {
+    impl.traceWrapperOf(tracer, instance);
 }
 
 /// Inside runtime.lifetime's `traceTree` hook - and its `dyingWith` hook,
