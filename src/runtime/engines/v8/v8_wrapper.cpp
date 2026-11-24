@@ -6088,12 +6088,16 @@ extern "C" void v8_NodeTracer_TraceSlot(cppgc::Visitor* visitor, void* slot) {
 // ---- engine.TracedHold (refcount step 8: values traced from their owner at
 // collection time, Blink's TraceWrapperV8Reference) ----
 //
-// A hold is a heap box holding one TracedReference<Value>: no root in a full
-// collection - the value lives while a trace reaches the hold (traceHeld, from
-// its owner's anchor or the walk) and is cleared by V8 when none does - and a
-// root in a young-generation one (made non-droppable, the TracedReference
-// default), so a scavenge never takes a held listener. Made and disposed on
-// the agent's thread, never inside the collector; no lock, no realm tag.
+// A hold is a heap box holding one TracedReference<Value>, made DROPPABLE: no
+// root in a full collection - the value lives while a trace reaches the hold
+// (traceHeld, from its owner's anchor or the walk) and V8 clears it when none
+// does - and, in a young-generation one, dropped only when its value is an
+// unmodified API object (TracedHandles::ComputeWeaknessForYoungObjects): a
+// function, or any object script gave a property, is kept, so a scavenge
+// never takes a held listener. (A non-droppable TracedReference is not
+// cleared by a full collection on 15.7: tests/v8/cb8_traced_hold_test.zig
+// measured 0 of 200 untraced holds cleared.) Made and disposed on the
+// agent's thread, never inside the collector; no lock, no realm tag.
 // Blink: TraceWrapperV8Reference (platform/bindings/trace_wrapper_v8_reference.h)
 // in V8EventListener / CallbackInterfaceBase, traced from the target.
 //
@@ -6115,7 +6119,9 @@ extern "C" void* v8_TracedHold_New(Global<Value>* source) {
     HandleScope scope(isolate);
     Local<Value> value = source->Get(isolate);
     if (value.IsEmpty()) return nullptr;
-    return new TracedReference<Value>(isolate, value);
+    auto* hold = new TracedReference<Value>();
+    hold->Reset(isolate, value, TracedReference<Value>::IsDroppable{});
+    return hold;
 }
 
 /// The hold ends (its owner let the value go, or is torn down): on the
