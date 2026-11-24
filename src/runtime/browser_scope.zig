@@ -279,7 +279,22 @@ pub const BrowserScope = struct {
         // The quarantine's evictions draw from the Browser's stream after
         // the generations' seed, so a seeded run replays both.
         var seed_bytes: [8]u8 = undefined;
-        if (!platform.browser_random(browser, &seed_bytes)) platform.random(&seed_bytes);
+        if (!platform.browser_random(browser, &seed_bytes)) {
+            // A test build's heap with no seeded Browser draws from the
+            // test's seed (std.testing.random_seed, the launcher's --seed),
+            // so a seeded run replays its bucket placement as a seeded
+            // Browser's does. A failure sweep (checkAllAllocationFailures)
+            // makes a scope per attempt; from the OS's entropy each attempt
+            // put its node types in other random buckets, opened another
+            // count of spans - each a probe of the scope's allocator
+            // (grow_hook) - and the sweep failed as nondeterministic (lane
+            // hard1, K = 2: xm1_svg_interfaces_test FLAKY on server1,
+            // 2026-11-24). Every other build keeps the OS's entropy.
+            if (comptime @import("builtin").is_test)
+                std.mem.writeInt(u64, &seed_bytes, std.testing.random_seed, .little)
+            else
+                platform.random(&seed_bytes);
+        }
         const config = heap_engine.Config.of(self.arena.poison_freed, self.arena.quarantine_freed);
         const engine = heap_engine.Engine.init(heap, config, std.mem.readInt(u64, &seed_bytes, .little)) catch |err| return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
