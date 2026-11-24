@@ -896,7 +896,10 @@ pub const Names = struct {
     /// `sources`, when given, gets the related elements whose text is the
     /// name, each with its text (unflattened, as Blink's name sources keep
     /// it).
-    pub fn nameWithContents(self: *Names, node: *Instance, from_contents: bool, sources: ?*std.ArrayListUnmanaged(RelatedText)) ![]const u8 {
+    /// `root_hidden`: the node itself is hidden; Blink still names it, its
+    /// subtree's hiddenness then measured against it (as Chrome 157 names
+    /// an aria-hidden button from its text).
+    pub fn nameWithContents(self: *Names, node: *Instance, from_contents: bool, root_hidden: bool, sources: ?*std.ArrayListUnmanaged(RelatedText)) ![]const u8 {
         self.computation.root = node;
         self.computation.seen.clearRetainingCapacity();
         self.computation.self_labels.clearRetainingCapacity();
@@ -906,7 +909,7 @@ pub const Names = struct {
             self.computation.root_from_contents = null;
             self.computation.related_out = null;
         }
-        return flatten(self.computation.allocator, try self.computation.text(node, .{}));
+        return flatten(self.computation.allocator, try self.computation.text(node, .{ .include_hidden = root_hidden }));
     }
 
     /// The text `target` contributes as an aria-labelledby or

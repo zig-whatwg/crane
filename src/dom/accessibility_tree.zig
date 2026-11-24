@@ -559,7 +559,9 @@ pub const Tree = struct {
         if (role == .Link) return .include;
         if (isHeading(role)) return .include;
         if (html_element and oneOf(tag, .{ "header", "footer" })) return .include;
-        if (isControl(role)) return .include;
+        // AXNodeObject::IsControl: a form control element, or an ARIA
+        // control role.
+        if (isFormControlElement(dom) or isControl(object.aria_role)) return .include;
         if (html_element and eq(tag, "optgroup")) return .include;
         if (object.aria_role != .Unknown or attribute(dom, "role") != null and object.aria_role != .Unknown) return .include;
         if (isEditableRoot(dom)) return .include;
@@ -651,7 +653,7 @@ pub const Tree = struct {
         // Line breaking objects: blocks and br, when visible (IsVisible: not
         // inert either - Chrome 157 leaves an inert block out, the trace's
         // hidden page).
-        if (!object.hidden_via_style and object.has_layout and !try self.inert(dom) and try isLineBreakingObject(dom)) return true;
+        if (!object.hidden_via_style and !try self.inert(dom) and !try self.names.ariaHidden(dom) and isLineBreakingObject(dom, object.role)) return true;
         if (isHtml(dom) and oneOf(localName(dom), .{ "rt", "table", "tbody", "tr", "td", "th" })) return true;
         if (attribute(dom, "lang") != null) return true;
         return false;
@@ -849,13 +851,12 @@ pub const Tree = struct {
     }
 
     fn firstValidRole(self: *Tree, dom: *Instance, value: []const u8, ignore_form_and_region: bool) !Role {
-        _ = self;
         var tokens = std.mem.tokenizeAny(u8, value, spaces);
         while (tokens.next()) |token| {
             const role = ariaToInternal(token);
             if (role == .Unknown) continue;
             if (ignore_form_and_region and (role == .Form or role == .Region)) continue;
-            if (!hasRequiredParentContext(dom, role)) continue;
+            if (!hasRequiredParentContext(self, dom, role)) continue;
             return role;
         }
         return .Unknown;
@@ -1237,18 +1238,31 @@ pub const Tree = struct {
         return .{ .start = start, .end = end };
     }
 
-    fn collectLineItems(arena: Allocator, base: *NodeBase, out: *std.ArrayListUnmanaged(LineItem)) !void {
+    fn collectLineItems(arena: Allocator, base: *NodeBase, out: *std.ArrayListUnmanaged(LineItem)) Allocator.Error!void {
+        // The flat tree's children: a host's shadow root's, a slot's
+        // assigned nodes.
+        if (a11y.instance(base)) |element| if (base.node_type == NodeBase.ELEMENT_NODE) if (shadows.rootForHost(element)) |shadow| {
+            return collectLineItems(arena, bridge.getNodeBase(shadow) orelse return, out);
+        };
+        if (slots.slotState(base)) |slot| if (slot.hasAssignedNodes()) {
+            for (slot.assigned_nodes.items) |ref| if (ref.get()) |assigned| try collectLineItem(arena, assigned, out);
+            return;
+        };
         var at = base.firstChild();
-        while (at) |current| : (at = current.next_sibling) {
-            const n = a11y.instance(current) orelse continue;
+        while (at) |current| : (at = current.next_sibling) try collectLineItem(arena, current, out);
+    }
+
+    fn collectLineItem(arena: Allocator, current: *NodeBase, out: *std.ArrayListUnmanaged(LineItem)) Allocator.Error!void {
+        {
+            const n = a11y.instance(current) orelse return;
             if (current.node_type == NodeBase.TEXT_NODE or current.node_type == NodeBase.CDATA_SECTION_NODE) {
-                var value = interfaces.CharacterData.get_data(n) catch continue;
+                var value = interfaces.CharacterData.get_data(n) catch return;
                 defer value.deinit(n.ctx.allocator);
                 if (value.asSlice().len > 0) try out.append(arena, .{ .text = n });
-                continue;
+                return;
             }
-            if (current.node_type != NodeBase.ELEMENT_NODE) continue;
-            if (!(hasBox(n) catch false) and !isDisplayContentsElement(n)) continue;
+            if (current.node_type != NodeBase.ELEMENT_NODE) return;
+            if (!(hasBox(n) catch false) and !isDisplayContentsElement(n)) return;
             if (isHtml(n) and eq(localName(n), "br")) {
                 try out.append(arena, .br);
             } else if (isDisplayContentsElement(n) or isLayoutInline(n)) {
@@ -1328,7 +1342,9 @@ pub fn describe(tree: *Tree, index: Index, force_name: bool) !Description {
         return out;
     }
     var related: std.ArrayListUnmanaged(a11y.RelatedText) = .empty;
-    out.name = try tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), &related);
+    out.name = if (object.role == .LineBreak) "\n" else try tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), try tree.names.hidden(dom), &related);
+    // Blink keeps each related text with its runs of white space made one.
+    for (related.items) |*r| r.text = try collapseRuns(tree.arena, r.text);
     var properties: std.ArrayListUnmanaged(Property) = .empty;
     try properties_(tree, dom, object, related.items, &properties);
     out.properties = properties.items;
@@ -1384,7 +1400,7 @@ pub fn nameOf(tree: *Tree, index: Index) ![]const u8 {
                 return tree.arena.dupe(u8, title.asSlice());
             }
             if (base.node_type != NodeBase.ELEMENT_NODE) return object.text;
-            return tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), null);
+            return tree.names.nameWithContents(dom, nameFromContents(tree, dom, object.role), try tree.names.hidden(dom), null);
         },
         .pseudo, .nodeless => return object.text,
     }
@@ -1423,6 +1439,22 @@ fn descriptionOf(tree: *Tree, dom: *Instance, object: *const Node, name: []const
         if (trimmed.len > 0 and !eq(trimmed, name)) return collapse(tree.arena, title);
     }
     return "";
+}
+
+/// Runs of white space made one space, none trimmed.
+fn collapseRuns(arena: Allocator, text: []const u8) ![]const u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var in_space = false;
+    for (text) |c| {
+        if (std.mem.indexOfScalar(u8, spaces, c) != null) {
+            if (!in_space) try out.append(arena, ' ');
+            in_space = true;
+        } else {
+            try out.append(arena, c);
+            in_space = false;
+        }
+    }
+    return out.items;
 }
 
 fn collapse(arena: Allocator, text: []const u8) ![]const u8 {
@@ -1781,6 +1813,9 @@ fn textLength(dom: *Instance) usize {
 /// select's own options unless disabled (Chrome 157 marks every <option>
 /// focusable, a11y1-chrome157-trace.txt pages mcp and forms).
 fn focusable(tree: *Tree, dom: *Instance, role: Role) bool {
+    // A frame's focus is its document's (Chrome 157 sends no focusable on
+    // an Iframe, the trace's frames page).
+    if (isFrame(dom)) return false;
     if (tree.options.is_focusable(dom)) return true;
     if ((role == .MenuListOption or role == .ListBoxOption) and dom.stateAs(interfaces.HTMLOptionElement.State) != null) return !tree.options.is_disabled(dom);
     return false;
@@ -1834,6 +1869,24 @@ fn hierarchicalLevel(dom: *Instance, role: Role) ?i64 {
         if (isHtml(dom) and tag.len == 2 and tag[0] == 'h' and tag[1] >= '1' and tag[1] <= '6') return tag[1] - '0';
         return 2;
     }
+    // A list item's or tree item's nesting: the lists (trees, groups) it is
+    // in (AXObject::HierarchicalLevel).
+    if (role == .ListItem or role == .TreeItem) {
+        var level: i64 = 0;
+        var at = a11y.parent(dom);
+        while (at) |ancestor| : (at = a11y.parent(ancestor)) {
+            if (bridge.getNodeBase(ancestor).?.node_type != NodeBase.ELEMENT_NODE) break;
+            if (role == .ListItem) {
+                if (isHtml(ancestor) and oneOf(localName(ancestor), .{ "ul", "ol", "menu" })) level += 1 else if (attribute(ancestor, "role")) |r| {
+                    if (std.ascii.eqlIgnoreCase(r, "list")) level += 1;
+                }
+            } else if (attribute(ancestor, "role")) |r| {
+                if (std.ascii.eqlIgnoreCase(r, "tree") or std.ascii.eqlIgnoreCase(r, "group")) level += 1;
+                if (std.ascii.eqlIgnoreCase(r, "tree")) break;
+            }
+        }
+        return @max(level, 1);
+    }
     return null;
 }
 
@@ -1860,7 +1913,16 @@ fn multiline(dom: *Instance) bool {
 }
 
 fn readOnly(dom: *Instance) bool {
-    if (attribute(dom, "aria-readonly")) |v| if (std.ascii.eqlIgnoreCase(v, "true")) return true;
+    if (attribute(dom, "aria-readonly")) |v| return std.ascii.eqlIgnoreCase(v, "true");
+    // A cell takes its grid's aria-readonly (AXObject::Restriction).
+    if (attribute(dom, "role")) |r| if (oneOf(r, .{ "gridcell", "columnheader", "rowheader" })) {
+        var at = a11y.parent(dom);
+        while (at) |ancestor| : (at = a11y.parent(ancestor)) {
+            if (bridge.getNodeBase(ancestor).?.node_type != NodeBase.ELEMENT_NODE) break;
+            const role = attribute(ancestor, "role") orelse continue;
+            if (oneOf(role, .{ "grid", "treegrid" })) return if (attribute(ancestor, "aria-readonly")) |v| std.ascii.eqlIgnoreCase(v, "true") else false;
+        }
+    };
     if (isHtml(dom) and oneOf(localName(dom), .{ "input", "textarea" })) return attribute(dom, "readonly") != null;
     return false;
 }
@@ -1901,7 +1963,6 @@ fn checkedState(dom: *Instance, role: Role) !?[]const u8 {
 
 fn expandedState(dom: *Instance, role: Role) !?bool {
     if (role == .ComboBoxSelect) return false;
-    if (isHtml(dom) and eq(localName(dom), "details")) return try interfaces.HTMLDetailsElement.get_open(dom);
     if (role == .DisclosureTriangle or role == .DisclosureTriangleGrouped) {
         const p = a11y.parent(dom) orelse return null;
         if (isHtml(p) and eq(localName(p), "details")) return try interfaces.HTMLDetailsElement.get_open(p);
@@ -2221,8 +2282,14 @@ fn hiddenViaStyle(element: *Instance, has_layout: bool) !bool {
 fn parentsInlineChildren(element: *Instance) !bool {
     const computed = (try style.computedStyle(element, null)) orelse return false;
     const display = computed.display();
-    if (display.box != .normal) return false;
-    if (display.inner != .flow and display.inner != .flow_root) return false;
+    // A LayoutBlockFlow: a block or inline-block container, a list item, a
+    // table cell or caption - not an inline box (LayoutInline).
+    const block_flow = switch (display.box) {
+        .normal => (display.inner == .flow and display.outer == .block) or display.inner == .flow_root,
+        .internal => display.internal == .table_cell or display.internal == .table_caption,
+        else => false,
+    };
+    if (!block_flow) return false;
     if (!rendersChildren(element)) return false;
     var any = false;
     const base = bridge.getNodeBase(element).?;
@@ -2245,12 +2312,45 @@ fn parentsInlineChildren(element: *Instance) !bool {
     return any;
 }
 
-/// IsLineBreakingObject: a block-level box or a <br>.
-fn isLineBreakingObject(element: *Instance) !bool {
+/// AXNodeObject::IsLineBreakingObject: never for a presentational object;
+/// an enclosing block (display block, inline-block, flow-root, list-item,
+/// flex, grid, table parts: Blink Editing's IsEnclosingBlock, which needs a
+/// layout object - a display: contents element is none, Chrome 157 leaving
+/// one out of the tree, the trace's shadow page) or a <br>; otherwise by
+/// role (AXObject's: a structure role that is not an image, outside SVG).
+fn isLineBreakingObject(element: *Instance, role: Role) bool {
+    if (role == .None) return false;
     if (isHtml(element) and eq(localName(element), "br")) return true;
-    const computed = (try style.computedStyle(element, null)) orelse return false;
-    const display = computed.display();
-    return display.box == .normal and display.outer == .block;
+    if (style.computedStyle(element, null) catch null) |computed| {
+        const display = computed.display();
+        switch (display.box) {
+            .internal => return true,
+            .normal => if (display.outer == .block or display.inner != .flow or display.list_item) return true,
+            .contents, .none => {},
+        }
+    }
+    if (role == .Image or isSvg(element)) return false;
+    return isStructure(role);
+}
+
+/// ui::IsStructure (ax_role_properties.cc): sections, section heads, the
+/// presentational role, and the document structure roles.
+fn isStructure(role: Role) bool {
+    return switch (role) {
+        // IsLandmark.
+        .Banner, .Complementary, .ContentInfo, .Form, .Main, .Navigation, .Region, .Search => true,
+        // IsSelect.
+        .ComboBoxGrouping, .ListBox, .Menu, .MenuBar, .RadioGroup, .Tree, .TreeGrid => true,
+        // IsSection's own.
+        .Alert, .AlertDialog, .Cell, .ColumnHeader, .Definition, .Feed, .Figure, .Grid, .GridCell, .Group, .Image, .List, .ListItem, .Log, .Marquee, .Math, .MathMLMath, .MathMLTableCell, .Note, .ProgressIndicator, .Row, .RowHeader, .Section, .Status, .Table, .TabPanel, .Term, .Timer, .Toolbar, .Tooltip, .TreeItem => true,
+        // IsSectionhead.
+        .Heading, .Tab => true,
+        // IsPresentational.
+        .None => true,
+        .Application, .Document, .Article, .RowGroup, .Splitter => true,
+        .DocAbstract, .DocAcknowledgments, .DocAfterword, .DocAppendix, .DocBiblioEntry, .DocBibliography, .DocChapter, .DocColophon, .DocConclusion, .DocCover, .DocCredit, .DocCredits, .DocDedication, .DocEndnote, .DocEndnotes, .DocEpigraph, .DocEpilogue, .DocErrata, .DocExample, .DocFootnote, .DocForeword, .DocGlossary, .DocIndex, .DocIntroduction, .DocNotice, .DocPageBreak, .DocPageList, .DocPart, .DocPreface, .DocPrologue, .DocQna, .DocSubtitle, .DocTip, .DocToc => true,
+        else => false,
+    };
 }
 
 // ============================================================================
@@ -2399,12 +2499,22 @@ fn isPrimaryInternal(role: Role) bool {
     };
 }
 
-fn hasRequiredParentContext(dom: *Instance, role: Role) bool {
+fn hasRequiredParentContext(tree: *Tree, dom: *Instance, role: Role) bool {
     const wanted: []const Role = switch (role) {
         .ListItem => &.{ .List, .Group },
         .ListBoxOption => &.{ .ListBox, .Group },
         .TreeItem => &.{ .Tree, .Group },
         else => return true,
+    };
+    // An owned item's context is its aria-owns owner (IsOrphanedListItem).
+    if (tree.names.ownerOf(dom)) |owner| if (attribute(owner, "role")) |value| {
+        var tokens = std.mem.tokenizeAny(u8, value, spaces);
+        while (tokens.next()) |token| {
+            const owner_role = ariaToInternal(token);
+            if (owner_role == .Unknown) continue;
+            for (wanted) |w| if (owner_role == w) return true;
+            break;
+        }
     };
     var at = a11y.parent(dom);
     while (at) |p| : (at = a11y.parent(p)) {
@@ -2461,6 +2571,11 @@ fn supportsNameFromContents(role: Role) bool {
         .DisclosureTriangle, .DisclosureTriangleGrouped, .LayoutTableCell, .LineBreak, .ListMarker, .StaticText, .Term, .Math => true,
         else => false,
     };
+}
+
+/// Element::IsFormControlElement (HTMLFormControlElement's subclasses).
+fn isFormControlElement(element: *Instance) bool {
+    return isHtml(element) and oneOf(localName(element), .{ "button", "fieldset", "input", "select", "textarea", "output" });
 }
 
 fn isHeading(role: Role) bool {
@@ -2527,11 +2642,18 @@ fn markerText(arena: Allocator, element: *Instance, out: *std.ArrayListUnmanaged
     }
     const own = (try style.computedStyle(element, null)) orelse return;
     const kind = own.get(.list_style_type);
-    if (kind == .text) {
-        try out.appendSlice(arena, kind.text.bytes);
-        return;
-    }
-    const name = if (kind == .keyword) @tagName(kind.keyword) else "disc";
+    var buffer: [32]u8 = undefined;
+    const name: []const u8 = switch (kind) {
+        .keyword => |k| @tagName(k),
+        .text => |t| blk: {
+            // A string is the marker itself; an identifier names a style.
+            if (t.bytes.len >= 2 and t.bytes[0] == '"') return out.appendSlice(arena, t.bytes[1 .. t.bytes.len - 1]);
+            const n = @min(t.bytes.len, buffer.len);
+            for (t.bytes[0..n], 0..) |c, i| buffer[i] = if (c == '-') '_' else c;
+            break :blk buffer[0..n];
+        },
+        else => "disc",
+    };
     if (eq(name, "none")) return;
     if (eq(name, "disc")) return out.appendSlice(arena, "\u{2022} ");
     if (eq(name, "circle")) return out.appendSlice(arena, "\u{25E6} ");

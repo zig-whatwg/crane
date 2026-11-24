@@ -332,7 +332,11 @@ const Serializer = struct {
         try pushReversed(self.arena, &stack, self.tree.node(index).children.items);
         while (stack.pop()) |child| {
             const object = self.tree.node(child);
-            if (object.ignored or object.source == .nodeless) try pushReversed(self.arena, &stack, object.children.items);
+            // Blink follows ignored objects and those with no DOM node. A
+            // select's pop-up has one in Chrome (a user-agent shadow
+            // element) and none in Crane: it is followed as Chrome does.
+            const nodeless = object.source == .nodeless and object.role != .MenuListPopup;
+            if (object.ignored or nodeless) try pushReversed(self.arena, &stack, object.children.items);
             try out.append(self.arena, try self.build(child, false));
         }
     }

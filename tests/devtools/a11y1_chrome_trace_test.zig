@@ -268,7 +268,18 @@ const pages = [_]Page{
 /// in Chrome's vocabulary) and needs-renderer rows (soft wraps: main's D1)
 /// go here.
 const Deviation = struct { chrome: []const u8, crane: []const u8 };
-const deviations = [_]Deviation{};
+const deviations = [_]Deviation{
+    // A treeitem's name from its contents: Crane's AccName (dom/
+    // accessibility.zig, AccName 1.2 step 2F, shared with WebDriver's computed
+    // label) takes its whole subtree, the nested group's "a.zig" too; Chrome
+    // 157 leaves a group's text out of an ancestor's name (Blink
+    // SupportsNameFromContents(recursive) is false for kGroup). OPEN: the
+    // other browsers' answer decides by golden rule 2 (main's batch 2).
+    .{
+        .chrome = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src\"}",
+        .crane = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src a.zig\"}",
+    },
+};
 
 /// CRANE_A11Y_TRACE_VERBOSE set: each step's progress on stderr.
 fn progress(comptime format: []const u8, args: anytype) void {
@@ -464,6 +475,10 @@ fn runPages(allocator: Allocator, client: *cdp.Client, out: *std.ArrayList(u8)) 
         try out.appendSlice(allocator, "ua");
         if (cdp.at(document.value, "result.root")) |root| try userAgentIds(allocator, root, false, out);
         try out.append(allocator, '\n');
+        // What each backendNodeId is, to read a recording by (not compared).
+        try out.appendSlice(allocator, "dom");
+        if (cdp.at(document.value, "result.root")) |root| try domNames(allocator, root, out);
+        try out.append(allocator, '\n');
         // Events are batch 3's comparison.
         _ = client.dropQueued("Accessibility.loadComplete");
         _ = client.dropQueued("Accessibility.nodesUpdated");
@@ -485,6 +500,40 @@ fn userAgentIds(allocator: Allocator, node: std.json.Value, inside: bool, out: *
     if (node.object.get("pseudoElements")) |pseudos| for (pseudos.array.items) |p| try userAgentIds(allocator, p, inside, out);
 }
 
+/// " <backendNodeId>=<name>" for every node under `node` (a DOM.Node): an
+/// element's local name with its id and class, "#text:" and the text's
+/// start, "::before" and the like.
+fn domNames(allocator: Allocator, node: std.json.Value, out: *std.ArrayList(u8)) !void {
+    if (node != .object) return;
+    if (node.object.get("backendNodeId")) |id| {
+        const name = if (node.object.get("nodeName")) |n| n.string else "?";
+        try out.print(allocator, " {d}=", .{id.integer});
+        if (std.mem.eql(u8, name, "#text")) {
+            const value = if (node.object.get("nodeValue")) |v| v.string else "";
+            try out.appendSlice(allocator, "#text:");
+            for (value[0..@min(value.len, 12)]) |c| try out.append(allocator, if (c <= ' ' or c == '=') '_' else c);
+        } else {
+            for (name) |c| try out.append(allocator, if (c <= ' ' or c == '=') '_' else std.ascii.toLower(c));
+            if (node.object.get("attributes")) |attributes| {
+                var i: usize = 0;
+                while (i + 1 < attributes.array.items.len) : (i += 2) {
+                    const key = attributes.array.items[i].string;
+                    const value = attributes.array.items[i + 1].string;
+                    const mark: ?u8 = if (std.mem.eql(u8, key, "id")) '#' else if (std.mem.eql(u8, key, "class")) '.' else null;
+                    if (mark) |m| {
+                        try out.append(allocator, m);
+                        for (value[0..@min(value.len, 16)]) |c| try out.append(allocator, if (c <= ' ' or c == '=') '_' else c);
+                    }
+                }
+            }
+        }
+    }
+    inline for (.{ "children", "shadowRoots", "pseudoElements" }) |key| {
+        if (node.object.get(key)) |list| for (list.array.items) |child| try domNames(allocator, child, out);
+    }
+    if (node.object.get("contentDocument")) |child| try domNames(allocator, child, out);
+}
+
 /// Expected differences in shape that come from DOM Crane does not have:
 /// Chrome's user-agent shadow trees inside form controls and details.
 /// Crane, with no such trees, answers a menu-list select's pop-up as a
@@ -495,78 +544,91 @@ fn userAgentIds(allocator: Allocator, node: std.json.Value, inside: bool, out: *
 /// content) given to its nearest kept ancestor, its nodeless ones (a text's
 /// inline boxes) going with it. Applied to both sides with each side's own
 /// list (Crane's is empty).
-fn userAgentNodes(arena: Allocator, nodes: *std.json.Array, ua: *const std.AutoHashMapUnmanaged(i64, void)) !void {
+fn userAgentNodes(arena: Allocator, nodes: *std.json.Array, ua: *const std.AutoHashMapUnmanaged(i64, void), known: *Known) !void {
     if (ua.count() == 0) return;
-    var by_id: std.StringHashMapUnmanaged(usize) = .empty;
-    for (nodes.items, 0..) |n, i| try by_id.put(arena, n.object.get("nodeId").?.string, i);
-    const Fate = enum { keep, nodeless, drop };
-    const fates = try arena.alloc(Fate, nodes.items.len);
-    for (nodes.items, 0..) |n, i| {
-        fates[i] = .keep;
-        const backend = n.object.get("backendDOMNodeId") orelse continue;
-        if (!ua.contains(backend.integer)) continue;
-        const role = if (n.object.get("role")) |r| (if (r.object.get("value")) |v| v.string else "") else "";
-        fates[i] = if (std.mem.eql(u8, role, "MenuListPopup")) .nodeless else .drop;
+    // This answer's nodes join what the page's answers told so far (a
+    // partial answer names parents only by id).
+    for (nodes.items) |n| {
+        const id = n.object.get("nodeId").?.string;
+        var fate: Fate = .keep;
+        if (n.object.get("backendDOMNodeId")) |backend| if (ua.contains(backend.integer)) {
+            const role = if (n.object.get("role")) |r| (if (r.object.get("value")) |v| v.string else "") else "";
+            fate = if (std.mem.eql(u8, role, "MenuListPopup")) .nodeless else .drop;
+        };
+        // Copied: `known` outlives this answer's parsed text.
+        const parent = if (n.object.get("parentId")) |p| try arena.dupe(u8, p.string) else null;
+        const nodeless = n.object.get("backendDOMNodeId") == null;
+        const entry = try known.getOrPut(arena, try arena.dupe(u8, id));
+        if (!entry.found_existing) entry.value_ptr.* = .{ .fate = fate, .parent = parent, .nodeless = nodeless, .children = &.{} };
+        if (n.object.get("childIds")) |child_ids| {
+            var list: std.ArrayList([]const u8) = .empty;
+            for (child_ids.array.items) |c| try list.append(arena, try arena.dupe(u8, c.string));
+            entry.value_ptr.children = list.items;
+        }
+        if (entry.value_ptr.fate == .keep and fate != .keep) entry.value_ptr.fate = fate;
     }
-    // A nodeless node under a dropped one goes too (parents come first in
-    // every answer's order but partial ones, which name parents by id).
+    // A nodeless node under a dropped one goes too.
     var changed = true;
     while (changed) {
         changed = false;
-        for (nodes.items, 0..) |n, i| {
-            if (fates[i] != .keep or n.object.get("backendDOMNodeId") != null) continue;
-            const parent_id = if (n.object.get("parentId")) |p| p.string else continue;
-            const parent = by_id.get(parent_id) orelse continue;
-            if (fates[parent] == .drop) {
-                fates[i] = .drop;
+        var it = known.iterator();
+        while (it.next()) |e| {
+            if (e.value_ptr.fate != .keep or !e.value_ptr.nodeless) continue;
+            const parent = known.get(e.value_ptr.parent orelse continue) orelse continue;
+            if (parent.fate == .drop) {
+                e.value_ptr.fate = .drop;
                 changed = true;
             }
         }
     }
-    var renamed: std.StringHashMapUnmanaged([]const u8) = .empty;
-    for (nodes.items, 0..) |n, i| if (fates[i] == .nodeless) {
-        const id = n.object.get("nodeId").?.string;
-        try renamed.put(arena, id, try std.fmt.allocPrint(arena, "-9{s}", .{id}));
-    };
-    const Flat = struct {
-        fn children(a: Allocator, list: []const std.json.Value, ids: *const std.StringHashMapUnmanaged(usize), all: []const std.json.Value, fate: []const Fate, names: *const std.StringHashMapUnmanaged([]const u8), out: *std.json.Array) !void {
-            for (list) |child| {
-                const id = child.string;
-                const index = ids.get(id) orelse {
-                    try out.append(child);
-                    continue;
-                };
-                switch (fate[index]) {
-                    .keep => try out.append(child),
-                    .nodeless => try out.append(.{ .string = names.get(id).? }),
-                    .drop => if (all[index].object.get("childIds")) |grand| try children(a, grand.array.items, ids, all, fate, names, out),
-                }
-            }
-        }
-    };
     var kept = std.json.Array.init(arena);
-    for (nodes.items, 0..) |*n, i| {
-        if (fates[i] == .drop) continue;
+    for (nodes.items) |*n| {
+        const id = n.object.get("nodeId").?.string;
+        const self = known.get(id).?;
+        if (self.fate == .drop) continue;
         if (n.object.get("childIds")) |child_ids| {
             var flat = std.json.Array.init(arena);
-            try Flat.children(arena, child_ids.array.items, &by_id, nodes.items, fates, &renamed, &flat);
+            for (child_ids.array.items) |c| try flatChild(arena, known, c.string, &flat);
             try n.object.put(arena, "childIds", .{ .array = flat });
         }
         if (n.object.get("parentId")) |parent| {
             var at = parent.string;
-            while (by_id.get(at)) |p| {
-                if (fates[p] != .drop) break;
-                at = (nodes.items[p].object.get("parentId") orelse break).string;
+            while (known.get(at)) |p| {
+                if (p.fate != .drop) break;
+                at = p.parent orelse break;
             }
-            try n.object.put(arena, "parentId", .{ .string = renamed.get(at) orelse at });
+            try n.object.put(arena, "parentId", .{ .string = try renamedId(arena, known, at) });
         }
-        if (fates[i] == .nodeless) {
-            try n.object.put(arena, "nodeId", .{ .string = renamed.get(n.object.get("nodeId").?.string).? });
+        // Blink's AddAncestors puts an ignored inspected node's id first in
+        // its parent's childIds, even when it is there already: kept as is.
+        if (self.fate == .nodeless) {
+            try n.object.put(arena, "nodeId", .{ .string = try renamedId(arena, known, id) });
             _ = n.object.orderedRemove("backendDOMNodeId");
         }
         try kept.append(n.*);
     }
     nodes.* = kept;
+}
+
+const Fate = enum { keep, nodeless, drop };
+const KnownNode = struct { fate: Fate, parent: ?[]const u8, nodeless: bool, children: []const []const u8 };
+const Known = std.StringHashMapUnmanaged(KnownNode);
+
+fn renamedId(arena: Allocator, known: *const Known, id: []const u8) ![]const u8 {
+    const k = known.get(id) orelse return id;
+    if (k.fate != .nodeless) return id;
+    return std.fmt.allocPrint(arena, "-9{s}", .{id});
+}
+
+/// `id` in a childIds list: itself, its generated name, or - dropped - its
+/// own kept children in its place.
+fn flatChild(arena: Allocator, known: *const Known, id: []const u8, out: *std.json.Array) !void {
+    const k = known.get(id) orelse return out.append(.{ .string = id });
+    switch (k.fate) {
+        .keep => try out.append(.{ .string = id }),
+        .nodeless => try out.append(.{ .string = try renamedId(arena, known, id) }),
+        .drop => for (k.children) |child| try flatChild(arena, known, child, out),
+    }
 }
 
 /// First-appearance renaming of the ids that are not Crane's to match.
@@ -699,12 +761,18 @@ fn canonicalTrace(allocator: Allocator, raw: []const u8) ![]u8 {
     }
     const empty: std.AutoHashMapUnmanaged(i64, void) = .empty;
     var ua: *const std.AutoHashMapUnmanaged(i64, void) = &empty;
+    var known: Known = .empty;
     var lines = std.mem.splitScalar(u8, raw, '\n');
     while (lines.next()) |line| {
         if (line.len == 0) continue;
         if (std.mem.startsWith(u8, line, "page ")) {
             try out.print(allocator, "{s}\n", .{line});
             ua = ua_by_page.getPtr(line["page ".len..]) orelse &empty;
+            known = .empty;
+            // Names start again at each page: one page's difference does not
+            // rename every later page's nodes.
+            names.deinit(allocator);
+            names = .{};
             continue;
         }
         if (!std.mem.startsWith(u8, line, "step ")) continue;
@@ -716,7 +784,7 @@ fn canonicalTrace(allocator: Allocator, raw: []const u8) ![]u8 {
             continue;
         };
         defer parsed.deinit();
-        if (parsed.value.object.getPtr("result")) |result| if (result.object.getPtr("nodes")) |nodes| try userAgentNodes(parsed.arena.allocator(), &nodes.array, ua);
+        if (parsed.value.object.getPtr("result")) |result| if (result.object.getPtr("nodes")) |nodes| try userAgentNodes(scratch.allocator(), &nodes.array, ua, &known);
         if (parsed.value.object.get("error")) |e| {
             const message = if (e == .object) (if (e.object.get("message")) |m| m.string else "?") else "?";
             const code = if (e == .object) (if (e.object.get("code")) |c| c.integer else 0) else 0;
@@ -761,32 +829,77 @@ fn expectedTrace(allocator: Allocator, canonical_chrome: []const u8) ![]u8 {
     return text;
 }
 
-/// Line by line, the first `limit` differences, each under its page and
-/// step; whether the two are equal.
-fn reportDifferences(expected: []const u8, actual: []const u8, limit: usize) bool {
-    var e_lines = std.mem.splitScalar(u8, expected, '\n');
-    var a_lines = std.mem.splitScalar(u8, actual, '\n');
-    var page: []const u8 = "";
-    var step: []const u8 = "";
+/// Step by step, the steps whose answers differ: for each, the first
+/// differing line of each side (lines restart at each step, so one extra
+/// node does not shift every later step); whether the two are equal.
+fn reportDifferences(allocator: Allocator, expected: []const u8, actual: []const u8, limit: usize) !bool {
+    var expected_steps = try stepsOf(allocator, expected);
+    defer expected_steps.deinit(allocator);
+    var actual_steps = try stepsOf(allocator, actual);
+    defer actual_steps.deinit(allocator);
     var shown: usize = 0;
-    var equal = true;
-    while (true) {
-        const e = e_lines.next();
-        const a = a_lines.next();
-        if (e == null and a == null) break;
-        const el = e orelse "";
-        const al = a orelse "";
-        if (std.mem.startsWith(u8, el, "page ")) page = el;
-        if (std.mem.startsWith(u8, el, "step ")) step = el;
-        if (std.mem.eql(u8, el, al)) continue;
-        equal = false;
-        if (shown < limit) {
-            std.debug.print("{s} / {s}\n  chrome: {s}\n  crane:  {s}\n", .{ page, step, el, al });
-        }
+    var differing: usize = 0;
+    const count = @max(expected_steps.items.len, actual_steps.items.len);
+    for (0..count) |i| {
+        const e: StepText = if (i < expected_steps.items.len) expected_steps.items[i] else .{ .key = "(none)", .body = "" };
+        const a: StepText = if (i < actual_steps.items.len) actual_steps.items[i] else .{ .key = "(none)", .body = "" };
+        if (std.mem.eql(u8, e.page, a.page) and std.mem.eql(u8, e.key, a.key) and std.mem.eql(u8, e.body, a.body)) continue;
+        differing += 1;
+        if (shown >= limit) continue;
         shown += 1;
+        var e_lines = std.mem.splitScalar(u8, e.body, '\n');
+        var a_lines = std.mem.splitScalar(u8, a.body, '\n');
+        var line: usize = 0;
+        while (true) : (line += 1) {
+            const el = e_lines.next();
+            const al = a_lines.next();
+            if (el == null and al == null) break;
+            if (el != null and al != null and std.mem.eql(u8, el.?, al.?)) continue;
+            std.debug.print("{s} / {s} (crane: {s} / {s}), line {d}:\n  chrome: {s}\n  crane:  {s}\n", .{ e.page, e.key, a.page, a.key, line, el orelse "(end)", al orelse "(end)" });
+            break;
+        }
     }
-    if (shown > limit) std.debug.print("... {d} differing lines in all\n", .{shown});
-    return equal;
+    if (differing > 0) std.debug.print("{d} of {d} steps differ\n", .{ differing, count });
+    return differing == 0;
+}
+
+const StepText = struct { page: []const u8 = "", key: []const u8, body: []const u8 };
+
+/// A canonical trace's steps: each one's page, its "step" line and its
+/// lines.
+fn stepsOf(allocator: Allocator, text: []const u8) !std.ArrayList(StepText) {
+    var steps: std.ArrayList(StepText) = .empty;
+    errdefer steps.deinit(allocator);
+    var page: []const u8 = "";
+    var at: usize = 0;
+    var current: ?StepText = null;
+    var body_start: usize = 0;
+    while (at < text.len) {
+        const end = std.mem.indexOfScalarPos(u8, text, at, '\n') orelse text.len;
+        const line = text[at..end];
+        const is_page = std.mem.startsWith(u8, line, "page ");
+        if (is_page or std.mem.startsWith(u8, line, "step ")) {
+            if (current) |c| {
+                var done = c;
+                done.body = text[body_start..at];
+                try steps.append(allocator, done);
+            }
+            current = null;
+            if (is_page) {
+                page = line;
+            } else {
+                current = .{ .page = page, .key = line, .body = "" };
+                body_start = @min(end + 1, text.len);
+            }
+        }
+        at = end + 1;
+    }
+    if (current) |c| {
+        var done = c;
+        done.body = text[body_start..];
+        try steps.append(allocator, done);
+    }
+    return steps;
 }
 
 /// The page target's WebSocket path on a server at `port`, from /json/list.
@@ -865,7 +978,7 @@ test "the Accessibility domain's answers for a list of pages and commands equal 
         defer allocator.free(both);
         try writeFile(std.mem.span(out), both);
     }
-    try testing.expect(reportDifferences(expected, crane, 40));
+    try testing.expect(try reportDifferences(allocator, expected, crane, 40));
 }
 
 test "canonical form: one rename map for AX node ids and backend ids, generated ids apart, sources dropped" {
