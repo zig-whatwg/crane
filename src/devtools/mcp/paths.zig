@@ -381,8 +381,13 @@ fn fileUrlPath(arena: Allocator, file_url: []const u8) Allocator.Error!FileUrl {
         else => return .{ .invalid = "Invalid URL" },
     };
     if (parsed.host) |host| {
-        const name = try url.host_serializer.serializeHost(arena, host);
-        if (name.len != 0) return .{ .invalid = "File URL host must be \"localhost\" or empty on " ++ node_platform };
+        const name = url.host_serializer.serializeHost(arena, host) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return .{ .invalid = "Invalid URL" },
+        };
+        // Node names process.platform; the built-in platforms' names are
+        // Node's ("darwin", "linux").
+        if (name.len != 0) return .{ .invalid = try std.fmt.allocPrint(arena, "File URL host must be \"localhost\" or empty on {s}", .{platform.name}) };
     }
     var path: std.ArrayList(u8) = .empty;
     switch (parsed.path) {
@@ -400,12 +405,6 @@ fn fileUrlPath(arena: Allocator, file_url: []const u8) Allocator.Error!FileUrl {
     }
     return .{ .path = try percentDecode(arena, path.items) };
 }
-
-/// Node's process.platform where it differs from Zig's OS name.
-const node_platform = switch (@import("builtin").os.tag) {
-    .macos, .ios => "darwin",
-    else => @tagName(@import("builtin").os.tag),
-};
 
 fn percentDecode(arena: Allocator, text: []const u8) Allocator.Error![]const u8 {
     var out: std.ArrayList(u8) = .empty;
@@ -557,7 +556,7 @@ const FakeFs = struct {
         while (it.next()) |part| {
             if (part.len == 0) continue;
             const next = if (std.mem.eql(u8, current, "/")) try std.fmt.allocPrint(arena, "/{s}", .{part}) else try std.fmt.allocPrint(arena, "{s}/{s}", .{ current, part });
-            var resolved = next;
+            var resolved: []const u8 = next;
             for (self.links) |l| if (std.mem.eql(u8, l[0], next)) {
                 resolved = l[1];
             };

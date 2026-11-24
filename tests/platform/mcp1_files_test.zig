@@ -23,15 +23,15 @@ fn scratch(allocator: std.mem.Allocator) ![]u8 {
 }
 
 fn symlink(allocator: std.mem.Allocator, target: []const u8, link: []const u8) !void {
-    const target_z = try allocator.dupeZ(u8, target);
+    const target_z = try allocator.dupeSentinel(u8, target, 0);
     defer allocator.free(target_z);
-    const link_z = try allocator.dupeZ(u8, link);
+    const link_z = try allocator.dupeSentinel(u8, link, 0);
     defer allocator.free(link_z);
     if (std.c.symlink(target_z, link_z) != 0) return error.SymlinkFailed;
 }
 
 fn modeOf(allocator: std.mem.Allocator, path: []const u8) !u32 {
-    const z = try allocator.dupeZ(u8, path);
+    const z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(z);
     var st: std.c.Stat = undefined;
     if (std.c.stat(z, &st) != 0) return error.StatFailed;

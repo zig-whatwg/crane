@@ -389,6 +389,9 @@ not platform policy.
 | `makeDirectoryPath` | `(path: Str) Error!void` | any | |
 | `readFile` | `(allocator, path: Str, limit: usize) Error![]u8` | any | OWNED. The V8 snapshot, CLDR data, file: URLs [file_urls] (Fetch 4.3 scheme fetch "file"). |
 | `writeFileAtomic` | `(path: Str, bytes: Bytes) Error!void` | any | Write, then rename. |
+| `writeFilePrivate` | `(path: Str, bytes: Bytes) Error!void` | any | In place, created or truncated, mode 0600, never through a symbolic link at `path` (O_NOFOLLOW: `error.AccessDenied`). The MCP server's writes under its path policy (chrome-devtools-mcp's #writeFile). |
+| `realPath` | `(allocator, path: Str) Error![]u8` | any | OWNED. realpath(3): every link and `.`/`..` resolved. `error.NotFound` only for a missing component (ENOENT); a component that is a file is `error.Io`. |
+| `tempDirectory` | `(allocator) Error![]u8` | any | OWNED. Node's os.tmpdir() on POSIX: TMPDIR, TMP or TEMP, else /tmp, no trailing slash (on iOS the system's TMPDIR). |
 | `deleteFile`, `deleteTree` | `(path: Str) Error!void` | any | |
 | `fileInfo` | `(path: Str) Error!FileInfo` | any | `{ size, modified: WallTime, kind }` |
 | `listDirectory` | `(allocator, path: Str) Error![]DirEntry` | any | OWNED. |

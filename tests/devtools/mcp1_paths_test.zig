@@ -58,7 +58,7 @@ fn read(a: std.mem.Allocator, path: []const u8) ![]const u8 {
 }
 
 fn modeOf(a: std.mem.Allocator, path: []const u8) !u32 {
-    const z = try a.dupeZ(u8, path);
+    const z = try a.dupeSentinel(u8, path, 0);
     var st: std.c.Stat = undefined;
     if (std.c.stat(z, &st) != 0) return error.StatFailed;
     return @as(u32, @intCast(st.mode)) & 0o777;
