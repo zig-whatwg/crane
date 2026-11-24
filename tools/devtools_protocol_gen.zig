@@ -29,6 +29,7 @@ const Allocator = std.mem.Allocator;
 
 /// The domains generated whole. Adding one is a regeneration, nothing else.
 pub const full_domains = [_][]const u8{
+    "Accessibility",
     "Audits",
     "Browser",
     "DOM",

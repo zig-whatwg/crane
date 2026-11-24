@@ -94,6 +94,9 @@ pub const BrowserSide = struct {
     /// Browser thread only: the sessions whose DOM domain is enabled, which
     /// the DOM's probes reach through the Browser's sink (dom_events.zig).
     dom_agents: dom_events.Agents = .{},
+    /// Browser thread only: the sessions whose Accessibility domain is
+    /// enabled, which the same probes reach (dom_events.zig; lane a11y1).
+    ax_agents: dom_events.Agents = .{},
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -106,6 +109,7 @@ pub const BrowserSide = struct {
         std.debug.assert(self.sessions.items.len == 0);
         self.sessions.deinit(self.allocator);
         self.dom_agents.deinit(self.allocator);
+        self.ax_agents.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 

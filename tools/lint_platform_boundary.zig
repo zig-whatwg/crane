@@ -5,7 +5,7 @@
 //! docs/platform-protocol.md section 11: Crane's platform is an adapter, and
 //! the protocol (`@import("platform")`, src/platform/protocol.zig) is the only
 //! way to reach it. Outside src/platform/ there is no OS API, no libcurl,
-//! mbedTLS, SQLite or LevelDB identifier, and no OS framework call.
+//! mbedTLS or SQLite identifier, and no OS framework call.
 //!
 //! What is counted, per file and per key (the method of
 //! tmp/plans/platform-inventory.md section 1, as lint-engine counts V8):
@@ -26,7 +26,7 @@
 //!   * the libraries the platform owns: `curl_easy_*`, `curl_multi_*`,
 //!     `curl_ws_*`, `curl_global_*`, `curl_slist_*`, `curl_share_*`, `CURL*`
 //!     and Crane's curl wrappers' members; `mbedtls_*`, `psa_*`, `MBEDTLS_*`,
-//!     `PSA_*`; `sqlite3_*`, `SQLITE_*`; `leveldb_*`.
+//!     `PSA_*`; `sqlite3_*`, `SQLITE_*`.
 //! Exempt: src/platform/ (the facade, the kit, the platforms), build-time code
 //! (tools/, src/webidl/codegen/, src/webidl/parser/, the snapshot generator,
 //! src/main.zig, and the build side of the engine protocol: its build file,
@@ -218,7 +218,6 @@ fn libraryOf(ident: []const u8) ?[]const u8 {
     if (hasPrefix(ident, &.{ "curl_easy_", "curl_multi_", "curl_ws_", "curl_global_", "curl_slist_", "curl_share_", "CURL" })) return "curl";
     if (hasPrefix(ident, &.{ "mbedtls_", "psa_", "MBEDTLS_", "PSA_" })) return "mbedtls";
     if (hasPrefix(ident, &.{ "sqlite3_", "SQLITE_" })) return "sqlite";
-    if (hasPrefix(ident, &.{"leveldb_"})) return "leveldb";
     return null;
 }
 
@@ -849,7 +848,11 @@ test "V8's FFI externs and libc memory in the engine adapter belong to the engin
     });
 }
 
-test "the libraries the platform owns, and Crane's curl wrappers" {
+test "the libraries the platform owns, and Crane's curl wrappers - and LevelDB is not one" {
+    // LevelDB is no library of the platform's: nothing builds or links it
+    // since the stores moved to the platform's storage engine (kit/sqlite,
+    // kit/memory_store), so an identifier that looks like its C API is
+    // nothing to count (lane bp1, 2026-11-23).
     try expectRefs("src/fetch/network/connection_pool.zig",
         \\const curl_backend = @import("curl_backend.zig");
         \\_ = curl.curl_easy_setopt(h, curl.CURLOPT_URL, url);
@@ -864,7 +867,6 @@ test "the libraries the platform owns, and Crane's curl wrappers" {
         "3:mbedtls.mbedtls_ssl_get_alpn_protocol",
         "4:sqlite.sqlite3_step",
         "4:sqlite.SQLITE_ROW",
-        "5:leveldb.leveldb_put",
         "6:curl-wrapper.curl_backend.globalInit",
     });
 }
