@@ -2,8 +2,10 @@
 //! client does (the stdio transport: newline-delimited JSON-RPC on the
 //! child's stdin and stdout; its stderr to a log file): requests wait for
 //! the answer with their id, up to a deadline; notifications and the
-//! server's own requests in between are skipped. The child runs in a process
-//! group of its own, ended with it - a browser it started goes too.
+//! server's own requests in between are skipped - but roots/list, which a
+//! client that advertised roots answers with them (`roots_json`). The child
+//! runs in a process group of its own, ended with it - a browser it started
+//! goes too.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -19,6 +21,11 @@ pub const Server = struct {
     reader: Io.File.MultiReader = undefined,
     next_id: u64 = 1,
     ended: bool = false,
+    /// The client's roots (a JSON array of {uri, name}), the answer to the
+    /// server's roots/list; null: the client offers none.
+    roots_json: ?[]const u8 = null,
+    /// roots/list requests answered.
+    roots_answered: u32 = 0,
 
     /// Spawn `argv` with its stderr to `stderr_path`.
     pub fn start(gpa: Allocator, io: Io, argv: []const []const u8, stderr_path: []const u8) !*Server {
@@ -90,7 +97,13 @@ pub const Server = struct {
                 const got = message.object.get("id") orelse continue;
                 // The server's own requests (ping, roots) carry ids too: an
                 // answer has a result or an error.
-                if (message.object.get("method") != null) continue;
+                if (message.object.get("method")) |asked| {
+                    if (rootsAnswer(arena, asked, got, self.roots_json) catch null) |answer| {
+                        try self.writeLine(answer);
+                        self.roots_answered += 1;
+                    }
+                    continue;
+                }
                 if (got == .integer and got.integer == @as(i64, @intCast(id))) return message;
                 continue;
             }
@@ -104,6 +117,24 @@ pub const Server = struct {
         }
     }
 };
+
+/// The answer to a server's request when it is roots/list and the client
+/// has roots; null otherwise.
+pub fn rootsAnswer(arena: Allocator, method: std.json.Value, id: std.json.Value, roots_json: ?[]const u8) !?[]const u8 {
+    const roots = roots_json orelse return null;
+    if (method != .string or !std.mem.eql(u8, method.string, "roots/list")) return null;
+    return try std.fmt.allocPrint(arena, "{{\"jsonrpc\":\"2.0\",\"id\":{f},\"result\":{{\"roots\":{s}}}}}", .{ std.json.fmt(id, .{}), roots });
+}
+
+test "roots/list is answered with the client's roots, by the request's own id; nothing else is" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const roots = "[{\"uri\":\"file:///w\",\"name\":\"w\"}]";
+    try std.testing.expectEqualStrings("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"roots\":[{\"uri\":\"file:///w\",\"name\":\"w\"}]}}", (try rootsAnswer(arena, .{ .string = "roots/list" }, .{ .integer = 0 }, roots)).?);
+    try std.testing.expectEqual(@as(?[]const u8, null), try rootsAnswer(arena, .{ .string = "ping" }, .{ .integer = 1 }, roots));
+    try std.testing.expectEqual(@as(?[]const u8, null), try rootsAnswer(arena, .{ .string = "roots/list" }, .{ .integer = 1 }, null));
+}
 
 /// One tools/call's answer, as compared.
 pub const Answer = struct {
