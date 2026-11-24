@@ -183,6 +183,18 @@ pub const EventLoop = struct {
     /// (Gate.settle).
     memory_gate: memory_release.Gate,
 
+    /// The span engine of the window agent's Browser (runtime.heap.Engine),
+    /// for a window loop: its task-scoped quarantine runs while a turn runs
+    /// and is purged as each task ends (`endOfTask`), and its empty spans
+    /// are decommitted on idle turns (`decommitWhenIdle`). Null for a loop
+    /// with no Browser heap (a test's). BORROWED from the Browser's scope,
+    /// which outlives the loop.
+    heap: ?*runtime.heap.Engine = null,
+
+    /// When the heap's next empty span is old enough to decommit (the
+    /// engine's ms clock), or null: ask on every idle turn.
+    heap_decommit_due_ms: ?u32 = null,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -556,8 +568,17 @@ pub const EventLoop = struct {
 
         var did_work = false;
 
+        // The heap's quarantine holds what this turn's tasks free until
+        // each task ends (allocator-hardening design 3.5; Chrome purges its
+        // scheduler-loop quarantine at each task's end, 541ac7163f78).
+        if (self.heap) |h| {
+            h.setNow(realMonotonicMs());
+            h.beginTask();
+        }
+        defer if (self.heap) |h| h.endTask();
+
         // Step 1: the microtasks pending from before the turn.
-        self.checkpoint();
+        self.endOfTask();
 
         const work_start = self.nowNs();
 
@@ -707,11 +728,13 @@ pub const EventLoop = struct {
         }
 
         // Step 5: the microtasks the timer callbacks queued.
-        self.checkpoint();
+        self.endOfTask();
 
         // Step 6: a loop with nothing to run for a while asks for the
-        // allocator's free memory to go back to the OS.
+        // allocator's free memory to go back to the OS - and gives back the
+        // heap's spans that have been empty a while.
         self.releaseMemoryWhenIdle(did_work, turn_now);
+        self.decommitWhenIdle(did_work);
 
         // Tasks queued during this turn - by the tasks above or by timer
         // callbacks - wait for the next one, which a non-empty queue makes
@@ -765,6 +788,42 @@ pub const EventLoop = struct {
         if (self.memory_gate.release(.idle)) self.memory_idle.released();
     }
 
+    /// Step 6, the heap's half: on a turn of an idle stretch past
+    /// memory_release.idle_delay_ns, decommit the heap's spans that have been
+    /// empty for heap.decommit_age_ms (design 5.1: libpas's 1.5 s on Mac),
+    /// on this thread - the node partition has no lock - in slices of
+    /// `decommit_slice_spans` while `decommit_turn_ns` lasts (Chrome keeps
+    /// its foreground reclaim to about a millisecond). Asks again when the
+    /// next empty span comes of age, on any idle turn after it.
+    fn decommitWhenIdle(self: *Self, did_work: bool) void {
+        const h = self.heap orelse return;
+        if (did_work) return;
+        if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) return;
+        const since = self.memory_idle.idle_since_ns orelse return;
+        const now_ns = realMonotonicNs();
+        if (now_ns - since < memory_release.idle_delay_ns) return;
+        const now_ms = realMonotonicMs();
+        if (self.heap_decommit_due_ms) |due| if (@as(i32, @bitCast(now_ms -% due)) < 0) return;
+        h.setNow(now_ms);
+        self.heap_decommit_due_ms = null;
+        while (true) {
+            const result = h.decommitAged(now_ms, runtime.heap.decommit_age_ms, decommit_slice_spans);
+            if (result.next_due_ms) |due| self.heap_decommit_due_ms = due;
+            if (!result.more) break;
+            if (realMonotonicNs() - now_ns >= decommit_turn_ns) {
+                // The rest on the next idle turn.
+                self.heap_decommit_due_ms = now_ms;
+                break;
+            }
+        }
+    }
+
+    /// Spans one decommit slice gives back at most (a madvise each: 1-2 us
+    /// on macOS, [ARCH] 4.3).
+    const decommit_slice_spans: usize = 64;
+    /// How long one idle turn decommits at most.
+    const decommit_turn_ns: i64 = std.time.ns_per_ms;
+
     /// Move what other threads posted to the end of the task queue, in the
     /// order it was posted: each runs as a task of this loop. A task the
     /// queue cannot take is dropped.
@@ -789,7 +848,7 @@ pub const EventLoop = struct {
         self.sink.takeAll(&posted, self.allocator) catch return false;
         for (posted.items) |task| {
             task.run(task.data);
-            self.checkpoint();
+            self.endOfTask();
         }
         return posted.items.len > 0;
     }
@@ -811,6 +870,9 @@ pub const EventLoop = struct {
         const start = realMonotonicNs();
         while (true) {
             _ = queue.runSlice(DeferredTeardown.slice_budget);
+            // A slice's frees are held until it ends, as a task's are: the
+            // slices run between tasks with no checkpoint of their own.
+            if (self.heap) |h| h.purge();
             if (queue.isEmpty()) break;
             if (queue.pendingNodes() > DeferredTeardown.loop_low_water) continue;
             if (self.runnableQueued() or self.sink.hasPosted()) break;
@@ -829,10 +891,19 @@ pub const EventLoop = struct {
         engine.performMicrotaskCheckpoint(self.agent) catch {};
     }
 
+    /// A task of this loop has ended: its microtask checkpoint, then the
+    /// heap's quarantine is purged - what the task freed may be reused now,
+    /// when no frame of the task is left on the stack to hold a pointer into
+    /// it (allocator-hardening design 3.5).
+    fn endOfTask(self: *Self) void {
+        self.checkpoint();
+        if (self.heap) |h| h.purge();
+    }
+
     /// The checkpoint after a timer's task (NativeTimerManager.AfterEach).
     fn checkpointAfterTimer(context: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(context));
-        self.checkpoint();
+        self.endOfTask();
     }
 
     /// Run the tasks queued so far, each followed by a microtask checkpoint
@@ -967,7 +1038,7 @@ pub const EventLoop = struct {
     }
 
     fn checkpointAfterTask(self: *Self) void {
-        self.checkpoint();
+        self.endOfTask();
     }
 
     /// Whether a task that may be runnable is queued: one the last drain did
@@ -1291,6 +1362,12 @@ pub const EventLoop = struct {
 /// work (`runDeferredTeardown`), whatever the Browser's clock.
 fn realMonotonicNs() i64 {
     return @intCast(platform.monotonicNow().ns);
+}
+
+/// The same clock in milliseconds, wrapping: the heap engine's clock (span
+/// ages only ever subtract two readings).
+fn realMonotonicMs() u32 {
+    return @truncate(@as(u64, @intCast(realMonotonicNs())) / std.time.ns_per_ms);
 }
 
 /// The tasks of a document the back/forward cache holds.

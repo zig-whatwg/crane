@@ -51,11 +51,14 @@ fn runFake(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.Progres
 
 const fake_steps: DeferredTeardown.Steps = .{ .run = runFake };
 
-/// The slab the tests' instances come from (each test makes and ends it).
-var test_slab: SlabAllocator = undefined;
+/// The scope whose slab the tests' instances come from (each test makes and
+/// ends it).
+var test_scope: runtime.BrowserScope = undefined;
+var test_slab: *SlabAllocator = undefined;
 
 fn setupSlab() void {
-    test_slab = SlabAllocator.init(testing.allocator);
+    test_scope = runtime.BrowserScope.init(testing.allocator);
+    test_slab = &test_scope.slab;
 }
 
 fn push(queue: *DeferredTeardown, tree: *FakeTree, owner: ?*const anyopaque) !*Instance {
@@ -73,7 +76,7 @@ fn push(queue: *DeferredTeardown, tree: *FakeTree, owner: ?*const anyopaque) !*I
 
 test "a slice frees at most its budget, and the item resumes in the next one" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -95,7 +98,7 @@ test "a slice frees at most its budget, and the item resumes in the next one" {
 
 test "items are freed in the order they were queued, a slice running into the next item" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var log: std.ArrayListUnmanaged(usize) = .empty;
@@ -115,7 +118,7 @@ test "items are freed in the order they were queued, a slice running into the ne
 
 test "an owner's end drains its items fully and leaves the others queued" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm_a: u8 = 0;
@@ -141,7 +144,7 @@ test "an owner's end drains its items fully and leaves the others queued" {
 
 test "an item in the middle of its teardown is finished by its owner's end" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;
@@ -157,7 +160,7 @@ test "an item in the middle of its teardown is finished by its owner's end" {
 
 test "drop forgets an owner's items without running them" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;
@@ -172,7 +175,7 @@ test "drop forgets an owner's items without running them" {
 
 test "a closed queue refuses items: the caller tears them down inline" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -192,7 +195,7 @@ test "a closed queue refuses items: the caller tears them down inline" {
 
 test "under the high-water mark relieve frees nothing; over it, what was added and a slice more" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -234,7 +237,7 @@ fn pushAnotherAndRelieve(tree: *FakeTree) void {
 
 test "a collection during a slice queues its items but runs no nested slice" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -258,7 +261,7 @@ fn endOtherRealm(tree: *FakeTree) void {
 
 test "an item whose teardown ends another realm drains that realm's items, nested" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;
@@ -304,14 +307,14 @@ fn bindingReturn(queue: *DeferredTeardown) void {
 
 test "inside a callback, past a bound, a binding's return frees a slice of the trees made inside it and none older" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
     // Made and queued before the callback began.
     trees[0] = .{ .nodes = 60_000 };
     _ = try pushMade(&queue, &trees[0]);
-    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const outer = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     // Made inside it: together they pass high_water.
     trees[1] = .{ .nodes = 60_000 };
     _ = try pushMade(&queue, &trees[1]);
@@ -329,11 +332,11 @@ test "inside a callback, past a bound, a binding's return frees a slice of the t
 
 test "under the bounds a binding's return inside a callback frees nothing" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
-    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const outer = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     trees[0] = .{ .nodes = 1_000 };
     _ = try pushMade(&queue, &trees[0]);
     bindingReturn(&queue);
@@ -344,9 +347,10 @@ test "under the bounds a binding's return inside a callback frees nothing" {
 
 test "fresh is proven, never assumed: no generation, another slab's object, or no callback known is old" {
     setupSlab();
-    defer test_slab.deinit();
-    var other_slab = SlabAllocator.init(testing.allocator);
-    defer other_slab.deinit();
+    defer test_scope.deinit();
+    var other_scope = runtime.BrowserScope.init(testing.allocator);
+    defer other_scope.deinit();
+    const other_slab = &other_scope.slab;
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -369,7 +373,7 @@ test "fresh is proven, never assumed: no generation, another slab's object, or n
     try testing.expect(!queue.isFresh(&item));
     queue.leaveCallback(outer);
 
-    outer = queue.enterCallback(.{ .slab = &test_slab, .generation = entry });
+    outer = queue.enterCallback(.{ .slab = test_slab, .generation = entry });
     try testing.expect(queue.isFresh(&item));
     // A tree no walk vouched for.
     item.min_generation = 0;
@@ -388,12 +392,12 @@ test "fresh is proven, never assumed: no generation, another slab's object, or n
 
 test "a tree made inside a nested callback is fresh in the callback around it, and not in a later one" {
     setupSlab();
-    defer test_slab.deinit();
+    defer test_scope.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
-    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
-    const inner = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const outer = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
+    const inner = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     const made = try test_slab.alloc(&vtable);
     var item: DeferredTeardown.Item = .{
         .instance = made,
@@ -410,7 +414,7 @@ test "a tree made inside a nested callback is fresh in the callback around it, a
     try testing.expect(queue.isFresh(&item));
     // A sibling callback that began after the tree was made: its caller may
     // hold it.
-    const later = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const later = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     try testing.expect(!queue.isFresh(&item));
     queue.leaveCallback(later);
     queue.leaveCallback(outer);
@@ -419,9 +423,10 @@ test "a tree made inside a nested callback is fresh in the callback around it, a
 
 test "a finalizer's stamp by generation: the innermost callback's for what it made, the outermost's for what an outer one made, none for the rest" {
     setupSlab();
-    defer test_slab.deinit();
-    var other_slab = SlabAllocator.init(testing.allocator);
-    defer other_slab.deinit();
+    defer test_scope.deinit();
+    var other_scope = runtime.BrowserScope.init(testing.allocator);
+    defer other_scope.deinit();
+    const other_slab = &other_scope.slab;
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -429,46 +434,46 @@ test "a finalizer's stamp by generation: the innermost callback's for what it ma
     const elsewhere = try other_slab.alloc(&vtable);
     const generation_before = SlabAllocator.generationOf(before);
     // No callback on the stack: depth zero finalizes everything.
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, generation_before));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, generation_before));
 
-    const outer = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const outer = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     const in_outer = try test_slab.alloc(&vtable);
-    const inner = queue.enterCallback(.{ .slab = &test_slab, .generation = test_slab.generationNow() });
+    const inner = queue.enterCallback(.{ .slab = test_slab, .generation = test_slab.generationNow() });
     const in_inner = try test_slab.alloc(&vtable);
     const innermost = queue.callback.active;
     const outermost = queue.callback.outermost;
     try testing.expect(innermost > outermost);
 
     // Made inside the innermost callback: fresh for it.
-    try testing.expectEqual(innermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(innermost, queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_inner)));
     // Made inside the outer one before the inner began: waits for the outer.
-    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_outer)));
+    try testing.expectEqual(outermost, queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_outer)));
     // Made before every callback on the stack.
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, generation_before));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, generation_before));
     // No generation known, or another slab's object whatever its number.
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.dead_generation));
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&other_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, SlabAllocator.dead_generation));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(other_slab, SlabAllocator.generationOf(in_inner)));
     try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(SlabAllocator.ownerOf(elsewhere), SlabAllocator.generationOf(elsewhere) + test_slab.generationNow()));
 
     // Back in the outer callback: what the inner one made is fresh there.
     queue.leaveCallback(inner);
     try testing.expectEqual(outermost, queue.callback.active);
-    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
-    try testing.expectEqual(outermost, queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_outer)));
+    try testing.expectEqual(outermost, queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(outermost, queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_outer)));
     queue.leaveCallback(outer);
     // The stack is empty again: nothing is fresh.
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_inner)));
 
     // A callback whose entry nothing knows proves nothing fresh.
     const unknown = queue.enterCallback(.{});
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_inner)));
     queue.leaveCallback(unknown);
 
     // A stopped clock stamps nothing: its invocations share one value, and
     // an outermost serial would compare as the innermost's.
     queue.callback.serial = std.math.maxInt(u32);
-    const stopped = queue.enterCallback(.{ .slab = &test_slab, .generation = SlabAllocator.generationOf(in_inner) });
-    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(&test_slab, SlabAllocator.generationOf(in_inner)));
+    const stopped = queue.enterCallback(.{ .slab = test_slab, .generation = SlabAllocator.generationOf(in_inner) });
+    try testing.expectEqual(@as(u32, 0), queue.freshSerialOf(test_slab, SlabAllocator.generationOf(in_inner)));
     queue.leaveCallback(stopped);
 
     for ([_]*Instance{ before, in_outer, in_inner }) |inst| test_slab.free(inst);

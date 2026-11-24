@@ -228,15 +228,11 @@ const CueCounts = struct { cues: usize = 0, wrapped: usize = 0 };
 fn cueCounts(browser: *browser_mod.Browser) CueCounts {
     const runtime = @import("runtime");
     var counts: CueCounts = .{};
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (!std.mem.eql(u8, instance.vtable.name, "VTTCue")) continue;
-            counts.cues += 1;
-            if (runtime.instance_lifecycle.wasWrapped(instance)) counts.wrapped += 1;
-        }
+    var live = browser.scope.slab.iterateLive();
+    while (live.next()) |instance| {
+        if (!std.mem.eql(u8, instance.vtable.name, "VTTCue")) continue;
+        counts.cues += 1;
+        if (runtime.instance_lifecycle.wasWrapped(instance)) counts.wrapped += 1;
     }
     return counts;
 }

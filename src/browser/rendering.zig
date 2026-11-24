@@ -1318,8 +1318,6 @@ test "frame document identities reject replacement and slab reuse of the same ad
         }
         fn body() !void {
             const allocator = std.testing.allocator;
-            var slab_value = runtime.SlabAllocator.init(allocator);
-            defer slab_value.deinit();
             var scope = runtime.BrowserScope.init(allocator);
             defer scope.deinit();
             var dummy_engine: u32 = 0;
@@ -1327,7 +1325,7 @@ test "frame document identities reject replacement and slab reuse of the same ad
             defer realm.deinit();
             realm.browser_scope = &scope;
             const vtable: runtime.VTable = .{ .name = "Window", .deinit = null, .methods_ptr = &dummy_engine };
-            const slab = &slab_value;
+            const slab = &scope.slab;
             const window = try slab.alloc(&vtable);
             defer slab.free(window);
             window.ctx = &realm;

@@ -34,13 +34,14 @@ test "a retired slab generation stops synchronous XHR events and post-fetch stat
     };
     const methods = .{};
     const vtable: runtime.VTable = .{ .name = "pm2-sync-owner", .deinit = null, .methods_ptr = &methods };
-    var slab = runtime.SlabAllocator.init(std.testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const owner = try slab.alloc(&vtable);
     var state = xhr.XMLHttpRequestState.init(std.testing.allocator);
     defer state.deinit();
     var recorder: Recorder = .{
-        .slab = &slab,
+        .slab = slab,
         .owner = owner,
         .generation = runtime.SlabAllocator.generationOf(owner),
         .state = &state,

@@ -72,8 +72,9 @@ fn noEvict(_: *const dom.bfcache.KeptPage) void {}
 const no_steps: dom.bfcache.PageSteps = .{ .evict = &noEvict };
 
 test "a kept page holds its Window and Document only while their slots are still theirs" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     var realm = try runtime.ContextData.init(testing.allocator, .{});
     defer realm.deinit();
     const window = try slab.alloc(&window_vtable);
