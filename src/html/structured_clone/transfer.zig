@@ -204,7 +204,7 @@ pub const TransferableOffscreenCanvas = struct {
 
 /// StructuredSerializeWithTransfer(value, transferList)
 ///
-/// Per HTML Standard §2.7.6:
+/// Per HTML Standard §2.7.8:
 /// Serializes a value while transferring specified objects.
 pub fn structuredSerializeWithTransfer(
     allocator: Allocator,
@@ -275,7 +275,12 @@ pub fn structuredSerializeWithTransfer(
 
     // Step 4-5: Transfer each object
     var transfer_data_holders = infra.List(TransferDataHolder).init(allocator);
-    errdefer transfer_data_holders.deinit();
+    // A throw after some buffers moved into their holders (step 5.1-5.2 for
+    // a later transferable, or its transfer steps) frees what they took.
+    errdefer {
+        for (transfer_data_holders.toSlice()) |holder| holder.deinit(allocator);
+        transfer_data_holders.deinit();
+    }
 
     for (transfer_list) |transferable| {
         // Step 5.1-2: Check not already detached
@@ -283,21 +288,29 @@ pub fn structuredSerializeWithTransfer(
             return CloneError.DataCloneError;
         }
 
-        // Step 5.3: the placeholder in memory is this transferable's data
-        // holder; this walker builds a TransferDataHolder of its own instead
-        // (below), and the placeholders go when it returns.
+        // Step 5.3: "Let dataHolder be memory[transferable]" - the step-2.4
+        // record IS the holder. This walker builds a TransferDataHolder of its
+        // own instead (below), and the records go when it returns: the JSC
+        // adapter lane's, with the graph ownership it decides
+        // (deserialize.zig's known-red test, `graph_ownership_landed`).
 
         // Step 5.4-5: Perform transfer
         const data_holder: TransferDataHolder = switch (transferable) {
             .array_buffer => |ab| blk: {
+                // Step 5.4.1-2: the holder takes [[ArrayBufferData]] and
+                // [[ArrayBufferByteLength]] - and, step 5.4.1.1, a resizable
+                // one's [[ArrayBufferMaxByteLength]] with type
+                // "ResizableArrayBuffer" (its data was the plain buffer's,
+                // which §2.7.9 then read as resizable: lane core1). Step
+                // 5.4.3: DetachArrayBuffer (`transfer`). The holder owns the
+                // bytes from here (TransferDataHolder.deinit).
+                const max_byte_length = ab.max_byte_length;
                 const data = ab.transfer();
-                break :blk .{
-                    .type = if (ab.max_byte_length != null)
-                        .resizable_array_buffer
-                    else
-                        .array_buffer,
-                    .data = .{ .array_buffer = data },
+                if (max_byte_length) |max| break :blk .{
+                    .type = .resizable_array_buffer,
+                    .data = .{ .resizable_array_buffer = .{ .data = data.data, .byte_length = data.byte_length, .max_byte_length = max } },
                 };
+                break :blk .{ .type = .array_buffer, .data = .{ .array_buffer = data } };
             },
             .message_port => |mp| blk: {
                 const data = mp.transfer();
@@ -356,105 +369,130 @@ pub fn structuredSerializeWithTransfer(
 
 /// StructuredDeserializeWithTransfer(serializeWithTransferResult, targetRealm)
 ///
-/// Per HTML Standard §2.7.7:
+/// Per HTML Standard §2.7.9:
 /// Deserializes a value while receiving transferred objects.
 pub fn structuredDeserializeWithTransfer(
     allocator: Allocator,
     result: *SerializeWithTransferResult,
-) CloneError!types.DeserializeWithTransferResult {
+) CloneError!DeserializeWithTransferResult {
     // Step 1: Create memory map
     var memory = deserialize.DeserializeMemory.init(allocator);
     defer memory.deinit();
 
-    // Step 2-3: Recreate transferred objects
-    var transferred_values = infra.List(*anyopaque).init(allocator);
-    errdefer transferred_values.deinit();
+    // Step 4: transferredValues, each owning what step 5 moves into it until
+    // the result's deinit; a throw frees those made so far.
+    var transferred_values = infra.List(Transferable).init(allocator);
+    errdefer {
+        for (transferred_values.toSlice()) |made| destroyTransferredValue(allocator, made);
+        transferred_values.deinit();
+    }
 
-    for (result.transfer_data_holders.toSlice()) |data_holder| {
-        const value: *anyopaque = switch (data_holder.type) {
-            .array_buffer => blk: {
+    // Step 5: one value per data holder.
+    for (result.transfer_data_holders.toSliceMut()) |*data_holder| {
+        const value: Transferable = switch (data_holder.data) {
+            // Step 5.2: "a new ArrayBuffer object in targetRealm whose
+            // [[ArrayBufferData]] internal slot value is
+            // transferDataHolder.[[ArrayBufferData]]" - the bytes move into
+            // it, and the holder is left empty.
+            .array_buffer => |*holder| blk: {
                 const ab = try allocator.create(TransferableArrayBuffer);
-                ab.* = .{
-                    .data = data_holder.data.array_buffer.data,
-                    .detached = false,
-                };
-                break :blk @ptrCast(ab);
+                ab.* = .{ .data = holder.data, .detached = false };
+                holder.data = &.{};
+                break :blk .{ .array_buffer = ab };
             },
-            .resizable_array_buffer => blk: {
+            // Step 5.3: a resizable one, with its
+            // [[ArrayBufferMaxByteLength]].
+            .resizable_array_buffer => |*holder| blk: {
                 const ab = try allocator.create(TransferableArrayBuffer);
-                ab.* = .{
-                    .data = data_holder.data.resizable_array_buffer.data,
-                    .detached = false,
-                    .max_byte_length = data_holder.data.resizable_array_buffer.max_byte_length,
-                };
-                break :blk @ptrCast(ab);
+                ab.* = .{ .data = holder.data, .detached = false, .max_byte_length = holder.max_byte_length };
+                holder.data = &.{};
+                break :blk .{ .array_buffer = ab };
             },
-            .message_port => blk: {
+            .message_port => |port| blk: {
                 const mp = try allocator.create(TransferableMessagePort);
-                mp.* = .{
-                    .id = data_holder.data.message_port.port_id,
-                    .detached = false,
-                };
-                break :blk @ptrCast(mp);
+                mp.* = .{ .id = port.port_id, .detached = false };
+                break :blk .{ .message_port = mp };
             },
             .readable_stream => blk: {
                 const rs = try allocator.create(TransferableReadableStream);
-                rs.* = .{
-                    .detached = false,
-                    .locked = false,
-                };
-                break :blk @ptrCast(rs);
+                rs.* = .{ .detached = false, .locked = false };
+                break :blk .{ .readable_stream = rs };
             },
             .writable_stream => blk: {
                 const ws = try allocator.create(TransferableWritableStream);
-                ws.* = .{
-                    .detached = false,
-                    .locked = false,
-                };
-                break :blk @ptrCast(ws);
+                ws.* = .{ .detached = false, .locked = false };
+                break :blk .{ .writable_stream = ws };
             },
             .transform_stream => blk: {
                 const ts = try allocator.create(TransferableTransformStream);
-                ts.* = .{
-                    .detached = false,
-                };
-                break :blk @ptrCast(ts);
+                ts.* = .{ .detached = false };
+                break :blk .{ .transform_stream = ts };
             },
-            .image_bitmap => blk: {
+            .image_bitmap => |bitmap| blk: {
                 const ib = try allocator.create(TransferableImageBitmap);
-                ib.* = .{
-                    .width = data_holder.data.image_bitmap.width,
-                    .height = data_holder.data.image_bitmap.height,
-                    .detached = false,
-                };
-                break :blk @ptrCast(ib);
+                ib.* = .{ .width = bitmap.width, .height = bitmap.height, .detached = false };
+                break :blk .{ .image_bitmap = ib };
             },
-            .offscreen_canvas => blk: {
+            .offscreen_canvas => |canvas| blk: {
                 const oc = try allocator.create(TransferableOffscreenCanvas);
-                oc.* = .{
-                    .width = data_holder.data.offscreen_canvas.width,
-                    .height = data_holder.data.offscreen_canvas.height,
-                    .detached = false,
-                };
-                break :blk @ptrCast(oc);
+                oc.* = .{ .width = canvas.width, .height = canvas.height, .detached = false };
+                break :blk .{ .offscreen_canvas = oc };
             },
             else => return CloneError.DeserializeError,
         };
-
-        try transferred_values.append(value);
+        transferred_values.append(value) catch |err| {
+            destroyTransferredValue(allocator, value);
+            return err;
+        };
     }
 
-    // Step 4: Deserialize the value
+    // Step 6: Deserialize the value
     const deserialized = try deserialize.structuredDeserialize(
         allocator,
         result.serialized,
     );
 
-    // Step 5: Return result
-    return types.DeserializeWithTransferResult{
+    // Step 7: Return result
+    return .{
         .deserialized = deserialized,
         .transferred_values = transferred_values,
+        .allocator = allocator,
     };
+}
+
+/// Result of StructuredDeserializeWithTransfer (§2.7.9 step 7:
+/// { [[Deserialized]], [[TransferredValues]] }).
+pub const DeserializeWithTransferResult = struct {
+    /// [[Deserialized]]; deserialize.freeJSValue frees it.
+    deserialized: *JSValue,
+    /// [[TransferredValues]]: one per data holder, in order, each owning what
+    /// §2.7.9 step 5 moved into it (a buffer, its bytes).
+    transferred_values: infra.List(Transferable),
+    allocator: Allocator,
+
+    /// Frees the deserialized value and every transferred value, each once.
+    pub fn deinit(self: *DeserializeWithTransferResult) void {
+        deserialize.freeJSValue(self.allocator, self.deserialized);
+        self.deinitTransferredValues();
+    }
+
+    /// Frees the transferred values only, for a caller that keeps
+    /// `deserialized` (structuredClone returns it).
+    pub fn deinitTransferredValues(self: *DeserializeWithTransferResult) void {
+        for (self.transferred_values.toSlice()) |value| destroyTransferredValue(self.allocator, value);
+        self.transferred_values.deinit();
+    }
+};
+
+/// Frees a value StructuredDeserializeWithTransfer made, with what it owns.
+fn destroyTransferredValue(allocator: Allocator, value: Transferable) void {
+    switch (value) {
+        .array_buffer => |ab| {
+            allocator.free(ab.data);
+            allocator.destroy(ab);
+        },
+        inline else => |object| allocator.destroy(object),
+    }
 }
 
 // ============================================================================
@@ -542,4 +580,69 @@ test "structuredSerializeWithTransfer - already detached throws" {
         &transfer_list,
     );
     try testing.expectError(CloneError.DataCloneError, result);
+}
+
+test "a resizable ArrayBuffer transfers as one, its maximum byte length kept" {
+    // §2.7.8 step 5.4.1: a transferable with [[ArrayBufferMaxByteLength]]
+    // makes a "ResizableArrayBuffer" holder with that maximum; §2.7.9 step
+    // 5.3 makes a resizable buffer of it. The holder's type said resizable
+    // while its data was the plain buffer's, and reading it back was a union
+    // tag mismatch (lane core1).
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const bytes = try allocator.alloc(u8, 4);
+    @memset(bytes, 7);
+    var ab = TransferableArrayBuffer{ .data = bytes, .max_byte_length = 16 };
+    const value = JSValue{ .undefined = {} };
+    var transfer_list = [_]Transferable{.{ .array_buffer = &ab }};
+    var result = try structuredSerializeWithTransfer(allocator, &value, &transfer_list);
+    defer result.deinit();
+    try testing.expectEqual(SerializationType.resizable_array_buffer, result.transfer_data_holders.get(0).?.type);
+    var received = try structuredDeserializeWithTransfer(allocator, &result);
+    defer received.deinit();
+    const buffer = received.transferred_values.get(0).?.array_buffer;
+    try testing.expectEqual(@as(?usize, 16), buffer.max_byte_length);
+    try testing.expectEqualSlices(u8, &.{ 7, 7, 7, 7 }, buffer.data);
+}
+
+test "transferred bytes are freed once: by the buffer they were delivered to, or by a result never delivered" {
+    // §2.7.8 step 5.4: the holder takes a buffer's bytes; §2.7.9 step 5.2
+    // moves them into the buffer it makes. Who frees them was nobody's: a
+    // result's deinit freed no holder's bytes (lane core1).
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const value = JSValue{ .undefined = {} };
+    // Delivered: the new buffer owns them, and the holder is left empty.
+    {
+        const bytes = try allocator.alloc(u8, 3);
+        @memset(bytes, 1);
+        var ab = TransferableArrayBuffer{ .data = bytes };
+        var transfer_list = [_]Transferable{.{ .array_buffer = &ab }};
+        var result = try structuredSerializeWithTransfer(allocator, &value, &transfer_list);
+        defer result.deinit();
+        var received = try structuredDeserializeWithTransfer(allocator, &result);
+        defer received.deinit();
+        try testing.expectEqualSlices(u8, &.{ 1, 1, 1 }, received.transferred_values.get(0).?.array_buffer.data);
+        try testing.expectEqual(@as(usize, 0), result.transfer_data_holders.get(0).?.data.array_buffer.data.len);
+    }
+    // Never delivered (a closed port, a failed postMessage): the result
+    // frees them.
+    {
+        const bytes = try allocator.alloc(u8, 3);
+        var ab = TransferableArrayBuffer{ .data = bytes };
+        var transfer_list = [_]Transferable{.{ .array_buffer = &ab }};
+        var result = try structuredSerializeWithTransfer(allocator, &value, &transfer_list);
+        result.deinit();
+    }
+    // A throw at step 5.1 after an earlier buffer moved into its holder (the
+    // second one is detached already): the holder's bytes are freed.
+    {
+        const bytes = try allocator.alloc(u8, 2);
+        var first = TransferableArrayBuffer{ .data = bytes };
+        var detached = TransferableArrayBuffer{ .data = &.{}, .detached = true };
+        var transfer_list = [_]Transferable{ .{ .array_buffer = &first }, .{ .array_buffer = &detached } };
+        try testing.expectError(CloneError.DataCloneError, structuredSerializeWithTransfer(allocator, &value, &transfer_list));
+        // Step 5.4.3 detached the first before step 5.1 threw for the second.
+        try testing.expect(first.detached);
+    }
 }

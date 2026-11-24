@@ -561,10 +561,22 @@ pub const DOMQuadData = struct {
 
 /// Transfer data holder for transferable objects
 ///
-/// Per HTML Standard §2.7.6, this holds data during transfer.
+/// Per HTML Standard §2.7.8 StructuredSerializeWithTransfer step 5.4, a
+/// buffer's holder takes its [[ArrayBufferData]] - the bytes - and owns them
+/// until StructuredDeserializeWithTransfer (§2.7.9 step 5.2-5.3) moves them
+/// into the buffer it makes, leaving the holder empty (lane core1).
 pub const TransferDataHolder = struct {
     type: SerializationType,
     data: TransferData,
+
+    /// Frees the bytes the holder still owns: none once §2.7.9 took them.
+    pub fn deinit(self: TransferDataHolder, allocator: Allocator) void {
+        switch (self.data) {
+            .array_buffer => |ab| allocator.free(ab.data),
+            .resizable_array_buffer => |rab| allocator.free(rab.data),
+            else => {},
+        }
+    }
 
     pub const TransferData = union(enum) {
         array_buffer: ArrayBufferData,
@@ -618,17 +630,16 @@ pub const SerializeWithTransferResult = struct {
     transfer_data_holders: infra.List(TransferDataHolder),
     allocator: Allocator,
 
+    /// Frees the serialized record, and the bytes of every data holder
+    /// StructuredDeserializeWithTransfer did not take: a result dropped
+    /// undelivered (a closed port, a failed postMessage) frees them here,
+    /// once (TransferDataHolder.deinit).
     pub fn deinit(self: *SerializeWithTransferResult) void {
         self.serialized.deinit();
         self.allocator.destroy(self.serialized);
+        for (self.transfer_data_holders.toSlice()) |holder| holder.deinit(self.allocator);
         self.transfer_data_holders.deinit();
     }
-};
-
-/// Result of StructuredDeserializeWithTransfer
-pub const DeserializeWithTransferResult = struct {
-    deserialized: *anyopaque, // The deserialized JavaScript value
-    transferred_values: infra.List(*anyopaque),
 };
 
 test "ErrorName.fromString" {

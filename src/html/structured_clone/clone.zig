@@ -72,10 +72,10 @@ pub fn structuredClone(
             allocator,
             &result,
         );
-        defer deserialize_result.transferred_values.deinit();
-
-        // The deserialized value is a JSValue pointer
-        return @ptrCast(@alignCast(deserialize_result.deserialized));
+        // The clone is returned; the values the transfer made are not
+        // reachable from it here, and go with the result.
+        defer deserialize_result.deinitTransferredValues();
+        return deserialize_result.deserialized;
     } else {
         // Without transfer: simple serialize/deserialize
         const serialized = try serialize.structuredSerialize(allocator, value);

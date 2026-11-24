@@ -87,7 +87,7 @@ pub const TypedArrayConstructor = types.TypedArrayConstructor;
 pub const PrimitiveValue = types.PrimitiveValue;
 pub const TransferDataHolder = types.TransferDataHolder;
 pub const SerializeWithTransferResult = types.SerializeWithTransferResult;
-pub const DeserializeWithTransferResult = types.DeserializeWithTransferResult;
+pub const DeserializeWithTransferResult = transfer.DeserializeWithTransferResult;
 
 // Re-export JSValue for use by consumers
 pub const JSValue = serialize.JSValue;
