@@ -215,6 +215,7 @@ pub const TaskPriorityOrTaskSignal = @import("TaskPriorityOrTaskSignal.zig").Tas
 pub const TexImageSource = @import("TexImageSource.zig").TexImageSource;
 pub const TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = @import("TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString.zig").TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString;
 pub const TimerHandler = @import("TimerHandler.zig").TimerHandler;
+pub const TogglePopoverOptionsOrBoolean = @import("TogglePopoverOptionsOrBoolean.zig").TogglePopoverOptionsOrBoolean;
 pub const TrustedHTMLOrDOMString = @import("TrustedHTMLOrDOMString.zig").TrustedHTMLOrDOMString;
 pub const TrustedScriptOrDOMString = @import("TrustedScriptOrDOMString.zig").TrustedScriptOrDOMString;
 pub const TrustedScriptURLOrUSVString = @import("TrustedScriptURLOrUSVString.zig").TrustedScriptURLOrUSVString;

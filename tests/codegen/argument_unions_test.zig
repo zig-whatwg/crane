@@ -150,7 +150,7 @@ test "the positions an impl still converts by hand only shrink, and are none whe
     // Lane bind1 batch B: each B5 commit moves one area onto its typed
     // unions and lowers this count; batch B is done at zero (main,
     // 2026-11-23 12:39 PM ET).
-    try testing.expectEqual(@as(usize, 34), codegen.argument_unions.unions_converted_by_impl.len);
+    try testing.expectEqual(@as(usize, 33), codegen.argument_unions.unions_converted_by_impl.len);
 }
 
 test "unionName joins the member names in upper camel case" {

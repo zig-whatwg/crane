@@ -660,8 +660,21 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 
 /// Operation: togglePopover
 /// Spec: https://html.spec.whatwg.org/multipage/popover.html#dom-togglepopover
-pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
-    return @import("html").popover.toggleMethod(instance, if (options.was_passed) options.value else null);
+pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(typedefs.TogglePopoverOptionsOrBoolean)) anyerror!bool {
+    // `optional (TogglePopoverOptions or boolean) options = {}`, converted
+    // by the binding (WebIDL 3.2.25: undefined, null and any Object are the
+    // dictionary - `source`, then `force`, each read once; anything else
+    // ToBoolean).
+    var force: ?bool = null;
+    var source: ?*runtime.Instance = null;
+    if (options.was_passed) switch (options.value) {
+        .boolean => |value| force = value,
+        .toggle_popover_options => |dictionary| {
+            force = dictionary.force;
+            source = dictionary.base.source;
+        },
+    };
+    return @import("html").popover.toggleMethod(instance, force, source);
 }
 
 /// Operation: click

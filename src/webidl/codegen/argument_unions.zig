@@ -198,7 +198,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "MediaStreamConstraints", "video", "" },
     // performance
     // popover
-    .{ "HTMLElement", "togglePopover", "options" },
     // sanitizer (html/sanitizer.zig, parser_options.zig)
     .{ "Sanitizer", "constructor", "configuration" },
     .{ "SetHTMLOptions", "sanitizer", "" },
