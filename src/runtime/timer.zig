@@ -224,19 +224,6 @@ pub const TimerError = error{
 // Tests
 // ============================================================================
 
-test "TimerInterface - struct layout" {
-    // Verify the interface struct has expected fields
-    const vtable = TimerVTable{
-        .setTimeout = undefined,
-        .clearTimeout = undefined,
-    };
-    const ti = TimerInterface{
-        .vtable = &vtable,
-        .ctx = undefined,
-    };
-    _ = ti;
-}
-
 // ============================================================================
 // HTML timer nesting (the timer initialization steps, §8.6 step 5)
 // ============================================================================

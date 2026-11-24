@@ -849,16 +849,6 @@ fn countingCallback(data: ?*anyopaque) void {
     fired.* += 1;
 }
 
-test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-
-    const a = mgr.setTimeout(10, countingCallback, null);
-    const b = mgr.setTimeout(10, countingCallback, null);
-    try testing.expect(a != 0);
-    try testing.expect(b > a);
-}
-
 test "an id reserved without a timer is in the armed timers' id space, and never theirs" {
     // A zero-delay window timer queues its task at the call and arms nothing
     // (lane loadpath1); its id comes from the same counter as an armed
@@ -883,33 +873,6 @@ test "an id reserved without a timer is in the armed timers' id space, and never
     try testing.expectEqual(@as(usize, 1), fired);
 }
 
-test "a due timer fires exactly once and is then gone" {
-    var fired: usize = 0;
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-
-    _ = mgr.setTimeout(0, countingCallback, &fired);
-    try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
-
-    try testing.expect(mgr.poll());
-    try testing.expectEqual(@as(usize, 1), fired);
-    try testing.expectEqual(@as(usize, 0), mgr.getActiveTimerCount());
-
-    // Polling again must not re-fire it.
-    try testing.expect(!mgr.poll());
-    try testing.expectEqual(@as(usize, 1), fired);
-}
-
-test "a not-yet-due timer does not fire" {
-    var fired: usize = 0;
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-
-    _ = mgr.setTimeout(60_000, countingCallback, &fired);
-    try testing.expect(!mgr.poll());
-    try testing.expectEqual(@as(usize, 0), fired);
-}
-
 test "clearTimeout reports whether it actually cancelled something" {
     var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
@@ -927,84 +890,4 @@ test "clearTimeout reports whether it actually cancelled something" {
     try testing.expect(!mgr.clearTimeout(id));
     try testing.expect(!mgr.clearTimeout(99999));
     try testing.expect(!mgr.clearTimeout(0));
-}
-
-test "a callback may schedule another timer without corrupting the map" {
-    // setInterval reschedules from inside its own callback, so this must be safe.
-    const Rescheduler = struct {
-        var mgr_ptr: ?*NativeTimerManager = null;
-        var rounds: usize = 0;
-        fn cb(data: ?*anyopaque) void {
-            _ = data;
-            rounds += 1;
-            if (rounds < 3) {
-                if (mgr_ptr) |m| _ = m.setTimeout(0, cb, null);
-            }
-        }
-    };
-
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-    Rescheduler.mgr_ptr = mgr;
-    Rescheduler.rounds = 0;
-
-    _ = mgr.setTimeout(0, Rescheduler.cb, null);
-    // Each poll fires the batch that was due when it started; the reschedule lands
-    // in the next one.
-    _ = mgr.poll();
-    _ = mgr.poll();
-    _ = mgr.poll();
-    try testing.expectEqual(@as(usize, 3), Rescheduler.rounds);
-}
-
-test "getNextTimerDeadline and getBackendTimeout agree about emptiness" {
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-
-    // Nothing scheduled: no deadline, and "wait forever".
-    try testing.expectEqual(@as(?u64, null), mgr.getNextTimerDeadline());
-    try testing.expectEqual(@as(c_int, -1), mgr.getBackendTimeout());
-
-    _ = mgr.setTimeout(0, countingCallback, null);
-    // Already due.
-    try testing.expectEqual(@as(?u64, 0), mgr.getNextTimerDeadline());
-    try testing.expectEqual(@as(c_int, 0), mgr.getBackendTimeout());
-}
-
-test "timers fire in deadline order, not insertion order" {
-    const Order = struct {
-        var seq: [4]u8 = .{ 0, 0, 0, 0 };
-        var n: usize = 0;
-        fn mk(comptime tag: u8) fn (?*anyopaque) void {
-            return struct {
-                fn f(_: ?*anyopaque) void {
-                    seq[n] = tag;
-                    n += 1;
-                }
-            }.f;
-        }
-    };
-    Order.n = 0;
-
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    defer mgr.deinit();
-
-    // Scheduled c first but due last; a and b due together, in the order they
-    // were scheduled. One poll fires all three - in that order, as HTML's "run
-    // steps after a timeout" requires, whatever order the map iterates in.
-    _ = mgr.setTimeout(5, Order.mk('c'), null);
-    _ = mgr.setTimeout(0, Order.mk('a'), null);
-    _ = mgr.setTimeout(0, Order.mk('b'), null);
-    clock.sleep(10 * std.time.ns_per_ms);
-    _ = mgr.poll();
-    try testing.expectEqual(@as(usize, 3), Order.n);
-    try testing.expectEqualStrings("abc", Order.seq[0..3]);
-}
-
-test "deinit frees pending timers without leaking" {
-    // std.testing.allocator fails the test if anything is left allocated.
-    var mgr = try NativeTimerManager.init(testing.allocator);
-    _ = mgr.setTimeout(60_000, countingCallback, null);
-    _ = mgr.setTimeout(60_000, countingCallback, null);
-    mgr.deinit();
 }

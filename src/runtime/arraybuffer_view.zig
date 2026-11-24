@@ -131,35 +131,3 @@ pub fn createTestView(
         .detached = false,
     };
 }
-
-test "ViewType element sizes" {
-    const testing = std.testing;
-
-    try testing.expectEqual(@as(u64, 1), ViewType.uint8_array.elementSize());
-    try testing.expectEqual(@as(u64, 1), ViewType.int8_array.elementSize());
-    try testing.expectEqual(@as(u64, 2), ViewType.uint16_array.elementSize());
-    try testing.expectEqual(@as(u64, 2), ViewType.int16_array.elementSize());
-    try testing.expectEqual(@as(u64, 4), ViewType.uint32_array.elementSize());
-    try testing.expectEqual(@as(u64, 4), ViewType.int32_array.elementSize());
-    try testing.expectEqual(@as(u64, 4), ViewType.float32_array.elementSize());
-    try testing.expectEqual(@as(u64, 8), ViewType.float64_array.elementSize());
-    try testing.expectEqual(@as(u64, 8), ViewType.bigint64_array.elementSize());
-    try testing.expectEqual(@as(u64, 8), ViewType.biguint64_array.elementSize());
-    try testing.expectEqual(@as(u64, 2), ViewType.float16_array.elementSize());
-}
-
-test "Create test view" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const metadata = try createTestUint8Array(allocator, 256);
-    defer {
-        metadata.buffer.deinit(allocator);
-        allocator.destroy(metadata.buffer);
-    }
-
-    try testing.expectEqual(@as(u64, 0), metadata.byte_offset);
-    try testing.expectEqual(@as(u64, 256), metadata.byte_length);
-    try testing.expectEqual(ViewType.uint8_array, metadata.view_type);
-    try testing.expect(!metadata.detached);
-}

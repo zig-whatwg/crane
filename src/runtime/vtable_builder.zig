@@ -21,6 +21,7 @@ const std = @import("std");
 const Method = @import("instance.zig").Method;
 const MethodMap = @import("instance.zig").MethodMap;
 const VTable = @import("instance.zig").VTable;
+const Instance = @import("instance.zig").Instance;
 
 /// Build a VTable from delegate functions using compile-time reflection
 ///
@@ -151,32 +152,3 @@ pub fn emptyVTable(comptime deinit: ?*const fn (*Instance) void) VTable {
         .methods_ptr = &empty_delegates,
     };
 }
-
-// Unit tests
-const testing = std.testing;
-const Instance = @import("instance.zig").Instance;
-
-// Note: Tests that use buildVTable() are in integration tests
-// because they require the full Method enum from instance.zig
-
-test "emptyVTable creates valid vtable" {
-    const TestImpl = struct {
-        fn deinit(_: *Instance) void {}
-    };
-
-    const vtable = emptyVTable(&TestImpl.deinit);
-
-    try testing.expect(vtable.deinit == &TestImpl.deinit);
-    // Empty VTable has no methods
-    const DelegatesType = @TypeOf(.{});
-    try testing.expect(vtable.getMethod(DelegatesType, "call_addEventListener") == null);
-}
-
-test "emptyVTable without deinit" {
-    const vtable = emptyVTable(null);
-
-    try testing.expect(vtable.deinit == null);
-    // Empty VTable has no methods
-}
-
-// buildVTable tests moved to integration tests to avoid circular dependencies

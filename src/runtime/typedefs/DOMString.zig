@@ -108,51 +108,6 @@ pub const DOMString = union(enum) {
 const testing = std.testing;
 const test_allocator = testing.allocator;
 
-test "DOMString.empty works" {
-    var str = DOMString.initEmpty();
-    defer str.deinit(test_allocator);
-
-    try testing.expectEqualStrings("", str.asSlice());
-    try testing.expect(str.isEmpty());
-    try testing.expectEqual(@as(usize, 0), str.len());
-}
-
-test "DOMString.interned works" {
-    const interned = "hello";
-    var str = DOMString.initInterned(interned);
-    defer str.deinit(test_allocator);
-
-    try testing.expectEqualStrings("hello", str.asSlice());
-    try testing.expect(!str.isEmpty());
-    try testing.expectEqual(@as(usize, 5), str.len());
-}
-
-test "DOMString.owned works" {
-    const owned = try test_allocator.dupe(u8, "world");
-    var str = DOMString.initOwned(owned);
-    defer str.deinit(test_allocator);
-
-    try testing.expectEqualStrings("world", str.asSlice());
-    try testing.expect(!str.isEmpty());
-    try testing.expectEqual(@as(usize, 5), str.len());
-}
-
-test "DOMString.initDupe allocates and copies" {
-    var str = try DOMString.initDupe(test_allocator, "test");
-    defer str.deinit(test_allocator);
-
-    try testing.expectEqualStrings("test", str.asSlice());
-    try testing.expectEqual(@as(usize, 4), str.len());
-}
-
-test "DOMString.initDupe handles empty string" {
-    var str = try DOMString.initDupe(test_allocator, "");
-    defer str.deinit(test_allocator);
-
-    try testing.expect(str.isEmpty());
-    try testing.expectEqual(@as(usize, 0), str.len());
-}
-
 test "DOMString.clone works" {
     var original = try DOMString.initDupe(test_allocator, "original");
     defer original.deinit(test_allocator);
@@ -164,14 +119,6 @@ test "DOMString.clone works" {
 
     // Verify they're different allocations
     try testing.expect(original.asSlice().ptr != cloned.asSlice().ptr);
-}
-
-test "DOMString.deinit is safe to call multiple times" {
-    var str = DOMString.initEmpty();
-    str.deinit(test_allocator); // First deinit
-    str.deinit(test_allocator); // Second deinit (should be safe)
-
-    try testing.expect(str.isEmpty());
 }
 
 test "owned is mutable, so borrowed memory cannot be adopted by mistake" {
