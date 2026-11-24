@@ -1062,10 +1062,10 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 
 /// -Dsanitize-thread: ThreadSanitizer on every module of every test
 /// executable `addSuiteRun` runs that is Crane's own - made by this build,
-/// so not a dependency package's (curl, mbedTLS, zlib: their option sets
-/// reject the option, and they stay uninstrumented, as do the C libraries
-/// this build links as separate artifacts - brotli, the image codecs,
-/// nghttp2 - which are not modules of the graph) - and never the engine's
+/// so not a dependency package's (the kit's C libraries' packages: their
+/// option sets reject the option, and they stay uninstrumented, as do the C
+/// libraries the kit builds as separate artifacts, which are not modules of
+/// the graph) - and never the engine's
 /// prebuilt archives. The C++ of a Crane module is instrumented
 /// with it - except the engine adapter's own, where the adapter compiles it
 /// apart (an artifact says it is thread-sanitized when it links the engine:
@@ -1312,7 +1312,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary, in
         const config = suiteConfig(launch.engine, m.name);
         var fits = m.runs_engine and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
-            m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
+            platform_build.sameSystem(m.target.result, members[0].target.result);
         for (imports) |imp| {
             if (claimed.contains(imp.key)) fits = false;
         }
@@ -1450,8 +1450,8 @@ fn holdsEngineTests(engine: *const engine_build.Engine, name: []const u8, groups
 /// whose start skipped engine.initializeBeforeThreadCreation
 /// (CRANE_TEST_ENGINE_EARLY=0, which the Crane test runner reads): there the
 /// engine starts on a later thread beside threads that already exist - the
-/// start of every host that skips the call (lane linux1; the integrator's
-/// ruling, 2026-11-08; the adapter's build file says what its tests check).
+/// start of every host that skips the call (the integrator's ruling,
+/// 2026-11-08; the adapter's build file says what its tests check).
 /// The same executable, so nothing more is compiled; only the plain run has
 /// it (a variant or a -Dtest-filter run selects its own tests).
 fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, groups: []const SuiteGroup) ?*std.Build.Step.Run {
@@ -1471,8 +1471,8 @@ fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Bui
     // The filter must take the joined executable's member prefix too (the
     // adapter's starts with `*`): the launcher strips a group's prefix only
     // for a group it is told of, and this run passes no batches (a bare
-    // file pattern ran nothing in the joined "tests" on server1, lane
-    // linux1).
+    // file pattern ran nothing in the joined "tests" on server1,
+    // 2026-11-08).
     run.addArg(b.fmt("--filter={s}", .{late_start}));
     // Its results beside the suite's own, never over them; the order is the
     // plain run's (as a filtered run's is).
@@ -1749,8 +1749,8 @@ pub fn build(b: *std.Build) void {
     // The adapter that answers for the target's operating system - whichever
     // platform a graph binds - declares its own options here, in this place
     // of the option order, and reads what it needs of the machine once
-    // (platform_build.chooseOs; for an iOS target, the SDK root, asked at
-    // make time).
+    // (platform_build.chooseOs; for a target whose SDK Zig does not find, the
+    // SDK root, asked at make time).
     const os_side = platform_build.chooseOs(b, target, build_probe);
 
     // -Dsanitize-thread, read before any artifact links the engine: an
@@ -1850,8 +1850,8 @@ pub fn build(b: *std.Build) void {
     // compile in only when asked, so a normal build pays nothing for them;
     // unit tests always have them (builtin.is_test). The audit sweep's runner
     // is built with -Drefcount-audit=true (refcount8, H-RC8-BUILD-AUDIT).
-    // Its own options module, as fetch's curl_options: build_options is
-    // imported by the engine adapter's module already.
+    // Its own options module, as fetch's network options are: build_options
+    // is imported by the engine adapter's module already.
     const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
     const dom_options = b.addOptions();
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
@@ -1983,7 +1983,7 @@ pub fn build(b: *std.Build) void {
     // What the kit asks of a system network library at make time
     // (kit_build.systemLibraryCheck); the end of build() adds it to every
     // top-level step.
-    const system_curl_check = kit_build.systemLibraryCheck(b, kit_options, build_probe);
+    const system_library_check = kit_build.systemLibraryCheck(b, kit_options, build_probe);
 
     // The library, the CLI and the other products use the target's platform,
     // whose graph registers its modules by name for dependent packages; the
@@ -2087,8 +2087,8 @@ pub fn build(b: *std.Build) void {
     });
     // The mode and C sanitizer of each graph's C libraries: the shared
     // graph's are -Doptimize's at Zig's default; a runner graph's are its
-    // modes' (-Dsystem-curl builds every runner on the shared graph,
-    // runnerGraph). What each binary bundles of the UBSan runtime follows
+    // modes' (the kit's system-library option builds every runner on the
+    // shared graph, runnerGraph). What each binary bundles of the UBSan runtime follows
     // from them (addWptRunner, gc_bench), and checkLinkedC holds every build
     // to them at the end of build().
     const shared_c: CModes = .{ .optimize = optimize, .sanitize_c = null };
@@ -2403,8 +2403,9 @@ pub fn build(b: *std.Build) void {
     // conformance tests); those that link the engine (crane, wpt_runner) are
     // compiled without a binary, which analyses all their Zig and compiles
     // the engine adapter's C++, and never links - the engine's prebuilt
-    // archives exist for the build machine's target only. `check-linux` runs it
-    // for both Linux targets; `crane-check` is the host's crane compile.
+    // archives exist for the build machine's target only. A platform
+    // adapter's cross-target check runs it for its targets
+    // (platform_build.cross_checks); `crane-check` is the host's crane compile.
     const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
     // The platform tests check-target compiles without linking, for a target
     // with no sysroot here (targetCheckOf).
@@ -2414,9 +2415,9 @@ pub fn build(b: *std.Build) void {
     // tests/eventsource/: a directory suite (addTestFilesFromDir), its own
     // step's and `test`'s. Built for the target, as the testing graph it
     // imports is: a host root over target modules mixes two targets in one
-    // compile, and for a Linux target from macOS std.c is Darwin's under
-    // kit/posix's Linux branch (pthread_setname_np: expected 1 argument(s),
-    // found 2).
+    // compile, and for a cross target std.c is the host system's under
+    // kit/posix's branch for the target (pthread_setname_np: expected 1
+    // argument(s), found 2).
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
     const eventsource_test_imports = [_]std.Build.Module.Import{
         .{ .name = "eventsource", .module = testing_graph.eventsource },
@@ -2952,7 +2953,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "fetch", .module = testing_graph.fetch },
-            // kit/curl's share, options and trust store, as fetch reaches them.
+            // The kit's network share, options and trust store, as fetch reaches them.
             .{ .name = kit_build.network_share_import, .module = testing_graph.fetch.import_table.get(kit_build.network_share_import).? },
             // What the platform was built with: its HTTP/2 parts' tests run
             // only where it has HTTP/2 (`http2`), as the platform's code does.
@@ -2977,8 +2978,8 @@ pub fn build(b: *std.Build) void {
         const run_xhr_tests = addSuiteRun(b, launch, xhr_tests, "src-xhr", null);
         test_step.dependOn(&run_xhr_tests.step);
 
-        // `testing_graph.xhr` already carries `fetch`, which is where the curl linkage
-        // comes from, so the test root needs nothing beyond `xhr` itself. No
+        // `testing_graph.xhr` already carries `fetch`, which is where the network
+        // library's linkage comes from, so the test root needs nothing beyond `xhr` itself. No
         // engine link: nothing under `src/xhr/` reaches an extern of the engine
         // adapter's C++, which is now
         // structural rather than incidental - the module has no `runtime`
@@ -3016,7 +3017,7 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/websocket/
         // `testing_graph.websocket` already carries its own `fetch` import, which is where
-        // the curl linkage comes from, so the test root needs nothing else.
+        // the network library's linkage comes from, so the test root needs nothing else.
         const websocket_imports = [_]std.Build.Module.Import{
             .{ .name = "websocket", .module = testing_graph.websocket },
             // A Browser's network context, which a connection is made with
@@ -3514,9 +3515,9 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     // Static library (libwhatwg.a). exports.zig allocates with
-    // std.heap.c_allocator, so it links libc: a Darwin target links libSystem
-    // whatever the module says, a Linux target only when asked, and without
-    // it c_allocator is a compile error there.
+    // std.heap.c_allocator, so it links libc: some systems link their libc
+    // whatever the module says, others only when asked, and without it
+    // c_allocator is a compile error there.
     const static_lib = b.addLibrary(.{
         .linkage = .static,
         .name = "whatwg",
@@ -3603,8 +3604,9 @@ pub fn build(b: *std.Build) void {
         .root_module = lib_exports_mod,
     });
 
-    // Zig does not resolve the iOS SDK itself; without this the C sources below
-    // fail on <stdio.h> and the link fails on libSystem.
+    // What the target's C needs that Zig does not find by itself (its OS
+    // side's prepareC: an SDK's paths); without it the C sources below fail on
+    // <stdio.h> and the link on the system's libc.
     if (platform_build.prepareC(target)) |prepare| prepare.module(full_static_lib.root_module);
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, full_static_lib.root_module, .{});
@@ -3808,8 +3810,8 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/codegen_main.zig"),
             // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
-            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
-            // for the phone and then run it here.
+            // so a cross-target build tried to build the code generator for
+            // the target and then run it here.
             .target = b.graph.host,
             .optimize = optimize,
             .imports = &.{
@@ -3886,8 +3888,8 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/idl_scanner_main.zig"),
             // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
-            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
-            // for the phone and then run it here.
+            // so a cross-target build tried to build the code generator for
+            // the target and then run it here.
             .target = b.graph.host,
             .optimize = optimize,
             .imports = &.{
@@ -3984,8 +3986,8 @@ pub fn build(b: *std.Build) void {
         optimize_given,
     );
     const repl_graph = if (runner_release != null) production_graph else crane_graph;
-    // What that graph's C libraries are built with (-Dsystem-curl builds the
-    // production graph as the shared one, runnerGraph).
+    // What that graph's C libraries are built with (the kit's system-library
+    // option builds the production graph as the shared one, runnerGraph).
     const repl_c: CModes = if (runner_release != null and !system_library) .libraries(repl_modes) else shared_c;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
@@ -4009,7 +4011,7 @@ pub fn build(b: *std.Build) void {
     // The C libraries it links are built with -Doptimize's mode and its C
     // sanitizer: a ReleaseSafe root links the full UBSan runtime they call
     // into (the runner's rule, RunnerModes.sanitize_c), or the link misses
-    // __ubsan_handle_* (libbrotli, a Debug-built C library).
+    // __ubsan_handle_* (a kit C library built in Debug).
     if (repl_modes.sanitize_c) |sanitizer| repl_exe.root_module.sanitize_c = sanitizer;
     // And it links the runtime for C libraries built with the full sanitizer
     // (the shared graph's, in Debug), as the runners do (addWptRunner); the
@@ -4521,7 +4523,7 @@ pub fn build(b: *std.Build) void {
     // The thread-local block check
     // ========================================================================
     // tools/thread_local_size.zig reads how many bytes of thread-local
-    // storage a built binary's image carries - a per-THREAD cost: macOS
+    // storage a built binary's image carries - a per-THREAD cost: one system
     // allocates the image's whole block for a thread on its first touch of
     // any thread-local, glibc with every thread - and its largest
     // thread-local symbols. The end of build() runs it on the same three
@@ -5069,7 +5071,7 @@ pub fn build(b: *std.Build) void {
     const configure_environment_step = b.step("check-configure-environment", "Fail on any Run step this configuration gives an environment of its own (check-configure-cache builds it under each flag set)");
     // The flag sets: the gates' own, and each one under which the configure
     // used to read the checkout or ask the machine (the one-binary layout's
-    // module roots, git, the system libcurl's features), with this build's
+    // module roots, git, the system network library's features), with this build's
     // engine. (A cross target's SDK root is asked at make time as well, by
     // the platform's build side: platform_build.chooseOs.)
     const engine_flag = b.fmt("-Dengine={t}", .{engine.name});
@@ -5471,8 +5473,8 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/download.zig"),
             // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
-            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
-            // for the phone and then run it here.
+            // so a cross-target build tried to build the code generator for
+            // the target and then run it here.
             .target = b.graph.host,
             .optimize = optimize,
         }),
@@ -5491,8 +5493,8 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/extract.zig"),
             // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
-            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
-            // for the phone and then run it here.
+            // so a cross-target build tried to build the code generator for
+            // the target and then run it here.
             .target = b.graph.host,
             .optimize = optimize,
         }),
@@ -5511,8 +5513,8 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/encode.zig"),
             // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
-            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
-            // for the phone and then run it here.
+            // so a cross-target build tried to build the code generator for
+            // the target and then run it here.
             .target = b.graph.host,
             .optimize = optimize,
         }),
@@ -5932,14 +5934,14 @@ pub fn build(b: *std.Build) void {
     // graphs share and each writes to fails the configuration, naming the
     // artifact, instead of silently crossing graphs (lane buildfix1,
     // 2026-11-10: generation 214's production runner linked the bug-finding
-    // graph's full-sanitizer mbedTLS and zlib, and main's release console did
+    // graph's full-sanitizer TLS and compression libraries, and main's release console did
     // not link). The production runner and the release console are held to
     // the release build's modes, the bug-finding runner to its own; every
     // build on the shared graph to -Doptimize's mode at Zig's default
     // sanitizer (production_c, bug_finding_c, shared_c).
     // Both directions (the integrator, 2026-11-10): the production runner
     // and the release console carry no `.full` C and no UBSan runtime; the
-    // bug-finding runner carries `.full` everywhere, nghttp2 and Brotli
+    // bug-finding runner carries `.full` everywhere, every kit C library
     // included, and the runtime it calls.
     const checked_builds = [_]CheckedBuild{
         .{ .exe = wpt_runner_exe.exe, .root = .root(production_build.modes), .c = production_c, .step = wpt_runner_step },
@@ -6010,10 +6012,10 @@ pub fn build(b: *std.Build) void {
     // configuration (checkNoEnvironmentCopies): part of check-configure-cache.
     checkNoEnvironmentCopies(b, configure_environment_step);
 
-    // -Dsystem-curl: whatever is built, the system libcurl's WebSocket check
+    // The kit's system library: whatever is built, its WebSocket check
     // runs with it, as the configure-time warning it replaces did - but for
     // the configuration's own check, which builds nothing.
-    if (system_curl_check) |check| for (b.top_level_steps.values()) |top| {
+    if (system_library_check) |check| for (b.top_level_steps.values()) |top| {
         if (&top.step != configure_environment_step) top.step.dependOn(&check.step);
     };
 }
@@ -6062,8 +6064,8 @@ const CheckedBuild = struct {
 /// in its modes' mode and C sanitizer; and Zig's UBSan runtime linked exactly
 /// when they need it. What a build links is found from its executable: every
 /// library artifact reachable through the link entries of the modules in its
-/// graph, and of those libraries in turn (libcurl's mbedTLS, zlib, nghttp2,
-/// Brotli). A kit library whose sanitizer is its own in every mode is held
+/// graph, and of those libraries in turn (what the kit's network library
+/// links). A kit library whose sanitizer is its own in every mode is held
 /// to it (kit_build.expectedSanitizer).
 fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
     const gpa = b.allocator;
@@ -6125,8 +6127,8 @@ fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
 ///
 /// build.zig builds its module graph once per platform an invocation needs: the
-/// WPT runner and the test tiers against `testing`, the library, the CLI and the
-/// iOS build against the target's platform. Each artifact is its own compile, so
+/// WPT runner and the test tiers against `testing`, the library, the CLI and a
+/// cross-target build against the target's platform. Each artifact is its own compile, so
 /// a second graph costs no extra analysis; within one compile every file belongs
 /// to one module, so an artifact takes ALL its Crane modules from one graph
 /// (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md).
@@ -6290,7 +6292,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     // The full sanitizer's handlers (___ubsan_handle_*) are called from C
     // libraries built as artifacts of their own, which a release root does not
     // bundle a runtime for: without this a ReleaseSafe bug-finding runner fails
-    // to link on them (libmbedtls.a). Only that build: the production run's C
+    // to link on them (the kit's TLS library). Only that build: the production run's C
     // libraries are `.trap`, which calls no handler, so it links no runtime -
     // as the release console links none (build_mode.zig needsUbsanRuntimeFor).
     if (c_libraries.compilesFull()) exe.bundle_ubsan_rt = true;
@@ -6338,10 +6340,10 @@ const RunnerGraphContext = struct {
 /// The module graph a WPT runner build links (tests/wpt_runner/build_mode.zig
 /// `Build`): its platform graph's existing one when its Crane modules and C
 /// libraries are the shared graph's - -Doptimize's mode, at Zig's default C
-/// sanitizer for it (`RunnerModes.ownGraph`) - or with -Dsystem-curl, whose
-/// one libcurl cannot be built per mode; else a private graph of that
-/// platform in its modes, over C libraries of its own (buildStaticLibcurl,
-/// buildBrotli, buildImageCodecs: new artifacts per call) built at its root's
+/// sanitizer for it (`RunnerModes.ownGraph`) - or with the kit's system
+/// library, which cannot be built per mode; else a private graph of that
+/// platform in its modes, over C libraries of its own (kit_build.libraries:
+/// new artifacts per call) built at its root's
 /// sanitizer. Private: the target platform's public graph registers its
 /// modules by name, once (docs/lessons/workflow-a-second-graph-of-the-target-
 /// platform-must-be-private.md).
@@ -7448,7 +7450,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .root_source_file = b.path("src/websocket/root.zig"),
         .target = target,
     });
-    // WebSocket needs fetch for curl backend
+    // WebSocket needs fetch for its network backend
     websocket_mod.addImport("fetch", fetch_mod);
     // The opening handshake's cookies come from and go to the jar.
     websocket_mod.addImport("cookiestore", cookiestore_mod);
@@ -7483,7 +7485,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // stores, and storage's commit timer (cookiestore/storage_integration.zig).
     cookiestore_mod.addImport("platform", platform_mod);
     cookiestore_mod.addImport("storage", storage_mod);
-    // A Browser's network context keeps its connection share in kit/curl,
+    // A Browser's network context keeps its connection share in the kit,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
     fetch_mod.addImport(kit_build.network_share_import, platform_binding.network_share);

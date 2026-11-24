@@ -284,6 +284,12 @@ pub const object_format_fixtures: []const ObjectFormatFixture = formats: {
     break :formats formats;
 };
 
+/// Whether two targets are one system to run on: the same CPU architecture
+/// and operating system (the root build joins test executables only of one).
+pub fn sameSystem(a: std.Target, b: std.Target) bool {
+    return a.cpu.arch == b.cpu.arch and a.os.tag == b.os.tag;
+}
+
 /// What a binding asks of the adapter it binds (`bind`).
 pub const BindRequest = struct {
     /// The font_decoding capability is compiled in (-Dplatform-without
