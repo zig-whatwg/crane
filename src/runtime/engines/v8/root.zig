@@ -321,7 +321,13 @@ pub const initializeShadowRealmSupport = shadow_realm.initializeShadowRealmSuppo
 pub const deinitializeShadowRealmSupport = shadow_realm.deinitializeShadowRealmSupport;
 pub const disposeShadowRealmsByInitiator = shadow_realm.disposeByInitiator;
 
-test "v8 module compiles" {
-    const testing = @import("std").testing;
-    testing.refAllDecls(@This());
+// The adapter's own tests, for src-<adapter> (build.zig): the files whose
+// tests pin what nothing else does, by name. Never refAllDecls - the
+// adapter's declarations reach the engine's externs, and that executable
+// links no engine (lane core1).
+test {
+    _ = pointer_tag;
+    _ = cross_origin;
+    _ = @import("protocol_agents.zig");
+    _ = @import("protocol_repl.zig");
 }

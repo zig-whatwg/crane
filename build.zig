@@ -1994,6 +1994,7 @@ pub fn build(b: *std.Build) void {
         "xml",
         "wpt_runner",
         "hr_time",
+        "webdriver",
     };
     if (spec_filter) |spec| {
         var is_valid = engine_spec != null and std.mem.eql(u8, spec, engine_spec.?);
@@ -2955,6 +2956,14 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_browser_tests.step);
     }
 
+    // src/webdriver's own tests (lane core1, 2026-11-24): no step rooted the
+    // module. Nothing imports it but the crane executable, and its tests are
+    // pure Zig, so it is its own executable's root, not engine-linked.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "webdriver")) {
+        const webdriver_tests = b.addTest(.{ .root_module = testing_graph.webdriver });
+        test_step.dependOn(&addSuiteRun(b, launch, webdriver_tests, "src-webdriver", null).step);
+    }
+
     // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp): its unit
     // tests, and tests/devtools/ - a Zig CDP client against Crane over
     // loopback and the pipe (handshake, framing, routing, targets, the
@@ -3287,10 +3296,9 @@ pub fn build(b: *std.Build) void {
     }
 
     // The engine adapter's own tests (its build file's `facts.tests`): the one
-    // directory whose tests need the adapter's module itself. Test blocks
-    // living inside the adapter's sources are NEVER run - `addTestFilesFromDir`
-    // only collects `tests/**/ *_test.zig` - so a test written next to the code
-    // it covers is a test that does not exist. Another listed adapter's test
+    // directory whose tests need the adapter's module itself. The test blocks
+    // inside the adapter's sources run in src-<adapter>, below (they ran
+    // nowhere until lane core1, 2026-11-24). Another listed adapter's test
     // directory is recorded as a suite (a build of that engine runs it), and
     // nothing of it is built here.
     for (engine_build.test_dirs) |dir| {
@@ -3298,6 +3306,15 @@ pub fn build(b: *std.Build) void {
         if (!own) recordSuiteDir(b, test_selection, dir);
     }
     if (engine.facts.tests) |engine_tests| if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, engine_tests.spec)) {
+        // The adapter's inline tests: its module is its own executable's root,
+        // as `testing_graph.html` is src-html's - the adapter is a dependency
+        // of itself (adapter -> impls -> engine -> adapter), so it cannot be
+        // cloned - and not engine-linked: its root's test block names only the
+        // files whose tests a triage kept, each pure Zig, so analysis never
+        // reaches an engine extern (lane core1).
+        const adapter_inline_tests = b.addTest(.{ .root_module = testing_graph.engine_impl });
+        test_step.dependOn(&addSuiteRun(b, launch, adapter_inline_tests, b.fmt("src-{s}", .{engine.facts.module_name}), null).step);
+
         // What the adapter's tests may import, by name (`Tests.imports`
         // takes them in its own order, which is part of their compile): the
         // testing graph's modules, the adapter's own module and this build's
