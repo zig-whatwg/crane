@@ -93,3 +93,38 @@ test "navigation entries: a push from a past step drops the forward steps and th
     try expectEntry(list.items[1], "http://x.test/b", .form_submit, "http://x.test/b?q", "");
     try expectEntry(list.items[2], "http://x.test/d", .typed, "http://x.test/d", "");
 }
+
+test "pruning all but the current step (CDP Page.resetNavigationHistory, Chrome's PruneAllButLastCommitted): one step left, its entries, its record and id" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    var list: std.ArrayList(joint.NavigationEntry) = .empty;
+    defer list.deinit(testing.allocator);
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    try h.addChildInitialEntry(frame, top, "http://x.test/f0", null, "http://x.test");
+    try h.commitDocument(frame, "http://x.test/f1", null, "http://x.test", .push);
+    try h.commitSameDocument(top, "http://x.test/a#1", .null, .push, null);
+    h.recordTitle("one");
+    try h.commitSameDocument(top, "http://x.test/a#2", .null, .push, null);
+    // Back to #1, with #2 ahead.
+    h.setCurrentStep(h.stepByDelta(-1).?);
+    _ = try h.navigationEntries(testing.allocator, &list);
+    const kept_id = list.items[2].id;
+    try testing.expectEqual(@as(usize, 4), list.items.len);
+
+    try testing.expect(h.pruneAllButCurrent());
+    const current = try h.navigationEntries(testing.allocator, &list);
+    try testing.expectEqual(@as(usize, 0), current);
+    try testing.expectEqual(@as(usize, 1), list.items.len);
+    try testing.expectEqual(kept_id, list.items[0].id);
+    try expectEntry(list.items[0], "http://x.test/a#1", .link, "http://x.test/a", "one");
+    const li = h.lengthAndIndex();
+    try testing.expectEqual(@as(u32, 1), li.length);
+    try testing.expectEqual(@as(u32, 0), li.index);
+    // Each navigable keeps the entry current at that step: the frame's f1.
+    try testing.expectEqualStrings("http://x.test/f1", h.currentEntry(frame).?.url);
+    try testing.expectEqualStrings("http://x.test/a#1", h.currentEntry(top).?.url);
+    try testing.expect(h.stepByDelta(-1) == null and h.stepByDelta(1) == null);
+    // The history goes on from there.
+    try h.commitSameDocument(top, "http://x.test/a#3", .null, .push, null);
+    try testing.expectEqual(@as(u32, 2), h.lengthAndIndex().length);
+}
