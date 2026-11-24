@@ -726,6 +726,9 @@ pub fn keepOpaqueRoot(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 /// No wrapper tracing: no collector consults the host (the wrapper
 /// redesign's P5, design 3.3).
 pub fn traceNodeWrapper(_: *Tracer, _: *const NodeWrapperSlot) void {}
+/// engine.keepNodeWrapperInYoungCollections: no wrapper is dropped in a
+/// young collection here, so there is nothing to keep.
+pub fn keepNodeWrapperInYoungCollections(_: *Instance) void {}
 
 /// engine.TracedHold (refcount step 8). QuickJS traces no values: a hold would
 /// be a strong one, kept until released - with no engine linked there is no

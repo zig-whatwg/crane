@@ -138,24 +138,26 @@ fn traceHolderNode(node: *NodeBase, tracer: *engine.Tracer) void {
 
 /// `node` keeps values for script from here (refcount step 8): its event
 /// listener list was made, or an observer registered on it. The walk visits
-/// it for them from here (`traces_held`, never cleared), and its wrapper is
-/// marked modified - one private property, once per node (engine.traceValue)
-/// - so a young-generation collection never drops it while its tree holds
-/// it: V8 drops only unmodified API objects in a scavenge
-/// (JSObject::IsUnmodifiedApiObject), and a dropped wrapper's node is not
-/// held, the walk would not reach it, and what it keeps would go with the
-/// next full collection. A node gets a listener or a registration only from
-/// script (or a compiled handler), which wrapped it; one not wrapped yet has
-/// the mark drawn on its wrapper when it is made.
+/// it for them from here (`traces_held.values`, never cleared), and its
+/// wrapper stays through young-generation collections from here
+/// (engine.keepNodeWrapperInYoungCollections): the walk enters held subtrees
+/// only, a wrapped node is held by its wrapper, and V8 drops an unmodified
+/// wrapper nothing reaches in a scavenge - the node would then not be
+/// visited, and what it keeps would go with the next full collection while
+/// script could still reach the node through its tree.
+///
+/// A node with no wrapper costs nothing here: the engine's wrap asks the
+/// same question when it makes the wrapper (runtime.lifetime's
+/// `keeps_values` hook, dom.refcount.wrapperKeepsValues) - a node removed
+/// under a subtree MutationObserver gets a transient registered observer
+/// without script ever seeing it. (The first build marked the wrapper with a
+/// private property, and an unwrapped node's mark waited in a strong handle:
+/// 32 bytes of the engine's handles, a map entry and a key per removed node.)
 pub fn noteNodeHoldsValues(node: *runtime.Instance, base: *NodeBase) void {
-    if (base.traces_held.marked) return;
+    if (base.traces_held.values) return;
     base.traces_held.values = true;
-    base.traces_held.marked = true;
-    engine.traceValue(node, .{ .boolean = true }, held_values_marker);
+    engine.keepNodeWrapperInYoungCollections(node);
 }
-
-/// The private slot `noteNodeHoldsValues` marks a node's wrapper with.
-const held_values_marker: engine.TracedSlot = .{ .name = "holds-traced-values" };
 
 /// Refcount step 8 (decision D7; the trace-time design of 2026-11-23): what
 /// a node keeps for script that can reach back to it - its listeners'

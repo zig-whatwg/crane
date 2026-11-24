@@ -523,8 +523,12 @@ pub fn adopt(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Objec
     //    node's first wrapper adopts its creator's.
     const target = runtime.lifetime.wrapperAcquired(instance) orelse return error.NotANode;
     std.debug.assert(target == node);
-    // 3-6.
-    ffi.v8_NodeWrapper_Attach(isolate, box, @ptrCast(slot));
+    // 3-6. The slot's reference is droppable - V8 may reclaim an unmodified
+    // wrapper nothing reaches in a young collection - unless the node keeps
+    // values for script (a listener, a registered observer: refcount step 8),
+    // which the walk traces only while the node is held
+    // (engine.keepNodeWrapperInYoungCollections).
+    ffi.v8_NodeWrapper_Attach(isolate, box, @ptrCast(slot), !runtime.lifetime.keepsValues(node));
     registry.live += 1;
     return .{ .handle = @ptrCast(slot), .box = box };
 }
@@ -555,6 +559,22 @@ fn holdKept(isolate: *ffi.Isolate, instance: *runtime.Instance, slot: *NodeWrapp
         return;
     }
     if (kept.root == null) kept.root = ffi.v8_NodeWrapper_Root(isolate, @ptrCast(slot));
+}
+
+/// engine.keepNodeWrapperInYoungCollections: `instance`, a node, keeps values
+/// for script from now on. With a wrapper, its slot's droppable reference is
+/// made again as a default one - a root in a young-generation collection,
+/// traced by the walk in a full one as before (v8_NodeWrapper_
+/// KeepInYoungCollections). With none there is nothing to do: `adopt` asks
+/// runtime.lifetime.keepsValues when it makes the wrapper. A node of an
+/// ended agent, or one that is no node, is left alone.
+pub fn keepInYoungCollections(instance: *runtime.Instance) void {
+    const slot = slotOfInstance(instance) orelse return;
+    if (slot.isEmpty()) return;
+    const isolate = isolateOfInstance(instance) orelse return;
+    const registry = registryOf(isolate) orelse return;
+    if (registry.ended) return;
+    ffi.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(slot));
 }
 
 /// engine.keepPlatformObjectAlive for a node: one more counted keep. The

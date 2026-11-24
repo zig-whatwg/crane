@@ -3170,9 +3170,16 @@ pub extern fn v8_NodeWrapper_Wrappable(isolate: *Isolate, box: *Object) bool;
 
 /// The node wrap's steps 3-6 (design 4.2): an anchor for the empty node slot
 /// `slot`, the wrapper `box` holds (no internal field) Wrapped with it, the
-/// slot made a TracedReference to it, the anchor registered. `box` stays the
-/// caller's: it holds the wrapper strongly until the caller disposes it.
-pub extern fn v8_NodeWrapper_Attach(isolate: *Isolate, box: *Object, slot: *anyopaque) void;
+/// slot made a TracedReference to it - `droppable`: one V8 may reclaim in a
+/// young-generation collection while the wrapper is an unmodified API object
+/// nothing reaches; else a root there - the anchor registered. `box` stays
+/// the caller's: it holds the wrapper strongly until the caller disposes it.
+pub extern fn v8_NodeWrapper_Attach(isolate: *Isolate, box: *Object, slot: *anyopaque, droppable: bool) void;
+/// The non-empty node slot `slot`'s reference is made again as a default
+/// TracedReference: young-generation collections keep its wrapper from here
+/// (engine.keepNodeWrapperInYoungCollections). On the isolate's thread,
+/// outside a collection.
+pub extern fn v8_NodeWrapper_KeepInYoungCollections(isolate: *Isolate, slot: *anyopaque) void;
 
 /// A traced root for a kept node's wrapper (a cppgc::Persistent on its
 /// anchor), OWNED until v8_NodeWrapper_Unroot; null for an empty slot.

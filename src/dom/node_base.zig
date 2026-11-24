@@ -380,12 +380,11 @@ pub const NodeBase = extern struct {
         by_type: bool = false,
         /// The node keeps values for script the walk traces (refcount step
         /// 8): its event listener list, or the observers registered on it
-        /// (dom.wrapper_tracing.noteNodeHoldsValues). Never cleared.
+        /// (dom.wrapper_tracing.noteNodeHoldsValues). Never cleared. Its
+        /// wrapper, now or whenever it gets one, stays through
+        /// young-generation collections (runtime.lifetime's `keeps_values`).
         values: bool = false,
-        /// Its wrapper carries the mark that keeps it through scavenges
-        /// (noteNodeHoldsValues). Never cleared.
-        marked: bool = false,
-        _: u5 = 0,
+        _: u6 = 0,
 
         /// Whether the walk asks the node for anything.
         pub inline fn any(self: TracesHeld) bool {

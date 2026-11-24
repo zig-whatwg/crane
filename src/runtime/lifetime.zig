@@ -69,6 +69,15 @@ pub const Hooks = struct {
     /// pause: read-only, no allocation, no other engine operation
     /// (dom.wrapper_tracing).
     trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
+    /// Whether `target` - a counted object, as `acquire` answers it - keeps
+    /// values for script that the walk traces from it (refcount step 8: a
+    /// node's listeners' callbacks, its registered observers). The engine
+    /// asks where it makes the target's wrapper (`keepsValues`): such a
+    /// wrapper must stay through young-generation collections, because the
+    /// walk visits a node only while it is held, and a node whose wrapper a
+    /// scavenge dropped may be held by nothing. Reads a field; no allocation,
+    /// no engine operation.
+    keeps_values: ?*const fn (target: *anyopaque) bool = null,
     /// The engine's full collection found the wrappers of `dead` dead, at
     /// the end of its marking: decide which of the host's trees die with
     /// them, take what those trees hold out of `memory`'s figure
@@ -119,6 +128,7 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.slot_of) |f| next.slot_of = f;
     if (owned.target_of_slot) |f| next.target_of_slot = f;
     if (owned.trace_tree) |f| next.trace_tree = f;
+    if (owned.keeps_values) |f| next.keeps_values = f;
     if (owned.dying_with) |f| next.dying_with = f;
     return if (std.meta.eql(next, current)) null else next;
 }
@@ -190,6 +200,16 @@ pub fn wrapperReleased(target: *anyopaque) void {
 pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     const slot_of = hooks.read().slot_of orelse @panic("runtime.lifetime.slotOf: no owner of the counts installed its slot_of hook");
     return slot_of(target);
+}
+
+/// Whether `target`, a counted object about to get a wrapper, keeps values
+/// for script that the walk traces from it (`Hooks.keeps_values`): its
+/// wrapper is then made one that young-generation collections keep
+/// (engine.keepNodeWrapperInYoungCollections says why). False when no owner
+/// of the counts answers.
+pub fn keepsValues(target: *anyopaque) bool {
+    const keeps_values = hooks.read().keeps_values orelse return false;
+    return keeps_values(target);
 }
 
 /// The counted object (a node's NodeBase) whose engine wrapper slot `slot`

@@ -1238,6 +1238,9 @@ pub const keepOpaqueRoot = @import("wrapper_cache.zig").keepOpaqueRoot;
 /// collection's atomic pause, deduplicated per collection in the agent's
 /// registry (node_wrappers.zig "The walk").
 pub const traceNodeWrapper = @import("node_wrappers.zig").traceNodeWrapper;
+/// engine.keepNodeWrapperInYoungCollections (refcount step 8): the node's
+/// slot made a reference young collections keep (node_wrappers.zig).
+pub const keepNodeWrapperInYoungCollections = @import("node_wrappers.zig").keepInYoungCollections;
 pub const traceVisitOnce = @import("node_wrappers.zig").traceVisitOnce;
 
 // ============================================================================

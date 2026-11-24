@@ -3468,6 +3468,27 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 // read-only walk, dom.wrapper_tracing, reached through runtime.lifetime's
 // `traceTree` hook - and names each wrapper with the two operations below.
 
+/// `node` - a node's instance - keeps values for script that the walk traces
+/// from it from now on (refcount step 8: a listener's callback, a registered
+/// observer; dom.wrapper_tracing.noteNodeHoldsValues): its wrapper, if it
+/// has one, is kept by young-generation collections from here - still no
+/// root in a full collection, where the walk keeps it or nothing does. A
+/// node with no wrapper costs nothing: the engine asks runtime.lifetime's
+/// `keepsValues` where it makes the wrapper, and makes that kind then. Why:
+/// the walk visits a node only while it is held, a wrapped node is held by
+/// its wrapper, and an engine that drops a wrapper script cannot tell from a
+/// fresh one in a young collection would leave the node unvisited and take
+/// its listeners in the next full collection, while script can still reach
+/// the node through its tree. On the agent's thread, outside the collector;
+/// writes nothing on the wrapper. V8: the node's slot becomes a default
+/// TracedReference, not a droppable one (a root in a scavenge; Blink never
+/// needs this - its listeners die with the cppgc node, not with a wrapper).
+/// JavaScriptCore, QuickJS and the test adapter drop no wrapper in a young
+/// collection: nothing.
+pub inline fn keepNodeWrapperInYoungCollections(node: *Instance) void {
+    impl.keepNodeWrapperInYoungCollections(node);
+}
+
 /// Inside runtime.lifetime's `traceTree` hook only (`tracer` is the one the
 /// engine passed it): the engine keeps `slot`'s wrapper, if the slot holds
 /// one, as reachable as the wrapper being traced - and the node's wrapper in

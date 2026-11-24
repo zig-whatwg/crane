@@ -6338,6 +6338,33 @@ extern "C" void v8_NodeTracer_TraceSlot(cppgc::Visitor* visitor, void* slot) {
     visitor->Trace(*static_cast<const TracedReference<Object>*>(slot));
 }
 
+/// engine.keepNodeWrapperInYoungCollections on V8 (refcount step 8): the node
+/// whose non-empty slot `slot` is keeps values for script from now on - a
+/// listener's callback, a registered observer - which the walk traces only
+/// while the node is held, and a wrapped node may be held by its wrapper
+/// alone. So its wrapper must not be one V8 reclaims in a young-generation
+/// collection: the slot's DROPPABLE reference is made again as a default
+/// one - a root in a scavenge (TracedHandles::IterateYoungRoots; never
+/// offered to NodeWrapperRootsHandler), no root in a full collection, where
+/// the anchor's Trace and the walk keep it as before. Nothing is written on
+/// the wrapper (no property, so no second hidden class for elements with
+/// listeners), and a node with no wrapper pays nothing: v8_NodeWrapper_Attach
+/// is told the kind when the wrapper is made.
+///
+/// The slot's address, which the wrapper's anchor and every borrower hold,
+/// does not change: only the TracedNode behind it does. The wrapper is held
+/// by a Local across the two steps, and nothing between them allocates on
+/// either heap (a TracedNode block is malloc). The new reference is made by
+/// assignment, so V8's marking barrier applies while a collection marks. On
+/// the isolate's thread, outside a collection.
+extern "C" void v8_NodeWrapper_KeepInYoungCollections(Isolate* isolate, void* slot) {
+    TracedReference<Object>* reference = static_cast<TracedReference<Object>*>(slot);
+    if (reference->IsEmpty()) return;
+    HandleScope scope(isolate);
+    Local<Object> wrapper = reference->Get(isolate);
+    reference->Reset(isolate, wrapper);
+}
+
 // ---- engine.TracedHold (refcount step 8: values traced from their owner at
 // collection time, Blink's TraceWrapperV8Reference) ----
 //
@@ -6521,7 +6548,7 @@ extern "C" bool v8_NodeWrapper_Wrappable(Isolate* isolate, Global<Object>* box) 
 /// TracedReference is made by assignment (Reset), whose store applies V8's
 /// marking barrier when a collection is marking (TracedReferenceStoreMode
 /// kAssigningStore: the slot's holder, the node, is no cppgc object).
-extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, void* slot) {
+extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, void* slot, bool droppable) {
     IsolateData* record = isolateData(isolate);
     NodeWrapperRegistry* registry = record ? record->node_anchors.Get() : nullptr;
     CppHeap* heap = isolate->GetCppHeap();
@@ -6555,9 +6582,16 @@ extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, voi
     Object::Wrap<kNodeAnchorTag>(isolate, wrappable, anchor);
     // 5. The node's slot holds the wrapper: droppable (design 4.11, P8) -
     //    V8 may reclaim it in a young-generation collection while it is an
-    //    unmodified API object nothing reaches (NodeWrapperRootsHandler).
+    //    unmodified API object nothing reaches (NodeWrapperRootsHandler) -
+    //    unless its node keeps values for script (`droppable` false; refcount
+    //    step 8, v8_NodeWrapper_KeepInYoungCollections): a default reference
+    //    then, a root in a young collection.
     TracedReference<Object>* traced = new (slot) TracedReference<Object>();
-    traced->Reset(isolate, object, TracedReference<Object>::IsDroppable{});
+    if (droppable) {
+        traced->Reset(isolate, object, TracedReference<Object>::IsDroppable{});
+    } else {
+        traced->Reset(isolate, object);
+    }
     // 6. The registry (its index in the anchor: lane wr1 batch 8).
     registry->add(anchor);
 }
