@@ -1192,6 +1192,16 @@ pub const Browser = struct {
         return .{ .entries = out, .current = current };
     }
 
+    /// The browser prunes traversable `id`'s history to its current step
+    /// (Chrome's NavigationController::PruneAllButLastCommitted, CDP's
+    /// Page.resetNavigationHistory): joint_history.pruneAllButCurrent. False
+    /// when it cannot now (a traversal running, a navigation's entry pending).
+    pub fn pruneNavigationHistory(self: *Browser, id: u64) !bool {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        const history = try bc.ensureHistoryEntries(&historyDocumentInfo);
+        return history.pruneAllButCurrent();
+    }
+
     /// Traversable `id`'s active document reports its title `title`: the
     /// browser's record of the current history step takes it (Chrome's
     /// WebContentsImpl::UpdateTitle sets the committed entry's title; CDP's

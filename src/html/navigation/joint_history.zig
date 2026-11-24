@@ -1808,6 +1808,66 @@ pub const JointHistory = struct {
         record.transition = .reload;
     }
 
+    /// The browser prunes the history to its current step - Chrome's
+    /// NavigationController::PruneAllButLastCommitted, which CDP's
+    /// Page.resetNavigationHistory runs (page_handler.cc
+    /// ResetNavigationHistory), a browser operation as back and forward are.
+    /// Entries are removed as "clear the forward session history" removes
+    /// them - by step, in one pass (`removeWhere`) - here every step but the
+    /// current: each navigable keeps the entry current at that step, which
+    /// now sits at it (so it is the one used step left: history.length 1),
+    /// and only the current step's record stays, with its introducing entry
+    /// and id. False, with nothing changed, when an apply is running or a
+    /// synchronous navigation's entry is still pending (Chrome:
+    /// CanPruneAllButLastCommitted is false while a navigation is pending).
+    pub fn pruneAllButCurrent(self: *JointHistory) bool {
+        if (self.apply != null or self.pending_count != 0) return false;
+        const step = self.current_step;
+        var kept: std.AutoHashMapUnmanaged(u64, void) = .empty;
+        defer kept.deinit(self.allocator);
+        var navigables: std.ArrayListUnmanaged(u64) = .empty;
+        defer navigables.deinit(self.allocator);
+        for (self.entries.items) |entry| {
+            if (std.mem.indexOfScalar(u64, navigables.items, entry.navigable) == null) navigables.append(self.allocator, entry.navigable) catch return false;
+        }
+        for (navigables.items) |navigable| {
+            const entry = self.entryAt(navigable, step) orelse continue;
+            kept.put(self.allocator, entry.id, {}) catch return false;
+        }
+        var record_holder: ?u64 = null;
+        for (self.entries.items) |entry| {
+            if (!entry.pending and entry.step == step and entry.navigation_entry != null) {
+                record_holder = entry.id;
+                break;
+            }
+        }
+        self.beginChange();
+        defer self.endChange();
+        _ = self.removeWhere(@as(*const std.AutoHashMapUnmanaged(u64, void), &kept), struct {
+            fn notKept(keep: *const std.AutoHashMapUnmanaged(u64, void), entry: *const Entry) bool {
+                return !keep.contains(entry.id);
+            }
+        }.notKept);
+        for (self.entries.items) |*entry| {
+            entry.step = step;
+            if (record_holder != null and entry.id == record_holder.?) continue;
+            if (entry.navigation_entry) |*record| record.deinit(self.allocator);
+            entry.navigation_entry = null;
+        }
+        // A navigable's kept active entry: gone with its step, or now at
+        // the one step left.
+        var gone: std.ArrayListUnmanaged(u64) = .empty;
+        defer gone.deinit(self.allocator);
+        var it = self.update_only.iterator();
+        while (it.next()) |e| {
+            if (kept.contains(e.value_ptr.entry)) {
+                e.value_ptr.step = step;
+            } else gone.append(self.allocator, e.key_ptr.*) catch {};
+        }
+        for (gone.items) |navigable| _ = self.update_only.remove(navigable);
+        return true;
+    }
+
     /// Each step of the history, in order, as the browser lists it - Chrome's
     /// NavigationController entries: the id of the entry that introduced the
     /// step, the traversable's URL at the step, the step's record - into

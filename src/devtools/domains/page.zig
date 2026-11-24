@@ -705,6 +705,21 @@ pub fn navigateToHistoryEntry(session: *PageSession, params: P.navigateToHistory
     return session.failWithCode(.invalid_params, "No entry with passed id");
 }
 
+/// Chrome's PageHandler::ResetNavigationHistory: every entry but the
+/// committed one goes (NavigationController::PruneAllButLastCommitted;
+/// Browser.pruneNavigationHistory), or "History cannot be pruned" when it
+/// cannot now.
+pub fn resetNavigationHistory(session: *PageSession, params: P.resetNavigationHistory.Params) !P.resetNavigationHistory.Result {
+    _ = params;
+    const browser = session.browser orelse return session.fail("Not attached to an active page");
+    const pruned = browser.pruneNavigationHistory(session.tab) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return session.fail("Not attached to an active page"),
+    };
+    if (!pruned) return session.fail("History cannot be pruned");
+    return .{};
+}
+
 /// Close the tab, prompting to unload (Chrome: Page.close runs beforeunload,
 /// where Target.closeTarget does not).
 pub fn close(session: *PageSession, params: P.close.Params) !P.close.Result {
