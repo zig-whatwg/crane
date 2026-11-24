@@ -105,48 +105,40 @@ fn structuredDeserializeInternal(
 
         .array_buffer => {
             const ab = serialized.data.array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, ab.data),
                 .detached = false,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .resizable_array_buffer => {
             const rab = serialized.data.resizable_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, rab.data),
                 .detached = false,
                 .max_byte_length = rab.max_byte_length,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .shared_array_buffer => {
             const sab = serialized.data.shared_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
             // For SharedArrayBuffer, we share the same data (not copy)
             // In real implementation, this would use shared memory
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, sab.data),
                 .detached = false,
                 .shared = true,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .growable_shared_array_buffer => {
             const gsab = serialized.data.growable_shared_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, gsab.data),
                 .detached = false,
                 .max_byte_length = gsab.max_byte_length,
                 .shared = true,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .array_buffer_view => {
