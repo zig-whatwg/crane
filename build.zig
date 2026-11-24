@@ -7845,6 +7845,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     webdriver_mod.addImport("clock", clock_mod);
     webdriver_mod.addImport("host", host_mod);
     webdriver_mod.addImport("browser", browser_mod);
+    // A session id's random bits (protocol.generateSessionId).
+    webdriver_mod.addImport("platform", platform_mod);
 
     // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp). Off, its
     // root is src/devtools/unavailable.zig, which imports nothing: the
