@@ -30,12 +30,10 @@ fn symlink(allocator: std.mem.Allocator, target: []const u8, link: []const u8) !
     if (std.c.symlink(target_z, link_z) != 0) return error.SymlinkFailed;
 }
 
-fn modeOf(allocator: std.mem.Allocator, path: []const u8) !u32 {
-    const z = try allocator.dupeSentinel(u8, path, 0);
-    defer allocator.free(z);
-    var st: std.c.Stat = undefined;
-    if (std.c.stat(z, &st) != 0) return error.StatFailed;
-    return @as(u32, @intCast(st.mode)) & 0o777;
+/// The permission bits of `path` (std.c.Stat is void on glibc: std.Io's stat).
+fn modeOf(path: []const u8) !u32 {
+    const st = try std.Io.Dir.cwd().statFile(testing.io, path, .{});
+    return @intCast(st.permissions.toMode() & 0o777);
 }
 
 test "writeFilePrivate: a new file is the owner's alone, an existing one truncated in place" {
@@ -47,7 +45,7 @@ test "writeFilePrivate: a new file is the owner's alone, an existing one truncat
     defer allocator.free(file);
 
     try platform.writeFilePrivate(platform.Str.from(file), platform.Bytes.from("a longer first body"));
-    try testing.expectEqual(@as(u32, 0o600), try modeOf(allocator, file));
+    try testing.expectEqual(@as(u32, 0o600), try modeOf(file));
     try platform.writeFilePrivate(platform.Str.from(file), platform.Bytes.from("short"));
     const bytes = try platform.readFile(allocator, platform.Str.from(file), 1024);
     defer allocator.free(bytes);

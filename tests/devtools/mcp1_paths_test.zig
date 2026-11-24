@@ -57,11 +57,10 @@ fn read(a: std.mem.Allocator, path: []const u8) ![]const u8 {
     return platform.readFile(a, platform.Str.from(path), 1 << 20);
 }
 
-fn modeOf(a: std.mem.Allocator, path: []const u8) !u32 {
-    const z = try a.dupeSentinel(u8, path, 0);
-    var st: std.c.Stat = undefined;
-    if (std.c.stat(z, &st) != 0) return error.StatFailed;
-    return @as(u32, @intCast(st.mode)) & 0o777;
+/// The permission bits of `path` (std.c.Stat is void on glibc: std.Io's stat).
+fn modeOf(path: []const u8) !u32 {
+    const st = try std.Io.Dir.cwd().statFile(testing.io, path, .{});
+    return @intCast(st.permissions.toMode() & 0o777);
 }
 
 fn expectResult(a: std.mem.Allocator, text: []const u8, json: []const u8) !void {
@@ -99,7 +98,7 @@ test "take_snapshot filePath: written under a root with its extension .txt, owne
     try testing.expect(!r.is_error);
     const saved = try std.fmt.allocPrint(a, "{s}/snap.txt", .{dirs.inside});
     try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Saved snapshot to {s}.", .{saved}), r.text);
-    try testing.expectEqual(@as(u32, 0o600), try modeOf(a, saved));
+    try testing.expectEqual(@as(u32, 0o600), try modeOf(saved));
     // The file is the snapshot's text, as the inline answer gives it.
     const inline_answer = try h.tool("take_snapshot", "{\"pageId\":1}");
     const heading = "## Latest page snapshot\n";
@@ -261,7 +260,7 @@ test "get_network_request requestFilePath and responseFilePath: the bodies saved
     }
     try testing.expectEqualStrings("abc", try read(a, request_file));
     try testing.expectEqualStrings("not found", try read(a, response_file));
-    try testing.expectEqual(@as(u32, 0o600), try modeOf(a, response_file));
+    try testing.expectEqual(@as(u32, 0o600), try modeOf(response_file));
 }
 
 const upload_page = "data:text/html,<input type=file aria-label=one><input type=file multiple aria-label=many><button>Go</button>" ++
