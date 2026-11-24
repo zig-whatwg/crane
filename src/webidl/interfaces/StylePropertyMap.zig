@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
+const CSSStyleValueOrUSVString = @import("typedefs").CSSStyleValueOrUSVString;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const UndefinedOrCSSStyleValue = @import("typedefs").UndefinedOrCSSStyleValue;
 const USVString = @import("typedefs").USVString;
@@ -170,7 +171,7 @@ pub const StylePropertyMap = struct {
         }
     }
 
-    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const CSSStyleValueOrUSVString) anyerror!void {
         return try StylePropertyMapImpl.call_set(instance, property, values);
     }
 
@@ -182,7 +183,7 @@ pub const StylePropertyMap = struct {
         return try StylePropertyMapImpl.call_clear(instance);
     }
 
-    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const CSSStyleValueOrUSVString) anyerror!void {
         return try StylePropertyMapImpl.call_append(instance, property, values);
     }
 };
