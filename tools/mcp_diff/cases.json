@@ -833,21 +833,6 @@
       "case": "wait_for: later text, names, timeouts",
       "call": 6,
       "reason": "visible: true asks whether the matched text is visible - a computed style and a non-empty bounding box (Puppeteer's checkVisibility) - and Crane has no layout (needs-renderer); Crane answers \"visible is not supported by Crane's MCP server: Crane has no layout to tell whether text is visible.\""
-    },
-    {
-      "case": "snapshot: a page's tree and its uids",
-      "call": 2,
-      "reason": "The accessibility tree (lane a11y1's Accessibility domain), not the MCP server: Chrome ignores a label that names a checkbox or radio, and its text (Blink AXNodeObject: a label a checkbox or radio takes its name from); it gives an image its url property; the snapshot's formatting, numbering and the rest of the tree are equal. Reported to a11y1 through main (2026-11-24)."
-    },
-    {
-      "case": "snapshot: a page's tree and its uids",
-      "call": 3,
-      "reason": "The same tree as call 2 (a second snapshot of the same document keeps its uids in both): the label, its text and the image's url differ as there."
-    },
-    {
-      "case": "snapshot: a page's tree and its uids",
-      "call": 4,
-      "reason": "The accessibility tree (lane a11y1's Accessibility domain), not the MCP server: Chrome ignores a label that names a checkbox or radio, and its text (Blink AXNodeObject: a label a checkbox or radio takes its name from); it gives an image its url property; in the verbose tree also: a text field's inner editor (generic with its StaticText), the select's MenuListPopup's DOM node (so its uid). Reported to a11y1 through main (2026-11-24)."
     }
   ]
 }

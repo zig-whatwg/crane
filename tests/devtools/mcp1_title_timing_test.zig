@@ -46,8 +46,15 @@ fn browserPath(allocator: Allocator, port: u16) ![]u8 {
     return allocator.dupe(u8, ws[std.mem.indexOf(u8, ws, "/devtools/").?..]);
 }
 
+/// How long before DOMContentLoaded getTargets must name the title for it to
+/// count as named while the body streams in (the page's last chunk comes 300
+/// ms after its first): a title reported only at the end of parsing comes
+/// just before DOMContentLoaded, by however much the threads' timing gives.
+const ahead_ms = 100;
+
 const Seen = struct {
-    /// Target.getTargets named the title before DOMContentLoaded.
+    /// Target.getTargets named the title at least `ahead_ms` before
+    /// DOMContentLoaded came.
     listed_before_dcl: bool,
     /// A Target.targetInfoChanged named it: before DOMContentLoaded, and
     /// at all up to a second after the load.
@@ -79,6 +86,7 @@ fn titleTiming(allocator: Allocator, client: *cdp.Client, url: []const u8) !Seen
 
     // The title as getTargets lists it, until DOMContentLoaded.
     var listed_at: ?usize = null;
+    var listed_time: ?std.Io.Timestamp = null;
     while (rec.eventIndex("Page.domContentEventFired", session, start, &.{}) == null) {
         const id = try rec.send("Target.getTargets", "{}", "");
         const answered = try rec.awaitResponse(id);
@@ -87,10 +95,15 @@ fn titleTiming(allocator: Allocator, client: *cdp.Client, url: []const u8) !Seen
             if (!std.mem.eql(u8, cdp.stringAt(info, "targetId") orelse "", target_id)) continue;
             if (std.mem.eql(u8, cdp.stringAt(info, "title") orelse "", "streamed")) listed_at = answered;
         }
-        if (listed_at != null) break;
+        if (listed_at != null) {
+            listed_time = std.Io.Timestamp.now(std.testing.io, .awake);
+            break;
+        }
         std.Io.sleep(std.testing.io, .fromMilliseconds(10), .awake) catch {};
     }
     const dcl = try rec.awaitEvent("Page.domContentEventFired", session, start, &.{});
+    const dcl_time = std.Io.Timestamp.now(std.testing.io, .awake);
+    const ahead: i64 = if (listed_time) |t| t.durationTo(dcl_time).toMilliseconds() else -1;
     _ = try rec.awaitEvent("Page.loadEventFired", session, start, &.{});
     // A second more of events (a title event Chrome might send late).
     _ = try rec.awaitResponse(try rec.send("Runtime.evaluate", "{\"expression\":\"new Promise(r => setTimeout(r, 1000))\",\"awaitPromise\":true}", session));
@@ -103,10 +116,10 @@ fn titleTiming(allocator: Allocator, client: *cdp.Client, url: []const u8) !Seen
             const method = cdp.stringAt(m.value, "method") orelse continue;
             progress("{d}: {s} {s}", .{ i, method, cdp.stringAt(m.value, "params.targetInfo.title") orelse "" });
         }
-        progress("getTargets named the title at message {?d}; its targetInfoChanged at {?d}; DOMContentLoaded at {d}", .{ listed_at, titled, dcl });
+        progress("getTargets named the title at message {?d}, {d} ms ahead; its targetInfoChanged at {?d}; DOMContentLoaded at {d}", .{ listed_at, ahead, titled, dcl });
     }
     return .{
-        .listed_before_dcl = if (listed_at) |at| at < dcl else false,
+        .listed_before_dcl = if (listed_at) |at| at < dcl and ahead >= ahead_ms else false,
         .event_before_dcl = if (titled) |at| at < dcl else false,
         .event_at_all = titled != null,
     };
