@@ -259,26 +259,3 @@ fn collectChildren(allocator: Allocator, node: *TreeNode) ![]*TreeNode {
 
     return children;
 }
-
-/// Parse HTML from a string into a new Document.
-/// This is used by DOMParser.parseFromString() with "text/html".
-///
-/// HTML Standard: "parse HTML from a string"
-///
-/// Unlike parseFragment, this creates a complete document, not just fragment nodes.
-pub fn parseHTMLFromString(allocator: Allocator, html: []const u8) !*TreeBuilder {
-    // Create tokenizer (it creates its own InputStream internally)
-    const tokenizer = try allocator.create(Tokenizer);
-    errdefer allocator.destroy(tokenizer);
-    tokenizer.* = Tokenizer.init(allocator, html);
-
-    // Create tree builder
-    const tree_builder = try allocator.create(TreeBuilder);
-    errdefer allocator.destroy(tree_builder);
-    tree_builder.* = try TreeBuilder.init(allocator, tokenizer);
-
-    // Parse the document
-    try tree_builder.parse();
-
-    return tree_builder;
-}

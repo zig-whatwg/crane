@@ -71,7 +71,6 @@ pub const ParseErrorCode = core.ParseErrorCode;
 
 // Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
 pub const parseFragment = core.parseFragment;
-pub const parseHTMLFromString = core.parseHTMLFromString;
 pub const FragmentParseResult = core.FragmentParseResult;
 pub const FragmentParseOptions = core.FragmentParseOptions;
 

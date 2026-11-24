@@ -68,7 +68,6 @@ pub const entities = @import("html_entities");
 // Fragment parsing (innerHTML, DOMParser, etc.)
 pub const fragment_parser = @import("fragment_parser.zig");
 pub const parseFragment = fragment_parser.parseFragment;
-pub const parseHTMLFromString = fragment_parser.parseHTMLFromString;
 pub const FragmentParseResult = fragment_parser.FragmentParseResult;
 pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 
