@@ -11,7 +11,8 @@
 //!   never judged (the allocator's ring is on: the same bytes read in two
 //!   levels by chance);
 //! - the MEMORY pass, memory only, both sides with macOS malloc's
-//!   deferred-reclamation ring off (`MallocLargeCache=0`) and, when it was
+//!   deferred-reclamation ring off (`MallocLargeCache=0`) and one malloc
+//!   magazine (`MallocMaxMagazines=1`, the user 2026-11-23) and, when it was
 //!   run with `--collected`, each workload's footprint read once more after
 //!   a full collection the page asked for (`footprint_collected`).
 //!
