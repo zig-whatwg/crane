@@ -41,6 +41,10 @@ const owned = v8.conversions.memberValueIsOwned;
 const StringOrObject = union(enum) {
     domstring: runtime.DOMString,
     object: runtime.JSValue,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "domstring", .kind = .string },
+        .{ .field = "object", .kind = .object },
+    };
 };
 
 /// A nullable member whose presence matters: webidl.Opt(?DOMString).
@@ -54,6 +58,10 @@ const Namespaced = struct {
 const Element = union(enum) {
     domstring: runtime.DOMString,
     namespaced: Namespaced,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "domstring", .kind = .string },
+        .{ .field = "namespaced", .kind = .dictionary },
+    };
 };
 
 const Inner = struct {

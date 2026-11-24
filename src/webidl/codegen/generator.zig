@@ -16,6 +16,7 @@ const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
 const reflect = @import("reflect.zig");
 const argument_unions = @import("argument_unions.zig");
+const union_arms = @import("union_arms.zig");
 const special_operations = @import("special_operations.zig");
 const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
@@ -2760,6 +2761,8 @@ pub fn generateTypedef(
     // Import runtime (needed for DOMString types and Instance)
     // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    // A union's arms table is typed webidl.UnionArm.
+    if (typedef.idlType.unionTypes != null) try w.writeAll("const webidl = @import(\"webidl\");\n");
 
     // Check if typedef references a callback - if so, import callbacks module
     const needs_callbacks = typeReferencesCallback(typedef.idlType, &ir.type_registry);
@@ -2803,6 +2806,13 @@ pub fn generateTypedef(
             used_names.deinit();
         }
 
+        // The fields' names, for the arms table.
+        var field_names = std.ArrayList([]const u8).empty;
+        defer {
+            for (field_names.items) |name| allocator.free(name);
+            field_names.deinit(allocator);
+        }
+
         for (union_types) |union_type| {
             // Derive semantic name from the IDL type
             const base_name = try deriveVariantName(allocator, union_type);
@@ -2817,7 +2827,10 @@ pub fn generateTypedef(
                 try allocator.dupe(u8, base_name)
             else
                 try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_name, count });
-            defer allocator.free(variant_name);
+            {
+                errdefer allocator.free(variant_name);
+                try field_names.append(allocator, variant_name);
+            }
 
             try w.print("    {s}: ", .{variant_name});
             try writeTypeForTypedefWithRegistry(allocator, w, union_type, typedefs_path, &ir.type_registry);
@@ -2825,6 +2838,7 @@ pub fn generateTypedef(
         }
 
         try writeRestrictedArms(allocator, w, union_types, ir);
+        try union_arms.writeArms(w, typedef.name, union_types, field_names.items, ir);
 
         try w.writeAll("};\n");
     } else {

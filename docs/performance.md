@@ -475,9 +475,10 @@ command reads them:
 # the default pass: time, CPU, instructions; steady and peak memory
 perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<D> --round=<n> --runs=7 \
   --pin=crane.pin --pin=crane_base.pin
-# the memory pass: memory only, the allocator's deferred-reclamation ring off on BOTH sides, and
-# ALWAYS --collected: each timed workload's footprint read once more after a full collection
-MallocLargeCache=0 perf_bench run --suite=... --root=tests/perf --out=<M> --round=<n> --runs=9 \
+# the memory pass: memory only, the allocator's deferred-reclamation ring off and ONE malloc magazine
+# on BOTH sides (MallocMaxMagazines=1: the user, 2026-11-23), and ALWAYS --collected: each timed
+# workload's footprint read once more after a full collection
+MallocLargeCache=0 MallocMaxMagazines=1 perf_bench run --suite=... --root=tests/perf --out=<M> --round=<n> --runs=9 \
   --pin=crane.pin --pin=crane_base.pin --collected
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
