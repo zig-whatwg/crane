@@ -1050,24 +1050,91 @@
           }
         }
       ]
+    },
+    {
+      "name": "history: back right after the first navigation",
+      "about": "Chrome navigates its startup URL first; Firefox, Safari and Crane replace the first tab's initial about:blank.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "back"
+          }
+        }
+      ]
+    },
+    {
+      "name": "history: back and forward",
+      "about": "navigate_page back and forward between documents, past the end, and across a pushState (a same-document traversal: no load to wait for).",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/second.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "back"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "forward"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "forward"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { history.pushState(null, '', '#pushed'); return location.href; }"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "back"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "forward"
+          }
+        }
+      ]
     }
   ],
   "expected": [
-    {
-      "case": "pages: navigate, reload, back, forward",
-      "call": 3,
-      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
-    },
-    {
-      "case": "pages: navigate, reload, back, forward",
-      "call": 4,
-      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
-    },
-    {
-      "case": "pages: navigate, reload, back, forward",
-      "call": 6,
-      "reason": "navigate_page back/forward needs Page.getNavigationHistory and Page.navigateToHistoryEntry, which Crane's CDP does not answer yet: batch 4 (design 10, \"navigate_page (without history)\" in batch 1)."
-    },
     {
       "case": "network: list, filter, details",
       "call": 2,
@@ -1102,6 +1169,11 @@
       "case": "files: upload",
       "call": 9,
       "reason": "Not a file input: chrome-devtools-mcp clicks the element and waits 3 s for a file chooser (Page.setInterceptFileChooserDialog); element clicks are batch 5, so Crane says no click happened (main's ruling 3, 2026-11-24). Batch 5 switches to Google's text and the file-chooser path."
+    },
+    {
+      "case": "history: back right after the first navigation",
+      "call": 2,
+      "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, .mcp1/startup-probe.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
     }
   ]
 }
