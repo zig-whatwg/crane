@@ -251,7 +251,3 @@ fn decodeBody(arena: Allocator, body: []const u8, base64: bool) !?[]const u8 {
     decoder.decode(decoded, body) catch return null;
     return decoded;
 }
-
-test {
-    _ = text_util;
-}

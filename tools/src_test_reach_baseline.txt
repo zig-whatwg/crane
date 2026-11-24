@@ -2,10 +2,6 @@
 # count of unrun blocks and why. Only goes down: `zig build check-src-tests -j2 -- --update`
 # after wiring or deleting some refuses a new file or a rise. A new line's reason is the
 # integrator's to review.
-
-src/devtools/mcp/tools/network.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
-src/devtools/mcp/tools/pages.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
-src/devtools/mcp/tools/script.zig	1	lane core1 (f): named from src/devtools/mcp/tools.zig once main (mcp1 b3) is merged
 src/platform/adapters/testing/seeded_random.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
 src/platform/clipboard_adapter.zig	3	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
 src/platform/clock.zig	5	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
