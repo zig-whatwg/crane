@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const DOMStringList = @import("interfaces").DOMStringList;
+const DOMStringOrSequenceOfDOMString = @import("typedefs").DOMStringOrSequenceOfDOMString;
 const IDBIndexParameters = @import("dictionaries").IDBIndexParameters;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
 const IDBIndex = @import("interfaces").IDBIndex;
@@ -328,7 +329,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: runtime.JSValue, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
+    pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: DOMStringOrSequenceOfDOMString, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);

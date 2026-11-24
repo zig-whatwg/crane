@@ -199,9 +199,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // fs
     .{ "WriteParams", "data", "" },
     // idb
-    .{ "IDBDatabase", "transaction", "storeNames" },
-    .{ "IDBObjectStore", "createIndex", "keyPath" },
-    .{ "IDBObjectStoreParameters", "keyPath", "" },
     // media
     .{ "MediaStreamConstraints", "audio", "" },
     .{ "MediaStreamConstraints", "video", "" },
