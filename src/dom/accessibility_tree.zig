@@ -235,6 +235,9 @@ pub const Tree = struct {
     fn addChildren(self: *Tree, owner: Index, dom: *Instance, inherited: Inherited) anyerror!void {
         const base = bridge.getNodeBase(dom) orelse return;
         if (base.node_type == NodeBase.ELEMENT_NODE) {
+            // An image with a map: its areas are its children
+            // (AXNodeObject::AddImageMapChildren, AXImageMapLink).
+            if (isHtml(dom) and eq(localName(dom), "img")) try self.addImageMapChildren(owner, dom);
             if (!canHaveChildren(dom)) return;
             // Children of frames are never part of layout (AddNodeChildren).
             if (isFrame(dom)) return;
@@ -260,6 +263,26 @@ pub const Tree = struct {
             for (try a11y.related(self.arena, dom, .owns)) |owned| {
                 if (self.names.ownerOf(owned) == dom) try self.addNodeChild(owner, owned, inherited, true);
             }
+        }
+    }
+
+    /// The areas of the map an <img usemap> names, each an AXImageMapLink:
+    /// a link when it has an href, else a generic container
+    /// (AXImageMapLink::NativeRoleIgnoringAria; html-aam/area-role.html:
+    /// Chrome 157, Firefox 160 and Safari 27.2 all answer link).
+    fn addImageMapChildren(self: *Tree, owner: Index, img: *Instance) !void {
+        const usemap = std.mem.trim(u8, attribute(img, "usemap") orelse return, spaces);
+        if (usemap.len < 2 or usemap[0] != '#') return;
+        const name = usemap[1..];
+        const map = findMap(bridge.getNodeBase(self.document).?, name) orelse return;
+        var at = nextInSubtree(bridge.getNodeBase(map).?, bridge.getNodeBase(map).?);
+        while (at) |current| : (at = nextInSubtree(current, bridge.getNodeBase(map).?)) {
+            const area = a11y.instance(current) orelse continue;
+            if (current.node_type != NodeBase.ELEMENT_NODE or !isHtml(area) or !eq(localName(area), "area")) continue;
+            if (self.by_node.contains(area)) continue;
+            const role: Role = if (attribute(area, "href") != null) .Link else .GenericContainer;
+            const index = try self.appendNode(owner, .{ .source = .{ .node = area }, .role = role, .native_role = role, .has_layout = true });
+            try self.by_node.put(self.arena, area, index);
         }
     }
 
@@ -550,6 +573,21 @@ pub const Tree = struct {
         if (role == .RubyAnnotation) return .ignore;
         const tag = localName(dom);
         const html_element = isHtml(dom);
+        // SVG (ShouldIncludeBasedOnSemantics' SVG block, before the rules
+        // below): a <symbol>'s subtree is a template, not rendered where it
+        // is; a non-empty outermost <svg> is kept (clients may treat it as an
+        // image); so is an element with a direct <title> or <desc> child
+        // (SVG-AAM "Including elements": css-display/accessibility/
+        // display-contents-role-and-label.html's display:contents <g>,
+        // group in Chrome 157, Firefox 160 and Safari 27.2).
+        if (isSvg(dom)) {
+            var at: ?*Instance = dom;
+            while (at) |n| : (at = a11y.parent(n)) {
+                if (isSvg(n) and eq(localName(n), "symbol")) return .ignore;
+            }
+            if (object.native_role == .SvgRoot and object.has_layout and firstElementChild(dom) != null) return .include;
+            if (a11y.firstChildNamed(dom, "title") != null or a11y.firstChildNamed(dom, "desc") != null) return .include;
+        }
         if (isTableLike(role) or isTableRowLike(role) or isTableCellLike(role) or (html_element and oneOf(tag, .{ "thead", "tfoot" }))) return .include;
         if (html_element and eq(tag, "html")) {
             try reasons.append(self.arena, .{ .reason = .uninteresting });
@@ -712,7 +750,9 @@ pub const Tree = struct {
             if (isSvg(dom)) {
                 if (eq(tag, "svg")) return if (bridge.getNodeBase(dom).?.parent_node != null and svgParent(dom)) .Group else .SvgRoot;
                 if (eq(tag, "g")) return .Group;
-                if (eq(tag, "a")) return if (attribute(dom, "href") != null) .Link else .Group;
+                // An SVG link by href or xlink:href (SVGAElement's
+                // IsLinkable; svg-aam/role/roles.html: link in all three).
+                if (eq(tag, "a")) return if (attribute(dom, "href") != null or xlinkHref(dom) != null) .Link else .Group;
                 if (oneOf(tag, .{ "rect", "circle", "ellipse", "line", "path", "polygon", "polyline" })) return .GraphicsSymbol;
                 if (eq(tag, "image")) return .Image;
                 if (eq(tag, "use")) return .GraphicsObject;
@@ -728,7 +768,12 @@ pub const Tree = struct {
         if (eq(tag, "details")) return .Details;
         if (eq(tag, "summary")) {
             const p = a11y.parent(dom) orelse return .GenericContainer;
-            if (isHtml(p) and eq(localName(p), "details")) {
+            // LayoutTreeBuilderTraversal::Parent: only the details' first
+            // summary child is slotted into its summary slot, whose parent
+            // is the details; any other summary sits in the default slot, in
+            // the details' content (html-aam/summary.html: Chrome 157,
+            // Firefox 160 and Safari 27.2 all answer generic).
+            if (isHtml(p) and eq(localName(p), "details") and a11y.firstChildNamed(p, "summary") == dom) {
                 return if (attributeLength(p, "name") == 0) .DisclosureTriangle else .DisclosureTriangleGrouped;
             }
             return .GenericContainer;
@@ -993,7 +1038,16 @@ pub const Tree = struct {
     fn tableCellRole(self: *Tree, cell: *Instance) !Role {
         const row = a11y.parent(cell) orelse return .GenericContainer;
         if (!isHtml(row) or !eq(localName(row), "tr")) return .GenericContainer;
-        const row_role = try self.tableRowRole(row);
+        // The row's role as its object has it - an explicit role=row too
+        // (DetermineTableCellRole reads the parent object's RoleValue).
+        const native_row = try self.tableRowRole(row);
+        const aria_row = try self.ariaRole(row, native_row);
+        const row_role = if (aria_row != .Unknown) aria_row else native_row;
+        // And the row's own table ancestor must be table-like
+        // (GetDOMTableAXAncestor of the row): a row inside a presentational
+        // table keeps its cells generic even with role=row.
+        const table = (try self.domTable(row)) orelse return .GenericContainer;
+        if (!isTableLike(table)) return .GenericContainer;
         if (!isTableRowLike(row_role)) return .GenericContainer;
         if (row_role == .LayoutTableRow) return .LayoutTableCell;
         if (eq(localName(cell), "th")) {
@@ -1411,29 +1465,34 @@ fn nodelessProperties(tree: *Tree, index: Index) ![]const Property {
 /// WebDriver's answers for one element.
 pub const WebDriverAnswer = struct { role: []const u8, label: []const u8 };
 
-/// The getPartialAXTree node's role and name for `element` in its node
-/// document's tree (BuildProtocolAXNodeForDOMNodeWithNoAXNode and an ignored
-/// object: role none and no name), with the rule-2 overrides. Strings live in
-/// `arena` or are static.
+/// The getPartialAXTree node's role for `element` in its node document's
+/// tree (BuildProtocolAXNodeForDOMNodeWithNoAXNode, and an ignored object:
+/// role none), and its accessible name, with the rule-2 overrides. Strings
+/// live in `arena` or are static.
 pub fn webdriverAnswer(arena: Allocator, element: *Instance, options: Options) !WebDriverAnswer {
-    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return .{ .role = "none", .label = "" };
+    // The label: chromedriver sends the CDP node's name, none for an ignored
+    // object or an element with no object, where Firefox and Safari compute
+    // AccName all the same (a <b>'s or a <wbr>'s title, a <video>'s
+    // aria-label: html-aam/accname-computation-by-element/
+    // phrasing-elements.html and section-and-grouping-elements.html, wpt.fyi
+    // Chrome 157 4786307730243584 fails, Firefox 160 4877168468033536 and
+    // Safari 27.2 6479119966273536 pass) - the majority's answer, for every
+    // element: AccName, roles by its own decision, in the tree the element's
+    // root roots (a detached subtree too).
+    const label = try a11y.computedName(arena, element, options.names());
+    // Detached: no document's tree holds it, and chromedriver would refuse
+    // it as stale. Crane answers the element's own role (the harness choice
+    // crane/ar3-pending-command-gc.html pins: WPT's selector transport sends
+    // :scope for an id-less detached element, and Chrome, Firefox and Safari
+    // pass aria-element-reflection-labelledby.html through that artifact).
+    if (!(interfaces.Node.get_isConnected(element) catch false)) {
+        return .{ .role = try a11y.role(arena, element, options.names()), .label = label };
+    }
+    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return .{ .role = "none", .label = label };
     const tree = try arena.create(Tree);
     tree.* = try Tree.build(arena, document, options);
-    const index = tree.indexOf(element) orelse {
-        // No object (Chrome: role none, no name). The label: Firefox and
-        // Safari name such an element by AccName all the same (a <wbr>'s
-        // aria-label, html-aam/accname-computation-by-element/
-        // phrasing-elements.html, wpt.fyi Chrome 157 4786307730243584 fails,
-        // Firefox 160 4877168468033536 and Safari 27.2 6479119966273536
-        // pass): the majority's answer.
-        return .{ .role = "none", .label = try a11y.computedName(arena, element, options.names()) };
-    };
+    const index = tree.indexOf(element) orelse return .{ .role = "none", .label = label };
     const object = tree.node(index);
-    // The label of an ignored object: chromedriver sends none (its node has
-    // no name), Firefox and Safari name it (a <b>'s title, a <video>'s
-    // aria-label: phrasing-elements.html, section-and-grouping-elements.html,
-    // the same runs): the majority's answer, the object's AccName.
-    const label = try nameOf(tree, index);
     if (object.ignored) return .{ .role = "none", .label = label };
     return .{ .role = object.role.cdpName().name, .label = label };
 }
@@ -2935,6 +2994,41 @@ fn isFrame(n: *Instance) bool {
     return isHtml(n) and oneOf(localName(n), .{ "iframe", "frame", "fencedframe" });
 }
 
+/// The first <map> in `root`'s subtree whose name (or, with none, id) is
+/// `name` (HTML 4.8.14 "rules for parsing a hash-name reference").
+fn findMap(root: *NodeBase, name: []const u8) ?*Instance {
+    var at = nextInSubtree(root, root);
+    while (at) |current| : (at = nextInSubtree(current, root)) {
+        const element = a11y.instance(current) orelse continue;
+        if (current.node_type != NodeBase.ELEMENT_NODE or !isHtml(element) or !eq(localName(element), "map")) continue;
+        if (attribute(element, "name")) |n| if (eq(n, name)) return element;
+        if (attribute(element, "id")) |id| if (eq(id, name)) return element;
+    }
+    return null;
+}
+
+/// The next node after `node` in tree order inside `boundary`'s subtree.
+fn nextInSubtree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
+    if (node.firstChild()) |child| return child;
+    var at = node;
+    while (at != boundary) {
+        if (at.next_sibling) |sibling| return sibling;
+        at = at.parent_node orelse return null;
+    }
+    return null;
+}
+
+fn xlinkHref(n: *Instance) ?[]const u8 {
+    const element = data.of(n) orelse return null;
+    return if (element.findAttribute("http://www.w3.org/1999/xlink", "href")) |entry| entry.value else null;
+}
+
+fn firstElementChild(n: *Instance) ?*Instance {
+    var at = bridge.getNodeBase(n).?.firstChild();
+    while (at) |child| : (at = child.next_sibling) if (child.node_type == NodeBase.ELEMENT_NODE) return a11y.instance(child);
+    return null;
+}
+
 fn isSvg(n: *Instance) bool {
     const element = data.of(n) orelse return false;
     return eq(element.namespaceSlice() orelse "", "http://www.w3.org/2000/svg");
@@ -3095,7 +3189,11 @@ fn hasRequiredParentContext(tree: *Tree, dom: *Instance, role: Role) bool {
         if (bridge.getNodeBase(p).?.node_type != NodeBase.ELEMENT_NODE) continue;
         if (role == .ListItem and isHtml(p) and oneOf(localName(p), .{ "ul", "ol", "menu" })) return true;
         if (role == .ListBoxOption and isHtml(p) and eq(localName(p), "select")) return true;
-        const value = attribute(p, "role") orelse "";
+        // The parent's role attribute, else its ElementInternals role
+        // (custom-elements/ElementInternals-role.html "Applies parent/child
+        // relationship ... via Element Internals": Chrome 157, Firefox 160
+        // and Safari 27.2 all pass).
+        const value = (a11y.effective(tree.arena, p, "role", "role") catch null) orelse "";
         var parent_role: Role = .Unknown;
         var tokens = std.mem.tokenizeAny(u8, value, spaces);
         while (tokens.next()) |token| {
