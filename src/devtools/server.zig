@@ -481,6 +481,7 @@ pub const Server = struct {
             .tab = tab,
             .url = self.allocator.dupe(u8, "about:blank") catch return,
             .title = &.{},
+            .display_url = self.allocator.dupe(u8, "about:blank") catch return,
             .opener = opener,
             .opened_by_page = opened_by_page,
             .partner = tab_target,
@@ -591,6 +592,7 @@ pub const Server = struct {
 
     fn freeTarget(self: *Server, target: *targets.Target) void {
         self.allocator.free(target.url);
+        self.allocator.free(target.display_url);
         self.allocator.free(target.title);
         target.waiting.deinit(self.allocator);
         self.allocator.destroy(target);
@@ -1013,7 +1015,7 @@ pub const Server = struct {
             try entries.append(self.allocator, .{
                 .devtoolsFrontendUrl = frontend_url,
                 .id = t.id.slice(),
-                .title = if (t.title.len != 0) t.title else t.url,
+                .title = if (t.title.len != 0) t.title else t.display_url,
                 .type = "page",
                 .url = t.url,
                 .webSocketDebuggerUrl = ws_url,
@@ -1124,9 +1126,7 @@ pub const Server = struct {
             .navigated => |e| if (self.pageTargetOf(context, e.navigable)) |page| {
                 for ([_]?*targets.Target{ page, page.partner }) |maybe| {
                     const t = maybe orelse continue;
-                    const url = self.allocator.dupe(u8, e.url) catch continue;
-                    self.allocator.free(t.url);
-                    t.url = url;
+                    targets.setUrl(self.allocator, t, e.url) catch continue;
                     t.committed = true;
                     if (e.cross_document and t.title.len > 0) {
                         self.allocator.free(t.title);
@@ -1136,13 +1136,15 @@ pub const Server = struct {
                 }
             },
             // Only the page target carries the title (Chrome's tab target
-            // reports "").
+            // reports ""). Target.getTargets and the next TargetInfo show
+            // it; no targetInfoChanged tells it - Chrome 157 sends that
+            // for a commit only, never for a parsed or script-set title
+            // (tests/devtools/mcp1_target_title_test.zig).
             .title_changed => |e| if (self.pageTargetOf(context, e.tab)) |page| {
                 if (!std.mem.eql(u8, page.title, e.title)) {
                     if (self.allocator.dupe(u8, e.title)) |title| {
                         self.allocator.free(page.title);
                         page.title = title;
-                        self.targetChanged(page);
                     } else |_| {}
                 }
             },
