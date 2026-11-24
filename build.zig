@@ -2816,6 +2816,16 @@ pub fn build(b: *std.Build) void {
         const run_html_tests = addSuiteRun(b, launch, html_tests, "src-html", null);
         test_step.dependOn(&run_html_tests.step);
 
+        // html_core's own tests (src/html/root.zig; lane core1, 2026-11-24).
+        // src-html roots full.zig, which imports html_core as a module, and a
+        // dependency's tests are never collected: its 320 test blocks ran
+        // nowhere (docs/lessons/testing-a-test-block-in-a-module-no-step-
+        // roots-never-runs.md). The 37 a triage kept run here. The module is
+        // its own executable's root, as `testing_graph.html` is src-html's, and
+        // not engine-linked, for the same reason (above).
+        const html_core_tests = b.addTest(.{ .root_module = testing_graph.html_core });
+        test_step.dependOn(&addSuiteRun(b, launch, html_core_tests, "src-html_core", null).step);
+
         // Add dedicated test files from tests/html/
         const html_imports = [_]std.Build.Module.Import{
             .{ .name = "host", .module = testing_graph.host },
