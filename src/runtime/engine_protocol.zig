@@ -3471,10 +3471,12 @@ pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSl
 /// `node` - a node's instance - keeps values for script that the walk traces
 /// from it from now on (refcount step 8: a listener's callback, a registered
 /// observer; dom.wrapper_tracing.noteNodeHoldsValues): its wrapper, if it
-/// has one, is kept by young-generation collections from here - still no
-/// root in a full collection, where the walk keeps it or nothing does. A
-/// node with no wrapper costs nothing: the engine asks runtime.lifetime's
-/// `keepsValues` where it makes the wrapper, and makes that kind then. Why:
+/// has one, is kept by young-generation collections from here - in every
+/// world it is wrapped in (section 4.2a: a node only an isolated world
+/// wrapped is held by that world's wrapper alone) - still no root in a full
+/// collection, where the walk keeps it or nothing does. A node with no
+/// wrapper costs nothing: the engine asks runtime.lifetime's `keepsValues`
+/// where it makes a wrapper, in any world, and makes that kind then. Why:
 /// the walk visits a node only while it is held, a wrapped node is held by
 /// its wrapper, and an engine that drops a wrapper script cannot tell from a
 /// fresh one in a young collection would leave the node unvisited and take

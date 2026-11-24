@@ -1051,6 +1051,24 @@ pub fn traceWorldWrappers(worlds: *const AgentWorlds, instance: *engine.Instance
     }
 }
 
+/// engine.keepNodeWrapperInYoungCollections, the worlds' half
+/// (node_wrappers.keepInYoungCollections): `instance`, a node, keeps values
+/// for script from now on - its wrapper in each world realm of its relevant
+/// realm is kept by young-generation collections from here, as its main
+/// world's is. A node wrapped only in a world is held by that world's
+/// wrapper alone, and the walk that traces its listeners visits held nodes
+/// only. `worlds` is the agent's (its registry's, non-null only once a world
+/// realm was made: an agent with none pays nothing). On the agent's thread,
+/// outside the collector.
+pub fn keepNodeWrappersInYoungCollections(worlds: *const AgentWorlds, isolate: *ffi.Isolate, instance: *engine.Instance) void {
+    const list = worlds.by_main.get(instance.ctx) orelse return;
+    for (list.items) |w| {
+        const storage = w.realm.getV8WrapperCacheStorage() orelse continue;
+        const cache: *const WrapperCache = @ptrCast(@alignCast(storage));
+        cache.keepWorldEntryInYoungCollections(isolate, instance);
+    }
+}
+
 /// `instance`, a node, was torn down while wrappers of it may live (a forced
 /// realm end's coordinated teardown: context_manager.markInstanceCleanedUp):
 /// each world realm's wrapper of it is severed and its reference forgotten,

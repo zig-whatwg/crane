@@ -562,19 +562,23 @@ fn holdKept(isolate: *ffi.Isolate, instance: *runtime.Instance, slot: *NodeWrapp
 }
 
 /// engine.keepNodeWrapperInYoungCollections: `instance`, a node, keeps values
-/// for script from now on. With a wrapper, its slot's droppable reference is
-/// made again as a default one - a root in a young-generation collection,
-/// traced by the walk in a full one as before (v8_NodeWrapper_
-/// KeepInYoungCollections). With none there is nothing to do: `adopt` asks
-/// runtime.lifetime.keepsValues when it makes the wrapper. A node of an
-/// ended agent, or one that is no node, is left alone.
+/// for script from now on. Each wrapper it has - the main world's, in its
+/// slot, and each isolated world's, in that world's wrapper cache
+/// (protocol_worlds.keepNodeWrappersInYoungCollections) - has its droppable
+/// reference made again as a default one: a root in a young-generation
+/// collection, traced by the walk in a full one as before (v8_NodeWrapper_
+/// KeepInYoungCollections). A world it is not wrapped in yet needs nothing
+/// now: the wrap asks runtime.lifetime.keepsValues when it makes the wrapper
+/// (`adopt`; WrapperCache.set for a world's). So a node with no wrapper at
+/// all costs two loads and one call into the isolate's record here. A node
+/// of an ended agent, or an instance that is no node, is left alone.
 pub fn keepInYoungCollections(instance: *runtime.Instance) void {
     const slot = slotOfInstance(instance) orelse return;
-    if (slot.isEmpty()) return;
     const isolate = isolateOfInstance(instance) orelse return;
     const registry = registryOf(isolate) orelse return;
     if (registry.ended) return;
-    ffi.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(slot));
+    if (!slot.isEmpty()) ffi.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(slot));
+    if (registry.worlds) |worlds| @import("protocol_worlds.zig").keepNodeWrappersInYoungCollections(worlds, isolate, instance);
 }
 
 /// engine.keepPlatformObjectAlive for a node: one more counted keep. The
