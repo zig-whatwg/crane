@@ -1173,7 +1173,7 @@
     {
       "case": "history: back right after the first navigation",
       "call": 2,
-      "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, .mcp1/startup-probe.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
+      "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
     }
   ]
 }

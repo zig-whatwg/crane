@@ -49,7 +49,7 @@ fn browserPath(allocator: Allocator, port: u16) ![]u8 {
 /// about:blank: entry e0, auto_toplevel), so its first navigation pushes;
 /// Firefox 159 and Safari 27.2 under WebDriver keep their first tab's
 /// initial about:blank, which the first navigation replaces (lane mcp1's
-/// probe, chat.local 2026-11-24, .mcp1/startup-probe.sh: history.length
+/// probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length
 /// stays 1, back() stays), and Crane does as they and HTML do (main's
 /// ruling: the browser majority).
 fn startupEntry(entries: []const std.json.Value, current: i64) usize {

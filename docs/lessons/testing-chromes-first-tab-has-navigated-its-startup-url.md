@@ -1,0 +1,12 @@
+# Testing: Chrome's first tab has navigated its startup URL - its history is not a fresh tab's
+
+**Date**: 2026-11-24
+**Lesson**: Before matching a history-dependent answer to Chrome's, check how the first tab started. Headless Chrome and Puppeteer-launched Chrome navigate their startup URL (about:blank) as a real navigation, so the first navigation after it pushes. Firefox and Safari under WebDriver, Crane and HTML keep the initial about:blank, which the first navigation replaces.
+
+**Why**: HTML's navigate makes a navigation away from a navigable's *initial* about:blank a replace, and Chrome does the same for a true initial entry. But Chrome's first tab is not on its initial entry. Its startup URL is committed as entry e0 (transition auto_toplevel, userTypedURL about:blank), so Chrome's first Page.navigate is a push and back() returns to about:blank. The difference comes from how the browser starts, not from the history algorithms. It shows in every history-dependent answer: history.length, Page.getNavigationHistory, navigate_page back.
+
+**What Happened**: Lane mcp1's batch 4 recorded Chrome 157's Page.getNavigationHistory (tests/devtools/mcp1_history_test.zig). After the first navigation Chrome listed two entries, while Crane's BrowserHost first page would list one. Making Crane navigate its startup URL too looked like the Chrome-matching fix. Main ruled that the browsers decide. A WebDriver probe on chat.local (tmp/probes/mcp1-startup/run.sh: new session, navigate, history.length, back()) showed Firefox 159 and Safari 27.2 replacing: history.length stayed 1 and back() stayed put. Two of three replace, as Crane and HTML do, so Crane's startup did not change.
+
+**Fix**: The Chrome comparison sets Chrome's startup entry apart. A leading `auto_toplevel about:blank` entry that is not current is dropped and the indices shifted (`startupEntry`), so the rest of the record is compared exactly. The MCP differential suite lists "back right after the first navigation" as an expected difference, with the probe as evidence, and starts its other history cases from a second navigation.
+
+**Takeaway**: **A Chrome trace's first-tab history includes a startup navigation that Firefox, Safari and a fresh HTML navigable don't have. Probe the other two browsers before copying Chrome's start state, and set the startup entry apart in comparisons rather than changing Crane's startup.**
