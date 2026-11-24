@@ -48,7 +48,6 @@ tests/test_runner/globals.zig 1
 tests/v8/bf1_engine_tasks_test.zig 1
 tests/v8/bf1_muted_script_test.zig 1
 tests/v8/bindfix1_union_arm_restricted_test.zig 2
-tests/v8/dictionary_member_null_test.zig 1
 tests/v8/html_constructor_shape_test.zig 2
 tests/v8/interface_type_tables_test.zig 4
 tests/v8/object_type_conversion_test.zig 1

@@ -1,5 +1,7 @@
 //! Sanitizer configuration regression: no JavaScript engine is needed to
 //! canonicalize the null dictionary or to own a modifier's input strings.
+//! `new Sanitizer(null)` reaches the impl as the binding converts it (WebIDL
+//! 3.2.25 step 4): the union's SanitizerConfig member, with no member set.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -9,7 +11,7 @@ test "Sanitizer null configuration has permissive defaults" {
     var page: fixture.Page = undefined;
     try page.open();
     defer page.close();
-    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(runtime.JSValue.jsNull));
+    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(.{ .sanitizer_config = .{} }));
     defer runtime.Instance.deinit(sanitizer);
     const config = try interfaces.Sanitizer.call_get(sanitizer);
     try std.testing.expectEqual(@as(?bool, true), config.comments);
@@ -23,7 +25,7 @@ test "Sanitizer processing instruction modifiers canonicalize and report changes
     var page: fixture.Page = undefined;
     try page.open();
     defer page.close();
-    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(runtime.JSValue.jsNull));
+    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(.{ .sanitizer_config = .{} }));
     defer runtime.Instance.deinit(sanitizer);
     try std.testing.expect(try interfaces.Sanitizer.call_removeProcessingInstruction(sanitizer, .{ .domstring = fixture.str("target") }));
     try std.testing.expect(!try interfaces.Sanitizer.call_removeProcessingInstruction(sanitizer, .{ .domstring = fixture.str("target") }));
@@ -38,7 +40,7 @@ test "Sanitizer javascript URLs default to permissive for null config and modifi
     var page: fixture.Page = undefined;
     try page.open();
     defer page.close();
-    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(runtime.JSValue.jsNull));
+    const sanitizer = try interfaces.Sanitizer.call_constructor(&page.ctx, .passed(.{ .sanitizer_config = .{} }));
     defer runtime.Instance.deinit(sanitizer);
     try std.testing.expectEqual(@as(?bool, true), (try interfaces.Sanitizer.call_get(sanitizer)).javascriptURLs);
     try std.testing.expect(!try interfaces.Sanitizer.call_setJavascriptURLs(sanitizer, true));
