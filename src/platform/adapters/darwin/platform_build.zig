@@ -210,3 +210,12 @@ pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *st
         run.step.dependOn(&dsym.step);
     }
 }
+
+/// Its system libraries are found where Zig looks for them: no stand-ins.
+pub fn needsStandIns(target: std.Build.ResolvedTarget) bool {
+    _ = target;
+    return false;
+}
+pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    _ = .{ b, module, target };
+}

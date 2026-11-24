@@ -1518,27 +1518,17 @@ fn addCompileCheck(
         }),
     });
     engine.link(b, check.root_module, .{ .link = false });
-    addCrossLibraryStubs(b, check.root_module, target);
+    platform_build.addStandIns(b, check.root_module, target);
     return check;
-}
-
-/// Whether a compile for `target` has no sysroot here to find the system
-/// libraries its graph names in (addCrossLibraryStubs): a target of the
-/// system the stand-ins are built for whose query names its OS or ABI. What
-/// the target's query names, not what the host is: `-Dtarget` with the build
-/// machine's own triple names both, and gets no search path.
-fn hasNoSysroot(target: std.Build.ResolvedTarget) bool {
-    const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
-    return target.result.os.tag == .linux and names_os_or_abi;
 }
 
 /// What check-target builds of a test executable bound to -Dtarget (the
 /// platform contract's tests): the executable itself, linked - unless the
-/// target has no sysroot here (`hasNoSysroot`). Then the executable cannot
+/// target has no sysroot here (platform_build.needsStandIns). Then the executable cannot
 /// link: its graph names system libraries (a kit part's, through the
 /// platform's build declaration, since lane life1) that only the target's
 /// own sysroot has, and the stand-ins may never reach a link
-/// (addCrossLibraryStubs). So check-target compiles a twin instead, as it
+/// (platform_build.addStandIns). So check-target compiles a twin instead, as it
 /// compiles crane and wpt_runner: the same root source, target, mode and
 /// imports in a root module of its own, with the stand-ins, linking
 /// nothing. build() holds each twin, kept in `compile_only`, to "nobody asks
@@ -1546,7 +1536,7 @@ fn hasNoSysroot(target: std.Build.ResolvedTarget) bool {
 fn targetCheckOf(b: *std.Build, exe: *std.Build.Step.Compile, compile_only: *std.ArrayList(*std.Build.Step.Compile)) *std.Build.Step {
     const root = exe.root_module;
     const target = root.resolved_target.?;
-    if (!hasNoSysroot(target)) return &exe.step;
+    if (!platform_build.needsStandIns(target)) return &exe.step;
     const module = b.createModule(.{
         .root_source_file = root.root_source_file,
         .target = target,
@@ -1554,45 +1544,10 @@ fn targetCheckOf(b: *std.Build, exe: *std.Build.Step.Compile, compile_only: *std
         .link_libc = root.link_libc,
     });
     for (root.import_table.keys(), root.import_table.values()) |name, dep| module.addImport(name, dep);
-    addCrossLibraryStubs(b, module, target);
+    platform_build.addStandIns(b, module, target);
     const twin = b.addTest(.{ .name = b.fmt("{s}_compile_only", .{exe.name}), .root_module = module });
     compile_only.append(b.allocator, twin) catch @panic("OOM");
     return &twin.step;
-}
-
-/// The system libraries a module graph names (kit/sqlite's sqlite3, through
-/// the platform's build declaration) are resolved when the compiler starts, even
-/// for a compile that links nothing (-fno-emit-bin). The compiler searches
-/// the build machine's own library directories only for a target that leaves
-/// both its OS and its ABI to the build machine; a target that names either
-/// has no sysroot to find them in: "unable to find dynamic system library
-/// 'sqlite3' ... searched paths: none", before any Zig is analysed. That is
-/// every cross-compile, and also a target that names the build machine's own
-/// triple: the x86-64 half of check-linux failed that way on an x86-64 host
-/// until this function stopped asking whether the host is another OS or
-/// architecture (lane build3, 2026-11-13).
-///
-/// So a compile-only check of such a Linux target gets empty shared
-/// libraries of those names, built from an empty file into the build's own
-/// output (the cache, never the source tree) and put on that check's own root
-/// module, which nothing else imports. They satisfy name resolution and
-/// nothing else: no artifact that links may receive them (build() asserts
-/// that neither compile-only check is asked for its binary), and anything
-/// linked for Linux needs the real libraries - a test executable bound to
-/// such a target is compiled only, by a twin (`targetCheckOf`). A real Linux
-/// sysroot replaces them - pass its libraries instead and delete this
-/// function.
-fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-    if (!hasNoSysroot(target)) return;
-    const empty = b.addWriteFiles().add("stub.zig", "");
-    for ([_][]const u8{"sqlite3"}) |library| {
-        const stub = b.addLibrary(.{
-            .name = library,
-            .linkage = .dynamic,
-            .root_module = b.createModule(.{ .root_source_file = empty, .target = target }),
-        });
-        module.addLibraryPath(stub.getEmittedBinDirectory());
-    }
 }
 
 /// A `zig test` artifact for an existing module's own test tree, with the
@@ -6148,11 +6103,11 @@ pub fn build(b: *std.Build) void {
     setup_step.dependOn(&setup_data.step);
 
     // The compile-only checks may carry empty stand-ins for system libraries
-    // (addCrossLibraryStubs), so nothing may link them: a step that asks for a
+    // (platform_build.addStandIns), so nothing may link them: a step that asks for a
     // check's binary (an install, a run, getEmittedBin) would link against the
     // stubs. Asked or not is known here, once every step exists.
     for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check, bug_finding_runner.check }) |check| {
-        if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
+        if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (platform_build.addStandIns)", .{check.name});
     }
     for (target_compile_only.items) |check| {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (targetCheckOf)", .{check.name});

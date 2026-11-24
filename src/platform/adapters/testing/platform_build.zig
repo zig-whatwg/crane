@@ -65,3 +65,12 @@ pub fn bind(impl: *std.Build.Module, target: std.Build.ResolvedTarget, request: 
 pub fn afterTestBuild(b: *std.Build, test_exe: *std.Build.Step.Compile, run: *std.Build.Step.Run, name: []const u8) void {
     _ = .{ b, test_exe, run, name };
 }
+
+/// Its system libraries are found where Zig looks for them: no stand-ins.
+pub fn needsStandIns(target: std.Build.ResolvedTarget) bool {
+    _ = target;
+    return false;
+}
+pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    _ = .{ b, module, target };
+}
