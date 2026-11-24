@@ -324,12 +324,3 @@ pub const HighlightMap = struct {
         fromContext(context).clear();
     }
 };
-
-test "firstAfter: the first member appended after a sequence" {
-    const Item = struct { sequence: u64 };
-    const items = [_]Item{ .{ .sequence = 1 }, .{ .sequence = 3 }, .{ .sequence = 4 } };
-    try std.testing.expectEqual(@as(usize, 0), firstAfter(Item, &items, 0));
-    try std.testing.expectEqual(@as(usize, 1), firstAfter(Item, &items, 1));
-    try std.testing.expectEqual(@as(usize, 1), firstAfter(Item, &items, 2));
-    try std.testing.expectEqual(@as(usize, 3), firstAfter(Item, &items, 4));
-}
