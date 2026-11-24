@@ -184,7 +184,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // HTMLAllCollection (its legacy caller and named getter bind `item` and
     // `namedItem` through a special path that takes the JSValue)
     // fs
-    .{ "WriteParams", "data", "" },
     // idb
     // media
     .{ "MediaStreamConstraints", "audio", "" },

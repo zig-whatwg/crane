@@ -12,7 +12,7 @@ pub const WriteParams = struct {
     type: enums.WriteCommandType,
     size: ?u64 = null,
     position: ?u64 = null,
-    data: ?runtime.JSValue = null,
+    data: ?typedefs.BufferSourceOrBlobOrUSVString = null,
 
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.

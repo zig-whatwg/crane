@@ -23,6 +23,7 @@ pub const BooleanOrMediaTrackConstraints = @import("BooleanOrMediaTrackConstrain
 pub const BooleanOrScrollIntoViewOptions = @import("BooleanOrScrollIntoViewOptions.zig").BooleanOrScrollIntoViewOptions;
 pub const BooleanOrUnrestrictedDoubleOrDOMString = @import("BooleanOrUnrestrictedDoubleOrDOMString.zig").BooleanOrUnrestrictedDoubleOrDOMString;
 pub const BufferSource = @import("BufferSource.zig").BufferSource;
+pub const BufferSourceOrBlobOrUSVString = @import("BufferSourceOrBlobOrUSVString.zig").BufferSourceOrBlobOrUSVString;
 pub const BufferSourceOrDOMString = @import("BufferSourceOrDOMString.zig").BufferSourceOrDOMString;
 pub const BufferSourceOrJsonWebKey = @import("BufferSourceOrJsonWebKey.zig").BufferSourceOrJsonWebKey;
 pub const ByteString = @import("ByteString.zig").ByteString;
