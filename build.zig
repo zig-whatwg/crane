@@ -5086,6 +5086,22 @@ pub fn build(b: *std.Build) void {
     fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
     fw_matrix_test_step.dependOn(&fw_matrix_check.step);
 
+    // The MCP differential suite's harness (tools/mcp_diff/, lane mcp1;
+    // tmp/plans/mcp1-design.md 8): Google's chrome-devtools-mcp under Node
+    // and Crane's `repl --mcp` given the same calls, their answers compared.
+    // A tool: std only (and fw_matrix's static server for the fixtures).
+    const mcp_diff_module = b.createModule(.{
+        .root_source_file = b.path("tools/mcp_diff/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        .imports = &.{.{ .name = "fw_server", .module = b.createModule(.{ .root_source_file = b.path("tools/fw_matrix/server.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) }},
+    });
+    const mcp_diff_exe = b.addExecutable(.{ .name = "mcp_diff", .root_module = mcp_diff_module });
+    b.step("mcp-diff", "Build the MCP differential suite's harness alone (zig-out/bin/mcp_diff)").dependOn(&b.addInstallArtifact(mcp_diff_exe, .{}).step);
+    const mcp_diff_tests = b.addTest(.{ .root_module = mcp_diff_module });
+    test_step.dependOn(&addSuiteRun(b, launch, mcp_diff_tests, "tools-mcp_diff", null).step);
+    addTestVerify(b, launch, mcp_diff_tests, "tools-mcp_diff", "tools/mcp_diff", &.{ "main.zig", "client.zig" });
+
     // tools/build_probe.zig: what the configure would ask the machine, asked
     // at make time.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = build_probe_module }), "tools-build_probe", null).step);
@@ -8113,6 +8129,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         devtools_mod.addImport("engine", engine_mod);
         devtools_mod.addImport("fetch", fetch_mod);
         devtools_mod.addImport("infra", infra_mod);
+        devtools_mod.addImport("url", url_mod); // the MCP server's validateUrl (lane mcp1)
         // The page-side domains read documents and nodes through their
         // generated interfaces (DOM.describeNode, Page.getFrameTree), as the
         // console does - never an impl.
