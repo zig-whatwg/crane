@@ -2,8 +2,10 @@
 //! by the integrator 2026-11-23 6:53 PM ET): an owner's hold of a value it
 //! keeps for script, traced at collection time from its owner - Blink's
 //! TraceWrapperV8Reference. Pins the two halves of its contract:
-//! - NO ROOT in a full collection: a hold nothing traces is cleared, and then
-//!   reads empty (undefined), as a listener nobody's wrapper reaches is gone;
+//! - NO ROOT in a full collection: a hold nothing traces is cleared in that
+//!   collection's pause - it reads empty (undefined), as a listener nobody's
+//!   wrapper reaches is gone, V8's handle is freed once, and the hold's
+//!   release after it is safe;
 //! - a ROOT in a young-generation one: a scavenge never takes a held value,
 //!   so a listener survives scavenges whatever its target's wrapper does.
 //! And the value it reads is the value it was given, through the readers the
@@ -137,14 +139,41 @@ test "a traced hold reads the value it was given, through the readers the protoc
     try testing.expect(engine.sameValue(page.realm, retained.value, function.value));
 }
 
-test "a traced hold nobody traces is cleared by a full collection, and reads empty" {
+/// How many holds the untraced pins make: many, so a word the collector
+/// finds on the native stack (a conservative scan keeps what it names)
+/// cannot decide a test.
+const untraced_count = 200;
+
+/// The slack a count of V8's handle bytes is compared with: a handful of
+/// handles of the engine's own may come or go across a collection; 200
+/// traced handles freed twice, or never, are far outside it.
+const handle_bytes_slack = 48 * @sizeOf(usize);
+
+fn expectHandleBytesNear(expected: usize, actual: usize) !void {
+    const apart = if (actual > expected) actual - expected else expected - actual;
+    if (apart > handle_bytes_slack) {
+        std.debug.print("V8's handle bytes in use: expected {d} (within {d}), found {d}\n", .{ expected, handle_bytes_slack, actual });
+        return error.TestUnexpectedResult;
+    }
+}
+
+// V8 15.7 reports the death of a traced handle in a full collection to
+// nobody: TracedHandles::ResetDeadNodes frees every node no trace reached
+// and leaves the embedder's TracedReference naming it (v8-traced-handle.h:
+// "The embedder needs to ensure that the handle is not accessed once the V8
+// object has been reclaimed"). The adapter records it itself: a hold's cell
+// is stamped where it is traced, and the cells no trace stamped are written
+// empty in the same pause (v8_wrapper.cpp, "engine.TracedHold"). Three pins,
+// each red on the first trace-time build (e1c26d48d), whose holds were left
+// naming freed nodes: they read non-empty, their release freed a V8 node a
+// second time, and the next holds were given nodes handed out twice.
+
+test "a traced hold nobody traces reads empty after a full collection" {
     var queue: DeferredTeardown = .init(std.heap.c_allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();
-    // Many holds, so a word the collector finds on the native stack (a
-    // conservative scan keeps what it names) cannot decide the test.
-    var holds: [200]engine.TracedCallback = undefined;
+    var holds: [untraced_count]engine.TracedCallback = undefined;
     for (&holds) |*held| held.* = try page.heldFunction();
     defer for (holds) |held| held.release();
     for (holds) |held| try testing.expect(!held.hold.isEmpty());
@@ -155,8 +184,74 @@ test "a traced hold nobody traces is cleared by a full collection, and reads emp
         cleared += 1;
         try testing.expect(held.hold.value().isUndefined());
     }
-    std.debug.print("untraced holds cleared by a full collection: {d} of {d}\n", .{ cleared, holds.len });
-    try testing.expect(cleared >= holds.len - 8);
+    std.debug.print("untraced holds that read empty after a full collection: {d} of {d}\n", .{ cleared, holds.len });
+    try testing.expectEqual(holds.len, cleared);
+}
+
+test "an untraced hold's V8 handle is freed once: by the collection, not again by the hold's release" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    // The page's own handles settle first: one hold made and ended, collected.
+    (try page.heldFunction()).release();
+    page.fullGC();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    var holds: [untraced_count]engine.TracedCallback = undefined;
+    for (&holds) |*held| held.* = try page.heldFunction();
+    const made = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    try testing.expect(made >= before + untraced_count * @sizeOf(usize));
+    // The collection frees every hold's node: nothing traced one.
+    page.fullGC();
+    const collected = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    // The releases free nothing of V8's a second time.
+    for (holds) |held| held.release();
+    const released = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    page.fullGC();
+    const settled = ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate());
+    std.debug.print("V8's handle bytes in use: before {d}, {d} holds made {d}, collected {d}, released {d}, after one more collection {d}\n", .{ before, holds.len, made, collected, released, settled });
+    try expectHandleBytesNear(before, collected);
+    try expectHandleBytesNear(before, released);
+    try expectHandleBytesNear(before, settled);
+}
+
+test "a hold released after the collection that took its value is safe: the next holds read their own values" {
+    var queue: DeferredTeardown = .init(std.heap.c_allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    var holds: [untraced_count]engine.TracedCallback = undefined;
+    for (&holds) |*held| held.* = try page.heldFunction();
+    page.fullGC();
+    for (holds) |held| held.release();
+    // New holds, each of a function the test keeps: every one reads its own,
+    // now and after scavenges, and a second round does after another
+    // collection took the first round's.
+    for (0..2) |_| {
+        var functions: [untraced_count]engine.Owned = undefined;
+        var again: [untraced_count]engine.TracedCallback = undefined;
+        for (&functions, &again) |*function, *held| {
+            function.* = try page.evaluate("(() => { const big = new Array(64).fill(7); return () => big.length; })()");
+            held.* = (engine.BorrowedCallbackFunction{ .function = function.value }).keepTraced();
+        }
+        defer for (functions) |function| function.release();
+        for (functions, again) |function, held| {
+            try testing.expect(!held.hold.isEmpty());
+            try testing.expect(engine.sameValue(page.realm, held.hold.value(), function.value));
+        }
+        try page.minorGC(2);
+        for (functions, again) |function, held| {
+            try testing.expect(!held.hold.isEmpty());
+            try testing.expect(engine.sameValue(page.realm, held.hold.value(), function.value));
+        }
+        // Nothing traces them: the collection takes each hold, though the
+        // test still keeps the function, and the release after it is safe.
+        page.fullGC();
+        for (again) |held| {
+            try testing.expect(held.hold.isEmpty());
+            held.release();
+        }
+    }
 }
 
 test "a held value survives scavenges: a traced hold is a root in a young-generation collection" {
