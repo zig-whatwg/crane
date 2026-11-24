@@ -22,6 +22,7 @@ const Page = session_mod.Page;
 const str = session_mod.str;
 const Response = @import("../response.zig").Response;
 const snapshot = @import("../snapshot.zig");
+const ax_tree = @import("../ax_tree.zig");
 const elements = @import("../elements.zig");
 const query = @import("../query.zig");
 const console = @import("../console.zig");
@@ -203,7 +204,9 @@ pub fn capture(ctx: *Context, page: *Page, verbose: bool) ![]const u8 {
     }
     const main_frame = try ctx.arena.dupe(u8, page.mainFrameId());
     const loaders = try elements.frames(ctx, page);
-    const root = (try frameSnapshot(ctx, page, main_frame, loaders, verbose, &answers, true)) orelse
+    const tree = (try frameTree(ctx, page, main_frame, loaders, &answers, true)) orelse
+        return ctx.failPlain("Failed to create accessibility snapshot", .{});
+    const root = (try snapshot.serializeRoot(ctx.arena, tree, verbose)) orelse
         return ctx.failPlain("Failed to create accessibility snapshot", .{});
     const snapshot_id = session.next_snapshot_id;
     session.next_snapshot_id += 1;
@@ -228,19 +231,18 @@ pub fn capture(ctx: *Context, page: *Page, verbose: bool) ![]const u8 {
     return text;
 }
 
-/// Accessibility.snapshot for one frame: its tree, each Iframe's own
-/// frame's snapshot under it (populateIframes; an iframe whose frame fails
-/// is left without, "frames can get detached at any time"), then
-/// serialized. A failure of the top frame's tree fails the snapshot.
-fn frameSnapshot(
+/// One frame's tree (Accessibility.getFullAXTree), each Iframe given its
+/// content frame's tree (populateIframes: DOM.describeNode's frameId; an
+/// iframe whose frame fails is left without, "frames can get detached at
+/// any time"). A failure of the top frame's tree fails the snapshot.
+fn frameTree(
     ctx: *Context,
     page: *Page,
     frame_id: []const u8,
     loaders: []const elements.Frame,
-    verbose: bool,
     answers: *std.ArrayList(@import("../client.zig").Response),
     top: bool,
-) anyerror!?*snapshot.Node {
+) anyerror!?*ax_tree.AX {
     const session = ctx.session;
     const frame_copy = try ctx.arena.dupe(u8, frame_id);
     const params = try std.fmt.allocPrint(ctx.arena, "{{\"frameId\":{f}}}", .{std.json.fmt(frame_copy, .{})});
@@ -261,18 +263,18 @@ fn frameSnapshot(
     for (loaders) |f| if (std.mem.eql(u8, f.id, frame_copy)) {
         loader = f.loader_id;
     };
-    const root = (try snapshot.createTree(ctx.arena, nodes.array.items, loader, frame_copy)) orelse return null;
-    var iframes: std.ArrayList(*snapshot.AX) = .empty;
-    try snapshot.iframes(ctx.arena, root, &iframes);
+    const root = (try ax_tree.createTree(ctx.arena, nodes.array.items, loader, frame_copy)) orelse return null;
+    var iframes: std.ArrayList(*ax_tree.AX) = .empty;
+    try ax_tree.iframes(ctx.arena, root, &iframes);
     for (iframes.items) |iframe| {
-        const backend = snapshot.backendNodeId(iframe) orelse continue;
+        const backend = iframe.backendNodeId() orelse continue;
         const child_frame = (try contentFrame(ctx, page, backend)) orelse continue;
-        iframe.iframe_snapshot = frameSnapshot(ctx, page, child_frame, loaders, verbose, answers, false) catch |err| switch (err) {
+        iframe.frame_tree = frameTree(ctx, page, child_frame, loaders, answers, false) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             else => null,
         };
     }
-    return snapshot.serializeRoot(ctx.arena, root, verbose);
+    return root;
 }
 
 /// ElementHandle.contentFrame: the frame DOM.describeNode names for the
