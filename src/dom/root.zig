@@ -329,7 +329,7 @@ pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
 /// Reference counting for nodes: `Ref`, `GCReachableRef`, `WeakRef` and the
-/// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
+/// agent's ledger (lane rc12, docs/refcount-design.md). Unused by
 /// production code until step 3.
 pub const refcount = @import("refcount.zig");
 /// The walk the engine's collector runs to keep node wrappers (the wrapper

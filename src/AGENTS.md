@@ -44,8 +44,8 @@ read it before adding state.
 ## DOM lifetime: reference counting
 
 **Crane's DOM is moving to reference counting** (WebKit's model; the user, 2026-10-09): one model
-under V8 and JavaScriptCore. Design: tmp/plans/refcount-design.md; the user's decisions:
-tmp/plans/refcount-decisions.md. Until the switch (design step 7), an object that keeps a node for
+under V8 and JavaScriptCore. Design: docs/refcount-design.md; the user's decisions:
+docs/refcount-decisions.md. Until the switch (design step 7), an object that keeps a node for
 script holds it through `src/dom/node_holds.zig` or a traced edge, never a bare pointer; a
 generation check is only a teardown net. Collected trees are freed in slices from the event loop
 (`runtime.gc.DeferredTeardown`), never inside the collector.

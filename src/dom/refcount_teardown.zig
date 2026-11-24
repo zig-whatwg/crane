@@ -1,6 +1,6 @@
 //! Refcount step 7, the switch: counts decide when a tree is freed
-//! (tmp/plans/refcount-design.md 1.4 and section 7 step 7; the lane's design
-//! delta, tmp/plans/refcount9-design.md B1).
+//! (docs/refcount-design.md 1.4 and section 7 step 7; the lane's design
+//! delta, docs/refcount9-design.md B1).
 //!
 //! A tree is alive while any node in it is held (decision D1). Where the
 //! counts lower a tree's total to zero - a wrapper's, a holder's, a creator's

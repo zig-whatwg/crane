@@ -134,7 +134,8 @@ pub const TestCategory = struct {
 /// In-scope test categories
 /// These match the WHATWG/W3C specs implemented in this project.
 ///
-/// This list and `exclusion_patterns` below define the runner's own scope.
+/// This list, `exclusion_patterns` and `anchored_exclusions` below define the
+/// runner's own scope.
 /// `--full-corpus` bypasses both (selection.Scope.full_corpus): a wpt.fyi
 /// upload reports every testharness test, not just the ones Crane targets.
 pub const in_scope_categories: []const TestCategory = &.{
@@ -211,6 +212,8 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "css", .description = "CSS syntax, selectors, values and CSSOM" },
     .{ .name = "editing", .description = "Editing commands and DOM mutations" },
     .{ .name = "quirks", .description = "Quirks parsing and DOM behavior" },
+    // The integrator, 2026-11-23 (lane vtt1): WebVTT's API and parsing joins the worklist.
+    .{ .name = "webvtt", .description = "WebVTT: VTTCue, VTTRegion, file and cue text parsing" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
@@ -219,14 +222,15 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // HTML rendering tests
     "html/rendering/",
     "html/canvas/",
-    "html/semantics/embedded-content/media-elements/",
+    // media-elements/ joined the worklist (the integrator, 2026-11-23, lane
+    // vtt1); the video and audio element directories are not surveyed yet.
     "html/semantics/embedded-content/the-video-element/",
     "html/semantics/embedded-content/the-audio-element/",
     "html/webappapis/animation-frames/",
     // Visual/interactive tests
     "/visual/",
-    // WPT infrastructure tests (excluded from regular runs, run with `zig build wpt -- infrastructure/`)
-    "/infrastructure/",
+    // WPT's own infrastructure/ tests: `anchored_exclusions` below, matched
+    // at the start of the path only.
     // Print tests
     "/print/",
     // Tentative/experimental tests (proposed features not yet in specs)
@@ -292,8 +296,22 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "channels/serialize_child.html",
 };
 
+/// Exclusions matched as a leading path, "dir/..." or "/dir/...", never as a
+/// substring: WPT's own infrastructure/ tests (the harness's, not a web
+/// platform feature; out of regular runs, as a full-corpus run reports them).
+/// It was the substring `/infrastructure/`, which hid all of
+/// html/infrastructure/ - HTML's common infrastructure chapter - and missed
+/// infrastructure/ itself, whose relative paths have no leading slash.
+pub const anchored_exclusions: []const []const u8 = &.{
+    "infrastructure/",
+};
+
 /// Check if a path matches any exclusion pattern
 pub fn isExcluded(path: []const u8) bool {
+    const rel = if (path.len > 0 and path[0] == '/') path[1..] else path;
+    for (anchored_exclusions) |prefix| {
+        if (std.mem.startsWith(u8, rel, prefix)) return true;
+    }
     for (exclusion_patterns) |pattern| {
         if (std.mem.indexOf(u8, path, pattern) != null) {
             return true;
@@ -403,6 +421,17 @@ test "isExcluded" {
     try testing.expect(!isExcluded("dom/events/Event.html"));
 }
 
+test "media elements and WebVTT are in scope; the video and audio element directories are not yet" {
+    const testing = std.testing;
+    // The worklist and a directory run agree (lane vtt1, 2026-11-23).
+    try testing.expect(isInScope("html/semantics/embedded-content/media-elements/track/track-element/track-change-event.html"));
+    try testing.expect(isInScope("html/semantics/embedded-content/media-elements/networkState_initial.html"));
+    try testing.expect(isInScope("webvtt/api/VTTCue/constructor.html"));
+    try testing.expect(isInScope("webvtt/parsing/file-parsing/tests/arrows.html"));
+    try testing.expect(isExcluded("html/semantics/embedded-content/the-video-element/video_initially_paused.html"));
+    try testing.expect(isExcluded("html/semantics/embedded-content/the-audio-element/audio_constructor.html"));
+}
+
 test "isNonTestFile: the legacy scan's guesses at what is not a test" {
     const testing = std.testing;
 
@@ -435,6 +464,21 @@ test "the bidi/ exclusion names WebDriver BiDi, not selection/bidi" {
     try testing.expect(isInScope("selection/bidi/modify-move-by-character.html"));
     try testing.expect(isExcluded("infrastructure/testdriver/bidi/subscription.html"));
     try testing.expect(isExcluded("webdriver/bidi/session/new.py"));
+}
+
+test "the infrastructure/ exclusion is WPT's own top-level directory, not html/infrastructure/" {
+    const testing = std.testing;
+
+    // The same substring flaw as `bidi/` and `browsers/`: the rule was
+    // `/infrastructure/`, matched anywhere, so it hid all of
+    // html/infrastructure/ (HTML's common infrastructure: urls/,
+    // safe-passing-of-structured-data/, common-dom-interfaces/ - 69 sources)
+    // and not WPT's own infrastructure/, whose paths start with it.
+    try testing.expect(!isExcluded("html/infrastructure/urls/resolving-urls/query-encoding/utf-8.html"));
+    try testing.expect(!isExcluded("/html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-simple-success.https.html"));
+    try testing.expect(isInScope("html/infrastructure/common-dom-interfaces/collections/htmlallcollection.html"));
+    try testing.expect(isExcluded("infrastructure/assumptions/ahem.html"));
+    try testing.expect(isExcluded("/infrastructure/server/title.any.js"));
 }
 
 test "only a budget beyond the harness default takes an explicit timeout" {

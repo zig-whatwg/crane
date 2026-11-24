@@ -869,6 +869,27 @@ progress = []
   status = "todo"
 
 [[infra]]
+id = "perf-ladybird"
+title = "Ladybird in the browser comparison matrix (0.1 requirement)"
+why = """The user, 2026-11-23 12:07 PM ET: "I want to add Ladybird as a browser to compare against in our \
+browser comparison matrix. Queue this for 0.1". The performance comparison (docs/performance.md, \
+tools/perf_bench engines.zig, the /performance/ report and its card) measures Crane beside Chrome, \
+Firefox, Safari and Lightpanda on chat.local in closed timed windows; Ladybird joins them. The user, \
+12:09 PM ET: "make sure to use the released today alpha version of ladybird: https://ladybird.org/posts/alpha/" - \
+the official Ladybird Alpha build (2026-11-23; macOS disk image from ladybird.org/download, a rolling \
+channel), not a source build; driven through the WebDriver support the alpha ships, measured the same way."""
+done_when = """The Ladybird Alpha installed on chat.local (its build identifier recorded from the app; the \
+rolling channel's auto-update held so the measured build stays fixed, and re-measured when it is moved on) runs the same workloads as the other \
+engines inside the same windows; perf_bench's engine list, the report, the card and docs/performance.md \
+carry it with its version and how its memory is read; workloads it cannot run are listed with the reason. \
+Ladybird does not count toward golden rule 2's majority (Chrome, Firefox, Safari)."""
+progress = []
+
+  [[infra.items]]
+  name = "Pinned Ladybird on chat.local, measured in the performance report"
+  status = "todo"
+
+[[infra]]
 id = "cdp-mcp"
 title = "Chrome DevTools MCP, built into Crane (0.1 requirement)"
 why = """The user, 2026-11-23 10:09 AM ET: "when the CDP feature is compiled into Crane it should also \
@@ -894,6 +915,7 @@ needs-renderer with the CDP call each lacks; the element-input path without geom
 from the design's options before it is built; what the tools need from cdp-part-2 moves into 0.1 here."""
 progress = [
   "decided 2026-11-23 10:24 AM ET (the user) - built into Crane, not Google's Node server: slim, compiled in with CDP, for devices such as the iPhone",
+  "decided 2026-11-23 12:51 PM ET (the user, option 1) - element input by uid is element-targeted trusted input (WebDriver's element-origin path, Crane's user_input pipeline): Chrome's events, order, isTrusted, focus and :hover; no approximate geometry in 0.1 (that is roadmap approx-layout, 0.2). Design tmp/plans/mcp1-design.md pins chrome-devtools-mcp v1.13.0",
 ]
 
   [[infra.items]]
@@ -902,6 +924,32 @@ progress = [
 
   [[infra.items]]
   name = "Built-in MCP server: every non-pixel tool matches Chrome's server (differential suite)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "CDP Accessibility domain as Chrome 157 answers it (lane a11y1; take_snapshot's tree)"
+  status = "todo"
+
+[[infra]]
+id = "approx-layout"
+title = "Approximate geometry: an emulated layout renderer (0.2)"
+why = """The user, 2026-11-23 12:48 PM ET: "we should do a geometry approximation, can you scope this out? I \
+think it may be a good 0.2 item". Headless automation (Puppeteer/Playwright actionability waits, the MCP click \
+tools, elementFromPoint, IntersectionObserver) needs boxes; Crane has none until a renderer plugs into protocol \
+6.9. An approximate layout behind the platform `layout` capability (.emulated) - the model Lightpanda ships \
+(read only, AGPL) - answers those reads plausibly. Scope: tmp/plans/queue-0.2.md, "Approximate geometry"."""
+done_when = """The emulated layout answers protocol 6.9 for block, inline (approximate text metrics), flex, grid, \
+positioned and replaced boxes with hit-testing and scrolling; measured against Chrome 157 on a page corpus \
+(element boxes within N px, hit agreement at click targets) with the numbers published; the user's rulings on \
+production inclusion, needs-renderer and CDP D7 recorded; WPT A/B shows no unruled loss."""
+progress = []
+
+  [[infra.items]]
+  name = "Design + Chrome-comparison harness"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Emulated layout behind protocol 6.9, measured"
   status = "todo"
 
 [[infra]]
@@ -916,6 +964,40 @@ progress = []
   [[infra.items]]
   name = "Domains beyond part 1"
   status = "todo"
+
+[[infra]]
+id = "text-tracks"
+title = "Text tracks and WebVTT cues (0.1 requirement)"
+why = """The user, 2026-11-22 11:40 PM ET: "complete all of the work you found in the audit partial or not \
+started"; queued from lane flk4's item 9 (2026-11-23). A <track>'s WebVTT file was fetched and parsed, but its \
+cues never reached the text track's list of cues (TODO(webvtt cues)); VTTCue, VTTRegion, TextTrackCue and \
+TextTrackCueList were NotImplemented stubs; an addTextTrack() track's mode change fired no change event; \
+nothing ran "time marches on"."""
+done_when = """WebVTT 6.4-6.5 and 9 (cue text parsing, getCueAsHTML, VTTCue, VTTRegion) and HTML 4.8.11.11 \
+(the text track list of cues in cue order, addCue/removeCue, cues/activeCues, the pending text track change \
+notification for every track) and 4.8.11.8's time marches on (enter/exit/cuechange, pause-on-exit, active \
+flags, newly introduced cues) on Crane's media timeline; webvtt/api, webvtt/parsing and media-elements/track \
+in the worklist with only decoder-bound files left (needs-decoder); cues owned natively until script reads \
+them (no wrapper per parsed cue)."""
+progress = [
+  "26bcf611d, aee76d23f, d427557bc, d27f9f4ad, c350fca7e - cue text parsing and DOM construction, VTTRegion, cues in the track's list with lazy wrappers, the change event for any track, time marches on; a9cb1728b media-elements/ and webvtt/ join the worklist (vtt1)",
+]
+
+  [[infra.items]]
+  name = "WebVTT cue text parsing and getCueAsHTML"
+  status = "done"
+
+  [[infra.items]]
+  name = "VTTCue, VTTRegion, TextTrackCue, TextTrackCueList; parsed cues reach the track"
+  status = "done"
+
+  [[infra.items]]
+  name = "The pending text track change notification for every track"
+  status = "done"
+
+  [[infra.items]]
+  name = "Time marches on on the media timeline"
+  status = "done"
 
 [[parallel]]
 name = "Heavy builds and WPT runs on chat.local, one mirror per lane"

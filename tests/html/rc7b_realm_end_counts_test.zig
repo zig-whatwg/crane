@@ -1,5 +1,5 @@
-//! Refcount step 7b: a realm's end by counts (lane rc7b; tmp/plans/
-//! refcount9-design.md B4, tmp/plans/feature-queue.md "REFCOUNT step 7b").
+//! Refcount step 7b: a realm's end by counts (lane rc7b; docs/refcount9-design.md
+//! B4, tmp/plans/feature-queue.md "REFCOUNT step 7b").
 //!
 //! A realm's end lets go of the references the realm itself holds - its
 //! Window's on its document, its documents' queued tasks (HTML "destroy a

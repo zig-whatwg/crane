@@ -62,6 +62,7 @@ test "a realm whose host owns reporting is handed the error information" {
     try testing.expectEqualStrings("Script error.", Seen.message[0..Seen.message_len]);
     try testing.expectEqualStrings("", Seen.filename[0..Seen.filename_len]);
     try testing.expectEqual(@as(u32, 0), Seen.lineno);
+    try testing.expectEqual(@as(u32, 0), Seen.colno);
     try testing.expect(!Seen.had_value);
 
     // Step 5, omitError: everything but the value.

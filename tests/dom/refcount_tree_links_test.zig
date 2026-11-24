@@ -1,4 +1,4 @@
-//! Reference counting, step 3: tree links (tmp/plans/refcount-design.md
+//! Reference counting, step 3: tree links (docs/refcount-design.md
 //! section 7, lane rc3). Still shadow mode: the counts are kept and checked,
 //! and decide nothing.
 //!

@@ -1,10 +1,9 @@
 //! HTML 4.8.11.11.3: out-of-band text track processing.
 //! The one text track format is WebVTT (html.webvtt, WebVTT 6.1-6.3): a
-//! fetched resource is parsed once it has arrived, and a file that is
-//! successfully processed makes the track loaded and fires `load`.
-//! TODO(webvtt cues): the parsed cues do not reach the text track's list of
-//! cues yet - VTTCue, TextTrackCue and TextTrackCueList hold no cues (cue
-//! ownership is the queued follow-up of media Q10).
+//! fetched resource is parsed once it has arrived, its cues become the text
+//! track's list of cues (WebVTT 6.1 step 14.2: VTTCue objects, with VTTRegion
+//! objects for the regions they are in), and a file that is successfully
+//! processed makes the track loaded and fires `load`.
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -15,7 +14,9 @@ const common = html.media_runtime;
 const hooks = dom.media_elements;
 const same_object = @import("dom").same_object;
 pub const State = interfaces.HTMLTrackElement.State;
-const Kind = enum(u16) { read, failure };
+/// `start`: the processing model's deferred steps 6-10 (`startSteps`); `read`:
+/// a networking task reading the resource; `failure`: a failed-to-load task.
+const Kind = enum(u16) { read, failure, start };
 const webvtt = html.webvtt;
 /// A block of the Browser's runtime arena (`arena`), registered in the
 /// Browser's side table while its element lives: queued tasks may hold it
@@ -38,6 +39,9 @@ pub const InternalState = struct {
     processing: bool = false,
     waiting: bool = false,
     read_queued: bool = false,
+    /// A `start` task is queued and has not run: the processing model is at
+    /// its step 5, and reads the track URL only when that task runs.
+    start_queued: bool = false,
     fetch_document: ?same_object.Link = null,
     document_abort_pending: ?u64 = null,
     /// The resource's bytes so far, for the WebVTT parser at its end
@@ -66,6 +70,7 @@ pub const InternalState = struct {
         self.stopFetch();
         self.processing = false;
         self.waiting = false;
+        self.start_queued = false;
         self.unregister();
         self.activity.sync();
     }
@@ -81,19 +86,54 @@ pub const InternalState = struct {
             self.processing = true;
             self.generation +%= 1;
             if (common.liveRegistry(instance.ctx)) |registry| try registry.add(instance, instance.ctx);
-            try self.activity.stable(self.generation, stable);
-        } else if (!std.mem.eql(u8, self.url orelse "", self.selected_url orelse "")) {
-            // Step 10 aborts a changed URL and discards all its pending tasks.
-            // Step 12 then resumes from top only while enabled.
+            try self.awaitTop();
+        } else if (self.start_queued) {
+            // Step 1: this occurrence is still at step 5, and its step 7
+            // reads the track URL when it runs - a URL set or changed now is
+            // the one it fetches. No fetch is ongoing, so there is nothing
+            // for step 10 to abort (the track CORS tests set mode, then src,
+            // in one script: Crane fired error before any request).
+        } else if (!std.mem.eql(u8, self.url orelse "", self.selected_url orelse "") and (self.waiting or self.activity.fetching)) {
+            // Step 10, only "while fetching is ongoing": the track URL
+            // changed, or the mode became hidden or showing with the URL
+            // changed - abort fetching, discard its pending tasks, and queue
+            // the failed-to-load task. Or step 12, waiting: the URL is no
+            // longer the one fetched while the mode is hidden or showing, so
+            // step 13 jumps to top. A failure step 10 queued with no fetch
+            // (an empty URL, no browsing context) is left to run; `failed`
+            // then reaches step 12 with the changed URL.
+            // The abort, as the browsers do it, differs in all three (lane
+            // flk4's probe, 2026-11-23): Chrome 157 fires error and loads
+            // the new URL; Firefox 159 fires error and never fetches the new
+            // URL; Safari 27 fires no error and loads it. Golden rule 2,
+            // mechanism by mechanism: error fired - Chrome and Firefox; the
+            // new URL loaded - Chrome and Safari. Together that is Chrome's
+            // shipping behaviour and the spec's steps here.
             self.generation +%= 1;
             self.activity.discardTasks(false);
             self.stopFetch();
             if (self.waiting) {
                 self.waiting = false;
                 if (common.liveRegistry(instance.ctx)) |registry| try registry.add(instance, instance.ctx);
-                try self.activity.stable(self.generation, stable);
+                try self.awaitTop();
             } else try self.queue(.failure);
         }
+    }
+    /// Step 5, "Top: await a stable state", run as all three browsers run it:
+    /// after the current task, not in a microtask. Chrome starts a zero-delay
+    /// timer on the networking task runner (html_track_element.cc
+    /// ScheduleLoad: "We use a timer to approximate a stable state"), Safari
+    /// queues a media element task (HTMLTrackElement.cpp scheduleLoad), and
+    /// Firefox runs it in nsContentUtils::RunInStableState, after the task
+    /// (HTMLTrackElement.cpp MaybeDispatchLoadResource). Chrome 157, Firefox
+    /// 159 and Safari 27 read readyState NONE two microtasks after a mode
+    /// change, and fetch the URL set then (lane flk4's probe, 2026-11-23;
+    /// tests/wpt/crane/flk4-track-src-after-mode.html). No newer spec is
+    /// involved, so golden rule 2 takes the browsers' task; Crane queues an
+    /// element task, Safari's model. Its steps are `startSteps`.
+    fn awaitTop(self: *InternalState) !void {
+        try self.activity.queue(@backingInt(Kind.start), self.generation, null, null);
+        self.start_queued = true;
     }
     fn queueRead(context: *anyopaque) void {
         const self: *InternalState = @ptrCast(@alignCast(context));
@@ -108,8 +148,8 @@ pub const InternalState = struct {
         var result = webvtt.parse(self.activity.allocator, self.body.items) catch return self.failed(task);
         defer result.deinit();
         if (!result.processed) return self.failed(task);
-        // TODO(webvtt cues): add result.cues to the text track list of cues
-        // (WebVTT 6.1 step 14.2) once TextTrackCueList holds VTTCue objects.
+        // "The text track list of cues being used for that parser's output."
+        addParsedCues(self.track.?, &result) catch return self.failed(task);
         self.loaded();
     }
     /// "If fetching does not fail, and the file was successfully processed,
@@ -145,6 +185,103 @@ pub const InternalState = struct {
         self.activity.sync();
     }
 };
+/// WebVTT 6.1 step 14.2, for each cue the parser made, in file order: a
+/// VTTCue with its identifier, times, settings and cue text, in the region
+/// object made for its WebVTT region (one VTTRegion per REGION block, shared
+/// by the cues in it, kept by the track), added to `track`'s text track list
+/// of cues - which owns it, with no wrapper, until script reads it
+/// (TextTrackCueList.zig).
+fn addParsedCues(track: *runtime.Instance, result: *const webvtt.Result) !void {
+    const ctx = track.ctx;
+    const allocator = ctx.allocator;
+    const regions = try allocator.alloc(?*runtime.Instance, result.regions.len);
+    defer allocator.free(regions);
+    @memset(regions, null);
+    // The cues made, added to the track together at the end.
+    var made: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer made.deinit(allocator);
+    try made.ensureTotalCapacity(allocator, result.cues.len);
+    // Until then they are this function's: a failure frees them (none has a
+    // wrapper).
+    var handed = false;
+    defer if (!handed) for (made.items) |cue| cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
+    for (result.cues) |parsed| {
+        const cue = try interfaces.VTTCue.init(allocator, ctx);
+        made.appendAssumeCapacity(cue);
+        try interfaces.TextTrackCue.set_id(cue, .initInterned(parsed.identifier));
+        try interfaces.TextTrackCue.set_startTime(cue, parsed.start_time);
+        try interfaces.TextTrackCue.set_endTime(cue, parsed.end_time);
+        try interfaces.TextTrackCue.set_pauseOnExit(cue, parsed.pause_on_exit);
+        if (parsed.region) |index| {
+            if (regions[index] == null) {
+                // A region no cue is in is never made; one made is the
+                // track's from the start.
+                const region = try regionObject(ctx, result.regions[index]);
+                hooks.keepTrackRegion(track, region);
+                regions[index] = region;
+            }
+            try interfaces.VTTCue.set_region(cue, regions[index]);
+        }
+        try interfaces.VTTCue.set_vertical(cue, switch (parsed.writing_direction) {
+            .horizontal => .__,
+            .vertical_growing_left => ._rl_,
+            .vertical_growing_right => ._lr_,
+        });
+        try interfaces.VTTCue.set_snapToLines(cue, parsed.snap_to_lines);
+        try interfaces.VTTCue.set_line(cue, switch (parsed.line) {
+            .auto => .{ .auto_keyword = ._auto_ },
+            .number => |number| .{ .double = number },
+        });
+        try interfaces.VTTCue.set_lineAlign(cue, switch (parsed.line_alignment) {
+            .start => ._start_,
+            .center => ._center_,
+            .end => ._end_,
+        });
+        try interfaces.VTTCue.set_position(cue, switch (parsed.position) {
+            .auto => .{ .auto_keyword = ._auto_ },
+            .number => |number| .{ .double = number },
+        });
+        try interfaces.VTTCue.set_positionAlign(cue, switch (parsed.position_alignment) {
+            .line_left => ._line_left_,
+            .center => ._center_,
+            .line_right => ._line_right_,
+            .auto => ._auto_,
+        });
+        try interfaces.VTTCue.set_size(cue, parsed.size);
+        try interfaces.VTTCue.set_align(cue, switch (parsed.text_alignment) {
+            .start => ._start_,
+            .center => ._center_,
+            .end => ._end_,
+            .left => ._left_,
+            .right => ._right_,
+        });
+        try interfaces.VTTCue.set_text(cue, .initInterned(parsed.text));
+    }
+    handed = true;
+    hooks.addTrackCues(track, made.items) catch |err| {
+        // The cues the track's list did not take are still this function's.
+        for (made.items) |cue| if ((interfaces.TextTrackCue.get_track(cue) catch null) == null) cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
+        return err;
+    };
+}
+/// The VTTRegion object for a parsed WebVTT region (6.1, region creation and
+/// 6.2's settings).
+fn regionObject(ctx: runtime.Context, parsed: webvtt.Region) !*runtime.Instance {
+    const region = try interfaces.VTTRegion.init(ctx.allocator, ctx);
+    errdefer region.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(region));
+    try interfaces.VTTRegion.set_id(region, .initInterned(parsed.identifier));
+    try interfaces.VTTRegion.set_width(region, parsed.width);
+    try interfaces.VTTRegion.set_lines(region, parsed.lines);
+    try interfaces.VTTRegion.set_regionAnchorX(region, parsed.anchor[0]);
+    try interfaces.VTTRegion.set_regionAnchorY(region, parsed.anchor[1]);
+    try interfaces.VTTRegion.set_viewportAnchorX(region, parsed.viewport_anchor[0]);
+    try interfaces.VTTRegion.set_viewportAnchorY(region, parsed.viewport_anchor[1]);
+    try interfaces.VTTRegion.set_scroll(region, switch (parsed.scroll) {
+        .none => .__,
+        .up => ._up_,
+    });
+    return region;
+}
 fn data(instance: *runtime.Instance) *InternalState {
     return instance.getState(State).own._internal.?;
 }
@@ -192,7 +329,7 @@ const Registry = runtime.InstanceRegistry(.html_track_element, InternalState);
 /// `dom.teardown_sweeps`: free the state of every track element of `scope`'s
 /// Browser that no deinit reached - an orphan - at the Browser's end, as its
 /// last task would have (`freeOwner`). The realm's end and the event loop's,
-/// before this, dropped its stable sections and tasks; one still holding
+/// before this, dropped its tasks; one still holding
 /// work is left to that work rather than freed under it. Its text track is
 /// an object of its own, the collector's.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
@@ -263,8 +400,10 @@ pub fn installHooks() void {
     // end.
     dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
+/// The text track's mode changed: start the track processing model. (Its
+/// media element hears of the change from the track itself, as for any
+/// track in its list of text tracks: TextTrack.set_mode.)
 fn modeChanged(instance: *runtime.Instance, _: hooks.Mode, _: hooks.Mode) void {
-    if (interfaces.Node.get_parentNode(instance) catch null) |parent| if (common.isMedia(parent)) hooks.textTrackModeChanged(parent);
     data(instance).start() catch data(instance).cancel();
 }
 fn updateAttributes(instance: *runtime.Instance) !void {
@@ -284,7 +423,10 @@ fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u
         const url = if (value) |text| (if (text.len != 0) html.encoding_parse.encodingParseAndSerialize(instance, text) catch null else null) else null;
         if (self.url) |old| self.activity.allocator.free(old);
         self.url = url;
-        // No format is supported, hence the cue lists are already empty (Q10).
+        // "Whenever a track element has its src attribute set, changed, or
+        // removed, the user agent must immediately empty the element's text
+        // track's text track list of cues."
+        if (self.track) |track| hooks.clearTrackCues(track);
         self.start() catch self.cancel();
     } else if (std.mem.eql(u8, name, "kind") or std.mem.eql(u8, name, "label") or std.mem.eql(u8, name, "srclang") or std.mem.eql(u8, name, "id")) updateAttributes(instance) catch {};
 }
@@ -365,15 +507,16 @@ fn documentAbortSteps(context: ?*anyopaque) void {
     const self: *InternalState = @ptrCast(@alignCast(context.?));
     self.generation +%= 1;
     self.activity.discardTasks(false);
+    self.start_queued = false;
     self.stopFetch();
     // Failed fetch processing is a new element task. The old resource's
     // queued reads keep their owners until run/drop but cannot dispatch.
     self.queue(.failure) catch self.cancel();
     self.activity.sync();
 }
-fn stable(context: *anyopaque, generation: u64) void {
-    const self: *InternalState = @ptrCast(@alignCast(context));
-    if (generation != self.generation) return;
+/// The task `awaitTop` queued: steps 6-10.
+fn startSteps(self: *InternalState) void {
+    self.start_queued = false;
     const instance = self.activity.instance orelse return;
     startFetch(instance) catch self.cancel();
 }
@@ -406,6 +549,7 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
     if (task.generation != self.generation) return;
     switch (@as(Kind, @fromBackingInt(@intCast(task.kind)))) {
         .failure => self.failed(task),
+        .start => startSteps(self),
         .read => {
             self.read_queued = false;
             const piece = self.resource.next() catch {
