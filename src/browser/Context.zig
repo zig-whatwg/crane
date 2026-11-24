@@ -1297,7 +1297,7 @@ fn timeoutSteps(data: *WindowTimerData) void {
     runTimerTask(data);
 
     // Destroy the wrapper - this is a one-shot timer, so clean up after execution
-    // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
+    // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedWorkCallback)
     const wrapper: *WindowTimerCallback = @fieldParentPtr("data", data);
     destroyTimer(wrapper);
 }

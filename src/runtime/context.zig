@@ -56,7 +56,6 @@ const TaskSink = @import("task_sink.zig").TaskSink;
 const realm_mod = @import("realm.zig");
 pub const RealmInfo = realm_mod.RealmInfo;
 pub const ContextType = realm_mod.ContextType;
-pub const Exposure = realm_mod.Exposure;
 pub const Realm = realm_mod.Realm;
 pub const Intrinsics = realm_mod.Intrinsics;
 

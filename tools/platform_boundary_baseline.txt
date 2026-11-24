@@ -407,8 +407,6 @@ src/runtime/engines/v8/snapshot_loader.zig clock.monotonicMillis 4
 src/runtime/engines/v8/snapshot_loader.zig host.@import 1
 src/runtime/engines/v8/snapshot_loader.zig host.cwd 2
 src/runtime/engines/v8/snapshot_loader.zig host.io 2
-src/runtime/environment_settings.zig clock.@import 1
-src/runtime/environment_settings.zig clock.wallMillis 1
 src/runtime/logger.zig clock.@import 1
 src/runtime/logger.zig clock.wallSeconds 1
 src/runtime/native_timer.zig clock.@import 1
