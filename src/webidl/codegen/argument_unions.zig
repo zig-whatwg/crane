@@ -199,16 +199,10 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // fs
     .{ "WriteParams", "data", "" },
     // idb
-    .{ "IDBDatabase", "transaction", "storeNames" },
-    .{ "IDBObjectStore", "createIndex", "keyPath" },
-    .{ "IDBObjectStoreParameters", "keyPath", "" },
     // media
     .{ "MediaStreamConstraints", "audio", "" },
     .{ "MediaStreamConstraints", "video", "" },
     // performance
-    .{ "Performance", "measure", "startOrMeasureOptions" },
-    .{ "PerformanceMeasureOptions", "start", "" },
-    .{ "PerformanceMeasureOptions", "end", "" },
     // popover
     .{ "HTMLElement", "togglePopover", "options" },
     // sanitizer (html/sanitizer.zig, parser_options.zig)
@@ -221,11 +215,9 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "ExtendableMessageEventInit", "source", "" },
     .{ "SharedWorker", "constructor", "options" },
     // url
-    .{ "URLSearchParams", "constructor", "init" },
     // websocket and xhr
     .{ "WebSocket", "constructor", "protocols" },
     .{ "WebSocket", "send", "data" },
-    .{ "XMLHttpRequest", "send", "body" },
 };
 
 /// Whether position (`member`, `position`) of `owner` - or of a mixin

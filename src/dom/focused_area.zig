@@ -78,6 +78,10 @@ pub fn get(document: *runtime.Instance) ?Designation {
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.set(document, if (element) |e| .{ .element = e, .generation = runtime.SlabAllocator.generationOf(e) } else null);
+    // The Accessibility agents' focus events (one inline check while no
+    // DevTools agent is enabled).
+    const inspector_probes = @import("inspector_probes.zig");
+    if (inspector_probes.active()) inspector_probes.focusedAreaChanged(document);
     // HTML 6.6.5: "the user agent may set" the sequential focus navigation
     // starting point. A newly focused element is it from here on, and the
     // viewport taking the focus leaves it where it was - so Tab after the

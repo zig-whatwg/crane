@@ -337,9 +337,10 @@ fn wrapIndex(instance: *runtime.Instance, internal: *InternalState, index: *stor
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: runtime.JSValue, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
-    // WebIDL union conversion precedes the algorithm's duplicate/path checks.
-    var path = try dom.indexeddb_keys.keyPath(instance.ctx, keyPath, instance.ctx.allocator);
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: typedefs.DOMStringOrSequenceOfDOMString, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
+    // The binding's union conversion precedes the algorithm's duplicate/path
+    // checks; the path is copied (the converted argument is the binding's).
+    var path = try dom.indexeddb_keys.keyPath(keyPath, instance.ctx.allocator);
     defer path.deinit();
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const store = internal.store orelse return error.InvalidStateError;

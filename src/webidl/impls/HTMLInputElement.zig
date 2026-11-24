@@ -473,6 +473,7 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
     const empty = sanitized.isEmpty();
     try internal.setValue(sanitized.asSlice());
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     internal.editor_text = raw;
     internal.bad_input = input_type == .number and raw.len != 0 and empty;
     // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
@@ -1081,6 +1082,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     internal.dirty_checkedness = false;
     setCheckedness(instance, hasAttribute(instance, "checked"));
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
 }
 
 // ============================================================================
@@ -1171,6 +1173,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             if (changed) {
                 internal.selection = .{ .start = end, .end = end, .direction = .none };
                 dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+                if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
             }
         },
         // "default" and "default/on": set the value content attribute.
@@ -2521,6 +2524,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     // 2. Set the dirty value flag; 9-10 the relevant value changed.
     try internal.setValue(result.value);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
+    if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // 14. Set the selection range with selection start and selection end.
     setSelectionRange(instance, result.selection_start, result.selection_end, null);
 }

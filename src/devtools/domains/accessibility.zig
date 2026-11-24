@@ -14,7 +14,20 @@
 //! getFullAXTree, getPartialAXTree and queryAXTree need no enable (Blink
 //! attaches its cache for them); getRootAXNode, getChildAXNodes and
 //! getAXNodeAndAncestors answer "Accessibility has not been enabled."
-//! without it. The events (loadComplete, nodesUpdated) are batch 3's.
+//! without it.
+//!
+//! The events (batch 3; InspectorAccessibilityAgent AXEventFired,
+//! AXObjectModified, ScheduleAXChangeNotification, AXReadyCallback,
+//! ProcessPendingDirtyNodes): an enabled agent hears the DOM's probes
+//! (dom_events.zig, behind the probes' one gate). A change arms a 260 ms
+//! one-shot (kVisualUpdateCheckInterval); when it fires, at most once per
+//! 250 ms (kNodeSyncThrottlePeriod), the nodes the client was sent by
+//! getRootAXNode, getChildAXNodes and getAXNodeAndAncestors (Blink's
+//! nodes_requested_) are built again, and those that changed go out in
+//! Accessibility.nodesUpdated - Crane keeps no AX objects to mark dirty, so
+//! a requested node's last-sent serialization stands for Blink's dirty mark.
+//! The tab's document's load sends Accessibility.loadComplete with its root,
+//! which becomes the one requested node. Only ids and bytes are kept.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -29,8 +42,12 @@ const frames = @import("../frames.zig");
 const NodeIds = @import("../node_ids.zig").NodeIds;
 const AxIds = @import("../ax_ids.zig").AxIds;
 const dom_domain = @import("dom.zig");
+const dom_events = @import("../dom_events.zig");
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
+const BrowserSide = @import("../browser_side.zig").BrowserSide;
 
 const A = protocol.Accessibility;
+const log = std.log.scoped(.devtools);
 const ax = dom.accessibility_tree;
 const Tree = ax.Tree;
 const Index = ax.Index;
@@ -38,31 +55,68 @@ const Index = ax.Index;
 /// Per session (Blink: one agent per session).
 pub const State = struct {
     enabled: bool = false,
-    /// The AX node ids the client asked for (Blink nodes_requested_): what
-    /// nodesUpdated reports on. Ids only, never nodes.
-    requested: std.AutoHashMapUnmanaged(i64, void) = .empty,
+    /// The AX node ids the client was sent (Blink nodes_requested_), each
+    /// with its frame and the serialization it was last sent as (OWNED by
+    /// the session's allocator): what nodesUpdated reports on. Ids and
+    /// bytes only, never nodes.
+    requested: std.AutoHashMapUnmanaged(i64, Sent) = .empty,
+    /// Its entries come and go for the session's life (a node detached is
+    /// dropped, a node sent is added).
+    requested_guard: TombstoneGuard = .{},
+    /// The armed check (Blink's DocumentTimer) and its ticket, OWNED by the
+    /// timer while armed; 0 when none.
+    timer: runtime.TimerId = 0,
+    ticket: ?*Ticket = null,
+    /// When nodesUpdated last went (last_sync_times_), monotonic ns.
+    last_sync_ns: ?i64 = null,
 };
 
+/// A requested node: its frame (a navigable id) and its last-sent JSON.
+pub const Sent = struct { navigable: u64, json: []u8 };
+
+/// What a check's timer carries: which Browser's which session.
+const Ticket = struct { allocator: Allocator, side: *BrowserSide, session: *PageSession };
+
 pub fn sessionEnded(session: *PageSession) void {
-    session.states.Accessibility.requested.deinit(session.allocator);
+    const s = &session.states.Accessibility;
+    if (s.enabled) if (session.side) |side| dom_events.unregisterAccessibility(side, session);
+    disarm(session);
+    forgetRequested(session);
+    s.requested.deinit(session.allocator);
     session.states.Accessibility = .{};
 }
 
-/// InspectorAccessibilityAgent::enable.
+/// InspectorAccessibilityAgent::enable (EnableAndReset: the agent joins the
+/// cache, which hears the document's changes).
 pub fn enable(session: *PageSession, params: A.enable.Params) !A.enable.Result {
     _ = params;
-    session.states.Accessibility.enabled = true;
+    const s = &session.states.Accessibility;
+    if (s.enabled) return .{};
+    if (session.side) |side| try dom_events.registerAccessibility(side, session);
+    s.enabled = true;
     return .{};
 }
 
-/// InspectorAccessibilityAgent::disable: forgets what was requested.
+/// InspectorAccessibilityAgent::disable: stops hearing the document and
+/// forgets what was requested.
 pub fn disable(session: *PageSession, params: A.disable.Params) !A.disable.Result {
     _ = params;
     const s = &session.states.Accessibility;
     if (!s.enabled) return .{};
+    if (session.side) |side| dom_events.unregisterAccessibility(side, session);
     s.enabled = false;
-    s.requested.clearRetainingCapacity();
+    disarm(session);
+    forgetRequested(session);
+    s.last_sync_ns = null;
     return .{};
+}
+
+fn forgetRequested(session: *PageSession) void {
+    const s = &session.states.Accessibility;
+    var it = s.requested.valueIterator();
+    while (it.next()) |sent| session.allocator.free(sent.json);
+    s.requested.clearRetainingCapacity();
+    s.requested_guard.reset();
 }
 
 // ============================================================================
@@ -87,7 +141,7 @@ pub fn getRootAXNode(session: *PageSession, params: A.getRootAXNode.Params) !A.g
     const document = frames.documentOf(bc) orelse return session.failWithCode(.internal_error, "Internal error");
     var s = try Serializer.init(session, document);
     const root = try s.build(s.tree.root(), false);
-    try request(session, try s.axId(s.tree.root()));
+    try s.request(root);
     return .{ .node = root };
 }
 
@@ -104,8 +158,9 @@ pub fn getAXNodeAndAncestors(session: *PageSession, params: A.getAXNodeAndAncest
         return .{ .nodes = nodes.items };
     };
     while (true) {
-        try request(session, try s.axId(at));
-        try nodes.append(s.arena, try s.build(at, false));
+        const built = try s.build(at, false);
+        try s.request(built);
+        try nodes.append(s.arena, built);
         at = s.tree.node(at).parent orelse break;
     }
     return .{ .nodes = nodes.items };
@@ -123,7 +178,7 @@ pub fn getChildAXNodes(session: *PageSession, params: A.getChildAXNodes.Params) 
     const index = (try s.indexOfId(id)) orelse return session.failWithCode(.invalid_params, "Invalid ID");
     var nodes: std.ArrayListUnmanaged(A.AXNode) = .empty;
     try s.addChildren(index, &nodes);
-    for (nodes.items) |n| try request(session, std.fmt.parseInt(i64, n.nodeId, 10) catch 0);
+    for (nodes.items) |n| try s.request(n);
     return .{ .nodes = nodes.items };
 }
 
@@ -208,8 +263,9 @@ pub fn queryAXTree(session: *PageSession, params: A.queryAXTree.Params) !A.query
     return .{ .nodes = nodes.items };
 }
 
-fn request(session: *PageSession, id: i64) !void {
-    try session.states.Accessibility.requested.put(session.allocator, id, {});
+/// The AXNode as nodesUpdated compares it: its JSON, OWNED by `allocator`.
+fn serialized(allocator: Allocator, node: A.AXNode) Allocator.Error![]u8 {
+    return std.json.Stringify.valueAlloc(allocator, node, .{ .emit_null_optional_fields = false }) catch return error.OutOfMemory;
 }
 
 /// The node's document, when it has a browsing context.
@@ -222,6 +278,239 @@ fn documentOf(node: *runtime.Instance) ?*runtime.Instance {
 fn flatParent(node: *runtime.Instance) ?*runtime.Instance {
     if (node.implements(interfaces.ShadowRoot.State)) return interfaces.ShadowRoot.get_host(node) catch null;
     return dom.accessibility.parent(node);
+}
+
+// ============================================================================
+// The events
+// ============================================================================
+
+/// kVisualUpdateCheckInterval: a change's check, after the throttle period.
+const check_ms: u64 = 260;
+/// kNodeSyncThrottlePeriod.
+const throttle_ns: i64 = 250 * std.time.ns_per_ms;
+
+// The DOM's probes (dom_events.zig, for each enabled agent). Each is a
+// change of the document the agent's requested nodes may show: Blink marks
+// the objects it touches dirty and schedules the check
+// (AXObjectCacheImpl -> AXEventFired / AXObjectModified ->
+// ScheduleAXChangeNotification). Crane schedules the check and compares at
+// it.
+
+pub fn didInsertDOMNode(session: *PageSession, node: *runtime.Instance) void {
+    _ = node;
+    changed(session);
+}
+
+pub fn willRemoveDOMNode(session: *PageSession, node: *runtime.Instance) void {
+    _ = node;
+    changed(session);
+}
+
+pub fn didModifyDOMAttr(session: *PageSession, element: *runtime.Instance, name: dom.inspector_probes.AttributeName, value: ?[]const u8) void {
+    _ = element;
+    _ = name;
+    _ = value;
+    changed(session);
+}
+
+pub fn characterDataModified(session: *PageSession, node: *runtime.Instance) void {
+    _ = node;
+    changed(session);
+}
+
+pub fn didInvalidateStyleAttr(session: *PageSession, element: *runtime.Instance) void {
+    _ = element;
+    changed(session);
+}
+
+pub fn didPushShadowRoot(session: *PageSession, host: *runtime.Instance, root: *runtime.Instance) void {
+    _ = host;
+    _ = root;
+    changed(session);
+}
+
+pub fn topLayerElementsChanged(session: *PageSession, document: *runtime.Instance) void {
+    _ = document;
+    changed(session);
+}
+
+pub fn slotAssignmentChanged(session: *PageSession, slot: *runtime.Instance) void {
+    _ = slot;
+    changed(session);
+}
+
+/// The focused area changed (HandleFocusedUIElementChanged: the old and new
+/// focused objects' focus events).
+pub fn focusedAreaChanged(session: *PageSession, document: *runtime.Instance) void {
+    _ = document;
+    changed(session);
+}
+
+/// A control's value changed (HandleValueChanged).
+pub fn controlValueChanged(session: *PageSession, element: *runtime.Instance) void {
+    _ = element;
+    changed(session);
+}
+
+/// ScheduleAXChangeNotification: arm the one-shot unless it is armed; with
+/// nothing requested there is nothing to report (MarkAXObjectDirty marks
+/// only requested objects).
+fn changed(session: *PageSession) void {
+    const s = &session.states.Accessibility;
+    if (!s.enabled or s.timer != 0 or s.requested.count() == 0) return;
+    arm(session, check_ms);
+}
+
+fn arm(session: *PageSession, ms: u64) void {
+    const s = &session.states.Accessibility;
+    const side = session.side orelse return;
+    const browser = side.browser orelse return;
+    const loop = browser.event_loop orelse return;
+    const timers = loop.timerInterface() orelse return;
+    const ticket = side.allocator.create(Ticket) catch return;
+    ticket.* = .{ .allocator = side.allocator, .side = side, .session = session };
+    const id = timers.setTimeoutOwned(ms, check, ticket, dropTicket);
+    if (id == 0) {
+        side.allocator.destroy(ticket);
+        return;
+    }
+    s.timer = id;
+    s.ticket = ticket;
+}
+
+/// Cancel the armed check. The Browser's thread is the timer's: a check
+/// cannot be running while this runs.
+fn disarm(session: *PageSession) void {
+    const s = &session.states.Accessibility;
+    if (s.timer == 0) return;
+    const ticket = s.ticket;
+    const cancelled = blk: {
+        const side = session.side orelse break :blk false;
+        const browser = side.browser orelse break :blk false;
+        const loop = browser.event_loop orelse break :blk false;
+        const timers = loop.timerInterface() orelse break :blk false;
+        break :blk timers.clearTimeout(s.timer);
+    };
+    if (cancelled) if (ticket) |t| t.allocator.destroy(t);
+    s.timer = 0;
+    s.ticket = null;
+}
+
+fn dropTicket(data: ?*anyopaque) void {
+    const ticket: *Ticket = @ptrCast(@alignCast(data orelse return));
+    ticket.allocator.destroy(ticket);
+}
+
+/// The check (ScheduleAXUpdateIfNeeded -> AXReadyCallback ->
+/// ProcessPendingDirtyNodes): within the throttle period of the last sync it
+/// waits out the rest; else the changed requested nodes go out.
+fn check(data: ?*anyopaque) void {
+    const ticket: *Ticket = @ptrCast(@alignCast(data orelse return));
+    const side = ticket.side;
+    const session = ticket.session;
+    ticket.allocator.destroy(ticket);
+    // The session is the agent's only while it is still registered.
+    const registered = for (side.ax_agents.sessions.items) |agent| {
+        if (agent == session) break true;
+    } else false;
+    if (!registered) return;
+    const s = &session.states.Accessibility;
+    s.timer = 0;
+    s.ticket = null;
+    const now = monotonicNs();
+    if (s.last_sync_ns) |last| if (now - last < throttle_ns) {
+        const wait_ns = throttle_ns - (now - last);
+        arm(session, @intCast(@divFloor(wait_ns + std.time.ns_per_ms - 1, std.time.ns_per_ms)));
+        return;
+    };
+    s.last_sync_ns = now;
+    sendUpdates(session) catch |err| log.warn("Accessibility.nodesUpdated: {s}", .{@errorName(err)});
+}
+
+/// nodesUpdated, one per frame: each requested node built again, those
+/// whose serialization changed; a node no longer in its tree is dropped
+/// (IsDetached).
+fn sendUpdates(session: *PageSession) !void {
+    const s = &session.states.Accessibility;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    // The frames the requested nodes are in.
+    var navigables: std.ArrayListUnmanaged(u64) = .empty;
+    var values = s.requested.valueIterator();
+    while (values.next()) |sent| {
+        if (std.mem.indexOfScalar(u64, navigables.items, sent.navigable) == null) try navigables.append(arena, sent.navigable);
+    }
+    for (navigables.items) |navigable_id| {
+        var gone: std.ArrayListUnmanaged(i64) = .empty;
+        var nodes: std.ArrayListUnmanaged(A.AXNode) = .empty;
+        const document = if (frames.navigable(session, navigable_id)) |bc| frames.documentOf(bc) else null;
+        var serializer: ?Serializer = if (document) |d| try Serializer.initIn(session, arena, d) else null;
+        var it = s.requested.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.navigable != navigable_id) continue;
+            const ser = if (serializer) |*x| x else {
+                try gone.append(arena, entry.key_ptr.*);
+                continue;
+            };
+            // Detached: no longer in its tree. An object only kept for
+            // lookup (display:none, Chrome 157 removes its AXObject) is gone
+            // too (the trace's events page, its hide step).
+            const index = (try ser.indexOfId(entry.key_ptr.*)) orelse {
+                try gone.append(arena, entry.key_ptr.*);
+                continue;
+            };
+            if (!ser.tree.node(index).included) {
+                try gone.append(arena, entry.key_ptr.*);
+                continue;
+            }
+            const node = try ser.build(index, false);
+            const json = try serialized(session.allocator, node);
+            if (std.mem.eql(u8, json, entry.value_ptr.json)) {
+                session.allocator.free(json);
+                continue;
+            }
+            session.allocator.free(entry.value_ptr.json);
+            entry.value_ptr.json = json;
+            try nodes.append(arena, node);
+        }
+        for (gone.items) |id| if (s.requested.fetchRemove(id)) |removed| {
+            s.requested_guard.noteRemoval(&s.requested);
+            session.allocator.free(removed.value.json);
+        };
+        if (nodes.items.len > 0) session.emit(A.nodesUpdated, .{ .nodes = nodes.items });
+    }
+}
+
+/// The tab's document's load (AXEventFired kLoadComplete, then
+/// AXReadyCallback): loadComplete with its root, which is then the one
+/// requested node (dirty_nodes_ and nodes_requested_ start again).
+pub fn onNavigation(session: *PageSession, milestone: *const frames.Milestone) void {
+    const s = &session.states.Accessibility;
+    if (!s.enabled or milestone.navigable_id != session.tab) return;
+    switch (milestone.event) {
+        .load => |loaded| {
+            const document: *runtime.Instance = @ptrCast(@alignCast(loaded.document.document));
+            if (runtime.SlabAllocator.generationOf(document) != loaded.document.generation) return;
+            sendLoadComplete(session, document) catch |err| log.warn("Accessibility.loadComplete: {s}", .{@errorName(err)});
+        },
+        else => {},
+    }
+}
+
+fn sendLoadComplete(session: *PageSession, document: *runtime.Instance) !void {
+    disarm(session);
+    forgetRequested(session);
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    var ser = try Serializer.initIn(session, arena_state.allocator(), document);
+    const root = try ser.build(ser.tree.root(), false);
+    try ser.request(root);
+    session.emit(A.loadComplete, .{ .root = root });
+}
+
+fn monotonicNs() i64 {
+    return @intCast(@import("platform").monotonicNow().ns);
 }
 
 // ============================================================================
@@ -263,7 +552,12 @@ const Serializer = struct {
     document: *runtime.Instance,
 
     fn init(session: *PageSession, document: *runtime.Instance) !Serializer {
-        const arena = session.arena.?;
+        return initIn(session, session.arena.?, document);
+    }
+
+    /// A serializer whose tree and nodes live in `arena` (an event's, out
+    /// of any command).
+    fn initIn(session: *PageSession, arena: Allocator, document: *runtime.Instance) !Serializer {
         const browser = session.browser orelse return error.NoBrowser;
         const tree = try arena.create(Tree);
         tree.* = try Tree.build(arena, document, options);
@@ -275,6 +569,24 @@ const Serializer = struct {
             .ax_ids = try browser.scope.of(AxIds),
             .document = document,
         };
+    }
+
+    /// nodes_requested_.insert: the client has `node` now, as sent.
+    fn request(self: *Serializer, node: A.AXNode) !void {
+        const id = std.fmt.parseInt(i64, node.nodeId, 10) catch return;
+        if (id == 0) return;
+        const top = frames.navigable(self.session, self.session.tab) orelse return;
+        const bc = findByDocument(top, self.document) orelse return;
+        const allocator = self.session.allocator;
+        const json = try serialized(allocator, node);
+        const state = &self.session.states.Accessibility;
+        state.requested_guard.beforeInsert(&state.requested);
+        const entry = state.requested.getOrPut(allocator, id) catch |err| {
+            allocator.free(json);
+            return err;
+        };
+        if (entry.found_existing) allocator.free(entry.value_ptr.json);
+        entry.value_ptr.* = .{ .navigable = bc.id, .json = json };
     }
 
     /// The object's AXID: its node's backendNodeId, or a generated one.
@@ -380,7 +692,11 @@ const Serializer = struct {
             var properties: std.ArrayListUnmanaged(A.AXProperty) = .empty;
             for (described.properties) |p| try properties.append(self.arena, try self.property(p));
             node.properties = properties.items;
-            node.name = .{ .type = .computedString, .value = .{ .string = described.name orelse "" } };
+            var name: A.AXValue = .{ .type = .computedString, .value = .{ .string = described.name orelse "" } };
+            if (described.name_sources) |sources| if (sources.len > 0) {
+                name.sources = try self.valueSources(sources);
+            };
+            node.name = name;
             if (described.description.len > 0) node.description = .{ .type = .computedString, .value = .{ .string = described.description } };
             if (described.value) |v| node.value = try self.value(v);
         }
@@ -453,6 +769,51 @@ const Serializer = struct {
             },
             .node_list => |l| .{ .type = .nodeList, .relatedNodes = try self.relatedNodes(l) },
         };
+    }
+
+    /// CreateValueSource for each name source: related elements of
+    /// aria-labelledby as its attributeValue (an idrefList carrying the
+    /// attribute's text), of a native source as its nativeSourceValue (a
+    /// nodeList); otherwise the attribute's value as a string.
+    fn valueSources(self: *Serializer, sources: []const ax.NameSource) ![]const A.AXValueSource {
+        var out: std.ArrayListUnmanaged(A.AXValueSource) = .empty;
+        for (sources) |source| {
+            var v: A.AXValueSource = .{ .type = switch (source.type) {
+                .attribute => .attribute,
+                .implicit => .implicit,
+                .contents => .contents,
+                .placeholder => .placeholder,
+                .relatedElement => .relatedElement,
+            } };
+            const labelledby = if (source.attribute) |a| std.mem.eql(u8, a, "aria-labelledby") or std.mem.eql(u8, a, "aria-labeledby") else false;
+            if (source.related.len > 0) {
+                if (labelledby) {
+                    v.attributeValue = .{
+                        .type = .idrefList,
+                        .value = if (source.attribute_value) |text| .{ .string = text } else null,
+                        .relatedNodes = try self.relatedNodes(source.related),
+                    };
+                } else if (source.attribute == null) {
+                    v.nativeSourceValue = .{ .type = .nodeList, .relatedNodes = try self.relatedNodes(source.related) };
+                }
+            } else if (source.attribute_value) |text| {
+                v.attributeValue = .{ .type = .string, .value = .{ .string = text } };
+            }
+            if (source.text) |text| v.value = .{ .type = .computedString, .value = .{ .string = text } };
+            v.attribute = source.attribute;
+            if (source.superseded) v.superseded = true;
+            if (source.invalid) v.invalid = true;
+            if (source.native_source) |native| v.nativeSource = switch (native) {
+                .label => .label,
+                .labelfor => .labelfor,
+                .labelwrapped => .labelwrapped,
+                .legend => .legend,
+                .tablecaption => .tablecaption,
+                .title => .title,
+            };
+            try out.append(self.arena, v);
+        }
+        return out.items;
     }
 
     /// RelatedNodeForAXObject: the backendDOMNodeId, the element's id as

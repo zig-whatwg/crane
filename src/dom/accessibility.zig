@@ -260,6 +260,20 @@ pub fn related(allocator: Allocator, node: *Instance, comptime relation: Relatio
     return result.items;
 }
 
+/// A labelable element's `labels` NodeList (HTML 4.10.2: button, input,
+/// meter, output, progress, select, textarea, and a form-associated custom
+/// element's through its ElementInternals); null for any other element.
+pub fn labelsOf(node: *Instance) !?*Instance {
+    if (!isHtml(node)) return null;
+    const tag = localName(node);
+    if (eq(tag, "input")) return interfaces.HTMLInputElement.get_labels(node);
+    inline for (.{ .{ "button", interfaces.HTMLButtonElement }, .{ "select", interfaces.HTMLSelectElement }, .{ "textarea", interfaces.HTMLTextAreaElement }, .{ "output", interfaces.HTMLOutputElement }, .{ "meter", interfaces.HTMLMeterElement }, .{ "progress", interfaces.HTMLProgressElement } }) |item| if (eq(tag, item[0])) {
+        return item[1].get_labels(node);
+    };
+    if (custom.attachedInternals(node)) |internals| return interfaces.ElementInternals.get_labels(internals) catch null;
+    return null;
+}
+
 pub fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
     const base = bridge.getNodeBase(node) orelse return null;
     var child = base.firstChild();
@@ -402,18 +416,6 @@ const Name = struct {
     /// caller decides it by its own role (the accessibility tree, by
     /// Chromium's roles); null: by the computed role (WebDriver's).
     root_from_contents: ?bool = null,
-    /// When set, the related elements whose text names the root (aria-
-    /// labelledby's targets, its labels, a legend or caption) are recorded
-    /// here with that text: CDP's labelledby property (Blink's name
-    /// sources' related objects).
-    related_out: ?*std.ArrayListUnmanaged(RelatedText) = null,
-
-    fn record(self: *Name, node: *Instance, target: *Instance, value: []const u8) !void {
-        if (node != self.root) return;
-        const out = self.related_out orelse return;
-        try out.append(self.allocator, .{ .node = target, .text = value });
-    }
-
     fn accessibilityParent(self: *const Name, node: *Instance) ?*Instance {
         return self.owners.get(node) orelse parent(node);
     }
@@ -499,7 +501,6 @@ const Name = struct {
         if (!walk.relation) {
             const targets = try related(self.allocator, node, .labelledby);
             var labelled: std.ArrayList(u8) = .empty;
-            const recorded = if (self.related_out) |out| out.items.len else 0;
             for (targets) |target| {
                 const relation_walk: Walk = .{ .relation = true, .include_hidden = try self.hidden(target) };
                 const text_value = if (target == node) blk: {
@@ -509,11 +510,9 @@ const Name = struct {
                     if (self_entry.found_existing) continue;
                     break :blk try self.alternative(target, relation_walk);
                 } else try self.text(target, relation_walk);
-                try self.record(node, target, text_value);
                 try self.append(&labelled, text_value, true);
             }
             if (std.mem.trim(u8, labelled.items, spaces).len > 0) return labelled.items;
-            if (self.related_out) |out| out.items.len = recorded;
         }
         const role_name = try role(self.allocator, node, self.options);
         // 2C: embedded values precede labels (including editable text).
@@ -531,8 +530,10 @@ const Name = struct {
         const native_row = isHtml(node) and eq(tag, "tr") and attribute(node, "role") == null;
         const from_contents = if (node == self.root and self.root_from_contents != null) self.root_from_contents.? else (!native_row and nameFromContent(role_name));
         if (from_contents or walk.relation or walk.native_label or walk.recursive) {
-            const content = try self.contents(node, walk);
-            if (content.len > 0) return content;
+            if (!(walk.recursive and !walk.relation and node != self.root and try self.groupKeepsContents(node, role_name))) {
+                const content = try self.contents(node, walk);
+                if (content.len > 0) return content;
+            }
         }
         // 2I / HTML-AAM 4.1.1: tooltip, then text-input placeholders.
         if (attribute(node, "title")) |value| if (value.len > 0) return value;
@@ -541,6 +542,38 @@ const Name = struct {
             if (try effective(self.allocator, node, "aria-placeholder", "ariaPlaceholder")) |value| return value;
         }
         return "";
+    }
+
+    /// Whether a group met while descending for a name from contents (or a
+    /// native label's subtree; not an aria-labelledby traversal) keeps its
+    /// contents to itself. AccName 2F takes every descendant's text, but no
+    /// browser does for a group, each by its own rule (golden rule 2, the
+    /// majority per case):
+    /// - Chrome 157: no kGroup but <address> and SVG gives its contents to
+    ///   an ancestor's name (third_party/blink/renderer/modules/accessibility
+    ///   /ax_object.cc SupportsNameFromContents, "contribute to ancestor
+    ///   only"; crbug.com/443106926);
+    /// - Firefox: a group gives none to a treeitem's name ("Child treeitems
+    ///   are contained in a group", accessible/base/nsTextEquivUtils.cpp
+    ///   ShouldIncludeInSubtreeCalculation), but does to any other's;
+    /// - Safari: an element whose role attribute is group gives none, only
+    ///   its own author name (Source/WebCore/accessibility/
+    ///   AccessibilityObject.cpp accessibleNameDerivesFromContent,
+    ///   AccessibilityNodeObject.cpp textUnderElement), an implicit group
+    ///   (a fieldset) does.
+    /// So an explicit role=group keeps its contents (Chrome, Safari), and so
+    /// does any group inside a treeitem (Chrome, Firefox); an implicit group
+    /// under any other root gives them (Firefox, Safari).
+    fn groupKeepsContents(self: *Name, node: *Instance, role_name: []const u8) !bool {
+        if (!eq(role_name, "group")) return false;
+        if (attribute(node, "role")) |value| {
+            var tokens = std.mem.tokenizeAny(u8, value, spaces);
+            while (tokens.next()) |token| if (canonicalRole(token)) |found| {
+                if (eq(found, "group")) return true;
+                break;
+            };
+        }
+        return eq(try role(self.allocator, self.root, self.options), "treeitem");
     }
 
     /// AccName 2G: "the textual contents of the current node" are its
@@ -621,20 +654,8 @@ const Name = struct {
     fn native(self: *Name, node: *Instance, walk: Walk) anyerror!?[]const u8 {
         const tag = localName(node);
         if (isHtml(node)) {
-            var labels: ?*Instance = null;
-            if (eq(tag, "input")) {
-                labels = try interfaces.HTMLInputElement.get_labels(node);
-            } else {
-                inline for (.{ .{ "button", interfaces.HTMLButtonElement }, .{ "select", interfaces.HTMLSelectElement }, .{ "textarea", interfaces.HTMLTextAreaElement }, .{ "output", interfaces.HTMLOutputElement }, .{ "meter", interfaces.HTMLMeterElement }, .{ "progress", interfaces.HTMLProgressElement } }) |item| if (eq(tag, item[0])) {
-                    labels = try item[1].get_labels(node);
-                };
-                if (labels == null) {
-                    if (custom.attachedInternals(node)) |internals| labels = interfaces.ElementInternals.get_labels(internals) catch null;
-                }
-            }
-            if (labels) |list| {
+            if (try labelsOf(node)) |list| {
                 var out: std.ArrayList(u8) = .empty;
-                const recorded = if (self.related_out) |related_list| related_list.items.len else 0;
                 const count = try interfaces.NodeList.get_length(list);
                 for (0..count) |i| if (try interfaces.NodeList.call_item(list, @intCast(i))) |label| {
                     // HTML-AAM 3.5.83 (the label note, w3c/html-aam#533): a
@@ -645,11 +666,9 @@ const Name = struct {
                     // 4877168468033536; Safari 27.2 names it).
                     if (try self.hidden(label)) continue;
                     const label_text = try self.text(label, .{ .native_label = true, .relation = walk.relation });
-                    try self.record(node, label, label_text);
                     try self.append(&out, label_text, true);
                 };
                 if (std.mem.trim(u8, out.items, spaces).len > 0) return out.items;
-                if (self.related_out) |related_list| related_list.items.len = recorded;
             }
             if (oneOf(tag, .{ "img", "area" })) if (attribute(node, "alt")) |value| return value;
             if (eq(tag, "input")) {
@@ -694,14 +713,12 @@ const Name = struct {
             if (eq(tag, "table")) if (try firstVisibleChildNamed(self, node, "caption")) |caption| {
                 const value = try self.text(caption, .{ .native_label = true, .relation = walk.relation });
                 if (std.mem.trim(u8, value, spaces).len > 0) {
-                    try self.record(node, caption, value);
                     return value;
                 }
             };
             if (eq(tag, "fieldset")) if (firstChildNamed(node, "legend")) |legend| if (!try self.hidden(legend)) {
                 const value = try self.text(legend, .{ .native_label = true, .relation = walk.relation });
                 if (std.mem.trim(u8, value, spaces).len > 0) {
-                    try self.record(node, legend, value);
                     return value;
                 }
             };
@@ -893,22 +910,15 @@ pub const Names = struct {
     /// `node`'s accessible name with its name-from-contents decided by the
     /// caller's role for it (the accessibility tree's Chromium roles:
     /// AXObject::SupportsNameFromContents), flattened.
-    /// `sources`, when given, gets the related elements whose text is the
-    /// name, each with its text (unflattened, as Blink's name sources keep
-    /// it).
     /// `root_hidden`: the node itself is hidden; Blink still names it, its
     /// subtree's hiddenness then measured against it (as Chrome 157 names
     /// an aria-hidden button from its text).
-    pub fn nameWithContents(self: *Names, node: *Instance, from_contents: bool, root_hidden: bool, sources: ?*std.ArrayListUnmanaged(RelatedText)) ![]const u8 {
+    pub fn nameWithContents(self: *Names, node: *Instance, from_contents: bool, root_hidden: bool) ![]const u8 {
         self.computation.root = node;
         self.computation.seen.clearRetainingCapacity();
         self.computation.self_labels.clearRetainingCapacity();
         self.computation.root_from_contents = from_contents;
-        self.computation.related_out = sources;
-        defer {
-            self.computation.root_from_contents = null;
-            self.computation.related_out = null;
-        }
+        defer self.computation.root_from_contents = null;
         return flatten(self.computation.allocator, try self.computation.text(node, .{ .include_hidden = root_hidden }));
     }
 
@@ -921,6 +931,69 @@ pub const Names = struct {
         self.computation.self_labels.clearRetainingCapacity();
         const walk: Walk = .{ .relation = true, .include_hidden = try self.computation.hidden(target) };
         return flatten(self.computation.allocator, try self.computation.text(target, walk));
+    }
+
+    // The parts of one name, each as the name's own computation takes it:
+    // what Blink's name sources show of a name (AXObject::NameSources,
+    // CDP's AXValueSource list; dom/accessibility_tree.zig nameSources).
+    // Each starts a computation for `node`, as nameWithContents does.
+
+    fn begin(self: *Names, node: *Instance) void {
+        self.computation.root = node;
+        self.computation.seen.clearRetainingCapacity();
+        self.computation.self_labels.clearRetainingCapacity();
+        self.computation.root_from_contents = null;
+    }
+
+    /// Each aria-labelledby target of `node` (aria-labeledby's, when only
+    /// that spelling is set) with the text it gives (AccName 2B, a relation
+    /// traversal; Blink TextFromElements(in_aria_labelledby_traversal)),
+    /// unflattened.
+    pub fn labelledbyTexts(self: *Names, node: *Instance) ![]RelatedText {
+        self.begin(node);
+        const arena = self.computation.allocator;
+        var out: std.ArrayListUnmanaged(RelatedText) = .empty;
+        _ = try self.computation.seen.getOrPut(arena, node);
+        for (try related(arena, node, .labelledby)) |target| {
+            const walk: Walk = .{ .relation = true, .include_hidden = try self.computation.hidden(target) };
+            // AccName 2D example 5: a self reference takes the node's own
+            // aria-label, not 2B again (alternative() skips 2B on a relation).
+            const value = if (target == node) try self.computation.alternative(target, walk) else try self.computation.text(target, walk);
+            try out.append(arena, .{ .node = target, .text = value });
+        }
+        return out.items;
+    }
+
+    /// Each label of a labelable `node` with the text it gives (HTML-AAM
+    /// 4.1: the label's subtree; Blink TextFromElements over labels()),
+    /// unflattened; a label hidden from the accessibility tree gives ""
+    /// (as `native` skips it). Null when `node` is not labelable.
+    pub fn labelTexts(self: *Names, node: *Instance) !?[]RelatedText {
+        const list = try labelsOf(node) orelse return null;
+        self.begin(node);
+        const arena = self.computation.allocator;
+        var out: std.ArrayListUnmanaged(RelatedText) = .empty;
+        const count = try interfaces.NodeList.get_length(list);
+        for (0..count) |i| if (try interfaces.NodeList.call_item(list, @intCast(i))) |label| {
+            const value = if (try self.computation.hidden(label)) "" else try self.computation.text(label, .{ .native_label = true });
+            try out.append(arena, .{ .node = label, .text = value });
+        };
+        return out.items;
+    }
+
+    /// The text `node`'s own contents give it (AccName 2F, the name from
+    /// contents whether or not its role takes one), flattened.
+    pub fn contentsText(self: *Names, node: *Instance, root_hidden: bool) ![]const u8 {
+        self.begin(node);
+        _ = try self.computation.seen.getOrPut(self.computation.allocator, node);
+        return flatten(self.computation.allocator, try self.computation.contents(node, .{ .include_hidden = root_hidden }));
+    }
+
+    /// The text `element` - a legend, a caption, an SVG title - gives `node`
+    /// as its host-language label (HTML-AAM 4.1.5 / 4.1.11), unflattened.
+    pub fn nativeLabelText(self: *Names, node: *Instance, element: *Instance) ![]const u8 {
+        self.begin(node);
+        return self.computation.text(element, .{ .native_label = true });
     }
 
     /// The element whose aria-owns makes `node` its child, if one does.

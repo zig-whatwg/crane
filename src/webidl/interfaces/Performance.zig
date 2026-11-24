@@ -15,14 +15,14 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const PerformanceMeasureOptions = @import("dictionaries").PerformanceMeasureOptions;
-const MemoryMeasurement = @import("dictionaries").MemoryMeasurement;
 const EventCounts = @import("interfaces").EventCounts;
+const MemoryMeasurement = @import("dictionaries").MemoryMeasurement;
 const PerformanceTiming = @import("interfaces").PerformanceTiming;
 const PerformanceMeasure = @import("interfaces").PerformanceMeasure;
-const PerformanceMarkOptions = @import("dictionaries").PerformanceMarkOptions;
 const Observable = @import("interfaces").Observable;
+const PerformanceMarkOptions = @import("dictionaries").PerformanceMarkOptions;
 const Event = @import("interfaces").Event;
+const DOMStringOrPerformanceMeasureOptions = @import("typedefs").DOMStringOrPerformanceMeasureOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const PerformanceNavigation = @import("interfaces").PerformanceNavigation;
 const EventListener = @import("interfaces").EventListener;
@@ -358,7 +358,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_toJSON(instance);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
+    pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(DOMStringOrPerformanceMeasureOptions), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
 

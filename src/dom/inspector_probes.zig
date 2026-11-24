@@ -129,6 +129,10 @@ pub const VTable = struct {
     /// `document`'s title may have changed (behind `titlesObserved`, not
     /// `active`): its title element, or that element's text, changed.
     title_may_have_changed: *const fn (context: *anyopaque, document: *runtime.Instance) void,
+    /// `document`'s focused area changed (the Accessibility agents' only).
+    focused_area_changed: *const fn (context: *anyopaque, document: *runtime.Instance) void,
+    /// A text control's value changed (the Accessibility agents' only).
+    control_value_changed: *const fn (context: *anyopaque, element: *runtime.Instance) void,
 };
 
 /// A Browser's probe sink: its scope's `.inspector_probes` table.
@@ -286,6 +290,25 @@ pub noinline fn didModifyAdoptedStyleSheets(owner: *runtime.Instance) void {
 pub noinline fn titleMayHaveChanged(document: *runtime.Instance) void {
     const sink = sinkOf(document) orelse return;
     sink.vtable.title_may_have_changed(sink.context, document);
+}
+
+/// `document`'s focused area was designated anew (dom.focused_area.set: the
+/// focusing, unfocusing and focus fixup steps). Blink:
+/// Document::SetFocusedElement -> AXObjectCacheImpl::
+/// HandleFocusedUIElementChanged, whose focus events reach the
+/// Accessibility agents (lane a11y1).
+pub noinline fn focusedAreaChanged(document: *runtime.Instance) void {
+    const sink = sinkOf(document) orelse return;
+    sink.vtable.focused_area_changed(sink.context, document);
+}
+
+/// `element`'s (an input's or a textarea's) value changed, by script or by
+/// an edit. Blink: AXObjectCacheImpl::HandleValueChanged /
+/// HandleEditableTextContentChanged, reaching the Accessibility agents
+/// (lane a11y1).
+pub noinline fn controlValueChanged(element: *runtime.Instance) void {
+    const sink = sinkOf(element) orelse return;
+    sink.vtable.control_value_changed(sink.context, element);
 }
 
 test "the gate is closed while no agent is enabled, and counts agents" {

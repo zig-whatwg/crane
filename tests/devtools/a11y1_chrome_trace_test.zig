@@ -25,9 +25,10 @@
 //! renamed in order of first appearance ("n1", "n2"...; Chrome's renderer
 //! hands DOMNodeIds to other subsystems too, so its numbers are not Crane's),
 //! Chrome's generated negative ids likewise ("g1"...), frame ids ("frame1").
-//! Name and description `sources` are left out until batch 2 adds them
-//! (`compare_sources`). Accessibility events are batch 3's and are not in
-//! this comparison.
+//! A name's `sources` are compared with the rest (CDP sends none for a
+//! description). An `events` step takes the Accessibility events that came
+//! since the step before (`canonicalEvents`: each loadComplete, then the
+//! set of nodes nodesUpdated sent).
 //!
 //! RECORDING the fixture: run Chrome for Testing 157 with
 //! `--headless=new --remote-debugging-port=<port> --user-data-dir=<empty dir> about:blank`
@@ -46,9 +47,6 @@ const cdp = @import("cdp_client.zig");
 const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
 
 const fixture_path = "tests/devtools/fixtures/a11y1-chrome157-trace.txt";
-
-/// Batch 2 compares the name and description sources too.
-const compare_sources = false;
 
 /// One command of a step. Selectors are document.querySelector's, run by
 /// Runtime.evaluate in the page ("document" for the document itself).
@@ -73,6 +71,13 @@ const Action = union(enum) {
     raw: struct { method: []const u8, params: []const u8 = "{}" },
     /// Page script, then a settle; recorded as an empty answer.
     script: []const u8,
+    /// Page.navigate to this page's data URL, then its load and a settle;
+    /// recorded as an empty answer (its loaderId is the browser's own).
+    navigate: []const u8,
+    /// Wait this many milliseconds in the page, then take the
+    /// Accessibility events that arrived since the last step, in order:
+    /// recorded as {"result":{"events":[{method, params}...]}}.
+    events: u32,
 };
 
 const Step = struct { label: []const u8, action: Action };
@@ -240,24 +245,98 @@ const pages = [_]Page{
         },
     },
     .{
+        // tools/mcp_diff/fixtures/snapshot.html (lane mcp1): chrome-devtools-
+        // mcp's take_snapshot over it showed a label of a checkbox, an
+        // image's url, a text field's and a select's user-agent parts. Those
+        // parts are Chrome's user-agent shadow DOM, which Crane has none of
+        // for form controls (main, 12:25 AM ET 2026-11-24: a later
+        // devtools-fidelity item, no made-up DOM ids): Crane's textbox has no
+        // children, its value carrying the text, and its select's pop-up is
+        // nodeless - set apart here as every page's user-agent nodes are.
+        .label = "snapshot",
+        .html = "<!doctype html>\n<title>Snapshot</title>\n" ++
+            "<nav><a href=\"#top\">Top</a> <a href=\"second.html\">Second page</a></nav>\n<main>\n<h1>Orders</h1>\n" ++
+            "<p>Three orders are <em>waiting</em>.</p>\n<ul><li>First</li><li>Second</li></ul>\n<form>\n" ++
+            "<label>Name <input name=\"name\" value=\"Ada\"></label>\n<label><input type=\"checkbox\" checked> Gift wrap</label>\n" ++
+            "<select><option>Red</option><option selected>Green</option></select>\n<textarea aria-label=\"Notes\"></textarea>\n" ++
+            "<button type=\"button\">Send</button>\n<button type=\"button\" disabled>Cancel</button>\n</form>\n" ++
+            "<img alt=\"Logo\" src=\"data:image/gif;base64,R0lGODlhAQABAAAAACw=\">\n" ++
+            "<iframe srcdoc=\"<!doctype html><title>Inner</title><button>Inside</button>\"></iframe>\n</main>\n",
+        .steps = &.{
+            .{ .label = "full", .action = full },
+            .{ .label = "child-frame", .action = .{ .frame = 0 } },
+            .{ .label = "query-label", .action = .{ .query = .{ .selector = "document", .name = "Gift wrap" } } },
+        },
+    },
+    .{
         .label = "enabled",
-        .html = "<!doctype html><html lang=en><head><title>Enabled</title></head><body><main><h1>Top</h1><p>para <a href=\"/l\">link</a></p></main></body></html>",
+        .html = "<!doctype html><html lang=en><head><title>Enabled</title></head><body><main><h1>Top</h1><p>para <a href=\"/l\">link</a></p><input id=v aria-label=Val value=a></main></body></html>",
         .steps = &.{
             .{ .label = "root-disabled", .action = .{ .raw = .{ .method = "Accessibility.getRootAXNode" } } },
             .{ .label = "children-disabled", .action = .{ .raw = .{ .method = "Accessibility.getChildAXNodes", .params = "{\"id\":\"1\"}" } } },
             .{ .label = "disable-disabled", .action = .{ .raw = .{ .method = "Accessibility.disable" } } },
             .{ .label = "enable", .action = .{ .raw = .{ .method = "Accessibility.enable" } } },
+            .{ .label = "events-enable", .action = .{ .events = 600 } },
             .{ .label = "enable-again", .action = .{ .raw = .{ .method = "Accessibility.enable" } } },
             .{ .label = "root", .action = .root },
             .{ .label = "children", .action = .children },
             .{ .label = "children-bad", .action = .{ .raw = .{ .method = "Accessibility.getChildAXNodes", .params = "{\"id\":\"bogus\"}" } } },
             .{ .label = "ancestors", .action = .{ .ancestors = "a" } },
+            .{ .label = "ancestors-input", .action = .{ .ancestors = "#v" } },
             .{ .label = "focus-link", .action = .{ .script = "document.querySelector('a').focus();" } },
+            .{ .label = "events-focus", .action = .{ .events = 600 } },
+            .{ .label = "value", .action = .{ .script = "document.querySelector('#v').value = 'typed';" } },
+            .{ .label = "events-value", .action = .{ .events = 600 } },
             .{ .label = "ancestors-focused", .action = .{ .ancestors = "a" } },
             .{ .label = "partial-no-node", .action = .{ .raw = .{ .method = "Accessibility.getPartialAXTree", .params = "{}" } } },
             .{ .label = "query-no-node", .action = .{ .raw = .{ .method = "Accessibility.queryAXTree", .params = "{\"accessibleName\":\"x\"}" } } },
             .{ .label = "disable", .action = .{ .raw = .{ .method = "Accessibility.disable" } } },
             .{ .label = "root-after-disable", .action = .{ .raw = .{ .method = "Accessibility.getRootAXNode" } } },
+        },
+    },
+    .{
+        // Accessibility.loadComplete and nodesUpdated (InspectorAccessibility
+        // Agent: only nodes already sent are marked dirty, a 260 ms one-shot
+        // and a 250 ms throttle before nodesUpdated; a load resets the sent
+        // set to the new root). No user-agent shadow here: the page's `ua`
+        // line is its last document's.
+        .label = "events",
+        .html = "<!doctype html><html lang=en><head><title>Events</title></head><body>" ++
+            "<button id=b>Old</button><p id=p>Para <span id=s>text</span></p>" ++
+            "<ul id=u><li>one</li></ul><div id=d role=region aria-label=Area>inside</div>" ++
+            "</body></html>",
+        .steps = &.{
+            .{ .label = "enable", .action = .{ .raw = .{ .method = "Accessibility.enable" } } },
+            .{ .label = "events-enable", .action = .{ .events = 600 } },
+            // The sent set grows by getRootAXNode, getChildAXNodes and
+            // getAXNodeAndAncestors only (not getFullAXTree's answer).
+            .{ .label = "full", .action = full },
+            .{ .label = "events-full", .action = .{ .events = 600 } },
+            .{ .label = "root", .action = .root },
+            .{ .label = "children", .action = .children },
+            .{ .label = "ancestors-button", .action = .{ .ancestors = "#b" } },
+            .{ .label = "ancestors-item", .action = .{ .ancestors = "#u li" } },
+            .{ .label = "ancestors-region", .action = .{ .ancestors = "#d" } },
+            .{ .label = "ancestors-para", .action = .{ .ancestors = "#p" } },
+            .{ .label = "text", .action = .{ .script = "document.querySelector('#b').firstChild.data = 'New';" } },
+            .{ .label = "events-text", .action = .{ .events = 600 } },
+            .{ .label = "label", .action = .{ .script = "document.querySelector('#d').setAttribute('aria-label', 'Zone');" } },
+            .{ .label = "events-label", .action = .{ .events = 600 } },
+            .{ .label = "append", .action = .{ .script = "const li = document.createElement('li'); li.textContent = 'two'; document.querySelector('#u').append(li);" } },
+            .{ .label = "events-append", .action = .{ .events = 600 } },
+            .{ .label = "remove", .action = .{ .script = "document.querySelector('#s').remove();" } },
+            .{ .label = "events-remove", .action = .{ .events = 600 } },
+            .{ .label = "hide", .action = .{ .script = "document.querySelector('#p').style.display = 'none';" } },
+            .{ .label = "events-hide", .action = .{ .events = 600 } },
+            .{ .label = "navigate", .action = .{ .navigate = "<!doctype html><html lang=en><head><title>Next</title></head><body><p>next page</p></body></html>" } },
+            .{ .label = "events-load", .action = .{ .events = 600 } },
+            .{ .label = "unrequested", .action = .{ .script = "document.querySelector('p').textContent = 'changed';" } },
+            .{ .label = "events-unrequested", .action = .{ .events = 600 } },
+            .{ .label = "title", .action = .{ .script = "document.title = 'Retitled';" } },
+            .{ .label = "events-title", .action = .{ .events = 600 } },
+            .{ .label = "disable", .action = .{ .raw = .{ .method = "Accessibility.disable" } } },
+            .{ .label = "mutate-disabled", .action = .{ .script = "document.body.append('x');" } },
+            .{ .label = "events-disabled", .action = .{ .events = 600 } },
         },
     },
 };
@@ -268,18 +347,11 @@ const pages = [_]Page{
 /// in Chrome's vocabulary) and needs-renderer rows (soft wraps: main's D1)
 /// go here.
 const Deviation = struct { chrome: []const u8, crane: []const u8 };
-const deviations = [_]Deviation{
-    // A treeitem's name from its contents: Crane's AccName (dom/
-    // accessibility.zig, AccName 1.2 step 2F, shared with WebDriver's computed
-    // label) takes its whole subtree, the nested group's "a.zig" too; Chrome
-    // 157 leaves a group's text out of an ancestor's name (Blink
-    // SupportsNameFromContents(recursive) is false for kGroup). OPEN: the
-    // other browsers' answer decides by golden rule 2 (main's batch 2).
-    .{
-        .chrome = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src\"}",
-        .crane = "chromeRole:{type:\"internalRole\",value:180},ignored:false,name:{type:\"computedString\",value:\"src a.zig\"}",
-    },
-};
+// None today. The treeitem whose nested group Chrome leaves out of its name
+// was one until golden rule 2 decided it the same way (dom/accessibility.zig
+// groupKeepsContents: Chrome, Firefox and Safari all keep a group's text out
+// of a treeitem's name).
+const deviations = [_]Deviation{};
 
 /// CRANE_A11Y_TRACE_VERBOSE set: each step's progress on stderr.
 fn progress(comptime format: []const u8, args: anytype) void {
@@ -390,6 +462,59 @@ fn answerJson(allocator: Allocator, got: std.json.Value) ![]u8 {
     return out.toOwnedSlice();
 }
 
+/// Page.navigate to `html`'s data URL, its load, then a settle.
+fn navigateTo(allocator: Allocator, client: *cdp.Client, html: []const u8) !void {
+    const url = try dataUrl(allocator, html);
+    defer allocator.free(url);
+    var params: std.ArrayList(u8) = .empty;
+    defer params.deinit(allocator);
+    try params.appendSlice(allocator, "{\"url\":");
+    try jsonString(allocator, url, &params);
+    try params.append(allocator, '}');
+    var nav = try client.call("Page.navigate", params.items, "");
+    nav.deinit();
+    var loaded = try client.waitEvent("Page.loadEventFired");
+    loaded.deinit();
+    try settle(allocator, client);
+}
+
+/// The queued Accessibility events, in arrival order, taken off the queue:
+/// {"result":{"events":[{"method":...,"params":...}...]}}, OWNED.
+fn takeAccessibilityEvents(allocator: Allocator, client: *cdp.Client) !std.json.Parsed(std.json.Value) {
+    var text: std.Io.Writer.Allocating = .init(allocator);
+    defer text.deinit();
+    const w = &text.writer;
+    w.writeAll("{\"result\":{\"events\":[") catch return error.OutOfMemory;
+    var first = true;
+    var i: usize = 0;
+    while (i < client.queued.items.len) {
+        const message = client.queued.items[i];
+        var parsed = std.json.parseFromSlice(std.json.Value, allocator, message, .{}) catch {
+            i += 1;
+            continue;
+        };
+        defer parsed.deinit();
+        const method = cdp.stringAt(parsed.value, "method") orelse {
+            i += 1;
+            continue;
+        };
+        if (!std.mem.startsWith(u8, method, "Accessibility.")) {
+            i += 1;
+            continue;
+        }
+        if (!first) w.writeAll(",") catch return error.OutOfMemory;
+        first = false;
+        w.writeAll("{\"method\":") catch return error.OutOfMemory;
+        std.json.Stringify.value(method, .{}, w) catch return error.OutOfMemory;
+        w.writeAll(",\"params\":") catch return error.OutOfMemory;
+        std.json.Stringify.value(parsed.value.object.get("params") orelse .null, .{}, w) catch return error.OutOfMemory;
+        w.writeAll("}") catch return error.OutOfMemory;
+        allocator.free(client.queued.orderedRemove(i));
+    }
+    w.writeAll("]}}") catch return error.OutOfMemory;
+    return std.json.parseFromSlice(std.json.Value, allocator, text.written(), .{});
+}
+
 /// Run every page's steps on `client`, writing each answer raw.
 fn runPages(allocator: Allocator, client: *cdp.Client, out: *std.ArrayList(u8)) !void {
     var page_enable = try client.call("Page.enable", "{}", "");
@@ -397,18 +522,7 @@ fn runPages(allocator: Allocator, client: *cdp.Client, out: *std.ArrayList(u8)) 
     for (pages) |page| {
         progress("page {s}", .{page.label});
         try out.print(allocator, "page {s}\n", .{page.label});
-        const url = try dataUrl(allocator, page.html);
-        defer allocator.free(url);
-        var params: std.ArrayList(u8) = .empty;
-        defer params.deinit(allocator);
-        try params.appendSlice(allocator, "{\"url\":");
-        try jsonString(allocator, url, &params);
-        try params.append(allocator, '}');
-        var nav = try client.call("Page.navigate", params.items, "");
-        nav.deinit();
-        var loaded = try client.waitEvent("Page.loadEventFired");
-        loaded.deinit();
-        try settle(allocator, client);
+        try navigateTo(allocator, client, page.html);
         var root_id: ?[]u8 = null;
         defer if (root_id) |r| allocator.free(r);
         for (page.steps) |step| {
@@ -460,6 +574,18 @@ fn runPages(allocator: Allocator, client: *cdp.Client, out: *std.ArrayList(u8)) 
                     const answer = try evaluate(allocator, client, source, true);
                     try settle(allocator, client);
                     break :blk answer;
+                },
+                .navigate => |html| blk: {
+                    try navigateTo(allocator, client, html);
+                    break :blk try std.json.parseFromSlice(std.json.Value, allocator, "{\"result\":{}}", .{});
+                },
+                .events => |ms| blk: {
+                    var expression: std.ArrayList(u8) = .empty;
+                    defer expression.deinit(allocator);
+                    try expression.print(allocator, "new Promise((resolve) => setTimeout(resolve, {d}))", .{ms});
+                    var waited = try evaluate(allocator, client, expression.items, true);
+                    waited.deinit();
+                    break :blk try takeAccessibilityEvents(allocator, client);
                 },
             };
             defer got.deinit();
@@ -588,7 +714,7 @@ fn userAgentNodes(arena: Allocator, nodes: *std.json.Array, ua: *const std.AutoH
         if (self.fate == .drop) continue;
         if (n.object.get("childIds")) |child_ids| {
             var flat = std.json.Array.init(arena);
-            for (child_ids.array.items) |c| try flatChild(arena, known, c.string, &flat);
+            for (child_ids.array.items) |c| try flatChild(arena, known, ua, c.string, &flat);
             try n.object.put(arena, "childIds", .{ .array = flat });
         }
         if (n.object.get("parentId")) |parent| {
@@ -622,12 +748,19 @@ fn renamedId(arena: Allocator, known: *const Known, id: []const u8) ![]const u8 
 
 /// `id` in a childIds list: itself, its generated name, or - dropped - its
 /// own kept children in its place.
-fn flatChild(arena: Allocator, known: *const Known, id: []const u8, out: *std.json.Array) !void {
-    const k = known.get(id) orelse return out.append(.{ .string = id });
+fn flatChild(arena: Allocator, known: *const Known, ua: *const std.AutoHashMapUnmanaged(i64, void), id: []const u8, out: *std.json.Array) !void {
+    const k = known.get(id) orelse {
+        // A child no answer has shown yet: a user-agent node by its id (an
+        // AX id is its node's backendNodeId), whose own children no answer
+        // names either.
+        const number = std.fmt.parseInt(i64, id, 10) catch return out.append(.{ .string = id });
+        if (ua.contains(number)) return;
+        return out.append(.{ .string = id });
+    };
     switch (k.fate) {
         .keep => try out.append(.{ .string = id }),
         .nodeless => try out.append(.{ .string = try renamedId(arena, known, id) }),
-        .drop => for (k.children) |child| try flatChild(arena, known, child, out),
+        .drop => for (k.children) |child| try flatChild(arena, known, ua, child, out),
     }
 }
 
@@ -687,10 +820,7 @@ fn canonical(allocator: Allocator, names: *Names, value: std.json.Value, out: *s
             var keys: std.ArrayList([]const u8) = .empty;
             defer keys.deinit(allocator);
             var it = object.iterator();
-            while (it.next()) |entry| {
-                if (!compare_sources and std.mem.eql(u8, entry.key_ptr.*, "sources")) continue;
-                try keys.append(allocator, entry.key_ptr.*);
-            }
+            while (it.next()) |entry| try keys.append(allocator, entry.key_ptr.*);
             std.mem.sort([]const u8, keys.items, {}, struct {
                 fn less(_: void, a: []const u8, b: []const u8) bool {
                     return std.mem.lessThan(u8, a, b);
@@ -779,6 +909,14 @@ fn canonicalTrace(allocator: Allocator, raw: []const u8) ![]u8 {
         const rest = line["step ".len..];
         const space = std.mem.indexOfScalar(u8, rest, ' ') orelse continue;
         try out.print(allocator, "step {s}\n", .{rest[0..space]});
+        // A navigation's new document numbers its nodes afresh in Chrome
+        // 157 (the events page's new root is 2, an id its first document
+        // had used), never in Crane: names start again there.
+        if (std.mem.startsWith(u8, rest[0..space], "navigate")) {
+            names.deinit(allocator);
+            names = .{};
+            known = .empty;
+        }
         var parsed = std.json.parseFromSlice(std.json.Value, allocator, rest[space + 1 ..], .{}) catch {
             try out.appendSlice(allocator, "  unparsable\n");
             continue;
@@ -791,6 +929,10 @@ fn canonicalTrace(allocator: Allocator, raw: []const u8) ![]u8 {
             try out.print(allocator, "  error {d} {s}\n", .{ code, message });
             continue;
         }
+        if (parsed.value.object.getPtr("result")) |result_ptr| if (result_ptr.object.getPtr("events")) |events| {
+            try canonicalEvents(allocator, scratch.allocator(), &names, events, ua, &known, &out);
+            continue;
+        };
         const result = parsed.value.object.get("result") orelse continue;
         if (result.object.get("nodes")) |nodes| {
             for (nodes.array.items) |node| {
@@ -810,6 +952,55 @@ fn canonicalTrace(allocator: Allocator, raw: []const u8) ![]u8 {
         }
     }
     return out.toOwnedSlice(allocator);
+}
+
+/// An events step's canonical lines: each loadComplete in arrival order
+/// with its root, then every node any nodesUpdated sent, as one sorted set
+/// (Blink sends a document's dirty nodes from a hash set, and how a page's
+/// changes split between events is timing; which nodes and what each says
+/// is the answer).
+fn canonicalEvents(allocator: Allocator, arena: Allocator, names: *Names, events: *std.json.Value, ua: *const std.AutoHashMapUnmanaged(i64, void), known: *Known, out: *std.ArrayList(u8)) !void {
+    var updated: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (updated.items) |line| allocator.free(line);
+        updated.deinit(allocator);
+    }
+    for (events.array.items) |*event| {
+        const method = if (event.object.get("method")) |m| m.string else "?";
+        const params = event.object.getPtr("params") orelse continue;
+        if (std.mem.eql(u8, method, "Accessibility.loadComplete")) {
+            try out.appendSlice(allocator, "  loadComplete ");
+            if (params.object.get("root")) |root| try canonical(allocator, names, root, out);
+            try out.append(allocator, '\n');
+        } else if (std.mem.eql(u8, method, "Accessibility.nodesUpdated")) {
+            const nodes = params.object.getPtr("nodes") orelse continue;
+            try userAgentNodes(arena, &nodes.array, ua, known);
+            for (nodes.array.items) |node| {
+                var line: std.ArrayList(u8) = .empty;
+                errdefer line.deinit(allocator);
+                try canonical(allocator, names, node, &line);
+                const owned = try line.toOwnedSlice(allocator);
+                updated.append(allocator, owned) catch |err| {
+                    allocator.free(owned);
+                    return err;
+                };
+            }
+        } else {
+            try out.print(allocator, "  event {s}\n", .{method});
+        }
+    }
+    std.mem.sort([]const u8, updated.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
+    var previous: ?[]const u8 = null;
+    for (updated.items) |line| {
+        if (previous) |p| if (std.mem.eql(u8, p, line)) continue;
+        previous = line;
+        try out.print(allocator, "  updated {s}\n", .{line});
+    }
+    if (events.array.items.len == 0) try out.appendSlice(allocator, "  (no events)\n");
 }
 
 /// The canonical fixture with `deviations` applied, OWNED;
@@ -981,11 +1172,11 @@ test "the Accessibility domain's answers for a list of pages and commands equal 
     try testing.expect(try reportDifferences(allocator, expected, crane, 40));
 }
 
-test "canonical form: one rename map for AX node ids and backend ids, generated ids apart, sources dropped" {
+test "canonical form: one rename map for AX node ids and backend ids (related nodes' too), generated ids apart" {
     const allocator = testing.allocator;
     const raw =
         \\page p
-        \\step full {"result":{"nodes":[{"nodeId":"7","backendDOMNodeId":7,"childIds":["9","-1000000002"],"role":{"type":"internalRole","value":"RootWebArea"},"frameId":"ABC","name":{"type":"computedString","value":"T","sources":[{"type":"attribute"}]}},{"nodeId":"-1000000002","parentId":"7","childIds":[]}]}}
+        \\step full {"result":{"nodes":[{"nodeId":"7","backendDOMNodeId":7,"childIds":["9","-1000000002"],"role":{"type":"internalRole","value":"RootWebArea"},"frameId":"ABC","name":{"type":"computedString","value":"T","sources":[{"type":"relatedElement","attribute":"aria-labelledby","attributeValue":{"type":"idrefList","value":"x","relatedNodes":[{"backendDOMNodeId":9,"idref":"x","text":"T"}]},"value":{"type":"computedString","value":"T"}},{"type":"attribute","attribute":"title","superseded":true}]}},{"nodeId":"-1000000002","parentId":"7","childIds":[]}]}}
         \\step bad {"error":{"code":-32602,"message":"Frame with the given frameId is not found."}}
         \\
     ;
@@ -994,10 +1185,37 @@ test "canonical form: one rename map for AX node ids and backend ids, generated 
     try testing.expectEqualStrings(
         \\page p
         \\step full
-        \\  node {backendDOMNodeId:n1,childIds:[n2,g1],frameId:frame1,name:{type:"computedString",value:"T"},nodeId:n1,role:{type:"internalRole",value:"RootWebArea"}}
+        \\  node {backendDOMNodeId:n1,childIds:[n2,g1],frameId:frame1,name:{sources:[{attribute:"aria-labelledby",attributeValue:{relatedNodes:[{backendDOMNodeId:n2,idref:"x",text:"T"}],type:"idrefList",value:"x"},type:"relatedElement",value:{type:"computedString",value:"T"}},{attribute:"title",superseded:true,type:"attribute"}],type:"computedString",value:"T"},nodeId:n1,role:{type:"internalRole",value:"RootWebArea"}}
         \\  node {childIds:[],nodeId:g1,parentId:n1}
         \\step bad
         \\  error -32602 Frame with the given frameId is not found.
+        \\
+    , got);
+}
+
+test "events: loadComplete in order with its root, nodesUpdated as one sorted set of nodes, none as (no events)" {
+    const allocator = testing.allocator;
+    const raw =
+        \\page p
+        \\step full {"result":{"nodes":[{"nodeId":"7","backendDOMNodeId":7,"childIds":["9","8"]}]}}
+        \\step events-a {"result":{"events":[{"method":"Accessibility.nodesUpdated","params":{"nodes":[{"nodeId":"9","backendDOMNodeId":9}]}},{"method":"Accessibility.nodesUpdated","params":{"nodes":[{"nodeId":"8","backendDOMNodeId":8},{"nodeId":"9","backendDOMNodeId":9}]}}]}}
+        \\step events-b {"result":{"events":[{"method":"Accessibility.loadComplete","params":{"root":{"nodeId":"20","backendDOMNodeId":20,"childIds":[]}}}]}}
+        \\step events-c {"result":{"events":[]}}
+        \\
+    ;
+    const got = try canonicalTrace(allocator, raw);
+    defer allocator.free(got);
+    try testing.expectEqualStrings(
+        \\page p
+        \\step full
+        \\  node {backendDOMNodeId:n1,childIds:[n2,n3],nodeId:n1}
+        \\step events-a
+        \\  updated {backendDOMNodeId:n2,nodeId:n2}
+        \\  updated {backendDOMNodeId:n3,nodeId:n3}
+        \\step events-b
+        \\  loadComplete {backendDOMNodeId:n4,childIds:[],nodeId:n4}
+        \\step events-c
+        \\  (no events)
         \\
     , got);
 }

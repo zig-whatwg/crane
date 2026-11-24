@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const DOMStringOrSequenceOfDOMString = @import("typedefs").DOMStringOrSequenceOfDOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const IDBTransactionOptions = @import("dictionaries").IDBTransactionOptions;
 const IDBTransaction = @import("interfaces").IDBTransaction;
@@ -284,7 +285,7 @@ pub const IDBDatabase = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
+    pub fn call_transaction(instance: *runtime.Instance, storeNames: DOMStringOrSequenceOfDOMString, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
