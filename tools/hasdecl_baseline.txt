@@ -27,7 +27,6 @@ src/webidl/impls/Document.zig 1
 src/webidl/impls/EventTarget.zig 1
 src/webidl/interfaces/root.zig 1
 src/webidl/mixins/root.zig 1
-src/webidl/utils/collection.zig 9
 src/xml/parser.zig 9
 tests/css/ci1_authored_image_currentcolor_test.zig 1
 tests/css/ci1_color_aggregate_test.zig 6
