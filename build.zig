@@ -1726,205 +1726,6 @@ fn addGeneratedTables(b: *std.Build) GeneratedTables {
     return .{ .reverse_index = reverse_index, .psl = psl, .reverse_index_tool = reverse_index_module, .psl_tool = psl_module };
 }
 
-/// The platform protocol's modules for one platform (docs/platform-protocol.md
-/// section 1): the facade `platform` (src/platform/protocol.zig), the bound
-/// implementation `platform_impl`, the kit parts it composes and this
-/// binding's `platform_options`. The facade's comptime check holds the
-/// implementation to the contract whenever the facade is compiled.
-const PlatformBinding = struct {
-    facade: *std.Build.Module,
-    options: *std.Build.Module,
-    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
-    /// `fetch` imports for a Browser's network context until transfers move
-    /// behind the platform's port. A module of its own that imports nothing:
-    /// a graph whose `fetch` is compiled beside the old platform root (tests/
-    /// platform/retained_old_platform.zig) must not reach the facade's files.
-    kit_curl_share: *std.Build.Module,
-    /// kit/sfnt and kit/inflate, whose own test blocks the platform tests
-    /// run (decision 20).
-    kit_sfnt: *std.Build.Module,
-    kit_inflate: *std.Build.Module,
-    /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
-    /// whose own test blocks the platform tests run.
-    kit_media_decoding: *std.Build.Module,
-    /// <time.h> translated (kit_build.cImport), which kit/posix imports as `c_time`;
-    /// tests/platform takes the same module (one per header set per graph).
-    c_time: *std.Build.Module,
-};
-
-const PlatformBindingOptions = struct {
-    platform: Platform,
-    /// -Dplatform-module's root, for `.external`.
-    module_path: ?[]const u8 = null,
-    without: []const []const u8 = &.{},
-    static: []const []const u8 = &.{},
-    http2: bool,
-    libcurl: ?*std.Build.Step.Compile,
-    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
-    /// store parses certificates with it and hands curl's TLS configuration
-    /// the chain. Null with a system libcurl, whose TLS library is its own.
-    mbedtls: ?*std.Build.Step.Compile = null,
-    brotli: ?BrotliLibraries,
-    image_codecs: ?*std.Build.Step.Compile,
-    /// Register the facade by name (the public graph).
-    public: bool = false,
-    /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
-    /// timer_backend reads.
-    clock: *std.Build.Module,
-    host: *std.Build.Module,
-    memory: *std.Build.Module,
-    /// MIME Sniffing's parser, which kit/media_decoding's canPlayType parses
-    /// a type with: one parser in Crane, not a copy in the platform. Pure
-    /// Zig over `infra` (whose only import is the clock bridge), so no part
-    /// of it reaches back to the facade.
-    mimesniff: *std.Build.Module,
-};
-
-fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: PlatformBindingOptions) PlatformBinding {
-    const platform_options = b.addOptions();
-    platform_options.addOption([]const u8, "platform_name", @tagName(options.platform));
-    platform_options.addOption([]const []const u8, "platform_without", options.without);
-    platform_options.addOption([]const []const u8, "platform_static", options.static);
-    platform_options.addOption(bool, "http2", options.http2);
-    const options_mod = platform_options.createModule();
-
-    const facade = graphModule(b, options.public, "platform", .{
-        .root_source_file = b.path("src/platform/protocol.zig"),
-        .target = target,
-    });
-    facade.addImport("platform_options", options_mod);
-    // TRANSITIONAL: the re-exported timer_backend reads the clock bridge.
-    facade.addImport("clock", options.clock);
-
-    const impl_root: std.Build.LazyPath = switch (options.platform) {
-        .external => .{ .cwd_relative = options.module_path.? },
-        else => b.path(b.fmt("src/platform/adapters/{s}/protocol.zig", .{@tagName(options.platform)})),
-    };
-    const impl = b.createModule(.{ .root_source_file = impl_root, .target = target, .link_libc = true });
-    impl.addImport("platform", facade);
-    impl.addImport("platform_options", options_mod);
-    facade.addImport("platform_impl", impl);
-
-    // The kit: one module per part, each importing the facade for its types;
-    // any platform, built-in or third-party, may import any of them.
-    const brotli_enabled = for (options.without) |name| {
-        if (std.mem.eql(u8, name, "brotli")) break false;
-    } else true;
-    const font_decoding_enabled = for (options.without) |name| {
-        if (std.mem.eql(u8, name, "font_decoding")) break false;
-    } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding", "image_encoding" };
-    var kit: [kit_parts.len]*std.Build.Module = undefined;
-    for (kit_parts, 0..) |part, i| {
-        kit[i] = b.createModule(.{
-            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part})),
-            .target = target,
-            .link_libc = true,
-        });
-        kit[i].addImport("platform", facade);
-        kit[i].addImport("platform_options", options_mod);
-        // A disabled codec does not import its C headers or link its libraries,
-        // even when the conformance test compiles every adapter operation.
-        impl.addImport(b.fmt("kit_{s}", .{part}), if (i == 7 and !brotli_enabled) kit[1] else kit[i]);
-    }
-    // The platform's own extra kit parts and the system libraries each links:
-    // its adapter's declaration (src/platform/platform_build_protocol.zig) -
-    // this file names none of them.
-    for (platform_build.kitParts(@tagName(options.platform), target.result)) |part| {
-        const module = b.createModule(.{
-            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part.name})),
-            .target = target,
-            .link_libc = true,
-        });
-        module.addImport("platform", facade);
-        module.addImport("platform_options", options_mod);
-        module.addImport("host", options.host);
-        platform_build.link(module, part);
-        impl.addImport(b.fmt("kit_{s}", .{part.name}), module);
-    }
-    // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
-    // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
-    // kit/brotli by its own import, which only a font decode calls.
-    if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
-        kit[7].linkLibrary(codec.decoder);
-        kit[7].linkLibrary(codec.encoder);
-        kit[7].addImport("brotli_c", kit_build.cImport(b, "brotli_c", target, platform_build.prepareC(target), .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
-    };
-    // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
-    // kit/brotli - headless's NotSupported when no Brotli library is built.
-    kit[10].addImport("kit_inflate", kit[9]);
-    kit[10].addImport("kit_brotli", if (options.brotli != null) kit[7] else kit[1]);
-    // kit/image_decoding (D1, the user 2026-11-09): every built-in platform's
-    // image decoders - PNG through kit/inflate, JPEG and SVG through
-    // kit/image_codecs. Found by name, so a part appended after it keeps it.
-    const image_decoding_part = comptime for (kit_parts, 0..) |part, i| {
-        if (std.mem.eql(u8, part, "image_decoding")) break i;
-    } else unreachable;
-    const kit_image_decoding = kit[image_decoding_part];
-    kit_image_decoding.addImport("kit_inflate", kit[9]);
-    kit_image_decoding.addImport("kit_image_codecs", kit[8]);
-    // kit/media_decoding (lane wptcfg D4, the user 2026-11-09): the media
-    // decoders darwin, linux and testing build in - WAV linear PCM - its
-    // canPlayType parsing with MIME Sniffing's parser. Found by name too.
-    const media_decoding_part = comptime for (kit_parts, 0..) |part, i| {
-        if (std.mem.eql(u8, part, "media_decoding")) break i;
-    } else unreachable;
-    const kit_media_decoding = kit[media_decoding_part];
-    kit_media_decoding.addImport("mimesniff", options.mimesniff);
-    if (options.image_codecs) |codecs| {
-        kit[8].linkLibrary(codecs);
-        kit[8].addImport("image_codecs_c", kit_build.cImport(b, "image_codecs_c", target, platform_build.prepareC(target), .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
-    }
-    if (platform_build.prepareC(target)) |prepare| {
-        prepare.module(kit[7]);
-        prepare.module(kit[8]);
-    }
-    // What the bound adapter's implementation links (platform_build.bind).
-    platform_build.bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
-    // kit/posix wraps today's clock, process Io and resident-memory bridges.
-    kit[0].addImport("clock", options.clock);
-    kit[0].addImport("host", options.host);
-    kit[0].addImport("memory", options.memory);
-    // and reads the local time zone through <time.h> (localtime_r, tzset).
-    const c_time = kit_build.cImport(b, "c_time", target, platform_build.prepareC(target), .{ .includes = &.{"time.h"} });
-    kit[0].addImport("c_time", c_time);
-    // kit/browser_state keeps a Browser's stores in kit/memory_store.
-    kit[6].addImport("kit_memory_store", kit[2]);
-    // kit/curl's connection share, its own module (see PlatformBinding).
-    const kit_curl_share = b.createModule(.{
-        .root_source_file = b.path("src/platform/kit/curl/share.zig"),
-        .target = target,
-        .link_libc = true,
-    });
-    kit[3].addImport("kit_curl_share", kit_curl_share);
-    // Its trust store (trust.zig) parses with libcurl's own mbedTLS, when
-    // libcurl is the bundled one; a system libcurl keeps its own CA loading.
-    const kit_curl_options = b.addOptions();
-    kit_curl_options.addOption(bool, "mbedtls_trust_store", options.mbedtls != null);
-    kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
-    if (options.mbedtls) |mbedtls| {
-        kit_curl_share.linkLibrary(mbedtls);
-        kit_curl_share.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_trust_c", target, platform_build.prepareC(target), .{
-            .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
-            .libs = &.{mbedtls},
-            .macros = &kit_build.mbedtls_threading_macros,
-        }));
-        if (platform_build.prepareC(target)) |prepare| prepare.module(kit_curl_share);
-    }
-    // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
-    // its own module: fetch's curl_ffi translates curl.h alone, as the two
-    // @cImports did.
-    const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
-    if (options.libcurl) |libcurl| {
-        kit_build.curl.linkStaticLibcurl(kit[3], target, libcurl, platform_build.prepareC(target));
-        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
-    } else {
-        kit[3].linkSystemLibrary("curl", .{});
-        kit[3].addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
-    }
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
-}
-
 /// A module of a graph: registered by name when the graph is public, private
 /// otherwise (one name cannot be registered twice).
 fn graphModule(b: *std.Build, public: bool, name: []const u8, options: std.Build.Module.CreateOptions) *std.Build.Module {
@@ -3569,7 +3370,7 @@ pub fn build(b: *std.Build) void {
         // of the engine. The bindings are the protocol's
         // (platform_build.conformance).
         for (platform_build.conformance) |binding| {
-            const bound = platformBinding(b, target, .{
+            const bound = platform_build.binding(b, target, .{
                 .platform = binding.platform,
                 .brotli = brotli,
                 .image_codecs = image_codecs,
@@ -7708,7 +7509,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
 
     // The platform protocol (module `platform`, src/platform/protocol.zig),
     // bound to this graph's platform. A leaf: it no longer imports fetch.
-    const platform_binding = platformBinding(b, target, .{
+    const platform_binding = platform_build.binding(b, target, .{
         .platform = platform,
         .brotli = config.brotli,
         .image_codecs = config.image_codecs,
