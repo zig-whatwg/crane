@@ -1,0 +1,9 @@
+<!doctype html>
+<title>Upload</title>
+<input type="file" aria-label="one">
+<input type="file" multiple aria-label="many">
+<button>Go</button>
+<script>
+window.seen = [];
+for (const i of document.querySelectorAll('input')) for (const t of ['input', 'change']) i.addEventListener(t, (e) => seen.push(i.getAttribute('aria-label') + ':' + e.type));
+</script>

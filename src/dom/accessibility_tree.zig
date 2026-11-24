@@ -167,6 +167,12 @@ pub const Tree = struct {
     label_targets: std.StringHashMapUnmanaged(void) = .empty,
     /// Each block's line items, made once (renderedText's line edges).
     line_items: address_map.AddressHashMapUnmanaged(*Instance, []const LineItem) = .empty,
+    /// Whether each white space Text has a LayoutText, as decided: the
+    /// decision reads the previous in-flow sibling's, so a run of white space
+    /// siblings (an SVG between comments) must decide each once, not again
+    /// for every later one - svg-aam/role/roles.html's 60 comment-separated
+    /// runs took the tree past the harness timeout without this.
+    whitespace_layout: address_map.AddressHashMapUnmanaged(*Instance, bool) = .empty,
 
     /// Build `document`'s tree (Blink: UpdateAXForAllDocuments, then the
     /// root's descendants walked).
@@ -235,6 +241,9 @@ pub const Tree = struct {
     fn addChildren(self: *Tree, owner: Index, dom: *Instance, inherited: Inherited) anyerror!void {
         const base = bridge.getNodeBase(dom) orelse return;
         if (base.node_type == NodeBase.ELEMENT_NODE) {
+            // An image with a map: its areas are its children
+            // (AXNodeObject::AddImageMapChildren, AXImageMapLink).
+            if (isHtml(dom) and eq(localName(dom), "img")) try self.addImageMapChildren(owner, dom);
             if (!canHaveChildren(dom)) return;
             // Children of frames are never part of layout (AddNodeChildren).
             if (isFrame(dom)) return;
@@ -260,6 +269,26 @@ pub const Tree = struct {
             for (try a11y.related(self.arena, dom, .owns)) |owned| {
                 if (self.names.ownerOf(owned) == dom) try self.addNodeChild(owner, owned, inherited, true);
             }
+        }
+    }
+
+    /// The areas of the map an <img usemap> names, each an AXImageMapLink:
+    /// a link when it has an href, else a generic container
+    /// (AXImageMapLink::NativeRoleIgnoringAria; html-aam/area-role.html:
+    /// Chrome 157, Firefox 160 and Safari 27.2 all answer link).
+    fn addImageMapChildren(self: *Tree, owner: Index, img: *Instance) !void {
+        const usemap = std.mem.trim(u8, attribute(img, "usemap") orelse return, spaces);
+        if (usemap.len < 2 or usemap[0] != '#') return;
+        const name = usemap[1..];
+        const map = findMap(bridge.getNodeBase(self.document).?, name) orelse return;
+        var at = nextInSubtree(bridge.getNodeBase(map).?, bridge.getNodeBase(map).?);
+        while (at) |current| : (at = nextInSubtree(current, bridge.getNodeBase(map).?)) {
+            const area = a11y.instance(current) orelse continue;
+            if (current.node_type != NodeBase.ELEMENT_NODE or !isHtml(area) or !eq(localName(area), "area")) continue;
+            if (self.by_node.contains(area)) continue;
+            const role: Role = if (attribute(area, "href") != null) .Link else .GenericContainer;
+            const index = try self.appendNode(owner, .{ .source = .{ .node = area }, .role = role, .native_role = role, .has_layout = true });
+            try self.by_node.put(self.arena, area, index);
         }
     }
 
@@ -393,17 +422,17 @@ pub const Tree = struct {
     /// Whether `text` has a LayoutText: its parent renders children and
     /// Blink's layout tree builder makes one for it.
     fn hasLayoutText(self: *Tree, text: *Instance) !bool {
-        _ = self;
         const p = a11y.parent(text) orelse return false;
         if (bridge.getNodeBase(p).?.node_type != NodeBase.ELEMENT_NODE) return false;
         if (!rendersChildren(p)) return false;
+        if (isSvg(p) and !svgTakesText(p)) return false;
         if (!try rendered(p)) return false;
         var value = try interfaces.CharacterData.get_data(text);
         defer value.deinit(text.ctx.allocator);
         const bytes = value.asSlice();
         if (bytes.len == 0) return false;
         if (std.mem.trim(u8, bytes, spaces).len != 0) return true;
-        return whitespaceNeedsLayout(text, p);
+        return whitespaceNeedsLayout(self, text, p);
     }
 
     /// IsLayoutTextRelevantForAccessibility for a Text with a LayoutText:
@@ -550,6 +579,21 @@ pub const Tree = struct {
         if (role == .RubyAnnotation) return .ignore;
         const tag = localName(dom);
         const html_element = isHtml(dom);
+        // SVG (ShouldIncludeBasedOnSemantics' SVG block, before the rules
+        // below): a <symbol>'s subtree is a template, not rendered where it
+        // is; a non-empty outermost <svg> is kept (clients may treat it as an
+        // image); so is an element with a direct <title> or <desc> child
+        // (SVG-AAM "Including elements": css-display/accessibility/
+        // display-contents-role-and-label.html's display:contents <g>,
+        // group in Chrome 157, Firefox 160 and Safari 27.2).
+        if (isSvg(dom)) {
+            var at: ?*Instance = dom;
+            while (at) |n| : (at = a11y.parent(n)) {
+                if (isSvg(n) and eq(localName(n), "symbol")) return .ignore;
+            }
+            if (object.native_role == .SvgRoot and object.has_layout and firstElementChild(dom) != null) return .include;
+            if (a11y.firstChildNamed(dom, "title") != null or a11y.firstChildNamed(dom, "desc") != null) return .include;
+        }
         if (isTableLike(role) or isTableRowLike(role) or isTableCellLike(role) or (html_element and oneOf(tag, .{ "thead", "tfoot" }))) return .include;
         if (html_element and eq(tag, "html")) {
             try reasons.append(self.arena, .{ .reason = .uninteresting });
@@ -712,7 +756,9 @@ pub const Tree = struct {
             if (isSvg(dom)) {
                 if (eq(tag, "svg")) return if (bridge.getNodeBase(dom).?.parent_node != null and svgParent(dom)) .Group else .SvgRoot;
                 if (eq(tag, "g")) return .Group;
-                if (eq(tag, "a")) return if (attribute(dom, "href") != null) .Link else .Group;
+                // An SVG link by href or xlink:href (SVGAElement's
+                // IsLinkable; svg-aam/role/roles.html: link in all three).
+                if (eq(tag, "a")) return if (attribute(dom, "href") != null or xlinkHref(dom) != null) .Link else .Group;
                 if (oneOf(tag, .{ "rect", "circle", "ellipse", "line", "path", "polygon", "polyline" })) return .GraphicsSymbol;
                 if (eq(tag, "image")) return .Image;
                 if (eq(tag, "use")) return .GraphicsObject;
@@ -728,7 +774,12 @@ pub const Tree = struct {
         if (eq(tag, "details")) return .Details;
         if (eq(tag, "summary")) {
             const p = a11y.parent(dom) orelse return .GenericContainer;
-            if (isHtml(p) and eq(localName(p), "details")) {
+            // LayoutTreeBuilderTraversal::Parent: only the details' first
+            // summary child is slotted into its summary slot, whose parent
+            // is the details; any other summary sits in the default slot, in
+            // the details' content (html-aam/summary.html: Chrome 157,
+            // Firefox 160 and Safari 27.2 all answer generic).
+            if (isHtml(p) and eq(localName(p), "details") and a11y.firstChildNamed(p, "summary") == dom) {
                 return if (attributeLength(p, "name") == 0) .DisclosureTriangle else .DisclosureTriangleGrouped;
             }
             return .GenericContainer;
@@ -993,7 +1044,16 @@ pub const Tree = struct {
     fn tableCellRole(self: *Tree, cell: *Instance) !Role {
         const row = a11y.parent(cell) orelse return .GenericContainer;
         if (!isHtml(row) or !eq(localName(row), "tr")) return .GenericContainer;
-        const row_role = try self.tableRowRole(row);
+        // The row's role as its object has it - an explicit role=row too
+        // (DetermineTableCellRole reads the parent object's RoleValue).
+        const native_row = try self.tableRowRole(row);
+        const aria_row = try self.ariaRole(row, native_row);
+        const row_role = if (aria_row != .Unknown) aria_row else native_row;
+        // And the row's own table ancestor must be table-like
+        // (GetDOMTableAXAncestor of the row): a row inside a presentational
+        // table keeps its cells generic even with role=row.
+        const table = (try self.domTable(row)) orelse return .GenericContainer;
+        if (!isTableLike(table)) return .GenericContainer;
         if (!isTableRowLike(row_role)) return .GenericContainer;
         if (row_role == .LayoutTableRow) return .LayoutTableCell;
         if (eq(localName(cell), "th")) {
@@ -1392,6 +1452,55 @@ fn nodelessProperties(tree: *Tree, index: Index) ![]const Property {
         break;
     }
     return properties.items;
+}
+
+// ============================================================================
+// WebDriver's computed role and label: the same answers
+// ============================================================================
+//
+// chromedriver (Chromium 157.0.8103.78, BSD-3: chrome/test/chromedriver/
+// element_util.cc GetAXNodeByElementId, element_commands.cc
+// ExecuteGetComputedRole / ExecuteGetComputedLabel) answers WebDriver's Get
+// Computed Role and Get Computed Label off the Accessibility domain's
+// getPartialAXTree {backendNodeId, fetchRelatives: false} node for the
+// element: its role.value, and its name.value ("" when it has none). Crane
+// answers the role from that decision - the tree's - in Chrome's
+// vocabulary; the label is the browser majority's (golden rule 2, below),
+// which needs no tree.
+
+/// WebDriver's Get Computed Role: the getPartialAXTree node's role for
+/// `element` in its node document's tree
+/// (BuildProtocolAXNodeForDOMNodeWithNoAXNode, and an ignored object: role
+/// none). The string lives in `arena` or is static.
+pub fn webdriverRole(arena: Allocator, element: *Instance, options: Options) ![]const u8 {
+    // Detached: no document's tree holds it, and chromedriver would refuse
+    // it as stale. Crane answers the element's own role (the harness choice
+    // crane/ar3-pending-command-gc.html pins: WPT's selector transport sends
+    // :scope for an id-less detached element, and Chrome, Firefox and Safari
+    // pass aria-element-reflection-labelledby.html through that artifact).
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return a11y.role(arena, element, options.names());
+    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return "none";
+    const tree = try arena.create(Tree);
+    tree.* = try Tree.build(arena, document, options);
+    const index = tree.indexOf(element) orelse return "none";
+    const object = tree.node(index);
+    if (object.ignored) return "none";
+    return object.role.cdpName().name;
+}
+
+/// WebDriver's Get Computed Label: `element`'s accessible name (AccName).
+/// chromedriver sends the CDP node's name, none for an ignored object or an
+/// element with no object, where Firefox and Safari compute AccName all the
+/// same (a <b>'s or a <wbr>'s title, a <video>'s aria-label:
+/// html-aam/accname-computation-by-element/phrasing-elements.html and
+/// section-and-grouping-elements.html, wpt.fyi Chrome 157 4786307730243584
+/// fails, Firefox 160 4877168468033536 and Safari 27.2 6479119966273536
+/// pass) - the majority's answer, for every element: AccName, roles by its
+/// own decision, in the tree the element's root roots (a detached subtree
+/// too). No accessibility tree is built for it: a page of label tests asks
+/// once per element. The string lives in `arena`.
+pub fn webdriverLabel(arena: Allocator, element: *Instance, options: Options) ![]const u8 {
+    return a11y.computedName(arena, element, options.names());
 }
 
 /// The accessible name CDP sends.
@@ -1973,9 +2082,14 @@ fn controlValue(tree: *Tree, dom: *Instance, object: *const Node) !?[]const u8 {
         defer kind.deinit(dom.ctx.allocator);
         if (eq(kind.asSlice(), "file")) {
             // The file chooser's text (HTML-AAM: a button; Chrome 157 sends
-            // "No file chosen" as its value, a11y1-chrome157-trace.txt).
+            // "No file chosen" as its value, a11y1-chrome157-trace.txt):
+            // Blink FileInputType::FileStatusText - no file, the one file's
+            // name, else IDS_FORM_FILE_MULTIPLE_UPLOAD with the count ("2
+            // files" for two, lane mcp1's differential run against CfT 157).
             const files = try interfaces.HTMLInputElement.get_files(dom);
-            if (files == null or try interfaces.FileList.get_length(files.?) == 0) return @import("control_labels.zig").no_file;
+            const count = if (files) |list| try interfaces.FileList.get_length(list) else 0;
+            if (count == 0) return @import("control_labels.zig").no_file;
+            if (count > 1) return try std.fmt.allocPrint(tree.arena, "{d}{s}", .{ count, @import("control_labels.zig").multiple_files_suffix });
             const file = (try interfaces.FileList.call_item(files.?, 0)) orelse return null;
             var name = try interfaces.File.get_name(file);
             defer name.deinit(file.ctx.allocator);
@@ -2548,6 +2662,13 @@ fn inputImageUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
 }
 
 fn linkUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
+    // An SVG link: SVGAElement::HrefURL, href else xlink:href, stripped of
+    // HTML white space and completed against the document.
+    if (isSvg(dom)) {
+        const raw = attribute(dom, "href") orelse xlinkHref(dom) orelse return null;
+        const url = (try @import("encoding_parse.zig").encodingParseAndSerializeWithAllocator(tree.arena, dom, std.mem.trim(u8, raw, spaces))) orelse return null;
+        return if (absoluteUrl(url)) url else null;
+    }
     if (dom.stateAs(interfaces.HTMLAnchorElement.State) == null) return null;
     const href = try interfaces.HTMLAnchorElement.get_href(dom);
     defer dom.ctx.allocator.free(href);
@@ -2577,7 +2698,39 @@ fn absoluteUrl(text: []const u8) bool {
 
 /// Whether `element` has a box: rendered, and not display: contents.
 fn hasBox(element: *Instance) !bool {
+    if (isSvg(element) and !svgRenders(element)) return false;
     return style.isBeingRendered(element) catch false;
+}
+
+/// SVG's rendering model, which CSS display does not express: a never-rendered
+/// element (a <title>, <desc>, <metadata>, a paint server, a filter, a
+/// <clipPath>, <mask> or <marker>, an animation element) or anything inside
+/// one (a <defs>, a <symbol>) makes no layout object (Blink creates no
+/// LayoutObject for them: SVGElement::LayoutObjectIsNeeded per element).
+fn svgRenders(element: *Instance) bool {
+    var at: ?*Instance = element;
+    while (at) |n| : (at = a11y.parent(n)) {
+        if (!isSvg(n)) break;
+        const tag = localName(n);
+        if (oneOf(tag, .{ "title", "desc", "metadata", "defs", "symbol", "clipPath", "mask", "pattern", "marker", "linearGradient", "radialGradient", "filter", "style", "script", "set", "mpath" })) return false;
+        if (std.mem.startsWith(u8, tag, "fe") or std.mem.startsWith(u8, tag, "animate")) return false;
+    }
+    return true;
+}
+
+/// Whether an SVG element takes text children into layout: <text>, <tspan>,
+/// <textPath>, and an <a> inside a <text> (LayoutSVGText / LayoutSVGInline;
+/// any other SVG container's IsChildAllowed refuses a text).
+fn svgTakesText(element: *Instance) bool {
+    const tag = localName(element);
+    if (oneOf(tag, .{ "text", "tspan", "textPath" })) return true;
+    if (!eq(tag, "a")) return false;
+    var at = a11y.parent(element);
+    while (at) |n| : (at = a11y.parent(n)) {
+        if (!isSvg(n)) return false;
+        if (eq(localName(n), "text")) return true;
+    }
+    return false;
 }
 
 /// Whether `element` is rendered or delegates its rendering to children.
@@ -2628,8 +2781,15 @@ fn isPositioned(element: *Instance) !bool {
 /// none unless it follows text that does not end in white space; preserved
 /// breaks always make one; otherwise one follows inline content that is not
 /// a <br> or text ending in white space, or starts an inline parent.
-fn whitespaceNeedsLayout(text: *Instance, parent_element: *Instance) bool {
-    const prev = previousInFlow(text);
+fn whitespaceNeedsLayout(tree: *Tree, text: *Instance, parent_element: *Instance) bool {
+    if (tree.whitespace_layout.get(text)) |known| return known;
+    const result = whitespaceNeedsLayoutOnce(tree, text, parent_element);
+    tree.whitespace_layout.put(tree.arena, text, result) catch {};
+    return result;
+}
+
+fn whitespaceNeedsLayoutOnce(tree: *Tree, text: *Instance, parent_element: *Instance) bool {
+    const prev = previousInFlow(tree, text);
     if (!canHaveWhitespaceChildren(parent_element)) {
         const p = prev orelse return false;
         if (!isText(p)) return false;
@@ -2677,7 +2837,7 @@ fn endsWithWhitespace(text: *Instance) bool {
 /// The previous in-flow sibling with a layout object: an element with a
 /// box that is not out of flow, a display: contents element, or a text
 /// that has a LayoutText (white space that made none is skipped).
-fn previousInFlow(n: *Instance) ?*Instance {
+fn previousInFlow(tree: *Tree, n: *Instance) ?*Instance {
     var at = (bridge.getNodeBase(n) orelse return null).previousSibling();
     var depth: usize = 0;
     while (at) |current| : (at = current.previousSibling()) {
@@ -2697,7 +2857,7 @@ fn previousInFlow(n: *Instance) ?*Instance {
             depth += 1;
             if (depth > 8) return null;
             const p = a11y.parent(s) orelse return null;
-            if (whitespaceNeedsLayout(s, p)) return s;
+            if (whitespaceNeedsLayout(tree, s, p)) return s;
         }
     }
     return null;
@@ -2801,9 +2961,16 @@ fn isLayoutInline(element: *Instance) bool {
 /// visible; for an element with no box, display: none on it or an ancestor
 /// (a display: contents element is not hidden).
 fn hiddenViaStyle(element: *Instance, has_layout: bool) !bool {
+    // Both values are read before rendered(), which reads the element's
+    // style again: a computed style is borrowed only until the next style
+    // read of the element (engine.zig computedStyle), and a volatile one
+    // (a formish element matched against a per-element state) is resolved
+    // anew - the first one freed - on every read.
     const computed = (try style.computedStyle(element, null)) orelse return true;
-    if (has_layout) return computed.keyword(.visibility) != .visible;
-    if (computed.display().box == .contents and try rendered(element)) return computed.keyword(.visibility) != .visible;
+    const visible = computed.keyword(.visibility) == .visible;
+    if (has_layout) return !visible;
+    const contents = computed.display().box == .contents;
+    if (contents and try rendered(element)) return !visible;
     return true;
 }
 
@@ -2889,6 +3056,41 @@ fn isStructure(role: Role) bool {
 
 fn isFrame(n: *Instance) bool {
     return isHtml(n) and oneOf(localName(n), .{ "iframe", "frame", "fencedframe" });
+}
+
+/// The first <map> in `root`'s subtree whose name (or, with none, id) is
+/// `name` (HTML 4.8.14 "rules for parsing a hash-name reference").
+fn findMap(root: *NodeBase, name: []const u8) ?*Instance {
+    var at = nextInSubtree(root, root);
+    while (at) |current| : (at = nextInSubtree(current, root)) {
+        const element = a11y.instance(current) orelse continue;
+        if (current.node_type != NodeBase.ELEMENT_NODE or !isHtml(element) or !eq(localName(element), "map")) continue;
+        if (attribute(element, "name")) |n| if (eq(n, name)) return element;
+        if (attribute(element, "id")) |id| if (eq(id, name)) return element;
+    }
+    return null;
+}
+
+/// The next node after `node` in tree order inside `boundary`'s subtree.
+fn nextInSubtree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
+    if (node.firstChild()) |child| return child;
+    var at = node;
+    while (at != boundary) {
+        if (at.next_sibling) |sibling| return sibling;
+        at = at.parent_node orelse return null;
+    }
+    return null;
+}
+
+fn xlinkHref(n: *Instance) ?[]const u8 {
+    const element = data.of(n) orelse return null;
+    return if (element.findAttribute("http://www.w3.org/1999/xlink", "href")) |entry| entry.value else null;
+}
+
+fn firstElementChild(n: *Instance) ?*Instance {
+    var at = bridge.getNodeBase(n).?.firstChild();
+    while (at) |child| : (at = child.next_sibling) if (child.node_type == NodeBase.ELEMENT_NODE) return a11y.instance(child);
+    return null;
 }
 
 fn isSvg(n: *Instance) bool {
@@ -3051,7 +3253,11 @@ fn hasRequiredParentContext(tree: *Tree, dom: *Instance, role: Role) bool {
         if (bridge.getNodeBase(p).?.node_type != NodeBase.ELEMENT_NODE) continue;
         if (role == .ListItem and isHtml(p) and oneOf(localName(p), .{ "ul", "ol", "menu" })) return true;
         if (role == .ListBoxOption and isHtml(p) and eq(localName(p), "select")) return true;
-        const value = attribute(p, "role") orelse "";
+        // The parent's role attribute, else its ElementInternals role
+        // (custom-elements/ElementInternals-role.html "Applies parent/child
+        // relationship ... via Element Internals": Chrome 157, Firefox 160
+        // and Safari 27.2 all pass).
+        const value = (a11y.effective(tree.arena, p, "role", "role") catch null) orelse "";
         var parent_role: Role = .Unknown;
         var tokens = std.mem.tokenizeAny(u8, value, spaces);
         while (tokens.next()) |token| {

@@ -1,0 +1,3 @@
+<!doctype html>
+<title>Post</title>
+<script>fetch('data.json', {method: 'POST', body: 'abc'}).then((r) => r.text().then(() => { document.title = 'Post ' + r.status; }));</script>
