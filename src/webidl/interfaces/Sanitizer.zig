@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const SanitizerConfigOrSanitizerPresets = @import("typedefs").SanitizerConfigOrSanitizerPresets;
 const SanitizerAttribute = @import("typedefs").SanitizerAttribute;
-const SanitizerPresets = @import("enums").SanitizerPresets;
 const SanitizerElementWithAttributes = @import("typedefs").SanitizerElementWithAttributes;
 const SanitizerConfig = @import("dictionaries").SanitizerConfig;
 const SanitizerPI = @import("typedefs").SanitizerPI;
@@ -194,7 +194,7 @@ pub const Sanitizer = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(SanitizerConfigOrSanitizerPresets)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SanitizerImpl.call_constructor(ctx, configuration);
     }
