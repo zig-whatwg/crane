@@ -3326,6 +3326,13 @@ pub fn build(b: *std.Build) void {
         // and the facade's file cannot be in two modules of one compile.
         const test_adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path("tests/runtime/protocol_test_adapter.zig"));
         const runtime_tier_mod = test_adapter_tier.runtime;
+        // src/runtime's own tests (lane core1, 2026-11-24): tests/runtime
+        // imports the runtime as a module, and Zig never collects a
+        // dependency's tests, so none of its test blocks had run. The runtime
+        // tier - the runtime bound to the protocol's test adapter, with no
+        // engine behind it - is their executable's root; the tests a triage
+        // kept are engine-free.
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = runtime_tier_mod }), "src-runtime", null).step);
         const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
         // tier's test adapter. And each other adapter with no engine behind

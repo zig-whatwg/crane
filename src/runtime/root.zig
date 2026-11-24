@@ -502,3 +502,16 @@ test "convenience aliases work" {
     try testing.expect(initRuntime == initializeRuntime);
     try testing.expect(deinitRuntime == deinitializeRuntime);
 }
+
+// The files whose own tests src-runtime runs (build.zig; lane core1, the
+// integrator's leave 2026-11-24): Zig collects a file's test blocks only when
+// something analyzes its import.
+test {
+    _ = browser_pause;
+    _ = CEReactions;
+    _ = cleanup_coordinator;
+    _ = lifetime;
+    _ = native_timer;
+    _ = @import("typedefs/DOMString.zig");
+    _ = heap;
+}
