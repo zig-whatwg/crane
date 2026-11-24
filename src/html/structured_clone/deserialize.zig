@@ -519,3 +519,74 @@ test "a record the walker cannot deserialize is a DeserializeError, its value fr
     };
     for (&records) |*record| try testing.expectError(CloneError.DeserializeError, structuredDeserialize(allocator, record));
 }
+
+/// Whether the walker frees the graphs it makes once per value - the JSC
+/// adapter lane's to land: the ownership of the JSValues the walk makes
+/// depends on how that adapter represents and roots them (the integrator,
+/// 2026-11-24, lane core1's B9). Flip it with the fix; the test below then
+/// runs, and must pass.
+const graph_ownership_landed = false;
+
+test "a deserialized graph frees each value once: a shared reference, a cycle, a view's buffer (known red until the JSC adapter lane)" {
+    // TODO(JSC adapter lane): B9, found by lane core1 (2026-11-24). Every
+    // case crashes or leaks today, so the test is skipped until
+    // `graph_ownership_landed` flips:
+    // - freeJSValue frees a graph as a tree. A value reached twice
+    //   deserializes to one *JSValue (the walk's memory), which freeJSValue
+    //   frees once per reference: a double free. A cycle recurses without end.
+    //   A view's buffer JSValue (the array_buffer_view arm's buffer_value) is
+    //   never freed.
+    // - Its serialize-side twin: SerializedValue.deinit (types.zig) frees a
+    //   record reached twice, twice, and recurses on a cycle.
+    // - HTML §2.7.8 step 5.3: "Let dataHolder be memory[transferable]" - the
+    //   step-2.4 record IS the data holder, owned by the result. transfer.zig
+    //   builds a TransferDataHolder of its own instead (lane core1's B5 point
+    //   5, and B10: a serialized graph that references a transferred buffer
+    //   would point at a destroyed record). Unreachable until a JSValue's
+    //   memory identity can be a transferable's - the adapter defines that.
+    if (!graph_ownership_landed) return error.SkipZigTest;
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    // A value reached twice: one string, two properties.
+    {
+        const inner = JSValue{ .string = "shared" };
+        const properties = [_]JSValue.ObjectValue.ObjectProperty{ .{ .key = "a", .value = &inner }, .{ .key = "b", .value = &inner } };
+        const outer = JSValue{ .object = .{ .properties = &properties } };
+        const serialized = try serialize.structuredSerialize(allocator, &outer);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqual(copy.object.properties[0].value, copy.object.properties[1].value);
+    }
+    // A cycle: an object that holds itself.
+    {
+        var self_holding: JSValue = undefined;
+        const properties = [_]JSValue.ObjectValue.ObjectProperty{.{ .key = "self", .value = &self_holding }};
+        self_holding = .{ .object = .{ .properties = &properties } };
+        const serialized = try serialize.structuredSerialize(allocator, &self_holding);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqual(@as(*const JSValue, copy), copy.object.properties[0].value);
+    }
+    // A view: its buffer goes with it.
+    {
+        const bytes = [_]u8{ 1, 2, 3, 4 };
+        const buffer = JSValue.ArrayBufferValue{ .data = &bytes };
+        const view = JSValue{ .typed_array = .{ .buffer = &buffer, .constructor = .Uint8Array, .byte_offset = 0, .byte_length = 4, .array_length = 4 } };
+        const serialized = try serialize.structuredSerialize(allocator, &view);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqualSlices(u8, &bytes, copy.typed_array.buffer.data);
+    }
+}
