@@ -14,11 +14,8 @@ This document describes the promise integration architecture for WHATWG Streams,
    - Supports then/catch/finally chaining
    - Memory-safe with proper ownership model
 
-2. **ReadIntoRequestWithPromise** (`internal/read_into_request_promise.zig`)
-   - Promise-based BYOB read request structure
-   - Implements chunk_steps, close_steps, error_steps callbacks
-   - Returns AsyncPromise<ReadIntoResult> to caller
-   - Test coverage for basic operations
+2. **ReadIntoRequestWithPromise** (`internal/read_into_request_promise.zig`) - deleted
+   2026-11-24 (lane core1): nothing called it; BYOB reads run in `src/dom/streams_readable.zig`.
 
 3. **ArrayBufferView Introspection** (`runtime/arraybuffer_view.zig`)
    - Runtime introspection of TypedArray and DataView objects
