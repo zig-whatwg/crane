@@ -190,8 +190,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // forms (options.add's `before`, setFormValue, the form's named getter)
     // HTMLAllCollection (its legacy caller and named getter bind `item` and
     // `namedItem` through a special path that takes the JSValue)
-    .{ "HTMLAllCollection", "item", "return" },
-    .{ "HTMLAllCollection", "namedItem", "return" },
     // fs
     .{ "WriteParams", "data", "" },
     // idb
