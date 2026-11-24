@@ -3729,7 +3729,6 @@ pub fn build(b: *std.Build) void {
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, crane_exe.root_module, .{});
 
-    // System frameworks (macOS)
     platform_build.linkArtifact(crane_exe.root_module, target);
 
     // Build step
@@ -3771,7 +3770,7 @@ pub fn build(b: *std.Build) void {
             const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", check.sub_step, b.fmt("-Dtarget={s}", .{triple}) });
             sub_build.addArgs(check.args);
             sub_build.addArg("-j2");
-            // What this build's OS side forwards to a sub-build (-Dios-sdk).
+            // What this build's OS side forwards to a sub-build (its own options).
             if (check.forward_options) for (os_side.forwarded) |arg| sub_build.addArg(arg);
             // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
             // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
@@ -4937,18 +4936,16 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_platform_tests, "tools-lint_platform", null).step);
 
     // ========================================================================
-    // LINT: the build's neutrality, as a ratchet
+    // LINT: the build's neutrality, a plain rule
     // ========================================================================
     // The user, 2026-11-12: this file holds no code of one engine or of one
     // platform - an adapter declares its build in its own build file, behind
-    // the build side of its protocol. tools/lint_build_neutral.zig counts what
-    // this file and the neutral files it imports still name of either, per
-    // file, per word and per kind of text (code, comment, embedded script),
-    // and fails if any count rises above tools/build_neutral_baseline.txt or a
-    // new one appears. The baseline only goes down, a slice with each batch of
-    // the migration: `zig build lint-build -- --update` records it and refuses
-    // an increase; `-- --list` prints every site. `zig build test` depends on
-    // it.
+    // the build side of its protocol. tools/lint_build_neutral.zig finds what
+    // this file and the neutral files it imports name of either, per file, per
+    // word and per kind of text (code, comment, embedded script), and fails on
+    // any: the migration took its baseline to zero (P4, 2026-11-24), and the
+    // rule keeps none. `-- --list` prints every site. `zig build test`
+    // depends on it.
     //
     // The words it looks for, a list per class, none spelled here: an
     // engine's are its adapter's own, from the engine protocol's list of
@@ -4972,17 +4969,16 @@ pub fn build(b: *std.Build) void {
         .root_module = lint_build_module,
     });
 
-    const lint_build_step = b.step("lint-build", "Fail when build.zig or a neutral file it imports names an engine, an operating system or a platform library more often than the baseline (use -- --update after moving a slice out; -- --list prints every site)");
+    const lint_build_step = b.step("lint-build", "Fail when build.zig or a neutral file it imports names an engine, an operating system or a platform library (-- --list prints every site)");
     const lint_build = b.addRunArtifact(lint_build_exe);
-    // It reads this file, the files it imports and the baseline, which the build graph does not track.
+    // It reads this file and the files it imports, which the build graph does not track.
     lint_build.has_side_effects = true;
     lint_build.setCwd(b.path("."));
     lint_build.addArgs(&lint_build_words);
     lint_build.addPassthruArgs();
     lint_build_step.dependOn(&lint_build.step);
 
-    // Part of `zig build test`: the check itself (never with --update) and the
-    // tool's own tests.
+    // Part of `zig build test`: the check itself and the tool's own tests.
     const lint_build_check = b.addRunArtifact(lint_build_exe);
     lint_build_check.has_side_effects = true;
     lint_build_check.setCwd(b.path("."));
