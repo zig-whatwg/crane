@@ -1,0 +1,10 @@
+# Stack arrays over 64 KiB in a function or test body in src/ and tools/:
+# path Function.variable bytes (tools/lint_stack_arrays.zig). An optimized build
+# inlines a callee into its caller, whose prologue then reserves the callee's
+# locals on every call; V8 sets its stack limit from the thread's stack start, so a
+# reservation in main broke every script of the release console (lane rc8,
+# 2026-11-24). Take a large buffer from an allocator instead. A ratchet -
+# `zig build lint-stack-arrays`, part of `zig build test`, fails on a new or grown
+# array; after removing some, `zig build lint-stack-arrays -- --update`. Never raise
+# it by hand.
+src/webdriver/server.zig handleConnection.buf 73728
