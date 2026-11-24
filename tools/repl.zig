@@ -137,6 +137,16 @@ pub const Options = struct {
     /// stdout - Crane's built-in chrome-devtools-mcp tools (lane mcp1,
     /// devtools.mcp; `serveMcp`).
     mcp: bool = false,
+    /// chrome-devtools-mcp's `--filesystemRoot` / `--workspace` (repeatable;
+    /// also `--filesystem-root`; the value after `=` or as the next
+    /// argument): the directories MCP tools may read and write. None: the
+    /// OS temp directory (devtools.mcp.paths).
+    filesystem_roots: [max_filesystem_roots][]const u8 = undefined,
+    filesystem_root_count: usize = 0,
+    /// chrome-devtools-mcp's `--allow-unrestricted-paths`
+    /// (`--allowUnrestrictedPaths`): no path check while the MCP client has
+    /// listed no roots.
+    allow_unrestricted_paths: bool = false,
     /// Chrome's `--remote-allow-origins=<a,b>` (or `*`): origins whose
     /// WebSocket connections are served.
     remote_allow_origins: ?[]const u8 = null,
@@ -195,6 +205,10 @@ pub const usage =
     \\  --user-data-dir=<dir>         the profile directory; DevToolsActivePort is written there
     \\  --mcp                         serve the Model Context Protocol on stdin/stdout:
     \\                                chrome-devtools-mcp's tools, built into Crane
+    \\  --workspace=<dir>             with --mcp: a directory tools may read and write
+    \\                                (repeatable; also --filesystem-root, --filesystemRoot);
+    \\                                by default only the OS temp directory
+    \\  --allow-unrestricted-paths    with --mcp: no path check while the client lists no roots
     \\  --headless                    accepted (Crane is headless); other Chrome switches are
     \\                                accepted and ignored with remote debugging
     \\
@@ -204,6 +218,13 @@ pub const usage =
 pub const profile_refusal = "profiles are not supported yet: Crane's stores (cookies, localStorage, IndexedDB, the Cache API, the HTTP cache) are in memory only, so a profile directory would keep nothing";
 
 pub const OptionsError = error{ UnknownOption, MissingValue, InvalidTimeout, TooManyArguments, InvalidPort };
+
+/// How many --workspace directories the console takes.
+pub const max_filesystem_roots = 16;
+
+/// The MCP root flags' names (chrome-devtools-mcp's yargs option
+/// `filesystemRoot`, alias `workspace`, and the kebab-case spelling).
+const filesystem_root_flags = [_][]const u8{ "--filesystem-root", "--filesystemRoot", "--workspace" };
 
 /// The options `args` (without the program name) ask for. Every slice is
 /// borrowed from `args`. `bad` is set to the argument a failure is about.
@@ -217,8 +238,30 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
     const chrome_mode = for (args) |arg| {
         if (valueOf(arg, "--remote-debugging-port") != null or std.mem.eql(u8, arg, "--remote-debugging-pipe")) break true;
     } else false;
-    for (args) |arg| {
+    var index: usize = 0;
+    while (index < args.len) : (index += 1) {
+        const arg = args[index];
         bad.* = arg;
+        // --workspace=<dir> or --workspace <dir> (yargs takes both).
+        const root: ?[]const u8 = for (filesystem_root_flags) |flag| {
+            if (valueOf(arg, flag)) |value| break value;
+            if (std.mem.eql(u8, arg, flag)) {
+                index += 1;
+                if (index >= args.len) return error.MissingValue;
+                break args[index];
+            }
+        } else null;
+        if (root) |dir| {
+            if (dir.len == 0) return error.MissingValue;
+            if (options.filesystem_root_count == max_filesystem_roots) return error.TooManyArguments;
+            options.filesystem_roots[options.filesystem_root_count] = dir;
+            options.filesystem_root_count += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--allow-unrestricted-paths") or std.mem.eql(u8, arg, "--allowUnrestrictedPaths")) {
+            options.allow_unrestricted_paths = true;
+            continue;
+        }
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             options.help = true;
         } else if (std.mem.eql(u8, arg, "--accept-insecure-certs")) {
@@ -385,6 +428,8 @@ pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options
 /// its in-process client; stdout carries MCP messages only (logs go to
 /// stderr). Input's end ends the console.
 fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out: *std.Io.Writer) !u8 {
+    // stdio goes through the platform's pipe reads (devtools.mcp.server.Stdio).
+    _ = io;
     const config: BrowserConfig = .{
         .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
@@ -404,29 +449,38 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         try err_out.flush();
         return 1;
     };
+    // stdin and stdout as the remote end reads --remote-debugging-pipe: a
+    // reader thread waiting on stdin and a wake, so a shutdown ends a read
+    // blocked on a client that keeps stdin open (devtools.mcp.server.Stdio;
+    // its buffers are the allocator's, never the stack). Its deinit, last
+    // of the defers, joins the reader on every way out: the input's end,
+    // an error, Browser.close (the server's on_close stops it).
+    const pipe = @import("platform").devtoolsOpenInheritedPipe(0, 1) catch |err| {
+        try err_out.print("repl: --mcp: stdin and stdout: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    const stdio = devtools.mcp.server.Stdio.start(allocator, pipe) catch |err| {
+        try err_out.print("repl: --mcp: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer stdio.deinit();
     const server = devtools.Server.start(allocator, .{
         .user_agent = options.user_agent orelse "",
         .default_host = host,
         .context_config = config,
+        .on_close = stdio.closeCallback(),
     }) catch |err| {
         try err_out.print("repl: the MCP server could not start: {t}\n", .{err});
         try err_out.flush();
         return 1;
     };
     defer server.stop();
-    // The stdio buffers from the allocator, never the stack: in an
-    // optimized build this function inlines into main, whose prologue would
-    // reserve them on every run, --mcp or not - and V8 sets its stack limit
-    // from the thread's stack start, so every script of the plain console
-    // threw "Maximum call stack size exceeded" (lane rc8, 2026-11-24;
-    // tools/lint_stack_arrays.zig keeps such arrays off the stack).
-    const in_buffer = try allocator.alloc(u8, 1 << 20);
-    defer allocator.free(in_buffer);
-    var stdin = std.Io.File.stdin().readerStreaming(io, in_buffer);
-    const out_buffer = try allocator.alloc(u8, 64 * 1024);
-    defer allocator.free(out_buffer);
-    var stdout = std.Io.File.stdout().writerStreaming(io, out_buffer);
-    devtools.mcp.server.serveStdio(allocator, server, &stdin.interface, &stdout.interface) catch |err| {
+    devtools.mcp.server.serveStdio(allocator, server, stdio, .{
+        .filesystem_roots = if (options.filesystem_root_count > 0) options.filesystem_roots[0..options.filesystem_root_count] else null,
+        .allow_unrestricted_paths = options.allow_unrestricted_paths,
+    }) catch |err| {
         try err_out.print("repl: --mcp: {t}\n", .{err});
         try err_out.flush();
         return 1;
