@@ -128,3 +128,22 @@ test "pruning all but the current step (CDP Page.resetNavigationHistory, Chrome'
     try h.commitSameDocument(top, "http://x.test/a#3", .null, .push, null);
     try testing.expectEqual(@as(u32, 2), h.lengthAndIndex().length);
 }
+
+test "a title that arrives while an apply runs is its target step's: a new document's parsed title, before step 20" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    var list: std.ArrayList(joint.NavigationEntry) = .empty;
+    defer list.deinit(testing.allocator);
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    h.recordTitle("A");
+    try h.commitDocument(top, "http://x.test/b", null, "http://x.test", .push);
+    h.recordTitle("B");
+    // A traversal back to a's step: its new document's title lands on a's
+    // step, not on the step the traversal leaves.
+    h.beginApply(7, h.stepByDelta(-1).?);
+    h.recordTitle("A again");
+    h.endApply(7);
+    _ = try h.navigationEntries(testing.allocator, &list);
+    try testing.expectEqualStrings("A again", list.items[0].title);
+    try testing.expectEqualStrings("B", list.items[1].title);
+}

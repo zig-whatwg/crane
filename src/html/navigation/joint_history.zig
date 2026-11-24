@@ -1790,11 +1790,13 @@ pub const JointHistory = struct {
     }
 
     /// The traversable's active document's title is `title` now: the
-    /// current step's record takes it (Chrome: WebContentsImpl::UpdateTitle
-    /// sets the title of the entry the document committed - the current
-    /// one; the others keep theirs).
+    /// record of the step that document stands for takes it (Chrome:
+    /// WebContentsImpl::UpdateTitle sets the title of the entry the document
+    /// committed; the others keep theirs). While an apply runs that is its
+    /// target step (`viewStep`): a new document's parsed title arrives
+    /// inside its commit, before step 20 moves the current step there.
     pub fn recordTitle(self: *JointHistory, title: []const u8) void {
-        const record = self.stepRecord(self.current_step) orelse return;
+        const record = self.stepRecord(self.viewStep()) orelse return;
         if (std.mem.eql(u8, record.title, title)) return;
         const owned = self.allocator.dupe(u8, title) catch return;
         self.allocator.free(record.title);
