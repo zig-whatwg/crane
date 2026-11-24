@@ -22,37 +22,19 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// DataCue (WICG DataCue): a TextTrackCue, made through the generated
+/// construction chain so TextTrackCue's and EventTarget's state are there.
 pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, value: runtime.JSValue, @"type": webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &DataCue.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = startTime;
-    _ = endTime;
+    // As VTTCue() steps 2-3: an end time of negative Infinity or NaN is a
+    // TypeError.
+    if (std.math.isNan(endTime) or endTime == -std.math.inf(f64)) return error.TypeError;
     _ = value;
     _ = @"type";
-    // TODO: Implement constructor logic with parameters
-
+    // TODO(datacue): the value and type members (WICG DataCue) - not in the
+    // 0.1 worklist (unratified).
+    const instance = try DataCue.init(ctx.allocator, ctx);
+    interfaces.TextTrackCue.set_startTime(instance, startTime) catch unreachable;
+    interfaces.TextTrackCue.set_endTime(instance, endTime) catch unreachable;
     return instance;
 }
 
