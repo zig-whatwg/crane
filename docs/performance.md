@@ -78,6 +78,10 @@ statement, the workload says so: that is its browser equivalent.
 | `dom.query-selector-all` | `querySelectorAll` of a four-step selector | |
 | `dom.matches` | `Element.matches` of a descendant/child selector | |
 | `dom.get-elements-by-class` | a live `getElementsByClassName` collection, read | |
+| `style.computed-read` | `getComputedStyle(el).getPropertyValue('color')` over 16 cells 8 deep in a plain div, in turn (from lane cs1, 2026-11-24) | |
+| `style.computed-read-form` | the same over the same tree inside a `<form>` with controls: in Crane every style there is volatile, resolved again on each read (the UA sheet's `:autofill`) | |
+| `style.inner-text` | `form.innerText` of that form: a computed style read per element | |
+| `style.focus-loop` | `focus()` on its 16 inputs in turn: each focusability check reads style | |
 | `dom.inner-html-set` | `innerHTML =` a 100-item list (the fragment parser) | |
 | `dom.inner-html-get` | reading `innerHTML` of 1,000 items (the serializer), two elements in turn | |
 | `dom.insert-adjacent-html` | `insertAdjacentHTML('beforeend', ...)` | |
