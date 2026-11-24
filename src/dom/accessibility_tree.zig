@@ -2956,9 +2956,16 @@ fn isLayoutInline(element: *Instance) bool {
 /// visible; for an element with no box, display: none on it or an ancestor
 /// (a display: contents element is not hidden).
 fn hiddenViaStyle(element: *Instance, has_layout: bool) !bool {
+    // Both values are read before rendered(), which reads the element's
+    // style again: a computed style is borrowed only until the next style
+    // read of the element (engine.zig computedStyle), and a volatile one
+    // (a formish element matched against a per-element state) is resolved
+    // anew - the first one freed - on every read.
     const computed = (try style.computedStyle(element, null)) orelse return true;
-    if (has_layout) return computed.keyword(.visibility) != .visible;
-    if (computed.display().box == .contents and try rendered(element)) return computed.keyword(.visibility) != .visible;
+    const visible = computed.keyword(.visibility) == .visible;
+    if (has_layout) return !visible;
+    const contents = computed.display().box == .contents;
+    if (contents and try rendered(element)) return !visible;
     return true;
 }
 
