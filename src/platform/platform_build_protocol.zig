@@ -96,6 +96,9 @@ pub const KitPart = struct {
 
 /// What the neutral build asks about an adapter.
 pub const Facts = struct {
+    /// The cross-target checks this adapter offers: the root build makes a
+    /// step for each (`cross_checks`).
+    checks: []const CrossCheck = &.{},
     /// The words that name this platform or an operating system it answers
     /// for: what `zig build lint-build` looks for (its `--platform=` keys)
     /// in the root build.zig and the neutral files it imports, written as
@@ -231,6 +234,31 @@ pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.R
         if (A.ownsTarget(target.result)) return A.addStandIns(b, module, target);
     }
 }
+
+/// A check of the root build for targets of another system than the
+/// machine's, which an adapter offers (`Facts.checks`): one top-level step,
+/// one `zig build <sub_step> -Dtarget=<target> <args> -j2` of the root per
+/// target, one after the other; nothing runs.
+pub const CrossCheck = struct {
+    /// The top-level step and its description.
+    step: []const u8,
+    description: []const u8,
+    /// The root build's step each sub-build runs.
+    sub_step: []const u8,
+    targets: []const []const u8,
+    /// The sub-build's arguments after its -Dtarget.
+    args: []const []const u8 = &.{},
+    /// Also pass the sub-build what this build's OS side forwards
+    /// (`OsSide.forwarded`).
+    forward_options: bool = false,
+};
+
+/// Every listed adapter's cross-target checks, in the list's order.
+pub const cross_checks: []const CrossCheck = checks: {
+    var checks: []const CrossCheck = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| checks = checks ++ @field(adapters, name).facts.checks;
+    break :checks checks;
+};
 
 /// What a binding asks of the adapter it binds (`bind`).
 pub const BindRequest = struct {

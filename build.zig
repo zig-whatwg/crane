@@ -3756,27 +3756,32 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&crane_check.step);
     }
 
-    // check-target for both Linux targets, one after the other, each its own
-    // `zig build` (a module graph is built per target, and this invocation's is
-    // the host's). -j2 inside each: two root compiles at a time, as AGENTS.md
-    // asks of every local build.
-    const check_linux_step = b.step("check-linux", "check-target for aarch64-linux-gnu and x86_64-linux-gnu, -Dplatform=linux (cross-compiled; nothing runs)");
-    var previous_linux_check: ?*std.Build.Step = null;
-    for ([_][]const u8{ "aarch64-linux-gnu", "x86_64-linux-gnu" }) |triple| {
-        // -Dwpt-runner-optimize=Debug: the runner check then shares the testing
-        // graph's C libraries instead of building a ReleaseSafe set of its own
-        // for a binary that is never linked (build_mode.zig, ownCLibraries).
-        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-target", b.fmt("-Dtarget={s}", .{triple}), "-Dplatform=linux", "-Dwpt-runner-optimize=Debug", "-j2" });
-        // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
-        // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
-        sub_build.addArg("--cache-dir");
-        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
-        sub_build.setCwd(b.path("."));
-        // The sub-build decides what is up to date; this step always asks it.
-        sub_build.has_side_effects = true;
-        if (previous_linux_check) |previous| sub_build.step.dependOn(previous);
-        previous_linux_check = &sub_build.step;
-        check_linux_step.dependOn(&sub_build.step);
+    // The cross-target checks the platform adapters offer (each its facts'
+    // `checks`: platform_build.cross_checks): a top-level step per check, one
+    // `zig build` of this root per target, one after the other (a module
+    // graph is built per target, and this invocation's is the host's). -j2
+    // inside each: two root compiles at a time, as AGENTS.md asks of every
+    // local build.
+    for (platform_build.cross_checks) |check| {
+        const check_step = b.step(check.step, check.description);
+        var previous: ?*std.Build.Step = null;
+        for (check.targets) |triple| {
+            const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", check.sub_step, b.fmt("-Dtarget={s}", .{triple}) });
+            sub_build.addArgs(check.args);
+            sub_build.addArg("-j2");
+            // What this build's OS side forwards to a sub-build (-Dios-sdk).
+            if (check.forward_options) for (os_side.forwarded) |arg| sub_build.addArg(arg);
+            // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
+            // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
+            sub_build.addArg("--cache-dir");
+            sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+            sub_build.setCwd(b.path("."));
+            // The sub-build decides what is up to date; this step always asks it.
+            sub_build.has_side_effects = true;
+            if (previous) |step| sub_build.step.dependOn(step);
+            previous = &sub_build.step;
+            check_step.dependOn(&sub_build.step);
+        }
     }
 
     // -Dcdp=false: the build without the Chrome DevTools Protocol remote end
@@ -3792,27 +3797,6 @@ pub fn build(b: *std.Build) void {
         sub_build.has_side_effects = true;
         b.step("check-cdp-off", "Compile crane (src/webdriver) and the console with -Dcdp=false (nothing runs)").dependOn(&sub_build.step);
     }
-
-    // lib-full for aarch64-ios, its own `zig build` like check-linux: a static
-    // library, so it builds every C library and all of Crane for iOS and links
-    // nothing (an iOS link also needs an engine prebuilt for the phone that
-    // matches the adapter - 24 of the engine's API symbols are missing from
-    // today's, lane zig017trial - and iOS ships on its system engine). -Dios-sdk passes through: the merge
-    // check runs `zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk -j2`.
-    // PAUSED (the user, 2026-11-10 15:55 ET: "skip ios builds and tests for now
-    // until we get js core implemented"): the sub-build's engine links nothing
-    // yet for iOS, so its lib-full fails with that adapter's reason, and this
-    // step with it, until the adapter builds lib-full; it is no gate.
-    const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
-    const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
-    for (os_side.forwarded) |arg| ios_build.addArg(arg);
-    // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
-    // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
-    ios_build.addArg("--cache-dir");
-    ios_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
-    ios_build.setCwd(b.path("."));
-    ios_build.has_side_effects = true;
-    check_ios_step.dependOn(&ios_build.step);
 
     // ========================================================================
     // WEBIDL TOOLS
