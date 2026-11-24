@@ -281,6 +281,8 @@ test "upload_file: the files set on the input as Puppeteer's uploadFile sets the
     try testing.expect(!r.is_error);
     r = try h.tool("take_snapshot", "{\"pageId\":1}");
     const snapshot = try a.dupe(u8, r.text);
+    // No file yet: "No file chosen".
+    try testing.expect(std.mem.indexOf(u8, snapshot, "button \"many\" value=\"No file chosen\"") != null);
     const one = try uidOf(snapshot, "\"one\"");
     const many = try uidOf(snapshot, "\"many\"");
     const go = try uidOf(snapshot, "\"Go\"");
@@ -298,6 +300,12 @@ test "upload_file: the files set on the input as Puppeteer's uploadFile sets the
     r = try h.tool("upload_file", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"filePaths\":[\"{s}\",\"{s}\"],\"includeSnapshot\":true}}", .{ many, first, second }));
     try testing.expect(!r.is_error);
     try testing.expect(std.mem.startsWith(u8, r.text, try std.fmt.allocPrint(a, "File uploaded from {s}, {s}.\n## Latest page snapshot\n", .{ first, second })));
+    // The inputs' values as Chrome reports them (Blink
+    // FileInputType::FileStatusText): one file's name, then "<n> files".
+    if (std.mem.indexOf(u8, r.text, "button \"one\" value=\"a.txt\"") == null or std.mem.indexOf(u8, r.text, "button \"many\" value=\"2 files\"") == null) {
+        std.log.err("got: {s}", .{r.text});
+        return error.TestUnexpectedResult;
+    }
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [...document.querySelectorAll('input')[1].files].map(f => f.name).join()\"}");
     try expectResult(a, r.text, "\"a.txt,b.txt\"");
 
