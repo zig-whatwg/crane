@@ -135,6 +135,7 @@ pub const GPUTextureUsageFlags = @import("GPUTextureUsageFlags.zig").GPUTextureU
 pub const GPUTextureViewDimensionOrUndefined = @import("GPUTextureViewDimensionOrUndefined.zig").GPUTextureViewDimensionOrUndefined;
 pub const GeometryNode = @import("GeometryNode.zig").GeometryNode;
 pub const HTMLCanvasElementOrOffscreenCanvas = @import("HTMLCanvasElementOrOffscreenCanvas.zig").HTMLCanvasElementOrOffscreenCanvas;
+pub const HTMLElementOrLong = @import("HTMLElementOrLong.zig").HTMLElementOrLong;
 pub const HTMLOptionElementOrHTMLOptGroupElement = @import("HTMLOptionElementOrHTMLOptGroupElement.zig").HTMLOptionElementOrHTMLOptGroupElement;
 pub const HTMLOrSVGImageElement = @import("HTMLOrSVGImageElement.zig").HTMLOrSVGImageElement;
 pub const HTMLOrSVGScriptElement = @import("HTMLOrSVGScriptElement.zig").HTMLOrSVGScriptElement;

@@ -173,33 +173,27 @@ fn isInclusiveAncestor(ancestor: *runtime.Instance, descendant: *runtime.Instanc
     return false;
 }
 
-fn convertToLong(realm: runtime.Context, value: runtime.JSValue) !i32 {
-    // WebIDL 3.2.4.8, steps 1–8: default long conversion, no clamp/range.
-    const number = try engine.convertToUnrestrictedDouble(realm, value);
-    if (std.math.isNan(number) or std.math.isInf(number)) return 0;
-    const unsigned: u32 = @intFromFloat(@mod(@trunc(number), 4294967296.0));
-    return @bitCast(unsigned);
-}
+/// add()'s `before` argument, `(HTMLElement or long)? before = null`, as the
+/// binding converted it (WebIDL 3.2.25: a platform object implementing
+/// HTMLElement is the element; anything else ToNumber, then long's modulo
+/// conversion).
+pub const Before = union(enum) {
+    element: *runtime.Instance,
+    index: i32,
+};
 
 /// HTML 2.6.4.3 add(element, before), steps 1–7.
-pub fn add(select: *runtime.Instance, option: *runtime.Instance, before: webidl.Opt(?runtime.JSValue)) !void {
+pub fn add(select: *runtime.Instance, option: *runtime.Instance, before: ?Before) !void {
     if (isInclusiveAncestor(option, select)) return error.HierarchyRequestError;
     var reference: ?*runtime.Instance = null;
-    if (before.was_passed) if (before.value) |value| {
-        switch (value) {
-            .undefined, .null => {},
-            else => {
-                const realm = engine.currentRealm() orelse select.ctx;
-                const object = engine.convertToPlatformObject(realm, value);
-                if (object != null and object.?.stateAs(interfaces.HTMLElement.State) != null) {
-                    if (object.? == select or !isInclusiveAncestor(select, object.?)) return error.NotFoundError;
-                    reference = object;
-                } else {
-                    const index = try convertToLong(realm, value);
-                    if (index >= 0) reference = try item(select, @intCast(index));
-                }
-            },
-        }
+    if (before) |value| switch (value) {
+        .element => |element| {
+            if (element == select or !isInclusiveAncestor(select, element)) return error.NotFoundError;
+            reference = element;
+        },
+        .index => |index| if (index >= 0) {
+            reference = try item(select, @intCast(index));
+        },
     };
     if (reference == option) return;
     const parent = if (reference) |ref| (try interfaces.Node.get_parentNode(ref)) orelse return error.NotFoundError else select;

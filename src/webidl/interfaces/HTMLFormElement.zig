@@ -28,6 +28,7 @@ const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const BooleanOrUnrestrictedDoubleOrDOMString = @import("typedefs").BooleanOrUnrestrictedDoubleOrDOMString;
+const RadioNodeListOrElement = @import("typedefs").RadioNodeListOrElement;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -44,18 +45,17 @@ const DOMRectList = @import("interfaces").DOMRectList;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const RadioNodeList = @import("interfaces").RadioNodeList;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
+const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
-const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const DOMString = @import("typedefs").DOMString;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const EditContext = @import("interfaces").EditContext;
-const DOMString = @import("typedefs").DOMString;
 const HTMLFormControlsCollection = @import("interfaces").HTMLFormControlsCollection;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
@@ -653,7 +653,7 @@ pub const HTMLFormElement = struct {
         }
     }
 
-    pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!RadioNodeListOrElement {
         if (comptime @hasDecl(HTMLFormElementImpl, "call_getter__1")) {
             return try HTMLFormElementImpl.call_getter__1(instance, name);
         } else {

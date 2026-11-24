@@ -188,10 +188,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "IntersectionObserverInit", "root", "" },
     .{ "IntersectionObserverInit", "threshold", "" },
     // forms (options.add's `before`, setFormValue, the form's named getter)
-    .{ "HTMLOptionsCollection", "add", "before" },
-    .{ "HTMLSelectElement", "add", "before" },
-    .{ "ElementInternals", "setFormValue", "state" },
-    .{ "HTMLFormElement", "", "return" },
     // HTMLAllCollection (its legacy caller and named getter bind `item` and
     // `namedItem` through a special path that takes the JSValue)
     .{ "HTMLAllCollection", "item", "return" },
