@@ -2557,7 +2557,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
 /// Spec: https://drafts.csswg.org/css-view-transitions-1/#dom-document-startviewtransition
 ///
 /// Note: Returns null - View Transitions require rendering engine
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(typedefs.ViewTransitionUpdateCallbackOrStartViewTransitionOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     // View Transitions require rendering engine - return null
@@ -2660,7 +2660,7 @@ pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl
 /// Crane lays nothing out: the style half, as its other CSSOM View
 /// geometry reads do (dom.style.engine.updateStyleForRead), then nothing
 /// to scroll - a renderer answers the box.
-pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(typedefs.BooleanOrScrollIntoViewOptions)) anyerror!runtime.JSValue {
     _ = arg;
     dom.style.engine.updateStyleForRead(instance);
     // TODO: Should return a resolved Promise<undefined>

@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const ViewTimelineOptions = struct {
@@ -10,11 +11,7 @@ pub const ViewTimelineOptions = struct {
     pub const webidl_dictionary = true;
     subject: ?*runtime.Instance = null,
     axis: ?enums.ScrollAxis = null,
-    inset: ?runtime.JSValue = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"inset"};
+    inset: ?typedefs.DOMStringOrSequenceOfCSSNumericValueOrCSSKeywordValue = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

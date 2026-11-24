@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const WindowClient = @import("interfaces").WindowClient;
+const ClientOrUndefined = @import("typedefs").ClientOrUndefined;
 const ClientQueryOptions = @import("dictionaries").ClientQueryOptions;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;

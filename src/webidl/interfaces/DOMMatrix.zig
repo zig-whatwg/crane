@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const DOMMatrixReadOnly = @import("interfaces").DOMMatrixReadOnly;
 const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
+const DOMStringOrSequenceOfUnrestrictedDouble = @import("typedefs").DOMStringOrSequenceOfUnrestrictedDouble;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMString = @import("typedefs").DOMString;
 
@@ -362,7 +363,7 @@ pub const DOMMatrix = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(DOMStringOrSequenceOfUnrestrictedDouble)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMMatrixImpl.call_constructor(ctx, init_data);
     }

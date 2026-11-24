@@ -239,7 +239,7 @@ const SequenceOrOptions = union(enum) {
     domstring_sequence: []const runtime.DOMString,
     options: Options,
     pub const arms = [_]webidl.UnionArm{
-        .{ .field = "domstring_sequence", .kind = .sequence },
+        .{ .field = "domstring_sequence", .kind = .{ .sequence = null } },
         .{ .field = "options", .kind = .dictionary },
     };
 };
@@ -371,7 +371,7 @@ const SequenceOrString = union(enum) {
     domstring_sequence: []const runtime.DOMString,
     domstring: runtime.DOMString,
     pub const arms = [_]webidl.UnionArm{
-        .{ .field = "domstring_sequence", .kind = .sequence },
+        .{ .field = "domstring_sequence", .kind = .{ .sequence = null } },
         .{ .field = "domstring", .kind = .string },
     };
 };

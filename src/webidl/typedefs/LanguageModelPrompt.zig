@@ -13,7 +13,7 @@ pub const LanguageModelPrompt = union(enum) {
     /// What each field's member type is, for the binding's union conversion
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
-        .{ .field = "language_model_message_sequence", .kind = .sequence },
+        .{ .field = "language_model_message_sequence", .kind = .{ .sequence = null } },
         .{ .field = "domstring", .kind = .string },
     };
 };

@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const UndefinedOrCSSStyleValue = @import("typedefs").UndefinedOrCSSStyleValue;
 const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMap = struct {

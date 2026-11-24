@@ -36,4 +36,25 @@ interface Thing {
   undefined sequenceArm((DOMString or sequence<DOMString>) data, long after);
   undefined nullable((Thing or DOMString)? data, long after);
   undefined trusted((TrustedHTML or DOMString) markup, long after);
+  // Lane bind1 batch B (B2): every other position is named too.
+  attribute (DOMString or long) both;
+  (DOMString or Plain) produce();
+  undefined variadic((DOMString or long)... items);
+};
+
+callback Notify = undefined ((DOMString or long) value);
+
+dictionary WithNullable {
+  (DOMString or long)? maybe;
+};
+
+// A sequence of unions, as mediacapture's echoCancellation and Web
+// Bluetooth's uuids are.
+dictionary WithSequence {
+  sequence<(DOMString or long)> items;
+};
+
+// A record whose values are a union, as FilePickerAcceptType's accept is.
+dictionary WithRecord {
+  record<DOMString, (DOMString or sequence<DOMString>)> map;
 };

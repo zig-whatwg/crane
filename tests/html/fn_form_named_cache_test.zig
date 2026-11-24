@@ -138,7 +138,7 @@ fn exercise(comptime scenario: Scenario) !void {
                 try testing.expect(try interfaces.HTMLFormControlsCollection.isSupportedPropertyName(elements, runtime.DOMString.initInterned("fieldId")));
                 try testing.expect(!(try interfaces.HTMLFormControlsCollection.isSupportedPropertyName(elements, runtime.DOMString.initInterned("picture"))));
                 const found = (try interfaces.HTMLFormControlsCollection.call_namedItem(elements, runtime.DOMString.initInterned("field"))).?;
-                try testing.expectEqual(input, found.instance);
+                try testing.expectEqual(input, found.element);
             }
         },
         .failed_rebuild => {

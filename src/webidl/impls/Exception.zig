@@ -56,7 +56,7 @@ pub fn call_constructor(ctx: runtime.Context, exceptionTag: *runtime.Instance, p
 }
 
 /// Getter for stack
-pub fn get_stack(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_stack(instance: *runtime.Instance) anyerror!typedefs.DOMStringOrUndefined {
     _ = instance;
     return error.NotImplemented;
 }

@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSColorValueOrCSSStyleValue = @import("typedefs").CSSColorValueOrCSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;

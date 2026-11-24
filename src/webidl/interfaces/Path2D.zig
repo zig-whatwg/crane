@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CanvasPath = @import("mixins").CanvasPath;
+const Path2DOrDOMString = @import("typedefs").Path2DOrDOMString;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMPointInit = @import("dictionaries").DOMPointInit;
-const DOMString = @import("typedefs").DOMString;
+const UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit = @import("typedefs").UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit;
 
 pub const Path2D = struct {
     pub const Meta = struct {
@@ -194,7 +194,7 @@ pub const Path2D = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(Path2DOrDOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try Path2DImpl.call_constructor(ctx, path);
     }
@@ -223,7 +223,7 @@ pub const Path2D = struct {
         return try Path2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
-    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit)) anyerror!void {
         return try Path2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 

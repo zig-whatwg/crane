@@ -8,14 +8,14 @@ const typedefs = @import("root.zig");
 
 pub const JsonLdContext = union(enum) {
     json_ld_record: typedefs.JsonLdRecord,
-    json_ld_record_or_usvstring_sequence: []const runtime.JSValue,
+    json_ld_record_or_usvstring_sequence: []const typedefs.JsonLdRecordOrUSVString,
     usvstring: runtime.USVString,
 
     /// What each field's member type is, for the binding's union conversion
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "json_ld_record", .kind = .record },
-        .{ .field = "json_ld_record_or_usvstring_sequence", .kind = .sequence },
+        .{ .field = "json_ld_record_or_usvstring_sequence", .kind = .{ .sequence = null } },
         .{ .field = "usvstring", .kind = .string },
     };
 };

@@ -16,7 +16,7 @@ pub const HeadersInit = union(enum) {
     /// What each field's member type is, for the binding's union conversion
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
-        .{ .field = "sequence_byte_string_sequence", .kind = .sequence },
+        .{ .field = "sequence_byte_string_sequence", .kind = .{ .sequence = null } },
         .{ .field = "byte_string_byte_string_record", .kind = .record },
     };
 };

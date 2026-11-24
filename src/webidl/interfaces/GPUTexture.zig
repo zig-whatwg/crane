@@ -16,7 +16,7 @@ const GPUTextureDimension = @import("enums").GPUTextureDimension;
 const GPUSize32Out = @import("typedefs").GPUSize32Out;
 const GPUFlagsConstant = @import("typedefs").GPUFlagsConstant;
 const GPUTextureFormat = @import("enums").GPUTextureFormat;
-const GPUTextureViewDimension = @import("enums").GPUTextureViewDimension;
+const GPUTextureViewDimensionOrUndefined = @import("typedefs").GPUTextureViewDimensionOrUndefined;
 const USVString = @import("typedefs").USVString;
 const GPUTextureViewDescriptor = @import("dictionaries").GPUTextureViewDescriptor;
 const GPUIntegerCoordinateOut = @import("typedefs").GPUIntegerCoordinateOut;
@@ -236,7 +236,7 @@ pub const GPUTexture = struct {
         return try GPUTextureImpl.get_usage(instance);
     }
 
-    pub fn get_textureBindingViewDimension(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_textureBindingViewDimension(instance: *runtime.Instance) anyerror!GPUTextureViewDimensionOrUndefined {
         return try GPUTextureImpl.get_textureBindingViewDimension(instance);
     }
 

@@ -553,7 +553,7 @@ pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weigh
 }
 
 /// Operation: split
-pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: runtime.JSValue, options: webidl.Opt(dictionaries.MLSplitOptions)) anyerror!runtime.JSValue {
+pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: typedefs.UnsignedLongOrSequenceOfUnsignedLong, options: webidl.Opt(dictionaries.MLSplitOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = splits;

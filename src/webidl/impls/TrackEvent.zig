@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
+const typedefs = @import("typedefs");
 const webidl = @import("webidl");
 const construction = @import("dom").event_construction;
 const same_object = @import("dom").same_object;
@@ -37,21 +38,21 @@ pub fn call_constructor(ctx: runtime.Context, event_type: runtime.DOMString, eve
     const dictionary = if (eventInitDict.wasPassed()) eventInitDict.value else dictionaries.TrackEventInit{ .base = .{} };
     // DOM inner event creation steps, including inherited EventInit flags.
     try construction.innerEventCreationSteps(instance, event_type, construction.eventInitFrom(dictionary.base));
+    // `track` is (VideoTrack or AudioTrack or TextTrack)?: the binding
+    // converted it (WebIDL 3.2.25), a TypeError for any other object.
     if (dictionary.track) |value| {
         const track = switch (value) {
-            .instance => |object| object,
-            .null, .undefined => return instance,
-            else => engine.convertToPlatformObject(ctx, value) orelse return error.TypeError,
+            inline else => |object| object,
         };
-        const name = track.vtable.name;
-        if (!std.mem.eql(u8, name, "TextTrack") and !std.mem.eql(u8, name, "AudioTrack") and !std.mem.eql(u8, name, "VideoTrack")) return error.TypeError;
         const data = instance.getState(State).own._internal.?;
         data.track = track;
         data.edge.hold(instance, track);
     }
     return instance;
 }
-pub fn get_track(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+pub fn get_track(instance: *runtime.Instance) anyerror!?typedefs.VideoTrackOrAudioTrackOrTextTrack {
     const data = instance.getState(State).own._internal.?;
-    return if (data.track) |track| .{ .instance = track } else null;
+    const track = data.track orelse return null;
+    // A VideoTrack, an AudioTrack or a TextTrack.
+    return @import("dom").union_values.ofInstance(typedefs.VideoTrackOrAudioTrackOrTextTrack, track);
 }

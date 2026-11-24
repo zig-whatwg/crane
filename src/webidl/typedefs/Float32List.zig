@@ -14,6 +14,6 @@ pub const Float32List = union(enum) {
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "float32array", .kind = .{ .typed_array = "Float32Array" } },
-        .{ .field = "glfloat_sequence", .kind = .sequence },
+        .{ .field = "glfloat_sequence", .kind = .{ .sequence = null } },
     };
 };

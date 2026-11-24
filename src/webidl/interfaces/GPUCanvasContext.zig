@@ -10,8 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
-const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
+const HTMLCanvasElementOrOffscreenCanvas = @import("typedefs").HTMLCanvasElementOrOffscreenCanvas;
 const GPUCanvasConfiguration = @import("dictionaries").GPUCanvasConfiguration;
 const GPUTexture = @import("interfaces").GPUTexture;
 
@@ -173,7 +172,7 @@ pub const GPUCanvasContext = struct {
         }
     }
 
-    pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_canvas(instance: *runtime.Instance) anyerror!HTMLCanvasElementOrOffscreenCanvas {
         return try GPUCanvasContextImpl.get_canvas(instance);
     }
 
