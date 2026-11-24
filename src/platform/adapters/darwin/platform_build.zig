@@ -26,6 +26,7 @@ pub const facts: platform_build.Facts = .{
     // The platform, its two systems, the iPhoneOS SDK and its tool, and the
     // macOS package manager whose paths the build reads.
     .words = &.{ "darwin", "macos", "word:ios", "iphoneos", "xcrun", "homebrew" },
+    .example_target = "aarch64-macos",
     // The tools that read Mach-O objects test against one made for macOS.
     .object_format = .{ .name = "mach_o", .target = "aarch64-macos-none" },
     .checks = &.{

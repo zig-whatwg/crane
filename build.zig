@@ -4996,6 +4996,9 @@ pub fn build(b: *std.Build) void {
     // engine adapter declared is one nothing declared, and is refused. Part
     // of this lint's step and of the test step.
     engine.addOptionOwnershipChecks(b, &.{ lint_build_step, test_step });
+    // The same rule for the options of the platform adapter that answers for
+    // the target's OS (platform_build.chooseOs).
+    platform_build.addOptionOwnershipChecks(b, os_side, &.{ lint_build_step, test_step });
 
     // ========================================================================
     // CHECK: what a test executable is told about the engine depends on no flag

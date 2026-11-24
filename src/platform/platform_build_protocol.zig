@@ -99,6 +99,10 @@ pub const Facts = struct {
     /// The cross-target checks this adapter offers: the root build makes a
     /// step for each (`cross_checks`).
     checks: []const CrossCheck = &.{},
+    /// A target this adapter answers for, for a check that needs one (the
+    /// option-ownership check configures under it); null for an adapter that
+    /// answers for none.
+    example_target: ?[]const u8 = null,
     /// The object format of the systems this adapter answers for, and a
     /// target whose objects have it, for the root build's tools that parse
     /// objects (`object_format_fixtures`); null when it declares none.
@@ -161,6 +165,10 @@ pub fn defaultFor(target: std.Target) ?Platform {
 /// capabilities): darwin for macOS and iOS, linux for Linux. What the root
 /// build keeps of it once it is chosen (`chooseOs`).
 pub const OsSide = struct {
+    /// The adapter that answers for the target's OS; null when none does.
+    owner: ?Platform,
+    /// The names of the -D options it declared, in its order.
+    option_names: []const []const u8,
     /// The arguments a sub-build of the root build for another target of the
     /// same OS side takes from this one (check-ios's -Dios-sdk).
     forwarded: []const []const u8,
@@ -177,12 +185,51 @@ pub fn chooseOs(b: *std.Build, target: std.Build.ResolvedTarget, probe: *std.Bui
     inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
         const A = @field(adapters, name);
         if (A.ownsTarget(target.result)) {
+            // What the adapter declares is what the options map gains.
+            const declared_before = b.available_options_map.count();
             const options = A.declareOptions(b);
+            const option_names = b.allocator.dupe([]const u8, b.available_options_map.keys()[declared_before..]) catch @panic("OOM");
             A.resolve(b, target, options, probe);
-            return .{ .forwarded = A.forwarded(b, options) };
+            return .{ .owner = @field(Platform, name), .option_names = option_names, .forwarded = A.forwarded(b, options) };
         }
     }
-    return .{ .forwarded = &.{} };
+    return .{ .owner = null, .option_names = &.{}, .forwarded = &.{} };
+}
+
+/// The rule that an OS side's option belongs to it, run: for every OTHER
+/// listed adapter that names a target it answers for (`Facts.example_target`),
+/// one configure of this build root under that target with each option this
+/// build's OS side declared - the configure itself must refuse every one
+/// ("invalid option"), since only the adapter that answers for the target's
+/// OS declares its options (the integrator's ruling, 2026-11-24: -Dios-sdk
+/// exists only where darwin answers). Each of `dependants` depends on them.
+/// Nothing is compiled: the configure fails before any step runs. An OS side
+/// with no option has nothing another build could be given. The engine
+/// protocol's check, for the platform.
+pub fn addOptionOwnershipChecks(b: *std.Build, os_side: OsSide, dependants: []const *std.Build.Step) void {
+    if (os_side.option_names.len == 0) return;
+    const owner = os_side.owner orelse return;
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |other| {
+        if (@field(adapters, other).facts.example_target) |other_target| {
+            if (@field(Platform, other) != owner) {
+                const check = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--list-steps", b.fmt("-Dtarget={s}", .{other_target}) });
+                check.setName(b.fmt("the {t} OS side's options are refused under -Dtarget={s}", .{ owner, other_target }));
+                for (os_side.option_names) |option| {
+                    check.addArg(b.fmt("-D{s}=1", .{option}));
+                    check.expectStdErrMatch(b.fmt("invalid option: \"{s}\"", .{option}));
+                }
+                check.expectExitCode(1);
+                // The parent's local cache; the global one travels in the
+                // environment (the build command takes no --global-cache-dir).
+                check.addArg("--cache-dir");
+                check.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+                check.setCwd(b.path("."));
+                // The sub-configure decides; this step always asks it.
+                check.has_side_effects = true;
+                for (dependants) |dependant| dependant.dependOn(&check.step);
+            }
+        }
+    }
 }
 
 /// What C compiled or translated for `target` needs beyond what Zig finds

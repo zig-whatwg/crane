@@ -21,6 +21,7 @@ pub fn kitParts(target: std.Target) []const KitPart {
 
 pub const facts: platform_build.Facts = .{
     .words = &.{"linux"},
+    .example_target = "x86_64-linux-gnu",
     // The tools that read ELF objects test against one made for Linux.
     .object_format = .{ .name = "elf", .target = "x86_64-linux-none" },
     .checks = &.{
